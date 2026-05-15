@@ -33,9 +33,13 @@
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
 #define galactic_north_Decl_J2000 ((27.0 + 7.0 / 60 + 42.01 / 3600) * fiftyseventh)
 
-// https://astronomy.stackexchange.com/questions/28021/what-does-it-mean-that-the-suns-rotation-axis-is-ra-286-13-dekl-63-87
+// https://en.wikipedia.org/wiki/Poles_of_astronomical_bodies
 #define solar_north_RA_J2000 (286.13 * fiftyseventh)
 #define solar_north_Decl_J2000 (63.87 * fiftyseventh)
+
+// https://en.wikipedia.org/wiki/Orbital_pole
+#define ecliptic_north_RA_J2000 (18.00 * 15 * fiftyseventh)
+#define ecliptic_north_Decl_J2000 ((66.0 + 33.0 / 60 + 38.55 / 3600) * fiftyseventh)
 
 #define MAX_CELOBJS 262144
 #define its_behind_you 0xbe419d10
