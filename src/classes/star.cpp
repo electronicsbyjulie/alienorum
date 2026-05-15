@@ -18,6 +18,9 @@ void Star::update_location(double tmnow)
     // Compute new location
     Point newloc = Point::from_ra_dec(l_RA, l_Decl, l_dist);
 
+    // Set to galactic coordinates
+    newloc = rotate3D(newloc, center, ICRF_to_galactic.v, ICRF_to_galactic.a);
+
     // Set system location
     location.system_center = newloc;
 }

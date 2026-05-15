@@ -85,6 +85,8 @@ double find_angle_along_vector(Point& pt1, Point& pt2, Point& source, Point& v);
 Rotation align_points_3d(Point& point, Point& align, Point& center);
 Point rotate3D(Point point, Point source, Point axis, double theta);
 
+extern Point center, xaxis, yaxis, zaxis;
 extern Point velocity;
+extern Rotation ICRF_to_galactic;
 
 #endif

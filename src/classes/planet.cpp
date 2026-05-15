@@ -88,10 +88,13 @@ void Planet::update_location(double tmnow)
 
     // TODO: THIS IS A TERRIBLE KLUDGE!
     Point result = rotate3D(Point(x,y,z), Point(0,0,0), Point(0,0,-1), 23.45*fiftyseventh);
+
+    // Set to galactic coordinates
+    result = rotate3D(result, center, ICRF_to_galactic.v, ICRF_to_galactic.a);
+
+    // Update planet
     x = result.x; y = result.y; z = result.z;
-
     // std::cout << name << " @ " << x << ", " << y << ", " << z << std::endl;
-
     location.system_center = orbit->center->location.system_center;
     location.local_position = Point(x,y,z) + orbit->center->location.local_position;
 }

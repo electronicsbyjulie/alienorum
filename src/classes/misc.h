@@ -29,6 +29,10 @@
 #define arcsecond (arcminute / 60)
 #define color_ref_temp 9758.5
 
+// https://en.wikipedia.org/wiki/Galactic_plane
+#define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
+#define galactic_north_Decl_J2000 ((27.0 + 7.0 / 60 + 42.01 / 3600) * fiftyseventh)
+
 #define MAX_CELOBJS 262144
 #define its_behind_you 0xbe419d10
 #define default_brightness 81.0
