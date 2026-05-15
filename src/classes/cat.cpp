@@ -279,6 +279,14 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         s->update_location(J2000_TIME_T);
 
+        if (!num_read)
+        {
+            s->inclination = find_3D_angle(solar_north, galactic_north, center);
+            s->equinox = galcen_longitude;
+            std::cout << s->name << " inclination: " << (s->inclination * fiftyseven) << std::endl;
+            std::cout << s->name << " equinox: " << (s->equinox * fiftyseven) << std::endl;
+        }
+
         cels[offset+num_read] = s;
         num_read++;
         if ((offset+num_read) >= (max-1)) break;

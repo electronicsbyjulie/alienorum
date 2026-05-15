@@ -14,6 +14,8 @@ double galcen_dist = light_year * 26000;
 double galcen_longitude = 31.40 * fiftyseventh;
 double galcen_correction = (41.5 / 60 + 16) * 15 * fiftyseventh - galcen_longitude;
 Point sun_coord(galcen_dist * std::sin(galcen_longitude), 17.0 * parsec, galcen_dist * std::cos(galcen_longitude));
+Point solar_north = Point::from_ra_dec(solar_north_RA_J2000, solar_north_Decl_J2000, light_year*1.37e10);
+Rotation galactic_to_solar = align_points_3d(solar_north, galactic_north, center);
 
 Point::Point(double newx, double newy, double newz)
 {

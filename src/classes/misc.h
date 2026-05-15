@@ -7,7 +7,7 @@
 #include <ctime>
 #include "../imgui/imgui.h"
 
-#define light_year 9460730472580800
+#define light_year 9460730472580800.0
 #define parsec 3.08567758128E+16
 #define AU 149597870700.0
 #define invAU (1.0 / AU)
@@ -32,6 +32,10 @@
 // https://en.wikipedia.org/wiki/Galactic_plane
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
 #define galactic_north_Decl_J2000 ((27.0 + 7.0 / 60 + 42.01 / 3600) * fiftyseventh)
+
+// https://astronomy.stackexchange.com/questions/28021/what-does-it-mean-that-the-suns-rotation-axis-is-ra-286-13-dekl-63-87
+#define solar_north_RA_J2000 (286.13 * fiftyseventh)
+#define solar_north_Decl_J2000 (63.87 * fiftyseventh)
 
 #define MAX_CELOBJS 262144
 #define its_behind_you 0xbe419d10
