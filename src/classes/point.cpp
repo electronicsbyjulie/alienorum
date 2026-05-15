@@ -8,14 +8,20 @@
 
 Point center(0,0,0), xaxis(1e37, 0, 0), yaxis(0, 1e37, 0), zaxis(0, 0, 1e37);
 Point velocity;
+
 Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, light_year*1.37e10);
 Rotation ICRF_to_galactic = align_points_3d(galactic_north, yaxis, center);
 double galcen_dist = light_year * 26000;
 double galcen_longitude = 31.40 * fiftyseventh;
 double galcen_correction = (41.5 / 60 + 16) * 15 * fiftyseventh - galcen_longitude;
+
 Point sun_coord(galcen_dist * std::sin(galcen_longitude), 17.0 * parsec, galcen_dist * std::cos(galcen_longitude));
-Point solar_north = Point::from_ra_dec(solar_north_RA_J2000, solar_north_Decl_J2000, light_year*1.37e10);
+Point solar_north = Point::from_ra_dec(solar_north_RA_J2000, solar_north_Decl_J2000, light_year);
 Rotation galactic_to_solar = align_points_3d(solar_north, galactic_north, center);
+
+Point ecliptic_north = Point::from_ra_dec(ecliptic_north_RA_J2000, ecliptic_north_Decl_J2000, light_year);
+Rotation ICRF_to_ecliptic = align_points_3d(yaxis, ecliptic_north, center);
+Rotation ecliptic_to_galactic = align_points_3d(galactic_north, rotate3D(yaxis, center, ICRF_to_ecliptic.v, -ICRF_to_ecliptic.a), center);
 
 Point::Point(double newx, double newy, double newz)
 {
@@ -118,7 +124,7 @@ double find_angle(double dx, double dy)
     return angle;
 }
 
-double find_3D_angle(Point &A, Point &B, Point &source)
+double find_3D_angle(Point A, Point B, Point source)
 {
     Point lA = A - source;
     lA.scale(1);
@@ -166,7 +172,7 @@ Point Point::from_ra_dec(double right_ascension, double declination, double dist
     return Point(x, y, z);
 }
 
-double find_3d_angle(Point& A, Point& B, Point& source)
+double find_3d_angle(Point A, Point B, Point source)
 {
     Point lA = A - source;
     lA.scale(1);
@@ -190,7 +196,7 @@ double find_3d_angle(Point& A, Point& B, Point& source)
     return retval;
 }
 
-double find_angle_along_vector(Point& pt1, Point& pt2, Point& source, Point& v)
+double find_angle_along_vector(Point pt1, Point pt2, Point source, Point v)
 {
     Point lpt1 = pt1 - source;
     Point lpt2 = pt2 - source;
@@ -247,7 +253,7 @@ Point rotate3D(Point point, Point source, Point axis, double theta)
     return pt;
 }
 
-Rotation align_points_3d(Point& point, Point& align, Point& center)
+Rotation align_points_3d(Point point, Point align, Point center)
 {
     Point n = compute_normal(point, align, center);
     double nr = n.magnitude();
@@ -304,7 +310,7 @@ Rotation align_points_3d(Point& point, Point& align, Point& center)
     return rot;
 }
 
-Point compute_normal(Point& pt1, Point& pt2, Point& pt3)
+Point compute_normal(Point pt1, Point pt2, Point pt3)
 {
     Point U = pt2 - pt1;
     Point V = pt3 - pt1;

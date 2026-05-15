@@ -86,11 +86,16 @@ void Planet::update_location(double tmnow)
     double y = (sinw * sini) * x_plane + (cosw * sini) * y_plane;
     double z = (sinO * cosw + cosO * sinw * cosi) * x_plane + (-sinO * sinw + cosO * cosw * cosi) * y_plane;
 
-    // TODO: THIS IS A TERRIBLE KLUDGE!
-    Point result = rotate3D(Point(x,y,z), Point(0,0,0), Point(0,0,-1), 23.45*fiftyseventh);
+    /*
+    // THIS WORKS! But it's too many steps.
+    Point result = rotate3D(Point(x,y,z), center, ICRF_to_ecliptic.v, ICRF_to_ecliptic.a);
 
     // Set to galactic coordinates
     result = rotate3D(result, center, ICRF_to_galactic.v, ICRF_to_galactic.a);
+    result = rotate3D(result, center, yaxis, galcen_correction);
+    */
+
+    Point result = rotate3D(Point(x,y,z), center, ecliptic_to_galactic.v, ecliptic_to_galactic.a);
     result = rotate3D(result, center, yaxis, galcen_correction);
 
     // Update planet
