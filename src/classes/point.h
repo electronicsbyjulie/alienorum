@@ -88,5 +88,7 @@ Point rotate3D(Point point, Point source, Point axis, double theta);
 extern Point center, xaxis, yaxis, zaxis;
 extern Point velocity;
 extern Rotation ICRF_to_galactic;
+extern Point sun_coord;
+extern double galcen_correction;
 
 #endif

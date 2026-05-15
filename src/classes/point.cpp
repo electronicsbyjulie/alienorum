@@ -10,6 +10,10 @@ Point center(0,0,0), xaxis(1e37, 0, 0), yaxis(0, 1e37, 0), zaxis(0, 0, 1e37);
 Point velocity;
 Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, light_year*1.37e10);
 Rotation ICRF_to_galactic = align_points_3d(galactic_north, yaxis, center);
+double galcen_dist = light_year * 26000;
+double galcen_longitude = 31.40 * fiftyseventh;
+double galcen_correction = (41.5 / 60 + 16) * 15 * fiftyseventh - galcen_longitude;
+Point sun_coord(galcen_dist * std::sin(galcen_longitude), 17.0 * parsec, galcen_dist * std::cos(galcen_longitude));
 
 Point::Point(double newx, double newy, double newz)
 {

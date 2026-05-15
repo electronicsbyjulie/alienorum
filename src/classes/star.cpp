@@ -20,9 +20,10 @@ void Star::update_location(double tmnow)
 
     // Set to galactic coordinates
     newloc = rotate3D(newloc, center, ICRF_to_galactic.v, ICRF_to_galactic.a);
+    newloc = rotate3D(newloc, center, yaxis, galcen_correction);
 
     // Set system location
-    location.system_center = newloc;
+    location.system_center = newloc + sun_coord;
 }
 
 void Star::rename_from_Bayer_Flamsteed()

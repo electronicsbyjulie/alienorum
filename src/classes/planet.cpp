@@ -91,6 +91,7 @@ void Planet::update_location(double tmnow)
 
     // Set to galactic coordinates
     result = rotate3D(result, center, ICRF_to_galactic.v, ICRF_to_galactic.a);
+    result = rotate3D(result, center, yaxis, galcen_correction);
 
     // Update planet
     x = result.x; y = result.y; z = result.z;
