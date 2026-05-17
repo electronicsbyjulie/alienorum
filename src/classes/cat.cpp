@@ -642,7 +642,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
         else
         {
-            if (frand(0,1) < 0.003) std::cout << "Updated " << s->name << std::endl << std::flush;
+            if (frand(0,1) < 0.03 && s->name[0]) std::cout << "Updated " << s->name << std::endl << std::flush;
         }
 
         num_read++;
@@ -761,7 +761,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
-        std::cout << "Updated " << A->name << ": " << s->name << std::endl << std::flush;
+        if (A->name[0] && s->name[0]) std::cout << "Updated " << A->name << ": " << s->name << std::endl << std::flush;
 
         // TODO: For systems where both members are not already loaded,
         // can load additional members.
@@ -908,8 +908,9 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         s->location = A->location;
         s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
 
-        std::cout << "Updated " << (strlen(A->name) ? A->name : (std::string("HD")+std::to_string(A->HD)))
-            << ": " << (strlen(s->name) ? s->name : (std::string("HD")+std::to_string(s->HD))) << std::endl << std::flush;
+        if (A->HD && s->HD)
+            std::cout << "Updated " << (strlen(A->name) ? A->name : (std::string("HD")+std::to_string(A->HD)))
+                << ": " << (strlen(s->name) ? s->name : (std::string("HD")+std::to_string(s->HD))) << std::endl << std::flush;
 
         num_read++;
     }

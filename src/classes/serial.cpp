@@ -132,13 +132,22 @@ bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
     fread(&ver, sizeof(__uint32_t), 1, fp);
     if (ver > _serial_version)
     {
-        std::cerr << "Cannot deserialize: file version too new." << std::endl;
+        std::cerr << "Cannot restore state: file version too new." << std::endl;
         return false;
     }
     int i=0;
     while (!feof(fp))
     {
-        if (!(cels[i++] = load_object(fp, cels))) return false;
+        CelestialObject* cel = load_object(fp, cels);
+        if (feof(fp)) break;
+        if (!(cels[i] = cel)) return false;
+        i++;
+        if (i >= max)
+        {
+            std::cerr << "Cannot restore state: file too big." << std::endl;
+            throw 0xbadda7a;
+        }
     }
+    cels[i] = nullptr;
     return true;
 }

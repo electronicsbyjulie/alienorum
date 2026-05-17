@@ -193,6 +193,7 @@ void load_catalogs()
             for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
             return;
         }
+        fclose(fp);
     }
 
     n = cats.size();
@@ -252,6 +253,7 @@ void load_catalogs()
     if (fp)
     {
         if (!Serialization::save_all(fp, cels)) std::cerr << "FAILED to save state." << std::endl;
+        fclose(fp);
     }
     else std::cerr << "FAILED to write save state file." << std::endl;
 }
