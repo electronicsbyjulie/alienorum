@@ -190,6 +190,7 @@ void load_catalogs()
         if (Serialization::load_all(fp, cels, MAX_CELOBJS))
         {
             fclose(fp);
+            for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
             return;
         }
     }
@@ -215,6 +216,7 @@ void load_catalogs()
     cout << "Reading local planets..." << endl << flush;
     int npl = cr.read_local_planets(cels, MAX_CELOBJS);                   // Read solar system planets now, before painting the sky with stars
     num_planets += npl;
+    for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
     if (have_BSC)
