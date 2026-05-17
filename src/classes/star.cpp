@@ -31,7 +31,7 @@ void Star::update_location(double tmnow)
 
 void Star::rename_from_Bayer_Flamsteed()
 {
-    if (!constellation.size()) return;
+    if (!strlen(constellation)) return;
     if (BayerGrkno < 0 && !FlamsteedNo) return;
 
     if (!consabbrev.size() || !consgen.size())
@@ -44,7 +44,7 @@ void Star::rename_from_Bayer_Flamsteed()
     int i, j=-1, n = consabbrev.size();
     for (i=0; i<n; i++)
     {
-        if (!strcmp(consabbrev[i].c_str(), constellation.c_str()))
+        if (!strcmp(consabbrev[i].c_str(), constellation))
         {
             j = i;
             break;
@@ -54,25 +54,25 @@ void Star::rename_from_Bayer_Flamsteed()
     if (j<0)
     {
         // Not a valid constellation.
-        constellation = "";
+        constellation[0] = 0;
         return;
     }
 
     if (BayerGrkno >= 0)
     {
-        int number = atoi(Bayer.substr(3, 1).c_str());
-        if (number) name = Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j];
-        else name = Greek_letter[BayerGrkno] + std::string(" ") + consgen[j];
+        int number = atoi(std::string(Bayer).substr(3, 1).c_str());
+        if (number) strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
+        else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
     }
     else if (FlamsteedNo)
     {
-        name = std::to_string(FlamsteedNo) + std::string(" ") + consgen[j];
+        strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
     }
 }
 
 bool Star::is_sunlike()
 {
-    const char* sptyp = spectral_type.c_str();
+    const char* sptyp = spectral_type;
     int i;
 
     // Must contain any of the letters OBAFGKM
@@ -140,9 +140,9 @@ void Gliese_doubles_fix()
         {
             if (cels[i]->type != star) continue;
             Star* s1 = (Star*)cels[i];
-            if (!s1->Gliese.size()) continue;
+            if (!strlen(s1->Gliese)) continue;
 
-            strcpy(name1, s1->Gliese.c_str());
+            strcpy(name1, s1->Gliese);
             n = strlen(name1);
             if (name1[n-1] == 'A' && name1[n-2] == ' ')
                 name1[n-2] = 0;
@@ -155,16 +155,15 @@ void Gliese_doubles_fix()
                 if (j==i) continue;
                 if (cels[j]->type != star) continue;
                 Star* s2 = (Star*)cels[j];
-                m = s2->Gliese.size();
+                m = strlen(s2->Gliese);
                 if (!m) continue;
                 if (m < n) continue;
-                if (s2->Gliese.c_str()[n] != ' ') continue;
+                if (s2->Gliese[n] != ' ') continue;
 
-                strcpy(name2, s2->Gliese.c_str());
+                strcpy(name2, s2->Gliese);
                 name2[n] = 0;
                 if (!strcmp(name1, name2))
                 {
-                    // s2->name = s1->name + std::string(" ") + &name2[n+1];
                     s2->right_ascension = s1->right_ascension;
                     s2->declination = s1->declination;
                     s2->distance = s1->distance;

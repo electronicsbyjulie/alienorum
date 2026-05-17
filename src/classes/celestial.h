@@ -56,7 +56,7 @@ class CelestialObject
     double RI_magnitude = 0;
 
     cel_obj_type type = star;
-    std::string name;
+    char name[32];
 
     float drawnx=-1e9, drawny=-1e9;
 

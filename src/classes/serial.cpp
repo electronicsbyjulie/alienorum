@@ -49,9 +49,6 @@ bool Serialization::save_object(FILE *of, CelestialObject *cel)
     }
     if (cel->orbit)
     {
-        n = cel->orbit->center->name.size();
-        fwrite(&n, sizeof(__uint8_t), 1, of);
-        fwrite(cel->orbit->center->name.c_str(), sizeof(char), n, of);
         fwrite(cel->orbit, sizeof(Orbit), 1, of);
     }
     return true;
@@ -71,7 +68,6 @@ bool Serialization::save_all(FILE *of, CelestialObject **cels)
 
 CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
 {
-    std::string name = load_string(in);
     cel_obj_type type;
     fread(&type, sizeof(cel_obj_type), 1, in);
     CelestialObject *cel = nullptr;
@@ -85,7 +81,6 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         case galaxy:
         g = new Galaxy();
         cel = g;
-        cel->name = name;
         fread(g, sizeof(Galaxy), 1, in);
         break;
 
@@ -97,19 +92,12 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         constellation = load_string(in);
         s = new Star();
         cel = s;
-        cel->name = name;
         fread(s, sizeof(Star), 1, in);
-        s->spectral_type = spectral_type;
-        s->Bayer = Bayer;
-        s->Flamsteed = Flamsteed;
-        s->Gliese = Gliese;
-        s->constellation = constellation;
         break;
 
         case rocky: case gas_giant: case ice_giant:
         p = new Planet();
         cel = p;
-        cel->name = name;
         fread(p, sizeof(Planet), 1, in);
         break;
 
@@ -125,7 +113,7 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         int i;
         for (i=0; cfocl[i]; i++)
         {
-            if (!strcmp(cenname.c_str(), cfocl[i]->name.c_str()))
+            if (!strcmp(cenname.c_str(), cfocl[i]->name))
             {
                 cel->orbit->center = cfocl[i];
                 break;
@@ -133,7 +121,7 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         }
         if (!cel->orbit->center)
         {
-            std::cerr << "FAILED to place " << name << " in orbit around " << cenname << std::endl;
+            std::cerr << "FAILED to place " << cel->name << " in orbit around " << cenname << std::endl;
             delete cel->orbit;
             delete cel;
             return nullptr;
