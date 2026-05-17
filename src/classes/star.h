@@ -14,7 +14,7 @@ class Star : public CelestialObject
     double apparent_magnitude;              // visual/550nm
     double parallax = 0;                    // radians
 
-    char spectral_type[16];
+    char spectral_type[32];
     char Bayer[32];
     char Flamsteed[32];
     char Gliese[16];

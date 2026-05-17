@@ -179,6 +179,11 @@ void load_catalogs()
 {
     int i, n;
 
+    // TODO: Read data from more star catalogs.
+    CatalogReader cr;
+    cr.download_catalogs();
+    std::vector<std::string> cats = cr.find_catalogs("catalogs");
+
     FILE *fp = fopen("savedstate", "rb");
     if (fp)
     {
@@ -188,11 +193,6 @@ void load_catalogs()
             return;
         }
     }
-
-    // TODO: Read data from more star catalogs.
-    CatalogReader cr;
-    cr.download_catalogs();
-    std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
     n = cats.size();
     for (i=0; i<n; i++)

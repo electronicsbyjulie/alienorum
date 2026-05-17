@@ -22,8 +22,6 @@ std::string Serialization::load_string(FILE *in)
 
 bool Serialization::save_object(FILE *of, CelestialObject *cel)
 {
-    __uint8_t n;
-    save_string(of, cel->name);
     fwrite(&cel->type, sizeof(cel_obj_type), 1, of);
     switch (cel->type)
     {
@@ -32,11 +30,6 @@ bool Serialization::save_object(FILE *of, CelestialObject *cel)
         break;
 
         case star:
-        save_string(of, ((Star*)cel)->spectral_type);
-        save_string(of, ((Star*)cel)->Bayer);
-        save_string(of, ((Star*)cel)->Flamsteed);
-        save_string(of, ((Star*)cel)->Gliese);
-        save_string(of, ((Star*)cel)->constellation);
         fwrite(cel, sizeof(Star), 1, of);
         break;
 
@@ -49,6 +42,8 @@ bool Serialization::save_object(FILE *of, CelestialObject *cel)
     }
     if (cel->orbit)
     {
+        std::string cenname = cel->orbit->center->name;
+        save_string(of, cenname);
         fwrite(cel->orbit, sizeof(Orbit), 1, of);
     }
     return true;
@@ -58,9 +53,11 @@ bool Serialization::save_all(FILE *of, CelestialObject **cels)
 {
     __uint32_t ver = _serial_version;
     fwrite(&ver, sizeof(__uint32_t), 1, of);
-    int i;
-    for (i=0; cels[i]; i++)
+    int i, pass;
+    for (pass=0; pass<2; pass++) for (i=0; cels[i]; i++)
     {
+        if (!pass && cels[i]->orbit) continue;
+        if (pass && !cels[i]->orbit) continue;
         if (!save_object(of, cels[i])) return false;
     }
     return true;
@@ -72,7 +69,7 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
     fread(&type, sizeof(cel_obj_type), 1, in);
     CelestialObject *cel = nullptr;
 
-    std::string spectral_type, Bayer, Flamsteed, Gliese, constellation, cenname;
+    std::string cenname;
     Galaxy *g;
     Star *s;
     Planet *p;
@@ -85,11 +82,6 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         break;
 
         case star:
-        spectral_type = load_string(in);
-        Bayer = load_string(in);
-        Flamsteed = load_string(in);
-        Gliese = load_string(in);
-        constellation = load_string(in);
         s = new Star();
         cel = s;
         fread(s, sizeof(Star), 1, in);
@@ -104,8 +96,11 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         default:
         cel = new CelestialObject();
     }
+
+    // Pointer loaded from file is bad, just check that it's nonzero.
     if (cel->orbit)
     {
+        // Ignore loaded pointer and make a new one.
         cel->orbit = new Orbit();
         cenname = load_string(in);
         fread(cel->orbit, sizeof(Orbit), 1, in);
