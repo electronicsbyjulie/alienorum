@@ -1,0 +1,161 @@
+
+#include <iostream>
+#include "serial.h"
+
+bool Serialization::save_string(FILE *of, std::string str)
+{
+    __uint8_t n = str.size();
+    fwrite(&n, sizeof(__uint8_t), 1, of);
+    fwrite(str.c_str(), sizeof(char), n, of);
+    return true;
+}
+
+std::string Serialization::load_string(FILE *in)
+{
+    __uint8_t n;
+    fread(&n, sizeof(__uint8_t), 1, in);
+    char buffer[1+n];
+    fread(buffer, sizeof(char), n, in);
+    buffer[n] = 0;
+    return std::string(buffer);
+}
+
+bool Serialization::save_object(FILE *of, CelestialObject *cel)
+{
+    __uint8_t n;
+    save_string(of, cel->name);
+    fwrite(&cel->type, sizeof(cel_obj_type), 1, of);
+    switch (cel->type)
+    {
+        case galaxy:
+        fwrite(cel, sizeof(Galaxy), 1, of);
+        break;
+
+        case star:
+        save_string(of, ((Star*)cel)->spectral_type);
+        save_string(of, ((Star*)cel)->Bayer);
+        save_string(of, ((Star*)cel)->Flamsteed);
+        save_string(of, ((Star*)cel)->Gliese);
+        save_string(of, ((Star*)cel)->constellation);
+        fwrite(cel, sizeof(Star), 1, of);
+        break;
+
+        case rocky: case ice_giant: case gas_giant:
+        fwrite(cel, sizeof(Planet), 1, of);
+        break;
+
+        default:
+        fwrite(cel, sizeof(CelestialObject), 1, of);
+    }
+    if (cel->orbit)
+    {
+        n = cel->orbit->center->name.size();
+        fwrite(&n, sizeof(__uint8_t), 1, of);
+        fwrite(cel->orbit->center->name.c_str(), sizeof(char), n, of);
+        fwrite(cel->orbit, sizeof(Orbit), 1, of);
+    }
+    return true;
+}
+
+bool Serialization::save_all(FILE *of, CelestialObject **cels)
+{
+    __uint32_t ver = _serial_version;
+    fwrite(&ver, sizeof(__uint32_t), 1, of);
+    int i;
+    for (i=0; cels[i]; i++)
+    {
+        if (!save_object(of, cels[i])) return false;
+    }
+    return true;
+}
+
+CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
+{
+    std::string name = load_string(in);
+    cel_obj_type type;
+    fread(&type, sizeof(cel_obj_type), 1, in);
+    CelestialObject *cel = nullptr;
+
+    std::string spectral_type, Bayer, Flamsteed, Gliese, constellation, cenname;
+    Galaxy *g;
+    Star *s;
+    Planet *p;
+    switch (type)
+    {
+        case galaxy:
+        g = new Galaxy();
+        cel = g;
+        cel->name = name;
+        fread(g, sizeof(Galaxy), 1, in);
+        break;
+
+        case star:
+        spectral_type = load_string(in);
+        Bayer = load_string(in);
+        Flamsteed = load_string(in);
+        Gliese = load_string(in);
+        constellation = load_string(in);
+        s = new Star();
+        cel = s;
+        cel->name = name;
+        fread(s, sizeof(Star), 1, in);
+        s->spectral_type = spectral_type;
+        s->Bayer = Bayer;
+        s->Flamsteed = Flamsteed;
+        s->Gliese = Gliese;
+        s->constellation = constellation;
+        break;
+
+        case rocky: case gas_giant: case ice_giant:
+        p = new Planet();
+        cel = p;
+        cel->name = name;
+        fread(p, sizeof(Planet), 1, in);
+        break;
+
+        default:
+        cel = new CelestialObject();
+    }
+    if (cel->orbit)
+    {
+        cel->orbit = new Orbit();
+        cenname = load_string(in);
+        fread(cel->orbit, sizeof(Orbit), 1, in);
+        cel->orbit->center = nullptr;
+        int i;
+        for (i=0; cfocl[i]; i++)
+        {
+            if (!strcmp(cenname.c_str(), cfocl[i]->name.c_str()))
+            {
+                cel->orbit->center = cfocl[i];
+                break;
+            }
+        }
+        if (!cel->orbit->center)
+        {
+            std::cerr << "FAILED to place " << name << " in orbit around " << cenname << std::endl;
+            delete cel->orbit;
+            delete cel;
+            return nullptr;
+        }
+    }
+
+    return cel;
+}
+
+bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
+{
+    __uint32_t ver;
+    fread(&ver, sizeof(__uint32_t), 1, fp);
+    if (ver > _serial_version)
+    {
+        std::cerr << "Cannot deserialize: file version too new." << std::endl;
+        return false;
+    }
+    int i=0;
+    while (!feof(fp))
+    {
+        if (!(cels[i++] = load_object(fp, cels))) return false;
+    }
+    return true;
+}

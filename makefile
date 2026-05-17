@@ -19,7 +19,7 @@ CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
 		    $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-			$(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp
+			$(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/serial.cpp
 BIN = bin
 OBJ = obj
 UNAME_S := $(shell uname -s)
@@ -53,6 +53,19 @@ ifeq ($(OS), Windows_NT)
 
     CPPFLAGS += `pkg-config --cflags sdl2` -lSDL2_image
     CFLAGS = $(CPPFLAGS)
+endif
+
+ifeq ($(shell test src/classes/celestial.h -nt src/classes/serial.h; echo $$?),0)
+  $(error Please increment the version in serial.h before proceeding!)
+endif
+ifeq ($(shell test src/classes/star.h -nt src/classes/serial.h; echo $$?),0)
+  $(error Please increment the version in serial.h before proceeding!)
+endif
+ifeq ($(shell test src/classes/planet.h -nt src/classes/serial.h; echo $$?),0)
+  $(error Please increment the version in serial.h before proceeding!)
+endif
+ifeq ($(shell test src/classes/galaxy.h -nt src/classes/serial.h; echo $$?),0)
+  $(error Please increment the version in serial.h before proceeding!)
 endif
 
 all: $(BIN) $(OBJ) objs apps
@@ -120,6 +133,9 @@ $(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR
 
 $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o
+
+$(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/misc.h makefile
+	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
 
 $(BIN)/alienorum: src/alienorum.cpp $(OBJS)
 	$(CPP) src/alienorum.cpp $(OBJ)/*.o -o $(BIN)/alienorum $(CPPFLAGS) $(LIBS)

@@ -6,6 +6,7 @@
 #include "celestial.h"
 
 CelestialObject **cels;
+bool *celskip;
 double *vmag_cache, *magrad_cache;
 CelestialLocation here;
 

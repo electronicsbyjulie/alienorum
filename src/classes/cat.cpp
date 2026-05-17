@@ -907,7 +907,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         s->location = A->location;
         s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
 
-        std::cout << "Updated " << A->name << ": " << s->name << std::endl << std::flush;
+        std::cout << "Updated " << (A->name.size() ? A->name : (std::string("HD")+std::to_string(A->HD)))
+            << ": " << (s->name.size() ? s->name : (std::string("HD")+std::to_string(s->HD))) << std::endl << std::flush;
 
         num_read++;
     }

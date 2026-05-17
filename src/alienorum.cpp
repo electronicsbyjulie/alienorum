@@ -18,9 +18,7 @@
 #endif
 #include "classes/misc.h"
 #include "classes/color.h"
-#include "classes/galaxy.h"
-#include "classes/star.h"
-#include "classes/planet.h"
+#include "classes/serial.h"
 #include "classes/cat.h"
 
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
@@ -180,6 +178,17 @@ bool look_for_catalogs()
 void load_catalogs()
 {
     int i, n;
+
+    FILE *fp = fopen("savedstate", "rb");
+    if (fp)
+    {
+        if (Serialization::load_all(fp, cels, MAX_CELOBJS))
+        {
+            fclose(fp);
+            return;
+        }
+    }
+
     // TODO: Read data from more star catalogs.
     CatalogReader cr;
     cr.download_catalogs();
@@ -231,6 +240,18 @@ void load_catalogs()
     #endif
 
     for (i=0; cels[i]; i++) if (cels[i]->type == star) num_stars++;
+
+    rename_all_from_Bayer_Flamsteed();
+    cr.read_starname_dat(cels);
+    Gliese_doubles_fix();
+    cr.read_star_orbits_dat(cels);
+
+    fp = fopen("savedstate", "wb");
+    if (fp)
+    {
+        if (!Serialization::save_all(fp, cels)) std::cerr << "FAILED to save state." << std::endl;
+    }
+    else std::cerr << "FAILED to write save state file." << std::endl;
 }
 
 void read_cons_lines()
@@ -497,6 +518,7 @@ void draw_objects()
                 }
             }
         }
+        celskip[i] = skip;
         if (skip) continue;
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
@@ -528,6 +550,7 @@ void draw_objects()
     if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (i == whereami) continue;
+        if (celskip[i]) continue;
         if (cels[i]->type == star && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
@@ -1209,6 +1232,7 @@ int main (int argc, char** argv)
     int i, j, l, n;
     bool magnitude_test = false;
     cels = new CelestialObject*[MAX_CELOBJS];
+    celskip = new bool[MAX_CELOBJS];
     vmag_cache = new double[MAX_CELOBJS];
     magrad_cache = new double[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
@@ -1242,12 +1266,6 @@ int main (int argc, char** argv)
     load_catalogs();
     bv_correction = log(blackbody_flux(5778, 5.4e-7) / blackbody_flux(5778, 4.6e-7)) * invlogmagnbase - cels[0]->BV_color;
     cache_cons_lines();
-    rename_all_from_Bayer_Flamsteed();
-
-    CatalogReader cr;
-    cr.read_starname_dat(cels);
-    Gliese_doubles_fix();
-    cr.read_star_orbits_dat(cels);
 
     if (magnitude_test)
     {
