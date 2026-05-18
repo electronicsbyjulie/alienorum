@@ -866,7 +866,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         s->orbit->center = A;
 
         read_field_onebased(buffer, 49, 63, field);
-        s->orbit->orbit_period = atof(field);
+        s->orbit->period = atof(field);
 
         read_field_onebased(buffer, 65, 75, field);
         s->orbit->ascending_node = atof(field) * fiftyseventh;
@@ -1002,7 +1002,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         o->eccentricity = atof(field);
 
         read_field_onebased(buffer, 156, 173, field);
-        o->orbit_period = atof(field);
+        o->period = atof(field);
 
         read_field_onebased(buffer, 175, 181, field);
         p->inclination = atof(field) * fiftyseventh;

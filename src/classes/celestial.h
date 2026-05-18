@@ -30,7 +30,7 @@ class Orbit
     double arg_periapsis = 0;                   // RADIANS!
     double mean_anomaly = 0;                    // RADIANS!
     double epoch = J2000;                       // JD
-    double orbit_period = 0;                    // seconds
+    double period = 0;                    // seconds
 
     CelestialLocation compute_3d_location(double epoch);
 };

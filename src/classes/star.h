@@ -32,6 +32,7 @@ class Star : public CelestialObject
     void rename_from_Bayer_Flamsteed();
     bool is_sunlike();
     bool is_in_visible_box(Point seen_from);
+    void make_universally_visible();
 
     protected:
     Box visible_area;

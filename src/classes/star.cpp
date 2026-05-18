@@ -6,7 +6,7 @@
 
 void Star::update_location(double tmnow)
 {
-    if (orbit)
+    if (orbit && orbit->period)
     {
         update_orbit_location(tmnow);
         return;
@@ -60,7 +60,6 @@ void Star::rename_from_Bayer_Flamsteed()
 
     if (BayerGrkno >= 0)
     {
-        if (HD == 104979) std::cout << Bayer << "/HD" << HD << "/HIP" << HIP << std::endl;
         int number = atoi(std::string(Bayer).substr(3, 1).c_str());
         if (number) strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
         else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
@@ -114,6 +113,13 @@ bool Star::is_in_visible_box(Point seen_from)
     }
 
     return visible_area.point_in_box(seen_from);
+}
+
+void Star::make_universally_visible()
+{
+    visible_area.corner1 = Point(-1.37e+9*light_year, -1.37e+9*light_year, -1.37e+9*light_year);
+    visible_area.corner2 = Point( 1.37e+9*light_year,  1.37e+9*light_year,  1.37e+9*light_year);
+    visible_area_set = true;
 }
 
 void rename_all_from_Bayer_Flamsteed()

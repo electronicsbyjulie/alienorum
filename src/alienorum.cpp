@@ -404,6 +404,8 @@ void cache_cons_lines()
             {
                 consaidx[i+nconsln] = founda;
                 consbidx[i+nconsln] = foundb;
+                ((Star*)cels[founda])->make_universally_visible();
+                ((Star*)cels[foundb])->make_universally_visible();
             }
         }
     }
@@ -587,9 +589,9 @@ void draw_cons_lines()
     n = show_xonsm ? (nconsln+11) : nconsln;
     for (i=0; i<n; i++)
     {
-        int dx1, dx2, dy1, dy2;
-
         if (consaidx[i] < 0 || consbidx[i] < 0) continue;
+
+        int dx1, dx2, dy1, dy2;
         if (i >= nconsln) considx[i] = consname.size()-1;
         l = considx[i];
 
