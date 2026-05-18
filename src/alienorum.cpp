@@ -184,7 +184,7 @@ void load_catalogs()
     cr.download_catalogs();
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
-    FILE *fp = fopen("savedstate", "rb");
+    FILE *fp = fopen("universe", "rb");
     if (fp)
     {
         if (Serialization::load_all(fp, cels, MAX_CELOBJS))
@@ -249,7 +249,7 @@ void load_catalogs()
     Gliese_doubles_fix();
     cr.read_star_orbits_dat(cels);
 
-    fp = fopen("savedstate", "wb");
+    fp = fopen("universe", "wb");
     if (fp)
     {
         if (!Serialization::save_all(fp, cels)) std::cerr << "FAILED to save state." << std::endl;
