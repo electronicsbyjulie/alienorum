@@ -504,15 +504,10 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         f = atof(field);
         if (f > 0)
         {
-            paralacc = (f+0.0005) / (f-0.0005) - 1;
-            if (paralacc < s->distance_accuracy)
-            {
-                s->parallax = f;
-                s->distance = parsec / s->parallax;
-                s->distance_known = true;
-                s->distance_accuracy = paralacc;
-                s->parallax /= fiftyseven * 3600;
-            }
+            s->parallax = f;
+            s->distance = parsec / s->parallax;
+            s->distance_known = true;
+            s->parallax /= fiftyseven * 3600;
         }
         else if (!s->distance_known) s->distance = light_year*1e4;
 
@@ -614,7 +609,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             double distance = (parallax > 0) ? (parsec / parallax * 1000) : light_year*1e4;
             double intrinsic_brightness = pow(magnbase, -appmag) * pow(fmax(AU, distance) / parsec / 10, 2);
             double absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
-            if (absolute_magnitude > 7) continue;
+            if (absolute_magnitude > 8) continue;
             #endif
             s = new Star();
             is_new = true;
@@ -684,22 +679,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             }
         }
 
+        // 120-125  F6.2  mas   e_Plx       ? Standard error in Plx                  (H16)
+        read_field_onebased(buffer, 106, 111, field);
+        f1 = fabs(atof(field)) / f;
+
         //  80- 86  F7.2  mas     Plx       ? Trigonometric parallax
         read_field_onebased(buffer, 80, 86, field);
         f = atof(field) / 1000 / 3600 * fiftyseventh;
         if (f > 0)
         {
-            // 120-125  F6.2  mas   e_Plx       ? Standard error in Plx                  (H16)
-            read_field_onebased(buffer, 106, 111, field);
-            f1 = fabs(atof(field)) / f;
-
-            if (f1 < s->distance_accuracy)
-            {
-                s->parallax = f;
-                s->distance_accuracy = f1;
-                s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
-                s->distance_known = true;
-            }
+            s->parallax = f;
+            s->distance_accuracy = f1;
+            s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
+            s->distance_known = true;
         }
 
         //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
