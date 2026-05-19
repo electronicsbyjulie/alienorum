@@ -34,7 +34,9 @@ bool Serialization::save_object(FILE *of, CelestialObject *cel)
         break;
 
         case rocky: case ice_giant: case gas_giant:
-        fwrite(cel, sizeof(Planet), 1, of);
+        if (cel->orbit && cel->orbit->center && cel->orbit->center->orbit && cel->orbit->center->orbit->center)
+            fwrite(cel, sizeof(Moon), 1, of);
+        else fwrite(cel, sizeof(Planet), 1, of);
         break;
 
         default:
@@ -132,7 +134,7 @@ bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
     fread(&ver, sizeof(__uint32_t), 1, fp);
     if (ver != _serial_version)
     {
-        std::cerr << "Cannot restore state: file version too new." << std::endl;
+        std::cerr << "Cannot restore state: file version mismatch." << std::endl;
         return false;
     }
     int i=0;

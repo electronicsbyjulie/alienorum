@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <math.h>
 #include "moon.h"
 
 Rotation Moon::get_Laplace_plane()
@@ -8,10 +9,19 @@ Rotation Moon::get_Laplace_plane()
     if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
 
     CelestialObject *myplanet = orbit->center, *mystar = orbit->center->orbit->center;
-    double planet_gravitational_pull = myplanet->mass / (orbit->semimajor_axis*orbit->semimajor_axis);
+    /* double planet_gravitational_pull = myplanet->mass / (orbit->semimajor_axis*orbit->semimajor_axis);
     double star_gravitational_pull = mystar->mass / (myplanet->orbit->semimajor_axis*myplanet->orbit->semimajor_axis);
     double planet_influence = (planet_gravitational_pull/(planet_gravitational_pull+star_gravitational_pull*1e4));      // no idea why this 1e4 is necessary
-    double star_influence = 1.0 - planet_influence;
+    double star_influence = 1.0 - planet_influence; */
+
+    double pmu = myplanet->mass * G, smu = mystar->mass * G;
+    double n = std::sqrt(pmu / std::pow(smu, 3));
+    double eqr = myplanet->volumetric_mean_radius / std::pow(1.0-myplanet->oblateness, 2.0/3);
+    double n_eq = n * ((Planet*)myplanet)->J2 * std::pow(eqr / orbit->semimajor_axis, 2);
+    double n_ecl = n * smu / pmu * std::pow(orbit->semimajor_axis / myplanet->orbit->semimajor_axis, 3);
+
+    double ratio = n_ecl/n_eq;
+    double star_influence = ratio / (1.0 + ratio), planet_influence = 1.0 - star_influence;
 
     Point ecliptic_pole = rotate3D(yaxis, center, myplanet->location.orbital_plane.v, myplanet->location.orbital_plane.a);
     Point equatorial_pole = rotate3D(yaxis, center, myplanet->location.equatorial_plane.v, myplanet->location.equatorial_plane.a);

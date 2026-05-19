@@ -193,16 +193,19 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     location.orbital_plane.v = Point(cosO, 0, sinO);
     location.orbital_plane.a = orbit->inclination;
 
-    if (orbit->center->orbit && orbit->center->orbit->center && !crp)
+    if (type != star && orbit->center->type != star && orbit->center->orbit && orbit->center->orbit->center && !crp)
     {
-        std::cerr << "CelestialObject::update_orbit_location() called on moon without Laplace plane." << std::endl;
+        std::cerr << "CelestialObject::update_orbit_location() called on moon " << name
+            << " of planet " << orbit->center->name
+            << " of star " << orbit->center->orbit->center->name
+            << " without Laplace plane." << std::endl;
         throw 0xbadc0de;
     }
 
     Point result;
-    if (crp) result = rotate3D(Point(x,y,z), Point(0,0,0), crp->v, -crp->a);
+    if (crp) result = rotate3D(Point(x,y,z), center, crp->v, -crp->a);
     // For exoplanets, assume the planetary orbits and stellar equator are in the same plane and set the stellar inclination to zero.
-    else result = rotate3D(Point(x,y,z), Point(0,0,0), location.local_system_plane.v, -location.local_system_plane.a);
+    else result = rotate3D(Point(x,y,z), center, location.local_system_plane.v, -location.local_system_plane.a);
 
     location.system_center = orbit->center->location.system_center;
     location.local_position = result + orbit->center->location.local_position;

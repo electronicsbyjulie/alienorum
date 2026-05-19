@@ -15,6 +15,7 @@
 #define year (365 * 86400 + 5 * 3600 + 48 * 60 + 45)
 #define J2000 2451544.5
 #define speed_of_light 299792458.0
+#define G 6.6743015e-14
 #define kB 1.380649e-23
 #define Planck 6.62607015e-34
 #define earth_mass 5.972e+27
@@ -30,7 +31,7 @@
 #define color_ref_temp 9758.5
 #define sun_temp 5778
 #define Rsun 695700000
-#define Msun 1.988475e+30
+#define Msun 1.988475e+33
 #define U_band 3.6e-7
 #define B_band 4.4e-7
 #define V_band 5.5e-7
