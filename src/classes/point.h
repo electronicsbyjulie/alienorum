@@ -41,6 +41,8 @@ class Point
     Point& operator+=(Point other);
     Point operator-(Point other);
     Point& operator-=(Point other);
+    Point operator*(double multiplier);
+    Point& operator*=(double multiplier);
     double distance_to(Point other);
     double magnitude() const;
     void scale(double new_magn);

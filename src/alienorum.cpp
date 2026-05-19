@@ -440,7 +440,9 @@ void compute_object_draw_coordinates()
                 case rocky:
                 case gas_giant:
                 case ice_giant:
-                ((Planet*)cels[i])->update_location(simnow);
+                if (cels[i]->orbit->center->orbit && cels[i]->orbit->center->orbit->center)
+                    ((Moon*)cels[i])->update_location(simnow);
+                else ((Planet*)cels[i])->update_location(simnow);
                 break;
 
                 default:

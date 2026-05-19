@@ -19,7 +19,7 @@ CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
 		    $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-			$(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/serial.cpp
+			$(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/serial.cpp
 BIN = bin
 OBJ = obj
 UNAME_S := $(shell uname -s)
@@ -130,6 +130,9 @@ $(OBJ)/star.o: $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/star.h $(CLASSES_DIR)/misc
 
 $(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJ)/planet.o
+
+$(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/misc.h makefile
+	$(CPP) $(CLASSES_DIR)/moon.cpp $(CPPFLAGS) -c -o $(OBJ)/moon.o
 
 $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o

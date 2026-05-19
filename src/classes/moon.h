@@ -1,0 +1,19 @@
+
+#ifndef _Moon
+#define _Moon
+
+#include "planet.h"
+
+class Moon : public Planet
+{
+    Rotation Laplace_plane;
+    bool Laplace_set = false;
+
+    Rotation get_Laplace_plane();
+    void update_orbit_location(double tmnow);
+
+    public:
+    void update_location(double tmnow);
+};
+
+#endif

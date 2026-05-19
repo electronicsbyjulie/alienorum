@@ -55,6 +55,19 @@ Point &Point::operator-=(Point other)
     return *this;
 }
 
+Point Point::operator*(double multiplier)
+{
+    return Point(x*multiplier, y*multiplier, z*multiplier);
+}
+
+Point &Point::operator*=(double multiplier)
+{
+    x -= multiplier;
+    y -= multiplier;
+    z -= multiplier;
+    return *this;
+}
+
 double Point::distance_to(Point other)
 {
     Point temp = other - *this;

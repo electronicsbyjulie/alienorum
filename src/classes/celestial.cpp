@@ -154,7 +154,7 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere)
     return oss.str();
 }
 
-void CelestialObject::update_orbit_location(double tmnow)
+void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit) return;
 
@@ -193,10 +193,16 @@ void CelestialObject::update_orbit_location(double tmnow)
     location.orbital_plane.v = Point(cosO, 0, sinO);
     location.orbital_plane.a = orbit->inclination;
 
-    // TODO: This ecliptic stuff is specific to the solar system.
+    if (orbit->center->orbit && orbit->center->orbit->center && !crp)
+    {
+        std::cerr << "CelestialObject::update_orbit_location() called on moon without Laplace plane." << std::endl;
+        throw 0xbadc0de;
+    }
+
+    Point result;
+    if (crp) result = rotate3D(Point(x,y,z), Point(0,0,0), crp->v, -crp->a);
     // For exoplanets, assume the planetary orbits and stellar equator are in the same plane and set the stellar inclination to zero.
-    // Point result = rotate3D(Point(x,y,z), Point(0,0,0), ICRF_to_ecliptic.v, -ICRF_to_ecliptic.a);
-    Point result = rotate3D(Point(x,y,z), Point(0,0,0), location.local_system_plane.v, -location.local_system_plane.a);
+    else result = rotate3D(Point(x,y,z), Point(0,0,0), location.local_system_plane.v, -location.local_system_plane.a);
 
     location.system_center = orbit->center->location.system_center;
     location.local_position = result + orbit->center->location.local_position;

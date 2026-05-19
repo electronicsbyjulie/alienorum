@@ -1302,7 +1302,16 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         Orbit* o = new Orbit();
         o->center = cels[j];
-        Planet* p = new Planet();
+        Planet* p;
+
+        if (o->center->orbit && o->center->orbit->center)
+        {
+            p = (Planet*)new Moon();
+        }
+        else
+        {
+            p = new Planet();
+        }
         p->orbit = o;
         read_field_onebased(buffer, 26, 42, field);
         strcpy(p->name, trim(field).c_str());

@@ -81,7 +81,7 @@ class CelestialObject
     std::string scaled_distance(CelestialLocation fromwhere);
 
     protected:
-    void update_orbit_location(double tmnow);
+    void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
 };
 
 extern CelestialObject **cels;

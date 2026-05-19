@@ -3,10 +3,11 @@
 
 #include "star.h"
 #include "planet.h"
+#include "moon.h"
 #include "galaxy.h"
 
 // IMPORTANT: Update this when making ANY change to the CelestialObject, Star, Planet, or Galaxy classes.
-#define _serial_version 0xb0ad1cea + 260517004
+#define _serial_version 0xb0ad1cea + 260518001
 
 class Serialization
 {
