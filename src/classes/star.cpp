@@ -162,6 +162,7 @@ double Star::estimate_UB()
 
 double Star::estimate_radius()
 {
+    if (!cels[0]) throw 0xbadc0de;
     double T = estimate_temperature();
     // 1. Calculate Luminosity relative to the Sun (L/L_sun)
     double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
@@ -173,6 +174,7 @@ double Star::estimate_radius()
 
 double Star::estimate_mass()
 {
+    if (!cels[0]) throw 0xbadc0de;
     double T = estimate_temperature();
     double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
     double luminosity = std::pow(magnbase, logL);

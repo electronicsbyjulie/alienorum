@@ -565,8 +565,6 @@ void draw_objects()
     // Labels and selection
     if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        // if (cels[i]->type == star && cels[i]->orbit) std::cout << i << " orbits " << cels[i]->orbit->center->name << std::endl;
-
         if (i == whereami) continue;
         if (celskip[i]) continue;
         if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
@@ -651,7 +649,7 @@ void draw_mouse_cursor(ImGuiIO& io)
 {
     if (frames_without_mousemove > 203) return;
 
-    cursor_size = (int)io.DisplaySize.x/81;
+    cursor_size = (int)io.DisplaySize.x/99;
     circle_size = cursor_size / 2.5;
 
     ImU32 cc[3];
@@ -813,14 +811,14 @@ void identify_object_under_cursor(ImGuiIO& io)
         if (cels[i]->mass)
         {
             if (cels[i]->type == star) 
-                ; // objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / Msun) + std::string(" M(sun)\n");
+                ; // objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / Msun) + std::string(" M(sun)\n");       // TODO: Fix Star::estimate_mass()
             else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
                 objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / cels[iamhome]->mass) + std::string(" M(earth)\n");
         }
         if (cels[i]->volumetric_mean_radius)
         {
             if (cels[i]->type == star)
-                ; // objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / Rsun) + std::string(" R(sun)\n");
+                ; // objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / Rsun) + std::string(" R(sun)\n");       // TODO: Fix Star::estimate_radius()
             else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
                 objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius) + std::string(" R(earth)\n");
         }
