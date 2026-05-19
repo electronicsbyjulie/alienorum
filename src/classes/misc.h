@@ -28,6 +28,13 @@
 #define arcminute (fiftyseventh / 60)
 #define arcsecond (arcminute / 60)
 #define color_ref_temp 9758.5
+#define sun_temp 5778
+#define Rsun 695700000
+#define Msun 1.988475e+30
+#define U_band 3.6e-7
+#define B_band 4.4e-7
+#define V_band 5.5e-7
+#define R_band 5.9e-7
 
 // https://en.wikipedia.org/wiki/Galactic_plane
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
@@ -47,7 +54,7 @@
 #define default_gamma 1.0
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
-#define nlbltyp 4
+#define nlbltyp 5
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 1
 #define _cursor_fade 2

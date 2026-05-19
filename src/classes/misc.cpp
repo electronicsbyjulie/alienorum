@@ -40,7 +40,7 @@ bool objinfwnd = true;
 bool statuswnd = true;
 bool hide_mouse = true;
 bool searched = false;
-const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike" };
+const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Binary Orbit" };
 int cbolbls_selected_idx = 0;
 double bv_correction = 0;
 

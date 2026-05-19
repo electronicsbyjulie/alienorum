@@ -204,6 +204,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs/BSC")) have_BSC = true;
         if (!strcmp(cats[i].c_str(), "catalogs/Hipparcos")) have_HIP = true;
         if (!strcmp(cats[i].c_str(), "catalogs/CCDM")) have_CCDM = true;
+        if (!strcmp(cats[i].c_str(), "catalogs/SB9")) have_SB9 = true;
     }
 
     if (have_Gliese)
@@ -227,7 +228,6 @@ void load_catalogs()
         cout << "Read " << nBSC << " objects." << endl << flush;
         ncelobjs += nBSC;
     }
-    #ifndef DEBUG
     if (have_HIP)
     {
         cout << "Reading Hipparcos catalog..." << endl << flush;
@@ -240,7 +240,12 @@ void load_catalogs()
         int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nCCDM << " objects." << endl << flush;
     }
-    #endif
+    if (have_SB9)
+    {
+        cout << "Reading SB9 catalog..." << endl << flush;
+        int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
+        cout << "Read " << nSB9 << " objects." << endl << flush;
+    }
 
     for (i=0; cels[i]; i++) if (cels[i]->type == star) num_stars++;
 
@@ -256,6 +261,7 @@ void load_catalogs()
         fclose(fp);
     }
     else std::cerr << "FAILED to write save state file." << std::endl;
+
 }
 
 void read_cons_lines()
@@ -423,7 +429,11 @@ void compute_object_draw_coordinates()
             switch (cels[i]->type)
             {
                 case star:
-                if (i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
+                if (i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center))
+                {
+                    cels[i]->drawnx = cels[i]->drawny = -1e9;
+                    continue;
+                }
                 ((Star*)cels[i])->update_location(simnow);
                 break;
 
@@ -555,6 +565,8 @@ void draw_objects()
     // Labels and selection
     if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        // if (cels[i]->type == star && cels[i]->orbit) std::cout << i << " orbits " << cels[i]->orbit->center->name << std::endl;
+
         if (i == whereami) continue;
         if (celskip[i]) continue;
         if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
@@ -565,6 +577,7 @@ void draw_objects()
             || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
             || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
+            || (cbolbls_selected_idx == 4 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
@@ -795,6 +808,20 @@ void identify_object_under_cursor(ImGuiIO& io)
         else
         {
             objinfo += (std::string)"Lit %: " + std::to_string((int)(((Planet*)cels[i])->amt_lit*100)) + (std::string)"\n";
+        }
+
+        if (cels[i]->mass)
+        {
+            if (cels[i]->type == star) objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / Msun) + std::string(" M(sun)\n");
+            else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
+                objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / cels[iamhome]->mass) + std::string(" M(earth)\n");
+        }
+        if (cels[i]->volumetric_mean_radius)
+        {
+            if (cels[i]->type == star)
+                objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / Rsun) + std::string(" R(sun)\n");
+            else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
+                objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius) + std::string(" R(earth)\n");
         }
     }
     else
@@ -1278,7 +1305,6 @@ int main (int argc, char** argv)
 
     read_cons_lines();
     load_catalogs();
-    bv_correction = log(blackbody_flux(5778, 5.4e-7) / blackbody_flux(5778, 4.6e-7)) * invlogmagnbase - cels[0]->BV_color;
     cache_cons_lines();
 
     if (magnitude_test)

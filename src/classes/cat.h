@@ -15,7 +15,7 @@ extern std::vector<int> considx, lnpercons;
 extern std::vector<Cartesian2D> conscen;
 extern int nconsln;
 extern int *consaidx, *consbidx;
-extern bool have_Gliese, have_BSC, have_HIP, have_CCDM;
+extern bool have_Gliese, have_BSC, have_HIP, have_CCDM, have_SB9;
 
 class CatalogReader
 {

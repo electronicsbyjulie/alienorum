@@ -35,14 +35,22 @@ class Star : public CelestialObject
     int Bonn_survey_declination = 0;        // Declination category
     __uint32_t Bonn_survey_sequential = 0;  // Serial number by right ascension.
 
-    double estimate_temperature();          // kelvin
+    bool is_orbit_multiple = false;
+
     void update_location(double tmnow);     // Apply proper motion and re-derive 3D coordinates from the result.
     void rename_from_Bayer_Flamsteed();
     bool is_sunlike();
     bool is_in_visible_box(Point seen_from);
     void make_universally_visible();
 
-    protected:
+    double estimate_temperature();          // Based on MK spectral type code
+    double estimate_mass();
+    double estimate_BV();                   // Blackbody value from estimated temperature from MK spectral type
+    double estimate_UB();                   // "
+
+    double estimate_radius();
+
+protected:
     Box visible_area;
     bool visible_area_set = false;
 };

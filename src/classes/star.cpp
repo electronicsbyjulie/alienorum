@@ -122,6 +122,101 @@ void Star::make_universally_visible()
     visible_area_set = true;
 }
 
+double Star::estimate_temperature()
+{
+    if (!strlen(spectral_type)) return 5800;
+    double subtype = atof(&spectral_type[1]) / 10;
+
+    // https://en.wikipedia.org/wiki/Stellar_classification#Harvard_spectral_classification
+    // https://en.wikipedia.org/wiki/O-type_star
+    #define O_hitemp 52000.0
+    #define O_lowtemp 33000.0
+    #define B_lowtemp 10000.0
+    #define A_lowtemp  7300.0
+    #define F_lowtemp  6000.0
+    #define G_lowtemp  5300.0
+    #define K_lowtemp  3900.0
+    #define M_lowtemp  2300.0
+
+    if (spectral_type[0] == 'O') return O_lowtemp + (1.0-subtype) * (O_hitemp -O_lowtemp);
+    if (spectral_type[0] == 'B') return B_lowtemp + (1.0-subtype) * (O_lowtemp-B_lowtemp);
+    if (spectral_type[0] == 'A') return A_lowtemp + (1.0-subtype) * (B_lowtemp-A_lowtemp);
+    if (spectral_type[0] == 'F') return F_lowtemp + (1.0-subtype) * (A_lowtemp-F_lowtemp);
+    if (spectral_type[0] == 'G') return G_lowtemp + (1.0-subtype) * (F_lowtemp-G_lowtemp);
+    if (spectral_type[0] == 'K') return K_lowtemp + (1.0-subtype) * (G_lowtemp-K_lowtemp);
+    if (spectral_type[0] == 'M') return M_lowtemp + (1.0-subtype) * (K_lowtemp-M_lowtemp);
+    return 2000;
+}
+
+double Star::estimate_BV()
+{
+    double T = estimate_temperature();
+    return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+}
+
+double Star::estimate_UB()
+{
+    double T = estimate_temperature();
+    return log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
+}
+
+double Star::estimate_radius()
+{
+    double T = estimate_temperature();
+    // 1. Calculate Luminosity relative to the Sun (L/L_sun)
+    double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
+    double luminosity = std::pow(magnbase, logL);
+
+    // 2. Calculate radius relative to the Sun (R/R_sun) using Stefan-Boltzmann then scale to meters
+    return volumetric_mean_radius = std::sqrt(luminosity) * std::pow(sun_temp / T, 2.0) * Rsun;
+}
+
+double Star::estimate_mass()
+{
+    double T = estimate_temperature();
+    double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
+    double luminosity = std::pow(magnbase, logL);
+    double radius = estimate_radius() / Rsun;
+
+    // Approximate Surface Gravity (log g) based on empirical stellar trends
+    // Hotter and more luminous stars have different surface profiles.
+    // This polynomial roughly mimics evolutionary paths on the HR diagram.
+    double logT = std::log10(T);
+    double est_log_G;
+
+    if (luminosity > 10000.0)
+    {
+        // Supergiants / Bright Giants (Class I & II)
+        est_log_G = 5.0 - 1.1 * (logT - 3.5);
+    }
+    else if (luminosity > 50.0)
+    {
+        // Regular Giants (Class III)
+        est_log_G = 3.2 - 1.5 * (logT - 3.6);
+    }
+    else
+    {
+        // Main Sequence / Subgiants (Class V & IV)
+        est_log_G = 4.4 - 0.6 * (logT - 3.7);
+    }
+
+    // Clamp log g to physically realistic boundaries for safety
+    if (est_log_G < 0.5) est_log_G = 0.5;
+    if (est_log_G > 5.0) est_log_G = 5.0;
+
+    // Convert log10(g) back to raw gravity value in cgs (cm/s^2)
+    double gravity = std::pow(10.0, est_log_G);
+
+    // Calculate Mass via g = GM / R^2 
+    // Expressed cleanly using solar constants: 
+    // (g / g_sun) * (R / R_sun)^2 = M / M_sun
+    double solargravity = 27400.0; // Sun's surface gravity is ~27,400 cm/s^2
+    mass = (gravity / solargravity) * std::pow(radius, 2.0) * Msun;
+
+    return mass;
+}
+
+
 void rename_all_from_Bayer_Flamsteed()
 {
     int i;
