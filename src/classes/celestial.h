@@ -16,6 +16,16 @@ enum cel_obj_type
     artificial
 };
 
+enum cel_obj_class
+{
+    class_unknown,
+    class_galaxy,
+    class_star,
+    class_planet,
+    class_moon,
+    class_satellite
+};
+
 class CelestialObject;
 
 class Orbit
@@ -42,6 +52,9 @@ class Orbit
 
 class CelestialObject
 {
+    protected:
+    cel_obj_class _class = class_unknown;
+
     public:
     double mass = 0;                            // grams
     double volumetric_mean_radius = 0;          // meters
@@ -82,6 +95,9 @@ class CelestialObject
 
     protected:
     void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
+
+    public:
+    const cel_obj_class& typeclass = _class;
 };
 
 extern CelestialObject **cels;

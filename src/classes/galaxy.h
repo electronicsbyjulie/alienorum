@@ -7,7 +7,7 @@
 class Galaxy : public CelestialObject
 {
     public:
-    //
+    Galaxy();
 };
 
 #endif

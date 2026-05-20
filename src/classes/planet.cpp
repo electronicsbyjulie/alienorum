@@ -54,6 +54,7 @@ void Planet::update_location(double tmnow)
 
 Planet::Planet()
 {
+    _class = class_planet;
     BV_color = 1;
     UB_color = 0.5;
 }

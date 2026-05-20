@@ -4,6 +4,11 @@
 #include <math.h>
 #include "star.h"
 
+Star::Star()
+{
+    _class = class_star;
+}
+
 void Star::update_location(double tmnow)
 {
     if (orbit && orbit->period)
@@ -174,6 +179,40 @@ double Star::estimate_radius()
 
     // 2. Calculate radius relative to the Sun (R/R_sun) using Stefan-Boltzmann then scale to meters
     return volumetric_mean_radius = std::sqrt(luminosity) * std::pow(sun_temp / T, 2.0) * Rsun;
+}
+
+void Star::gotta_be_named_something()
+{
+    if (trim(name).size()) return;           // already am
+    else if (orbit && orbit->center && strlen(orbit->center->name))
+    {
+        int n = strlen(orbit->center->name);
+        if (orbit->center->name[n-1] >= 'A' && orbit->center->name[n-2] == ' ')
+        {
+            strcpy(name, orbit->center->name);
+            name[n]++;
+        }
+        else
+        {
+            strcpy(name, ( std::string(orbit->center->name) + std::string(" B") ).c_str());
+        }
+    }
+    else if (BayerGrkno && strlen(constellation)) rename_from_Bayer_Flamsteed();
+    else if (FlamsteedNo && strlen(constellation)) rename_from_Bayer_Flamsteed();
+    else if (HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
+    else if (HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
+    else if (SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
+    else if (Bonn_survey_sequential)
+    {
+        name[0] = Bonn_survey[0];
+        name[1] = Bonn_survey[1];
+        name[2] = Bonn_survey_sign;
+        strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
+            + std::to_string(Bonn_survey_sequential) ).c_str() );
+    }
+    else if (SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
+    else std::cerr << "Failed to name star @ RA: " << RA_as_hms() << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
+        << " distance " << (distance/light_year) << std::endl;
 }
 
 double Star::estimate_mass()

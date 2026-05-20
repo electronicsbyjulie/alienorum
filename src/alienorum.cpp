@@ -426,9 +426,10 @@ void compute_object_draw_coordinates()
         for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
-            switch (cels[i]->type)
+            std::cout << "Compute draw coords of cels[" << i << "] " << cels[i]->name << std::endl;
+            switch (cels[i]->typeclass)
             {
-                case star:
+                case class_star:
                 if (i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center))
                 {
                     cels[i]->drawnx = cels[i]->drawny = -1e9;
@@ -437,12 +438,12 @@ void compute_object_draw_coordinates()
                 ((Star*)cels[i])->update_location(simnow);
                 break;
 
-                case rocky:
-                case gas_giant:
-                case ice_giant:
-                if (cels[i]->orbit->center->orbit && cels[i]->orbit->center->orbit->center)
-                    ((Moon*)cels[i])->update_location(simnow);
-                else ((Planet*)cels[i])->update_location(simnow);
+                case class_planet:
+                ((Planet*)cels[i])->update_location(simnow);
+                break;
+
+                case class_moon:
+                ((Moon*)cels[i])->update_location(simnow);
                 break;
 
                 default:
@@ -494,9 +495,63 @@ void compute_object_draw_coordinates()
 void draw_objects()
 {
     int i, j, l, n, pass;
-    double jay;
+    double jay, step;
     ImVec2 xycoord;
     double appmag, magrad;
+
+    // Orbits
+    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    {
+        if (!cels[i]->orbit) continue;
+        if (cels[i]->drawnx < 0 or cels[i]->drawnx >= dispcx*2) continue;
+        if (cels[i]->drawny < 0 or cels[i]->drawny >= dispcy*2) continue;
+        if (cels[i]->location.distance_to(here) > cels[i]->orbit->semimajor_axis * 1e3) continue;
+        Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
+        RGB rgb = Color::rgb_from_color(col, 1);
+        ImU32 imcol = (i==selected) ? rgba_apply_redlight(selected_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
+        step = cels[i]->orbit->period / 81;
+        CelestialLocation was = cels[i]->location;
+        bool is_moon = (cels[i]->typeclass == class_moon);
+
+        Cartesian2D lastcart;
+        try
+        {
+            lastcart = Cartesian2D(cels[i]->drawnx, cels[i]->drawny);
+        }
+        catch(...)
+        {
+            ;
+        }
+        for (j=0; j<=81; j++)
+        {
+            if (is_moon)
+                ((Moon*)cels[i])->update_location(simnow + step*j);
+            else
+                ((Planet*)cels[i])->update_location(simnow + step*j);
+
+            Point rel = cels[i]->location;
+            rel -= here;
+
+            rel = rotate3D(rel, Point(0,0,0), here.equatorial_plane.v, here.equatorial_plane.a);
+            rel = rotate3D(rel, Point(0,0,0), here.orbital_plane.v, here.orbital_plane.a);
+            rel = rotate3D(rel, Point(0,0,0), here.local_system_plane.v, here.local_system_plane.a);
+
+            Cartesian2D cart;
+            try
+            {
+                cart = Cartesian2D(rel, azimuth, altitude, zoom);
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(lastcart.x, lastcart.y), ImVec2(cart.x, cart.y), 
+                    imcol);
+            }
+            catch (...)
+            {
+                ;
+            }
+
+            lastcart = cart;
+        }
+        cels[i]->location = was;
+    }
 
     // Dits and doscs
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -783,7 +838,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             if (s->Bonn_survey[0])
             {
                 char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
-                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string("+") : std::string(""))
+                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
                     + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential) + std::string("\n");
             }
         }

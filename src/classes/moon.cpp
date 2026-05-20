@@ -35,9 +35,14 @@ Rotation Moon::get_Laplace_plane()
 
 void Moon::update_orbit_location(double tmnow)
 {
-    std::cout << "Moon::update_orbit_location() called for " << name << std::endl;
+    // std::cout << "Moon::update_orbit_location() called for " << name << std::endl;
     get_Laplace_plane();
     return CelestialObject::update_orbit_location(tmnow, &Laplace_plane);
+}
+
+Moon::Moon()
+{
+    _class = class_moon;
 }
 
 void Moon::update_location(double tmnow)

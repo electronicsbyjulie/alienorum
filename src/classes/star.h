@@ -32,10 +32,13 @@ class Star : public CelestialObject
     __uint32_t SAO = 0;                     // USNO/SAO catalog number
     __uint32_t SB9 = 0;                     // 9th Catalogue of Spectroscopic Binary Orbits designation
     char Bonn_survey[2] = {0,0};            // BD = Bonn, CD = Cordoba, CP = Cape Town
+    char Bonn_survey_sign = '+';
     int Bonn_survey_declination = 0;        // Declination category
     __uint32_t Bonn_survey_sequential = 0;  // Serial number by right ascension.
 
     bool is_orbit_multiple = false;
+
+    Star();
 
     void update_location(double tmnow);     // Apply proper motion and re-derive 3D coordinates from the result.
     void rename_from_Bayer_Flamsteed();
@@ -49,6 +52,7 @@ class Star : public CelestialObject
     double estimate_UB();                   // "
 
     double estimate_radius();
+    void gotta_be_named_something();
 
 protected:
     Box visible_area;

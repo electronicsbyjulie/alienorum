@@ -22,25 +22,29 @@ std::string Serialization::load_string(FILE *in)
 
 bool Serialization::save_object(FILE *of, CelestialObject *cel)
 {
-    fwrite(&cel->type, sizeof(cel_obj_type), 1, of);
-    switch (cel->type)
+    fwrite(&cel->typeclass, sizeof(cel_obj_class), 1, of);
+    switch (cel->typeclass)
     {
-        case galaxy:
+        case class_galaxy:
         fwrite(cel, sizeof(Galaxy), 1, of);
         break;
 
-        case star:
+        case class_star:
+        ((Star*)cel)->gotta_be_named_something();                                   // I am sick of these massive-flaring stars with no massive-flaring names!
         fwrite(cel, sizeof(Star), 1, of);
         break;
 
-        case rocky: case ice_giant: case gas_giant:
-        if (cel->orbit && cel->orbit->center && cel->orbit->center->orbit && cel->orbit->center->orbit->center)
-            fwrite(cel, sizeof(Moon), 1, of);
-        else fwrite(cel, sizeof(Planet), 1, of);
+        case class_planet:
+        fwrite(cel, sizeof(Planet), 1, of);
+        break;
+
+        case class_moon:
+        fwrite(cel, sizeof(Moon), 1, of);
         break;
 
         default:
-        fwrite(cel, sizeof(CelestialObject), 1, of);
+        std::cerr << "Attempted to write CelestialObject of unknown class." << std::endl;
+        throw 0xbadc0de;
     }
     if (cel->orbit)
     {
@@ -53,10 +57,14 @@ bool Serialization::save_object(FILE *of, CelestialObject *cel)
 
 bool Serialization::save_all(FILE *of, CelestialObject **cels)
 {
-    __uint32_t ver = _serial_version;
+    __uint32_t ver = _serial_version, n;
     fwrite(&ver, sizeof(__uint32_t), 1, of);
     int i, pass;
-    for (pass=0; pass<2; pass++) for (i=0; cels[i]; i++)
+
+    for (n=0; cels[n]; n++);
+    fwrite(&n, sizeof(__uint32_t), 1, of);
+
+    for (pass=0; pass<2; pass++) for (i=0; i<n; i++)
     {
         if (!pass && cels[i]->orbit) continue;
         if (pass && !cels[i]->orbit) continue;
@@ -67,36 +75,48 @@ bool Serialization::save_all(FILE *of, CelestialObject **cels)
 
 CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
 {
-    cel_obj_type type;
-    fread(&type, sizeof(cel_obj_type), 1, in);
+    cel_obj_class typeclass;
+    fread(&typeclass, sizeof(cel_obj_class), 1, in);
     CelestialObject *cel = nullptr;
 
     std::string cenname;
     Galaxy *g;
     Star *s;
     Planet *p;
-    switch (type)
+    switch (typeclass)
     {
-        case galaxy:
+        case class_galaxy:
         g = new Galaxy();
         cel = g;
         fread(g, sizeof(Galaxy), 1, in);
+        // std::cout << cel->name << " is a galaxy." << std::endl;
         break;
 
-        case star:
+        case class_star:
         s = new Star();
         cel = s;
         fread(s, sizeof(Star), 1, in);
+        s->gotta_be_named_something();
+        // std::cout << cel->name << " is a star." << std::endl;
         break;
 
-        case rocky: case gas_giant: case ice_giant:
+        case class_planet:
         p = new Planet();
         cel = p;
         fread(p, sizeof(Planet), 1, in);
+        // std::cout << cel->name << " is a planet." << std::endl;
+        break;
+
+        case class_moon:
+        p = new Moon();
+        cel = p;
+        fread(p, sizeof(Moon), 1, in);
+        // std::cout << cel->name << " is a moon." << std::endl;
         break;
 
         default:
-        cel = new CelestialObject();
+        std::cerr << "Attempted to read CelestialObject of unknown class." << std::endl;
+        throw 0xbadc0de;
     }
 
     // Pointer loaded from file is bad, just check that it's nonzero.
@@ -130,7 +150,7 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
 
 bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
 {
-    __uint32_t ver;
+    __uint32_t ver, n;
     fread(&ver, sizeof(__uint32_t), 1, fp);
     if (ver != _serial_version)
     {
@@ -138,17 +158,18 @@ bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
         return false;
     }
     int i=0;
-    while (!feof(fp))
+    fread(&n, sizeof(__uint32_t), 1, fp);
+    if (n >= max)
+    {
+        std::cerr << "Cannot restore state: too many objects." << std::endl;
+        throw 0xbadda7a;
+    }
+    while (i<n && !feof(fp))
     {
         CelestialObject* cel = load_object(fp, cels);
         if (feof(fp)) break;
         if (!(cels[i] = cel)) return false;
         i++;
-        if (i >= max)
-        {
-            std::cerr << "Cannot restore state: file too big." << std::endl;
-            throw 0xbadda7a;
-        }
     }
     cels[i] = nullptr;
     return true;

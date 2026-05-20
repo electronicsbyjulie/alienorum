@@ -13,6 +13,7 @@ class Moon : public Planet
     void update_orbit_location(double tmnow);
 
     public:
+    Moon();
     void update_location(double tmnow);
 };
 
