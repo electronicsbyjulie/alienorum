@@ -1015,12 +1015,19 @@ void process_keyboard_commands(ImGuiIO& io)
             case 'T': trackidx = -1; break;
 
             case 'w':
-            velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-            velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);
-            velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+            if (velocity.magnitude())
+            {
+                velocity.scale(speed_of_light * 1.00001 / target_frame_rate);
+            }
+            else
+            {
+                velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+                velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+                velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+                velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
+                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);
+                velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+            }
             spin = 0;
             viewchanged = true;
             whereami = -1;
