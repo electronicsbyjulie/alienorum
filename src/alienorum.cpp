@@ -601,7 +601,7 @@ void draw_objects()
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
         magrad = magrad_cache[i];
-        flare = fmin(81, fmax(0, sqrt(magrad-15)));
+        flare = fmin(81, fmax(0, sqrt(magrad-400)));
         magrad = fmin(15, magrad);
 
         #define bloom_exponent 2.5
@@ -614,9 +614,9 @@ void draw_objects()
             rgb.r = (int)(col.red * divisor);
             rgb.g = (int)(col.green* divisor);
             rgb.b = (int)(col.blue * divisor);
-            // std::cout << cels[i]->name << " " << flare << " " << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b << std::endl;
+            std::cout << cels[i]->name << " " << sqrt(magrad_cache[i]-15) << " " << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b << std::endl;
 
-            for (jay=flare; jay>magrad/1.5; jay -= 4.4)
+            for (jay=flare; jay>flare/1.5; jay -= 4.4)
             {
                 ImVec2 radii(15+jay, 15+jay/3);
                 ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 4));
@@ -975,8 +975,8 @@ void process_keyboard_commands(ImGuiIO& io)
         ImWchar c = io.InputQueueCharacters[i];
         switch (c)
         {
-            case 'b': global_brightness *= 1.1; break;
-            case 'B': global_brightness *= 0.9; break;
+            case 'b': global_brightness *= 1.1; viewchanged = true; break;
+            case 'B': global_brightness *= 0.9; viewchanged = true; break;
             case 'c': show_consln = !show_consln; break;
             case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
             case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
