@@ -523,7 +523,7 @@ void draw_objects()
         {
             lastcart.x = lastcart.y = -1e9;
         }
-        for (j=0; j<=orbseg; j++)
+        for (j=-4; j<=orbseg; j++)
         {
             if (is_moon)
                 ((Moon*)cels[i])->update_location(simnow + step*j);
