@@ -619,9 +619,10 @@ void draw_objects()
             for (jay=flare; jay>magrad/1.5; jay -= 4.4)
             {
                 ImVec2 radii(15+jay, 15+jay/3);
-                ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 1));
+                ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 4));
                 for (theta=0; theta<M_PI*2; theta += M_PI/5)
                     ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta);
+                break;
             }
         }
         double divisor = 1.0 / (pow(bloom_exponent, magrad*2-1));
@@ -631,7 +632,6 @@ void draw_objects()
             RGB rgb = Color::rgb_from_color(col, 1);
             if (rgb.r >= 16 || rgb.b >= 16)
                 ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, IM_COL32(rgb.r, rgb.g, rgb.b, 255), 0);
-            else magrad_cache[i] = jay;
             if (rgb.r == 255 && rgb.b == 255) break;
 
             col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
