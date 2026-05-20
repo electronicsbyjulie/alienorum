@@ -156,7 +156,7 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere)
 
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
-    if (!orbit) return;
+    if (!orbit || !orbit->center) return;
 
     // Calculate orbit radians per second and seconds since epoch
     double rads_sec = (M_PI * 2) / orbit->period;
@@ -188,7 +188,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double sini = std::sin(orbit->inclination);
 
     double x = (-sinO * cosw -  cosO * sinw * cosi) * x_plane + ( sinO * sinw -  cosO * cosw * cosi) * y_plane;
-    double y = (sinw * sini) * x_plane + (cosw * sini) * y_plane;
+    double y = (                       sinw * sini) * x_plane + (                       cosw * sini) * y_plane;
     double z = ( cosO * cosw + -sinO * sinw * cosi) * x_plane + (-cosO * sinw + -sinO * cosw * cosi) * y_plane;
     location.orbital_plane.v = Point(cosO, 0, sinO);
     location.orbital_plane.a = orbit->inclination;

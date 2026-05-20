@@ -24,6 +24,7 @@ ImU32 ecliptic_color = IM_COL32(0, 192, 255, 96);
 ImU32 consline_color = IM_COL32(64, 64, 255, 128);
 ImU32 conslbl_color = IM_COL32(255, 192, 0, 128);
 ImU32 selected_color = IM_COL32(0, 255, 96, 192);
+ImU32 selected_orbit_color = IM_COL32(0, 255, 96, 96);
 ImU32 objlbl_color = IM_COL32(64, 255, 0, 176);
 int is_an_obj_under_cursor = -1;
 double obj_magn_under_cursor;

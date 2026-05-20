@@ -974,11 +974,6 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         {
             continue;
         }
-        else if (!found)
-        {
-            std::cout << "Warning: SB9 star wants to orbit the Sun:" << std::endl << buffer << std::endl << std::endl << std::flush;
-            continue;
-        }
 
         //   1-  4  I4    ---     Seq     System Number (SB8 number when Seq<=1469)
         read_field_onebased(buffer, 1, 4, field);
@@ -987,6 +982,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         A = (Star*)cels[found];
         A->is_orbit_multiple = true;
         A->gotta_be_named_something();
+        if (!A->distance_known) continue;
 
         found = -1;
         if (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')

@@ -509,7 +509,7 @@ void draw_objects()
         if (cels[i]->location.distance_to(here) > cels[i]->orbit->semimajor_axis * smalim) continue;
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
         RGB rgb = Color::rgb_from_color(col, 1);
-        ImU32 imcol = (i==selected) ? rgba_apply_redlight(selected_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
+        ImU32 imcol = (i==selected) ? rgba_apply_redlight(selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         step = cels[i]->orbit->period / orbseg;
         CelestialLocation was = cels[i]->location;
         bool is_moon = (cels[i]->typeclass() == class_moon);
@@ -544,10 +544,8 @@ void draw_objects()
             {
                 cart = Cartesian2D(rel, azimuth, altitude, zoom);
                 cart.x = dispcx + cart.x * dispcx; cart.y = dispcy + cart.y * dispcx;
-                if (lastcart.x > 0 && lastcart.x < dispcx*2
-                    && lastcart.y > 0 && lastcart.y < dispcy*2)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(lastcart.x, lastcart.y), ImVec2(cart.x, cart.y), 
-                        imcol);
+                if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(lastcart.x, lastcart.y), ImVec2(cart.x, cart.y), imcol);
             }
             catch (...)
             {
@@ -1521,6 +1519,15 @@ int main (int argc, char** argv)
     // Our state
     ImVec4 background = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
     set_gamma(global_gamma);
+
+    // Pre-position all objects
+    for (i=0; cels[i]; i++)
+    {
+        cel_obj_class c = cels[i]->typeclass();
+        if (c == class_star) ((Star*)cels[i])->update_location(simnow);
+        else if (c == class_planet) ((Planet*)cels[i])->update_location(simnow);
+        else if (c == class_moon) ((Moon*)cels[i])->update_location(simnow);
+    }
 
     // Main loop
     bool done = false;

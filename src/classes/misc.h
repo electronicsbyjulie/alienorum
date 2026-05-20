@@ -92,7 +92,7 @@ extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_un
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, is_mouse_over_window, dragging, dragged, viewchanged,
     objinfwnd, statuswnd, hide_mouse, searched;
 extern ImU32 cursor_color, cursor_color1, cursor_color2, cursor_color3, grid_color, grid_color_brighter, ecliptic_color, consline_color,
-    conslbl_color, selected_color, objlbl_color;
+    conslbl_color, selected_color, selected_orbit_color, objlbl_color;
 extern std::string objname, objinfo;
 extern time_t simnow;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff;
