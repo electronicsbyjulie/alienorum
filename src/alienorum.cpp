@@ -468,7 +468,7 @@ void compute_object_draw_coordinates()
                     : cels[i]->viewer_magnitude(here);
 
                 double v_brightness = global_brightness * pow(magnbase, -vmag_cache[i]);
-                magrad_cache[i] = fmin(15, fmax(1.414, pow(v_brightness, 0.666)*global_brightness));
+                magrad_cache[i] = fmax(1.414, pow(v_brightness, 0.666)*global_brightness);
 
                 Cartesian2D cart(rel, azimuth, altitude, zoom);
                 float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -499,7 +499,7 @@ void draw_objects()
     int i, j, l, n, pass;
     double jay, step;
     ImVec2 xycoord;
-    double appmag, magrad;
+    double appmag, magrad, flare, theta;
     double orbseg = 81, smalim = 1e3*sqrt(zoom);
 
     // Orbits
@@ -601,13 +601,32 @@ void draw_objects()
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
         magrad = magrad_cache[i];
+        flare = fmin(81, fmax(0, sqrt(magrad-15)));
+        magrad = fmin(15, magrad);
 
         #define bloom_exponent 2.5
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
+        if (flare)
+        {
+            double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
+            RGB rgb;
+            rgb.r = (int)(col.red * divisor);
+            rgb.g = (int)(col.green* divisor);
+            rgb.b = (int)(col.blue * divisor);
+            // std::cout << cels[i]->name << " " << flare << " " << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b << std::endl;
+
+            for (jay=flare; jay>magrad/1.5; jay -= 4.4)
+            {
+                ImVec2 radii(15+jay, 15+jay/3);
+                ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 1));
+                for (theta=0; theta<M_PI*2; theta += M_PI/5)
+                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta);
+            }
+        }
         double divisor = 1.0 / (pow(bloom_exponent, magrad*2-1));
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
-        for (jay=magrad; jay>=0.5; jay-=0.5)
+        for (jay=magrad; jay>=0; jay-=0.5)
         {
             RGB rgb = Color::rgb_from_color(col, 1);
             if (rgb.r >= 16 || rgb.b >= 16)
@@ -631,7 +650,7 @@ void draw_objects()
         if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
-        magrad = magrad_cache[i];
+        magrad = fmin(15, magrad_cache[i]);
         if ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
