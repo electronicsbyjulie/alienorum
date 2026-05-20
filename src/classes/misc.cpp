@@ -12,7 +12,7 @@ double azimuth = 0, altitude = 0;
 double spin = 0;
 double global_gamma = 1.8;
 double zoom = 1, vm, vmfr;
-bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true;
+bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true, show_orbits = false;
 int cursor_size = 8, circle_size = 2.6, xaorngsim = 0;
 ImU32 cursor_color = IM_COL32(255, 32, 0, 255);
 ImU32 cursor_color1 = IM_COL32(96, 0, 24, 76);

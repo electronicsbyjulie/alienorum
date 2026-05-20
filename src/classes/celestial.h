@@ -97,7 +97,7 @@ class CelestialObject
     void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
 
     public:
-    const cel_obj_class& typeclass = _class;
+    cel_obj_class typeclass() const { return  _class; };
 };
 
 extern CelestialObject **cels;

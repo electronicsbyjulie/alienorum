@@ -22,8 +22,9 @@ std::string Serialization::load_string(FILE *in)
 
 bool Serialization::save_object(FILE *of, CelestialObject *cel)
 {
-    fwrite(&cel->typeclass, sizeof(cel_obj_class), 1, of);
-    switch (cel->typeclass)
+    cel_obj_class _class = cel->typeclass();
+    fwrite(&_class, sizeof(cel_obj_class), 1, of);
+    switch (cel->typeclass())
     {
         case class_galaxy:
         fwrite(cel, sizeof(Galaxy), 1, of);

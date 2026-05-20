@@ -20,11 +20,10 @@ Rotation Moon::get_Laplace_plane()
     double n_eq = n * ((Planet*)myplanet)->J2 * std::pow(eqr / orbit->semimajor_axis, 2);
     double n_ecl = n * smu / pmu * std::pow(orbit->semimajor_axis / myplanet->orbit->semimajor_axis, 3);
 
-    double ratio = n_ecl/n_eq;
-    double star_influence = ratio / (1.0 + ratio), planet_influence = 1.0 - star_influence;
+    double star_influence = n_ecl / (n_ecl+n_eq), planet_influence = 1.0 - star_influence;
 
-    Point ecliptic_pole = rotate3D(yaxis, center, myplanet->location.orbital_plane.v, myplanet->location.orbital_plane.a);
-    Point equatorial_pole = rotate3D(yaxis, center, myplanet->location.equatorial_plane.v, myplanet->location.equatorial_plane.a);
+    Point ecliptic_pole = rotate3D(yaxis, center, myplanet->location.orbital_plane.v, -myplanet->location.orbital_plane.a);
+    Point equatorial_pole = rotate3D(yaxis, center, myplanet->location.equatorial_plane.v, -myplanet->location.equatorial_plane.a);
     Point Laplace_pole = ecliptic_pole * star_influence + equatorial_pole * planet_influence;
 
     Laplace_plane = align_points_3d(Laplace_pole, yaxis, center);

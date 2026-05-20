@@ -278,7 +278,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         }
 
         // Sun is distance zero.
-        if (!s->right_ascension && !s->declination)
+        if (!num_read)
         {
             if (!num_read)
             {
@@ -287,7 +287,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 s->distance_accuracy = 0;
                 s->mass = Msun;
                 s->volumetric_mean_radius = Rsun;
-                bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - s->BV_color;
             }
             else continue;
         }
@@ -973,6 +972,11 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         }
         if (found < 0)
         {
+            continue;
+        }
+        else if (!found)
+        {
+            std::cout << "Warning: SB9 star wants to orbit the Sun:" << std::endl << buffer << std::endl << std::endl << std::flush;
             continue;
         }
 

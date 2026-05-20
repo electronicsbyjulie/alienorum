@@ -110,6 +110,7 @@ Shift+T     Clear tracking
 C           Show/hide constellation lines
 G           Show/hide RA/Dec lines
 L           Show/hide labels
+Shift+O     Show/hide orbits
 N           Show/hide info panel
 S           Show/hide status panel
 !           Hide all annotations (realism mode)

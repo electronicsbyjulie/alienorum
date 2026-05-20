@@ -341,10 +341,25 @@ std::ostream& operator<<(std::ostream& os, const Point& p)
     return os;
 }
 
-double CelestialLocation::distance_to(CelestialLocation &other)
+double CelestialLocation::distance_to(CelestialLocation other)
 {
     Point relloc = (system_center - other.system_center) + (local_position - other.local_position);
     return relloc.magnitude();
+}
+
+CelestialLocation CelestialLocation::operator-(CelestialLocation other)             // it sure is nice that this fuction does its job!
+{
+    CelestialLocation result = *this;
+    result.system_center -= other.system_center;
+    result.local_position -= other.local_position;
+    return result;
+}
+
+CelestialLocation &CelestialLocation::operator-=(CelestialLocation other)
+{
+    system_center -= other.system_center;
+    local_position -= other.local_position;
+    return *this;
 }
 
 bool Box::point_in_box(Point pt)
