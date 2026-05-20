@@ -601,7 +601,7 @@ void draw_objects()
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
         magrad = magrad_cache[i];
-        flare = fmin(81, fmax(0, sqrt(magrad-400)));
+        flare = fmin(81, fmax(0, sqrt(magrad-400)/8));
         magrad = fmin(15, magrad);
 
         #define bloom_exponent 2.5
@@ -614,11 +614,12 @@ void draw_objects()
             rgb.r = (int)(col.red * divisor);
             rgb.g = (int)(col.green* divisor);
             rgb.b = (int)(col.blue * divisor);
-            std::cout << cels[i]->name << " " << sqrt(magrad_cache[i]-15) << " " << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b << std::endl;
+            // May still want to revisit this later.
+            // std::cout << cels[i]->name << " " << magrad_cache[i] << " " << flare << " " << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b << std::endl;
 
             for (jay=flare; jay>flare/1.5; jay -= 4.4)
             {
-                ImVec2 radii(15+jay, 15+jay/3);
+                ImVec2 radii(15+jay, (15+jay)/3);
                 ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 4));
                 for (theta=0; theta<M_PI*2; theta += M_PI/5)
                     ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta);
