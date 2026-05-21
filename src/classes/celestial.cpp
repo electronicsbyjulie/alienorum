@@ -172,7 +172,7 @@ json CelestialObject::to_json()
     towrite["inclination"] = inclination * fiftyseven;
     towrite["location"] = location.to_json();
     towrite["mass"] = mass;
-    towrite["name"] = name;
+    towrite["!name"] = name;                    // want this to alphabetize to the top.
     towrite["oblateness"] = oblateness;
     if (orbit) towrite["orbit"] = orbit->to_json();
     towrite["precession"] = precession * year;

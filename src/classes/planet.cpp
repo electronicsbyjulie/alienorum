@@ -63,8 +63,7 @@ json Planet::to_json()
 {
     json towrite = CelestialObject::to_json();
 
-    towrite["albedo"] = albedo;
-    towrite["color"] = color.to_json();
+    if (albedo) towrite["albedo"] = albedo;
     towrite["period"] = period/86400;
     towrite["surface_pressure"] = surface_pressure;
     towrite["opposition_surge"] = opposition_surge;

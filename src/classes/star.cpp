@@ -251,14 +251,17 @@ json Star::to_json()
     towrite["BayerGrkno"] = BayerGrkno;
     towrite["FlamsteedNo"] = FlamsteedNo;
     towrite["constellation"] = constellation;
+    towrite["HR"] = HR;
+    towrite["HD"] = HD;
+    towrite["HIP"] = HIP;
+    towrite["SAO"] = SAO;
+    towrite["SB9"] = SB9;
     towrite["CCDM"] = CCDM;
     towrite["Bonn_survey"] = Bonn_survey;
-    towrite["Bonn_survey_sign"] = Bonn_survey_sign;
+    towrite["Bonn_survey_sign"] = std::string(1, Bonn_survey_sign);
     towrite["Bonn_survey_declination"] = Bonn_survey_declination;
     towrite["Bonn_survey_sequential"] = Bonn_survey_sequential;
     towrite["is_orbit_multiple"] = is_orbit_multiple;
-    towrite["visible_area"] = visible_area.to_json();
-    towrite["visible_area_set"] = visible_area_set;
 
     return towrite;
 }

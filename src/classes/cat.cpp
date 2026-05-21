@@ -1024,6 +1024,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         }
         else if (!A) continue;
 
+        if (A->HD == 20766) continue;               // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
+
         //  47- 49  A3     deg     theta    Position angle (degrees) (4)
         read_field_onebased(buffer, 47, 49, field);
         double theta = atof(field);
@@ -1056,6 +1058,11 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         s->proper_motion_decl = A->proper_motion_decl;
         s->radial_velocity = A->radial_velocity;
         s->orbit = new Orbit();
+        if (A->HD == 20766)
+        {
+            std::cerr << "BAD! 1061" << std::endl;
+            throw 0xbadc0de;
+        }
         s->orbit->center = A;
 
         // The inclination is unknown, but let's assume zero degrees
@@ -1247,6 +1254,11 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             strcpy(B->name, (trim(field) + std::string(" ") + std::string(comp)).c_str());
             B->type = star;
             B->orbit = new Orbit();
+            if (A->HD == 20766)
+            {
+                std::cerr << "BAD! 1061" << std::endl;
+                throw 0xbadc0de;
+            }
             B->orbit->center = A;
             B->right_ascension = A->right_ascension;
             B->declination = A->declination;
@@ -1425,7 +1437,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     {
         if (*buffer == '#') continue;
         if (!trim(buffer).size()) continue;
-        std::cout << buffer << std::endl;
 
         read_field_onebased(buffer, 1, 23, field);
         std::string cenname = trim(field);
@@ -1438,7 +1449,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A = (Star*)cels[i];
             break;
         }
-        std::cout << A << std::endl;
 
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
@@ -1466,6 +1476,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
 
         if (!s->orbit) s->orbit = new Orbit();
+        if (A->HD == 20766)
+        {
+            std::cerr << "BAD! 1061" << std::endl;
+            throw 0xbadc0de;
+        }
         s->orbit->center = A;
 
         read_field_onebased(buffer, 49, 63, field);
@@ -1651,8 +1666,6 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         read_field_onebased(buffer, 305, 316, field);
         f = atof(field);
         o->proc_argperi = f ? (1.0 / f) : 0;
-
-        p->color = Color::color_from_magnitude_indices(p->absolute_magnitude, p->BV_color);
         p->distance_known = true;
 
         p->location = o->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
