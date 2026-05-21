@@ -9,6 +9,7 @@ class Galaxy : public CelestialObject
     public:
     Galaxy();
     json to_json();
+    bool from_json(json j);
 };
 
 #endif

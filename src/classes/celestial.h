@@ -50,6 +50,7 @@ class Orbit
 
     CelestialLocation compute_3d_location(double epoch);
     json to_json();
+    bool from_json(json j);
 };
 
 class CelestialObject
@@ -99,6 +100,7 @@ class CelestialObject
     double Decl_as_radians(CelestialLocation seen_from);
     std::string scaled_distance(CelestialLocation fromwhere);
     json to_json();
+    bool from_json(json j);
 
     protected:
     void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);

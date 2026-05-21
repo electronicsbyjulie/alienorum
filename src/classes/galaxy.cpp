@@ -11,3 +11,10 @@ json Galaxy::to_json()
     // TODO: Galaxy-specific properties will go here.
     return towrite;
 }
+
+bool Galaxy::from_json(json j)
+{
+    // Nothing to load... yet. Here's a blank template for future implementation:
+    // try { j.at("").get_to(); } catch (...) { ; }
+    return true;
+}

@@ -25,6 +25,7 @@ class Planet : public CelestialObject
 
     Planet();
     json to_json();
+    bool from_json(json j);
 };
 
 #endif

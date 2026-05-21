@@ -16,6 +16,7 @@ class Moon : public Planet
     Moon();
     void update_location(double tmnow);
     json to_json();
+    bool from_json(json j);
 };
 
 #endif

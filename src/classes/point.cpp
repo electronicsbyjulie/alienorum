@@ -175,6 +175,14 @@ json Point::to_json()
     return {{"x", x}, {"y", y}, {"z", z}};
 }
 
+bool Point::from_json(json j)
+{
+    try { j.at("x").get_to(x); } catch (...) { ; }
+    try { j.at("y").get_to(y); } catch (...) { ; }
+    try { j.at("z").get_to(z); } catch (...) { ; }
+    return true;
+}
+
 Point Point::from_ra_dec(double right_ascension, double declination, double distance)
 {
     double x, y, z;
@@ -379,6 +387,36 @@ json CelestialLocation::to_json()
     };
 }
 
+bool CelestialLocation::from_json(json j)
+{
+    try
+    {
+        json j1 = j.at("");
+        system_center.from_json(j1);
+    } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("local_position");
+        local_position.from_json(j1);
+    } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("local_system_plane");
+        local_system_plane.from_json(j1);
+    } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("orbital_plane");
+        orbital_plane.from_json(j1);
+    } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("equatorial_plane");
+        equatorial_plane.from_json(j1);
+    } catch (...) { ; }
+    return true;
+}
+
 bool Box::point_in_box(Point pt)
 {
     return (pt.x >= corner1.x && pt.x <= corner2.x
@@ -396,7 +434,33 @@ json Box::to_json()
     };
 }
 
+bool Box::from_json(json j)
+{
+    try
+    {
+        json j1 = j.at("corner1");
+        corner1.from_json(j1);
+    } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("corner1");
+        corner1.from_json(j1);
+    } catch (...) { ; }
+    return true;
+}
+
 json Rotation::to_json()
 {
     return {{"v", v.to_json()}, {"a", a*fiftyseven}};
+}
+
+bool Rotation::from_json(json j)
+{
+    try
+    {
+        json j1 = j.at("v");
+        v.from_json(j1);
+    } catch (...) { ; }
+    try { j.at("a").get_to(a); a*=fiftyseventh; } catch (...) { ; }
+    return true;
 }

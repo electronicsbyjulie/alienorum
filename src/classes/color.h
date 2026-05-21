@@ -26,6 +26,7 @@ class Color
 
     static ImU32 black_to_transparent(ImU32 input);
     json to_json();
+    bool from_json(json j);
 };
 
 extern double global_brightness;

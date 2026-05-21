@@ -266,6 +266,34 @@ json Star::to_json()
     return towrite;
 }
 
+bool Star::from_json(json j)
+{
+    try { j.at("proper_motion_RA").get_to(proper_motion_RA); proper_motion_RA *= fiftyseventh/year; } catch (...) { ; }
+    try { j.at("proper_motion_decl").get_to(proper_motion_decl); proper_motion_decl *= fiftyseventh/year; } catch (...) { ; }
+    try { j.at("radial_velocity").get_to(radial_velocity); } catch (...) { ; }
+    try { j.at("apparent_magnitude").get_to(apparent_magnitude); } catch (...) { ; }
+    try { j.at("parallax").get_to(parallax); parallax *= fiftyseventh / 3600000; } catch (...) { ; }
+    try { j.at("spectral_type").get_to(spectral_type); } catch (...) { ; }
+    try { j.at("Bayer").get_to(Bayer); } catch (...) { ; }
+    try { j.at("Flamsteed").get_to(Flamsteed); } catch (...) { ; }
+    try { j.at("Gliese").get_to(Gliese); } catch (...) { ; }
+    try { j.at("BayerGrkno").get_to(BayerGrkno); } catch (...) { ; }
+    try { j.at("FlamsteedNo").get_to(FlamsteedNo); } catch (...) { ; }
+    try { j.at("constellation").get_to(constellation); } catch (...) { ; }
+    try { j.at("HR").get_to(HR); } catch (...) { ; }
+    try { j.at("HD").get_to(HD); } catch (...) { ; }
+    try { j.at("HIP").get_to(HIP); } catch (...) { ; }
+    try { j.at("SAO").get_to(SAO); } catch (...) { ; }
+    try { j.at("SB9").get_to(SB9); } catch (...) { ; }
+    try { j.at("CCDM").get_to(CCDM); } catch (...) { ; }
+    try { j.at("Bonn_survey").get_to(Bonn_survey); } catch (...) { ; }
+    try { j.at("Bonn_survey_sign").get_to(Bonn_survey_sign); } catch (...) { ; }
+    try { j.at("Bonn_survey_declination").get_to(Bonn_survey_declination); } catch (...) { ; }
+    try { j.at("Bonn_survey_sequential").get_to(Bonn_survey_sequential); } catch (...) { ; }
+    try { j.at("is_orbit_multiple").get_to(is_orbit_multiple); } catch (...) { ; }
+    return true;
+}
+
 double Star::estimate_mass()
 {
     if (!cels[0])

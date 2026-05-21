@@ -71,3 +71,13 @@ json Planet::to_json()
 
     return towrite;
 }
+
+bool Planet::from_json(json j)
+{
+    try { j.at("albedo").get_to(albedo); } catch (...) { ; }
+    try { j.at("period").get_to(period); period *= 86400; } catch (...) { ; }
+    try { j.at("surface_pressure").get_to(surface_pressure); } catch (...) { ; }
+    try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
+    try { j.at("J2").get_to(J2); } catch (...) { ; }
+    return true;
+}

@@ -89,6 +89,14 @@ json Color::to_json()
     };
 }
 
+bool Color::from_json(json j)
+{
+    try { j.at("red").get_to(red); } catch (...) { ; }
+    try { j.at("green").get_to(green); } catch (...) { ; }
+    try { j.at("blue").get_to(blue); } catch (...) { ; }
+    return true;
+}
+
 void set_gamma(double new_gamma)
 {
     global_inverse_gamma = 1.0 / new_gamma;

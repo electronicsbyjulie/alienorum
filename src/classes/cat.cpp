@@ -830,6 +830,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
             s->distance_known = true;
         }
+        else s->distance = light_year*1e4;
 
         //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
         read_field_onebased(buffer, 88, 95, field);

@@ -61,8 +61,19 @@ json Moon::to_json()
 {
     json towrite = Planet::to_json();
 
-    towrite[""] = Laplace_plane.to_json();
+    towrite["Laplace_plane"] = Laplace_plane.to_json();
     towrite["Laplace_set"] = Laplace_set;
 
     return towrite;
+}
+
+bool Moon::from_json(json j)
+{
+    try
+    {
+        json j1 = j.at("Laplace_plane");
+        Laplace_plane.from_json(j1);
+    } catch (...) { ; }
+    try { j.at("Laplace_set").get_to(Laplace_set); } catch (...) { ; }
+    return true;
 }

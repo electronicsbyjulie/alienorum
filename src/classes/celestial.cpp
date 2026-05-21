@@ -188,6 +188,61 @@ json CelestialObject::to_json()
     return towrite;
 }
 
+bool CelestialObject::from_json(json j)
+{
+    try { j.at("!name").get_to(name); } catch (...) { ; }
+    try { j.at("absolute_magnitude").get_to(absolute_magnitude); } catch (...) { ; }
+    try { j.at("BV_color").get_to(BV_color); } catch (...) { ; }
+    try { j.at("declination").get_to(declination); declination *= fiftyseventh; } catch (...) { ; }
+    try { j.at("distance").get_to(distance); distance *= light_year; } catch (...) { ; }
+    try { j.at("distance_known").get_to(distance_known); if (!distance_known && !distance) distance = 1e4+light_year; } catch (...) { ; }
+    try { j.at("epoch").get_to(epoch); } catch (...) { ; }
+    try { j.at("equinox").get_to(equinox); equinox *= fiftyseventh; } catch (...) { ; }
+    try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("location");
+        location.from_json(j1);
+    } catch (...) { ; }
+    try { j.at("mass").get_to(mass); } catch (...) { ; }
+    try { j.at("oblateness").get_to(oblateness); } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("orbit");
+        orbit = new Orbit();
+        orbit->from_json(j1);
+    } catch (...) { ; }
+    try { j.at("precession").get_to(precession); } catch (...) { ; }
+    try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
+    try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
+    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period /= 86400; } catch (...) { ; }
+    try { j.at("type").get_to(type); } catch (...) { ; }
+    try { j.at("typeclass").get_to(_class); } catch (...) { ; }
+    try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
+    try { j.at("volumetric_mean_radius").get_to(volumetric_mean_radius); } catch (...) { ; }
+    try { j.at("VR_color").get_to(VR_color); } catch (...) { ; }
+
+    // Here's a blank for adding more fields (copy-paste into other classes' from_json() functions):
+    // try { j.at("").get_to(); } catch (...) { ; }
+
+    // Here's a blank for adding more object fields:
+    /* try
+    {
+        json j1 = j.at("");
+        .from_json(j1);
+    } catch (...) { ; } */
+
+    // And a blank for adding more object pointer fields:
+    /* try
+    {
+        json j1 = j.at("");
+         = new ();
+        ->from_json(j1);
+    } catch (...) { ; } */
+
+    return true;
+}
+
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center) return;
@@ -262,4 +317,25 @@ json Orbit::to_json()
         {"period", period/86400},
         {"laplace", laplace.to_json()}
     };
+}
+
+bool Orbit::from_json(json j)
+{
+    try { j.at("center_name").get_to(center_name); } catch (...) { ; }
+    try { j.at("ascending_node").get_to(ascending_node); ascending_node *= fiftyseventh; } catch (...) { ; }
+    try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }
+    try { j.at("semimajor_axis").get_to(semimajor_axis); } catch (...) { ; }
+    try { j.at("eccentricity").get_to(eccentricity); } catch (...) { ; }
+    try { j.at("arg_periapsis").get_to(arg_periapsis); arg_periapsis *= fiftyseventh; } catch (...) { ; }
+    try { j.at("epoch").get_to(epoch); } catch (...) { ; }
+    try { j.at("period").get_to(period); period *= 86400; } catch (...) { ; }
+    try { j.at("prec_node").get_to(prec_node); prec_node *= fiftyseventh / year; } catch (...) { ; }
+    try { j.at("proc_argperi").get_to(proc_argperi); proc_argperi *= fiftyseventh / year; } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("laplace");
+        laplace.from_json(j1);
+    } catch (...) { ; }
+
+    return true;
 }

@@ -52,6 +52,7 @@ class Star : public CelestialObject
     double estimate_radius();
     void gotta_be_named_something();
     json to_json();
+    bool from_json(json j);
 
 protected:
     Box visible_area;
