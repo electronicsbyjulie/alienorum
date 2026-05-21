@@ -32,6 +32,7 @@ class Orbit
 {
     public:
     CelestialObject* center = nullptr;
+    std::string center_name;                    // Only used for loading from universe file.
     double ascending_node = 0;                  // RADIANS!
     double inclination = 0;                     // RADIANS!
     double semimajor_axis = 0;
@@ -48,6 +49,7 @@ class Orbit
     Rotation laplace;
 
     CelestialLocation compute_3d_location(double epoch);
+    json to_json();
 };
 
 class CelestialObject
@@ -74,8 +76,8 @@ class CelestialObject
     double absolute_magnitude = 0;
     double UB_color = 0;
     double BV_color = 0;
-    double VR_magnitude = 0;
-    double RI_magnitude = 0;
+    double VR_color = 0;
+    double RI_color = 0;
 
     const __uint32_t magic2 = 0x53535353;
     cel_obj_type type = star;
@@ -96,6 +98,7 @@ class CelestialObject
     double RA_as_radians(CelestialLocation seen_from);
     double Decl_as_radians(CelestialLocation seen_from);
     std::string scaled_distance(CelestialLocation fromwhere);
+    json to_json();
 
     protected:
     void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);

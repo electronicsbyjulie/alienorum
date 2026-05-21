@@ -46,6 +46,7 @@ class Point
     double distance_to(Point other);
     double magnitude() const;
     void scale(double new_magn);
+    json to_json();
 
     static Point from_ra_dec(double right_ascension, double declination, double distance);
     std::string printable() const;
@@ -57,6 +58,7 @@ class Box
     Point corner1, corner2;
 
     bool point_in_box(Point pt);
+    json to_json();
 };
 
 // We cannot simply use 3 dimensional x,y,z coordinates to plot celestial objects in space.
@@ -81,6 +83,7 @@ struct Rotation
     {
         a = 0;
     };
+    json to_json();
 };
 
 class CelestialLocation
@@ -94,6 +97,7 @@ class CelestialLocation
     double distance_to(CelestialLocation other);
     CelestialLocation operator-(CelestialLocation other);
     CelestialLocation& operator-=(CelestialLocation other);
+    json to_json();
 };
 
 Point compute_normal(Point pt1, Point pt2, Point pt3);

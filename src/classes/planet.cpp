@@ -58,3 +58,17 @@ Planet::Planet()
     BV_color = 1;
     UB_color = 0.5;
 }
+
+json Planet::to_json()
+{
+    json towrite = CelestialObject::to_json();
+
+    towrite["albedo"] = albedo;
+    towrite["color"] = color.to_json();
+    towrite["period"] = period/86400;
+    towrite["surface_pressure"] = surface_pressure;
+    towrite["opposition_surge"] = opposition_surge;
+    towrite["J2"] = J2;
+
+    return towrite;
+}

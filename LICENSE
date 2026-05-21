@@ -2,8 +2,11 @@ Alienorum is copyright (C) 2026 J. Gagnon,
 licensed under the Gnu General Public License.
 
 ImGui is copyright (C) 2014-2026 Omar Cornut,
-used with modifications pursuant to the MIT License.
+used with modifications pursuant to the MIT License. https://opensource.org/licenses/MIT
 See the imgui/ folder for the ImGui license.
+
+nlohmann/json is copyright (C) 2013-2026 Niels Lohmann,
+used here pursuant to the MIT License. https://opensource.org/licenses/MIT
 
 Star catalogs are copyright their respective owners,
 where copyright is applicable. Consult the readme for each

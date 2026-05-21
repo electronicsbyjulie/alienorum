@@ -170,6 +170,11 @@ void Point::scale(double new_magn)
     z *= multiplier;
 }
 
+json Point::to_json()
+{
+    return {{"x", x}, {"y", y}, {"z", z}};
+}
+
 Point Point::from_ra_dec(double right_ascension, double declination, double distance)
 {
     double x, y, z;
@@ -362,10 +367,36 @@ CelestialLocation &CelestialLocation::operator-=(CelestialLocation other)
     return *this;
 }
 
+json CelestialLocation::to_json()
+{
+    return
+    {
+        {"system_center", system_center.to_json()},
+        {"local_position", local_position.to_json()},
+        {"local_system_plane", local_system_plane.to_json()},
+        {"orbital_plane", orbital_plane.to_json()},
+        {"equatorial_plane", equatorial_plane.to_json()}
+    };
+}
+
 bool Box::point_in_box(Point pt)
 {
     return (pt.x >= corner1.x && pt.x <= corner2.x
          && pt.y >= corner1.y && pt.y <= corner2.y
          && pt.z >= corner1.z && pt.z <= corner2.z
             );
+}
+
+json Box::to_json()
+{
+    return
+    {
+        {"corner1", corner1.to_json()},
+        {"corner2", corner2.to_json()}
+    };
+}
+
+json Rotation::to_json()
+{
+    return {{"v", v.to_json()}, {"a", a*fiftyseven}};
 }

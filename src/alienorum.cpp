@@ -184,16 +184,17 @@ void load_catalogs()
     cr.download_catalogs();
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
-    FILE *fp = fopen("universe", "rb");
-    if (fp)
+    fstream fs;
+    fs.open("universe.json", std::ios::in);
+    if (fs)
     {
-        if (Serialization::load_all(fp, cels, MAX_CELOBJS))
+        if (Serialization::load_all(fs, cels, MAX_CELOBJS))
         {
-            fclose(fp);
+            fs.close();
             for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
             return;
         }
-        fclose(fp);
+        fs.close();
     }
 
     cels[0] = nullptr;
@@ -257,11 +258,11 @@ void load_catalogs()
     cr.read_starname_dat(cels);
     cr.read_star_orbits_dat(cels);
 
-    fp = fopen("universe", "wb");
-    if (fp)
+    fs.open("universe.json", std::ios::out);
+    if (fs)
     {
-        if (!Serialization::save_all(fp, cels)) std::cerr << "FAILED to save state." << std::endl;
-        fclose(fp);
+        if (!Serialization::save_all(fs, cels)) std::cerr << "FAILED to save state." << std::endl;
+        fs.close();
     }
     else std::cerr << "FAILED to write save state file." << std::endl;
 

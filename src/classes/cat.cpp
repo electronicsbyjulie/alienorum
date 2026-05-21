@@ -271,7 +271,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         //  90- 94  F5.2   mag     R-I      ? color
         read_field_onebased(buffer, 90, 94, field);
-        s->RI_magnitude = atof(field);
+        s->RI_color = atof(field);
 
         // 109-114  F6.1   mas     plx      ? Resulting parallax
         read_field_onebased(buffer, 109, 114, field);
@@ -549,7 +549,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         //  122-126  F5.2   mag     R-I      ? R-I   in system specified by n_R-I
         read_field_onebased(buffer, 122, 126, field);
-        s->RI_magnitude = atof(field);
+        s->RI_color = atof(field);
 
         //  128-147  A20    ---     SpType   Spectral type
         read_field_onebased(buffer, 128, 147, field);
@@ -585,7 +585,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             if (s->HD) strcpy(s->name, ((std::string)"HD" + std::to_string(s->HD)).c_str());
         }
 
-        s->VR_magnitude = (s->RI_magnitude + s->BV_color*2) / 3;      // VERY rough estimate
+        s->VR_color = (s->RI_color + s->BV_color*2) / 3;      // VERY rough estimate
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 

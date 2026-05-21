@@ -159,6 +159,35 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere)
     return oss.str();
 }
 
+json CelestialObject::to_json()
+{
+    json towrite = json::object();
+    towrite["absolute_magnitude"] = absolute_magnitude;
+    towrite["BV_color"] = BV_color;
+    towrite["declination"] = declination * fiftyseven;
+    towrite["distance"] = distance / light_year;
+    towrite["distance_known"] = distance_known;
+    towrite["epoch"] = epoch;
+    towrite["equinox"] = equinox * fiftyseven;
+    towrite["inclination"] = inclination * fiftyseven;
+    towrite["location"] = location.to_json();
+    towrite["mass"] = mass;
+    towrite["name"] = name;
+    towrite["oblateness"] = oblateness;
+    towrite["orbit"] = orbit->to_json();
+    towrite["precession"] = precession * year;
+    towrite["RI_color"] = RI_color;
+    towrite["right_ascension"] = right_ascension * fiftyseven;
+    towrite["sidereal_rotational_period"] = sidereal_rotational_period / 86400;
+    towrite["type"] = type;
+    towrite["typeclass"] = typeclass();
+    towrite["UB_color"] = UB_color;
+    towrite["volumetric_mean_radius"] = volumetric_mean_radius;
+    towrite["VR_color"] = VR_color;
+
+    return towrite;
+}
+
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center) return;
@@ -214,4 +243,23 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     location.system_center = orbit->center->location.system_center;
     location.local_position = result + orbit->center->location.local_position;
+}
+
+json Orbit::to_json()
+{
+    return
+    {
+        {"center_name", center->name},
+        {"ascending_node", ascending_node*fiftyseven},
+        {"inclination", inclination*fiftyseven},
+        {"semimajor_axis", semimajor_axis},
+        {"eccentricity", eccentricity},
+        {"arg_periapsis", arg_periapsis*fiftyseven},
+        {"prec_node", prec_node*fiftyseven*year},
+        {"proc_argperi", proc_argperi*fiftyseven*year},
+        {"mean_anomaly", mean_anomaly*fiftyseven},
+        {"epoch", epoch},
+        {"period", period/86400},
+        {"laplace", laplace.to_json()}
+    };
 }

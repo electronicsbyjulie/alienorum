@@ -79,6 +79,16 @@ ImU32 Color::black_to_transparent(ImU32 input)
     return (a<<24) + (b<<16) + (g<<8) + r;
 }
 
+json Color::to_json()
+{
+    return
+    {
+        {"red", red},
+        {"green", green},
+        {"blue", blue}
+    };
+}
+
 void set_gamma(double new_gamma)
 {
     global_inverse_gamma = 1.0 / new_gamma;

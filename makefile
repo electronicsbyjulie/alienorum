@@ -26,6 +26,7 @@ UNAME_S := $(shell uname -s)
 LIBS =
 LINUX_GL_LIBS = -lGL
 OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SRC)))))
+OBJS += $(OBJ)/nlohmann.o
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
 
 # Platform-specific stuff for ImGui:
@@ -55,18 +56,6 @@ ifeq ($(OS), Windows_NT)
     CFLAGS = $(CPPFLAGS)
 endif
 
-ifeq ($(shell test src/classes/celestial.h -nt src/classes/serial.h; echo $$?),0)
-  $(error Please increment the version in serial.h before proceeding!)
-endif
-ifeq ($(shell test src/classes/star.h -nt src/classes/serial.h; echo $$?),0)
-  $(error Please increment the version in serial.h before proceeding!)
-endif
-ifeq ($(shell test src/classes/planet.h -nt src/classes/serial.h; echo $$?),0)
-  $(error Please increment the version in serial.h before proceeding!)
-endif
-ifeq ($(shell test src/classes/galaxy.h -nt src/classes/serial.h; echo $$?),0)
-  $(error Please increment the version in serial.h before proceeding!)
-endif
 
 all: $(BIN) $(OBJ) objs apps
 
@@ -111,6 +100,9 @@ $(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 $(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_sdl2.o
 
+
+$(OBJ)/nlohmann.o:
+	$(CPP) src/include/nlohmann/json.hpp $(CPPFLAGS) -c -o $(OBJ)/nlohmann.o:
 
 
 $(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/misc.h makefile

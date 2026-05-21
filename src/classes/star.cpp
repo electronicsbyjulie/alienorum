@@ -235,6 +235,34 @@ void Star::gotta_be_named_something()
         << " distance " << (distance/light_year) << std::endl;
 }
 
+json Star::to_json()
+{
+    json towrite = CelestialObject::to_json();
+
+    towrite["proper_motion_RA"] = proper_motion_RA*fiftyseven*year;
+    towrite["proper_motion_decl"] = proper_motion_decl*fiftyseven*year;
+    towrite["radial_velocity"] = radial_velocity;
+    towrite["apparent_magnitude"] = apparent_magnitude;
+    towrite["parallax"] = parallax*fiftyseven*3600*1000;
+    towrite["spectral_type"] = spectral_type;
+    towrite["Bayer"] = Bayer;
+    towrite["Flamsteed"] = Flamsteed;
+    towrite["Gliese"] = Gliese;
+    towrite["BayerGrkno"] = BayerGrkno;
+    towrite["FlamsteedNo"] = FlamsteedNo;
+    towrite["constellation"] = constellation;
+    towrite["CCDM"] = CCDM;
+    towrite["Bonn_survey"] = Bonn_survey;
+    towrite["Bonn_survey_sign"] = Bonn_survey_sign;
+    towrite["Bonn_survey_declination"] = Bonn_survey_declination;
+    towrite["Bonn_survey_sequential"] = Bonn_survey_sequential;
+    towrite["is_orbit_multiple"] = is_orbit_multiple;
+    towrite["visible_area"] = visible_area.to_json();
+    towrite["visible_area_set"] = visible_area_set;
+
+    return towrite;
+}
+
 double Star::estimate_mass()
 {
     if (!cels[0])

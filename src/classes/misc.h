@@ -6,6 +6,9 @@
 #include <vector>
 #include <ctime>
 #include "../imgui/imgui.h"
+#include "../include/nlohmann/json.hpp"
+
+using json = nlohmann::json;
 
 #define light_year 9460730472580800.0
 #define parsec 3.08567758128E+16

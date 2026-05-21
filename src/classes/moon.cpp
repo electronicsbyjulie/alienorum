@@ -56,3 +56,13 @@ void Moon::update_location(double tmnow)
 {
     update_orbit_location(tmnow);
 }
+
+json Moon::to_json()
+{
+    json towrite = Planet::to_json();
+
+    towrite[""] = Laplace_plane.to_json();
+    towrite["Laplace_set"] = Laplace_set;
+
+    return towrite;
+}

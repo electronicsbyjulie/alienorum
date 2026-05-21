@@ -8,8 +8,6 @@
 
 class Star : public CelestialObject
 {
-    const __uint32_t magic_s = 0x53535353;  // Do not remove.
-
     public:
     double proper_motion_RA = 0;            // radians / second
     double proper_motion_decl = 0;          // radians / second
@@ -31,7 +29,7 @@ class Star : public CelestialObject
     __uint32_t HIP = 0;                     // Hipparcos catalog number
     __uint32_t SAO = 0;                     // USNO/SAO catalog number
     __uint32_t SB9 = 0;                     // 9th Catalogue of Spectroscopic Binary Orbits designation
-    char Bonn_survey[2] = {0,0};            // BD = Bonn, CD = Cordoba, CP = Cape Town
+    char Bonn_survey[3] = {0,0,0};          // BD = Bonn, CD = Cordoba, CP = Cape Town
     char Bonn_survey_sign = '+';
     int Bonn_survey_declination = 0;        // Declination category
     __uint32_t Bonn_survey_sequential = 0;  // Serial number by right ascension.
@@ -53,6 +51,7 @@ class Star : public CelestialObject
 
     double estimate_radius();
     void gotta_be_named_something();
+    json to_json();
 
 protected:
     Box visible_area;
