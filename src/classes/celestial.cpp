@@ -190,7 +190,12 @@ json CelestialObject::to_json()
 
 bool CelestialObject::from_json(json j)
 {
-    try { j.at("!name").get_to(name); } catch (...) { ; }
+    try
+    {
+        std::string str;
+        j.at("!name").get_to(str);
+        strcpy(name, str.c_str());
+    } catch (...) { ; }
     try { j.at("absolute_magnitude").get_to(absolute_magnitude); } catch (...) { ; }
     try { j.at("BV_color").get_to(BV_color); } catch (...) { ; }
     try { j.at("declination").get_to(declination); declination *= fiftyseventh; } catch (...) { ; }
@@ -217,7 +222,6 @@ bool CelestialObject::from_json(json j)
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
     try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period /= 86400; } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
-    try { j.at("typeclass").get_to(_class); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
     try { j.at("volumetric_mean_radius").get_to(volumetric_mean_radius); } catch (...) { ; }
     try { j.at("VR_color").get_to(VR_color); } catch (...) { ; }
@@ -238,6 +242,15 @@ bool CelestialObject::from_json(json j)
         json j1 = j.at("");
          = new ();
         ->from_json(j1);
+    } catch (...) { ; } */
+
+    // All that trouble to turn std::strings into char arrays because they weren't serializable, and guess what...
+    // we wanted the std::strings after all. Smh. TODO: Convert all the char[]s back to std::strings.
+    /* try
+    {
+        std::string str;
+        j.at("").get_to(str);
+        strcpy(, str.c_str());
     } catch (...) { ; } */
 
     return true;

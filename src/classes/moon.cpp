@@ -69,6 +69,7 @@ json Moon::to_json()
 
 bool Moon::from_json(json j)
 {
+    Planet::from_json(j);
     try
     {
         json j1 = j.at("Laplace_plane");

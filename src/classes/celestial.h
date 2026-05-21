@@ -56,7 +56,6 @@ class Orbit
 class CelestialObject
 {
     protected:
-    const __uint32_t magic0 = 0x77777777;       // This field MUST come first. It is for examining hex dumps of the universe file.
     cel_obj_class _class = class_unknown;
 
     public:
@@ -72,7 +71,6 @@ class CelestialObject
     double distance = 0;                        // meters
     bool distance_known = false;
 
-    const __uint32_t magic1 = 0xbdbdbdbd;       // Do not remove.
     double epoch = J2000;                       // JD
     double absolute_magnitude = 0;
     double UB_color = 0;
@@ -80,7 +78,6 @@ class CelestialObject
     double VR_color = 0;
     double RI_color = 0;
 
-    const __uint32_t magic2 = 0x53535353;
     cel_obj_type type = star;
     char name[32];
 

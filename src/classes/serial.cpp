@@ -64,5 +64,77 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels)
 
 bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
 {
-    return false;
+    try
+    {
+        json allobj;
+        allobj << fs;
+        int i, j, n = allobj.size();
+        for (i=0; i<n; i++)
+        {
+            json j = allobj.at(i);
+            cel_obj_class c;
+            j.at("typeclass").get_to(c);
+
+            switch (c)
+            {
+                case class_galaxy:
+                cels[i] = new Galaxy();
+                ((Galaxy*)cels[i])->from_json(j);
+                break;
+
+                case class_star:
+                cels[i] = new Star();
+                ((Star*)cels[i])->from_json(j);
+                break;
+
+                case class_planet:
+                cels[i] = new Planet();
+                ((Planet*)cels[i])->from_json(j);
+                break;
+
+                case class_moon:
+                cels[i] = new Moon();
+                ((Moon*)cels[i])->from_json(j);
+                break;
+
+                default:
+                std::cerr << "Attempted to load celestial object of blank or unknown type class." << std::endl;
+                return false;
+            }
+        }
+        allobj[i] = nullptr;
+
+        // Assign orbiting objects to their orbit centers.
+        for (i=0; cels[i]; i++)
+        {
+            if (!cels[i]->orbit) continue;
+            const char* cenname = cels[i]->orbit->center_name.c_str();
+            cels[i]->orbit->center = nullptr;
+            for (j=0; cels[j]; j++)
+            {
+                if (j==i) continue;
+                if (!strcmp(cenname, cels[j]->name))
+                {
+                    cels[i]->orbit->center = cels[j];
+                    break;
+                }
+            }
+            if (!cels[i]->orbit->center) std::cout << "FAILED to place " << cels[i]->name << " in orbit around " << cenname << std::endl;
+        }
+
+        for (i=0; cels[i]; i++)
+        {
+            cel_obj_class c = cels[i]->typeclass();
+            if (c == class_moon) ((Moon*)cels[i])->update_location(J2000_TIME_T);
+            else if (c == class_planet) ((Planet*)cels[i])->update_location(J2000_TIME_T);
+            else if (c == class_star) ((Star*)cels[i])->update_location(J2000_TIME_T);
+        }
+
+        return true;
+    }
+    catch (...)
+    {
+        std::cerr << "FAILED to load universe: incorrectly formatted JSON." << std::endl;
+        return false;
+    }
 }

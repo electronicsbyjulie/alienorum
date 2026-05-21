@@ -14,6 +14,7 @@ json Galaxy::to_json()
 
 bool Galaxy::from_json(json j)
 {
+    CelestialObject::from_json(j);
     // Nothing to load... yet. Here's a blank template for future implementation:
     // try { j.at("").get_to(); } catch (...) { ; }
     return true;
