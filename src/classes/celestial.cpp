@@ -10,6 +10,11 @@ bool *celskip;
 double *vmag_cache, *magrad_cache;
 CelestialLocation here;
 
+CelestialObject::CelestialObject()
+{
+    memset(name, 0, 32*sizeof(char));
+}
+
 double CelestialObject::viewer_magnitude(CelestialLocation seen_from)
 {
     if (type == rocky || type == ice_giant || type == gas_giant)

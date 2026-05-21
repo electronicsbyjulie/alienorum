@@ -7,6 +7,10 @@
 Star::Star()
 {
     _class = class_star;
+    memset(spectral_type, 0, 32*sizeof(char));
+    memset(Bayer, 0, 32*sizeof(char));
+    memset(Flamsteed, 0, 32*sizeof(char));
+    memset(Gliese, 0, 16*sizeof(char));
 }
 
 void Star::update_location(double tmnow)
@@ -75,7 +79,12 @@ void Star::rename_from_Bayer_Flamsteed()
     if (BayerGrkno >= 0)
     {
         int number = atoi(std::string(Bayer).substr(3, 1).c_str());
-        if (number) strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
+        if (number)
+        {
+            if (!strcmp(consabbrev[j].c_str(), "Ori") && BayerGrkno == 7)
+                strcpy(name, (std::string("HD" + std::to_string(HD)).c_str()));
+            else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
+        }
         else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
     }
     else if (FlamsteedNo)

@@ -363,7 +363,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 && cels[i]->name[strlen(cels[i]->name)-1] <= 'A'                        // In Gliese, member A is always listed first.
                 )
             {
-                if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude)
+                if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude && cels[i]->name[strlen(cels[i]->name)-1] != 'A')
                 {
                     if (!cels[i]->orbit || !cels[i]->orbit->center)
                     {
@@ -970,7 +970,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         // TODO: For systems where both members are not already loaded,
         // can load additional members.
-        if (!found) continue;
+        if (!found || (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")) ) continue;
         already[i] = true;
 
         //      13  A1     ---     Comp     [A-Z?] Concerned component (6)
@@ -1163,7 +1163,9 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         if (!A->distance_known) continue;
 
         found = -1;
-        if (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')
+        if (A->BayerGrkno != 7 || strcmp(A->constellation, "Ori")
+            && (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')
+            )
         {
             double foundmag[10] = {99,99,99,99,99,99,99,99,99,99};
             int foundidx[10] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
