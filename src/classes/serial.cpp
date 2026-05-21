@@ -56,33 +56,6 @@ bool Serialization::save_object(FILE *of, CelestialObject *cel)
     return true;
 }
 
-bool Serialization::save_all(FILE *of, CelestialObject **cels)
-{
-    __uint32_t ver = _serial_version, n;
-    fwrite(&ver, sizeof(__uint32_t), 1, of);
-    int i, pass;
-
-    for (n=0; cels[n]; n++)
-    {
-        if (cels[n]->orbit && cels[n]->orbit->center && cels[n]->orbit->center > cels[n])
-        {
-            CelestialObject *swap1 = cels[n]->orbit->center, *swap2 = cels[n];
-            for (i=0; i<n; i++) if (cels[i] == swap2) cels[i] = swap1;
-            cels[n] = swap2;
-            cels[n]->orbit->center = swap1;
-        }
-    }
-    fwrite(&n, sizeof(__uint32_t), 1, of);
-
-    for (pass=0; pass<2; pass++) for (i=0; i<n; i++)
-    {
-        if (!pass && cels[i]->orbit) continue;
-        if (pass && !cels[i]->orbit) continue;
-        if (!save_object(of, cels[i])) return false;
-    }
-    return true;
-}
-
 CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
 {
     cel_obj_class typeclass;
@@ -136,8 +109,8 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
         cel->orbit = new Orbit();
         cenname = load_string(in);
         fread(cel->orbit, sizeof(Orbit), 1, in);
-        cel->orbit->center = nullptr;
-        int i;
+        cel->orbit->center = nullptr;               // Clear this now; we'll depend on it later as a done-already marker.
+        /*int i;
         for (i=0; cfocl[i]; i++)
         {
             if (!strcmp(cenname.c_str(), cfocl[i]->name))
@@ -152,22 +125,62 @@ CelestialObject* Serialization::load_object(FILE *in, CelestialObject **cfocl)
             delete cel->orbit;
             delete cel;
             return nullptr;
-        }
+        }*/
     }
 
     return cel;
 }
 
+bool Serialization::save_all(FILE *of, CelestialObject **cels)
+{
+    __uint32_t ver = _serial_version, i, j, n;
+    fwrite(&ver, sizeof(__uint32_t), 1, of);
+
+    for (n=0; cels[n]; n++);
+    fwrite(&n, sizeof(__uint32_t), 1, of);
+
+    for (i=0; i<n; i++)
+    {
+        if (!save_object(of, cels[i])) return false;
+    }
+
+    n=0;
+    for (i=0; cels[i]; i++) if (cels[i]->orbit && cels[i]->orbit->center) n++;
+    fwrite(&n, sizeof(__uint32_t), 1, of);
+    for (i=0; cels[i]; i++) if (cels[i]->orbit && cels[i]->orbit->center)
+    {
+        n = -1;
+        for (j=0; cels[j]; j++)
+        {
+            if (j==i) continue;
+            if (cels[j] == cels[i]->orbit->center)
+            {
+                n = j;
+                break;
+            }
+        }
+        if (n<0)
+        {
+            std::cerr << "FAILED to save orbit center of " << cels[i]->name << ": object not found." << std::endl;
+            throw 0xbadc0de;
+        }
+        fwrite(&i, sizeof(__uint32_t), 1, of);
+        fwrite(&n, sizeof(__uint32_t), 1, of);
+    }
+
+    return true;
+}
+
 bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
 {
-    __uint32_t ver, n;
+    __uint32_t ver, num_obj, i, j, l, n;
     fread(&ver, sizeof(__uint32_t), 1, fp);
     if (ver != _serial_version)
     {
         std::cerr << "Cannot restore state: file version mismatch." << std::endl;
         return false;
     }
-    int i=0;
+
     fread(&n, sizeof(__uint32_t), 1, fp);
     if (n >= max)
     {
@@ -181,6 +194,32 @@ bool Serialization::load_all(FILE *fp, CelestialObject **cels, int max)
         if (!(cels[i] = cel)) return false;
         i++;
     }
-    cels[i] = nullptr;
+    cels[num_obj=i] = nullptr;
+
+    fread(&n, sizeof(__uint32_t), 1, fp);
+    std::cout << n << " orbits to read." << std::endl;
+    for (i=0; i<n; i++)
+    {
+        fread(&j, sizeof(__uint32_t), 1, fp);
+        fread(&l, sizeof(__uint32_t), 1, fp);
+        if (j >= num_obj || l >= num_obj)
+        {
+            std::cerr << "FAILED to load orbit centers: index " << j << " out of range." << std::endl;
+            return false;
+        }
+        std::cout << cels[j]->name << " orbits " << cels[l]->name << std::endl;
+        if (!cels[j]->orbit)
+        {
+            std::cerr << "FAILED to load orbit centers: " << cels[j]->name << " has no orbit." << std::endl;
+            return false;
+        }
+        if (cels[j]->orbit->center)                  // we nulled this before, so if it's not null then something went wrong
+        {
+            std::cerr << "FAILED to load orbit centers: " << cels[j]->name << " already orbits " << cels[j]->orbit->center->name << std::endl;
+            return false;
+        }
+
+        cels[j]->orbit->center = cels[l];
+    }
     return true;
 }

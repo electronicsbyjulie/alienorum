@@ -7,7 +7,7 @@
 #include "moon.h"
 
 // IMPORTANT: Update this when making ANY change to the CelestialObject, Star, Planet, or Galaxy classes.
-#define _serial_version 0xb0ad1cea + 260520007
+#define _serial_version 0xb0ad1cea + 260521004
 
 class Serialization
 {

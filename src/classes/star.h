@@ -8,15 +8,14 @@
 
 class Star : public CelestialObject
 {
+    const __uint32_t magic_s = 0x53535353;  // Do not remove.
+
     public:
     double proper_motion_RA = 0;            // radians / second
     double proper_motion_decl = 0;          // radians / second
     double radial_velocity = 0;             // meters / second
     double apparent_magnitude;              // visual/550nm
     double parallax = 0;                    // radians
-
-    double RA_Dec_accuracy = M_PI;          // radians
-    double distance_accuracy = 1.37e+9;     // value - this*value <= true_value <= value + this*value
 
     char spectral_type[32];
     char Bayer[32];

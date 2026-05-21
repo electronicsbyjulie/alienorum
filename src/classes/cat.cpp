@@ -232,7 +232,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
         s->epoch = 2433282.42345905;
-        s->RA_Dec_accuracy = fiftyseventh * 2.5;
 
         // TODO: Keep the epoch but translate the coordinates to the J2000 system.
         // Have to apply precession of the equinoxes; this is the major component.
@@ -286,7 +285,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         if (absmagn && s->apparent_magnitude)
         {
             s->distance_known = true;
-            s->distance_accuracy = (s->parallax+0.5)/(s->parallax-0.5)-1;
         }
 
         // Sun is distance zero.
@@ -296,7 +294,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             {
                 s->distance = 0;
                 s->distance_known = true;
-                s->distance_accuracy = 0;
                 s->mass = Msun;
                 s->volumetric_mean_radius = Rsun;
             }
@@ -407,7 +404,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     int offset, HDno, j;
     double deg, mnt, sec;
     bool HDfound;
-    double f, paralacc, cat_radec_acc = fiftyseventh / 3600;                 // one arc second
+    double f;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -504,43 +501,39 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         s->gotta_be_named_something();
 
-        if (s->RA_Dec_accuracy > cat_radec_acc)
-        {
-            //   76- 77  I2     h       RAh      ?Hours RA, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 76, 77, field);
-            deg = atof(field) * 15;
+        //   76- 77  I2     h       RAh      ?Hours RA, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 76, 77, field);
+        deg = atof(field) * 15;
 
-            //   78- 79  I2     min     RAm      ?Minutes RA, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 78, 79, field);
-            mnt = atof(field) * 15;
+        //   78- 79  I2     min     RAm      ?Minutes RA, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 78, 79, field);
+        mnt = atof(field) * 15;
 
-            //   80- 83  F4.1   s       RAs      ?Seconds RA, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 80, 83, field);
-            sec = atof(field) * 15;
+        //   80- 83  F4.1   s       RAs      ?Seconds RA, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 80, 83, field);
+        sec = atof(field) * 15;
 
-            s->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
+        s->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
 
-            //       84  A1     ---     DE-      ?Sign Dec, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 84, 84, field);
-            int sgndecl = (field[0] == '-') ? -1 : 1;
+        //       84  A1     ---     DE-      ?Sign Dec, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 84, 84, field);
+        int sgndecl = (field[0] == '-') ? -1 : 1;
 
-            //   85- 86  I2     deg     DEd      ?Degrees Dec, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 85, 86, field);
-            deg = atof(field);
+        //   85- 86  I2     deg     DEd      ?Degrees Dec, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 85, 86, field);
+        deg = atof(field);
 
-            //   87- 88  I2     arcmin  DEm      ?Minutes Dec, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 87, 88, field);
-            mnt = atof(field);
+        //   87- 88  I2     arcmin  DEm      ?Minutes Dec, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 87, 88, field);
+        mnt = atof(field);
 
-            //   89- 90  I2     arcsec  DEs      ?Seconds Dec, equinox J2000, epoch 2000.0 (1)
-            read_field_onebased(buffer, 89, 90, field);
-            sec = atof(field);
+        //   89- 90  I2     arcsec  DEs      ?Seconds Dec, equinox J2000, epoch 2000.0 (1)
+        read_field_onebased(buffer, 89, 90, field);
+        sec = atof(field);
 
-            s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
-            if (!s->right_ascension && !s->declination) continue;
-            s->epoch = J2000;
-            s->RA_Dec_accuracy = cat_radec_acc;
-        }
+        s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+        if (!s->right_ascension && !s->declination) continue;
+        s->epoch = J2000;
 
         //  103-107  F5.2   mag     Vmag     ?Visual magnitude (1)
         read_field_onebased(buffer, 103, 107, field);
@@ -678,7 +671,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     char Bonn[32], Cordoba[32], Cape[32];
     int num_read = 0;
     int offset, HD, HIP, j, cursor;
-    double RA, Decl, f, f1;
+    double deg, mnt, sec, RA, Decl, f, f1;
     Star* s;
 
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -695,13 +688,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 391, 396, field);
         HD = atoi(field);
 
-        // For now, do not load Hipparcos stars.
-        // Only use this catalog to refine positional data of already loaded stars.
-        // Later, we can expand program functionality to filter by absolute magnitude
-        // and by distance to the user's current POV.
-        // Note Hipparcos RA/Decl coordinates are in J1991.25 epoch.
-        // Even if the star already has coordinates in J2000,
-        // use the Hipparcos coordinates because they are high accuracy.
         s = nullptr;
         bool is_new = false;
         for (j=0; j<offset; j++)
@@ -790,28 +776,45 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             s->Bonn_survey_sequential = atoi(field);
         }
 
-        //  52- 63  F12.8 deg     RAdeg    *? alpha, degrees (ICRS, Epoch=J1991.25)
-        read_field_onebased(buffer, 52, 63, field);
-        RA = atof(field) * fiftyseventh;
+        //  18- 28  A11   ---     RAhms     Right ascension in h m s, ICRS (J1991.25) (H3)
+        read_field_onebased(buffer, 18, 19, field);
+        deg = atof(field) * 15;
 
-        //  65- 76  F12.8 deg     DEdeg    *? delta, degrees (ICRS, Epoch=J1991.25)
-        read_field_onebased(buffer, 65, 76, field);
-        Decl = atof(field) * fiftyseventh;
+        read_field_onebased(buffer, 21, 22, field);
+        mnt = atof(field) * 15;
+
+        read_field_onebased(buffer, 24, 28, field);
+        sec = atof(field) * 15;
+
+        RA = (deg + mnt/60 + sec/3600) * fiftyseventh;
+
+        //  30- 40  A11   ---     DEdms     Declination in deg ' ", ICRS (J1991.25)   (H4)
+        read_field_onebased(buffer, 30, 30, field);
+        int sgndecl = (field[0] == '-') ? -1 : 1;
+
+        read_field_onebased(buffer, 31, 32, field);
+        deg = atof(field);
+
+        read_field_onebased(buffer, 34, 35, field);
+        mnt = atof(field);
+
+        read_field_onebased(buffer, 37, 40, field);
+        sec = atof(field);
+
+        Decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+        s->epoch = 1991.25;
 
         if (RA && Decl)
         {
-            // 106-111  F6.2  mas   e_RAdeg    *? Standard error in RA*cos(DEdeg)        (H14)
-            read_field_onebased(buffer, 106, 111, field);
-            f = atof(field) / cos(Decl) / 3600 / 1000;
-            // 113-118  F6.2  mas   e_DEdeg    *? Standard error in DE                   (H15)
-            f = fmax(f, atof(field));
-            if (f < s->RA_Dec_accuracy)
-            {
-                s->right_ascension = RA;
-                s->declination = Decl;
-                s->RA_Dec_accuracy = f;
-                s->epoch = 2448349.0625;
-            }
+            s->right_ascension = RA;
+            s->declination = Decl;
+            s->epoch = 2448349.0625;
+        }
+        else
+        {
+            std::cout << "ERROR: HIP" << HIP << " has no RA/Decl" << std::endl;
+            throw 0xbadc0de;
+            continue;
         }
 
         // 120-125  F6.2  mas   e_Plx       ? Standard error in Plx                  (H16)
@@ -824,7 +827,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (f > 0)
         {
             s->parallax = f;
-            s->distance_accuracy = f1;
             s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
             s->distance_known = true;
         }
@@ -1020,6 +1022,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             A = s;
             continue;
         }
+        else if (!A) continue;
 
         //  47- 49  A3     deg     theta    Position angle (degrees) (4)
         read_field_onebased(buffer, 47, 49, field);
@@ -1251,8 +1254,6 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             B->distance_known = A->distance_known;
             B->location = A->location;          // Copies local reference planes.
             B->inclination = A->inclination;
-            B->RA_Dec_accuracy = A->RA_Dec_accuracy;
-            B->distance_accuracy = A->distance_accuracy;
             B->proper_motion_decl = A->proper_motion_decl;
             B->proper_motion_RA = A->proper_motion_RA;
             B->radial_velocity = A->radial_velocity;

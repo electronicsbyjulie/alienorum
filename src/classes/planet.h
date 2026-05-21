@@ -12,6 +12,8 @@
 // odds are it goes in this class.
 class Planet : public CelestialObject
 {
+    const __uint32_t magic_p = 0xea1cadb0;              // Do not remove.
+
     public:
     double albedo;
     Color color;
