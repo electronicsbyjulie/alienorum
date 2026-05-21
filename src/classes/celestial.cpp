@@ -174,7 +174,7 @@ json CelestialObject::to_json()
     towrite["mass"] = mass;
     towrite["name"] = name;
     towrite["oblateness"] = oblateness;
-    towrite["orbit"] = orbit->to_json();
+    if (orbit) towrite["orbit"] = orbit->to_json();
     towrite["precession"] = precession * year;
     towrite["RI_color"] = RI_color;
     towrite["right_ascension"] = right_ascension * fiftyseven;
