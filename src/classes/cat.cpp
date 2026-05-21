@@ -349,6 +349,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         cels[offset+num_read] = s;
 
+        #if auto_match_multiples
         for (j=1; j<10; j++)
         {
             int i = offset+num_read-j;
@@ -387,6 +388,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 }
             }
         }
+        #endif
 
         num_read++;
         if ((offset+num_read) >= (max-1)) break;
@@ -616,11 +618,13 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         #endif
 
-        if (!s->orbit) for (j=1; j<10; j++)
+        #if auto_match_multiples
+        if (!s->orbit && (s->BayerGrkno != 7 || strcmp(s->constellation, "Ori"))) for (j=1; j<10; j++)
         {
             int i = offset+num_read-j;
             if (i<=0) break;
             if (cels[i]->typeclass() == class_star
+                && (((Star*)cels[i])->BayerGrkno != 7 || strcmp(((Star*)cels[i])->constellation, "Ori"))
                 && fabs(cels[i]->right_ascension - s->right_ascension) < 0.002
                 && fabs(cels[i]->declination - s->declination) < 0.0013
                 && fabs(((Star*)cels[i])->parallax - s->parallax) < 3.1e-08
@@ -653,6 +657,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
                 }
             }
         }
+        #endif
 
         if (!HDfound)
         {
@@ -740,6 +745,10 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         s->HD = HD;
         s->HIP = HIP;
+
+        // 328-337  A10   ---     CCDM      CCDM identifier                          (H55)
+        read_field_onebased(buffer, 328, 337, field);
+        strcpy(s->CCDM, trim(field).c_str());
 
         // 398-407  A10   ---     BD        Bonner DM <I/119>, <I/122>               (H72)
         read_field_onebased(buffer, 398, 407, Bonn);
@@ -876,11 +885,13 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             // if (frand(0,1) < 0.03 && s->name[0]) std::cout << "HIP: updated " << s->name << std::endl << std::flush;
         }
 
-        if (!s->orbit) for (j=1; j<10; j++)
+        #if auto_match_multiples
+        if (!s->orbit && (s->BayerGrkno != 7 || strcmp(s->constellation, "Ori"))) for (j=1; j<10; j++)
         {
             int i = cursor-j;
             if (i<=0) break;
             if (cels[i]->typeclass() == class_star
+                && (((Star*)cels[i])->BayerGrkno != 7 || strcmp(((Star*)cels[i])->constellation, "Ori"))
                 && fabs(cels[i]->right_ascension - s->right_ascension) < 0.002
                 && fabs(cels[i]->declination - s->declination) < 0.0013
                 && fabs(((Star*)cels[i])->parallax - s->parallax) < 3.1e-09
@@ -915,6 +926,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                 }
             }
         }
+        #else
+        if (frand(0,1) < 0.03) std::cout << "HIP" << HIP << std::endl;
+        #endif
 
         num_read++;
         if (num_read >= max-4) break;
@@ -932,6 +946,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     int num_read = 0;
     int offset, HD, HIP, i;
     Star *s, *A = nullptr;
+    std::string CCDM;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -944,6 +959,25 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
     while (fgets(buffer, 1020, fp))
     {
+        //   2- 11  A10    ---     CCDM     (Catalogue of the Components of the Double and Multiple stars) identifier (1)
+        read_field_onebased(buffer, 2, 11, field);
+        CCDM = trim(field);
+        const char* cCCDM = CCDM.c_str();
+        bool found = false;
+        for (i=0; i<offset; i++)
+        {
+            if (already[i]) continue;
+            if (cels[i] == A) continue;
+            if (cels[i]->type != star) continue;
+            s = (Star*)cels[i];
+
+            if (!strcmp(cCCDM, s->CCDM))
+            {
+                found = true;
+                break;
+            }
+        }
+
         //  99-104  A6     ---     HD       HD identifier
         read_field_onebased(buffer, 99, 104, field);
         HD = atoi(field);
@@ -952,8 +986,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 127, 132, field);
         HIP = atoi(field);
 
-        bool found = false;
-        for (i=0; i<offset; i++)
+        if (!found) for (i=0; i<offset; i++)
         {
             if (already[i]) continue;
             if (cels[i]->type != star) continue;
@@ -966,11 +999,16 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             }
         }
 
-        if (already[i]) continue;
+        if (found && already[i]) continue;
 
         // TODO: For systems where both members are not already loaded,
         // can load additional members.
-        if (!found || (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")) ) continue;
+        if (!found) continue;
+        if (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori"))
+        {
+            A = nullptr;
+            continue;
+        }
         already[i] = true;
 
         //      13  A1     ---     Comp     [A-Z?] Concerned component (6)
@@ -1163,7 +1201,11 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         if (!A->distance_known) continue;
 
         found = -1;
-        if (A->BayerGrkno != 7 || strcmp(A->constellation, "Ori")
+        if ((A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")))
+        {
+            found = -2;
+        }
+        if ((A->BayerGrkno != 7 || strcmp(A->constellation, "Ori"))
             && (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')
             )
         {

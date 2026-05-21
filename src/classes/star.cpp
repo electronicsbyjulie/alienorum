@@ -10,7 +10,9 @@ Star::Star()
     memset(spectral_type, 0, 32*sizeof(char));
     memset(Bayer, 0, 32*sizeof(char));
     memset(Flamsteed, 0, 32*sizeof(char));
+    memset(constellation, 0, 32*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
+    memset(CCDM, 0, 16*sizeof(char));
 }
 
 void Star::update_location(double tmnow)
