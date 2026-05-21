@@ -52,6 +52,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels)
             }
         }
 
+        fs << allobjs;
         return true;
     }
     catch (...)
