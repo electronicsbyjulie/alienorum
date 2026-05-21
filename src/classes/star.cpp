@@ -38,6 +38,15 @@ void Star::rename_from_Bayer_Flamsteed()
 {
     if (!strlen(constellation)) return;
     if (BayerGrkno < 0 && !FlamsteedNo) return;
+    if (orbit && orbit->center && orbit->center->typeclass() == class_star
+        && !BayerGrkno && !FlamsteedNo
+        )
+    {
+        std::string buildname = lop_component(orbit->center->name);
+        buildname += std::string("B");
+        strcpy(name, buildname.c_str());
+        return;
+    }
 
     if (!consabbrev.size() || !consgen.size())
     {
@@ -313,7 +322,7 @@ void Gliese_doubles_fix()
 
                 strcpy(name2, s2->Gliese);
                 name2[n] = 0;
-                if (!strcmp(name1, name2))
+                if (!strcmp(name1, name2) || lop_component(s1->Gliese) == lop_component(s2->Gliese))
                 {
                     s2->right_ascension = s1->right_ascension;
                     s2->declination = s1->declination;

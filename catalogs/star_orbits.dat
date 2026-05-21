@@ -2,3 +2,7 @@
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch
 # https://en.wikipedia.org/wiki/Alpha_Centauri
 Rigil Kentaurus         Toliman                 2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
+
+# https://doi.org/10.1051/0004-6361/201322469
+HD20807                 HD20766                 5.36e+12?       063.8       065.5?      ?           5.610e+14?  ?                               2013.
+

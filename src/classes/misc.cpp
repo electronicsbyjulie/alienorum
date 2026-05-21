@@ -191,3 +191,11 @@ int Damerau_Levenshtein(const std::string& s1, const std::string& s2)
     }
     return dp[m][n];
 }
+
+std::string lop_component(const char *name)
+{
+    std::string result = name;
+    int n = strlen(name);
+    if (name[n-1] >= 'A' && name[n-1] <= 'Z' && (name[n-2] == ' ' || (name[n-2] >= '0' && name[n-2] <= '9'))) result = trim(result.substr(0, n-1));
+    return result;
+}

@@ -12,11 +12,11 @@
 
 // Zeta 1,2 Reticuli make for a good case study in the program correctly identifying binary systems,
 // since they have a decent separation both in actual physical distance and in angular position from the solar system.
-// They are close enough that differences in parallax would not be expected to be within margins of error, allowing a
-// decent estimation of the parallax tolerances for stars in the same system, although the system's inclination is unknown.
-// They also are not identified in the catalogs as stars A and B of a binary, which makes them an even better test 
+// They are close enough to Earth that differences in parallax might not be within margins of error, allowing a
+// decent estimation of the parallax tolerances for stars in the same system, and the system's inclination is likely to be near edge-on.
+// They also are not identified in the catalogs as stars A and B of a binary, which also makes them a great test
 // since we can't just lazily require all binary systems to be marked this way.
-#define _debug_sbinaries_zetret 1
+#define _debug_sbinaries_zetret 0
 
 namespace fs = std::filesystem;
 
@@ -356,9 +356,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             if (cels[i]->typeclass() == class_star
                 && fabs(cels[i]->right_ascension - s->right_ascension) < 0.002
                 && fabs(cels[i]->declination - s->declination) < 0.0013
-                && fabs(((Star*)cels[i])->parallax - s->parallax) < 3.5e-08
-                && fabs(((Star*)cels[i])->proper_motion_RA - s->proper_motion_RA) < 3e-15
-                && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 3e-15
+                && ((      fabs(((Star*)cels[i])->parallax - s->parallax) < 3.5e-08
+                        && fabs(((Star*)cels[i])->proper_motion_RA - s->proper_motion_RA) < 3e-15
+                        && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 3e-15)
+                    || (lop_component(cels[i]->name) == lop_component(s->name)))
+                && cels[i]->name[strlen(cels[i]->name)-1] <= 'A'                        // In Gliese, member A is always listed first.
                 )
             {
                 if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude)
@@ -614,7 +616,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         #endif
 
-        for (j=1; j<10; j++)
+        if (!s->orbit) for (j=1; j<10; j++)
         {
             int i = offset+num_read-j;
             if (i<=0) break;
@@ -626,6 +628,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
                 && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 5e-16
                 )
             {
+                if (cels[i]->orbit) continue;
                 if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude)
                 {
                     if (!cels[i]->orbit || !cels[i]->orbit->center)
@@ -870,10 +873,10 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
         else
         {
-            if (frand(0,1) < 0.03 && s->name[0]) std::cout << "HIP: updated " << s->name << std::endl << std::flush;
+            // if (frand(0,1) < 0.03 && s->name[0]) std::cout << "HIP: updated " << s->name << std::endl << std::flush;
         }
 
-        for (j=1; j<10; j++)
+        if (!s->orbit) for (j=1; j<10; j++)
         {
             int i = cursor-j;
             if (i<=0) break;
@@ -885,6 +888,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                 && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 1.5e-15
                 )
             {
+                if (cels[i]->orbit) continue;
                 if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude)
                 {
                     if (!cels[i]->orbit || !cels[i]->orbit->center)
@@ -892,7 +896,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                         if (!cels[i]->orbit) cels[i]->orbit = new Orbit();
                         cels[i]->orbit->center = s;
                         cels[i]->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << cels[i]->name << " orbits " << s->name << std::endl;
+                        std::cout << cels[i]->name << "/HIP" << ((Star*)cels[i])->HIP
+                            << " orbits " << s->name << "/HIP" << s->HIP << std::endl;
                         break;
                     }
                 }
@@ -903,7 +908,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                         if (!s->orbit) s->orbit = new Orbit();
                         s->orbit->center = cels[i];
                         s->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << s->name << " orbits " << cels[i]->name << std::endl;
+                        std::cout << cels[i]->name << "/HIP" << ((Star*)cels[i])->HIP
+                            << " orbits " << s->name << "/HIP" << s->HIP << std::endl;
                         break;
                     }
                 }
@@ -1348,7 +1354,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
                 strcpy(s->name, trim(field).c_str());
-                std::cout << "Named " << s->name << std::endl << std::flush;
+                // std::cout << "Named " << s->name << std::endl << std::flush;
                 num_read++;
                 break;
             }
@@ -1374,28 +1380,45 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     {
         if (*buffer == '#') continue;
         if (!trim(buffer).size()) continue;
+        std::cout << buffer << std::endl;
 
         read_field_onebased(buffer, 1, 23, field);
         std::string cenname = trim(field);
+        const char* censtr = cenname.c_str();
         A = nullptr;
-        for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, cenname.c_str()))
+        for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, censtr)
+            || (cels[i]->typeclass() == class_star && censtr[0] == 'H' && censtr[1] == 'D' && atoi(&censtr[2]) == ((Star*)cels[i])->HD)
+            )
         {
             A = (Star*)cels[i];
             break;
         }
-
-        if (!A) continue;
+        std::cout << A << std::endl;
 
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
+        const char* bdystr = bdyname.c_str();
+
+        if (!A)
+        {
+            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << std::endl;
+            continue;
+        }
+
         s = nullptr;
-        for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, bdyname.c_str()))
+        for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, bdystr)
+            || (cels[i]->typeclass() == class_star && bdystr[0] == 'H' && bdystr[1] == 'D' && atoi(&bdystr[2]) == ((Star*)cels[i])->HD)
+            )
         {
             s = (Star*)cels[i];
             break;
         }
 
-        if (!s) continue;
+        if (!s)
+        {
+            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << std::endl;
+            continue;
+        }
 
         if (!s->orbit) s->orbit = new Orbit();
         s->orbit->center = A;
@@ -1443,9 +1466,9 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         s->location = A->location;
         s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
 
-        if (A->HD && s->HD)
-            std::cout << "starorbits: updated " << (strlen(A->name) ? A->name : (std::string("HD")+std::to_string(A->HD)))
-                << ": " << (strlen(s->name) ? s->name : (std::string("HD")+std::to_string(s->HD))) << std::endl << std::flush;
+        std::cout << "starorbits: updated " << A->name << ": " << s->name
+            << " sma " << (s->orbit->semimajor_axis/AU)
+            << std::endl << std::flush;
 
         num_read++;
     }

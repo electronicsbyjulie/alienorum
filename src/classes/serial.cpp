@@ -62,7 +62,16 @@ bool Serialization::save_all(FILE *of, CelestialObject **cels)
     fwrite(&ver, sizeof(__uint32_t), 1, of);
     int i, pass;
 
-    for (n=0; cels[n]; n++);
+    for (n=0; cels[n]; n++)
+    {
+        if (cels[n]->orbit && cels[n]->orbit->center && cels[n]->orbit->center > cels[n])
+        {
+            CelestialObject *swap1 = cels[n]->orbit->center, *swap2 = cels[n];
+            for (i=0; i<n; i++) if (cels[i] == swap2) cels[i] = swap1;
+            cels[n] = swap2;
+            cels[n]->orbit->center = swap1;
+        }
+    }
     fwrite(&n, sizeof(__uint32_t), 1, of);
 
     for (pass=0; pass<2; pass++) for (i=0; i<n; i++)

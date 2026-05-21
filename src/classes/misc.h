@@ -75,6 +75,7 @@ std::string Greek_from_abbrev(char* abbrev);
 std::string Greek_from_abbrev(std::string abbrev);
 double blackbody_flux(double temperature, double wavelength);               // Kelvins and meters.
 int Damerau_Levenshtein(const std::string &s1, const std::string &s2);
+std::string lop_component(const char* name);
 
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);

@@ -196,6 +196,8 @@ void load_catalogs()
         fclose(fp);
     }
 
+    cels[0] = nullptr;
+
     n = cats.size();
     for (i=0; i<n; i++)
     {
@@ -227,12 +229,14 @@ void load_catalogs()
         int nBSC = cr.read_BrightStars_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nBSC << " objects." << endl << flush;
         ncelobjs += nBSC;
+        Gliese_doubles_fix();
     }
     if (have_HIP)
     {
         cout << "Reading Hipparcos catalog..." << endl << flush;
         int nHIP = cr.read_Hipparcos_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nHIP << " objects." << endl << flush;
+        Gliese_doubles_fix();
     }
     if (have_CCDM)
     {
@@ -251,7 +255,6 @@ void load_catalogs()
 
     rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
-    Gliese_doubles_fix();
     cr.read_star_orbits_dat(cels);
 
     fp = fopen("universe", "wb");
