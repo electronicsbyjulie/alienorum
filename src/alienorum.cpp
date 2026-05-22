@@ -22,7 +22,7 @@
 #include "classes/cat.h"
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb/stb_image.h"
+#include "include/stb/stb_image.h"
 
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 

@@ -1,69 +1,71 @@
 #
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
+#
 # Linux:
-# 	apt-get install -y libsdl2-dev libsdl2-image-dev libstb-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev
+#
 # Mac OS:
-#   brew install sdl2 sdl2-image
-# MSYS2:
-#   pacman -S mingw-w64-i686-SDL2
+#   brew install sdl2 sdl2_image
+#
+# MSYS2 (Run in MINGW64 environment):
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image
 #
 
 CPP = g++
 CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -g -Wall -Wformat
 
-# Uncomment for debug mode
-# CPPFLAGS += -g -DDEBUG
-
 IMGUI_DIR = src/imgui
 CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
-		    $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+            $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-			$(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp
+            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp
+
 BIN = bin
 OBJ = obj
 UNAME_S := $(shell uname -s)
 LIBS =
 LINUX_GL_LIBS = -lGL
+
+# Dynamically track all object files cleanly
 OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SRC)))))
-# OBJS += $(OBJ)/nlohmann.o
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
+OBJS += $(OBJ)/alienorum.o
 
-# Platform-specific stuff for ImGui:
-ifeq ($(UNAME_S), Linux) #LINUX
-	ECHO_MESSAGE = "Building for Linux..."
-	LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image
-
-	CPPFLAGS += `sdl2-config --cflags`
-	CFLAGS = $(CPPFLAGS)
+# Platform-specific configurations
+ifeq ($(UNAME_S), Linux)
+    ECHO_MESSAGE = "Building for Linux..."
+    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image
+    CPPFLAGS += `sdl2-config --cflags`
+    CFLAGS = $(CPPFLAGS)
 endif
 
-ifeq ($(UNAME_S), Darwin) #APPLE
-	ECHO_MESSAGE = "Building for Mac OS..."
-	LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs`
-	LIBS += -L/usr/local/lib -L/opt/local/lib
-
-	CPPFLAGS += `sdl2-config --cflags` -lSDL2_image
-	CPPFLAGS += -I/usr/local/include -I/opt/local/include
-	CFLAGS = $(CPPFLAGS)
+ifeq ($(UNAME_S), Darwin)
+    ECHO_MESSAGE = "Building for Mac OS..."
+    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image
+    
+    # Support both Intel (/usr/local) and Apple Silicon (/opt/homebrew)
+    LIBS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
+    CPPFLAGS += `sdl2-config --cflags` -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
+    CFLAGS = $(CPPFLAGS)
 endif
 
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
-    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2`
-
-    CPPFLAGS += `pkg-config --cflags sdl2` -lSDL2_image
+    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image
+    CPPFLAGS += `pkg-config --cflags sdl2`
     CFLAGS = $(CPPFLAGS)
 endif
 
-
 all: $(BIN) $(OBJ) objs apps
+	@echo $(ECHO_MESSAGE)
 
+# Robust cross-platform directory generation
 $(BIN):
-	if [ ! -f $(BIN) ]; then mkdir -p $(BIN); fi
+	mkdir -p $(BIN)
 
 $(OBJ):
-	if [ ! -f $(OBJ) ]; then mkdir -p $(OBJ); fi
+	mkdir -p $(OBJ)
 
 clean:
 	rm -Rf $(OBJ)/*.o
@@ -75,9 +77,12 @@ objs: $(OBJS)
 
 alienorum: $(BIN)/alienorum
 
+# Compile main application file to object file first
+$(OBJ)/alienorum.o: src/alienorum.cpp
+	$(CPP) $(CPPFLAGS) -c -o $@ $<
+
 %.o:$(IMGUI_DIR)/backends/%.cpp
 	$(CPP) $(CPPFLAGS) -c -o $(OBJ)/$@ $<
-
 
 $(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp
 	$(CPP) $(IMGUI_DIR)/imgui_demo.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_demo.o
@@ -99,7 +104,6 @@ $(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 
 $(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_sdl2.o
-
 
 $(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJ)/misc.o
@@ -131,7 +135,7 @@ $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h 
 $(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
 
-$(BIN)/alienorum: src/alienorum.cpp $(OBJS)
-	$(CPP) src/alienorum.cpp $(OBJ)/*.o -o $(BIN)/alienorum $(CPPFLAGS) $(LIBS)
-
+# Strict link step using the specific object array explicitly
+$(BIN)/alienorum: $(OBJS)
+	$(CPP) $(OBJS) -o $(BIN)/alienorum $(LIBS)
 
