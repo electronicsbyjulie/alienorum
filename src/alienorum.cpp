@@ -355,7 +355,7 @@ void cache_cons_lines()
         {
             if (cels[j]->type != star) continue;
             Star* s = (Star*)cels[j];
-            if (s->apparent_magnitude > 6.5) continue;
+            if (s->apparent_magnitude > 7.5) continue;
             if (founda < 0
                 && 
                 (
