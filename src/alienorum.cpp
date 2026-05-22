@@ -13,7 +13,6 @@
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <SDL_image.h>
-#include <thread>
 #ifdef _WIN32
 #include <windows.h>        // SetProcessDPIAware()
 #endif
@@ -248,7 +247,9 @@ void load_catalogs()
     fs.open("universe.json", std::ios::in);
     if (fs)
     {
+        mtx.lock();
         loading_msg = "Loading Universe file...";
+        mtx.unlock();
         if (Serialization::load_all(fs, cels, MAX_CELOBJS))
         {
             fs.close();
@@ -274,14 +275,18 @@ void load_catalogs()
 
     if (have_Gliese)
     {
+        mtx.lock();
         loading_msg = std::string("Loading Gliese catalog...");
+        mtx.unlock();
         cout << "Reading Gliese catalog..." << endl << flush;
         int nGliese = cr.read_Gliese_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nGliese << " objects." << endl << flush;
         ncelobjs += nGliese;
     }
 
+    mtx.lock();
     loading_msg = std::string("Loading solar system...");
+    mtx.unlock();
     cout << "Reading local planets..." << endl << flush;
     int npl = cr.read_local_planets(cels, MAX_CELOBJS);                   // Read solar system planets now, before painting the sky with stars
     num_planets += npl;
@@ -290,7 +295,9 @@ void load_catalogs()
 
     if (have_BSC)
     {
+        mtx.lock();
         loading_msg = std::string("Loading Bright Star Catalog...");
+        mtx.unlock();
         cout << "Reading Bright Star Catalog..." << endl << flush;
         int nBSC = cr.read_BrightStars_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nBSC << " objects." << endl << flush;
@@ -299,7 +306,9 @@ void load_catalogs()
     }
     if (have_HIP)
     {
+        mtx.lock();
         loading_msg = std::string("Loading Hipparcos Catalog...");
+        mtx.unlock();
         cout << "Reading Hipparcos catalog..." << endl << flush;
         int nHIP = cr.read_Hipparcos_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nHIP << " objects." << endl << flush;
@@ -307,14 +316,18 @@ void load_catalogs()
     }
     if (have_CCDM)
     {
+        mtx.lock();
         loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
+        mtx.unlock();
         cout << "Reading CCDM catalog..." << endl << flush;
         int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nCCDM << " objects." << endl << flush;
     }
     if (have_SB9)
     {
+        mtx.lock();
         loading_msg = std::string("Loading Stellar Binaries Catalog...");
+        mtx.unlock();
         cout << "Reading SB9 catalog..." << endl << flush;
         int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nSB9 << " objects." << endl << flush;
@@ -322,13 +335,19 @@ void load_catalogs()
 
     for (i=0; cels[i]; i++) if (cels[i]->type == star) num_stars++;
 
+    mtx.lock();
     loading_msg = std::string("Naming stars...");
+    mtx.unlock();
     rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
+    mtx.lock();
     loading_msg = std::string("Orbiting stars...");
+    mtx.unlock();
     cr.read_star_orbits_dat(cels);
 
+    mtx.lock();
     loading_msg = std::string("Writing Universe file...");
+    mtx.unlock();
     fs.open("universe.json", std::ios::out);
     if (fs)
     {
@@ -1411,17 +1430,25 @@ void draw_objinf_window(ImGuiIO& io)
 
 void load_stuff()
 {
+    mtx.lock();
     loading_msg = "Reading constellations...";
+    mtx.unlock();
     read_cons_lines();
+    mtx.lock();
     loading_msg = "Loading star data...";
+    mtx.unlock();
     load_catalogs();
+    mtx.lock();
     loading_msg = "Assigning constellations...";
+    mtx.unlock();
     cache_cons_lines();
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
 
+    mtx.lock();
     loading_msg = "Done!";
     splash = false;
+    mtx.unlock();
 }
 
 int main (int argc, char** argv)
@@ -1609,6 +1636,10 @@ int main (int argc, char** argv)
         else if (c == class_moon) ((Moon*)cels[i])->update_location(simnow);
     }
 
+    if (!look_for_catalogs()) return -1;
+    std::thread t1(load_stuff);
+    t1.detach();
+
     // Main loop
     bool done = false;
     viewchanged = true;
@@ -1677,14 +1708,6 @@ int main (int argc, char** argv)
         //////////////////////////////////////////////////
         // End ImGui-specific setup code                //
         //////////////////////////////////////////////////
-
-            if (!look_for_catalogs()) return -1;
-
-            if (my_image_texture == 5)
-            {
-                std::thread t1(load_stuff);
-                t1.detach();
-            }
         }
         else
         {

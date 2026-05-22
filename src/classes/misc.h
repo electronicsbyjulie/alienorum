@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <ctime>
+#include <thread>
+#include <mutex>
 #include "../imgui/imgui.h"
 #include "../include/nlohmann/json.hpp"
 
@@ -92,6 +94,7 @@ extern double bv_correction;
 
 // APP STATUS AND SETTINGS
 extern std::string loading_msg;
+extern std::mutex mtx;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, is_an_obj_under_cursor;
 extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, is_mouse_over_window, dragging, dragged, viewchanged,
