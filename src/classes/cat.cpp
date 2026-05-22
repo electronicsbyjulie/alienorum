@@ -817,10 +817,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             continue;
         }
 
-        // 120-125  F6.2  mas   e_Plx       ? Standard error in Plx                  (H16)
-        read_field_onebased(buffer, 106, 111, field);
-        f1 = fabs(atof(field)) / f;
-
         //  80- 86  F7.2  mas     Plx       ? Trigonometric parallax
         read_field_onebased(buffer, 80, 86, field);
         f = atof(field) / 1000 / 3600 * fiftyseventh;
@@ -830,7 +826,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
             s->distance_known = true;
         }
-        else s->distance = light_year*1e4;
+        else if (!s->distance_known) s->distance = light_year*1e4;
 
         //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
         read_field_onebased(buffer, 88, 95, field);

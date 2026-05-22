@@ -196,6 +196,7 @@ bool CelestialObject::from_json(json j)
         j.at("!name").get_to(str);
         strcpy(name, str.c_str());
     } catch (...) { ; }
+    try { j.at("typeclass").get_to(_class); } catch (...) { ; }
     try { j.at("absolute_magnitude").get_to(absolute_magnitude); } catch (...) { ; }
     try { j.at("BV_color").get_to(BV_color); } catch (...) { ; }
     try { j.at("declination").get_to(declination); declination *= fiftyseventh; } catch (...) { ; }
@@ -295,7 +296,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     location.orbital_plane.v = Point(cosO, 0, sinO);
     location.orbital_plane.a = orbit->inclination;
 
-    if (type != star && orbit->center->type != star && orbit->center->orbit && orbit->center->orbit->center && !crp)
+    if (_class == class_moon && !crp)
     {
         std::cerr << "CelestialObject::update_orbit_location() called on moon " << name
             << " of planet " << orbit->center->name
@@ -340,6 +341,7 @@ bool Orbit::from_json(json j)
     try { j.at("semimajor_axis").get_to(semimajor_axis); } catch (...) { ; }
     try { j.at("eccentricity").get_to(eccentricity); } catch (...) { ; }
     try { j.at("arg_periapsis").get_to(arg_periapsis); arg_periapsis *= fiftyseventh; } catch (...) { ; }
+    try { j.at("mean_anomaly").get_to(mean_anomaly); mean_anomaly *= fiftyseventh; } catch (...) { ; }
     try { j.at("epoch").get_to(epoch); } catch (...) { ; }
     try { j.at("period").get_to(period); period *= 86400; } catch (...) { ; }
     try { j.at("prec_node").get_to(prec_node); prec_node *= fiftyseventh / year; } catch (...) { ; }

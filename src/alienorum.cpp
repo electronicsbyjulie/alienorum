@@ -192,6 +192,7 @@ void load_catalogs()
         {
             fs.close();
             for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
+            ncelobjs = i;
             return;
         }
         fs.close();

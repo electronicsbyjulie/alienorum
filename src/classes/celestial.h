@@ -7,13 +7,14 @@
 
 enum cel_obj_type
 {
-    galaxy,
-    star,
-    gas_giant,
-    ice_giant,
-    rocky,
-    comet,
-    artificial
+    // The types are numbered by hierarchy in case of name conflicts, so that e.g. stars cannot orbit moons etc.
+    galaxy = 0x100,
+    star = 0x200,
+    gas_giant = 0x300,
+    ice_giant = 0x301,
+    rocky = 0x400,
+    comet = 0x401,
+    artificial = 0x500
 };
 
 enum cel_obj_class

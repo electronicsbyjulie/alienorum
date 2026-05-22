@@ -85,13 +85,17 @@ void Star::rename_from_Bayer_Flamsteed()
         {
             if (!strcmp(consabbrev[j].c_str(), "Ori") && BayerGrkno == 7)
                 strcpy(name, (std::string("HD" + std::to_string(HD)).c_str()));
+            if (!strcmp(consabbrev[j].c_str(), "UMa") && BayerGrkno == 13)
+                strcpy(name, Gliese);
             else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
         }
         else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
     }
     else if (FlamsteedNo)
     {
-        strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
+        if (!strcmp(consabbrev[j].c_str(), "UMa") && FlamsteedNo == 53)
+            strcpy(name, Gliese);
+        else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
     }
 }
 
