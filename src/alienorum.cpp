@@ -1687,21 +1687,22 @@ int main (int argc, char** argv)
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
             int y;
-            double r = 0.0005, g = 0.001, b = 0.03;
+            double r = 0.0003, g = 0.001, b = 0.03;
             for (y=0; y<io.DisplaySize.y; y++)
             {
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(io.DisplaySize.x, y),
                     IM_COL32( (int)(fmin(1,r)*255), (int)(fmin(1,g)*255), (int)(fmin(1,b)*255), 255 ) );
 
-                r *= 1.0085;
+                r *= 1.0093;
                 g *= 1.0081;
-                b *= 1.0053;
+                b *= 1.0044;
             }
 
             mtx.lock();
-            ImGui::Begin(loading_msg.c_str(), &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar 
-                | ImGuiWindowFlags_NoCollapse);
+            std::string wash_copilots_mouth_out_with_soap = loading_msg;
             mtx.unlock();
+            ImGui::Begin(wash_copilots_mouth_out_with_soap.c_str(), &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar 
+                | ImGuiWindowFlags_NoCollapse);
             ImGui::SetWindowPos(ImVec2(left,0));
             ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
             ImGui::Image((ImTextureID)(intptr_t)my_image_texture, ImVec2(aspect_width, splash_height));
