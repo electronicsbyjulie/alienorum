@@ -27,6 +27,8 @@ class Color
     static ImU32 black_to_transparent(ImU32 input);
     json to_json();
     bool from_json(json j);
+    Color() {}
+    Color(double r, double g, double b) { red=r; green=g; blue=b; }
 };
 
 extern double global_brightness;

@@ -102,11 +102,16 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
                 return false;
             }
 
-            loading_msg = std::string("Loaded ") + std::to_string(i) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
+            mtx.lock();
+            loading_msg = std::string("Loaded ") + std::to_string(i+1) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
+            mtx.unlock();
         }
         allobj[i] = nullptr;
 
         // Assign orbiting objects to their orbit centers.
+        mtx.lock();
+        loading_msg = std::string("Assigning orbiting bodies to primary...");
+        mtx.unlock();
         for (i=0; cels[i]; i++)
         {
             if (!cels[i]->orbit) continue;

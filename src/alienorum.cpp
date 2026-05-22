@@ -1646,6 +1646,24 @@ int main (int argc, char** argv)
     bool ret = LoadTextureFromFile("assets/icon_full.png", &my_image_texture, &my_image_width, &my_image_height);
     IM_ASSERT(ret);
 
+    #define MAX_SPLASH_STARS 1054
+    ImVec2 splash_star_positions[MAX_SPLASH_STARS];
+    double splash_star_brghtness[MAX_SPLASH_STARS];
+    int screen_x = 1920, screen_y = 1080;               // The most common values.
+
+    SDL_DisplayMode dm;
+    if (SDL_GetCurrentDisplayMode(0, &dm) == 0)
+    {
+        screen_x = dm.w;
+        screen_y = dm.h;
+    }
+
+    for (i=0; i<MAX_SPLASH_STARS; i++)
+    {
+        splash_star_positions[i] = ImVec2(frand(0, screen_x), frand(0, screen_y));
+        splash_star_brghtness[i] = frand(0.1, 2.0);
+    }
+
     // Main loop
     bool done = false;
     viewchanged = true;
@@ -1696,6 +1714,22 @@ int main (int argc, char** argv)
                 r *= 1.0067;
                 g *= 1.0053;
                 b *= 1.0037;
+            }
+
+            Color col(192, 225, 255);
+            double jay;
+            for (i=0; i<MAX_SPLASH_STARS; i++)
+            {
+                for (jay=splash_star_brghtness[i]; jay>=0; jay-=0.5)
+                {
+                    RGB rgb = Color::rgb_from_color(col, 1);
+                    if (rgb.r >= 16 || rgb.b >= 16)
+                        ImGui::GetBackgroundDrawList()->AddCircleFilled(splash_star_positions[i],
+                            jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 64)), 0);
+                    if (rgb.r == 255 && rgb.b == 255) break;
+
+                    col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
+                }
             }
 
             mtx.lock();
