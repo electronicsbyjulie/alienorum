@@ -1198,7 +1198,7 @@ void draw_status_window(ImGuiIO& io)
     // TODO: If redlight_mode, set all window and text colors accordingly.
     int stattop = 0, statleft = 0, statwidth = 225, statheight = txtyscale*2.3;
     int i;
-    ImGui::Begin("Status", &statuswnd);
+    ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
 
     /////////////////////////////////////////////////////
 
@@ -1390,7 +1390,7 @@ void draw_status_window(ImGuiIO& io)
 void draw_objinf_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
-    ImGui::Begin("Object", &objinfwnd);
+    ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
     int objinftop = 0, objinfleft = (int)io.DisplaySize.x - 211, objinfwidth = 211, objinfheight = txtyscale*2;
 
     ImGui::Text(objname.c_str());
@@ -1655,11 +1655,22 @@ int main (int argc, char** argv)
             double aspect_width = splash_height * my_image_width / my_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
-            ImGui::Begin(loading_msg.c_str());
+            int y;
+            double r = 0.0005, g = 0.001, b = 0.01;
+            for (y=0; y<io.DisplaySize.y; y++)
+            {
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(io.DisplaySize.x, y),
+                    IM_COL32( (int)(fmin(1,r)*255), (int)(fmin(1,g)*255), (int)(fmin(1,b)*255), 255 ) );
+
+                r *= 1.0085;
+                g *= 1.0081;
+                b *= 1.0053;
+            }
+
+            ImGui::Begin(loading_msg.c_str(), &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar 
+                | ImGuiWindowFlags_NoCollapse);
             ImGui::SetWindowPos(ImVec2(left,0));
             ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
-            // ImGui::Text("pointer = %x", my_image_texture);
-            // ImGui::Text("size = %d x %d", my_image_width, my_image_height);
             ImGui::Image((ImTextureID)(intptr_t)my_image_texture, ImVec2(aspect_width, splash_height));
             ImGui::End();
 
