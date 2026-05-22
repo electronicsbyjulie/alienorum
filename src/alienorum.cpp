@@ -1698,8 +1698,10 @@ int main (int argc, char** argv)
                 b *= 1.0053;
             }
 
+            mtx.lock();
             ImGui::Begin(loading_msg.c_str(), &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar 
                 | ImGuiWindowFlags_NoCollapse);
+            mtx.unlock();
             ImGui::SetWindowPos(ImVec2(left,0));
             ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
             ImGui::Image((ImTextureID)(intptr_t)my_image_texture, ImVec2(aspect_width, splash_height));
