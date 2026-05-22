@@ -1640,6 +1640,12 @@ int main (int argc, char** argv)
     std::thread t1(load_stuff);
     t1.detach();
 
+    int my_image_width = 0;
+    int my_image_height = 0;
+    GLuint my_image_texture = 0;
+    bool ret = LoadTextureFromFile("assets/icon_full.png", &my_image_texture, &my_image_width, &my_image_height);
+    IM_ASSERT(ret);
+
     // Main loop
     bool done = false;
     viewchanged = true;
@@ -1676,18 +1682,12 @@ int main (int argc, char** argv)
 
         if (splash)
         {
-            int my_image_width = 0;
-            int my_image_height = 0;
-            GLuint my_image_texture = 0;
-            bool ret = LoadTextureFromFile("assets/icon_full.png", &my_image_texture, &my_image_width, &my_image_height);
-            IM_ASSERT(ret);
-
             double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 25;
             double aspect_width = splash_height * my_image_width / my_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
             int y;
-            double r = 0.0005, g = 0.001, b = 0.01;
+            double r = 0.0005, g = 0.001, b = 0.03;
             for (y=0; y<io.DisplaySize.y; y++)
             {
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(io.DisplaySize.x, y),
