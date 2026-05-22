@@ -570,13 +570,13 @@ Phi1Ori, Phi2Ori
 Lam Ori, Gam Ori
 Zet Ori, Kap Ori
 Kap Ori, Bet Ori
-Bet Ori, Del Ori
-Del Ori, Gam Ori
+Bet Ori, HD36486
+HD36486, Gam Ori
 Zet Ori, Sig Ori
 Sig Ori, 42  Ori
 42  Ori, The1Ori
 The1Ori, Iot Ori
-Del Ori, Eps Ori
+HD36486, Eps Ori
 Eps Ori, Zet Ori
 Alp Ori, Mu  Ori
 Mu  Ori, Nu  Ori

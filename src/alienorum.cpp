@@ -1698,7 +1698,7 @@ int main (int argc, char** argv)
 
         if (splash)
         {
-            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 37;
+            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 21;
             double aspect_width = splash_height * my_image_width / my_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
@@ -1737,8 +1737,8 @@ int main (int argc, char** argv)
 
             if (!lloadmsg || !strlen(lloadmsg) || *lloadmsg < ' ' || *lloadmsg > 'Z') lloadmsg = "Loading...";
 
-            if (ImGui::Begin("Loading...", &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar 
-                | ImGuiWindowFlags_NoCollapse))
+            if (ImGui::Begin("Loading...", &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar
+                | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
                 ImGui::SetWindowPos(ImVec2(left,0));
                 ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
