@@ -116,7 +116,11 @@ void CatalogReader::download_catalogs()
             if (!fs::exists(p))
             {
                 // TODO: Add compatibility for Windows and Mac.
-                if (frist) std::cout << "Downloading catalogs..." << std::endl;
+                if (frist)
+                {
+                    loading_msg = "Downloading catalogs...";
+                    std::cout << loading_msg << std::endl;
+                }
                 std::string cmd = (std::string)"wget -O " + destfname + (std::string)" " + (std::string)url;
                 std::cout << cmd << std::endl;
                 std::system(cmd.c_str());
@@ -655,6 +659,17 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
+    CelestialObject **hdcache = new CelestialObject*[MAX_HD+1], **hipcache = new CelestialObject*[MAX_HIP+1];
+    memset(hdcache, 0, sizeof(CelestialObject*)*(MAX_HD+1));
+    memset(hipcache, 0, sizeof(CelestialObject*)*(MAX_HIP+1));
+
+    for (j=0; j<offset; j++)
+    {
+        if (cels[j]->type != star) continue;
+        if (((Star*)cels[j])->HD) hdcache[((Star*)cels[j])->HD] = cels[j];
+        if (((Star*)cels[j])->HIP) hipcache[((Star*)cels[j])->HIP] = cels[j];
+    }
+
     FILE* fp = fopen(path.c_str(), "rb");
     while (fgets(buffer, 1020, fp))
     {
@@ -668,7 +683,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         s = nullptr;
         bool is_new = false;
-        for (j=0; j<offset; j++)
+        /* for (j=0; j<offset; j++)
         {
             if (cels[j]->type != star) continue;
             if ((HD && ((Star*)cels[j])->HD == HD)
@@ -680,7 +695,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                 cursor = j;
                 break;
             }
-        }
+        }*/
+        if (HD && hdcache[HD]) s = (Star*)hdcache[HD];
+        else if (HIP && hipcache[HIP]) s = (Star*)hipcache[HIP];
         if (!s)
         {
             // There are only a handful with no V magnitude; omit them.
@@ -855,11 +872,11 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         {
             cursor = offset;
             cels[offset++] = s;
-            // std::cout << "Added HIP" << s->HIP << std::endl << std::flush;
+            loading_msg = std::string("Loading Hipparcos Catalog... Added HIP") + std::to_string(s->HIP);
         }
         else
         {
-            // if (frand(0,1) < 0.03 && s->name[0]) std::cout << "HIP: updated " << s->name << std::endl << std::flush;
+            loading_msg = std::string("Loading Hipparcos Catalog... Updated HIP") + std::to_string(s->HIP);
         }
 
         #if auto_match_multiples
@@ -903,8 +920,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                 }
             }
         }
-        #else
-        if (frand(0,1) < 0.03) std::cout << "HIP" << HIP << std::endl;
         #endif
 
         num_read++;
@@ -914,6 +929,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+    delete[] hdcache;
+    delete[] hipcache;
     return num_read;
 }
 
@@ -932,6 +949,17 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
     bool already[max];
     memset(already, 0, max*sizeof(bool));
+
+    CelestialObject **hdcache = new CelestialObject*[MAX_HD+1], **hipcache = new CelestialObject*[MAX_HIP+1];
+    memset(hdcache, 0, sizeof(CelestialObject*)*(MAX_HD+1));
+    memset(hipcache, 0, sizeof(CelestialObject*)*(MAX_HIP+1));
+
+    for (i=0; i<offset; i++)
+    {
+        if (cels[i]->type != star) continue;
+        if (((Star*)cels[i])->HD) hdcache[((Star*)cels[i])->HD] = cels[i];
+        if (((Star*)cels[i])->HIP) hipcache[((Star*)cels[i])->HIP] = cels[i];
+    }
 
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
@@ -965,17 +993,12 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 127, 132, field);
         HIP = atoi(field);
 
-        if (!found) for (i=0; i<offset; i++)
+        if (!found)
         {
-            if (already[i]) continue;
-            if (cels[i]->type != star) continue;
-            s = (Star*)cels[i];
-
-            if ((HD && s->HD == HD) || (HIP && s->HIP == HIP))
-            {
-                found = true;
-                break;
-            }
+            s = nullptr;
+            if (HD && hdcache[HD]) s = (Star*)hdcache[HD];
+            else if (HIP && hipcache[HIP]) s = (Star*)hipcache[HIP];
+            if (s) found = true;
         }
 
         if (found && already[i]) continue;
@@ -1057,10 +1080,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
-        if (A->HD && s->HD)
-            std::cout << "CCDM: updated " << (strlen(A->name) ? A->name : (std::string("HD")+std::to_string(A->HD)))
-                << ": " << (strlen(s->name) ? s->name : (std::string("HD")+std::to_string(s->HD))) << std::endl << std::flush;
-
         // TODO: For systems where both members are not already loaded,
         // can load additional members.
 
@@ -1073,7 +1092,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         s->gotta_be_named_something();
         num_read++;
 
-        if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from Catalogue of the Components of Double and Multiple Stars...");
+        loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from Catalogue of the Components of Double and Multiple Stars...");
     }
     return num_read;
 }
@@ -1255,9 +1274,6 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         else
         {
             B = (Star*)cels[found];
-            std::cout << B->name << " orbits " 
-                << (strlen(A->name) ? A->name : (std::string("HIP")+std::to_string(A->HIP)).c_str() )
-                << std::endl;
         }
 
         B->SB9 = SB9;
@@ -1509,10 +1525,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         s->location = A->location;
         s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
-
-        std::cout << "starorbits: updated " << A->name << ": " << s->name
-            << " sma " << (s->orbit->semimajor_axis/AU)
-            << std::endl << std::flush;
 
         num_read++;
     }

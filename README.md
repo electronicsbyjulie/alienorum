@@ -8,12 +8,30 @@ The stars are alien suns.
 
 ## Features
 
+* OpenGL rendering;
 * Sky atlas with pan and zoom, RA/dec grid, and constellation lines;
-* Spaceflight feature;
-* View stars from any vantage point;
-* Information shown when hovering over a celestial object;
+* Automatic downloading and use of professional star catalogs;
+* Spaceflight feature with time dilation and warp speed capability;
+* View space from any vantage point;
+* Time travel (in-universe only) - set the view for any date by stepping forward/backward;
+* Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
 * Ability to select an individual star and teleport to its position;
+* Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
 * More coming soon...
+
+## Initial Run
+
+The first time you run Alienorum, you will see a splash screen featuring our alien mascot (maybe the alien
+should have a name?) and a dynamic loading message. The application will begin by downloading star catalogs;
+if you run it in a terminal you'll be able to see the download process. After downloading finishes, it will
+load a selection of stars from the catalogs. Initially, this takes a long time, which is why once all data
+are loaded it writes a file called `universe.json` for faster retrieval later.
+
+As long as you keep your `universe.json` file, every time you run Alienorum it will read from that file
+instead of spending a lot of time loading catalogs. You will still see the splash screen, but only for a
+minute or so. Feel free to edit your `universe.json`, just keep backups and verify any changes you make with
+an external JSON checker, because if Alienorum fails to load the file, it will fall back on the catalogs and
+(eventually) overwrite your changes.
 
 ## Spaceflight
 
@@ -26,27 +44,28 @@ As you're speeding up, you can use the mouse to have a look around. Once you pre
 it sets your direction of travel and any use of + or - will affect only your speed and not your direction.
 You can see the Sun and inner planets zooming away behind you as you keep accelerating.
 
-Notice that due to time dilation, it takes a long time to get up to interstellar speeds. A really really long time!
-You would be forgiven for wondering how the developer of this app can be so cruel, but it's relativity that's this cruel.
-The universe is really really really big, and relativity says the closer you get to the cosmic speed limit,
-the more energy you have to dump into your engines.
+Notice that due to time dilation, it takes a long time to get up to interstellar speeds. A really really long
+time! You would be forgiven for wondering how the developer of this app can be so cruel, but it's relativity
+that's this cruel. The universe is really really really big. Even worse, relativity says the closer you get to
+the cosmic speed limit, the more energy you have to dump into your engines to keep accelerating.
 
 At least there's unlimited in-app spaceflight fuel. If you have some way to hold down that + key, the simulation
-will eventually reach interstellar speed. Fortunately, there's a better way.
+will eventually reach interstellar speed. But we're not going to make you go through all that trouble - we've
+added a cheat code.
 
 ## Warp Speed
 
-Point the view in the direction you want to go and press W. Notice that you are now traveling at warp 1,
-and that the clock is keeping normal time. Press + several more times until you see the stars begin to move.
-Warp speed is a frequent sci-fi trope to get around the limitations of relativity, often involving some kind
-of astrophysics shortcut that bypasses actually moving through normal space. For our purposes, we can just ignore
-relativity and show what spaceflight and flyby sequences would look like without it.
+Point the view in the direction you want to go and press W. Notice that you are now traveling at slightly over
+warp 1, and that the clock is keeping normal time. Press + several more times until you see the stars begin to
+move. Warp speed is a frequent sci-fi trope to get around the limitations of relativity, often involving some
+kind of astrophysics shortcut that bypasses actually moving through normal space. For our purposes, we can just
+ignore relativity and show what spaceflight and flyby sequences would look like without it.
 
 Even with the help of warp speed, it still takes getting up to a few million to a few tens of millions of times
 the speed of light just to see the stars rush by. Space is really really really really REALLY big.
 
-Sublight speed can be useful for moving between solar system objects,
-while warp is pretty much a necessity for interstellar flight.
+Sublight speed can be useful for moving between nearby solar system objects, while warp is useful for longer 
+trips up to and including interstellar flight.
 
 To stop spaceflight, press X.
 
@@ -75,13 +94,14 @@ and use the mouse to point the view just off center of the object. (Dragging wit
 panning; with the right button, fine panning; and with the middle button, ultrafine panning). Press + or W, then
 select the object of interest and track it with T.
 
-Then speed up to approach the object, watching its distance in the right pane. Before getting too close, begin
-slowing down. It's very easy to overshoot and zip right past it. If you keep your speed just right, you can
-float by it and watch it seem to roll across the background stars.
+Then speed up to approach the object, watching its distance in the right pane. Try not to come in too fast; as
+long as you are tracking the object, the app will automatically slow your approach as you get closer to the
+target. Otherwise it's very easy to overshoot and zip right past it. If your speed is just right, you can float
+by the target and watch it seem to roll across the background stars.
 
 ## Keyboard Shortcuts
 
-The full list of keyboard shortcuts so far is:
+The current full list of keyboard shortcuts is:
 
 ### View Controls
 

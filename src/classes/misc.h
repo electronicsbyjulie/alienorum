@@ -55,6 +55,9 @@ using json = nlohmann::json;
 #define ecliptic_north_Decl_J2000 ((66.0 + 33.0 / 60 + 38.55 / 3600) * fiftyseventh)
 
 #define MAX_CELOBJS 1048576
+#define MAX_SPLASH_STARS 5381
+#define MAX_HD 359083
+#define MAX_HIP 120416
 #define its_behind_you 0xbe419d10
 #define default_brightness 1.0
 #define default_gamma 1.0

@@ -443,7 +443,8 @@ void cache_cons_lines()
         {
             if (cels[j]->type != star) continue;
             Star* s = (Star*)cels[j];
-            if (s->apparent_magnitude > 7.5) continue;
+            if (!strcmp(s->constellation, "Equ")) if (s->apparent_magnitude > 7.5) continue;
+            else if (s->apparent_magnitude > 6.5) continue;
             if (founda < 0
                 && 
                 (
@@ -1133,7 +1134,14 @@ void process_keyboard_commands(ImGuiIO& io)
             case '+':
             vm = velocity.magnitude();
             vmfr = vm * target_frame_rate;
-            if (vm)
+            if (vmfr > 1e100)
+            {
+                // In Trek, the fastest possible warp is warp 10. But that doesn't make for impressive spaceflights.
+                // How about we set the limit to warp 1 googol?
+                // Besides, go much faster than that and the app crashes.
+                velocity.scale(speed_of_light * 1e100 / target_frame_rate);
+            }
+            else if (vm)
             {
                 if (vmfr < 0.1 * speed_of_light) velocity.scale(vm + 0.5 * vm * compute_time_dilation(vmfr));
                 else if (vmfr < speed_of_light) velocity.scale(vm + 0.5 * (speed_of_light - vmfr) / target_frame_rate * compute_time_dilation(vmfr));
@@ -1567,6 +1575,7 @@ int main (int argc, char** argv)
         return 1;
     }
 
+    if (!look_for_catalogs()) return -1;
     SDL_Surface* icon = IMG_Load("assets/icon48.png");
     if (icon)
     {
@@ -1627,16 +1636,6 @@ int main (int argc, char** argv)
     ImVec4 background = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
     set_gamma(global_gamma);
 
-    // Pre-position all objects
-    for (i=0; cels[i]; i++)
-    {
-        cel_obj_class c = cels[i]->typeclass();
-        if (c == class_star) ((Star*)cels[i])->update_location(simnow);
-        else if (c == class_planet) ((Planet*)cels[i])->update_location(simnow);
-        else if (c == class_moon) ((Moon*)cels[i])->update_location(simnow);
-    }
-
-    if (!look_for_catalogs()) return -1;
     std::thread t1(load_stuff);
     t1.detach();
 
@@ -1646,7 +1645,6 @@ int main (int argc, char** argv)
     bool ret = LoadTextureFromFile("assets/icon_full.png", &my_image_texture, &my_image_width, &my_image_height);
     IM_ASSERT(ret);
 
-    #define MAX_SPLASH_STARS 1054
     ImVec2 splash_star_positions[MAX_SPLASH_STARS];
     double splash_star_brghtness[MAX_SPLASH_STARS];
     int screen_x = 1920, screen_y = 1080;               // The most common values.
@@ -1661,7 +1659,7 @@ int main (int argc, char** argv)
     for (i=0; i<MAX_SPLASH_STARS; i++)
     {
         splash_star_positions[i] = ImVec2(frand(0, screen_x), frand(0, screen_y));
-        splash_star_brghtness[i] = frand(0.1, 2.0);
+        splash_star_brghtness[i] = frand(0.1, 2.9) * pow(frand(0,1), 2);
     }
 
     // Main loop
@@ -1709,7 +1707,7 @@ int main (int argc, char** argv)
             for (y=0; y<io.DisplaySize.y; y++)
             {
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(io.DisplaySize.x, y),
-                    IM_COL32( (int)(fmin(1,r)*255), (int)(fmin(1,g)*255), (int)(fmin(1,b)*255), 255 ) );
+                    IM_COL32( (int)(fmin(.44,r)*255), (int)(fmin(.53,g)*255), (int)(fmin(.81,b)*255), 255 ) );
 
                 r *= 1.0067;
                 g *= 1.0053;
