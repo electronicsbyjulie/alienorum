@@ -153,12 +153,13 @@ void CatalogReader::download_catalogs()
 int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 {
     std::string path = "catalogs/Gliese/catalog.dat";
-    char buffer[65536];
+    char buffer[300];
     char field[32];
     int num_read = 0;
     int offset, j;
     double deg, mnt, sec, pm, pmtheta, absmagn;
     std::string build_name;
+    Star *s, *A = nullptr;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -167,7 +168,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
     while (fgets(buffer, 65520, fp))
     {
-        Star* s = new Star();
+        s = new Star();
         s->type = star;
 
         //    1-  8  A8     ---     Name    *Identifier ; see remarks.
@@ -198,7 +199,18 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         //   9- 10  A2     ---     Comp     Components (A,B,C,... )
         read_field_onebased(buffer, 9, 10, field);
         std::string comp = trim(field);
-        if (comp.size()) build_name += (std::string)" " + comp;
+        if (comp.size())
+        {
+            build_name += (std::string)" " + comp;
+            s->component = field[0];
+
+            if (A && s->component > 'A' && !s->orbit)
+            {
+                s->orbit = new Orbit();
+                s->orbit->center = A;
+            }
+        }
+        else A = nullptr;
 
         strcpy(s->name, trim(build_name.c_str()).c_str());
         strcpy(s->Gliese, trim(build_name.c_str()).c_str());
@@ -345,47 +357,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         }
 
         cels[offset+num_read] = s;
-
-        #if auto_match_multiples
-        for (j=1; j<10; j++)
-        {
-            int i = offset+num_read-j;
-            if (i<=0) break;
-            if (cels[i]->typeclass() == class_star
-                && fabs(cels[i]->right_ascension - s->right_ascension) < 0.002
-                && fabs(cels[i]->declination - s->declination) < 0.0013
-                && ((      fabs(((Star*)cels[i])->parallax - s->parallax) < 3.5e-08
-                        && fabs(((Star*)cels[i])->proper_motion_RA - s->proper_motion_RA) < 3e-15
-                        && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 3e-15)
-                    || (lop_component(cels[i]->name) == lop_component(s->name)))
-                && cels[i]->name[strlen(cels[i]->name)-1] <= 'A'                        // In Gliese, member A is always listed first.
-                )
-            {
-                if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude && cels[i]->name[strlen(cels[i]->name)-1] != 'A')
-                {
-                    if (!cels[i]->orbit || !cels[i]->orbit->center)
-                    {
-                        if (!cels[i]->orbit) cels[i]->orbit = new Orbit();
-                        cels[i]->orbit->center = s;
-                        cels[i]->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << cels[i]->name << " orbits " << s->name << std::endl;
-                        break;
-                    }
-                }
-                else
-                {
-                    if (!s->orbit || !s->orbit->center)
-                    {
-                        if (!s->orbit) s->orbit = new Orbit();
-                        s->orbit->center = cels[i];
-                        s->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << s->name << " orbits " << cels[i]->name << std::endl;
-                        break;
-                    }
-                }
-            }
-        }
-        #endif
+        if (s->component == 'A') A = s;
 
         num_read++;
         if ((offset+num_read) >= (max-1)) break;
@@ -500,6 +472,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         s->SAO = atoi(field);
 
         s->gotta_be_named_something();
+
+        if (!s->component && buffer[49] > ' ' && strcmp(s->name, "41The1Ori")) s->component = buffer[49];
 
         //   76- 77  I2     h       RAh      ?Hours RA, equinox J2000, epoch 2000.0 (1)
         read_field_onebased(buffer, 76, 77, field);
@@ -1447,9 +1421,34 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             break;
         }
 
+        read_field_onebased(buffer, 65, 75, field);
+        double ascending_node = atof(field) * fiftyseventh;
+
+        read_field_onebased(buffer, 77, 87, field);
+        double inclination = atof(field) * fiftyseventh;
+
+        // First, solve for inclination
+        Rotation inclined = align_points_3d(cels[0]->location.system_center,
+            Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
+            A->location.system_center);
+
+        // Then incline the stars' pole
+        Point pole = rotate3D(yaxis, center, inclined.v, -inclined.a);
+
+        // Then rotate along the Sun-star axis
+        Point axis = A->location.system_center - cels[0]->location.system_center;
+        pole = rotate3D(pole, center, axis, (ascending_node + M_PI/2));
+
+        // Then realign the points for the new pole
+        A->location.local_system_plane = align_points_3d(pole, Point(0,light_year*1e9,0), center);
+        A->location.orbital_plane.a = 0;
+        A->location.equatorial_plane.a = 0;
+
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
+
+        if (bdystr[0] == '(') continue;
 
         if (!A)
         {
@@ -1483,12 +1482,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         read_field_onebased(buffer, 49, 63, field);
         s->orbit->period = atof(field);
 
-        read_field_onebased(buffer, 65, 75, field);
-        s->orbit->ascending_node = atof(field) * fiftyseventh;
-
-        read_field_onebased(buffer, 77, 87, field);
-        s->orbit->inclination = atof(field) * fiftyseventh;
-
         read_field_onebased(buffer, 89, 99, field);
         s->orbit->arg_periapsis = atof(field) * fiftyseventh;
 
@@ -1504,22 +1497,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         read_field_onebased(buffer, 145, 155, field);
         s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-        // First, solve for inclination
-        Rotation inclined = align_points_3d(cels[0]->location.system_center,
-            Point( 0, cos(s->orbit->inclination) * light_year*1e9, sin(s->orbit->inclination) * light_year*1e9 ),
-            A->location.system_center);
-
-        // Then incline the stars' pole
-        Point pole = rotate3D(yaxis, center, inclined.v, -inclined.a);
-
-        // Then rotate along the Sun-star axis
-        Point axis = A->location.system_center - cels[0]->location.system_center;
-        pole = rotate3D(pole, center, axis, -(s->orbit->ascending_node - M_PI/2));
-
-        // Then realign the points for the new pole
-        A->location.local_system_plane = align_points_3d(pole, Point(0,light_year*1e9,0), center);
-        A->location.orbital_plane.a = 0;
-        A->location.equatorial_plane.a = 0;
         s->location = A->location;
         s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
 

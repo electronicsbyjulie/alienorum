@@ -23,6 +23,7 @@ class Star : public CelestialObject
     int FlamsteedNo = -1;
     char constellation[32];
     char CCDM[16];
+    char component = 0;
 
     __uint32_t HR = 0;                      // Harvard Revised catalog number
     __uint32_t HD = 0;                      // Henry Draper catalog number
