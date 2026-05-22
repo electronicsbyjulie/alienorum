@@ -6,6 +6,7 @@
 
 #include "misc.h"
 
+std::string loading_msg = "Loading...";
 int ncelobjs = 0;
 int selected = -1, trackidx = -1;
 double azimuth = 0, altitude = 0;

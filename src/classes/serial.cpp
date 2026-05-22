@@ -101,6 +101,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
                 std::cerr << "Attempted to load celestial object of blank or unknown type class." << std::endl;
                 return false;
             }
+
+            loading_msg = std::string("Loaded ") + std::to_string(i) + std::string("/") + std::to_string(n) + std::string(" objects...");
         }
         allobj[i] = nullptr;
 

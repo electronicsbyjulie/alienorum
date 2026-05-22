@@ -12,7 +12,8 @@
 #include <stdio.h>
 #include <SDL.h>
 #include <SDL_opengl.h>
-#include <SDL_image.h> 
+#include <SDL_image.h>
+#include <thread>
 #ifdef _WIN32
 #include <windows.h>        // SetProcessDPIAware()
 #endif
@@ -20,6 +21,9 @@
 #include "classes/color.h"
 #include "classes/serial.h"
 #include "classes/cat.h"
+#define _CRT_SECURE_NO_WARNINGS
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb/stb_image.h"
 
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 
@@ -35,6 +39,62 @@ int frames_without_mousemove = 0;
 double txtyscale, txtycompact;
 bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9;
+bool splash = true, magnitude_test = false;
+
+// ImGui Example Code
+
+
+// Simple helper function to load an image into a OpenGL texture with common settings
+bool LoadTextureFromMemory(const void* data, size_t data_size, GLuint* out_texture, int* out_width, int* out_height)
+{
+    // Load from file
+    int image_width = 0;
+    int image_height = 0;
+    unsigned char* image_data = stbi_load_from_memory((const unsigned char*)data, (int)data_size, &image_width, &image_height, NULL, 4);
+    if (image_data == NULL)
+        return false;
+
+    // Create a OpenGL texture identifier
+    GLuint image_texture;
+    glGenTextures(1, &image_texture);
+    glBindTexture(GL_TEXTURE_2D, image_texture);
+
+    // Setup filtering parameters for display
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Upload pixels into texture
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+    stbi_image_free(image_data);
+
+    *out_texture = image_texture;
+    *out_width = image_width;
+    *out_height = image_height;
+
+    return true;
+}
+
+// Open and read a file, then forward to LoadTextureFromMemory()
+bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_width, int* out_height)
+{
+    FILE* f = fopen(file_name, "rb");
+    if (f == NULL)
+        return false;
+    fseek(f, 0, SEEK_END);
+    size_t file_size = (size_t)ftell(f);
+    if (file_size == -1)
+        return false;
+    fseek(f, 0, SEEK_SET);
+    void* file_data = IM_ALLOC(file_size);
+    fread(file_data, 1, file_size, f);
+    fclose(f);
+    bool ret = LoadTextureFromMemory(file_data, file_size, out_texture, out_width, out_height);
+    IM_FREE(file_data);
+    return ret;
+}
+
+// End ImGui Example Code
 
 void draw_ra_dec_lines()
 {
@@ -188,6 +248,7 @@ void load_catalogs()
     fs.open("universe.json", std::ios::in);
     if (fs)
     {
+        loading_msg = "Loading Universe file...";
         if (Serialization::load_all(fs, cels, MAX_CELOBJS))
         {
             fs.close();
@@ -213,12 +274,14 @@ void load_catalogs()
 
     if (have_Gliese)
     {
+        loading_msg = std::string("Loading Gliese catalog...");
         cout << "Reading Gliese catalog..." << endl << flush;
         int nGliese = cr.read_Gliese_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nGliese << " objects." << endl << flush;
         ncelobjs += nGliese;
     }
 
+    loading_msg = std::string("Loading solar system...");
     cout << "Reading local planets..." << endl << flush;
     int npl = cr.read_local_planets(cels, MAX_CELOBJS);                   // Read solar system planets now, before painting the sky with stars
     num_planets += npl;
@@ -227,6 +290,7 @@ void load_catalogs()
 
     if (have_BSC)
     {
+        loading_msg = std::string("Loading Bright Star Catalog...");
         cout << "Reading Bright Star Catalog..." << endl << flush;
         int nBSC = cr.read_BrightStars_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nBSC << " objects." << endl << flush;
@@ -235,6 +299,7 @@ void load_catalogs()
     }
     if (have_HIP)
     {
+        loading_msg = std::string("Loading Hipparcos Catalog...");
         cout << "Reading Hipparcos catalog..." << endl << flush;
         int nHIP = cr.read_Hipparcos_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nHIP << " objects." << endl << flush;
@@ -242,12 +307,14 @@ void load_catalogs()
     }
     if (have_CCDM)
     {
+        loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
         cout << "Reading CCDM catalog..." << endl << flush;
         int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nCCDM << " objects." << endl << flush;
     }
     if (have_SB9)
     {
+        loading_msg = std::string("Loading Stellar Binaries Catalog...");
         cout << "Reading SB9 catalog..." << endl << flush;
         int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nSB9 << " objects." << endl << flush;
@@ -255,10 +322,13 @@ void load_catalogs()
 
     for (i=0; cels[i]; i++) if (cels[i]->type == star) num_stars++;
 
+    loading_msg = std::string("Naming stars...");
     rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
+    loading_msg = std::string("Orbiting stars...");
     cr.read_star_orbits_dat(cels);
 
+    loading_msg = std::string("Writing Universe file...");
     fs.open("universe.json", std::ios::out);
     if (fs)
     {
@@ -266,7 +336,6 @@ void load_catalogs()
         fs.close();
     }
     else std::cerr << "FAILED to write save state file." << std::endl;
-
 }
 
 void read_cons_lines()
@@ -1127,7 +1196,7 @@ void lookfor_cb()
 void draw_status_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
-    int stattop = 18, statleft = 15, statwidth = 225, statheight = txtyscale*2.3;
+    int stattop = 0, statleft = 0, statwidth = 225, statheight = txtyscale*2.3;
     int i;
     ImGui::Begin("Status", &statuswnd);
 
@@ -1322,7 +1391,7 @@ void draw_objinf_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Object", &objinfwnd);
-    int objinftop = 18, objinfleft = (int)io.DisplaySize.x - 225, objinfwidth = 211, objinfheight = txtyscale*2;
+    int objinftop = 0, objinfleft = (int)io.DisplaySize.x - 211, objinfwidth = 211, objinfheight = txtyscale*2;
 
     ImGui::Text(objname.c_str());
     objinfheight += txtyscale;
@@ -1340,10 +1409,24 @@ void draw_objinf_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+void load_stuff()
+{
+    loading_msg = "Reading constellations...";
+    read_cons_lines();
+    loading_msg = "Loading star data...";
+    load_catalogs();
+    loading_msg = "Assigning constellations...";
+    cache_cons_lines();
+    bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
+    std::cout << "B-V correction: " << bv_correction << std::endl;
+
+    loading_msg = "Done!";
+    splash = false;
+}
+
 int main (int argc, char** argv)
 {
     int i, j, l, n;
-    bool magnitude_test = false;
     cels = new CelestialObject*[MAX_CELOBJS];
     vmag_cache = new double[MAX_CELOBJS];
     magrad_cache = new double[MAX_CELOBJS];
@@ -1352,7 +1435,6 @@ int main (int argc, char** argv)
     by_cache = new int[MAX_CELOBJS];
 
     memset(lookfor, 0, 256);
-    if (!look_for_catalogs()) return -1;
 
     for (l=1; l<argc; l++)
     {
@@ -1373,12 +1455,6 @@ int main (int argc, char** argv)
 
         if (!strcmp(argv[l], "magtest")) magnitude_test = true;
     }
-
-    read_cons_lines();
-    load_catalogs();
-    cache_cons_lines();
-    bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
-    std::cout << "B-V correction: " << bv_correction << std::endl;
 
     if (magnitude_test)
     {
@@ -1567,129 +1643,163 @@ int main (int argc, char** argv)
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
+        if (splash)
+        {
+            int my_image_width = 0;
+            int my_image_height = 0;
+            GLuint my_image_texture = 0;
+            bool ret = LoadTextureFromFile("assets/icon_full.png", &my_image_texture, &my_image_width, &my_image_height);
+            IM_ASSERT(ret);
+
+            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 25;
+            double aspect_width = splash_height * my_image_width / my_image_height;
+            double left = fmax(0, (splash_width - aspect_width) / 2);
+
+            ImGui::Begin(loading_msg.c_str());
+            ImGui::SetWindowPos(ImVec2(left,0));
+            ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
+            // ImGui::Text("pointer = %x", my_image_texture);
+            // ImGui::Text("size = %d x %d", my_image_width, my_image_height);
+            ImGui::Image((ImTextureID)(intptr_t)my_image_texture, ImVec2(aspect_width, splash_height));
+            ImGui::End();
+
         //////////////////////////////////////////////////
         // End ImGui-specific setup code                //
         //////////////////////////////////////////////////
 
-        if (hide_mouse && !is_mouse_over_window) SDL_ShowCursor(SDL_DISABLE);
-        dispcx = (int)io.DisplaySize.x/2;
-        dispcy = (int)io.DisplaySize.y / 2;
-        drawblxscalex = drawn_cache_split / io.DisplaySize.x;
-        drawblxscaley = drawn_cache_split / io.DisplaySize.y;
+            if (!look_for_catalogs()) return -1;
 
-        if (whereami >= 0) here = cels[whereami]->location;
-
-        if (show_grid) draw_ra_dec_lines();
-        compute_object_draw_coordinates();
-        if (show_consln) draw_cons_lines();
-        draw_objects();
-
-        is_click = io.MouseReleased[0];
-        if (!is_mouse_over_window)
-        {
-            if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
-            identify_object_under_cursor(io);
+            if (my_image_texture == 5)
+            {
+                std::thread t1(load_stuff);
+                t1.detach();
+            }
         }
-
-        is_mouse_over_window = false;
-
-        txtyscale = ImGui::GetTextLineHeightWithSpacing();
-        txtycompact = ImGui::GetTextLineHeight();
-
-        // Status window
-        if (statuswnd) draw_status_window(io);
-
-        // Object under cursor info
-        if (objinfwnd) draw_objinf_window(io);
-
-        // Positioning updates
-        vm = velocity.magnitude();
-        vmfr = vm * target_frame_rate;
-        Point vdil = velocity;
-        if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
-        here.local_position += vdil;
-        azimuth += spin;
-        viewchanged = searched || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
-
-        // Slow down to avoid zipping past tracked object
-        if (trackidx >= 0)
+        else
         {
-            double r = here.distance_to(cels[trackidx]->location);
-            if (vm > 0.03*r) velocity.scale(0.9*vm);
-        }
+            if (hide_mouse && !is_mouse_over_window) SDL_ShowCursor(SDL_DISABLE);
+            dispcx = (int)io.DisplaySize.x/2;
+            dispcy = (int)io.DisplaySize.y / 2;
+            drawblxscalex = drawn_cache_split / io.DisplaySize.x;
+            drawblxscaley = drawn_cache_split / io.DisplaySize.y;
 
-        // Clicking and dragging
-        bool is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
-        if (is_mouse_down && !is_mouse_over_window && dragging) pan_with_crosshairs(io);
-        if (is_mouse_down && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
-        else if (is_click) dragging = false;
+            if (whereami >= 0) here = cels[whereami]->location;
 
-        // Scroll wheel to zoom
-        if (io.MouseWheel > 0)
-        {
-            zoom *= 1.1;
-            global_brightness *= 1.1;
-            viewchanged = true;
-        }
-        else if (io.MouseWheel < 0 && zoom > 1)
-        {
-            zoom = fmax(1, zoom * 0.9);
-            global_brightness *= 0.9;
-            viewchanged = true;
-        }
+            if (show_grid) draw_ra_dec_lines();
+            compute_object_draw_coordinates();
+            if (show_consln) draw_cons_lines();
+            draw_objects();
 
-        // Keyboard commands
-        process_keyboard_commands(io);
+            is_click = io.MouseReleased[0];
+            if (!is_mouse_over_window)
+            {
+                if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
+                identify_object_under_cursor(io);
+            }
+
+            is_mouse_over_window = false;
+
+            txtyscale = ImGui::GetTextLineHeightWithSpacing();
+            txtycompact = ImGui::GetTextLineHeight();
+
+            // Status window
+            if (statuswnd) draw_status_window(io);
+
+            // Object under cursor info
+            if (objinfwnd) draw_objinf_window(io);
+
+            // Positioning updates
+            vm = velocity.magnitude();
+            vmfr = vm * target_frame_rate;
+            Point vdil = velocity;
+            if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
+            here.local_position += vdil;
+            azimuth += spin;
+            viewchanged = searched || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
+
+            // Slow down to avoid zipping past tracked object
+            if (trackidx >= 0)
+            {
+                double r = here.distance_to(cels[trackidx]->location);
+                if (vm > 0.03*r) velocity.scale(0.9*vm);
+            }
+
+            // Clicking and dragging
+            bool is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
+            if (is_mouse_down && !is_mouse_over_window && dragging) pan_with_crosshairs(io);
+            if (is_mouse_down && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
+            else if (is_click) dragging = false;
+
+            // Scroll wheel to zoom
+            if (io.MouseWheel > 0)
+            {
+                zoom *= 1.1;
+                global_brightness *= 1.1;
+                viewchanged = true;
+            }
+            else if (io.MouseWheel < 0 && zoom > 1)
+            {
+                zoom = fmax(1, zoom * 0.9);
+                global_brightness *= 0.9;
+                viewchanged = true;
+            }
+
+            // Keyboard commands
+            process_keyboard_commands(io);
+        }
 
         // More code copied from the ImGui example:
         // Rendering
         ImGui::Render();
-        if (hide_mouse && !is_mouse_over_window) SDL_ShowCursor(SDL_DISABLE);
+        if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
 
-        if (io.MousePos.x != lmx || io.MousePos.y != lmy) frames_without_mousemove = 0;
-        else frames_without_mousemove++;
-
-        if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude()) && frame_dur > (1.0/target_frame_rate))
+        if (!splash)
         {
-            timeout_ms *= 0.333;
-            if (timeout_ms < 5) timeout_ms = 5;
-        }
-        else
-        {
-            timeout_ms *= 1.5;
-            if (timeout_ms > 250) timeout_ms = 250;
-        }
+            if (io.MousePos.x != lmx || io.MousePos.y != lmy) frames_without_mousemove = 0;
+            else frames_without_mousemove++;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+            if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude()) && frame_dur > (1.0/target_frame_rate))
+            {
+                timeout_ms *= 0.333;
+                if (timeout_ms < 5) timeout_ms = 5;
+            }
+            else
+            {
+                timeout_ms *= 1.5;
+                if (timeout_ms > 250) timeout_ms = 250;
+            }
 
-        hide_mouse = frame_dur < 0.1 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4;
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
 
-        lmx = io.MousePos.x;
-        lmy = io.MousePos.y;
-        dragged = dragging;
-        searched = false;
-        PrevDispSize = io.DisplaySize;
+            hide_mouse = frame_dur < 0.1 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4;
 
-        auto frame_finished = std::chrono::high_resolution_clock::now();
-        auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
-        frame_dur = frame_elapsed.count() * 1e-6;
-        if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
+            lmx = io.MousePos.x;
+            lmy = io.MousePos.y;
+            dragged = dragging;
+            searched = false;
+            PrevDispSize = io.DisplaySize;
 
-        vmfr = velocity.magnitude() * target_frame_rate;
-        if (vmfr >= speed_of_light)
-        {
-            // No time dilation in warp mode because faster than light is impossible so warp mode is
-            // some kind of hand wavy physics that bypass relativity.
-            JDnow += frame_dur/86400;
-        }
-        else
-        {
-            JDnow += frame_dur/86400 / compute_time_dilation(vmfr);
+            auto frame_finished = std::chrono::high_resolution_clock::now();
+            auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
+            frame_dur = frame_elapsed.count() * 1e-6;
+            if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
+
+            vmfr = velocity.magnitude() * target_frame_rate;
+            if (vmfr >= speed_of_light)
+            {
+                // No time dilation in warp mode because faster than light is impossible so warp mode is
+                // some kind of hand wavy physics that bypass relativity.
+                JDnow += frame_dur/86400;
+            }
+            else
+            {
+                JDnow += frame_dur/86400 / compute_time_dilation(vmfr);
+            }
         }
         simnow = (JDnow - J2000)*86400 + J2000_TIME_T;
     }

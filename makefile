@@ -1,7 +1,7 @@
 #
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 # Linux:
-# 	apt-get install -y libsdl2-dev libsdl2-image-dev
+# 	apt-get install -y libsdl2-dev libsdl2-image-dev libstb-dev
 # Mac OS:
 #   brew install sdl2 sdl2-image
 # MSYS2:
@@ -12,7 +12,7 @@ CPP = g++
 CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -g -Wall -Wformat
 
 # Uncomment for debug mode
-# CPPFLAGS += -g -DDEBUG
+CPPFLAGS += -g -DDEBUG
 
 IMGUI_DIR = src/imgui
 CLASSES_DIR = src/classes

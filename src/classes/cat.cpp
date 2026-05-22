@@ -361,6 +361,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         num_read++;
         if ((offset+num_read) >= (max-1)) break;
+
+        if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from Gliese's Third Catalogue of Nearby Stars...");
     }
 
     fclose(fp);
@@ -632,6 +634,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             num_read++;
             if ((offset+num_read) >= (max-1)) break;
         }
+
+        if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from Bright Star Catalogue...");
     }
     fclose(fp);
     return num_read;
@@ -905,6 +909,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         num_read++;
         if (num_read >= max-4) break;
+
+        if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from The Hipparcos Catalogue...");
     }
 
     fclose(fp);
@@ -1066,6 +1072,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         s->gotta_be_named_something();
         num_read++;
+
+        if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from Catalogue of the Components of Double and Multiple Stars...");
     }
     return num_read;
 }
@@ -1339,6 +1347,8 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             fclose(fp);
             return num_read;
         }
+
+        if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from Stellar Binaries Catalogue...");
     }
     fclose(fp);
 
