@@ -102,7 +102,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
                 return false;
             }
 
-            loading_msg = std::string("Loaded ") + std::to_string(i) + std::string("/") + std::to_string(n) + std::string(" objects...");
+            loading_msg = std::string("Loaded ") + std::to_string(i) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
         }
         allobj[i] = nullptr;
 
