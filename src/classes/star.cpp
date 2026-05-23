@@ -325,6 +325,30 @@ bool Star::from_json(json j)
     return true;
 }
 
+void Star::make_companion_of(Star *A, char comp)
+{
+    right_ascension = A->right_ascension;
+    declination = A->declination;
+    parallax = A->parallax;
+    distance = A->distance;
+    location = A->location;
+    strcpy(name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, comp)).c_str());
+    CCDM = A->CCDM;
+    proper_motion_RA = A->proper_motion_RA;
+    proper_motion_decl = A->proper_motion_decl;
+    visible_area = A->visible_area;
+    type = star;
+
+    if (A->orbit && A->orbit->center == this)
+    {
+        orbit = A->orbit;
+        A->orbit = nullptr;
+    }
+    else
+        orbit = new Orbit();
+    orbit->center = A;
+}
+
 double Star::estimate_mass()
 {
     if (!cels[0])

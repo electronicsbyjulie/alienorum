@@ -238,12 +238,11 @@ bool look_for_catalogs()
 
 bool save_universe()
 {
-    fstream fs;
-
     mtx.lock();
     loading_msg = std::string("Writing Universe file...");
     mtx.unlock();
 
+    fstream fs;
     fs.open("universe.json", std::ios::out);
     if (fs)
     {
@@ -255,17 +254,11 @@ bool save_universe()
     return false;
 }
 
-void load_catalogs()
+bool load_universe(std::string universe_fname)
 {
-    int i, n;
-
-    // TODO: Read data from more star catalogs.
-    CatalogReader cr;
-    cr.download_catalogs();
-    std::vector<std::string> cats = cr.find_catalogs("catalogs");
-
+    int i;
     fstream fs;
-    fs.open("universe.json", std::ios::in);
+    fs.open(universe_fname.c_str(), std::ios::in);
     if (fs)
     {
         mtx.lock();
@@ -282,15 +275,33 @@ void load_catalogs()
             bool resave_json = false;
             if (ftime_cat > ftime_json)
             {
+                CatalogReader cr;
                 cr.read_star_orbits_dat(cels);
                 resave_json = true;
             }
             if (resave_json) save_universe();
 
-            return;
+            return true;
         }
-        fs.close();
+        else
+        {
+            fs.close();
+            return false;
+        }
     }
+    else return false;
+}
+
+void load_catalogs()
+{
+    int i, n;
+
+    // if (load_universe("universe.json")) return;
+
+    // TODO: Read data from more star catalogs.
+    CatalogReader cr;
+    cr.download_catalogs();
+    std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
     cels[0] = nullptr;
 
@@ -377,7 +388,7 @@ void load_catalogs()
     mtx.unlock();
     cr.read_star_orbits_dat(cels);
 
-    save_universe();
+    // save_universe();
 }
 
 void read_cons_lines()
@@ -540,7 +551,7 @@ void cache_cons_lines()
 void compute_object_draw_coordinates()
 {
     int i, j, bx, by;
-    double theta;
+    double theta, dispw = dispcx*2, disph = dispcy*2;
     if (viewchanged)
     {
         for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
@@ -554,6 +565,13 @@ void compute_object_draw_coordinates()
                     cels[i]->drawnx = cels[i]->drawny = -1e9;
                     continue;
                 }
+                if (cels[i]->orbit && cels[i]->orbit->center
+                    && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
+                        || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
+                        )
+                    )
+                    continue;
+                if (cels[i]->orbit && cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom) continue;
                 ((Star*)cels[i])->update_location(simnow);
                 break;
 
@@ -570,7 +588,10 @@ void compute_object_draw_coordinates()
             }
 
             if (whereami == i) here = cels[i]->location;
+        }
 
+        for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+        {
             Point rel = cels[i]->location;
             rel -= here;
 
@@ -592,8 +613,8 @@ void compute_object_draw_coordinates()
                 cels[i]->drawnx = dx;
                 cels[i]->drawny = dy;
 
-                if (dx < 0 or dx >= dispcx*2) continue;
-                if (dy < 0 or dy >= dispcy*2) continue;
+                if (dx < 0 or dx >= dispw) continue;
+                if (dy < 0 or dy >= disph) continue;
 
                 bx = dx*drawblxscalex;
                 by = dy*drawblxscaley;
@@ -614,7 +635,7 @@ void compute_object_draw_coordinates()
 void draw_objects()
 {
     int i, j, l, n, pass;
-    double jay, step;
+    double jay, step, dispw = dispcx*2, disph = dispcy*2;
     ImVec2 xycoord;
     double appmag, magrad, flare, theta;
     double orbseg = 81, smalim = 1e3*sqrt(zoom);
@@ -685,8 +706,8 @@ void draw_objects()
         Point rel = cels[i]->location;
         rel -= here;
 
-        if (cels[i]->drawnx < 0 or cels[i]->drawnx >= dispcx*2) continue;
-        if (cels[i]->drawny < 0 or cels[i]->drawny >= dispcy*2) continue;
+        if (cels[i]->drawnx < 0 or cels[i]->drawnx >= dispw) continue;
+        if (cels[i]->drawny < 0 or cels[i]->drawny >= disph) continue;
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
@@ -761,6 +782,7 @@ void draw_objects()
 void draw_cons_lines()
 {
     int i, l, n;
+    double dispw = dispcx*2, disph = dispcy*2;
 
     // Hide lines if more than 10 l.y. from Sun.
     draw_actual_conslines = here.distance_to(cels[0]->location) < light_year*10;
@@ -812,7 +834,7 @@ void draw_cons_lines()
         ImVec2 sz = ImGui::CalcTextSize(consname[l].c_str());
         dx -= sz.x/2;
         dy -= sz.y/2;
-        if (dx >= 0 && dx < dispcx*2 && dy >= 0 && dy < dispcy*2)
+        if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
                 rgba_apply_redlight((l<nconsln) ? conslbl_color : IM_COL32(255, 64, 0, 128)),
@@ -1135,6 +1157,7 @@ void process_keyboard_commands(ImGuiIO& io)
             break;
 
             case 'T': trackidx = -1; break;
+            case 'u': save_universe(); break;
 
             case 'w':
             if (velocity.magnitude())

@@ -368,7 +368,7 @@ Point compute_normal(Point pt1, Point pt2, Point pt3)
 std::string Point::printable() const
 {
     std::stringstream buffer;
-    buffer << "[" << (0.001 * (int)(x*1000)) << "," << (0.001 * (int)(y*1000)) << "," << (0.001 * (int)(z*1000)) << "]";
+    buffer << "[" << std::setprecision(13) << x << ","  << std::setprecision(13) << y << ","  << std::setprecision(13) << z << "]";
     return buffer.str();
 }
 

@@ -55,6 +55,7 @@ class Star : public CelestialObject
     void gotta_be_named_something();
     json to_json();
     bool from_json(json j);
+    void make_companion_of(Star* primary, char comp = 'B');
 
 protected:
     Box visible_area;

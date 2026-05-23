@@ -920,20 +920,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         {
             Star* A = hipcache[HIP];
             s = new Star();
-            s->right_ascension = A->right_ascension;
-            s->declination = A->declination;
-            s->parallax = A->parallax;
-            s->distance = A->distance;
-            s->location = A->location;
-            strcpy(s->name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, buffer[40])).c_str());
-            s->CCDM = A->CCDM;
-            s->proper_motion_RA = A->proper_motion_RA;
-            s->proper_motion_decl = A->proper_motion_decl;
+            s->make_companion_of(A, buffer[40]);
             s->epoch = J2000 + (1991.25 - 2000);
-            s->type = star;
-
-            s->orbit = new Orbit();
-            s->orbit->center = A;
         }
 
         //  38- 39  I2     ---     seq      Sequential component number             (DCM6)
@@ -984,20 +972,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         hipcomps[HIP]['A'] = A;
 
         s = new Star();
-        s->right_ascension = A->right_ascension;
-        s->declination = A->declination;
-        s->parallax = A->parallax;
-        s->distance = A->distance;
-        s->location = A->location;
-        strcpy(s->name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, buffer[40])).c_str());
-        s->CCDM = A->CCDM;
-        s->proper_motion_RA = A->proper_motion_RA;
-        s->proper_motion_decl = A->proper_motion_decl;
+        s->make_companion_of(A, buffer[40]);
         s->epoch = J2000 + (1991.25 - 2000);
-        s->type = star;
-
-        s->orbit = new Orbit();
-        s->orbit->center = A;
 
         for (s->component = 'B'; s->component < 'Z'; s->component++)
         {
@@ -1105,21 +1081,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
                 else
                 {
                     s = new Star();
-                    s->right_ascension = A->right_ascension;
-                    s->declination = A->declination;
-                    s->parallax = A->parallax;
-                    s->distance = A->distance;
-                    s->location = A->location;
-                    s->component = conccomp;
-                    strcpy(s->name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, conccomp)).c_str());
-                    s->CCDM = A->CCDM = CCDM;
-                    s->proper_motion_RA = A->proper_motion_RA;
-                    s->proper_motion_decl = A->proper_motion_decl;
+                    s->make_companion_of(A, conccomp);
                     s->epoch = J2000 + (1991.25 - 2000);
-                    s->type = star;
-
-                    s->orbit = new Orbit();
-                    s->orbit->center = A;
                 }
             }
             else
@@ -1278,113 +1241,123 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         }
 
         found = -1;
-        for (i=0; cels[i]; i++)
+        if (HIP && hipcache[HIP])
         {
-            if (cels[i]->type != star) continue;
-            s = (Star*)cels[i];
-
-            n = strlen(s->name);
-            if (n > 3 && s->name[n-2] == ' ' && s->name[n-1] != cen[0]) continue;
-
-            if (HIP && (s->HIP == HIP)) found = i;
-            else if (HD && (s->HD == HD)) found = i;
-            else if (Bonn == 'B' && s->Bonn_survey[0] == 'B' && s->Bonn_survey[1] == 'D'
-                && s->Bonn_survey_sign == Bonn_sign
-                && s->Bonn_survey_declination == Bonn_decl
-                && s->Bonn_survey_sequential == Bonn_seq
-                ) found = i;
-            else if (Bonn == 'C' && s->Bonn_survey[0] == 'C' && s->Bonn_survey[1] == 'D'
-                && s->Bonn_survey_sign == Bonn_sign
-                && s->Bonn_survey_declination == Bonn_decl
-                && s->Bonn_survey_sequential == Bonn_seq
-                ) found = i;
-            else if (Bonn == 'P' && s->Bonn_survey[0] == 'C' && s->Bonn_survey[1] == 'P'
-                && s->Bonn_survey_sign == Bonn_sign
-                && s->Bonn_survey_declination == Bonn_decl
-                && s->Bonn_survey_sequential == Bonn_seq
-                ) found = i;
-            if (found >= 0) break;
+            A = hipcache[HIP];
         }
-        if (found < 0)
+        else if (HD && hdcache[HD])
         {
-            continue;
+            A = hdcache[HD];
+        }
+        else
+        {
+            for (i=0; cels[i]; i++)
+            {
+                if (cels[i]->type != star) continue;
+                s = (Star*)cels[i];
+
+                n = strlen(s->name);
+                if (n > 3 && s->name[n-2] == ' ' && s->name[n-1] != cen[0]) continue;
+
+                if (HIP && (s->HIP == HIP)) found = i;
+                else if (HD && (s->HD == HD)) found = i;
+                else if (Bonn == 'B' && s->Bonn_survey[0] == 'B' && s->Bonn_survey[1] == 'D'
+                    && s->Bonn_survey_sign == Bonn_sign
+                    && s->Bonn_survey_declination == Bonn_decl
+                    && s->Bonn_survey_sequential == Bonn_seq
+                    ) found = i;
+                else if (Bonn == 'C' && s->Bonn_survey[0] == 'C' && s->Bonn_survey[1] == 'D'
+                    && s->Bonn_survey_sign == Bonn_sign
+                    && s->Bonn_survey_declination == Bonn_decl
+                    && s->Bonn_survey_sequential == Bonn_seq
+                    ) found = i;
+                else if (Bonn == 'P' && s->Bonn_survey[0] == 'C' && s->Bonn_survey[1] == 'P'
+                    && s->Bonn_survey_sign == Bonn_sign
+                    && s->Bonn_survey_declination == Bonn_decl
+                    && s->Bonn_survey_sequential == Bonn_seq
+                    ) found = i;
+                if (found >= 0) break;
+            }
+            if (found < 0)
+            {
+                continue;
+            }
+
+            A = (Star*)cels[found];
+            A->is_orbit_multiple = true;
+            A->gotta_be_named_something();
+            if (!A->distance_known) continue;
         }
 
         //   1-  4  I4    ---     Seq     System Number (SB8 number when Seq<=1469)
         read_field_onebased(buffer, 1, 4, field);
         SB9 = atoi(field);
 
-        A = (Star*)cels[found];
-        A->is_orbit_multiple = true;
-        A->gotta_be_named_something();
-        if (!A->distance_known) continue;
-
         found = -1;
-        if ((A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")))
+        auto it_hip = hipcomps.find(HIP);
+        if (it_hip != hipcomps.end())
         {
-            found = -2;
-        }
-        if ((A->BayerGrkno != 7 || strcmp(A->constellation, "Ori"))
-            && (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')
-            )
-        {
-            double foundmag[10] = {99,99,99,99,99,99,99,99,99,99};
-            int foundidx[10] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
-            for (i=0; cels[i]; i++)
+            auto it_b = hipcomps[HIP].find(comp[0]);
+            if (it_b != hipcomps[HIP].end())
             {
-                if (!cels[i]->orbit) continue;
-                if (cels[i]->type != star) continue;
-                s = (Star*)cels[i];
-
-                if (s->orbit->center == A)
-                {
-                    for (j=0; j<10; j++) if (s->apparent_magnitude < foundmag[j])
-                    {
-                        for (l=9; l>j; l--)
-                        {
-                            foundmag[l] = foundmag[l-1];
-                            foundidx[l] = foundidx[l-1];
-                        }
-                        foundmag[j] = s->apparent_magnitude;
-                        foundidx[j] = i;
-                        break;      // j
-                    }
-                }
+                B = hipcomps[HIP][comp[0]];
             }
-
-            found = foundidx[comp[0]-'B'];
-        }
-
-        if (found < 0)
-        {
-            B = new Star();
-            // 104-132  A29   ---     Name    Name of the source (HIP when existing)
-            read_field_onebased(buffer, 104, 132, field);
-            strcpy(B->name, (trim(field) + std::string(" ") + std::string(comp)).c_str());
-            B->type = star;
-            B->orbit = new Orbit();
-            if (A->HD == 20766)
-            {
-                std::cerr << "BAD! 1061" << std::endl;
-                throw 0xbadc0de;
-            }
-            B->orbit->center = A;
-            B->right_ascension = A->right_ascension;
-            B->declination = A->declination;
-            B->distance = A->distance;
-            B->distance_known = A->distance_known;
-            B->location = A->location;          // Copies local reference planes.
-            B->inclination = A->inclination;
-            B->proper_motion_decl = A->proper_motion_decl;
-            B->proper_motion_RA = A->proper_motion_RA;
-            B->radial_velocity = A->radial_velocity;
-            B->epoch = A->epoch;
-            cels[offset++] = B;
-            cels[offset] = 0;
         }
         else
         {
-            B = (Star*)cels[found];
+            if ((A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")))
+            {
+                found = -2;
+            }
+            if ((A->BayerGrkno != 7 || strcmp(A->constellation, "Ori"))
+                && (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')
+                )
+            {
+                double foundmag[10] = {99,99,99,99,99,99,99,99,99,99};
+                int foundidx[10] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
+                for (i=0; cels[i]; i++)
+                {
+                    if (!cels[i]->orbit) continue;
+                    if (cels[i]->type != star) continue;
+                    s = (Star*)cels[i];
+
+                    if (s->orbit->center == A)
+                    {
+                        for (j=0; j<10; j++) if (s->apparent_magnitude < foundmag[j])
+                        {
+                            for (l=9; l>j; l--)
+                            {
+                                foundmag[l] = foundmag[l-1];
+                                foundidx[l] = foundidx[l-1];
+                            }
+                            foundmag[j] = s->apparent_magnitude;
+                            foundidx[j] = i;
+                            break;      // j
+                        }
+                    }
+                }
+
+                found = foundidx[comp[0]-'B'];
+            }
+
+            if (found < 0)
+            {
+                B = new Star();
+                B->type = star;
+                if (A->HD == 20766)
+                {
+                    std::cerr << "BAD! 1061" << std::endl;
+                    throw 0xbadc0de;
+                }
+                B->make_companion_of(A, comp[0]);
+                B->epoch = A->epoch;
+                cels[offset++] = B;
+                cels[offset] = 0;
+            }
+            else
+            {
+                B = (Star*)cels[found];
+            }
         }
 
         B->SB9 = SB9;
