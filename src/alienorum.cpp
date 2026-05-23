@@ -968,26 +968,29 @@ void identify_object_under_cursor(ImGuiIO& io)
             Star* s = (Star*)cels[i];
             if (strlen(s->Bayer) && strlen(s->Flamsteed))
             {
-                oss << atoi(s->Flamsteed) << s->Bayer << std::endl;
+                int Fl = atoi(s->Flamsteed);
+                objinfo += std::to_string(Fl) + (std::string)s->Bayer + (std::string)"\n";
             }
-            else if (strlen(s->Flamsteed)) oss << s->Flamsteed << std::endl;
-            else if (strlen(s->Bayer)) oss << s->Bayer << std::endl;
+            else if (strlen(s->Flamsteed)) objinfo += (std::string)s->Flamsteed + (std::string)"\n";
+            else if (strlen(s->Bayer)) objinfo += (std::string)s->Bayer + (std::string)"\n";
 
-            if (strlen(s->Gliese)) oss << s->Gliese << std::endl;
-            if (s->HD ) oss << "HD"  + s->HD  << std::endl;
-            if (s->HR ) oss << "HR"  + s->HR  << std::endl;
-            if (s->HIP) oss << "HIP" + s->HIP << std::endl;
+            if (strlen(s->Gliese)) objinfo += (std::string)s->Gliese + (std::string)"\n";
+            if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
+            if (s->HR) objinfo += (std::string)"HR" + std::to_string(s->HR) + (std::string)"\n";
+            if (s->HIP) objinfo += (std::string)"HIP" + std::to_string(s->HIP) + (std::string)"\n";
             if (s->Bonn_survey[0])
             {
-                oss << s->Bonn_survey << (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
-                    << (abs(s->Bonn_survey_declination)<10 ? "0" : "") << s->Bonn_survey_declination
-                    << " " << s->Bonn_survey_sequential << std::endl;
+                char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
+                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
+                    + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential) + std::string("\n");
             }
         }
 
-        oss << "RA:     " << cels[i]->RA_as_hms(here) << std::endl
-            << "Decl:   " << cels[i]->Decl_as_degms(here) << std::endl
-            << "Mag:    " << std::setprecision(2) << lmag << std::endl;
+        objinfo += (std::string)"RA:    " + cels[i]->RA_as_hms(here) + (std::string)"\n"
+                + (std::string)"Decl:  " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+        oss << "Mag:    " << std::setprecision(2) << lmag << std::endl;
+        objinfo += oss.str();
+        oss.clear();
 
         if (cels[i]->distance_known)
         {
@@ -1000,7 +1003,7 @@ void identify_object_under_cursor(ImGuiIO& io)
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
-            oss << "SpTyp:  " << s->spectral_type << std::endl;
+            objinfo += (std::string)"SpTyp: " + s->spectral_type + (std::string)"\n";
         }
         else if (cels[i]->type == galaxy)
         {
@@ -1026,7 +1029,8 @@ void identify_object_under_cursor(ImGuiIO& io)
                 oss << "Radius:  " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
                     << " R(earth)" << std::endl;
         }
-        objinfo = oss.str();
+        objinfo += oss.str();
+        oss.clear();
     }
     else
     {
