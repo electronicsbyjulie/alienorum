@@ -937,6 +937,8 @@ void identify_object_under_cursor(ImGuiIO& io)
         i = is_an_obj_under_cursor;
         double lmag = vmag_cache[i];
 
+        std::stringstream oss;
+
         objname = cels[i]->name;
         objinfo = "";
         if (cels[i]->type == star)
@@ -944,36 +946,39 @@ void identify_object_under_cursor(ImGuiIO& io)
             Star* s = (Star*)cels[i];
             if (strlen(s->Bayer) && strlen(s->Flamsteed))
             {
-                int Fl = atoi(s->Flamsteed);
-                objinfo += std::to_string(Fl) + (std::string)s->Bayer + (std::string)"\n";
+                oss << atoi(s->Flamsteed) << s->Bayer << std::endl;
             }
-            else if (strlen(s->Flamsteed)) objinfo += (std::string)s->Flamsteed + (std::string)"\n";
-            else if (strlen(s->Bayer)) objinfo += (std::string)s->Bayer + (std::string)"\n";
+            else if (strlen(s->Flamsteed)) oss << s->Flamsteed << std::endl;
+            else if (strlen(s->Bayer)) oss << s->Bayer << std::endl;
 
-            if (strlen(s->Gliese)) objinfo += (std::string)s->Gliese + (std::string)"\n";
-            if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
-            if (s->HR) objinfo += (std::string)"HR" + std::to_string(s->HR) + (std::string)"\n";
-            if (s->HIP) objinfo += (std::string)"HIP" + std::to_string(s->HIP) + (std::string)"\n";
+            if (strlen(s->Gliese)) oss << s->Gliese << std::endl;
+            if (s->HD ) oss << "HD"  + s->HD  << std::endl;
+            if (s->HR ) oss << "HR"  + s->HR  << std::endl;
+            if (s->HIP) oss << "HIP" + s->HIP << std::endl;
             if (s->Bonn_survey[0])
             {
-                char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
-                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
-                    + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential) + std::string("\n");
+                oss << s->Bonn_survey << (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
+                    << (abs(s->Bonn_survey_declination)<10 ? "0" : "") << s->Bonn_survey_declination
+                    << " " << s->Bonn_survey_sequential << std::endl;
             }
         }
 
-        objinfo += (std::string)"RA:    " + cels[i]->RA_as_hms(here) + (std::string)"\n"
-                + (std::string)"Decl:  " + cels[i]->Decl_as_degms(here) + (std::string)"\n"
-                + (std::string)"Mag:   " + std::to_string(lmag) + (std::string)"\n"
-                // + (std::string)"Epoch: " + std::to_string((cels[i]->epoch-J2000)/(year/86400)+2000) + (std::string)"\n"
-                ;
+        oss << "RA:     " << cels[i]->RA_as_hms(here) << std::endl
+            << "Decl:   " << cels[i]->Decl_as_degms(here) << std::endl
+            << "Mag:    " << std::setprecision(2) << lmag << std::endl;
 
         if (cels[i]->distance_known)
-            objinfo += (std::string)"Dist:  " + cels[i]->scaled_distance(here) + (std::string)"\n";
+        {
+            if (cels[i]->type == star)
+            {
+                oss << "AbsMag: " << std::setprecision(2) << ((Star*)cels[i])->absolute_magnitude << "\n";
+            }
+            oss << "Dist:   " << cels[i]->scaled_distance(here) << std::endl;
+        }
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
-            objinfo += (std::string)"SpTyp: " + s->spectral_type + (std::string)"\n";
+            oss << "SpTyp:  " << s->spectral_type << std::endl;
         }
         else if (cels[i]->type == galaxy)
         {
@@ -981,23 +986,25 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
-            objinfo += (std::string)"Lit %: " + std::to_string((int)(((Planet*)cels[i])->amt_lit*100)) + (std::string)"\n";
+            oss << "Lit %:  " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
         }
 
         if (cels[i]->mass)
         {
             if (cels[i]->type == star) 
-                ; // objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / Msun) + std::string(" M(sun)\n");       // TODO: Fix Star::estimate_mass()
+                ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
             else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
-                objinfo += std::string("Mass:  ") + std::to_string(cels[i]->mass / cels[iamhome]->mass) + std::string(" M(earth)\n");
+                oss << "Mass:   " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
         }
         if (cels[i]->volumetric_mean_radius)
         {
             if (cels[i]->type == star)
-                ; // objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / Rsun) + std::string(" R(sun)\n");       // TODO: Fix Star::estimate_radius()
+                ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
             else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
-                objinfo += std::string("Radius: ") + std::to_string(cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius) + std::string(" R(earth)\n");
+                oss << "Radius:  " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
+                    << " R(earth)" << std::endl;
         }
+        objinfo = oss.str();
     }
     else
     {
@@ -1959,5 +1966,7 @@ int main (int argc, char** argv)
     delete[] by_cache;
     delete[] consaidx;
     delete[] consbidx;
+    if (hdcache) delete[] hdcache;
+    if (hipcache) delete[] hipcache;
     return 0;
 }

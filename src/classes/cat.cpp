@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <stdio.h>
 #include <math.h>
+#include <map>
 #include <string.h>
 #include "cat.h"
 
@@ -44,6 +45,8 @@ std::vector<int> considx, lnpercons;
 std::vector<Cartesian2D> conscen;
 int nconsln = 0;
 int *consaidx, *consbidx;
+Star **hdcache, **hipcache;
+std::map<int,std::map<char,Star* > > hipcomps;
 
 #if _debug_sbinaries_zetret
 Star *zet1ret = nullptr, *zet2ret = nullptr;
@@ -663,15 +666,16 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
-    CelestialObject **hdcache = new CelestialObject*[MAX_HD+1], **hipcache = new CelestialObject*[MAX_HIP+1];
-    memset(hdcache, 0, sizeof(CelestialObject*)*(MAX_HD+1));
-    memset(hipcache, 0, sizeof(CelestialObject*)*(MAX_HIP+1));
+    hdcache = new Star*[MAX_HD+1];
+    hipcache = new Star*[MAX_HIP+1];
+    memset(hdcache, 0, sizeof(Star*)*(MAX_HD+1));
+    memset(hipcache, 0, sizeof(Star*)*(MAX_HIP+1));
 
     for (j=0; j<offset; j++)
     {
-        if (cels[j]->type != star) continue;
-        if (((Star*)cels[j])->HD) hdcache[((Star*)cels[j])->HD] = cels[j];
-        if (((Star*)cels[j])->HIP) hipcache[((Star*)cels[j])->HIP] = cels[j];
+        if (cels[j]->typeclass() != class_star) continue;
+        if (((Star*)cels[j])->HD) hdcache[((Star*)cels[j])->HD] = (Star*)cels[j];
+        if (((Star*)cels[j])->HIP) hipcache[((Star*)cels[j])->HIP] = (Star*)cels[j];
     }
 
     FILE* fp = fopen(path.c_str(), "rb");
@@ -730,10 +734,12 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         s->HD = HD;
         s->HIP = HIP;
+        if (HD) hdcache[HD] = s;
+        if (HIP) hipcache[HIP] = s;
 
         // 328-337  A10   ---     CCDM      CCDM identifier                          (H55)
         read_field_onebased(buffer, 328, 337, field);
-        strcpy(s->CCDM, trim(field).c_str());
+        s->CCDM = trim(field);
 
         // 398-407  A10   ---     BD        Bonner DM <I/119>, <I/122>               (H72)
         read_field_onebased(buffer, 398, 407, Bonn);
@@ -801,13 +807,12 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         sec = atof(field);
 
         Decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
-        s->epoch = 1991.25;
 
         if (RA && Decl)
         {
             s->right_ascension = RA;
             s->declination = Decl;
-            s->epoch = 2448349.0625;
+            s->epoch = J2000 + (1991.25 - 2000);
         }
         else
         {
@@ -821,9 +826,13 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         f = atof(field) / 1000 / 3600 * fiftyseventh;
         if (f > 0)
         {
-            s->parallax = f;
-            s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
-            s->distance_known = true;
+            // Fix for e.g. NN3254.
+            if (!*(s->Gliese) || fabs(f - s->parallax) < 0.25 * fmin(f, s->parallax))
+            {
+                s->parallax = f;
+                s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
+                s->distance_known = true;
+            }
         }
         else if (!s->distance_known) s->distance = light_year*1e4;
 
@@ -840,9 +849,12 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //  42- 46  F5.2  mag     Vmag      ? Magnitude in Johnson V                  (H5)
         read_field_onebased(buffer, 42, 46, field);
         f = atof(field);
-        if (trim(field).size()) s->apparent_magnitude = f;
-        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        if (trim(field).size())
+        {
+            s->apparent_magnitude = f;
+            double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+            s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        }
 
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
@@ -883,58 +895,158 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             loading_msg = std::string("Loading Hipparcos Catalog... Updated HIP") + std::to_string(s->HIP);
         }
 
-        #if auto_match_multiples
-        if (!s->orbit && (s->BayerGrkno != 7 || strcmp(s->constellation, "Ori"))) for (j=1; j<10; j++)
-        {
-            int i = cursor-j;
-            if (i<=0) break;
-            if (cels[i]->typeclass() == class_star
-                && (((Star*)cels[i])->BayerGrkno != 7 || strcmp(((Star*)cels[i])->constellation, "Ori"))
-                && fabs(cels[i]->right_ascension - s->right_ascension) < 0.002
-                && fabs(cels[i]->declination - s->declination) < 0.0013
-                && fabs(((Star*)cels[i])->parallax - s->parallax) < 3.1e-09
-                && fabs(((Star*)cels[i])->proper_motion_RA - s->proper_motion_RA) < 1.5e-15
-                && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 1.5e-15
-                )
-            {
-                if (cels[i]->orbit) continue;
-                if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude)
-                {
-                    if (!cels[i]->orbit || !cels[i]->orbit->center)
-                    {
-                        if (!cels[i]->orbit) cels[i]->orbit = new Orbit();
-                        cels[i]->orbit->center = s;
-                        cels[i]->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << cels[i]->name << "/HIP" << ((Star*)cels[i])->HIP
-                            << " orbits " << s->name << "/HIP" << s->HIP << std::endl;
-                        break;
-                    }
-                }
-                else
-                {
-                    if (!s->orbit || !s->orbit->center)
-                    {
-                        if (!s->orbit) s->orbit = new Orbit();
-                        s->orbit->center = cels[i];
-                        s->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << cels[i]->name << "/HIP" << ((Star*)cels[i])->HIP
-                            << " orbits " << s->name << "/HIP" << s->HIP << std::endl;
-                        break;
-                    }
-                }
-            }
-        }
-        #endif
-
         num_read++;
-        if (num_read >= max-4) break;
+        if (num_read >= max-4) return num_read;
 
         if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from The Hipparcos Catalogue...");
     }
 
+    loading_msg = "Building Hipparcos-CCDM Cross Reference...";
+    path = "catalogs/Hipparcos/h_dm_com.dat";
+    fp = fopen(path.c_str(), "rb");
+    while (fgets(buffer, 1020, fp))
+    {
+        //  43- 48  I6     ---     HIP      HIP number                               (DC8)
+        read_field_onebased(buffer, 43, 48, field);
+        HIP = atoi(field);
+        if (!hipcache[HIP]) continue;
+        s = hipcache[HIP];
+
+        //   1- 10  A10    ---     CCDM     CCDM number                              (DC1)
+        read_field_onebased(buffer, 1, 10, field);
+        s->CCDM = trim(field);
+
+        if (s->ccdm_compseq)
+        {
+            Star* A = hipcache[HIP];
+            s = new Star();
+            s->right_ascension = A->right_ascension;
+            s->declination = A->declination;
+            s->parallax = A->parallax;
+            s->distance = A->distance;
+            s->location = A->location;
+            strcpy(s->name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, buffer[40])).c_str());
+            s->CCDM = A->CCDM;
+            s->proper_motion_RA = A->proper_motion_RA;
+            s->proper_motion_decl = A->proper_motion_decl;
+            s->epoch = J2000 + (1991.25 - 2000);
+            s->type = star;
+
+            s->orbit = new Orbit();
+            s->orbit->center = A;
+        }
+
+        //  38- 39  I2     ---     seq      Sequential component number             (DCM6)
+        read_field_onebased(buffer, 38, 39, field);
+        s->ccdm_compseq = atoi(field);
+
+        //      41  A1     ---     comp_id  Component identifier                     (DC7)
+        read_field_onebased(buffer, 41, 41, field);
+        s->component = field[0];
+
+        hipcomps[HIP][s->component] = s;
+
+        if (s != hipcache[HIP])
+        {
+            //  50- 55  F6.3   mag     Hp       Magnitude of component                   (DC9)
+            read_field_onebased(buffer, 50, 55, field);
+            s->apparent_magnitude = atof(field);
+            double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+            s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+
+            cels[num_read++] = s;
+            if (num_read >= max-4) return num_read;
+        }
+    }
+
+    loading_msg = "Loading Hipparcos Binary Star Orbits...";
+    path = "catalogs/Hipparcos/hip_dm_o.dat";
+    fp = fopen(path.c_str(), "rb");
+    while (fgets(buffer, 1020, fp))
+    {
+        //   1-  6  I6    ---      HIP      Identifier (HIP)                         (D01)
+        read_field_onebased(buffer, 1, 6, field);
+        HIP = atoi(field);
+
+        Star* A = hipcache[HIP];
+        if (!A) continue;
+        if (A->ccdm_compseq)
+        {
+            // If this error never shows up, delete this if block.
+            std::cerr << "HIP" << HIP
+                << " is present in both CCDM and hip_dm_o;"
+                << " adjust code accordingly."
+                << std::endl;
+            throw 0xbadc0de;
+        }
+
+        A->component = 'A';
+        hipcomps[HIP]['A'] = A;
+
+        s = new Star();
+        s->right_ascension = A->right_ascension;
+        s->declination = A->declination;
+        s->parallax = A->parallax;
+        s->distance = A->distance;
+        s->location = A->location;
+        strcpy(s->name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, buffer[40])).c_str());
+        s->CCDM = A->CCDM;
+        s->proper_motion_RA = A->proper_motion_RA;
+        s->proper_motion_decl = A->proper_motion_decl;
+        s->epoch = J2000 + (1991.25 - 2000);
+        s->type = star;
+
+        s->orbit = new Orbit();
+        s->orbit->center = A;
+
+        for (s->component = 'B'; s->component < 'Z'; s->component++)
+        {
+            auto it = hipcomps[HIP].find(s->component);
+            if (it == hipcomps[HIP].end()) break;
+        }
+
+        //   8- 17  F10.4 d        P        Orbital period                           (DO2)
+        read_field_onebased(buffer, 8, 17, field);
+        s->orbit->period = atof(field) * 86400;
+
+        //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
+        read_field_onebased(buffer, 19, 29, field);
+        s->orbit->epoch = 2440000 + atof(field);
+
+        //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
+        read_field_onebased(buffer, 31, 38, field);
+        s->orbit->semimajor_axis = (atof(field)/3600000) * fiftyseventh * s->distance;
+
+        //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
+        read_field_onebased(buffer, 40, 45, field);
+        s->orbit->eccentricity = atof(field);
+
+        //  47- 52  F6.2  deg      w       *[0,360] Argument of periastron           (DO6)
+        read_field_onebased(buffer, 47, 52, field);
+        s->orbit->arg_periapsis = atof(field) * fiftyseventh;
+
+        //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
+        read_field_onebased(buffer, 54, 59, field);
+        s->orbit->inclination = atof(field) * fiftyseventh;
+
+        //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
+        read_field_onebased(buffer, 61, 66, field);
+        s->orbit->ascending_node = atof(field) * fiftyseventh;
+
+        A->update_location(J2000_TIME_T);
+        A->location.local_system_plane = system_plane_from_incl_and_node(s->orbit->inclination,
+            s->orbit->ascending_node, s->location.system_center - cels[0]->location.system_center);
+        s->location = A->location;
+        s->orbit->inclination = 0;
+
+        s->apparent_magnitude = 11;         // placeholder
+        s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
+
+        cels[num_read++] = s;
+        if (num_read >= max-4) return num_read;
+    }
+
     fclose(fp);
-    delete[] hdcache;
-    delete[] hipcache;
     return num_read;
 }
 
@@ -954,17 +1066,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     bool already[max];
     memset(already, 0, max*sizeof(bool));
 
-    CelestialObject **hdcache = new CelestialObject*[MAX_HD+1], **hipcache = new CelestialObject*[MAX_HIP+1];
-    memset(hdcache, 0, sizeof(CelestialObject*)*(MAX_HD+1));
-    memset(hipcache, 0, sizeof(CelestialObject*)*(MAX_HIP+1));
-
-    for (i=0; i<offset; i++)
-    {
-        if (cels[i]->type != star) continue;
-        if (((Star*)cels[i])->HD) hdcache[((Star*)cels[i])->HD] = cels[i];
-        if (((Star*)cels[i])->HIP) hipcache[((Star*)cels[i])->HIP] = cels[i];
-    }
-
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
@@ -974,20 +1075,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 2, 11, field);
         CCDM = trim(field);
         const char* cCCDM = CCDM.c_str();
-        bool found = false;
-        for (i=0; i<offset; i++)
-        {
-            if (already[i]) continue;
-            if (cels[i] == A) continue;
-            if (cels[i]->type != star) continue;
-            s = (Star*)cels[i];
-
-            if (!strcmp(cCCDM, s->CCDM))
-            {
-                found = true;
-                break;
-            }
-        }
 
         //  99-104  A6     ---     HD       HD identifier
         read_field_onebased(buffer, 99, 104, field);
@@ -996,39 +1083,72 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         // 127-132  I6     ---     HIC      ? Hipparcos Input Catalogue (Turon et al., Cat. <I/196>) identifier (also HIP <I/239>)
         read_field_onebased(buffer, 127, 132, field);
         HIP = atoi(field);
+        if (!HIP) continue;             // TODO: Revisit this.
 
-        if (!found)
+        char refcomp = buffer[11], conccomp = buffer[12];
+        if (refcomp == ' ') refcomp = 'A';
+
+        bool found = false;
+        auto it = hipcomps.find(HIP);
+        if (it != hipcomps.end())
         {
-            s = nullptr;
-            if (HD && hdcache[HD]) s = (Star*)hdcache[HD];
-            else if (HIP && hipcache[HIP]) s = (Star*)hipcache[HIP];
-            if (s) found = true;
+            auto it1 = hipcomps[HIP].find(refcomp);
+            if (it1 != hipcomps[HIP].end())
+            {
+                auto it2 = hipcomps[HIP].find(conccomp);
+                if (it2 != hipcomps[HIP].end())
+                {
+                    A = hipcomps[HIP][refcomp];
+                    s = hipcomps[HIP][conccomp];
+                    found = true;
+                }
+                else
+                {
+                    s = new Star();
+                    s->right_ascension = A->right_ascension;
+                    s->declination = A->declination;
+                    s->parallax = A->parallax;
+                    s->distance = A->distance;
+                    s->location = A->location;
+                    s->component = conccomp;
+                    strcpy(s->name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, conccomp)).c_str());
+                    s->CCDM = A->CCDM = CCDM;
+                    s->proper_motion_RA = A->proper_motion_RA;
+                    s->proper_motion_decl = A->proper_motion_decl;
+                    s->epoch = J2000 + (1991.25 - 2000);
+                    s->type = star;
+
+                    s->orbit = new Orbit();
+                    s->orbit->center = A;
+                }
+            }
+            else
+            {
+                continue;
+            }
         }
+        else continue;
 
-        if (found && already[i]) continue;
-
-        // TODO: For systems where both members are not already loaded,
-        // can load additional members.
-        if (!found) continue;
-        if (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori"))
+        if (A->HD == 20766)                            // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
         {
-            A = nullptr;
-            continue;
-        }
-        already[i] = true;
-
-        //      13  A1     ---     Comp     [A-Z?] Concerned component (6)
-        char component = buffer[12];
-
-        if (component == '?') continue;
-        if (component <= 'A')
-        {
+            A->orbit = s->orbit;
+            s->orbit = nullptr;
+            A->orbit->center = s;
+            Star *swap = A;
             A = s;
-            continue;
+            s = swap;
         }
-        else if (!A) continue;
 
-        if (A->HD == 20766) continue;               // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
+        // HD225034 fix
+        if (!s->orbit && A->orbit && A->orbit->center == s)
+        {
+            Star *swap = A;
+            A = s;
+            s = swap;
+
+            strcpy(A->name, lop_component(A->name).c_str());
+            strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
+        }
 
         //  47- 49  A3     deg     theta    Position angle (degrees) (4)
         read_field_onebased(buffer, 47, 49, field);
@@ -1055,19 +1175,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         // Fill in positional parameters based on angular separation
         s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
         s->declination = A->declination + rho * cos(theta);
-
-        // Copy parameters from member A
-        s->distance = A->distance;
-        s->proper_motion_RA = A->proper_motion_RA;
-        s->proper_motion_decl = A->proper_motion_decl;
-        s->radial_velocity = A->radial_velocity;
-        s->orbit = new Orbit();
-        if (A->HD == 20766)
-        {
-            std::cerr << "BAD! 1061" << std::endl;
-            throw 0xbadc0de;
-        }
-        s->orbit->center = A;
 
         // The inclination is unknown, but let's assume zero degrees
         s->inclination = A->inclination = 0;
@@ -1467,21 +1574,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (inclination && (ascending_node || (!A->location.local_system_plane.a)))
         {
             overwrite_system_plane = true;
-
-            // First, solve for inclination
-            Rotation inclined = align_points_3d(cels[0]->location.system_center,
-                Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
-                A->location.system_center);
-
-            // Then incline the stars' pole
-            Point pole = rotate3D(yaxis, center, inclined.v, -inclined.a);
-
-            // Then rotate along the Sun-star axis
-            Point axis = A->location.system_center - cels[0]->location.system_center;
-            pole = rotate3D(pole, center, axis, (ascending_node + M_PI/2));
-
-            // Then realign the points for the new pole
-            A->location.local_system_plane = align_points_3d(pole, Point(0,light_year*1e9,0), center);
+            A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
+                A->location.system_center - cels[0]->location.system_center);
             A->location.orbital_plane.a = 0;
             A->location.equatorial_plane.a = 0;
         }

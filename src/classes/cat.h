@@ -17,6 +17,8 @@ extern std::vector<Cartesian2D> conscen;
 extern int nconsln;
 extern int *consaidx, *consbidx;
 extern bool have_Gliese, have_BSC, have_HIP, have_CCDM, have_SB9;
+extern Star **hdcache, **hipcache;
+extern std::map<int,std::map<char,Star* > > hipcomps;
 
 #define auto_match_multiples 0
 

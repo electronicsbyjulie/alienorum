@@ -273,6 +273,30 @@ Point rotate3D(Point point, Point source, Point axis, double theta)
     return pt;
 }
 
+Rotation system_plane_from_incl_and_node(double inclination, double ascending_node, Point system_center)
+{
+    // First, solve for inclination
+    Rotation inclined;
+    if (system_center.magnitude())
+        inclined = align_points_3d(center,
+            Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
+            system_center);
+    else inclined = align_points_3d(zaxis,
+            Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
+            center);
+
+    // Then incline the stars' pole
+    Point pole = rotate3D(yaxis, center, inclined.v, -inclined.a);
+
+    // Then rotate along the Sun-star axis
+    Point axis(0,0,light_year*1e9);
+    if (system_center.magnitude()) axis = system_center - center;
+    pole = rotate3D(pole, center, axis, (ascending_node + M_PI/2));
+
+    // Then realign the points for the new pole
+    return align_points_3d(pole, Point(0,light_year*1e9,0), center);
+}
+
 Rotation align_points_3d(Point point, Point align, Point center)
 {
     Point n = compute_normal(point, align, center);

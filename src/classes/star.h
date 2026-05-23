@@ -22,7 +22,8 @@ class Star : public CelestialObject
     int BayerGrkno = -1;
     int FlamsteedNo = -1;
     char constellation[32];
-    char CCDM[16];
+    std::string CCDM;
+    char ccdm_compseq = 0;
     char component = 0;
 
     __uint32_t HR = 0;                      // Harvard Revised catalog number
