@@ -113,6 +113,7 @@ Point rotate3D(Point point, Point source, Point axis, double theta);
 Rotation system_plane_from_incl_and_node(double inclination, double node, Point system_center = Point(0,0,0));
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
+bool operator==(const Point&, const Point&);
 
 extern Point center, xaxis, yaxis, zaxis;
 extern Point solar_north, ecliptic_north, galactic_north;

@@ -378,6 +378,11 @@ std::ostream& operator<<(std::ostream& os, const Point& p)
     return os;
 }
 
+bool operator==(const Point &p, const Point &q)
+{
+    return p.x == q.x && p.y == q.y && p.z == q.z;
+}
+
 double CelestialLocation::distance_to(CelestialLocation other)
 {
     Point relloc = (system_center - other.system_center) + (local_position - other.local_position);

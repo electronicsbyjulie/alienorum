@@ -130,6 +130,7 @@ bool Star::is_sunlike()
 
 bool Star::is_in_visible_box(Point seen_from)
 {
+    if (frand(0,1) > 0.1) return _is_in_visible_range;
     if (!visible_area_set)
     {
         double intrinsic = pow(magnbase, -absolute_magnitude);
@@ -140,7 +141,7 @@ bool Star::is_in_visible_box(Point seen_from)
         visible_area_set = true;
     }
 
-    return visible_area.point_in_box(seen_from);
+    return _is_in_visible_range = visible_area.point_in_box(seen_from);
 }
 
 void Star::make_universally_visible()

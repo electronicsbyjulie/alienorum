@@ -63,9 +63,9 @@ using json = nlohmann::json;
 #define default_gamma 1.0
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
-#define nlbltyp 5
-#define _filter_Hipparcos_stars_appmag 0
-#define _filter_Hipparcos_stars_absmag 1
+#define nlbltyp 6
+#define _filter_Hipparcos_stars_appmag 1
+#define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
 
 extern double magnbase, invlogmagnbase;

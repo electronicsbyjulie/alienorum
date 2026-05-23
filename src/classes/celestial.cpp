@@ -5,7 +5,7 @@
 #include <sstream>
 #include "celestial.h"
 
-CelestialObject **cels;
+CelestialObject **cels, *mycenobj = nullptr;
 bool *celskip;
 double *vmag_cache, *magrad_cache;
 CelestialLocation here;

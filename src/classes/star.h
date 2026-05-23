@@ -60,6 +60,7 @@ class Star : public CelestialObject
 protected:
     Box visible_area;
     bool visible_area_set = false;
+    bool _is_in_visible_range = true;
 };
 
 void rename_all_from_Bayer_Flamsteed();

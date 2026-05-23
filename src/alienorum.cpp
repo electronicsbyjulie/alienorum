@@ -267,7 +267,11 @@ bool load_universe(std::string universe_fname)
         if (Serialization::load_all(fs, cels, MAX_CELOBJS))
         {
             fs.close();
-            for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
+            for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth"))
+            {
+                whereami = iamhome = i;
+                mycenobj = cels[i]->cenobj;
+            }
             ncelobjs = i;
 
             std::filesystem::file_time_type ftime_json = std::filesystem::last_write_time("universe.json");
@@ -366,6 +370,8 @@ void load_catalogs()
         int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nCCDM << " objects." << endl << flush;
     }
+    #ifndef DEBUG
+    // Takes too long to load (~29 seconds).
     if (have_SB9)
     {
         mtx.lock();
@@ -375,8 +381,15 @@ void load_catalogs()
         int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nSB9 << " objects." << endl << flush;
     }
+    #endif
 
-    for (i=0; cels[i]; i++) if (cels[i]->type == star) num_stars++;
+    for (i=0; cels[i]; i++)
+    {
+        if (cels[i]->type == star) num_stars++;
+        if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
+        while (cels[i]->cenobj->orbit && cels[i]->cenobj->orbit->center && cels[i]->cenobj->orbit->center->typeclass() != class_galaxy)
+            cels[i]->cenobj = cels[i]->cenobj->orbit->center;
+    }
 
     mtx.lock();
     loading_msg = std::string("Naming stars...");
@@ -552,26 +565,32 @@ void compute_object_draw_coordinates()
 {
     int i, j, bx, by;
     double theta, dispw = dispcx*2, disph = dispcy*2;
+    mycenobj = (whereami >= 0) ? cels[whereami]->cenobj : nullptr;
     if (viewchanged)
     {
         for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            CelestialLocation tmp = cels[i]->location - here;
+            cels[i]->tmprel = Point(tmp);
             switch (cels[i]->typeclass())
             {
                 case class_star:
-                if (i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center))
+                if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj && !((Star*)cels[i])->is_in_visible_box(here.system_center))
                 {
                     cels[i]->drawnx = cels[i]->drawny = -1e9;
                     continue;
                 }
-                if (cels[i]->orbit && cels[i]->orbit->center
+                if (cels[i]->orbit && cels[i]->orbit->center && cels[i]->orbit->center != cels[whereami]
                     && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
                         || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
+                        || cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom
                         )
                     )
+                {
+                    cels[i]->drawnx = cels[i]->drawny = -1e9;
                     continue;
-                if (cels[i]->orbit && cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom) continue;
+                }
                 ((Star*)cels[i])->update_location(simnow);
                 break;
 
@@ -592,8 +611,7 @@ void compute_object_draw_coordinates()
 
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
-            Point rel = cels[i]->location;
-            rel -= here;
+            Point rel = cels[i]->tmprel;
 
             rel = rotate3D(rel, center, here.equatorial_plane.v, here.equatorial_plane.a);
             rel = rotate3D(rel, center, here.orbital_plane.v, here.orbital_plane.a);
@@ -613,8 +631,8 @@ void compute_object_draw_coordinates()
                 cels[i]->drawnx = dx;
                 cels[i]->drawny = dy;
 
-                if (dx < 0 or dx >= dispw) continue;
-                if (dy < 0 or dy >= disph) continue;
+                if (dx < 0 || dx >= dispw) continue;
+                if (dy < 0 || dy >= disph) continue;
 
                 bx = dx*drawblxscalex;
                 by = dy*drawblxscaley;
@@ -668,10 +686,7 @@ void draw_objects()
             else
                 ((Planet*)cels[i])->update_location(simnow + step*j);
 
-            CelestialLocation tmp = cels[i]->location;
-            tmp.system_center -= here.system_center;                        // so much for operator-()
-            tmp.local_position -= here.local_position;
-            Point rel = Point(tmp);
+            Point rel = cels[i]->tmprel;
 
             rel = rotate3D(rel, center, here.equatorial_plane.v, here.equatorial_plane.a);
             rel = rotate3D(rel, center, here.orbital_plane.v, here.orbital_plane.a);
@@ -701,16 +716,16 @@ void draw_objects()
         if (i == whereami) continue;
         if (!pass && magrad_cache[i] > 3) continue;
         else if (pass && magrad_cache[i] <= 3) continue;
-        if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
+        // if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
 
-        Point rel = cels[i]->location;
-        rel -= here;
+        Point rel = cels[i]->tmprel;
 
-        if (cels[i]->drawnx < 0 or cels[i]->drawnx >= dispw) continue;
-        if (cels[i]->drawny < 0 or cels[i]->drawny >= disph) continue;
+        if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
+        if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
+        if (appmag > 7) continue;
         magrad = magrad_cache[i];
         flare = fmin(81, fmax(0, sqrt(magrad-400)/8));
         magrad = fmin(15, magrad);
@@ -737,6 +752,7 @@ void draw_objects()
                 break;
             }
         }
+
         double divisor = 1.0 / (pow(bloom_exponent, magrad*2-1));
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         for (jay=magrad; jay>=0; jay-=0.5)
@@ -758,7 +774,7 @@ void draw_objects()
     if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (i == whereami) continue;
-        if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
+        // if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
         // if (cels[i]->orbit) std::cout << cels[i]->name << " " << cels[i]->location.distance_to(here) << " " << cels[i]->orbit->semimajor_axis << std::endl;
         if (cels[i]->orbit && cels[i]->location.distance_to(here) > 1e3*cels[i]->orbit->semimajor_axis) continue;
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
@@ -769,6 +785,7 @@ void draw_objects()
             || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
             || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
             || (cbolbls_selected_idx == 4 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+            || (cbolbls_selected_idx == 5 && cels[i]->type == star && cels[i]->known_poles)
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
@@ -990,6 +1007,7 @@ void identify_object_under_cursor(ImGuiIO& io)
                 + (std::string)"Decl:  " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
         oss << "Mag:    " << std::setprecision(2) << lmag << std::endl;
         objinfo += oss.str();
+        oss.str("");
         oss.clear();
 
         if (cels[i]->distance_known)
@@ -1034,8 +1052,8 @@ void identify_object_under_cursor(ImGuiIO& io)
     }
     else
     {
-        objname = std::to_string(ncelobjs) + (std::string)" objects.";
-        objinfo = "Press N to toggle\nthis window.\n\n";
+        objname = "Press N to toggle\nthis window.";
+        objinfo = "\n\n";
         if (is_click && !dragged) selected = -1;
     }
 }
@@ -1438,18 +1456,26 @@ void draw_status_window(ImGuiIO& io)
     if (isnan(vm)) vm = 0;
     velocmag = vm;
     std::string velocstr;
-    if (velocmag < 0.01 * speed_of_light) velocstr = std::string("Velocity: ") + std::to_string((int)(velocmag / 1000 * 3600)) + std::string(" km/h");
+    if (velocmag < 0.01 * speed_of_light)
+    {
+        stringstream oss;
+        oss << std::scientific << std::setprecision(4) << (velocmag / 1000 * 3600);
+        velocstr = std::string("Velocity: ") + oss.str() + std::string(" km/h");
+        oss.str("");
+    }
     else if (velocmag < speed_of_light)
     {
         std::ostringstream oss;
         oss << std::setprecision(13) << (velocmag / speed_of_light);
         velocstr = std::string("Velocity: ") + oss.str() + std::string(" c");
+        oss.str("");
     }
     else
     {
         std::ostringstream oss;
         oss << std::scientific << std::setprecision(2) << (velocmag / speed_of_light);
         velocstr = std::string("Velocity: Warp ") + oss.str();
+        oss.str("");
     }
     ImGui::Text(velocstr.c_str());
     statheight += txtyscale;
@@ -1560,21 +1586,6 @@ int main (int argc, char** argv)
 
     memset(lookfor, 0, 256);
 
-    /*
-    std::cout << has_same_numbers("123", "a1b2c3") << std::endl << std::flush;
-    std::cout << has_same_numbers("a1b2c3", "123") << std::endl << std::flush;
-    std::cout << has_same_numbers("123", "a1b2c3d4") << std::endl << std::flush;
-    std::cout << has_same_numbers("1234", "a1b2c3") << std::endl << std::flush;
-    std::cout << has_same_numbers("1234", "a1b2c3d4") << std::endl << std::flush;
-    std::cout << has_same_numbers("1234", "1324") << std::endl << std::flush;
-    std::cout << has_same_numbers("123", "1.23") << std::endl << std::flush;
-    std::cout << has_same_numbers("123", "123.4") << std::endl << std::flush;
-    std::cout << has_same_numbers("123.4", "123") << std::endl << std::flush;
-    std::cout << has_same_numbers("abc", "def") << std::endl << std::flush;
-
-    return 0;
-    */
-
     for (l=1; l<argc; l++)
     {
         n = strlen(argv[l]);
@@ -1593,6 +1604,17 @@ int main (int argc, char** argv)
         }
 
         if (!strcmp(argv[l], "magtest")) magnitude_test = true;
+        if (!strcmp(argv[l], "sizeof"))
+        {
+            std::cout << "Size of CelestialObject: " << sizeof(CelestialObject) << std::endl;
+            std::cout << "Size of Galaxy: " << sizeof(Galaxy) << std::endl;
+            std::cout << "Size of Star: " << sizeof(Star) << std::endl;
+            std::cout << "Size of Planet: " << sizeof(Planet) << std::endl;
+            std::cout << "Size of Moon: " << sizeof(Moon) << std::endl;
+            std::cout << "Size of Orbit: " << sizeof(Orbit) << std::endl;
+            std::cout << "Size of Point: " << sizeof(Point) << std::endl;
+            std::cout << "Size of CelestialLocation: " << sizeof(CelestialLocation) << std::endl;
+        }
     }
 
     if (magnitude_test)
@@ -1985,7 +2007,30 @@ int main (int argc, char** argv)
         simnow = (JDnow - J2000)*86400 + J2000_TIME_T;
     }
 
-    for (i=0; cels[i]; i++) delete cels[i];
+    for (i=0; cels[i]; i++)
+    {
+        if (cels[i]) switch (cels[i]->typeclass())
+        {
+            case class_galaxy:
+            delete (Galaxy*)cels[i];
+            break;
+
+            case class_star:
+            delete (Star*)cels[i];
+            break;
+
+            case class_planet:
+            delete (Planet*)cels[i];
+            break;
+
+            case class_moon:
+            delete (Moon*)cels[i];
+            break;
+
+            default:
+            delete cels[i];
+        }
+    }
     delete[] cels;
     delete[] vmag_cache;
     delete[] magrad_cache;

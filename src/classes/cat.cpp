@@ -338,6 +338,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
             s->location.local_system_plane = ICRF_to_ecliptic;
             s->location.equatorial_plane = rot;
+            s->known_poles = true;
         }
         else
         {
@@ -386,7 +387,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     char buffer[65536];
     char field[32];
     int num_read = 0;
-    int offset, HDno, j;
+    int offset, HD, j;
     double deg, mnt, sec;
     bool HDfound;
     double f;
@@ -394,6 +395,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
+    hdcache = new Star*[MAX_HD+1];
+    memset(hdcache, 0, sizeof(Star*)*(MAX_HD+1));
     FILE* fp = fopen(path.c_str(), "rb");
 
     while (fgets(buffer, 65520, fp))
@@ -401,14 +404,14 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         Star* s;
 
         read_field_onebased(buffer, 26, 31, field);
-        HDno = atoi(field);
+        HD = atoi(field);
 
         HDfound = false;
-        if (HDno)
+        if (HD)
         {
             for (j=0; j<offset; j++)
             {
-                if (cels[j]->type == star && ((Star*)cels[j])->HD == HDno)
+                if (cels[j]->type == star && ((Star*)cels[j])->HD == HD)
                 {
                     HDfound = true;
                     s = (Star*)cels[j];
@@ -422,6 +425,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             s = new Star();
             s->type = star;
         }
+
+        if (HD) hdcache[HD] = s;
 
         //    Bytes Format  Units   Label    Explanations
         // --------------------------------------------------------------------------------
@@ -598,47 +603,6 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         #endif
 
-        #if auto_match_multiples
-        if (!s->orbit && (s->BayerGrkno != 7 || strcmp(s->constellation, "Ori"))) for (j=1; j<10; j++)
-        {
-            int i = offset+num_read-j;
-            if (i<=0) break;
-            if (cels[i]->typeclass() == class_star
-                && (((Star*)cels[i])->BayerGrkno != 7 || strcmp(((Star*)cels[i])->constellation, "Ori"))
-                && fabs(cels[i]->right_ascension - s->right_ascension) < 0.002
-                && fabs(cels[i]->declination - s->declination) < 0.0013
-                && fabs(((Star*)cels[i])->parallax - s->parallax) < 3.1e-08
-                && fabs(((Star*)cels[i])->proper_motion_RA - s->proper_motion_RA) < 5e-16
-                && fabs(((Star*)cels[i])->proper_motion_decl - s->proper_motion_decl) < 5e-16
-                )
-            {
-                if (cels[i]->orbit) continue;
-                if (((Star*)cels[i])->apparent_magnitude > s->apparent_magnitude)
-                {
-                    if (!cels[i]->orbit || !cels[i]->orbit->center)
-                    {
-                        if (!cels[i]->orbit) cels[i]->orbit = new Orbit();
-                        cels[i]->orbit->center = s;
-                        cels[i]->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << cels[i]->name << " orbits " << s->name << std::endl;
-                        break;
-                    }
-                }
-                else
-                {
-                    if (!s->orbit || !s->orbit->center)
-                    {
-                        if (!s->orbit) s->orbit = new Orbit();
-                        s->orbit->center = cels[i];
-                        s->orbit->semimajor_axis = s->location.distance_to(cels[i]->location);
-                        std::cout << s->name << " orbits " << cels[i]->name << std::endl;
-                        break;
-                    }
-                }
-            }
-        }
-        #endif
-
         if (!HDfound)
         {
             cels[offset+num_read] = s;
@@ -666,9 +630,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
-    hdcache = new Star*[MAX_HD+1];
     hipcache = new Star*[MAX_HIP+1];
-    memset(hdcache, 0, sizeof(Star*)*(MAX_HD+1));
     memset(hipcache, 0, sizeof(Star*)*(MAX_HIP+1));
 
     for (j=0; j<offset; j++)
@@ -685,25 +647,18 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 9, 14, field);
         HIP = atoi(field);
 
+        if (HIP == 102098)            // Why tf is a whole swath of right ascensions just gone????
+        {
+            j=0;
+        }
+
         // 391-396  I6    ---     HD        [1/359083]? HD number <III/135>
         read_field_onebased(buffer, 391, 396, field);
         HD = atoi(field);
 
         s = nullptr;
         bool is_new = false;
-        /* for (j=0; j<offset; j++)
-        {
-            if (cels[j]->type != star) continue;
-            if ((HD && ((Star*)cels[j])->HD == HD)
-                ||
-                (HIP && ((Star*)cels[j])->HIP == HIP)
-                )
-            {
-                s = (Star*)cels[j];
-                cursor = j;
-                break;
-            }
-        }*/
+
         if (HD && hdcache[HD]) s = (Star*)hdcache[HD];
         else if (HIP && hipcache[HIP]) s = (Star*)hipcache[HIP];
         if (!s)
@@ -715,9 +670,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
             #if _filter_Hipparcos_stars_appmag
             f = atof(field);
-            // From spectral type, determine if star is at least giant.
-            read_field_onebased(buffer, 436, 447, field);
-            if (!strchr(field, 'I') || strchr(field, 'V')) continue;
             if (f > 6.5) continue;
             #endif
             #if _filter_Hipparcos_stars_absmag
@@ -726,7 +678,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             double distance = (parallax > 0) ? (parsec / parallax * 1000) : light_year*1e4;
             double intrinsic_brightness = pow(magnbase, -appmag) * pow(fmax(AU, distance) / parsec / 10, 2);
             double absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
-            if (absolute_magnitude > 8) continue;
+            if (absolute_magnitude > 7) continue;
             #endif
             s = new Star();
             is_new = true;
@@ -942,7 +894,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
             s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
-            cels[num_read++] = s;
+            cels[offset++] = s;
+            num_read++;
             if (num_read >= max-4) return num_read;
         }
     }
@@ -1014,11 +967,14 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             s->orbit->ascending_node, s->location.system_center - cels[0]->location.system_center);
         s->location = A->location;
         s->orbit->inclination = 0;
+        A->known_poles = true;
+        s->known_poles = true;
 
         s->apparent_magnitude = 11;         // placeholder
         s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
 
-        cels[num_read++] = s;
+        cels[offset++] = s;
+        num_read++;
         if (num_read >= max-4) return num_read;
     }
 
@@ -1139,9 +1095,12 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
         s->declination = A->declination + rho * cos(theta);
 
-        // The inclination is unknown, but let's assume zero degrees
-        s->inclination = A->inclination = 0;
-        A->location.local_system_plane = align_points_3d(cels[0]->location.system_center, Point(0,light_year*1e9,0), A->location.system_center);
+        if (!A->known_poles)
+        {
+            // The inclination is unknown, but let's assume zero degrees
+            s->inclination = A->inclination = 0;
+            A->location.local_system_plane = align_points_3d(cels[0]->location.system_center, Point(0,light_year*1e9,0), A->location.system_center);
+        }
         s->location = A->location;                      // Copies local system reference frame
         s->epoch = J2000;
         s->update_location(J2000_TIME_T);
@@ -1151,8 +1110,11 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         s->orbit->semimajor_axis = sma;
 
         // Figure the absolute magnitude
-        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        if (s->distance_known)
+        {
+            double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+            s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        }
 
         // TODO: For systems where both members are not already loaded,
         // can load additional members.
@@ -1294,6 +1256,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         SB9 = atoi(field);
 
         found = -1;
+        B = nullptr;
         auto it_hip = hipcomps.find(HIP);
         if (it_hip != hipcomps.end())
         {
@@ -1358,6 +1321,11 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             {
                 B = (Star*)cels[found];
             }
+        }
+        if (!B)
+        {
+            B = new Star();
+            B->make_companion_of(A, comp[0]);
         }
 
         B->SB9 = SB9;
@@ -1544,13 +1512,14 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         double inclination = atof(field) * fiftyseventh;
 
         bool overwrite_system_plane = false;
-        if (inclination && (ascending_node || (!A->location.local_system_plane.a)))
+        if (inclination)
         {
             overwrite_system_plane = true;
             A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
                 A->location.system_center - cels[0]->location.system_center);
             A->location.orbital_plane.a = 0;
             A->location.equatorial_plane.a = 0;
+            A->known_poles = true;
         }
 
         read_field_onebased(buffer, 25, 47, field);
@@ -1616,6 +1585,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         {
             s->location = A->location;
             s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
+            A->known_poles = s->known_poles = true;
         }
 
         num_read++;
@@ -1724,6 +1694,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         read_field_onebased(buffer, 183, 191, field);
         p->equinox = atof(field) * fiftyseventh;
+        p->known_poles = p->inclination && p->equinox;
 
         read_field_onebased(buffer, 193, 210, field);
         p->sidereal_rotational_period = atof(field);

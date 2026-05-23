@@ -43,11 +43,11 @@ bool objinfwnd = true;
 bool statuswnd = true;
 bool hide_mouse = true;
 bool searched = false;
-const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Binary Orbit" };
+const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Binary Orbit", "Known Poles" };
 int cbolbls_selected_idx = 0;
 double bv_correction = 0;
 
-double appmagn_lblcut = 2.0,
+double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,
        distance_lblcut = 25*light_year;
 char lblcut0[256], lblcut1[256], lblcut2[256];

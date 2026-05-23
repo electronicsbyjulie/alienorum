@@ -71,6 +71,7 @@ class CelestialObject
     double precession = 0;                      // radians/second
     double distance = 0;                        // meters
     bool distance_known = false;
+    bool known_poles = false;
 
     double epoch = J2000;                       // JD
     double absolute_magnitude = 0;
@@ -87,6 +88,8 @@ class CelestialObject
     CelestialObject();
     CelestialLocation location;
     Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
+    CelestialObject *cenobj = nullptr;
+    Point tmprel;
 
     double viewer_magnitude(CelestialLocation seen_from);
     static double distance_from_magnitudes(double apparent, double absolute);
@@ -104,10 +107,10 @@ class CelestialObject
     void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
 
     public:
-    cel_obj_class typeclass() const { return  _class; };
+    inline cel_obj_class typeclass() const { return  _class; };
 };
 
-extern CelestialObject **cels;
+extern CelestialObject **cels, *mycenobj;
 extern bool *celskip;
 extern double *vmag_cache, *magrad_cache;
 extern CelestialLocation here;

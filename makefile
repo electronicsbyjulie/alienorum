@@ -17,6 +17,11 @@ CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 # Uncomment for debug mode
 # CPPFLAGS += -g -DDEBUG
 
+# For gprof
+# example command line:
+# gprof bin/alienorum gmon.out > alienorum.output
+# CPPFLAGS += -g -pg -DDEBUG
+
 IMGUI_DIR = src/imgui
 CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
@@ -33,7 +38,9 @@ LINUX_GL_LIBS = -lGL
 # Dynamically track all object files cleanly
 OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
-OBJS += $(OBJ)/alienorum.o
+
+INCLUDES = -I./src/include -I./src/imgui -I./src/classes
+CPPFLAGS += $(INCLUDES)
 
 # Platform-specific configurations
 ifeq ($(UNAME_S), Linux)
@@ -80,9 +87,6 @@ objs: $(OBJS)
 
 alienorum: $(BIN)/alienorum
 
-# Compile main application file to object file first
-$(OBJ)/alienorum.o: src/alienorum.cpp
-	$(CPP) $(CPPFLAGS) -c -o $@ $<
 
 %.o:$(IMGUI_DIR)/backends/%.cpp
 	$(CPP) $(CPPFLAGS) -c -o $(OBJ)/$@ $<
@@ -138,7 +142,7 @@ $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h 
 $(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
 
-# Strict link step using the specific object array explicitly
-$(BIN)/alienorum: $(OBJS)
-	$(CPP) $(OBJS) -o $(BIN)/alienorum $(LIBS)
+# gprof requires compiling and linking main code file in one unified command; do not split out.
+$(BIN)/alienorum: $(OBJS) src/alienorum.cpp makefile
+	$(CPP) src/alienorum.cpp $(OBJS) $(CPPFLAGS) -o $(BIN)/alienorum $(LIBS) $(GPROF)
 
