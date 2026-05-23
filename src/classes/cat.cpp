@@ -670,7 +670,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
             #if _filter_Hipparcos_stars_appmag
             f = atof(field);
-            if (f > 6.5) continue;
+            if (f > 7.5) continue;
             #endif
             #if _filter_Hipparcos_stars_absmag
             read_field_onebased(buffer, 80, 86, field);

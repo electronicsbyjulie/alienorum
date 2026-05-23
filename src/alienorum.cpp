@@ -36,7 +36,7 @@ std::filesystem::path p = "catalogs";
 bool catalogs_found = false;
 int num_galaxies=0, num_stars=0, num_planets=0, num_moons=0, num_asteroids=0, num_comets=0, num_sat=0;
 float dispcx, dispcy;
-int frames_without_mousemove = 0;
+int frames_without_mousemove = 0, num_stars_in_box;
 double txtyscale, txtycompact;
 bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9;
@@ -401,7 +401,7 @@ void load_catalogs()
     mtx.unlock();
     cr.read_star_orbits_dat(cels);
 
-    // save_universe();
+    for (i=0; cels[i]; i++) if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(center);
 }
 
 void read_cons_lines()
@@ -565,9 +565,12 @@ void compute_object_draw_coordinates()
 {
     int i, j, bx, by;
     double theta, dispw = dispcx*2, disph = dispcy*2;
-    mycenobj = (whereami >= 0) ? cels[whereami]->cenobj : nullptr;
+    if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
+    double mycenobj_dist = mycenobj->location.distance_to(here);
     if (viewchanged)
     {
+        num_stars_in_box = 0;
+        bool star_in_box;
         for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
@@ -576,7 +579,9 @@ void compute_object_draw_coordinates()
             switch (cels[i]->typeclass())
             {
                 case class_star:
-                if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj && !((Star*)cels[i])->is_in_visible_box(here.system_center))
+                if (star_in_box = ((Star*)cels[i])->is_in_visible_box(here.system_center)) num_stars_in_box++;              // ANC
+                ((Star*)cels[i])->tmp_vis_flag = star_in_box;
+                if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj && !star_in_box)
                 {
                     cels[i]->drawnx = cels[i]->drawny = -1e9;
                     continue;
@@ -592,6 +597,15 @@ void compute_object_draw_coordinates()
                     continue;
                 }
                 ((Star*)cels[i])->update_location(simnow);
+                tmp = cels[i]->location - here;
+                cels[i]->tmprel = Point(tmp);
+
+                // If entering a new star system, change allegiance to new center object.
+                if (whereami < 0
+                    // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
+                    && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
+                    && cels[i]->tmprel.magnitude() < mycenobj_dist)
+                    mycenobj = cels[i]->cenobj;
                 break;
 
                 case class_planet:
@@ -609,13 +623,21 @@ void compute_object_draw_coordinates()
             if (whereami == i) here = cels[i]->location;
         }
 
+        Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
+        viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
+        viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);
+        Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
+
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            if (cels[i]->typeclass() == class_star
+                && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
+                && !((Star*)cels[i])->tmp_vis_flag)
+                continue;
+
             Point rel = cels[i]->tmprel;
 
-            rel = rotate3D(rel, center, here.equatorial_plane.v, here.equatorial_plane.a);
-            rel = rotate3D(rel, center, here.orbital_plane.v, here.orbital_plane.a);
-            rel = rotate3D(rel, center, here.local_system_plane.v, here.local_system_plane.a);
+            rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
             try
             {
@@ -658,11 +680,18 @@ void draw_objects()
     double appmag, magrad, flare, theta;
     double orbseg = 81, smalim = 1e3*sqrt(zoom);
 
+    Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
+    viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
+    viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);
+    Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
+
     // Orbits
     if (show_orbits) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (!cels[i]->orbit) continue;
-        if (cels[i]->location.distance_to(here) > cels[i]->orbit->semimajor_axis * smalim) continue;
+        //if (cels[i]->location.distance_to(here) > cels[i]->orbit->semimajor_axis * smalim) continue;
+        if (cels[i]->cenobj != mycenobj) continue;
+
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
         RGB rgb = Color::rgb_from_color(col, 1);
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
@@ -686,11 +715,9 @@ void draw_objects()
             else
                 ((Planet*)cels[i])->update_location(simnow + step*j);
 
-            Point rel = cels[i]->tmprel;
+            CelestialLocation orbrel = cels[i]->location - here;
 
-            rel = rotate3D(rel, center, here.equatorial_plane.v, here.equatorial_plane.a);
-            rel = rotate3D(rel, center, here.orbital_plane.v, here.orbital_plane.a);
-            rel = rotate3D(rel, center, here.local_system_plane.v, here.local_system_plane.a);
+            Point rel = rotate3D(Point(orbrel), center, viewer_plane.v, -viewer_plane.a);
 
             Cartesian2D cart;
             try
@@ -1487,6 +1514,12 @@ void draw_status_window(ImGuiIO& io)
         ImGui::Text(numobjs.c_str());
         statheight += txtyscale;
     }
+    if (num_stars_in_box)
+    {
+        numobjs = std::to_string(num_stars_in_box) + " stars in range";
+        ImGui::Text(numobjs.c_str());
+        statheight += txtyscale;
+    }
     /* if (num_planets)
     {
         numobjs = std::to_string(num_planets) + " planets";
@@ -1765,10 +1798,10 @@ int main (int argc, char** argv)
     std::thread t1(load_stuff);
     t1.detach();
 
-    int my_image_width = 0;
-    int my_image_height = 0;
-    GLuint my_image_texture = 0;
-    bool ret = LoadTextureFromFile("assets/icon_full.png", &my_image_texture, &my_image_width, &my_image_height);
+    int splash_image_width = 0;
+    int splash_image_height = 0;
+    GLuint splash_image_texture = 0;
+    bool ret = LoadTextureFromFile("assets/icon_full.png", &splash_image_texture, &splash_image_width, &splash_image_height);
     IM_ASSERT(ret);
 
     ImVec2 splash_star_positions[MAX_SPLASH_STARS];
@@ -1825,7 +1858,7 @@ int main (int argc, char** argv)
         if (splash)
         {
             double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 21;
-            double aspect_width = splash_height * my_image_width / my_image_height;
+            double aspect_width = splash_height * splash_image_width / splash_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
             int y;
@@ -1869,7 +1902,7 @@ int main (int argc, char** argv)
                 ImGui::SetWindowPos(ImVec2(left,0));
                 ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
                 ImGui::Text(lloadmsg);
-                ImGui::Image((ImTextureID)(intptr_t)my_image_texture, ImVec2(aspect_width, splash_height));
+                ImGui::Image((ImTextureID)(intptr_t)splash_image_texture, ImVec2(aspect_width, splash_height));
             }
             else std::cout << "ImGui::Begin() failed." << std::endl;
             ImGui::End();

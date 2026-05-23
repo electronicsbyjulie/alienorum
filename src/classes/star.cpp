@@ -131,11 +131,14 @@ bool Star::is_sunlike()
 bool Star::is_in_visible_box(Point seen_from)
 {
     if (frand(0,1) > 0.1) return _is_in_visible_range;
+    return is_really_truly_in_visible_box(seen_from);
+}
+
+bool Star::is_really_truly_in_visible_box(Point seen_from)
+{
     if (!visible_area_set)
     {
-        double intrinsic = pow(magnbase, -absolute_magnitude);
-        double ratio = intrinsic / intrinsic_cutoff;
-        double cutoff_dist = sqrt(ratio) * parsec * 10;
+        double cutoff_dist = pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance;
         visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
         visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
         visible_area_set = true;
