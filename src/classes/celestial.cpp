@@ -126,8 +126,6 @@ double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
 {
     Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
-    /*relloc = rotate3D(relloc, center, seen_from.orbital_plane.v, seen_from.orbital_plane.a);
-    relloc = rotate3D(relloc, center, seen_from.local_system_plane.v, seen_from.local_system_plane.a);*/
     double result = find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y);
     if (result > M_PI/2) result -= M_PI*2;
     return result;
@@ -295,13 +293,15 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double y = (                       sinw * sini) * x_plane + (                       cosw * sini) * y_plane;
     double z = ( cosO * cosw + -sinO * sinw * cosi) * x_plane + (-cosO * sinw + -sinO * cosw * cosi) * y_plane;
 
-    Point orbit_pole = rotate3D(yaxis, center, Point(cosO, 0, sinO), orbit->inclination);
-    orbit_pole = rotate3D(yaxis, center, location.local_system_plane.v, -location.local_system_plane.a);
+    Point orbit_pole = yaxis;
+    orbit_pole = rotate3D(orbit_pole, center, Point(cosO, 0, sinO), -orbit->inclination);
+    orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
     location.orbital_plane = align_points_3d(orbit_pole, yaxis, center);
 
     // Precess the equinox
     equinox_eff = equinox - precession * seconds_since_epoch;
-    Point pole = rotate3D(yaxis, center, location.orbital_plane.v, -location.orbital_plane.a);
+    Point pole = yaxis;
+    pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -inclination);
     location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
