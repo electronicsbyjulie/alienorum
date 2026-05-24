@@ -647,11 +647,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 9, 14, field);
         HIP = atoi(field);
 
-        if (HIP == 102098)            // Why tf is a whole swath of right ascensions just gone????
-        {
-            j=0;
-        }
-
         // 391-396  I6    ---     HD        [1/359083]? HD number <III/135>
         read_field_onebased(buffer, 391, 396, field);
         HD = atoi(field);
