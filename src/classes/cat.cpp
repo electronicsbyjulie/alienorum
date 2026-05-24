@@ -670,15 +670,16 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
             #if _filter_Hipparcos_stars_appmag
             f = atof(field);
-            if (f > 7.5) continue;
+            if (f > 9) continue;
             #endif
             #if _filter_Hipparcos_stars_absmag
             read_field_onebased(buffer, 80, 86, field);
             double parallax = atof(field);
+            if (parallax <= 0) continue;
             double distance = (parallax > 0) ? (parsec / parallax * 1000) : light_year*1e4;
             double intrinsic_brightness = pow(magnbase, -appmag) * pow(fmax(AU, distance) / parsec / 10, 2);
             double absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
-            if (absolute_magnitude > 7) continue;
+            if (absolute_magnitude > 8.5) continue;
             #endif
             s = new Star();
             is_new = true;
@@ -925,7 +926,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         hipcomps[HIP]['A'] = A;
 
         s = new Star();
-        s->make_companion_of(A, buffer[40]);
+        s->make_companion_of(A, 'B');
         s->epoch = J2000 + (1991.25 - 2000);
 
         for (s->component = 'B'; s->component < 'Z'; s->component++)

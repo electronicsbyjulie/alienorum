@@ -23,15 +23,12 @@ The stars are alien suns.
 
 The first time you run Alienorum, you will see a splash screen featuring our alien mascot (maybe the alien
 should have a name?) and a dynamic loading message. The application will begin by downloading star catalogs;
-if you run it in a terminal you'll be able to see the download process. After downloading finishes, it will
-load a selection of stars from the catalogs. Initially, this takes a long time, which is why once all data
-are loaded it writes a file called `universe.json` for faster retrieval later.
+if you run it in a terminal you'll be able to see the download process. This might take a while, but it's a
+one-time thing.
 
-As long as you keep your `universe.json` file, every time you run Alienorum it will read from that file
-instead of spending a lot of time loading catalogs. You will still see the splash screen, but only for a
-minute or so. Feel free to edit your `universe.json`, just keep backups and verify any changes you make with
-an external JSON checker, because if Alienorum fails to load the file, it will fall back on the catalogs and
-(eventually) overwrite your changes.
+After downloading finishes, the application will load a selection of stars from the catalogs. When displaying
+stars and during spaceflight, Alienorum dynamically hides stars that are too far away or too dim, that way it
+can load hundreds of thousands of stars and still smoothly animate views of space.
 
 ## Spaceflight
 

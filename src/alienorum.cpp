@@ -97,6 +97,13 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
 
 // End ImGui Example Code
 
+
+void refresh_star_visibilities()
+{
+    int i;
+    for (i=0; cels[i]; i++) if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(here);
+}
+
 void draw_ra_dec_lines()
 {
     int i, j;
@@ -273,6 +280,7 @@ bool load_universe(std::string universe_fname)
                 mycenobj = cels[i]->cenobj;
             }
             ncelobjs = i;
+            refresh_star_visibilities();
 
             std::filesystem::file_time_type ftime_json = std::filesystem::last_write_time("universe.json");
             std::filesystem::file_time_type ftime_cat = std::filesystem::last_write_time("catalogs/star_orbits.dat");
@@ -401,7 +409,7 @@ void load_catalogs()
     mtx.unlock();
     cr.read_star_orbits_dat(cels);
 
-    for (i=0; cels[i]; i++) if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(center);
+    refresh_star_visibilities();
 }
 
 void read_cons_lines()
@@ -742,6 +750,11 @@ void draw_objects()
     // Dits and doscs
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        if (cels[i]->typeclass() == class_star
+            && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
+            && !((Star*)cels[i])->tmp_vis_flag)
+            continue;
+
         if (i == whereami) continue;
         if (!pass && magrad_cache[i] > 3) continue;
         else if (pass && magrad_cache[i] <= 3) continue;
@@ -802,6 +815,11 @@ void draw_objects()
     // Labels and selection
     if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        if (cels[i]->typeclass() == class_star
+            && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
+            && !((Star*)cels[i])->tmp_vis_flag)
+            continue;
+
         if (i == whereami) continue;
         // if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
         // if (cels[i]->orbit) std::cout << cels[i]->name << " " << cels[i]->location.distance_to(here) << " " << cels[i]->orbit->semimajor_axis << std::endl;
@@ -1177,6 +1195,7 @@ void process_keyboard_commands(ImGuiIO& io)
             }
             velocity = center;
             viewchanged = true;
+            refresh_star_visibilities();
             break;
 
             case 'O': show_orbits = !show_orbits; break;
@@ -1187,12 +1206,13 @@ void process_keyboard_commands(ImGuiIO& io)
             spin = 0;
             whereami = iamhome;
             trackidx = -1;
-            here.local_position = here.system_center = center;
+            here = cels[whereami]->location;
             global_brightness = default_brightness;
             case '@':
             viewchanged = true;
             simnow = std::time(nullptr);
             JDnow = ((double)simnow - J2000_TIME_T)/86400 + J2000;
+            refresh_star_visibilities();
             compute_object_draw_coordinates();
             break;
 

@@ -54,7 +54,7 @@ using json = nlohmann::json;
 #define ecliptic_north_RA_J2000 (18.00 * 15 * fiftyseventh)
 #define ecliptic_north_Decl_J2000 ((66.0 + 33.0 / 60 + 38.55 / 3600) * fiftyseventh)
 
-#define MAX_CELOBJS 1048576
+#define MAX_CELOBJS 524288
 #define MAX_SPLASH_STARS 5381
 #define MAX_HD 359083
 #define MAX_HIP 120416
@@ -64,7 +64,7 @@ using json = nlohmann::json;
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
 #define nlbltyp 6
-#define _filter_Hipparcos_stars_appmag 1
+#define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
 
