@@ -294,15 +294,15 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double z = ( cosO * cosw + -sinO * sinw * cosi) * x_plane + (-cosO * sinw + -sinO * cosw * cosi) * y_plane;
 
     Point orbit_pole = yaxis;
-    orbit_pole = rotate3D(orbit_pole, center, Point(cosO, 0, sinO), -orbit->inclination);
+    orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), -orbit->inclination);
     orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
     location.orbital_plane = align_points_3d(orbit_pole, yaxis, center);
 
     // Precess the equinox
     equinox_eff = equinox - precession * seconds_since_epoch;
     Point pole = yaxis;
-    pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -inclination);
+    pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
     if (_class == class_moon && !crp)

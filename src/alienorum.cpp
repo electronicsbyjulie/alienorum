@@ -1322,24 +1322,22 @@ void process_keyboard_commands(ImGuiIO& io)
     }
 }
 
-void lookfor_cb()
+int find_object(const char* search_term)
 {
     int i;
-    int is_hd  = ((lookfor[0]&0x5f) == 'H' && (lookfor[1]&0x5f) == 'D') ? atoi(&lookfor[2]) : 0,
-        is_hip = ((lookfor[0]&0x5f) == 'H' && (lookfor[1]&0x5f) == 'I' && (lookfor[2]&0x5f) == 'P') ? atoi(&lookfor[3]) : 0;
-    bool is_gliese = (((lookfor[0]&0x5f) == 'G' && (lookfor[1]&0x5f) == 'L')
-        || ((lookfor[0]&0x5f) == 'G' && (lookfor[1]&0x5f) == 'J')
-        || ((lookfor[0]&0x5f) == 'W' && (lookfor[1]&0x5f) == 'O')
-        || ((lookfor[0]&0x5f) == 'N' && (lookfor[1]&0x5f) == 'N')
-        ) && contains_digits_or_dots(lookfor);
-    selected = -1;
+    int is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
+        is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
+    bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L')
+        || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'J')
+        || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O')
+        || ((search_term[0]&0x5f) == 'N' && (search_term[1]&0x5f) == 'N')
+        ) && contains_digits_or_dots(search_term);
+    int result = -1;
     for (i=0; cels[i]; i++)
     {
-        if (!strcmp(cels[i]->name, lookfor))
+        if (!strcmp(cels[i]->name, search_term))
         {
-            selected = i;
-            center_selected();
-            searched = true;
+            result = i;
             break;
         }
         if (cels[i]->typeclass() == class_star)
@@ -1347,25 +1345,21 @@ void lookfor_cb()
             if ((is_hd && is_hd == ((Star*)cels[i])->HD)
                 || (is_hip && is_hip == ((Star*)cels[i])->HIP))
             {
-                selected = i;
-                center_selected();
-                searched = true;
+                result = i;
                 break;
             }
-            if (is_gliese && has_same_numbers(((Star*)cels[i])->Gliese, lookfor))
+            if (is_gliese && has_same_numbers(((Star*)cels[i])->Gliese, search_term))
             {
-                selected = i;
-                center_selected();
-                searched = true;
+                result = i;
                 break;
             }
         }
     }
 
-    if (selected < 0)
+    if (result < 0)
     {
         int best_Levenshtein = 1e6;
-        std::string lookstr = lookfor;
+        std::string lookstr = search_term;
         for (i=0; cels[i]; i++)
         {
             int lev = Damerau_Levenshtein(cels[i]->name, lookstr);
@@ -1382,13 +1376,23 @@ void lookfor_cb()
             if (lev < best_Levenshtein)
             {
                 best_Levenshtein = lev;
-                selected = i;
-                center_selected();
-                trackidx = -1;
-                searched = true;
+                result = i;
                 if (!lev) break;
             }
         }
+    }
+
+    return result;
+}
+
+void lookfor_cb()
+{
+    int i = find_object(lookfor);
+    if (i>=0)
+    {
+        selected = i;
+        center_selected();
+        searched = true;
     }
 }
 
@@ -1654,6 +1658,7 @@ int main (int argc, char** argv)
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
+    std::string argsfind = "", argsgo = "";
 
     memset(lookfor, 0, 256);
 
@@ -1672,6 +1677,16 @@ int main (int argc, char** argv)
                 show_xonsm = true;
                 xaorngsim = l;
             }
+        }
+
+        if (!strcmp(argv[l], "find"))
+        {
+            argsfind = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "go"))
+        {
+            argsgo = argv[++l];
         }
 
         if (!strcmp(argv[l], "magtest")) magnitude_test = true;
@@ -2015,6 +2030,28 @@ int main (int argc, char** argv)
             {
                 zoom = fmax(1, zoom * 0.9);
                 global_brightness *= 0.9;
+                viewchanged = true;
+            }
+
+            // Command line args
+            if (argsgo.size())
+            {
+                int goidx = find_object(argsgo.c_str());
+                if (goidx >= 0) whereami = goidx;
+                else std::cerr << "Not found " << argsgo << std::endl;
+                argsgo = "";
+                viewchanged = true;
+            }
+            else if (argsfind.size())               // After go, wait to get new bearings then seek.
+            {
+                int findidx = find_object(argsfind.c_str());
+                if (findidx >= 0)
+                {
+                    selected = findidx;
+                    center_selected();
+                }
+                else std::cerr << "Not found " << argsfind << std::endl;
+                argsfind = "";
                 viewchanged = true;
             }
 
