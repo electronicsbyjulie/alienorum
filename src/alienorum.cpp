@@ -579,7 +579,7 @@ void compute_object_draw_coordinates()
             switch (cels[i]->typeclass())
             {
                 case class_star:
-                if (star_in_box = ((Star*)cels[i])->is_in_visible_box(here.system_center)) num_stars_in_box++;              // ANC
+                if (star_in_box = ((Star*)cels[i])->is_in_visible_box(Point(here))) num_stars_in_box++;              // ANC
                 ((Star*)cels[i])->tmp_vis_flag = star_in_box;
                 if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj && !star_in_box)
                 {
@@ -605,7 +605,9 @@ void compute_object_draw_coordinates()
                     // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
                     && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
                     && cels[i]->tmprel.magnitude() < mycenobj_dist)
+                {
                     mycenobj = cels[i]->cenobj;
+                }
                 break;
 
                 case class_planet:
