@@ -30,14 +30,16 @@
 
 using namespace std;
 
-char lookfor[256];
+char lookfor[256], edit_name[256];
+bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
 bool catalogs_found = false;
 int num_galaxies=0, num_stars=0, num_planets=0, num_moons=0, num_asteroids=0, num_comets=0, num_sat=0;
 float dispcx, dispcy;
-int frames_without_mousemove = 0, num_stars_in_box;
-double txtyscale, txtycompact;
+int frames_without_mousemove = 0, num_stars_in_box, editidx=-1;
+double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
+    edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox;
 bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9;
 bool splash = true, magnitude_test = false;
@@ -1190,6 +1192,18 @@ void process_keyboard_commands(ImGuiIO& io)
             case 'c': show_consln = !show_consln; break;
             case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
             case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
+
+            case 'e':
+            // TODO: Solar system explorer, or local system if outside solar system.
+            break;
+
+            case 'E':
+            if (selected >= 0) editidx = selected;
+            else if (trackidx >= 0) editidx = trackidx;
+            else if (whereami >= 0) editidx = whereami;
+            objedtwnd = (editidx >= 0);
+            break;
+
             case 'g': show_grid = !show_grid; break;
             case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
             case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
@@ -1401,7 +1415,7 @@ void draw_status_window(ImGuiIO& io)
     // TODO: If redlight_mode, set all window and text colors accordingly.
     int stattop = 0, statleft = 0, statwidth = 225, statheight = txtyscale*2.3;
     int i;
-    ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+    ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     /////////////////////////////////////////////////////
 
@@ -1607,7 +1621,7 @@ void draw_status_window(ImGuiIO& io)
 void draw_objinf_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
-    ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+    ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
     int objinftop = 0, objinfleft = (int)io.DisplaySize.x - 211, objinfwidth = 211, objinfheight = txtyscale*2;
 
     ImGui::Text(objname.c_str());
@@ -1623,6 +1637,106 @@ void draw_objinf_window(ImGuiIO& io)
 
     if (io.MousePos.x >= objinfleft && io.MousePos.y >= objinftop
         && io.MousePos.x < objinfleft+objinfwidth && io.MousePos.y < objinftop+objinfheight)
+        is_mouse_over_window = true;
+}
+
+void draw_objedit_window(ImGuiIO& io)
+{
+    if (editidx < 0)
+    {
+        objedtwnd = false;
+        return;
+    }
+
+    CelestialObject *cel = cels[editidx];
+    Orbit *orb = cel->orbit;
+
+    // TODO: If redlight_mode, set all window and text colors accordingly.
+    ImGui::Begin("Edit Object", &objedtwnd);
+    int cx = (int)io.DisplaySize.x/2, cy = (int)io.DisplaySize.y / 2;
+    int objedtwidth = 788, objedtheight = 420;
+    ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
+
+    double col1 = 123, col2 = 359, col3 = 440, txtwid = 167;
+
+    strcpy(edit_name, cel->name);
+    ImGui::Text("Name");
+    ImGui::SameLine(col1);
+    ImGui::InputText("##edtname", edit_name, 255);
+
+    edit_eqincl = cel->inclination * fiftyseven;
+    ImGui::Text("Inclination");
+    ImGui::SameLine(col1);
+    ImGui::SetNextItemWidth(txtwid);
+    ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.3f");
+    ImGui::SameLine(col2);
+    edit_equinox = cel->equinox / AU;
+    ImGui::Text("Equinox");
+    ImGui::SameLine(col3);
+    ImGui::SetNextItemWidth(txtwid);
+    ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.3f");
+
+    if (orb)
+    {
+        edit_sma = cel->orbit->semimajor_axis / AU;
+        ImGui::Text("Semimaj.Axis");
+        ImGui::SameLine(col1);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.3f");
+        ImGui::SameLine();
+        ImGui::Text("AU");
+        edit_period = cel->orbit->period / 86400;
+        ImGui::SameLine(col2);
+        ImGui::Text("Period");
+        ImGui::SameLine(col3);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.3f");
+        ImGui::SameLine();
+        ImGui::Text("days");
+
+        edit_incl = cel->orbit->inclination * fiftyseven;
+        ImGui::Text("Inclination");
+        ImGui::SameLine(col1);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.3f");
+        ImGui::SameLine(col2);
+        edit_node = cel->orbit->ascending_node / AU;
+        ImGui::Text("Asc. Node");
+        ImGui::SameLine(col3);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.3f");
+
+        edit_eccn = cel->orbit->eccentricity;
+        ImGui::Text("Eccentricity");
+        ImGui::SameLine(col1);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.3f");
+        ImGui::SameLine(col2);
+        edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
+        ImGui::Text("Arg.Periapsis");
+        ImGui::SameLine(col3);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.3f");
+
+        edit_epoch = cel->orbit->epoch;
+        ImGui::Text("Epoch, JD");
+        ImGui::SameLine(col1);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.3f");
+        ImGui::SameLine(col2);
+        edit_manom = cel->orbit->mean_anomaly * fiftyseven;
+        ImGui::Text("Mean Anomaly");
+        ImGui::SameLine(col3);
+        ImGui::SetNextItemWidth(txtwid);
+        ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.3f");
+    }
+
+    ImVec2 wpos = ImGui::GetWindowPos(), wsiz = ImGui::GetContentRegionAvail();
+
+    ImGui::End();
+
+    if (io.MousePos.x >= wpos.x && io.MousePos.y >= wpos.y
+        && io.MousePos.x < wpos.x+wsiz.x && io.MousePos.y < wpos.y+wsiz.y)
         is_mouse_over_window = true;
 }
 
@@ -1997,6 +2111,36 @@ int main (int argc, char** argv)
             // Object under cursor info
             if (objinfwnd) draw_objinf_window(io);
 
+            // Edit dialog
+            if (objedtwnd)
+            {
+                draw_objedit_window(io);
+                if (editidx >= 0)
+                {
+                    strcpy(cels[editidx]->name, edit_name);
+                    cels[editidx]->inclination = edit_eqincl * fiftyseventh;
+                    cels[editidx]->equinox = edit_equinox * fiftyseventh;
+                    if (cels[editidx]->orbit)
+                    {
+                        cels[editidx]->orbit->semimajor_axis = edit_sma * AU;
+                        cels[editidx]->orbit->period = edit_period * 86400;
+                        cels[editidx]->orbit->inclination = edit_incl * fiftyseventh;
+                        cels[editidx]->orbit->ascending_node = edit_node * fiftyseventh;
+                        cels[editidx]->orbit->eccentricity = edit_eccn;
+                        cels[editidx]->orbit->arg_periapsis = edit_argperi * fiftyseventh;
+                        cels[editidx]->orbit->epoch = edit_epoch;
+                        cels[editidx]->orbit->mean_anomaly = edit_manom * fiftyseventh;
+                    }
+                    if (cels[editidx]->typeclass() == class_star)
+                        ((Star*)cels[editidx])->update_location(simnow);
+                    else if (cels[editidx]->typeclass() == class_planet)
+                        ((Planet*)cels[editidx])->update_location(simnow);
+                    else if (cels[editidx]->typeclass() == class_moon)
+                        ((Moon*)cels[editidx])->update_location(simnow);
+                }
+                viewchanged = true;
+            }
+
             // Positioning updates
             vm = velocity.magnitude();
             vmfr = vm * target_frame_rate;
@@ -2074,7 +2218,8 @@ int main (int argc, char** argv)
             if (io.MousePos.x != lmx || io.MousePos.y != lmy) frames_without_mousemove = 0;
             else frames_without_mousemove++;
 
-            if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude()) && frame_dur > (1.0/target_frame_rate))
+            if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude() || is_mouse_over_window)
+                && frame_dur > (1.0/target_frame_rate))
             {
                 timeout_ms *= 0.333;
                 if (timeout_ms < 5) timeout_ms = 5;

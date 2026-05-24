@@ -104,7 +104,7 @@ extern std::mutex mtx;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, is_an_obj_under_cursor;
 extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, is_mouse_over_window, dragging, dragged, viewchanged,
-    objinfwnd, statuswnd, hide_mouse, searched, draw_actual_conslines;
+    objinfwnd, statuswnd, objedtwnd, hide_mouse, searched, draw_actual_conslines;
 extern ImU32 cursor_color, cursor_color1, cursor_color2, cursor_color3, grid_color, grid_color_brighter, ecliptic_color, consline_color,
     conslbl_color, selected_color, selected_orbit_color, objlbl_color;
 extern std::string objname, objinfo;

@@ -41,6 +41,7 @@ time_t simnow = std::time(nullptr);
 double JDnow = ((double)simnow - J2000_TIME_T)/86400 + J2000;
 bool objinfwnd = true;
 bool statuswnd = true;
+bool objedtwnd = false;
 bool hide_mouse = true;
 bool searched = false;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Binary Orbit", "Known Poles" };

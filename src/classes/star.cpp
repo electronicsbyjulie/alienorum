@@ -37,6 +37,11 @@ void Star::update_location(double tmnow)
 
     // Set system location
     location.system_center = newloc;
+
+    Point pole = yaxis;
+    // TODO: Test this, it's probably wrong.
+    pole = rotate3D(pole, center, Point(cos(equinox), 0, sin(equinox)), inclination);
+    location.equatorial_plane = align_points_3d(pole, yaxis, center);
 }
 
 void Star::rename_from_Bayer_Flamsteed()
