@@ -36,9 +36,9 @@ double CelestialObject::distance_from_magnitudes(double apparent, double absolut
     return parsec * 10 * sqrt(ratio);
 }
 
-std::string CelestialObject::RA_as_hms()
+std::string CelestialObject::RA_as_hms(double seen_equinox)
 {
-    double RA = right_ascension * fiftyseven / 15;
+    double RA = right_ascension * fiftyseven / 15 - seen_equinox;
     int hours = floor(RA);
     RA = (RA-hours) * 60;
     int minutes = floor(RA);
@@ -73,9 +73,9 @@ std::string CelestialObject::Decl_as_degms()
         + std::to_string((int)seconds);
 }
 
-std::string CelestialObject::RA_as_hms(CelestialLocation seen_from)
+std::string CelestialObject::RA_as_hms(CelestialLocation seen_from, double seen_equinox)
 {
-    double relRA = RA_as_radians(seen_from) * fiftyseven / 15;
+    double relRA = RA_as_radians(seen_from, seen_equinox) * fiftyseven / 15;
     int hours = floor(relRA);
     relRA = (relRA-hours) * 60;
     int minutes = floor(relRA);
@@ -113,21 +113,21 @@ std::string CelestialObject::Decl_as_degms(CelestialLocation seen_from)
     return std::string();
 }
 
-double CelestialObject::RA_as_radians(CelestialLocation seen_from)
+double CelestialObject::RA_as_radians(CelestialLocation seen_from, double seen_equinox)
 {
     Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
-    relloc = rotate3D(relloc, center, seen_from.orbital_plane.v, seen_from.orbital_plane.a);
-    relloc = rotate3D(relloc, center, seen_from.local_system_plane.v, seen_from.local_system_plane.a);
-    return find_angle(relloc.z, -relloc.x);
+    double result = std::fmod(find_angle(relloc.z, -relloc.x) - seen_equinox, M_PI*2);
+    if (result < 0) result += M_PI*2;
+    return result;
 }
 
 double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
 {
     Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
-    relloc = rotate3D(relloc, center, seen_from.orbital_plane.v, seen_from.orbital_plane.a);
-    relloc = rotate3D(relloc, center, seen_from.local_system_plane.v, seen_from.local_system_plane.a);
+    /*relloc = rotate3D(relloc, center, seen_from.orbital_plane.v, seen_from.orbital_plane.a);
+    relloc = rotate3D(relloc, center, seen_from.local_system_plane.v, seen_from.local_system_plane.a);*/
     double result = find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y);
     if (result > M_PI/2) result -= M_PI*2;
     return result;
@@ -260,6 +260,7 @@ bool CelestialObject::from_json(json j)
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center) return;
+    location.system_center = orbit->center->location.system_center;
 
     // Calculate orbit radians per second and seconds since epoch
     double rads_sec = (M_PI * 2) / orbit->period;
@@ -293,8 +294,16 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double x = (-sinO * cosw -  cosO * sinw * cosi) * x_plane + ( sinO * sinw -  cosO * cosw * cosi) * y_plane;
     double y = (                       sinw * sini) * x_plane + (                       cosw * sini) * y_plane;
     double z = ( cosO * cosw + -sinO * sinw * cosi) * x_plane + (-cosO * sinw + -sinO * cosw * cosi) * y_plane;
-    location.orbital_plane.v = Point(cosO, 0, sinO);
-    location.orbital_plane.a = orbit->inclination;
+
+    Point orbit_pole = rotate3D(yaxis, center, Point(cosO, 0, sinO), orbit->inclination);
+    orbit_pole = rotate3D(yaxis, center, location.local_system_plane.v, -location.local_system_plane.a);
+    location.orbital_plane = align_points_3d(orbit_pole, yaxis, center);
+
+    // Precess the equinox
+    equinox_eff = equinox - precession * seconds_since_epoch;
+    Point pole = rotate3D(yaxis, center, location.orbital_plane.v, -location.orbital_plane.a);
+    pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -inclination);
+    location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
     if (_class == class_moon && !crp)
     {
@@ -310,7 +319,6 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     // For exoplanets, assume the planetary orbits and stellar equator are in the same plane and set the stellar inclination to zero.
     else result = rotate3D(Point(x,y,z), center, location.local_system_plane.v, -location.local_system_plane.a);
 
-    location.system_center = orbit->center->location.system_center;
     location.local_position = result + orbit->center->location.local_position;
 }
 

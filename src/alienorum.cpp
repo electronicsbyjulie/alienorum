@@ -111,6 +111,7 @@ void draw_ra_dec_lines()
     ImU32 gc = rgba_apply_redlight(grid_color);
     ImU32 gcb = rgba_apply_redlight(grid_color_brighter);
     ImU32 ec = rgba_apply_redlight(ecliptic_color);
+    double node = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
     bool prev_valid = false;
     // RA and Dec lines.
     for (i=0; i<24; i++)
@@ -118,7 +119,7 @@ void draw_ra_dec_lines()
         prev_valid = false;
         for (j=-80; j<=80; j+=10)
         {
-            Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5);
+            Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
             try
             {
                 zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
@@ -151,7 +152,7 @@ void draw_ra_dec_lines()
         prev_valid = false;
         for (i=0; i<=24; i++)
         {
-            Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5);
+            Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
             try
             {
                 zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
@@ -179,14 +180,14 @@ void draw_ra_dec_lines()
         }
     }
 
-    // TODO: Fix the ecliptic line for planets other than Earth.
-    // if (whereami >= 0 && (cels[whereami]->type == rocky || cels[whereami]->type == ice_giant || cels[whereami]->type == gas_giant))
-    if (whereami == iamhome)
+    // Ecliptic
+    if (whereami >= 0 && (cels[whereami]->typeclass() == class_planet))
     {
         prev_valid = false;
         for (i=0; i<=360; i++)
         {
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
+            pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
             pt = rotate3D(pt, center, here.equatorial_plane.v, here.equatorial_plane.a);
             try
             {
@@ -648,8 +649,8 @@ void compute_object_draw_coordinates()
         }
 
         Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
-        viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
-        viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);
+        /*viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
+        viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);*/
         Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -705,8 +706,8 @@ void draw_objects()
     double orbseg = 81;
 
     Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
-    viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
-    viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);
+    /*viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
+    viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);*/
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
     // Orbits
@@ -1002,13 +1003,14 @@ void draw_mouse_cursor(ImGuiIO& io)
 void identify_object_under_cursor(ImGuiIO& io)
 {
     int i;
+    double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
 
     is_an_obj_under_cursor = -1;
     obj_magn_under_cursor = 1e9;
     if (trackidx >= 0)
     {
         is_an_obj_under_cursor = trackidx;
-        azimuth = -cels[trackidx]->RA_as_radians(here);
+        azimuth = -cels[trackidx]->RA_as_radians(here, myeq);
         altitude = cels[trackidx]->Decl_as_radians(here);
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -1063,7 +1065,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             }
         }
 
-        objinfo += (std::string)"RA:    " + cels[i]->RA_as_hms(here) + (std::string)"\n"
+        objinfo += (std::string)"RA:    " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
                 + (std::string)"Decl:  " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
         oss << "Mag:    " << std::setprecision(2) << lmag << std::endl;
         objinfo += oss.str();
@@ -1166,9 +1168,10 @@ void pan_with_crosshairs(ImGuiIO& io)
 
 void center_selected()
 {
+    double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
     if (selected >= 0)
     {
-        azimuth = -cels[selected]->RA_as_radians(here);
+        azimuth = -cels[selected]->RA_as_radians(here, 0);
         altitude = cels[selected]->Decl_as_radians(here);
     }
 }
@@ -1253,8 +1256,8 @@ void process_keyboard_commands(ImGuiIO& io)
                 velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
                 velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
                 velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-                velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);
+                /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
+                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
                 velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
             }
             spin = 0;
@@ -1293,8 +1296,8 @@ void process_keyboard_commands(ImGuiIO& io)
                 velocity.x =  sin(azimuth) * cos(altitude) * 1000;
                 velocity.z =  cos(azimuth) * cos(altitude) * 1000;
                 velocity.y =  sin(altitude) * 1000;
-                velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);
+                /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
+                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
                 velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
                 whereami = -1;
             }

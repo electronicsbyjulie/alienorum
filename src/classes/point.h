@@ -49,7 +49,7 @@ class Point
     json to_json();
     bool from_json(json j);
 
-    static Point from_ra_dec(double right_ascension, double declination, double distance);
+    static Point from_ra_dec(double right_ascension, double declination, double distance, double node = 0);
     std::string printable() const;
 };
 

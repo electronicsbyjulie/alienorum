@@ -238,7 +238,7 @@ void Star::gotta_be_named_something()
             + std::to_string(Bonn_survey_sequential) ).c_str() );
     }
     else if (SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
-    else std::cerr << "Failed to name star @ RA: " << RA_as_hms() << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
+    else std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
         << " distance " << (distance/light_year) << std::endl;
 }
 

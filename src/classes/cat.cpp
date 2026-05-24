@@ -1825,7 +1825,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         read_field_onebased(buffer, 245, 259, field);
         float f = atof(field);
-        p->precession = f ? (1.0 / f) : 0;
+        p->precession = f ? (M_PI * 2 / f) : 0;
 
         read_field_onebased(buffer, 261, 287, field);           // TODO: Laplace planes
         p->J2 = atof(field);

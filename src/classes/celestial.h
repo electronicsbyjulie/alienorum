@@ -68,6 +68,7 @@ class CelestialObject
     double declination = 0;                     // RADIANS!
     double inclination = 0;                     // Equatorial. RADIANS!
     double equinox = 0;                         // RADIANS!
+    double equinox_eff = 0;
     double precession = 0;                      // radians/second
     double distance = 0;                        // meters
     bool distance_known = false;
@@ -93,11 +94,11 @@ class CelestialObject
 
     double viewer_magnitude(CelestialLocation seen_from);
     static double distance_from_magnitudes(double apparent, double absolute);
-    std::string RA_as_hms();
+    std::string RA_as_hms(double seen_equinox);
     std::string Decl_as_degms();
-    std::string RA_as_hms(CelestialLocation seen_from);
+    std::string RA_as_hms(CelestialLocation seen_from, double seen_equinox);
     std::string Decl_as_degms(CelestialLocation seen_from);
-    double RA_as_radians(CelestialLocation seen_from);
+    double RA_as_radians(CelestialLocation seen_from, double seen_equinox);
     double Decl_as_radians(CelestialLocation seen_from);
     std::string scaled_distance(CelestialLocation fromwhere);
     json to_json();

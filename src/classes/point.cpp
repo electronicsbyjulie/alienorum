@@ -183,12 +183,12 @@ bool Point::from_json(json j)
     return true;
 }
 
-Point Point::from_ra_dec(double right_ascension, double declination, double distance)
+Point Point::from_ra_dec(double right_ascension, double declination, double distance, double node)
 {
     double x, y, z;
-    x = distance * -sin(right_ascension) * cos(declination);
+    x = distance * -sin(right_ascension+node) * cos(declination);
     y = distance *  sin(declination);
-    z = distance *  cos(right_ascension) * cos(declination);
+    z = distance *  cos(right_ascension+node) * cos(declination);
     return Point(x, y, z);
 }
 
