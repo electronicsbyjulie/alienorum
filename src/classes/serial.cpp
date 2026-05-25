@@ -74,6 +74,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
         int i, j, n = allobj.size();
         for (i=0; i<n; i++)
         {
+            // TODO: key
             json j = allobj.at(i);
             cel_obj_class c;
             j.at("typeclass").get_to(c);

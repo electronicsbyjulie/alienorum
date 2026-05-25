@@ -176,7 +176,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
     FILE* fp = fopen(path.c_str(), "rb");
 
-    while (fgets(buffer, 65520, fp))
+    while (fgets(buffer, 300, fp))
     {
         s = new Star();
         s->type = star;
@@ -262,7 +262,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         //  31- 36  F6.3 arcsec/yr pm       ? Total proper motion
         read_field_onebased(buffer, 31, 36, field);
-        pm = atof(field) / 3600 * fiftyseventh / year;
+        pm = atof(field) / 3600 * fiftyseventh / oneyear;
 
         //  38- 42  F5.1   deg     pmPA     ? Direction angle of proper motion
         read_field_onebased(buffer, 38, 42, field);
@@ -552,11 +552,11 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         //  149-154  F6.3 arcsec/yr pmRA    *?Annual proper motion in RA J2000, FK5 system
         read_field_onebased(buffer, 149, 154, field);
-        s->proper_motion_RA = atof(field) * fiftyseventh / 3600 / year;
+        s->proper_motion_RA = atof(field) * fiftyseventh / 3600 / oneyear;
 
         //  155-160  F6.3 arcsec/yr pmDE     ?Annual proper motion in Dec J2000, FK5 system
         read_field_onebased(buffer, 155, 160, field);
-        s->proper_motion_decl = atof(field) * fiftyseventh / 3600 / year;
+        s->proper_motion_decl = atof(field) * fiftyseventh / 3600 / oneyear;
 
         //  162-166  F5.3   arcsec  Parallax ? Trigonometric parallax (unless n_Parallax)
         read_field_onebased(buffer, 162, 166, field);
@@ -790,12 +790,12 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
         read_field_onebased(buffer, 88, 95, field);
-        f = atof(field) / 1000 / 3600 / year * fiftyseventh;
+        f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
         if (f) s->proper_motion_RA = f;
 
         //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS 
         read_field_onebased(buffer, 97, 104, field);
-        f = atof(field) / 1000 / 3600 / year * fiftyseventh;
+        f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
         if (f) s->proper_motion_decl = f;
 
         //  42- 46  F5.2  mag     Vmag      ? Magnitude in Johnson V                  (H5)
@@ -948,7 +948,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //   8- 17  F10.4 d        P        Orbital period                           (DO2)
         read_field_onebased(buffer, 8, 17, field);
-        s->orbit->period = atof(field) * 86400;
+        s->orbit->period = atof(field) * oneday;
 
         //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
         read_field_onebased(buffer, 19, 29, field);
@@ -1384,7 +1384,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 
         //   8- 23  F16.9 d       Per     [0.05,116675] Period
         read_field_onebased(buffer, 8, 23, field);
-        B->orbit->period = atof(field)*86400;
+        B->orbit->period = atof(field)*oneday;
 
         //  42- 57  F16.8 d       T0      ? Periastron time (JD)
         read_field_onebased(buffer, 42, 57, field);
@@ -1405,7 +1405,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         // 124-133  F10.5 km/s    K1      ? Velocity amplitude of primary
         read_field_onebased(buffer, 124, 133, field);
         f = atof(field);
-        B->orbit->semimajor_axis = (13751000 / 86400)              // convert to m/s
+        B->orbit->semimajor_axis = (13751000 / oneday)              // convert to m/s
             * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
             * f
             * B->orbit->period;
@@ -1416,7 +1416,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         // 148-157  E10.5 km/s    K2      ? Velocity amplitude of secondary
         read_field_onebased(buffer, 148, 157, field);
         f = atof(field);
-        B->orbit->semimajor_axis += (13751000 / 86400)             // convert to m/s
+        B->orbit->semimajor_axis += (13751000 / oneday)             // convert to m/s
             * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
             * f
             * B->orbit->period;
@@ -1503,7 +1503,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         epoch.tm_mon = _month-1;
         epoch.tm_mday = _day;
         time_t t = mktime(&epoch);
-        p->epoch = (t/86400) + 2440587.5;
+        p->epoch = (t/oneday) + 2440587.5;
 
         // 116-125  F10.6 deg     M         Mean anomaly (3)
         read_field_onebased(buffer, 116, 125, field);
@@ -1529,7 +1529,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 169, 181, field);
         sma = atof(field);
         p->orbit->semimajor_axis = sma * AU;
-        p->orbit->period = sqrt(sma*sma*sma) * year;
+        p->orbit->period = sqrt(sma*sma*sma) * oneyear;
 
         if (!strcmp(name.c_str(), "Pluto"))
         {
@@ -1826,15 +1826,15 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         read_field_onebased(buffer, 212, 223, field);
         p->mass = atof(field);
-        if (p->mass < 4e+28) p->type = rocky;
-        else if (p->mass >= 2.5e+29) p->type = gas_giant;
-        else p->type = ice_giant;
+        if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
+        else if (p->mass < 2.5e+29) p->type = ice_giant;
+        else p->type = gas_giant;
 
         read_field_onebased(buffer, 225, 231, field);
         p->surface_pressure = atof(field);
 
         read_field_onebased(buffer, 233, 243, field);
-        p->epoch = J2000 + (atof(field) - 2000)*(year/86400);
+        p->epoch = J2000 + (atof(field) - 2000)*(oneyear/oneday);
 
         read_field_onebased(buffer, 245, 259, field);
         float f = atof(field);

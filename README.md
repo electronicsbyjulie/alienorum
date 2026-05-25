@@ -96,6 +96,17 @@ long as you are tracking the object, the app will automatically slow your approa
 target. Otherwise it's very easy to overshoot and zip right past it. If your speed is just right, you can float
 by the target and watch it seem to roll across the background stars.
 
+## Editing and Saving Objects
+
+To edit a celestial object, select it and press Shift+E. An edit window will appear at lower right, offering several
+object properties that can be set in-program. All changes will take effect right away.
+
+To add a new object, first select its center of orbit and then press Shift+A. A dialog will ask what kind of object
+to create. Currently, only Star, Planet, and Moon will work. After clicking Go, the new object will be added with a
+few default parameters and you will see an edit window to fill in all its other properties.
+
+To export your objects you've created or modified, press U.
+
 ## Keyboard Shortcuts
 
 The current full list of keyboard shortcuts is:
@@ -164,4 +175,6 @@ Shift+I     Rewind one minute
 
 ### Misc.
 
+Shift+A     Add new object in orbit around current object
 Shift+E     Edit current object
+U           Export user-added and user-modified objects to universe.dat

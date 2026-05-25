@@ -16,8 +16,9 @@ using json = nlohmann::json;
 #define parsec 3.08567758128E+16
 #define AU 149597870700.0
 #define invAU (1.0 / AU)
-#define day 86400
-#define year (365 * 86400 + 5 * 3600 + 48 * 60 + 45)
+#define oneday 86400
+#define oneyear (365 * oneday + 5 * 3600 + 48 * 60 + 45)
+#define sidereal_year (365.256363004 * oneday)
 #define J2000 2451544.5
 #define speed_of_light 299792458.0
 #define G 6.6743015e-14
@@ -29,6 +30,8 @@ using json = nlohmann::json;
 #define earth_radius 6.371e+6
 #define jupiter_radius 6.9886e+7
 #define solar_radius 6.95700e+8
+#define earth_absmag (-3.86)
+#define earth_albedo 0.434
 #define fiftyseven (180.0/M_PI)
 #define fiftyseventh (M_PI/180)
 #define arcminute (fiftyseventh / 60)
@@ -64,6 +67,7 @@ using json = nlohmann::json;
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
 #define nlbltyp 6
+#define nceltyp 5
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
@@ -94,17 +98,18 @@ double compute_time_dilation(double velocity);
 // For orbits.
 double solve_Kepler(double M, double e);
 
-extern const char* lbltypes[nlbltyp];
-extern int cbolbls_selected_idx;
+extern const char *lbltypes[nlbltyp], *celtypes[nceltyp];
+extern int cbolbls_selected_idx, cboceltyp_selected_idx;
 extern double bv_correction;
 
 // APP STATUS AND SETTINGS
 extern std::string loading_msg;
 extern std::mutex mtx;
-extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, is_an_obj_under_cursor;
+extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome,
+    is_an_obj_under_cursor;
 extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, is_mouse_over_window, dragging, dragged, viewchanged,
-    objinfwnd, statuswnd, objedtwnd, hide_mouse, searched, draw_actual_conslines;
+    objinfwnd, statuswnd, objedtwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
 extern ImU32 cursor_color, cursor_color1, cursor_color2, cursor_color3, grid_color, grid_color_brighter, ecliptic_color, consline_color,
     conslbl_color, selected_color, selected_orbit_color, objlbl_color;
 extern std::string objname, objinfo;

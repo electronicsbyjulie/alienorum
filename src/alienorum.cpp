@@ -34,10 +34,11 @@ char lookfor[256], edit_name[256];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
+std::string load_univ = "";
 bool catalogs_found = false;
 int num_galaxies=0, num_stars=0, num_planets=0, num_moons=0, num_asteroids=0, num_comets=0, num_sat=0;
 float dispcx, dispcy;
-int frames_without_mousemove = 0, num_stars_in_box, editidx=-1;
+int frames_without_mousemove = 0, num_stars_in_box, editidx=-1, addcenidx=-1;
 double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
 bool is_click;
@@ -264,7 +265,7 @@ bool save_universe()
     return false;
 }
 
-bool load_universe(std::string universe_fname)
+bool load_universe(std::string universe_fname = "universe.json")
 {
     int i;
     fstream fs;
@@ -419,6 +420,8 @@ void load_catalogs()
     loading_msg = std::string("Orbiting stars...");
     mtx.unlock();
     cr.read_star_orbits_dat(cels);
+
+    if (load_univ) load_universe(load_univ);
 
     for (i=0; cels[i]; i++)
     {
@@ -1182,6 +1185,13 @@ void process_key_cmd_char(char c)
 {
     switch (c)
     {
+        case 'A':
+        if (selected >= 0) addcenidx = selected;
+        else if (trackidx >= 0) addcenidx = trackidx;
+        else if (whereami >= 0) addcenidx = whereami;
+        addcelwnd = true;
+        break;
+
         case 'b': global_brightness *= 1.1; viewchanged = true; break;
         case 'B': global_brightness *= 0.9; viewchanged = true; break;
         case 'c': show_consln = !show_consln; break;
@@ -1236,7 +1246,7 @@ void process_key_cmd_char(char c)
         case '@':
         viewchanged = true;
         simnow = std::time(nullptr);
-        JDnow = ((double)simnow - J2000_TIME_T)/86400 + J2000;
+        JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
         refresh_star_visibilities();
         compute_object_draw_coordinates();
         break;
@@ -1279,10 +1289,10 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
-        case 'y': JDnow += (year/86400); viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Y': JDnow -= (year/86400); viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'z': JDnow += (year/864); viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Z': JDnow -= (year/864); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'y': JDnow += (oneyear/oneday); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Y': JDnow -= (oneyear/oneday); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'z': JDnow += (oneyear/864); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Z': JDnow -= (oneyear/864); viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '+':
         vm = velocity.magnitude();
@@ -1645,6 +1655,80 @@ void draw_objinf_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+void draw_addcel_window(ImGuiIO& io)
+{
+    ImGui::Begin("Add Object", &addcelwnd);
+    ImGui::SetWindowSize(ImVec2(193, 81));
+
+    ImGui::Text("Type");
+    ImGui::SameLine();
+    ImGuiComboFlags cboceltyp_flags = 0;
+    const char* combo_preview_value = celtypes[cboceltyp_selected_idx];
+    if (ImGui::BeginCombo("##cboceltyp", combo_preview_value, cboceltyp_flags))
+    {
+        for (int n = 0; n < nceltyp; n++)
+        {
+            const bool is_selected = (cboceltyp_selected_idx == n);
+            if (ImGui::Selectable(celtypes[n], is_selected))
+            {
+                cboceltyp_selected_idx = n;
+                show_labels = true;
+            }
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::Button("Go"))
+    {
+        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+        if (ncelobjs < (MAX_CELOBJS-1))
+        {
+            bool is_cen_planet = (cels[addcenidx]->type == rocky | cels[addcenidx]->type == ice_giant || cels[addcenidx]->type == gas_giant);
+
+            if (cboceltyp_selected_idx == 2 && is_cen_planet) cboceltyp_selected_idx = 3;
+            else if (cboceltyp_selected_idx == 3 && !is_cen_planet) cboceltyp_selected_idx = 2;
+
+            switch (cboceltyp_selected_idx)
+            {
+                case 0: cels[ncelobjs] = new Galaxy(); break;
+                case 1: cels[ncelobjs] = new Star(); break;
+                case 2: cels[ncelobjs] = new Planet(); break;
+                case 3: cels[ncelobjs] = new Moon(); break;
+
+                default:
+                std::cerr << "Unimplemented object type" << std::endl;
+                break;
+            }
+
+            if (cels[ncelobjs])
+            {
+                strcpy(cels[ncelobjs]->name, "new");
+                cels[ncelobjs]->user_added = true;
+                cels[ncelobjs]->orbit = new Orbit();
+                cels[ncelobjs]->orbit->center = cels[addcenidx];
+                cels[ncelobjs]->orbit->semimajor_axis = 1e6;
+                cels[ncelobjs]->orbit->period = oneday;
+                cels[ncelobjs]->orbit->epoch = JDnow;
+                editidx = ncelobjs;
+                objedtwnd = true;
+                addcelwnd = false;
+                ncelobjs++;
+            }
+        }
+    }
+
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
+        && io.MousePos.x < pos.x+siz.x && io.MousePos.y < pos.y+siz.y)
+        is_mouse_over_window = true;
+}
+
 void draw_objedit_window(ImGuiIO& io)
 {
     if (editidx < 0)
@@ -1659,7 +1743,7 @@ void draw_objedit_window(ImGuiIO& io)
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     int cx = (int)io.DisplaySize.x/2, cy = (int)io.DisplaySize.y / 2;
-    int objedtwidth = 717, objedtheight = 225, objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
+    int objedtwidth = 717, objedtheight = 281, objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
     ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
     ImGui::SetWindowPos(ImVec2(objedtleft, objedttop));
 
@@ -1669,7 +1753,7 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::Text("Name");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid*2);
-    if (ImGui::InputText("##edtname", edit_name, 255, 0)) cels[editidx]->user_edited = true;
+    if (ImGui::InputText("##edtname", edit_name, 255, 0)) cel->user_edited = true;
     ImGui::SameLine(col3);
     if (ImGui::Button("Select"))
     {
@@ -1687,13 +1771,64 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::Text("Inclination");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+    if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f")) cel->user_edited = true;
     ImGui::SameLine(col2);
     edit_equinox = cel->equinox * fiftyseven;
     ImGui::Text("Equinox");
     ImGui::SameLine(col3);
     ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+    if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f")) cel->user_edited = true;
+
+    double edit_mass = cel->mass / 1000;
+    ImGui::Text("Mass, kg");
+    ImGui::SameLine(col1);
+    ImGui::SetNextItemWidth(txtwid);
+    if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
+    {
+        cel->mass = edit_mass * 1000;
+        cel->user_edited = true;
+    }
+    ImGui::SameLine(col2);
+    double edit_radius = cel->volumetric_mean_radius / 1000;
+    ImGui::Text("Radius, km");
+    ImGui::SameLine(col3);
+    ImGui::SetNextItemWidth(txtwid);
+    if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
+    {
+        cel->volumetric_mean_radius = edit_radius * 1000;
+        cel->user_edited = true;
+    }
+
+    double edit_absmag = cel->absolute_magnitude;
+    ImGui::Text("Abs. Magn.");
+    ImGui::SameLine(col1);
+    ImGui::SetNextItemWidth(txtwid);
+    if (ImGui::InputDouble("##edtabsmag", &edit_absmag, 0, 0, "%.3f"))
+    {
+        cel->absolute_magnitude = edit_absmag;
+        cel->user_edited = true;
+    }
+    if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+    {
+        Planet* p = (Planet*)cel;
+        p->estimate_albedo();
+        ImGui::SameLine(col2);
+        ImGui::Text("Albedo");
+        double edit_albedo = p->albedo;
+        ImGui::SameLine(col3);
+        ImGui::SetNextItemWidth(txtwid);
+        if (ImGui::InputDouble("##edtalbdo", &edit_albedo, 0, 0, "%.3f"))
+        {
+            double albrat = edit_albedo / p->albedo;
+            p->albedo = edit_albedo;
+            if (fabs(albrat-1) >= 1e-6)
+            {
+                double magshift = -log(albrat) / log(magnbase);
+                p->absolute_magnitude += magshift;
+            }
+            cel->user_edited = true;
+        }
+    }
 
     if (orb)
     {
@@ -1706,15 +1841,25 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::Text("Semimaj.Axis");
         ImGui::SameLine(col1);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.9f"))
+        {
+            orb->semimajor_axis = edit_sma * AU;
+            if (cel->user_added) orb->compute_period(cel->mass);
+            cel->user_edited = true;
+        }
         ImGui::SameLine();
         ImGui::Text("AU");
-        edit_period = cel->orbit->period / 86400;
+        edit_period = cel->orbit->period / oneday;
         ImGui::SameLine(col2);
         ImGui::Text("Period");
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f"))
+        {
+            cels[editidx]->orbit->period = edit_period * oneday;
+            if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
+            cel->user_edited = true;
+        }
         ImGui::SameLine();
         ImGui::Text("days");
 
@@ -1722,49 +1867,49 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::Text("Inclination");
         ImGui::SameLine(col1);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f")) cel->user_edited = true;
         ImGui::SameLine(col2);
         edit_node = cel->orbit->ascending_node * fiftyseven;
         ImGui::Text("Asc. Node");
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.9f")) cel->user_edited = true;
 
         edit_eccn = cel->orbit->eccentricity;
         ImGui::Text("Eccentricity");
         ImGui::SameLine(col1);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.9f")) cel->user_edited = true;
         ImGui::SameLine(col2);
         edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
         ImGui::Text("Arg.Periapsis");
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f")) cel->user_edited = true;
 
         edit_epoch = cel->orbit->epoch;
         ImGui::Text("Epoch, JD");
         ImGui::SameLine(col1);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.9f")) cel->user_edited = true;
         ImGui::SameLine(col2);
         edit_manom = cel->orbit->mean_anomaly * fiftyseven;
         ImGui::Text("Mean Anomaly");
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f")) cel->user_edited = true;
 
-        edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / 86400) : 0;
+        edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
         ImGui::Text("Prec. Node");
         ImGui::SameLine(col1);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtprcnd", &edit_precnode, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtprcnd", &edit_precnode, 0, 0, "%.9f")) cel->user_edited = true;
         ImGui::SameLine(col2);
-        edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / 86400) : 0;
+        edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
         ImGui::Text("ProcArgPeri");
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f")) cels[editidx]->user_edited = true;
+        if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f")) cel->user_edited = true;
     }
 
     ImVec2 wpos = ImGui::GetWindowPos(), wsiz = ImGui::GetContentRegionAvail();
@@ -1832,6 +1977,11 @@ int main (int argc, char** argv)
                 show_xonsm = true;
                 xaorngsim = l;
             }
+        }
+
+        if (!strcmp(argv[l], "load"))
+        {
+            load_univ = argv[++l];
         }
 
         if (!strcmp(argv[l], "find"))
@@ -2156,16 +2306,14 @@ int main (int argc, char** argv)
                     cels[editidx]->equinox = edit_equinox * fiftyseventh;
                     if (cels[editidx]->orbit)
                     {
-                        cels[editidx]->orbit->semimajor_axis = edit_sma * AU;
-                        cels[editidx]->orbit->period = edit_period * 86400;
                         cels[editidx]->orbit->inclination = edit_incl * fiftyseventh;
                         cels[editidx]->orbit->ascending_node = edit_node * fiftyseventh;
                         cels[editidx]->orbit->eccentricity = edit_eccn;
                         cels[editidx]->orbit->arg_periapsis = edit_argperi * fiftyseventh;
                         cels[editidx]->orbit->epoch = edit_epoch;
                         cels[editidx]->orbit->mean_anomaly = edit_manom * fiftyseventh;
-                        cels[editidx]->orbit->prec_node = edit_precnode ? (M_PI * 2 / (edit_precnode * 86400)) : 0;
-                        cels[editidx]->orbit->proc_argperi = edit_procargperi ? (M_PI * 2 / (edit_procargperi * 86400)) : 0;
+                        cels[editidx]->orbit->prec_node = edit_precnode ? (M_PI * 2 / (edit_precnode * oneday)) : 0;
+                        cels[editidx]->orbit->proc_argperi = edit_procargperi ? (M_PI * 2 / (edit_procargperi * oneday)) : 0;
                     }
                     if (cels[editidx]->typeclass() == class_star)
                         ((Star*)cels[editidx])->update_location(simnow);
@@ -2175,6 +2323,8 @@ int main (int argc, char** argv)
                         ((Moon*)cels[editidx])->update_location(simnow);
                 }
             }
+
+            if (addcelwnd) draw_addcel_window(io);
 
             is_click = io.MouseReleased[0];
             if (!is_mouse_over_window)
@@ -2292,14 +2442,14 @@ int main (int argc, char** argv)
             {
                 // No time dilation in warp mode because faster than light is impossible so warp mode is
                 // some kind of hand wavy physics that bypass relativity.
-                JDnow += frame_dur/86400;
+                JDnow += frame_dur/oneday;
             }
             else
             {
-                JDnow += frame_dur/86400 / compute_time_dilation(vmfr);
+                JDnow += frame_dur/oneday / compute_time_dilation(vmfr);
             }
         }
-        simnow = (JDnow - J2000)*86400 + J2000_TIME_T;
+        simnow = (JDnow - J2000)*oneday + J2000_TIME_T;
     }
 
     save_universe();

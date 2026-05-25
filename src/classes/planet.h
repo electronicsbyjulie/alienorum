@@ -21,7 +21,9 @@ class Planet : public CelestialObject
     double J2;
     int asteroid_no = 0;                                // Zero if major planet or moon.
 
-    double viewer_reflectance_magnitude(CelestialLocation seen_from);
+    void estimate_radius();                             // if mass known
+    double viewer_reflectance_magnitude(CelestialLocation seen_from, double phase = -1, double sourceabsmagn = -1e9, double sourcedist = 0);
+    void estimate_albedo();                             // if radius and abs mag known
     void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
 
     Planet();

@@ -4,6 +4,8 @@
 #include <iostream>
 #include <sstream>
 #include "celestial.h"
+#include "star.h"
+#include "planet.h"
 
 CelestialObject **cels, *mycenobj = nullptr;
 bool *celskip;
@@ -34,6 +36,84 @@ double CelestialObject::distance_from_magnitudes(double apparent, double absolut
     double intrinsic = pow(magnbase, -absolute);
     double ratio = intrinsic / flux;
     return parsec * 10 * sqrt(ratio);
+}
+
+void Orbit::compute_period(double mm)
+{
+    if (!center) return;
+    if (!center->mass)
+    {
+        switch (center->type)
+        {
+            case galaxy:
+            // TODO;
+            return;
+
+            case star:
+            ((Star*)(center))->estimate_mass();
+            break;
+
+            case gas_giant: case ice_giant:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
+            break;
+
+            case rocky:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
+            break;
+
+            default:
+            // TODO:
+            return;
+        }
+    }
+
+    double mass = center->mass + mm;
+    period = (M_PI+M_PI) * sqrt(semimajor_axis*semimajor_axis*semimajor_axis/(G*mass));
+}
+
+void Orbit::compute_semimajor_axis(double mm)
+{
+    if (!center) return;
+    if (!center->mass)
+    {
+        switch (center->type)
+        {
+            case galaxy:
+            // TODO;
+            return;
+
+            case star:
+            ((Star*)(center))->estimate_mass();
+            break;
+
+            case gas_giant: case ice_giant:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
+            break;
+
+            case rocky:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
+            break;
+
+            default:
+            // TODO:
+            return;
+        }
+    }
+
+    double mass = center->mass + mm;
+    semimajor_axis = pow(G*mass*period*period / (M_PI*M_PI*4), 1.0/3);
+}
+
+void Orbit::compute_center_mass(double mm)
+{
+    double a3_over_gm = period / (M_PI+M_PI);
+    a3_over_gm *= a3_over_gm;
+    double GM = semimajor_axis*semimajor_axis*semimajor_axis / a3_over_gm;
+    center->mass = (GM / G) - mm;
 }
 
 std::string CelestialObject::RA_as_hms(double seen_equinox)
@@ -173,10 +253,10 @@ json CelestialObject::to_json()
     towrite["!name"] = name;                    // want this to alphabetize to the top.
     towrite["oblateness"] = oblateness;
     if (orbit) towrite["orbit"] = orbit->to_json();
-    towrite["precession"] = precession * year;
+    towrite["precession"] = precession * oneyear;
     towrite["RI_color"] = RI_color;
     towrite["right_ascension"] = right_ascension * fiftyseven;
-    towrite["sidereal_rotational_period"] = sidereal_rotational_period / 86400;
+    towrite["sidereal_rotational_period"] = sidereal_rotational_period / oneday;
     towrite["type"] = type;
     towrite["typeclass"] = typeclass();
     towrite["UB_color"] = UB_color;
@@ -219,7 +299,7 @@ bool CelestialObject::from_json(json j)
     try { j.at("precession").get_to(precession); } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
-    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period /= 86400; } catch (...) { ; }
+    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period /= oneday; } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
     try { j.at("volumetric_mean_radius").get_to(volumetric_mean_radius); } catch (...) { ; }
@@ -263,7 +343,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     // Calculate orbit radians per second and seconds since epoch
     double rads_sec = (M_PI * 2) / orbit->period;
-    double seconds_since_epoch = (tmnow - J2000_TIME_T) + ((J2000 - epoch)*86400);
+    double seconds_since_epoch = (tmnow - J2000_TIME_T) + ((J2000 - epoch)*oneday);
 
     // Precess the ascending node and process the arg peri
     double node_adjustment = seconds_since_epoch * -orbit->prec_node;
@@ -335,11 +415,11 @@ json Orbit::to_json()
         {"semimajor_axis", semimajor_axis},
         {"eccentricity", eccentricity},
         {"arg_periapsis", arg_periapsis*fiftyseven},
-        {"prec_node", prec_node*fiftyseven*year},
-        {"proc_argperi", proc_argperi*fiftyseven*year},
+        {"prec_node", prec_node*fiftyseven*oneyear},
+        {"proc_argperi", proc_argperi*fiftyseven*oneyear},
         {"mean_anomaly", mean_anomaly*fiftyseven},
         {"epoch", epoch},
-        {"period", period/86400},
+        {"period", period/oneday},
         {"laplace", laplace.to_json()}
     };
 }
@@ -354,9 +434,9 @@ bool Orbit::from_json(json j)
     try { j.at("arg_periapsis").get_to(arg_periapsis); arg_periapsis *= fiftyseventh; } catch (...) { ; }
     try { j.at("mean_anomaly").get_to(mean_anomaly); mean_anomaly *= fiftyseventh; } catch (...) { ; }
     try { j.at("epoch").get_to(epoch); } catch (...) { ; }
-    try { j.at("period").get_to(period); period *= 86400; } catch (...) { ; }
-    try { j.at("prec_node").get_to(prec_node); prec_node *= fiftyseventh / year; } catch (...) { ; }
-    try { j.at("proc_argperi").get_to(proc_argperi); proc_argperi *= fiftyseventh / year; } catch (...) { ; }
+    try { j.at("period").get_to(period); period *= oneday; } catch (...) { ; }
+    try { j.at("prec_node").get_to(prec_node); prec_node *= fiftyseventh / oneyear; } catch (...) { ; }
+    try { j.at("proc_argperi").get_to(proc_argperi); proc_argperi *= fiftyseventh / oneyear; } catch (...) { ; }
     try
     {
         json j1 = j.at("laplace");

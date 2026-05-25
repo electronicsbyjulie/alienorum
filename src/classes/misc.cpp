@@ -38,14 +38,16 @@ bool dragging, dragged, viewchanged;
 int lmx, lmy, whereami=0, iamhome=0;
 double velocmag;
 time_t simnow = std::time(nullptr);
-double JDnow = ((double)simnow - J2000_TIME_T)/86400 + J2000;
+double JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
 bool objinfwnd = true;
 bool statuswnd = true;
 bool objedtwnd = false;
+bool addcelwnd = false;
 bool hide_mouse = true;
 bool searched = false;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Binary Orbit", "Known Poles" };
-int cbolbls_selected_idx = 0;
+const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
+int cbolbls_selected_idx = 0, cboceltyp_selected_idx = 0;
 double bv_correction = 0;
 
 double appmagn_lblcut = 2.5,

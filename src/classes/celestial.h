@@ -50,6 +50,9 @@ class Orbit
     Rotation laplace;
 
     CelestialLocation compute_3d_location(double epoch);
+    void compute_period(double my_mass = 0);
+    void compute_semimajor_axis(double my_mass = 0);
+    void compute_center_mass(double my_mass = 0);
     json to_json();
     bool from_json(json j);
 };
@@ -81,6 +84,7 @@ class CelestialObject
     double VR_color = 0;
     double RI_color = 0;
 
+    bool user_added = false;
     bool user_edited = false;
 
     cel_obj_type type = star;

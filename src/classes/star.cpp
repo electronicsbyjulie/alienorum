@@ -23,7 +23,7 @@ void Star::update_location(double tmnow)
     }
 
     // How many seconds since star's epoch
-    double elapsed = tmnow - J2000_TIME_T + 86400 * (J2000 - epoch);
+    double elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch);
 
     // Estimate RA and Decl using proper motion
     double l_RA = right_ascension + proper_motion_RA * elapsed;
@@ -250,8 +250,8 @@ json Star::to_json()
 {
     json towrite = CelestialObject::to_json();
 
-    towrite["proper_motion_RA"] = proper_motion_RA*fiftyseven*year;
-    towrite["proper_motion_decl"] = proper_motion_decl*fiftyseven*year;
+    towrite["proper_motion_RA"] = proper_motion_RA*fiftyseven*oneyear;
+    towrite["proper_motion_decl"] = proper_motion_decl*fiftyseven*oneyear;
     towrite["radial_velocity"] = radial_velocity;
     towrite["apparent_magnitude"] = apparent_magnitude;
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
@@ -280,8 +280,8 @@ json Star::to_json()
 bool Star::from_json(json j)
 {
     CelestialObject::from_json(j);
-    try { j.at("proper_motion_RA").get_to(proper_motion_RA); proper_motion_RA *= fiftyseventh/year; } catch (...) { ; }
-    try { j.at("proper_motion_decl").get_to(proper_motion_decl); proper_motion_decl *= fiftyseventh/year; } catch (...) { ; }
+    try { j.at("proper_motion_RA").get_to(proper_motion_RA); proper_motion_RA *= fiftyseventh/oneyear; } catch (...) { ; }
+    try { j.at("proper_motion_decl").get_to(proper_motion_decl); proper_motion_decl *= fiftyseventh/oneyear; } catch (...) { ; }
     try { j.at("radial_velocity").get_to(radial_velocity); } catch (...) { ; }
     try { j.at("apparent_magnitude").get_to(apparent_magnitude); } catch (...) { ; }
     try { j.at("parallax").get_to(parallax); parallax *= fiftyseventh / 3600000; } catch (...) { ; }
