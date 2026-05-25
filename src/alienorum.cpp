@@ -1709,6 +1709,8 @@ void draw_addcel_window(ImGuiIO& io)
             {
                 strcpy(cels[ncelobjs]->name, "new");
                 cels[ncelobjs]->user_added = true;
+                cels[addcenidx]->distance_known = true;
+                cels[ncelobjs]->distance_known = true;
                 cels[ncelobjs]->orbit = new Orbit();
                 cels[ncelobjs]->orbit->center = cels[addcenidx];
                 cels[ncelobjs]->orbit->semimajor_axis = 1e6;
@@ -1864,7 +1866,7 @@ void draw_objedit_window(ImGuiIO& io)
         }
         ImGui::SameLine();
         ImGui::Text("days");
-        objedtheight += txtyscale*1.1;
+        objedtheight += txtyscale*1.16;
 
         edit_incl = cel->orbit->inclination * fiftyseven;
         ImGui::Text("Inclination");
@@ -1877,7 +1879,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.9f")) cel->user_edited = true;
-        objedtheight += txtyscale*1.1;
+        objedtheight += txtyscale*1.16;
 
         edit_eccn = cel->orbit->eccentricity;
         ImGui::Text("Eccentricity");
@@ -1890,7 +1892,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f")) cel->user_edited = true;
-        objedtheight += txtyscale*1.1;
+        objedtheight += txtyscale*1.16;
 
         edit_epoch = cel->orbit->epoch;
         ImGui::Text("Epoch, JD");
@@ -1903,7 +1905,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f")) cel->user_edited = true;
-        objedtheight += txtyscale*1.1;
+        objedtheight += txtyscale*1.16;
 
         edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
         ImGui::Text("Prec. Node");
@@ -1916,7 +1918,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f")) cel->user_edited = true;
-        objedtheight += txtyscale*1.1;
+        objedtheight += txtyscale*1.16;
     }
 
     ImVec2 wpos = ImGui::GetWindowPos(), wsiz = ImGui::GetContentRegionAvail();
