@@ -108,7 +108,12 @@ few default parameters and you will see an edit window to fill in all its other 
 To export your objects you've created or modified, press U. To load them again next session, first rename your 
 `universe.json` file to something else, let's say `my_universe.json`, then the next time you run Alienorum, run it
 from the command line with the `load` argument like this: `./bin/alienorum load my_universe.json`. Note Alienorum
-will not touch your custom file; any changes made will be written to `universe.json` only.
+will not touch your custom file; any changes made will be written to `universe.json` only, so make sure to either
+copy them to your custom universe file or rename the default `universe.json` to your filename.
+
+You can also edit the universe JSON files to modify other parameters not included in the window. Just make sure the
+file is still valid JSON after any edits. There are third party apps that will check a JSON file to make sure it's
+valid and find any errors.
 
 ## Keyboard Shortcuts
 

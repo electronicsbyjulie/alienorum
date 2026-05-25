@@ -1744,9 +1744,7 @@ void draw_objedit_window(ImGuiIO& io)
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     int cx = (int)io.DisplaySize.x/2, cy = (int)io.DisplaySize.y / 2;
-    int objedtwidth = 717, objedtheight = 281, objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
-    ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
-    ImGui::SetWindowPos(ImVec2(objedtleft, objedttop));
+    int objedtwidth = 717, objedtheight = 137;
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
 
@@ -1834,9 +1832,12 @@ void draw_objedit_window(ImGuiIO& io)
     if (orb)
     {
         ImGui::Separator();
+        objedtheight += txtyscale;
+
         std::string orbcen = "Center of Orbit: ";
         orbcen += std::string(cel->orbit->center->name);
         ImGui::Text(orbcen.c_str());
+        objedtheight += txtyscale;
 
         edit_sma = cel->orbit->semimajor_axis / AU;
         ImGui::Text("Semimaj.Axis");
@@ -1863,6 +1864,7 @@ void draw_objedit_window(ImGuiIO& io)
         }
         ImGui::SameLine();
         ImGui::Text("days");
+        objedtheight += txtyscale*1.1;
 
         edit_incl = cel->orbit->inclination * fiftyseven;
         ImGui::Text("Inclination");
@@ -1875,6 +1877,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.9f")) cel->user_edited = true;
+        objedtheight += txtyscale*1.1;
 
         edit_eccn = cel->orbit->eccentricity;
         ImGui::Text("Eccentricity");
@@ -1887,6 +1890,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f")) cel->user_edited = true;
+        objedtheight += txtyscale*1.1;
 
         edit_epoch = cel->orbit->epoch;
         ImGui::Text("Epoch, JD");
@@ -1899,6 +1903,7 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f")) cel->user_edited = true;
+        objedtheight += txtyscale*1.1;
 
         edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
         ImGui::Text("Prec. Node");
@@ -1911,10 +1916,14 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f")) cel->user_edited = true;
+        objedtheight += txtyscale*1.1;
     }
 
     ImVec2 wpos = ImGui::GetWindowPos(), wsiz = ImGui::GetContentRegionAvail();
 
+    int objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
+    ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
+    ImGui::SetWindowPos(ImVec2(objedtleft, objedttop));
     ImGui::End();
 
     if (io.MousePos.x >= objedtleft && io.MousePos.y >= objedttop)
