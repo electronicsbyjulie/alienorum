@@ -266,13 +266,13 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double seconds_since_epoch = (tmnow - J2000_TIME_T) + ((J2000 - epoch)*86400);
 
     // Precess the ascending node and process the arg peri
-    double node_adjustment = seconds_since_epoch * orbit->prec_node;
-    double peri_adjustment = seconds_since_epoch * orbit->proc_argperi;
-    double node = orbit->ascending_node - node_adjustment;
+    double node_adjustment = seconds_since_epoch * -orbit->prec_node;
+    double peri_adjustment = seconds_since_epoch *  orbit->proc_argperi;
+    double node = orbit->ascending_node + node_adjustment;
     double argperi = orbit->arg_periapsis + peri_adjustment;
 
     // Calculate current Mean Anomaly
-    double M = orbit->mean_anomaly + rads_sec * seconds_since_epoch + node_adjustment - peri_adjustment;
+    double M = orbit->mean_anomaly + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
     M = std::fmod(M, 2.0 * M_PI);
 
     // Solve for Eccentric Anomaly
@@ -302,9 +302,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     // Precess the equinox
     equinox_eff = equinox - precession * seconds_since_epoch;
     Point pole = yaxis;
-    // pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -inclination);
     pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
-    // pole = rotate3D(pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+    pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -inclination);
     location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
     if (_class == class_moon && !crp)

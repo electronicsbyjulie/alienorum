@@ -81,6 +81,8 @@ class CelestialObject
     double VR_color = 0;
     double RI_color = 0;
 
+    bool user_edited = false;
+
     cel_obj_type type = star;
     char name[32];
 

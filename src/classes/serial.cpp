@@ -20,7 +20,7 @@ std::string Serialization::load_string(FILE *in)
     return std::string(buffer);
 }
 
-bool Serialization::save_all(std::fstream& fs, CelestialObject **cels)
+bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 {
     try
     {
@@ -28,27 +28,30 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels)
         json allobjs;
         for (i=0; cels[i]; i++)
         {
+            std::string j = std::to_string(i);
+            const char* l = j.c_str();
+            if (oe && !cels[i]->user_edited) continue;
             switch (cels[i]->typeclass())
             {
                 case class_galaxy:
-                allobjs[i] = ((Galaxy*)cels[i])->to_json();
+                allobjs[l] = ((Galaxy*)cels[i])->to_json();
                 break;
 
                 case class_star:
                 ((Star*)cels[i])->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
-                allobjs[i] = ((Star*)cels[i])->to_json();
+                allobjs[l] = ((Star*)cels[i])->to_json();
                 break;
 
                 case class_planet:
-                allobjs[i] = ((Planet*)cels[i])->to_json();
+                allobjs[l] = ((Planet*)cels[i])->to_json();
                 break;
 
                 case class_moon:
-                allobjs[i] = ((Moon*)cels[i])->to_json();
+                allobjs[l] = ((Moon*)cels[i])->to_json();
                 break;
 
                 default:
-                std::cerr << "Attempted to save CelestialObject of blank or unknown type class." << std::endl;
+                std::cerr << "Attempted to save CelestialObject " << cels[i]->name << " of blank or unknown type class." << std::endl;
             }
         }
 

@@ -1525,6 +1525,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             _day = 0;
         }
 
+        num_read++;
         cels[offset++] = p;
         if (offset >= (max-1))
         {
@@ -1833,11 +1834,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         read_field_onebased(buffer, 289, 303, field);
         f = atof(field);
-        o->prec_node = f ? (1.0 / f) : 0;
+        o->prec_node = f ? (M_PI * 2 / f) : 0;
 
         read_field_onebased(buffer, 305, 316, field);
         f = atof(field);
-        o->proc_argperi = f ? (1.0 / f) : 0;
+        o->proc_argperi = f ? (M_PI * 2 / f) : 0;
         p->distance_known = true;
 
         p->location = o->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
