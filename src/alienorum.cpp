@@ -2306,6 +2306,7 @@ int main (int argc, char** argv)
 
     for (i=0; cels[i]; i++)
     {
+        if (cels[i]->orbit) delete cels[i]->orbit;
         if (cels[i]) switch (cels[i]->typeclass())
         {
             case class_galaxy:
