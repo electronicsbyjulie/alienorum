@@ -352,8 +352,7 @@ void Star::make_companion_of(Star *A, char comp)
         orbit = A->orbit;
         A->orbit = nullptr;
     }
-    else
-        orbit = new Orbit();
+    else if (!orbit) orbit = new Orbit();
     orbit->center = A;
 }
 

@@ -1178,6 +1178,158 @@ void center_selected()
     }
 }
 
+void process_key_cmd_char(char c)
+{
+    switch (c)
+    {
+        case 'b': global_brightness *= 1.1; viewchanged = true; break;
+        case 'B': global_brightness *= 0.9; viewchanged = true; break;
+        case 'c': show_consln = !show_consln; break;
+        case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
+
+        case 'e':
+        // TODO: Solar system explorer, or local system if outside solar system.
+        break;
+
+        case 'E':
+        if (selected >= 0) editidx = selected;
+        else if (trackidx >= 0) editidx = trackidx;
+        else if (whereami >= 0) editidx = whereami;
+        objedtwnd = (editidx >= 0);
+        break;
+
+        case 'g': show_grid = !show_grid; break;
+        case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'l': show_labels = !show_labels; break;
+        case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'M': JDnow -= 30; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'n': objinfwnd = !objinfwnd; break;
+
+        case 'o':
+        if (selected >= 0)
+        {
+            here = cels[selected]->location;
+            whereami = selected;
+            selected = trackidx = -1;
+            global_brightness = default_brightness;
+            zoom = 1;
+        }
+        velocity = center;
+        viewchanged = true;
+        refresh_star_visibilities();
+        break;
+
+        case 'O': show_orbits = !show_orbits; break;
+
+        case 'r':
+        velocity = center;
+        zoom = 1;
+        spin = 0;
+        whereami = iamhome;
+        trackidx = -1;
+        here = cels[whereami]->location;
+        global_brightness = default_brightness;
+        case '@':
+        viewchanged = true;
+        simnow = std::time(nullptr);
+        JDnow = ((double)simnow - J2000_TIME_T)/86400 + J2000;
+        refresh_star_visibilities();
+        compute_object_draw_coordinates();
+        break;
+
+        case 'R': redlight_mode = !redlight_mode; break;
+        case 's': statuswnd = !statuswnd; break;
+        case 'S': selected = -1; break;
+
+        case 't':
+        center_selected();
+        trackidx = selected;
+        selected = -1;
+        viewchanged = true;
+        break;
+
+        case 'T': trackidx = -1; break;
+        case 'u': save_universe(); break;
+
+        case 'w':
+        if (velocity.magnitude())
+        {
+            velocity.scale(speed_of_light * 1.00001 / target_frame_rate);
+        }
+        else
+        {
+            velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+            velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+            velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+            /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
+            velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
+            velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+        }
+        spin = 0;
+        viewchanged = true;
+        whereami = -1;
+        break;
+
+        case 'x':
+        velocity = center;
+        viewchanged = true;
+        break;
+
+        case 'y': JDnow += (year/86400); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Y': JDnow -= (year/86400); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'z': JDnow += (year/864); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Z': JDnow -= (year/864); viewchanged = true; compute_object_draw_coordinates(); break;
+
+        case '+':
+        vm = velocity.magnitude();
+        vmfr = vm * target_frame_rate;
+        if (vmfr > 1e100)
+        {
+            // In Trek, the fastest possible warp is warp 10. But that doesn't make for impressive spaceflights.
+            // How about we set the limit to warp 1 googol?
+            // Besides, go much faster than that and the app crashes.
+            velocity.scale(speed_of_light * 1e100 / target_frame_rate);
+        }
+        else if (vm)
+        {
+            if (vmfr < 0.1 * speed_of_light) velocity.scale(vm + 0.5 * vm * compute_time_dilation(vmfr));
+            else if (vmfr < speed_of_light) velocity.scale(vm + 0.5 * (speed_of_light - vmfr) / target_frame_rate * compute_time_dilation(vmfr));
+            else velocity.scale(vm * 1.5);
+        }
+        else
+        {
+            velocity.x =  sin(azimuth) * cos(altitude) * 1000;
+            velocity.z =  cos(azimuth) * cos(altitude) * 1000;
+            velocity.y =  sin(altitude) * 1000;
+            /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
+            velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
+            velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+            whereami = -1;
+        }
+        viewchanged = true;
+        break;
+
+        case '!': show_consln = show_grid = show_labels = show_orbits = false; break;
+        case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
+
+        case '-':
+        vm = velocity.magnitude();
+        velocity.scale(vm * 0.666);
+        viewchanged = true;
+        break;
+
+        case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
+        case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
+
+        default:
+        ;
+    }
+}
+
 void process_keyboard_commands(ImGuiIO& io)
 {
     int i;
@@ -1185,154 +1337,7 @@ void process_keyboard_commands(ImGuiIO& io)
     {
         timeout_ms = 5;
         ImWchar c = io.InputQueueCharacters[i];
-        switch (c)
-        {
-            case 'b': global_brightness *= 1.1; viewchanged = true; break;
-            case 'B': global_brightness *= 0.9; viewchanged = true; break;
-            case 'c': show_consln = !show_consln; break;
-            case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
-
-            case 'e':
-            // TODO: Solar system explorer, or local system if outside solar system.
-            break;
-
-            case 'E':
-            if (selected >= 0) editidx = selected;
-            else if (trackidx >= 0) editidx = trackidx;
-            else if (whereami >= 0) editidx = whereami;
-            objedtwnd = (editidx >= 0);
-            break;
-
-            case 'g': show_grid = !show_grid; break;
-            case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'l': show_labels = !show_labels; break;
-            case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'M': JDnow -= 30; viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'n': objinfwnd = !objinfwnd; break;
-
-            case 'o':
-            if (selected >= 0)
-            {
-                here = cels[selected]->location;
-                whereami = selected;
-                selected = trackidx = -1;
-                global_brightness = default_brightness;
-                zoom = 1;
-            }
-            velocity = center;
-            viewchanged = true;
-            refresh_star_visibilities();
-            break;
-
-            case 'O': show_orbits = !show_orbits; break;
-
-            case 'r':
-            velocity = center;
-            zoom = 1;
-            spin = 0;
-            whereami = iamhome;
-            trackidx = -1;
-            here = cels[whereami]->location;
-            global_brightness = default_brightness;
-            case '@':
-            viewchanged = true;
-            simnow = std::time(nullptr);
-            JDnow = ((double)simnow - J2000_TIME_T)/86400 + J2000;
-            refresh_star_visibilities();
-            compute_object_draw_coordinates();
-            break;
-
-            case 'R': redlight_mode = !redlight_mode; break;
-            case 's': statuswnd = !statuswnd; break;
-            case 'S': selected = -1; break;
-
-            case 't':
-            center_selected();
-            trackidx = selected;
-            selected = -1;
-            viewchanged = true;
-            break;
-
-            case 'T': trackidx = -1; break;
-            case 'u': save_universe(); break;
-
-            case 'w':
-            if (velocity.magnitude())
-            {
-                velocity.scale(speed_of_light * 1.00001 / target_frame_rate);
-            }
-            else
-            {
-                velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-                velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-                velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-                /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
-                velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
-            }
-            spin = 0;
-            viewchanged = true;
-            whereami = -1;
-            break;
-
-            case 'x':
-            velocity = center;
-            viewchanged = true;
-            break;
-
-            case 'y': JDnow += (year/86400); viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'Y': JDnow -= (year/86400); viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'z': JDnow += (year/864); viewchanged = true; compute_object_draw_coordinates(); break;
-            case 'Z': JDnow -= (year/864); viewchanged = true; compute_object_draw_coordinates(); break;
-
-            case '+':
-            vm = velocity.magnitude();
-            vmfr = vm * target_frame_rate;
-            if (vmfr > 1e100)
-            {
-                // In Trek, the fastest possible warp is warp 10. But that doesn't make for impressive spaceflights.
-                // How about we set the limit to warp 1 googol?
-                // Besides, go much faster than that and the app crashes.
-                velocity.scale(speed_of_light * 1e100 / target_frame_rate);
-            }
-            else if (vm)
-            {
-                if (vmfr < 0.1 * speed_of_light) velocity.scale(vm + 0.5 * vm * compute_time_dilation(vmfr));
-                else if (vmfr < speed_of_light) velocity.scale(vm + 0.5 * (speed_of_light - vmfr) / target_frame_rate * compute_time_dilation(vmfr));
-                else velocity.scale(vm * 1.5);
-            }
-            else
-            {
-                velocity.x =  sin(azimuth) * cos(altitude) * 1000;
-                velocity.z =  cos(azimuth) * cos(altitude) * 1000;
-                velocity.y =  sin(altitude) * 1000;
-                /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-                velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
-                velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
-                whereami = -1;
-            }
-            viewchanged = true;
-            break;
-
-            case '!': show_consln = show_grid = show_labels = show_orbits = false; break;
-            case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
-
-            case '-':
-            vm = velocity.magnitude();
-            velocity.scale(vm * 0.666);
-            viewchanged = true;
-            break;
-
-            case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
-            case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
-
-            default:
-            ;
-        }
+        process_key_cmd_char(c);
     }
 }
 
@@ -1654,7 +1659,7 @@ void draw_objedit_window(ImGuiIO& io)
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     int cx = (int)io.DisplaySize.x/2, cy = (int)io.DisplaySize.y / 2;
-    int objedtwidth = 717, objedtheight = 200, objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
+    int objedtwidth = 717, objedtheight = 225, objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
     ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
     ImGui::SetWindowPos(ImVec2(objedtleft, objedttop));
 
@@ -1692,6 +1697,11 @@ void draw_objedit_window(ImGuiIO& io)
 
     if (orb)
     {
+        ImGui::Separator();
+        std::string orbcen = "Center of Orbit: ";
+        orbcen += std::string(cel->orbit->center->name);
+        ImGui::Text(orbcen.c_str());
+
         edit_sma = cel->orbit->semimajor_axis / AU;
         ImGui::Text("Semimaj.Axis");
         ImGui::SameLine(col1);
@@ -1804,6 +1814,12 @@ int main (int argc, char** argv)
     for (l=1; l<argc; l++)
     {
         n = strlen(argv[l]);
+        if (n == 1)
+        {
+            process_key_cmd_char(argv[l][0]);
+            continue;
+        }
+
         if (n == ((xonsm[4] & 017) ^ 015))
         {
             const char* ucpdhahzs = "\x2b\x85\xe9\x80\x57\xe4\x70\x00";

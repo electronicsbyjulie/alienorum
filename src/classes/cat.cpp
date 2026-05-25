@@ -924,7 +924,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         A->component = 'A';
         hipcomps[HIP]['A'] = A;
 
-        s = new Star();
+        s = nullptr;
+        for (j=0; j<offset; j++)
+        {
+            if (cels[j]->typeclass() != class_star) continue;
+            if (!cels[j]->orbit) continue;
+            if (cels[j]->orbit->center == A)
+            {
+                s = (Star*)cels[j];
+                break;
+            }
+        }
+
+        if (!s) s = new Star();
         s->make_companion_of(A, 'B');
         s->epoch = J2000 + (1991.25 - 2000);
 
@@ -956,16 +968,15 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
         read_field_onebased(buffer, 54, 59, field);
-        A->inclination = s->orbit->inclination = atof(field) * fiftyseventh;
+        A->inclination = atof(field) * fiftyseventh;
+        s->orbit->inclination = 0;
 
         //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
         read_field_onebased(buffer, 61, 66, field);
-        A->equinox = s->orbit->ascending_node = atof(field) * fiftyseventh;
+        A->equinox = atof(field) * fiftyseventh;
+        s->orbit->ascending_node = 0;
 
         A->update_location(J2000_TIME_T);
-        A->location.local_system_plane = A->location.equatorial_plane =
-            system_plane_from_incl_and_node(s->orbit->inclination,
-            s->orbit->ascending_node, s->location.system_center - cels[0]->location.system_center);
         s->location = A->location;
         A->known_poles = true;
         s->known_poles = true;

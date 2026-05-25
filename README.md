@@ -161,3 +161,7 @@ I           Advance one minute
 Shift+I     Rewind one minute
 @           Return to present moment
 ```
+
+### Misc.
+
+Shift+E     Edit current object
