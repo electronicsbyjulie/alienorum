@@ -425,6 +425,7 @@ void load_catalogs()
 
     for (i=0; cels[i]; i++)
     {
+        if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
         while (cels[i]->cenobj->orbit && cels[i]->cenobj->orbit->center && cels[i]->cenobj->orbit->center->typeclass() != class_galaxy)
             cels[i]->cenobj = cels[i]->cenobj->orbit->center;
     }

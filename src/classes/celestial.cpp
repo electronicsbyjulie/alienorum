@@ -282,7 +282,11 @@ bool CelestialObject::from_json(json j)
     try { j.at("distance_known").get_to(distance_known); if (!distance_known && !distance) distance = 1e4+light_year; } catch (...) { ; }
     try { j.at("epoch").get_to(epoch); } catch (...) { ; }
     try { j.at("equinox").get_to(equinox); equinox *= fiftyseventh; } catch (...) { ; }
-    try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }
+    try
+    {
+        j.at("inclination").get_to(inclination); inclination *= fiftyseventh;
+        known_poles = true;
+    } catch (...) { ; }
     try
     {
         json j1 = j.at("location");

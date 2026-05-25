@@ -12,7 +12,7 @@
 #
 
 CPP = g++
-CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat -O3
+CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 
 # Uncomment for debug mode
 # CPPFLAGS += -g -DDEBUG

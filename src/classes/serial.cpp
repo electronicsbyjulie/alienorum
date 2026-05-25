@@ -83,22 +83,23 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
             switch (c)
             {
                 case class_galaxy:
-                cels[i] = new Galaxy();
+                if (!cels[i]) cels[i] = new Galaxy();
                 ((Galaxy*)cels[i])->from_json(js);
                 break;
 
                 case class_star:
-                cels[i] = new Star();
+                if (!cels[i]) cels[i] = new Star();
                 ((Star*)cels[i])->from_json(js);
+                ((Star*)cels[i])->update_location(J2000_TIME_T);
                 break;
 
                 case class_planet:
-                cels[i] = new Planet();
+                if (!cels[i]) cels[i] = new Planet();
                 ((Planet*)cels[i])->from_json(js);
                 break;
 
                 case class_moon:
-                cels[i] = new Moon();
+                if (!cels[i]) cels[i] = new Moon();
                 ((Moon*)cels[i])->from_json(js);
                 break;
 
