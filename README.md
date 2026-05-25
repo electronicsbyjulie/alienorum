@@ -105,7 +105,9 @@ To add a new object, first select its center of orbit and then press Shift+A. A 
 to create. Currently, only Star, Planet, and Moon will work. After clicking Go, the new object will be added with a
 few default parameters and you will see an edit window to fill in all its other properties.
 
-To export your objects you've created or modified, press U.
+To export your objects you've created or modified, press U. To load them again next session, first rename your 
+`universe.json` file to something else, let's say `my_universe.json`, then the next time you run Alienorum, run it
+from the command line with the `load` argument like this: `./bin/alienorum load my_universe.json`.
 
 ## Keyboard Shortcuts
 
