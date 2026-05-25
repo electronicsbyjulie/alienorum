@@ -646,9 +646,9 @@ void compute_object_draw_coordinates()
                 default:
                 ;
             }
-
-            if (whereami == i) here = cels[i]->location;
         }
+
+        if (whereami >= 0) here = cels[whereami]->location;
 
         Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
         /*viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
