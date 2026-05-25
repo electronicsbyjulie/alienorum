@@ -655,8 +655,6 @@ void compute_object_draw_coordinates()
         if (whereami >= 0) here = cels[whereami]->location;
 
         Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
-        /*viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
-        viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);*/
         Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -712,8 +710,6 @@ void draw_objects()
     double orbseg = 81;
 
     Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
-    /*viewer_pole = rotate3D(viewer_pole, center, here.orbital_plane.v, here.orbital_plane.a);
-    viewer_pole = rotate3D(viewer_pole, center, here.local_system_plane.v, here.local_system_plane.a);*/
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
     // Orbits
@@ -1276,8 +1272,6 @@ void process_key_cmd_char(char c)
             velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
             velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
             velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-            velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
             velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
         }
         spin = 0;
@@ -1316,8 +1310,6 @@ void process_key_cmd_char(char c)
             velocity.x =  sin(azimuth) * cos(altitude) * 1000;
             velocity.z =  cos(azimuth) * cos(altitude) * 1000;
             velocity.y =  sin(altitude) * 1000;
-            /*velocity = rotate3D(velocity, center, here.local_system_plane.v, -here.local_system_plane.a);
-            velocity = rotate3D(velocity, center, here.orbital_plane.v, -here.orbital_plane.a);*/
             velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
             whereami = -1;
         }
