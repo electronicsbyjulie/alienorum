@@ -339,15 +339,15 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->equinox = find_angle_along_vector(rot.v, zaxis, center, yaxis);
             if (s->equinox < 0) s->equinox += (M_PI*2);
 
-            s->location.local_system_plane = ICRF_to_ecliptic;
-            s->location.equatorial_plane = rot;
+            s->location.local_system_plane = s->location.equatorial_plane = rot;
             s->known_poles = true;
         }
         else
         {
             s->update_location(J2000_TIME_T);
             // Assumed 90 degree inclination for all extrasolar systems unless inclination known.
-            s->location.local_system_plane = align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
+            s->location.equatorial_plane = s->location.local_system_plane =
+                align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
         }
 
         #if _debug_sbinaries_zetret
@@ -589,7 +589,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         s->update_location(J2000_TIME_T);
         // Assumed 90 degree inclination for all extrasolar systems unles sinclination known.
-        s->location.local_system_plane = align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
+        s->location.equatorial_plane = s->location.local_system_plane =
+            align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
 
         #if _debug_sbinaries_zetret
         if (s->HD == 20766) zet1ret = s;
@@ -955,17 +956,17 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
         read_field_onebased(buffer, 54, 59, field);
-        s->orbit->inclination = atof(field) * fiftyseventh;
+        A->inclination = s->orbit->inclination = atof(field) * fiftyseventh;
 
         //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
         read_field_onebased(buffer, 61, 66, field);
-        s->orbit->ascending_node = atof(field) * fiftyseventh;
+        A->equinox = s->orbit->ascending_node = atof(field) * fiftyseventh;
 
         A->update_location(J2000_TIME_T);
-        A->location.local_system_plane = system_plane_from_incl_and_node(s->orbit->inclination,
+        A->location.local_system_plane = A->location.equatorial_plane =
+            system_plane_from_incl_and_node(s->orbit->inclination,
             s->orbit->ascending_node, s->location.system_center - cels[0]->location.system_center);
         s->location = A->location;
-        s->orbit->inclination = 0;
         A->known_poles = true;
         s->known_poles = true;
 
@@ -1098,7 +1099,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         {
             // The inclination is unknown, but let's assume zero degrees
             s->inclination = A->inclination = 0;
-            A->location.local_system_plane = align_points_3d(cels[0]->location.system_center, Point(0,light_year*1e9,0), A->location.system_center);
+            A->location.equatorial_plane = A->location.local_system_plane =
+                align_points_3d(cels[0]->location.system_center, Point(0,light_year*1e9,0), A->location.system_center);
         }
         s->location = A->location;                      // Copies local system reference frame
         s->epoch = J2000;
@@ -1572,7 +1574,6 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
                 strcpy(s->name, trim(field).c_str());
-                // std::cout << "Named " << s->name << std::endl << std::flush;
                 num_read++;
                 break;
             }
@@ -1623,14 +1624,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         read_field_onebased(buffer, 77, 87, field);
         double inclination = atof(field) * fiftyseventh;
 
-        bool overwrite_system_plane = false;
-        if (inclination)
+        if (inclination || ascending_node)
         {
-            overwrite_system_plane = true;
             A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
                 A->location.system_center - cels[0]->location.system_center);
-            A->location.orbital_plane.a = 0;
-            A->location.equatorial_plane.a = 0;
+            A->location.orbital_plane = A->location.equatorial_plane = A->location.local_system_plane;
+            A->inclination = inclination;
+            A->equinox = ascending_node;
             A->known_poles = true;
         }
 
@@ -1693,10 +1693,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         f = atof(field) * fiftyseventh;
         if (f) s->orbit->mean_anomaly = f;
 
-        if (overwrite_system_plane)
+        if (inclination || ascending_node)
         {
             s->location = A->location;
-            s->orbit->ascending_node = s->orbit->inclination = 0;           // Clear these because we transfered them to the system plane.
+            s->inclination = inclination;
+            s->equinox = ascending_node;
             A->known_poles = s->known_poles = true;
         }
 

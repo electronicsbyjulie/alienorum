@@ -281,7 +281,7 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
         inclined = align_points_3d(center,
             Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
             system_center);
-    else inclined = align_points_3d(zaxis,
+    else inclined = align_points_3d(yaxis,
             Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
             center);
 
@@ -289,9 +289,11 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
     Point pole = rotate3D(yaxis, center, inclined.v, -inclined.a);
 
     // Then rotate along the Sun-star axis
-    Point axis(0,0,light_year*1e9);
-    if (system_center.magnitude()) axis = system_center - center;
-    pole = rotate3D(pole, center, axis, (ascending_node + M_PI/2));
+    if (1) // system_center.magnitude())
+    {
+        Point axis = (system_center.magnitude()) ? (system_center - center) : yaxis;
+        pole = rotate3D(pole, center, axis, (ascending_node + M_PI/2));
+    }
 
     // Then realign the points for the new pole
     return align_points_3d(pole, Point(0,light_year*1e9,0), center);

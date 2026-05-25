@@ -1,5 +1,7 @@
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch
+Sun                     (system inclination)                    000         336.55
+
 # https://en.wikipedia.org/wiki/Alpha_Centauri
 Rigil Kentaurus         Toliman                 2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
 

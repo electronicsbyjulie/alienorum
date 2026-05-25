@@ -1654,10 +1654,10 @@ void draw_objedit_window(ImGuiIO& io)
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd);
     int cx = (int)io.DisplaySize.x/2, cy = (int)io.DisplaySize.y / 2;
-    int objedtwidth = 788, objedtheight = 420;
+    int objedtwidth = 717, objedtheight = 200;
     ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
 
-    double col1 = 123, col2 = 359, col3 = 440, txtwid = 167;
+    double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
 
     strcpy(edit_name, cel->name);
     ImGui::Text("Name");
@@ -1670,7 +1670,7 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::SetNextItemWidth(txtwid);
     ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.3f");
     ImGui::SameLine(col2);
-    edit_equinox = cel->equinox / AU;
+    edit_equinox = cel->equinox * fiftyseven;
     ImGui::Text("Equinox");
     ImGui::SameLine(col3);
     ImGui::SetNextItemWidth(txtwid);
@@ -2138,7 +2138,6 @@ int main (int argc, char** argv)
                     else if (cels[editidx]->typeclass() == class_moon)
                         ((Moon*)cels[editidx])->update_location(simnow);
                 }
-                viewchanged = true;
             }
 
             // Positioning updates
@@ -2148,7 +2147,7 @@ int main (int argc, char** argv)
             if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
             here.local_position += vdil;
             azimuth += spin;
-            viewchanged = searched || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
+            viewchanged = searched || spin || velocity.magnitude() || objedtwnd || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
 
             // Slow down to avoid zipping past tracked object
             if (trackidx >= 0)
