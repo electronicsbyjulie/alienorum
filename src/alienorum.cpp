@@ -421,7 +421,7 @@ void load_catalogs()
     mtx.unlock();
     cr.read_star_orbits_dat(cels);
 
-    if (load_univ) load_universe(load_univ);
+    if (load_univ.size()) load_universe(load_univ);
 
     for (i=0; cels[i]; i++)
     {
