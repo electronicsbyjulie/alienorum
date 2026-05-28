@@ -51,7 +51,6 @@ std::vector<Cartesian2D> conscen;
 int nconsln = 0;
 int *consaidx, *consbidx;
 Star **hdcache, **hipcache;
-std::map<int,std::map<char,Star* > > hdcomps, hipcomps;
 
 #if _debug_sbinaries_zetret
 Star *zet1ret = nullptr, *zet2ret = nullptr;
@@ -174,6 +173,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     double deg, mnt, sec, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
+    StarMulti *current_multi = nullptr;
+    float current_multi_gjno = 0;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -193,16 +194,17 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         //      NN   newly added stars (number added at CDS)
         read_field_onebased(buffer, 1, 8, field);
         if (field[0] == 'G' && field[1] == 'l')
-            build_name = "Gliese ";
+            build_name = "GJ ";
         else if (field[0] == 'G' && field[1] == 'J')
             build_name = "GJ ";
         else if (field[0] == 'W' && field[1] == 'o')
-            build_name = "Woolley ";
+            build_name = "GJ ";
         else if (field[0] == 'N' && field[1] == 'N')
-            build_name = "NN ";
+            build_name = "GJ ";
         else build_name = trim(field);
 
-        j = atoi(&field[2]);
+        float f = atof(&field[2]);
+        j = floor(f);
         if (j)
         {
             build_name += std::to_string(j);
@@ -212,25 +214,32 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         //   9- 10  A2     ---     Comp     Components (A,B,C,... )
         read_field_onebased(buffer, 9, 10, field);
+        if (field[0] == '1') field[0] = ' ';                // SMH!!!
         std::string comp = trim(field);
         if (comp.size())
         {
-            build_name += (std::string)" " + comp;
-            s->component = field[0];
+            if (fabs(current_multi_gjno-f) >= 0.05)
+            {
+                current_multi = nullptr;
+                A = nullptr;
+            }
+            // std::cout << " f " << f << " current_multi_gjno " << current_multi_gjno;
 
-            if (A && s->component > 'A' && !s->orbit)
+            build_name += (std::string)" " + comp;
+            s->multisys = current_multi;
+            if (field[0] == '-') field[0] = 'D';            // GJ 1255 fix
+            if (field[0] == 'A') A = s;
+            s->set_component(field[0], A);
+            current_multi = s->multisys;
+            current_multi_gjno = f;
+            // std::cout << " current_multi " << current_multi << " built name " << build_name << std::endl << std::flush;
+
+            if (A && s->get_component() > 'A' && !s->orbit)
             {
                 s->orbit = new Orbit();
                 s->orbit->center = A;
             }
-
-            if (A && A->HD)
-            {
-                hdcomps[A->HD]['A'] = A;
-                hdcomps[A->HD][s->component] = s;
-            }
         }
-        else A = nullptr;
 
         strcpy(s->name, trim(build_name.c_str()).c_str());
         strcpy(s->Gliese, trim(build_name.c_str()).c_str());
@@ -382,7 +391,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         }
 
         cels[offset+num_read] = s;
-        if (s->component == 'A') A = s;
 
         num_read++;
         if ((offset+num_read) >= (max-1)) break;
@@ -393,6 +401,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+    // throw 0xbadc0de;
     return num_read;
 }
 
@@ -402,10 +411,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     char buffer[65536];
     char field[32];
     int num_read = 0;
-    int offset, HD, j;
+    int offset, HD, HR, j;
     double deg, mnt, sec;
     bool HDfound;
     double f;
+    StarMulti *current_multi = nullptr;
+    int current_multi_hrno = 0;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -414,9 +425,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     memset(hdcache, 0, sizeof(Star*)*(MAX_HD+1));
     FILE* fp = fopen(path.c_str(), "rb");
 
+    Star *s, *A = nullptr;
     while (fgets(buffer, 65520, fp))
     {
-        Star* s;
+        //   1-  4  I4     ---     HR       [1/9110]+ Harvard Revised Number = Bright Star Number
+        read_field_onebased(buffer, 1, 4, field);
+        HR = atoi(field);
 
         read_field_onebased(buffer, 26, 31, field);
         HD = atoi(field);
@@ -443,11 +457,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         if (HD) hdcache[HD] = s;
 
-        //    Bytes Format  Units   Label    Explanations
-        // --------------------------------------------------------------------------------
-        //    1-  4  I4     ---     HR       [1/9110]+ Harvard Revised Number
         read_field_onebased(buffer, 1, 4, field);
-        s->HR = atoi(field);
+        s->HR = HR;
 
         //    5- 14  A10    ---     Name     Name, generally Bayer and/or Flamsteed name
         read_field_onebased(buffer, 5, 14, field);
@@ -506,7 +517,18 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         s->gotta_be_named_something();
 
-        if (!s->component && buffer[49] > ' ' && strcmp(s->name, "41The1Ori")) s->component = buffer[49];
+        if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
+        {
+            if (HR != current_multi_hrno)
+            {
+                current_multi = nullptr;
+                A = nullptr;
+            }
+            s->multisys = current_multi;
+            s->set_component(buffer[49], A);
+            current_multi = s->multisys;
+            if (buffer[49] == 'A') A = s;
+        }
 
         //   76- 77  I2     h       RAh      ?Hours RA, equinox J2000, epoch 2000.0 (1)
         read_field_onebased(buffer, 76, 77, field);
@@ -643,7 +665,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     int num_read = 0;
     int offset, HD, HIP, j, cursor;
     double deg, mnt, sec, RA, Decl, f, f1;
-    Star* s;
+    Star *s, *A;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -890,7 +912,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 1, 10, field);
         s->CCDM = trim(field);
 
-        Star* A;
         if (s->ccdm_compseq)
         {
             A = hipcache[HIP];
@@ -904,13 +925,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //  38- 39  I2     ---     seq      Sequential component number             (DCM6)
         read_field_onebased(buffer, 38, 39, field);
         s->ccdm_compseq = atoi(field);
-
-        //      41  A1     ---     comp_id  Component identifier                     (DC7)
-        read_field_onebased(buffer, 41, 41, field);
-        s->component = field[0];
-
-        if (HD) hdcomps[HD][s->component] = s;
-        if (HIP) hipcomps[HIP][s->component] = s;
 
         if (s != hipcache[HIP])
         {
@@ -950,21 +964,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             throw 0xbadc0de;
         }
 
-        A->component = 'A';
-        if (HD) hdcomps[HD]['A'] = A;
-        if (HIP) hipcomps[HIP]['A'] = A;
+        A->set_component('A', A);
 
-        s = nullptr;
-        for (j=0; j<offset; j++)
-        {
-            if (cels[j]->typeclass() != class_star) continue;
-            if (!cels[j]->orbit) continue;
-            if (cels[j]->orbit->center == A)
-            {
-                s = (Star*)cels[j];
-                break;
-            }
-        }
+        s = A->multisys->get_member('B');
 
         if (!s)
         {
@@ -974,12 +976,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
         s->make_companion_of(A, 'B');
         s->epoch = J2000 + (1991.25 - 2000);
-
-        for (s->component = 'B'; s->component < 'Z'; s->component++)
-        {
-            auto it = hipcomps[HIP].find(s->component);
-            if (it == hipcomps[HIP].end()) break;
-        }
 
         //   8- 17  F10.4 d        P        Orbital period                           (DO2)
         read_field_onebased(buffer, 8, 17, field);
@@ -1035,7 +1031,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     int num_read = 0;
     int offset, HD, HIP, i;
     Star *s, *A = nullptr;
-    std::string CCDM;
+    std::string CCDM, CCDM_A;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -1052,6 +1048,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 2, 11, field);
         CCDM = trim(field);
         const char* cCCDM = CCDM.c_str();
+        if (CCDM != CCDM_A) A = nullptr;
 
         //  99-104  A6     ---     HD       HD identifier
         read_field_onebased(buffer, 99, 104, field);
@@ -1064,46 +1061,31 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         char refcomp = buffer[11], conccomp = buffer[12];
         if (refcomp == ' ') refcomp = 'A';
 
-        A = s = nullptr;
-        auto it = hipcomps.find(HIP), ithd = hdcomps.find(HD);
-        if (it != hipcomps.end())
+        s = nullptr;
+
+        if (conccomp == 'A')
         {
-            auto it1 = hipcomps[HIP].find(refcomp);
-            if (it1 != hipcomps[HIP].end())
-            {
-                A = hipcomps[HIP][refcomp];
-                auto it2 = hipcomps[HIP].find(conccomp);
-                if (it2 != hipcomps[HIP].end())
-                {
-                    s = hipcomps[HIP][conccomp];
-                }
-            }
+            CCDM_A = CCDM;
+            if (HIP && hipcache[HIP]) A = hipcache[HIP];
+            else if (HD && hdcache[HD]) A = hdcache[HD];
         }
-        if (!s && ithd != hdcomps.end())
+        else
         {
-            auto it1 = hdcomps[HD].find(refcomp);
-            if (it1 != hdcomps[HD].end())
-            {
-                A = hdcomps[HD][refcomp];
-                auto it2 = hdcomps[HD].find(conccomp);
-                if (it2 != hdcomps[HD].end())
-                {
-                    s = hdcomps[HD][conccomp];
-                }
-            }
+            if (HIP && hipcache[HIP]) s = hipcache[HIP];
+            else if (HD && hdcache[HD]) s = hdcache[HD];
         }
+
         if (!A) continue;
+        if (!A->multisys) A->set_component('A', A);
+        A = A->multisys->get_member(refcomp);
+        if (!A) continue;
+        s = A->multisys->get_member(conccomp);
+
         if (!s)
         {
             s = new Star();
             s->make_companion_of(A, conccomp);
             s->epoch = J2000 + (1991.25 - 2000);
-
-            if (HD)
-            {
-                hdcomps[HD][refcomp] = A;
-                hdcomps[HD][conccomp] = s;
-            }
 
             cels[offset++] = s;
             cels[offset] = nullptr;
@@ -1190,6 +1172,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         s->gotta_be_named_something();
         num_read++;
+
+        if (A) A = A->multisys->get_member('A');
 
         mtx.lock();
         loading_msg = std::string("Loaded ") + std::to_string(num_read)
@@ -1323,69 +1307,13 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             if (!A->distance_known) continue;
         }
 
-        //   1-  4  I4    ---     Seq     System Number (SB8 number when Seq<=1469)
-        read_field_onebased(buffer, 1, 4, field);
-        SB9 = atoi(field);
+        if (!A) continue;
+        if (!A->multisys) A->set_component('A', A);
+        A = A->multisys->get_member(cen[0]);
+        if (!A) continue;
+        if (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")) B = nullptr;
+        else B = A->multisys->get_member(comp[0]);
 
-        found = -1;
-        B = nullptr;
-        auto it_hip = hipcomps.find(HIP);
-        auto it_hd = hdcomps.find(HD);
-        if (HIP && (it_hip != hipcomps.end()))
-        {
-            auto it_b = hipcomps[HIP].find(comp[0]);
-            if (it_b != hipcomps[HIP].end())
-            {
-                B = hipcomps[HIP][comp[0]];
-            }
-        }
-        else if (HD && (it_hd != hdcomps.end()))
-        {
-            auto it_b = hdcomps[HD].find(comp[0]);
-            if (it_b != hdcomps[HD].end())
-            {
-                B = hdcomps[HD][comp[0]];
-            }
-        }
-        else
-        {
-            if ((A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")))
-            {
-                found = -2;
-            }
-            if ((A->BayerGrkno != 7 || strcmp(A->constellation, "Ori"))
-                && (strlen(comp) == 1 && comp[0] > 'A' && comp[0] <= 'K')
-                )
-            {
-                double foundmag[10] = {99,99,99,99,99,99,99,99,99,99};
-                int foundidx[10] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
-                for (i=0; cels[i]; i++)
-                {
-                    if (!cels[i]->orbit) continue;
-                    if (cels[i]->type != star) continue;
-                    s = (Star*)cels[i];
-
-                    if (s->orbit->center == A)
-                    {
-                        for (j=0; j<10; j++) if (s->apparent_magnitude < foundmag[j])
-                        {
-                            for (l=9; l>j; l--)
-                            {
-                                foundmag[l] = foundmag[l-1];
-                                foundidx[l] = foundidx[l-1];
-                            }
-                            foundmag[j] = s->apparent_magnitude;
-                            foundidx[j] = i;
-                            break;      // j
-                        }
-                    }
-                }
-
-                found = foundidx[comp[0]-'B'];
-            }
-
-            if (found >= 0) B = (Star*)cels[found];
-        }
         if (!B)
         {
             B = new Star();
@@ -1401,6 +1329,10 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             cels[offset++] = B;
             cels[offset] = 0;
         }
+
+        //   1-  4  I4    ---     Seq     System Number (SB8 number when Seq<=1469)
+        read_field_onebased(buffer, 1, 4, field);
+        SB9 = atoi(field);
 
         B->SB9 = SB9;
 

@@ -2552,6 +2552,16 @@ int main (int argc, char** argv)
 
     for (i=0; cels[i]; i++)
     {
+        if (cels[i]->typeclass() == class_star && ((Star*)cels[i])->multisys)
+        {
+            std::cout << "Unlink and delete StarMulti " << ((Star*)cels[i])->multisys << " of " << cels[i]->name << std::endl << std::flush;
+            ((Star*)cels[i])->multisys->unlink();
+            delete ((Star*)cels[i])->multisys;
+        }
+    }
+
+    for (i=0; cels[i]; i++)
+    {
         delete cels[i];
         cels[i] = nullptr;
     }

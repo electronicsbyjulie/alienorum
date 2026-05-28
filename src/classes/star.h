@@ -27,7 +27,8 @@ class Star : public CelestialObject
     std::string CCDM;
     char ccdm_compseq = 0;
     StarMulti* multisys = nullptr;
-    char component = 0;
+    char get_component();
+    void set_component(char comp, Star* compA);
 
     __uint32_t HR = 0;                      // Harvard Revised catalog number
     __uint32_t HD = 0;                      // Henry Draper catalog number
@@ -44,7 +45,7 @@ class Star : public CelestialObject
     bool tmp_vis_flag;                      // Used only for rendering.
 
     Star();
-    ~Star() { if (orbit) delete orbit; }
+    ~Star();
 
     void update_location(double tmnow);     // Apply proper motion and re-derive 3D coordinates from the result.
     void rename_from_Bayer_Flamsteed();
@@ -73,8 +74,15 @@ protected:
 class StarMulti
 {
     public:
-    Star** members;
-    // TODO:
+    ~StarMulti();
+    void add_member(Star* s, char comp);
+    Star* get_member(char comp);
+    char is_member(Star* s);
+    void unlink();                          // Call this before deleting object and before deleting any stars.
+
+    protected:
+    Star** members = nullptr;
+    char allocated = 0;
 };
 
 void rename_all_from_Bayer_Flamsteed();

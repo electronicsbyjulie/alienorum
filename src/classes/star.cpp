@@ -4,6 +4,21 @@
 #include <math.h>
 #include "star.h"
 
+char Star::get_component()
+{
+    if (!multisys) return 0;
+    return multisys->is_member(this);
+}
+
+void Star::set_component(char comp, Star* compA)
+{
+    if (!compA) compA = this;
+    assert(!multisys || !compA->multisys || (compA->multisys == multisys));
+    if (!compA->multisys) compA->multisys = new StarMulti();
+    multisys = compA->multisys;
+    multisys->add_member(this, comp);
+}
+
 Star::Star()
 {
     _class = class_star;
@@ -12,6 +27,25 @@ Star::Star()
     memset(Flamsteed, 0, 32*sizeof(char));
     memset(constellation, 0, 32*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
+}
+
+Star::~Star()
+{
+    std::cout << "Deleting " << name << std::endl << std::flush;
+    if (orbit) delete orbit;
+
+    // TODO: Delete StarMulti objects in a way that won't cause double free errors.
+    /*if (multisys)
+    {
+        std::cout << "Deleting " << name << "'s StarMulti " << multisys << std::endl << std::flush;
+        delete multisys;
+        multisys = nullptr;
+    }*/
+}
+
+StarMulti::~StarMulti()
+{
+    ;
 }
 
 void Star::update_location(double tmnow)
@@ -142,7 +176,8 @@ bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
     if (!visible_area_set)
     {
-        double cutoff_dist = pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance;
+        if (orbit && !orbit->semimajor_axis) orbit->semimajor_axis = location.distance_to(cenobj->location);
+        double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance);
         visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
         visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
         visible_area_set = true;
@@ -354,6 +389,8 @@ void Star::make_companion_of(Star *A, char comp)
     }
     else if (!orbit) orbit = new Orbit();
     orbit->center = A;
+    A->set_component('A', A);
+    A->multisys->add_member(this, comp);
 }
 
 double Star::estimate_mass()
@@ -466,6 +503,62 @@ void Gliese_doubles_fix()
                     s2->update_location(J2000_TIME_T);
                 }
             }
+        }
+    }
+}
+
+void StarMulti::add_member(Star *s, char comp)
+{
+    comp &= 0x5f;
+    if (comp < 'A' || comp > 'Z') throw 0xbadc0de;
+
+    int cidx = comp - 'A';
+    if (!members || cidx >= allocated)
+    {
+        char toalloc = std::max(2, cidx+1);
+        Star** new_members = new Star*[toalloc];
+        memset(new_members, 0, sizeof(Star*)*toalloc);
+        if (members)
+        {
+            int i;
+            for (i=0; i<allocated; i++) new_members[i] = members[i];
+            delete[] members;
+        }
+        members = new_members;
+        allocated = toalloc;
+    }
+    members[cidx] = s;
+    s->multisys = this;
+}
+
+Star *StarMulti::get_member(char comp)
+{
+    comp &= 0x5f;
+    if (comp < 'A' || comp > 'Z') throw 0xbadc0de;
+    int i = comp - 'A';
+    if (i >= allocated) return nullptr;
+    return members[i];
+}
+
+char StarMulti::is_member(Star *s)
+{
+    if (!allocated) return 0;
+    int i;
+    for (i=0; i<allocated; i++)
+        if (members[i] == s) return 'A' + i;
+    return 0;
+}
+
+void StarMulti::unlink()
+{
+    if (!allocated) return;
+    int i;
+    for (i=0; i<allocated; i++)
+    {
+        if (members[i])
+        {
+            members[i]->multisys = nullptr;
+            members[i] = nullptr;
         }
     }
 }
