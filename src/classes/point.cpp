@@ -78,9 +78,15 @@ Cartesian2D::Cartesian2D(Point pt, double az, double alt, double m)
 {
     if (az) pt = rotate3D(pt, center, yaxis, -az);
     if (alt) pt = rotate3D(pt, center, xaxis, alt);
-    if (pt.z < 0) throw(its_behind_you);
-    x = pt.x / pt.z * m;
-    y = -pt.y / pt.z * m;
+    if (pt.z < 0)
+    {
+        x = y = -1e29;
+    }
+    else
+    {
+        x = pt.x / pt.z * m;
+        y = -pt.y / pt.z * m;
+    }
 }
 
 Point::Point(Cartesian2D cart, double r, double az, double alt, double m)

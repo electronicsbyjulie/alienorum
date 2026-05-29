@@ -13,7 +13,7 @@ int ncelobjs = 0;
 int selected = -1, trackidx = -1;
 double azimuth = 0, altitude = 0;
 double spin = 0;
-double global_gamma = 1.8;
+double global_gamma = 1.5;
 double zoom = 1, vm, vmfr;
 bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true, show_orbits = false, draw_actual_conslines;
 int cursor_size = 8, circle_size = 2.6, xaorngsim = 0;

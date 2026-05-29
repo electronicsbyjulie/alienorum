@@ -43,16 +43,7 @@ Star::Star()
 
 Star::~Star()
 {
-    std::cout << "Deleting " << name << std::endl << std::flush;
     if (orbit) delete orbit;
-
-    // TODO: Delete StarMulti objects in a way that won't cause double free errors.
-    /*if (multisys)
-    {
-        std::cout << "Deleting " << name << "'s StarMulti " << multisys << std::endl << std::flush;
-        delete multisys;
-        multisys = nullptr;
-    }*/
 }
 
 StarMulti::~StarMulti()
@@ -415,7 +406,7 @@ void Star::make_companion_of(Star *A, char comp)
     visible_area = A->visible_area;
     type = star;
 
-    A->set_component('A', A);
+    // A->set_component('A', A);
     set_component(comp, A);
 }
 

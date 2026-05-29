@@ -923,11 +923,16 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (s->ccdm_compseq)
         {
             A = hipcache[HIP];
-            s = new Star();
+            if (!A->multisys) A->set_component('A', A);
+            s = A->multisys->get_member(buffer[40]);
+            if (!s)
+            {
+                s = new Star();
+                cels[offset++] = s;
+                if (offset >= max-2) return num_read++;
+            }
             s->make_companion_of(A, buffer[40]);
             s->epoch = J2000 + (1991.25 - 2000);
-            cels[offset++] = s;
-            if (offset >= max-2) return num_read++;
         }
 
         //  38- 39  I2     ---     seq      Sequential component number             (DCM6)
@@ -1099,7 +1104,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             cels[offset++] = s;
             cels[offset] = nullptr;
         }
-        s->make_companion_of(A, conccomp);
+        if (s != A) s->make_companion_of(A, conccomp);
 
         if (A->HD == 20766)                            // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
         {

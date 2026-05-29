@@ -43,7 +43,7 @@ double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edi
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
 bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9;
-bool splash = true, magnitude_test = false;
+bool splash = true, magnitude_test = false, redo_proper_motions = true;
 
 // ImGui Example Code
 
@@ -123,11 +123,8 @@ void draw_ra_dec_lines()
         for (j=-80; j<=80; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            try
-            {
-                zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
-            }
-            catch (...)
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
                 continue;
@@ -140,9 +137,7 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                    if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(
-                        ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+                if (prev_valid) ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
             }
 
             prev = zdes;
@@ -426,6 +421,25 @@ void load_catalogs()
     rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
 
+    if (magnitude_test)
+    {
+        for (i=0; i<290; i++)
+        {
+            double magnitude = -1.0 + 0.1 * i;
+            Star* s = new Star();
+            strcpy(s->name, ((std::string)"Test "+std::to_string(magnitude)).c_str());
+            s->right_ascension = fiftyseventh * i;
+            s->declination = -2.59 * fiftyseventh;
+            s->apparent_magnitude = s->absolute_magnitude = magnitude;
+            s->distance = parsec*10;
+            s->proper_motion_decl = s->proper_motion_RA = s->radial_velocity = 0;
+            s->BV_color = 0.5;
+            s->epoch = J2000;
+            s->update_location(J2000_TIME_T);
+            cels[ncelobjs++] = s;
+        }
+    }
+
     if (load_univ.size()) load_universe(load_univ);
 
     for (i=0; cels[i]; i++)
@@ -622,7 +636,7 @@ void compute_object_draw_coordinates()
     double dispw = dispcx*2, disph = dispcy*2;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_dist = mycenobj->location.distance_to(here);
-    if (viewchanged)
+    if (viewchanged || redo_proper_motions)
     {
         num_stars_in_box = 0;
         bool star_in_box;
@@ -643,6 +657,7 @@ void compute_object_draw_coordinates()
                         cels[i]->drawnx = cels[i]->drawny = -1e9;
                         continue;
                     }
+                    if (!redo_proper_motions && !cels[i]->orbit) continue;
                     if (cels[i]->orbit && cels[i]->orbit->center && cels[i]->orbit->center != cels[whereami]
                         && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
                             || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
@@ -710,12 +725,12 @@ void compute_object_draw_coordinates()
 
             try
             {
-                vmag_cache[i] = (cels[i]->type == rocky || cels[i]->type == ice_giant || cels[i]->type == gas_giant)
+                vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
                     ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
                     : cels[i]->viewer_magnitude(here);
 
                 double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-                magrad_cache[i] = fmax(1.414, pow(brght, 0.666)*global_brightness);
+                magrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
                 Cartesian2D cart(rel, azimuth, altitude, zoom);
                 float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -739,6 +754,8 @@ void compute_object_draw_coordinates()
             }
         }
     }
+
+    redo_proper_motions = false;
 }
 
 void draw_objects()
@@ -823,9 +840,11 @@ void draw_objects()
         appmag = vmag_cache[i];
         if (appmag > 6.5) continue;
 
+        #define max_magrad 10
+
         magrad = magrad_cache[i];
-        flare = (magrad>400) ? fmin(81, fmax(0, sqrt(magrad-400)/8)) : 0;
-        magrad = fmin(15, magrad);
+        flare = (magrad>max_magrad) ? fmin(137, fmax(0, sqrt(magrad)/4)) : 0;
+        magrad = fmin(max_magrad, magrad);
 
         #define bloom_exponent 2.1
 
@@ -837,13 +856,11 @@ void draw_objects()
             rgb.r = (int)(col.red * divisor);
             rgb.g = (int)(col.green* divisor);
             rgb.b = (int)(col.blue * divisor);
-            // May still want to revisit this later.
-            // std::cout << cels[i]->name << " " << magrad_cache[i] << " " << flare << " " << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b << std::endl;
 
             double flare2 = flare*0.666;
             for (jay=flare; jay>flare2; jay -= 4.4)
             {
-                double jay15 = jay+15;
+                double jay15 = jay+max_magrad;
                 ImVec2 radii(jay15, jay15*0.333);
                 ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 4));
                 for (theta=0; theta<M_PI*2; theta += M_PI/5)
@@ -852,7 +869,15 @@ void draw_objects()
             }
         }
 
-        double divisor = 1.0 / (pow(bloom_exponent, magrad*2-1));
+        double mgrc = magrad_cache[i];
+        double divisor = (1.0 / (pow(bloom_exponent, magrad*2-1)));
+
+        if (mgrc >= 2)
+        {
+            mgrc = 2.9 * sqrt(mgrc/2);
+            divisor = (2.0 / fmax(col.red, col.blue));
+        }
+
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         for (jay=magrad; jay>=0; jay-=0.7)
         {
@@ -883,7 +908,7 @@ void draw_objects()
         if (cels[i]->orbit && cels[i]->location.distance_to(here) > 1e3*cels[i]->orbit->semimajor_axis) continue;
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
-        magrad = fmin(15, magrad_cache[i]);
+        magrad = fmin(max_magrad, magrad_cache[i]);
         if ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
@@ -1331,10 +1356,10 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
-        case 'y': JDnow += (oneyear/oneday); viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Y': JDnow -= (oneyear/oneday); viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'z': JDnow += (oneyear/864); viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Z': JDnow -= (oneyear/864); viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'y': JDnow += (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Y': JDnow -= (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'z': JDnow += (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '+':
         vm = velocity.magnitude();
@@ -2197,25 +2222,6 @@ int main (int argc, char** argv)
         }
     }
 
-    if (magnitude_test)
-    {
-        for (i=0; i<290; i++)
-        {
-            double magnitude = -1.0 + 0.1 * i;
-            Star* s = new Star();
-            strcpy(s->name, ((std::string)"Test "+std::to_string(magnitude)).c_str());
-            s->right_ascension = fiftyseventh * i;
-            s->declination = -2.59 * fiftyseventh;
-            s->apparent_magnitude = s->absolute_magnitude = magnitude;
-            s->distance = parsec*10;
-            s->proper_motion_decl = s->proper_motion_RA = s->radial_velocity = 0;
-            s->BV_color = 0.5;
-            s->epoch = J2000;
-            s->update_location(J2000_TIME_T);
-            cels[ncelobjs++] = s;
-        }
-    }
-
     //////////////////////////////////////////////////
     // Begin ImGui-specific setup code              //
     // This section is subject to the same license  //
@@ -2639,7 +2645,6 @@ int main (int argc, char** argv)
 
             simnow = (double)(JDnow - J2000)*oneday + J2000_TIME_T;
         }
-        // std::cout << simnow << std::endl;
     }
 
     save_universe();
@@ -2648,7 +2653,6 @@ int main (int argc, char** argv)
     {
         if (cels[i]->typeclass() == class_star && ((Star*)cels[i])->multisys)
         {
-            // std::cout << "Unlink and delete StarMulti " << ((Star*)cels[i])->multisys << " of " << cels[i]->name << std::endl << std::flush;
             ((Star*)cels[i])->multisys->unlink();
             delete ((Star*)cels[i])->multisys;
         }
