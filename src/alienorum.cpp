@@ -926,7 +926,7 @@ void draw_objects()
             }
         }
 
-        if (angular_radius[i] > fiftyseventh*zoom)
+        if (angular_radius[i]*zoom > fiftyseventh)
         {
             draw_sphere(cels[i], angular_radius[i]);
         }
