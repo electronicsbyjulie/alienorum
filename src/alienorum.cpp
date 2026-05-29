@@ -216,15 +216,19 @@ void draw_sphere(CelestialObject* cel, double arad)
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(IM_COL32(255, 255, 255, 128));
     bool prev_valid = false;
+    double z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.1, obl = 1.0 - cel->oblateness;
     for (i=0; i<24; i++)
     {
         prev_valid = false;
-        for (j=-90; j<=90; j+=10)
+        for (j=-80; j<=90; j+=10)
         {
             Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
+            cursor.y *= obl;
+            cursor = rotate3D(cursor, center, zaxis, -M_PI*0.5);
             cursor = rotate3D(cursor, center, cels[i]->location.equatorial_plane.v, -cels[i]->location.equatorial_plane.a);
             cursor += cel->tmprel;
-            if (cursor.magnitude() > cel->tmprel.magnitude())
+            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            if (cursor.magnitude() > z_cutoff)
             {
                 prev_valid = false;
                 continue;
@@ -236,7 +240,7 @@ void draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
-            if (j > -90)
+            if (j > -80)
             {
                 int dx1 = dispcx + zdes.x * dispcx,
                     dy1 = dispcy + zdes.y * dispcx,
@@ -255,12 +259,15 @@ void draw_sphere(CelestialObject* cel, double arad)
     for (j=-90; j <= 90; j+=10)
     {
         prev_valid = false;
-        for (i=0; i<=24; i++)
+        for (i=0; i<=25; i++)
         {
             Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
+            cursor.y *= obl;
+            cursor = rotate3D(cursor, center, zaxis, -M_PI*0.5);
             cursor = rotate3D(cursor, center, cels[i]->location.equatorial_plane.v, -cels[i]->location.equatorial_plane.a);
             cursor += cel->tmprel;
-            if (cursor.magnitude() > cel->tmprel.magnitude())
+            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            if (cursor.magnitude() > z_cutoff)
             {
                 prev_valid = false;
                 continue;
