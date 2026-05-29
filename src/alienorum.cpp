@@ -137,7 +137,14 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                if (prev_valid) ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+                /*if (dy1 < 0 && dy2 >= dispcy*2) continue;
+                if (dy2 < 0 && dy1 >= dispcy*2) continue;*/
+
+                if (prev_valid)
+                {
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+                    // std::cout << dx1 << "," << dy1 << " " << dx2 << "," << dy2 << std::endl;
+                }
             }
 
             prev = zdes;
