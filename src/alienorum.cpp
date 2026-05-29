@@ -137,13 +137,9 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                /*if (dy1 < 0 && dy2 >= dispcy*2) continue;
-                if (dy2 < 0 && dy1 >= dispcy*2) continue;*/
-
                 if (prev_valid)
                 {
                     ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
-                    // std::cout << dx1 << "," << dy1 << " " << dx2 << "," << dy2 << std::endl;
                 }
             }
 
@@ -158,11 +154,8 @@ void draw_ra_dec_lines()
         for (i=0; i<=24; i++)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            try
-            {
-                zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
-            }
-            catch (...)
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
                 continue;
@@ -176,8 +169,7 @@ void draw_ra_dec_lines()
                     dy2 = dispcy + prev.y * dispcx;
 
                     if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(
-                        ImVec2(dx1, dy1), ImVec2(dx2, dy2), j?gc:gcb, 1);
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), j?gc:gcb, 1);
             }
 
             prev = zdes;
@@ -194,11 +186,8 @@ void draw_ra_dec_lines()
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
             pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
             pt = rotate3D(pt, center, here.equatorial_plane.v, here.equatorial_plane.a);
-            try
-            {
-                zdes = Cartesian2D(pt, azimuth, altitude, zoom);
-            }
-            catch (...)
+            zdes = Cartesian2D(pt, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
                 continue;
@@ -211,9 +200,8 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                    if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(
-                        ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1);
+                if (prev_valid)
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1);
             }
 
             prev = zdes;
