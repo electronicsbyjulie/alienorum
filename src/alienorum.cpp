@@ -843,10 +843,10 @@ void draw_objects()
         #define max_magrad 10
 
         magrad = magrad_cache[i];
-        flare = (magrad>max_magrad) ? fmin(137, fmax(0, sqrt(magrad)/4)) : 0;
+        flare = (magrad>max_magrad) ? fmin(225, fmax(0, 1.0+sqrt(magrad-max_magrad)*5)) : 0;
         magrad = fmin(max_magrad, magrad);
 
-        #define bloom_exponent 2.1
+        #define bloom_exponent 2.5
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
         if (flare)
@@ -870,12 +870,12 @@ void draw_objects()
         }
 
         double mgrc = magrad_cache[i];
-        double divisor = (1.0 / (pow(bloom_exponent, magrad*2-1)));
+        double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
 
         if (mgrc >= 2)
         {
-            mgrc = 2.9 * sqrt(mgrc/2);
-            divisor = (2.0 / fmax(col.red, col.blue));
+            mgrc = 2.0 * sqrt(mgrc/2);
+            divisor = (2.9 / fmax(col.red, col.blue));
         }
 
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
