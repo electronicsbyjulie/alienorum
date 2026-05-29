@@ -216,14 +216,19 @@ void draw_sphere(CelestialObject* cel, double arad)
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(IM_COL32(255, 255, 255, 128));
     bool prev_valid = false;
-
     for (i=0; i<24; i++)
     {
         prev_valid = false;
-        for (j=-80; j<=80; j+=10)
+        for (j=-90; j<=90; j+=10)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, arad, 0);
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
+            cursor = rotate3D(cursor, center, cels[i]->location.equatorial_plane.v, -cels[i]->location.equatorial_plane.a);
             cursor += cel->tmprel;
+            if (cursor.magnitude() > cel->tmprel.magnitude())
+            {
+                prev_valid = false;
+                continue;
+            }
             zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -252,8 +257,14 @@ void draw_sphere(CelestialObject* cel, double arad)
         prev_valid = false;
         for (i=0; i<=24; i++)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, arad, 0);
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
+            cursor = rotate3D(cursor, center, cels[i]->location.equatorial_plane.v, -cels[i]->location.equatorial_plane.a);
             cursor += cel->tmprel;
+            if (cursor.magnitude() > cel->tmprel.magnitude())
+            {
+                prev_valid = false;
+                continue;
+            }
             zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
