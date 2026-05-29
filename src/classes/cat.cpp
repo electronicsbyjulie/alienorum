@@ -223,7 +223,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 current_multi = nullptr;
                 A = nullptr;
             }
-            // std::cout << " f " << f << " current_multi_gjno " << current_multi_gjno;
 
             build_name += (std::string)" " + comp;
             s->multisys = current_multi;
@@ -232,7 +231,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->set_component(field[0], A);
             current_multi = s->multisys;
             current_multi_gjno = f;
-            // std::cout << " current_multi " << current_multi << " built name " << build_name << std::endl << std::flush;
 
             // Special case for Proxima since Gliese et al couldn't be bothered to group it with Alp Cen AB.
             if ((fabs(f-559) < 0.05) && A && s->get_component() > 'A')
@@ -409,7 +407,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
-    // throw 0xbadc0de;
     return num_read;
 }
 
@@ -1587,9 +1584,9 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 6032
             && asno != 6123
             && asno != 6143
-            && asno != 6186
+            && asno != 6186*/
             && asno != 6433
-            && asno != 6469
+            /*&& asno != 6469
             && asno != 6470
             && asno != 6471
             && asno != 6486
@@ -2046,7 +2043,6 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             Star* s = (Star*)cels[i];
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
-                // std::cout << s->name << " > " << field << std::endl << std::flush;
                 strcpy(s->name, trim(field).c_str());
                 num_read++;
 
