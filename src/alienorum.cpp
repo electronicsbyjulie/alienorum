@@ -636,21 +636,25 @@ void compute_object_draw_coordinates()
                 case class_star:
                 if (star_in_box = (i ? ((Star*)cels[i])->is_in_visible_box(Point(here)) : true)) num_stars_in_box++;              // ANC
                 ((Star*)cels[i])->tmp_vis_flag = star_in_box;
-                if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj && !star_in_box)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
                 {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
-                }
-                if (cels[i]->orbit && cels[i]->orbit->center && cels[i]->orbit->center != cels[whereami]
-                    && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
-                        || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
-                        || cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom
+                    if (!star_in_box)
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
+                    if (cels[i]->orbit && cels[i]->orbit->center && cels[i]->orbit->center != cels[whereami]
+                        && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
+                            || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
+                            || cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom
+                            )
                         )
-                    )
-                {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
                 }
+
                 ((Star*)cels[i])->update_location(simnow);
                 tmp = cels[i]->location - here;
                 cels[i]->tmprel = Point(tmp);
@@ -666,7 +670,7 @@ void compute_object_draw_coordinates()
                 break;
 
                 case class_planet:
-                if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
                 {
                     cels[i]->drawnx = cels[i]->drawny = -1e9;
                     continue;
@@ -675,7 +679,7 @@ void compute_object_draw_coordinates()
                 break;
 
                 case class_moon:
-                if (i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
                 {
                     cels[i]->drawnx = cels[i]->drawny = -1e9;
                     continue;
@@ -1740,8 +1744,9 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::Button("Focus"))
     {
         selected = editidx;
-        center_selected();
         searched = true;
+        viewchanged = true;
+        center_selected();
     }
     objedtheight += txtyscale;
 
@@ -1961,6 +1966,9 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->user_added) orb->compute_period(cel->mass);
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         ImGui::SameLine();
         ImGui::Text("%s", "AU");
@@ -1975,6 +1983,9 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         ImGui::SameLine();
         ImGui::Text("%s", "days");
@@ -1988,6 +1999,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_node = cel->orbit->ascending_node * fiftyseven;
@@ -1998,6 +2012,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         objedtheight += txtyscale;
 
@@ -2009,6 +2026,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
@@ -2019,6 +2039,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         objedtheight += txtyscale;
 
@@ -2030,6 +2053,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_manom = cel->orbit->mean_anomaly * fiftyseven;
@@ -2040,6 +2066,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         objedtheight += txtyscale;
 
@@ -2051,6 +2080,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
@@ -2061,6 +2093,9 @@ void draw_objedit_window(ImGuiIO& io)
         {
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
         objedtheight += txtyscale;
     }
@@ -2449,6 +2484,8 @@ int main (int argc, char** argv)
             // Object under cursor info
             if (objinfwnd) draw_objinf_window(io);
 
+            viewchanged = searched || (trackidx>=0) || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
+
             // Edit dialog
             if (objedtwnd)
             {
@@ -2492,7 +2529,6 @@ int main (int argc, char** argv)
             if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
             here.local_position += vdil;
             azimuth += spin;
-            viewchanged = searched || (trackidx>=0) || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
 
             // Slow down to avoid zipping past tracked object
             if (trackidx >= 0)
@@ -2612,7 +2648,7 @@ int main (int argc, char** argv)
     {
         if (cels[i]->typeclass() == class_star && ((Star*)cels[i])->multisys)
         {
-            std::cout << "Unlink and delete StarMulti " << ((Star*)cels[i])->multisys << " of " << cels[i]->name << std::endl << std::flush;
+            // std::cout << "Unlink and delete StarMulti " << ((Star*)cels[i])->multisys << " of " << cels[i]->name << std::endl << std::flush;
             ((Star*)cels[i])->multisys->unlink();
             delete ((Star*)cels[i])->multisys;
         }

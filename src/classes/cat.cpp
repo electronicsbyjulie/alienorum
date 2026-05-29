@@ -240,6 +240,13 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 Star *C = (Star*) cels[find_object("GJ 551", true)];
                 A->multisys->add_member(C, 'C');
             }
+
+            // Special case for Zeta Reticuli
+            if ((fabs(f-138) < 0.05) && A && s->get_component() > 'A')
+            {
+                Star *B = (Star*) cels[find_object("GJ 136", true)];
+                A->multisys->add_member(B, 'B');
+            }
         }
 
         strcpy(s->name, trim(build_name.c_str()).c_str());
@@ -1058,6 +1065,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         // 127-132  I6     ---     HIC      ? Hipparcos Input Catalogue (Turon et al., Cat. <I/196>) identifier (also HIP <I/239>)
         read_field_onebased(buffer, 127, 132, field);
         HIP = atoi(field);
+
+        if (HIP==15371 || HIP==15330) continue;
 
         char refcomp = buffer[11], conccomp = buffer[12];
         if (refcomp == ' ') refcomp = 'A';
