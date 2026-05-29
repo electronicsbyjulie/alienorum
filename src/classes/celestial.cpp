@@ -9,7 +9,7 @@
 
 CelestialObject **cels, *mycenobj = nullptr;
 bool *celskip;
-double *vmag_cache, *magrad_cache;
+double *vmag_cache, *magrad_cache, *angular_radius;
 CelestialLocation here;
 
 CelestialObject::CelestialObject()

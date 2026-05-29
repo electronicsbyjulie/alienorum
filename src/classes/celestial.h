@@ -122,7 +122,7 @@ class CelestialObject
 
 extern CelestialObject **cels, *mycenobj;
 extern bool *celskip;
-extern double *vmag_cache, *magrad_cache;
+extern double *vmag_cache, *magrad_cache, *angular_radius;
 extern CelestialLocation here;
 
 #endif

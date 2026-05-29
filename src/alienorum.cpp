@@ -210,6 +210,74 @@ void draw_ra_dec_lines()
     }
 }
 
+void draw_sphere(CelestialObject* cel, double arad)
+{
+    int i, j;
+    Cartesian2D prev, zdes;
+    ImU32 gc = rgba_apply_redlight(IM_COL32(255, 255, 255, 128));
+    bool prev_valid = false;
+
+    for (i=0; i<24; i++)
+    {
+        prev_valid = false;
+        for (j=-80; j<=80; j+=10)
+        {
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, arad, 0);
+            cursor += cel->tmprel;
+            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            {
+                prev_valid = false;
+                continue;
+            }
+
+            if (j > -90)
+            {
+                int dx1 = dispcx + zdes.x * dispcx,
+                    dy1 = dispcy + zdes.y * dispcx,
+                    dx2 = dispcx + prev.x * dispcx,
+                    dy2 = dispcy + prev.y * dispcx;
+
+                if (prev_valid)
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+            }
+
+            prev = zdes;
+            prev_valid = true;
+        }
+    }
+
+    for (j=-90; j <= 90; j+=10)
+    {
+        prev_valid = false;
+        for (i=0; i<=24; i++)
+        {
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, arad, 0);
+            cursor += cel->tmprel;
+            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            {
+                prev_valid = false;
+                continue;
+            }
+
+            if (i)
+            {
+                int dx1 = dispcx + zdes.x * dispcx,
+                    dy1 = dispcy + zdes.y * dispcx,
+                    dx2 = dispcx + prev.x * dispcx,
+                    dy2 = dispcy + prev.y * dispcx;
+
+                if (prev_valid)
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+            }
+
+            prev = zdes;
+            prev_valid = true;
+        }
+    }
+}
+
 bool look_for_catalogs()
 {
     try
@@ -718,35 +786,29 @@ void compute_object_draw_coordinates()
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-            try
-            {
-                vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
-                    ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
-                    : cels[i]->viewer_magnitude(here);
+            vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
+                ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
+                : cels[i]->viewer_magnitude(here);
 
-                double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-                magrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
+            double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
+            magrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
-                Cartesian2D cart(rel, azimuth, altitude, zoom);
-                float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-                cels[i]->drawnx = dx;
-                cels[i]->drawny = dy;
+            Cartesian2D cart(rel, azimuth, altitude, zoom);
+            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+            cels[i]->drawnx = dx;
+            cels[i]->drawny = dy;
 
-                if (dx < 0 || dx >= dispw) continue;
-                if (dy < 0 || dy >= disph) continue;
+            if (dx < 0 || dx >= dispw) continue;
+            if (dy < 0 || dy >= disph) continue;
 
-                bx = dx*drawblxscalex;
-                by = dy*drawblxscaley;
-                if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
-                drawnblocks[bx][by].push_back(i);
-                bx_cache[i] = bx;
-                by_cache[i] = by;
-            }
-            catch (...)
-            {
-                // Object is behind the camera.
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
-            }
+            bx = dx*drawblxscalex;
+            by = dy*drawblxscaley;
+            if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
+            drawnblocks[bx][by].push_back(i);
+            bx_cache[i] = bx;
+            by_cache[i] = by;
+
+            angular_radius[i] = cels[i]->volumetric_mean_radius / rel.magnitude();
         }
     }
 
@@ -864,28 +926,35 @@ void draw_objects()
             }
         }
 
-        double mgrc = magrad_cache[i];
-        double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
-
-        if (mgrc >= 2)
+        if (angular_radius[i] > fiftyseventh*zoom)
         {
-            mgrc = 2.0 * sqrt(mgrc/2);
-            divisor = (2.9 / fmax(col.red, col.blue));
+            draw_sphere(cels[i], angular_radius[i]);
         }
-
-        col.red *= divisor; col.green *= divisor; col.blue *= divisor;
-        for (jay=magrad; jay>=0; jay-=0.7)
+        else
         {
-            RGB rgb = Color::rgb_from_color(col, 1);
-            if (rgb.r >= 16 || rgb.b >= 16)
-                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
-            if (rgb.r == 255 && rgb.b == 255) break;
+            double mgrc = magrad_cache[i];
+            double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
 
-            col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
-        }
-        if (selected == i)
-        {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            if (mgrc >= 2)
+            {
+                mgrc = 2.0 * sqrt(mgrc/2);
+                divisor = (2.9 / fmax(col.red, col.blue));
+            }
+
+            col.red *= divisor; col.green *= divisor; col.blue *= divisor;
+            for (jay=magrad; jay>=0; jay-=0.7)
+            {
+                RGB rgb = Color::rgb_from_color(col, 1);
+                if (rgb.r >= 16 || rgb.b >= 16)
+                    ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
+                if (rgb.r == 255 && rgb.b == 255) break;
+
+                col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
+            }
+            if (selected == i)
+            {
+                ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            }
         }
     }
 
@@ -2158,6 +2227,7 @@ int main (int argc, char** argv)
     cels = new CelestialObject*[MAX_CELOBJS];
     vmag_cache = new double[MAX_CELOBJS];
     magrad_cache = new double[MAX_CELOBJS];
+    angular_radius = new double[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
