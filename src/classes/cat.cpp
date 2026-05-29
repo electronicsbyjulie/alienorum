@@ -234,10 +234,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             current_multi_gjno = f;
             // std::cout << " current_multi " << current_multi << " built name " << build_name << std::endl << std::flush;
 
-            if (A && s->get_component() > 'A' && !s->orbit)
+            // Special case for Proxima since Gliese et al couldn't be bothered to group it with Alp Cen AB.
+            if ((fabs(f-559) < 0.05) && A && s->get_component() > 'A')
             {
-                s->orbit = new Orbit();
-                s->orbit->center = A;
+                Star *C = (Star*) cels[find_object("GJ 551", true)];
+                A->multisys->add_member(C, 'C');
             }
         }
 
@@ -1084,12 +1085,12 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         if (!s)
         {
             s = new Star();
-            s->make_companion_of(A, conccomp);
             s->epoch = J2000 + (1991.25 - 2000);
 
             cels[offset++] = s;
             cels[offset] = nullptr;
         }
+        s->make_companion_of(A, conccomp);
 
         if (A->HD == 20766)                            // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
         {
@@ -2018,10 +2019,10 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
         read_field_onebased(buffer, 41, 48, field);
         i = atoi(field);
         Gliese = trim(field);
-        if (i >= 9000) Gliese = std::string("Woolley ") + Gliese;
-        else if (i >= 3000) Gliese = std::string("NN ") + Gliese;
+        if (i >= 9000) Gliese = std::string("GJ ") + Gliese;
+        else if (i >= 3000) Gliese = std::string("GJ ") + Gliese;
         else if (i >= 1000) Gliese = std::string("GJ ") + Gliese;
-        else Gliese = std::string("Gliese ") + Gliese;
+        else Gliese = std::string("GJ ") + Gliese;
 
         read_field_onebased(buffer, 1, 25, field);
 
@@ -2031,8 +2032,20 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             Star* s = (Star*)cels[i];
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
+                // std::cout << s->name << " > " << field << std::endl << std::flush;
                 strcpy(s->name, trim(field).c_str());
                 num_read++;
+
+                if (s->multisys && s->multisys->get_member('A') == s)
+                {
+                    char c;
+                    Star* companion;
+                    for (c = 'B'; companion = s->multisys->get_member(c); c++)
+                    {
+                        strcpy(companion->name, (lop_component(s->name) + std::string(" ") + std::string(1, c)).c_str() );
+                    }
+                }
+
                 break;
             }
         }

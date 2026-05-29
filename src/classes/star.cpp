@@ -17,6 +17,18 @@ void Star::set_component(char comp, Star* compA)
     if (!compA->multisys) compA->multisys = new StarMulti();
     multisys = compA->multisys;
     multisys->add_member(this, comp);
+
+    if (comp > 'A')
+    {
+        if (compA->orbit && compA->orbit->center == this)
+        {
+            orbit = compA->orbit;
+            compA->orbit = nullptr;
+        }
+        if (!orbit) orbit = new Orbit();
+        orbit->center = compA;
+    }
+    else orbit = nullptr;
 }
 
 Star::Star()
@@ -134,6 +146,16 @@ void Star::rename_from_Bayer_Flamsteed()
             strcpy(name, Gliese);
         else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
     }
+
+    if (multisys && multisys->get_member('A') == this)
+    {
+        char c;
+        Star* companion;
+        for (c = 'B'; companion = multisys->get_member(c); c++)
+        {
+            strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
+        }
+    }
 }
 
 bool Star::is_sunlike()
@@ -176,7 +198,7 @@ bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
     if (!visible_area_set)
     {
-        if (orbit && !orbit->semimajor_axis) orbit->semimajor_axis = location.distance_to(cenobj->location);
+        if (orbit && !orbit->semimajor_axis && orbit->center) orbit->semimajor_axis = location.distance_to(orbit->center->location);
         double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance);
         visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
         visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
@@ -249,7 +271,8 @@ double Star::estimate_radius()
 
 void Star::gotta_be_named_something()
 {
-    if (trim(name).size()) return;           // already am
+    if (!trim(name).size())                                                 // already am
+    if (multisys && multisys->get_member('A') != this) return;              // let somebody else do it
     else if (orbit && orbit->center && strlen(orbit->center->name))
     {
         int n = strlen(orbit->center->name);
@@ -279,6 +302,16 @@ void Star::gotta_be_named_something()
     else if (SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
     else std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
         << " distance " << (distance/light_year) << std::endl;
+
+    if (multisys)
+    {
+        char c;
+        Star* companion;
+        for (c = 'B'; companion = multisys->get_member(c); c++)
+        {
+            strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
+        }
+    }
 }
 
 json Star::to_json()
@@ -382,15 +415,8 @@ void Star::make_companion_of(Star *A, char comp)
     visible_area = A->visible_area;
     type = star;
 
-    if (A->orbit && A->orbit->center == this)
-    {
-        orbit = A->orbit;
-        A->orbit = nullptr;
-    }
-    else if (!orbit) orbit = new Orbit();
-    orbit->center = A;
     A->set_component('A', A);
-    A->multisys->add_member(this, comp);
+    set_component(comp, A);
 }
 
 double Star::estimate_mass()
