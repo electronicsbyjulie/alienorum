@@ -450,7 +450,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     Point orbit_pole = yaxis;
     orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), orbit->inclination);
-    orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+    if (crp) orbit_pole = rotate3D(orbit_pole, center, crp->v, -crp->a);
+    else orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
     location.orbital_plane = align_points_3d(orbit_pole, yaxis, center);
 
     // Precess the equinox
