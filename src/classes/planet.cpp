@@ -64,7 +64,7 @@ void Planet::estimate_albedo()
 
 void Planet::update_location(double tmnow)
 {
-    update_orbit_location(tmnow);
+    if (orbit && orbit->period) update_orbit_location(tmnow);
 }
 
 Planet::Planet()

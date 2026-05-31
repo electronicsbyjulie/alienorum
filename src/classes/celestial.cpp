@@ -318,7 +318,7 @@ json CelestialObject::to_json()
     towrite["distance_known"] = distance_known;
     towrite["epoch"] = epoch;
     towrite["equinox"] = equinox * fiftyseven;
-    towrite["inclination"] = inclination * fiftyseven;
+    towrite["obliquity"] = obliquity * fiftyseven;
     towrite["location"] = location.to_json();
     towrite["mass"] = mass;
     towrite["!name"] = name;                    // want this to alphabetize to the top.
@@ -355,7 +355,7 @@ bool CelestialObject::from_json(json j)
     try { j.at("equinox").get_to(equinox); equinox *= fiftyseventh; } catch (...) { ; }
     try
     {
-        j.at("inclination").get_to(inclination); inclination *= fiftyseventh;
+        j.at("obliquity").get_to(obliquity); obliquity *= fiftyseventh;
         known_poles = true;
     } catch (...) { ; }
     try
@@ -412,7 +412,7 @@ bool CelestialObject::from_json(json j)
 
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
-    if (!orbit || !orbit->center) return;
+    if (!orbit || !orbit->center || !orbit->period) return;
     location.system_center = orbit->center->location.system_center;
     location.local_system_plane = orbit->center->location.local_system_plane;
 
@@ -459,7 +459,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     equinox_eff = equinox - precession * seconds_since_epoch;
     Point pole = yaxis;
     pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
-    pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -inclination);
+    pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -obliquity);
     location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
     if (_class == class_moon && !crp)
@@ -475,7 +475,6 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     Point result;
     if (crp) result = rotate3D(Point(x,y,z), center, crp->v, -crp->a);
-    // For exoplanets, assume the planetary orbits and stellar equator are in the same plane and set the stellar inclination to zero.
     else result = rotate3D(Point(x,y,z), center, location.local_system_plane.v, -location.local_system_plane.a);
 
     location.local_position = result + orbit->center->location.local_position;

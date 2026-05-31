@@ -75,7 +75,7 @@ void Star::update_location(double tmnow)
     // Set system location
     location.system_center = newloc;
 
-    location.local_system_plane = system_plane_from_incl_and_node(known_poles ? inclination : (M_PI/2), equinox,
+    location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (M_PI/2), equinox,
         Point::from_ra_dec(right_ascension, declination, distance));
     location.orbital_plane = location.equatorial_plane = location.local_system_plane;
 }

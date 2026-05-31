@@ -161,6 +161,9 @@ W           Warp speed
 X           Full stop
 +           Increase speed
 -           Decrease speed (no effect if already stopped)
+{arrows}    Steering
+{Home}      Accelerate backward
+{End}       Accelerate forward
 ```
 
 ### Time Seeking

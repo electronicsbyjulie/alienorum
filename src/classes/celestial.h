@@ -97,7 +97,7 @@ class CelestialObject
     double sidereal_rotational_period = 0;      // seconds
     double right_ascension = 0;                 // RADIANS!
     double declination = 0;                     // RADIANS!
-    double inclination = 0;                     // Equatorial. RADIANS!
+    double obliquity = 0;                       // Equatorial inclination to orbit or to plane of Earth's sky. RADIANS!
     double equinox = 0;                         // RADIANS!
     double equinox_eff = 0;
     double precession = 0;                      // radians/second

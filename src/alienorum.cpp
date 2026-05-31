@@ -229,7 +229,7 @@ int draw_sphere(CelestialObject* cel)
         hei = ((Moon*)cel)->height/vol;
     }
 
-    double rads_sec = (M_PI * 2) / cel->sidereal_rotational_period;
+    double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
     double timeofday = rads_sec * seconds_since_epoch + M_PI_2;
     if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
@@ -2146,13 +2146,13 @@ void draw_objedit_window(ImGuiIO& io)
         objedtheight += txtyscale;
     }
 
-    edit_eqincl = cel->inclination * fiftyseven;
+    edit_eqincl = cel->obliquity * fiftyseven;
     ImGui::Text("%s", "Obliquity");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid);
     if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
     {
-        cels[editidx]->inclination = edit_eqincl * fiftyseventh;
+        cels[editidx]->obliquity = edit_eqincl * fiftyseventh;
         cels[editidx]->known_poles = true;
         cel->user_edited = true;
         viewchanged = true;
@@ -2972,6 +2972,51 @@ int main (int argc, char** argv)
 
             // Keyboard commands
             process_keyboard_commands(io);
+            #define steering_rate 0.03
+            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))
+            {
+                Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, yaw, -steering_rate);
+                if (trackidx<0) azimuth -= steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_RightArrow))
+            {
+                Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, yaw,  steering_rate);
+                if (trackidx<0) azimuth += steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_UpArrow))
+            {
+                Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, pitch, -steering_rate);
+                if (trackidx<0) altitude += steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_DownArrow))
+            {
+                Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, pitch,  steering_rate);
+                if (trackidx<0) altitude -= steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_End))
+            {
+                double acceleration = velocity.magnitude() * 0.1;
+                Point forward;
+                forward.x =  sin(azimuth) * cos(altitude) * acceleration;
+                forward.z =  cos(azimuth) * cos(altitude) * acceleration;
+                forward.y =  sin(altitude) * acceleration;
+                forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity += forward;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_Home))
+            {
+                double acceleration = velocity.magnitude() * 0.1;
+                Point forward;
+                forward.x =  sin(azimuth) * cos(altitude) * acceleration;
+                forward.z =  cos(azimuth) * cos(altitude) * acceleration;
+                forward.y =  sin(altitude) * acceleration;
+                forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity -= forward;
+            }
         }
 
         // More code copied from the ImGui example:

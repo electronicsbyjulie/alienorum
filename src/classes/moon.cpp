@@ -33,7 +33,7 @@ Rotation Moon::get_Laplace_plane()
     location.orbital_plane = align_points_3d(orbital_pole, yaxis, center);
 
     Point eqaxis(sin(equinox), 0, cos(equinox));
-    Point my_eq_pole = rotate3D(yaxis, center, eqaxis, inclination);
+    Point my_eq_pole = rotate3D(yaxis, center, eqaxis, obliquity);
     my_eq_pole = rotate3D(my_eq_pole, center, Laplace_plane.v, -Laplace_plane.a);
     location.equatorial_plane = align_points_3d(my_eq_pole, ecliptic_pole, center);
 
@@ -43,7 +43,7 @@ Rotation Moon::get_Laplace_plane()
 void Moon::update_orbit_location(double tmnow)
 {
     get_Laplace_plane();
-    return CelestialObject::update_orbit_location(tmnow, &Laplace_plane);
+    CelestialObject::update_orbit_location(tmnow, &Laplace_plane);
 }
 
 Moon::Moon()
@@ -53,7 +53,7 @@ Moon::Moon()
 
 void Moon::update_location(double tmnow)
 {
-    update_orbit_location(tmnow);
+    if (orbit && orbit->period) update_orbit_location(tmnow);
 }
 
 json Moon::to_json()
