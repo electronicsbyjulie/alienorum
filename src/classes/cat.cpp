@@ -2323,10 +2323,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             read_field_onebased(buffer, fieldcols[13], fieldcols[14], field);
             m->width = atof(field);
 
-            read_field_onebased(buffer, fieldcols[14], fieldcols[15], field);
+            read_field_onebased(buffer, fieldcols[14], strlen(buffer), field);
             m->height = atof(field);
-
-            std::cout << m->depth << " " << m->width << " " << m->height << std::endl;
         }
 
         read_field_onebased(buffer, fieldcols[15], fieldcols[16]-1, field);
@@ -2343,7 +2341,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         p->known_poles = p->inclination && p->equinox;
 
         read_field_onebased(buffer, fieldcols[19], fieldcols[20]-1, field);
-        p->sidereal_rotational_period = atof(field);
+        if (!strcmp(trim(field).c_str(), "tidal")) p->sidereal_rotational_period = o->period;
+        else p->sidereal_rotational_period = atof(field);
 
         read_field_onebased(buffer, fieldcols[20], fieldcols[21]-1, field);
         p->mass = atof(field);

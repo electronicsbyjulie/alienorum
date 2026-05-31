@@ -34,7 +34,7 @@ char lookfor[256], edit_name[256];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
-std::string load_univ = "";
+std::string load_univ = "", setjd = "";
 bool catalogs_found = false;
 int num_galaxies=0, num_stars=0, num_planets=0, num_moons=0, num_asteroids=0, num_comets=0, num_sat=0;
 float dispcx, dispcy;
@@ -215,6 +215,7 @@ int draw_sphere(CelestialObject* cel)
     int i, j, result=0;
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(IM_COL32(255, 255, 255, 128));
+    ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 192));
     bool prev_valid = false;
     double z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
     bool dwh = false;
@@ -226,6 +227,17 @@ int draw_sphere(CelestialObject* cel)
         dep = ((Moon*)cel)->depth/vol;
         wid = ((Moon*)cel)->width/vol;
         hei = ((Moon*)cel)->height/vol;
+    }
+
+    double rads_sec = (M_PI * 2) / cel->sidereal_rotational_period;
+    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
+    double timeofday = rads_sec * seconds_since_epoch + M_PI_2;
+    if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
+    {
+        timeofday += cel->orbit->ascending_node;
+        timeofday += cel->orbit->arg_periapsis;
+        timeofday += cel->orbit->mean_anomaly;
+        timeofday += M_PI_2;
     }
 
     for (i=0; i<24; i++)
@@ -242,6 +254,7 @@ int draw_sphere(CelestialObject* cel)
                 cursor.z *= dep;
             }
             else cursor.y *= obl;
+            cursor = rotate3D(cursor, center, yaxis, -timeofday);
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
@@ -266,7 +279,7 @@ int draw_sphere(CelestialObject* cel)
                     dy2 = dispcy + prev.y * dispcx;
 
                 if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
             }
 
             prev = zdes;
@@ -288,6 +301,7 @@ int draw_sphere(CelestialObject* cel)
                 cursor.z *= dep;
             }
             else cursor.y *= obl;
+            cursor = rotate3D(cursor, center, yaxis, -timeofday);
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
@@ -2332,13 +2346,16 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f"))
         {
-            cels[editidx]->orbit->period = edit_period * oneday;
-            if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            if (edit_period)
+            {
+                cels[editidx]->orbit->period = edit_period * oneday;
+                if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            }
         }
         ImGui::SameLine();
         ImGui::Text("%s", "days");
@@ -2495,7 +2512,7 @@ int main (int argc, char** argv)
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
-    std::string argsfind = "", argsgo = "", argszoom = "";
+    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "";
 
     memset(lookfor, 0, 256);
 
@@ -2532,6 +2549,11 @@ int main (int argc, char** argv)
             argsfind = argv[++l];
         }
 
+        if (!strcmp(argv[l], "track"))
+        {
+            argstrack = argv[++l];
+        }
+
         if (!strcmp(argv[l], "go"))
         {
             argsgo = argv[++l];
@@ -2540,6 +2562,11 @@ int main (int argc, char** argv)
         if (!strcmp(argv[l], "zoom"))
         {
             argszoom = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "jd"))
+        {
+            setjd = argv[++l];
         }
 
         if (!strcmp(argv[l], "magtest")) magnitude_test = true;
@@ -2899,12 +2926,29 @@ int main (int argc, char** argv)
             }
 
             // Command line args
+            if (setjd.size())
+            {
+                JDnow = atof(setjd.c_str());
+                setjd = "";
+            }
             if (argsgo.size())
             {
                 int goidx = find_object(argsgo.c_str());
                 if (goidx >= 0) whereami = goidx;
                 else std::cerr << "Not found " << argsgo << std::endl;
                 argsgo = "";
+                viewchanged = true;
+            }
+            else if (argstrack.size())
+            {
+                int findidx = find_object(argstrack.c_str());
+                if (findidx >= 0)
+                {
+                    trackidx = findidx;
+                    center_selected();
+                }
+                else std::cerr << "Not found " << argstrack << std::endl;
+                argstrack = "";
                 viewchanged = true;
             }
             else if (argsfind.size())               // After go, wait to get new bearings then seek.
