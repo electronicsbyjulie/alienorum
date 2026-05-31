@@ -212,7 +212,7 @@ void draw_ra_dec_lines()
 
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    int i, j, l, m, result=0;
+    int i, j, l, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
     std::vector<bool> tdvalid;
@@ -242,7 +242,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         timeofday += M_PI_2;
     }
 
-    if (!wireframe && !cel->bump_map && !cel->surf_map)
+    if (!wireframe && !cel->looked_for_maps) // && !cel->bump_map && !cel->surf_map)
     {
         std::string filename;
 
@@ -259,6 +259,8 @@ int draw_sphere(CelestialObject* cel, double arad)
             Map *map = new Map();
             if (map->load_from_jpeg(filename)) cel->surf_map = map;
         }
+
+        cel->looked_for_maps = true;
     }
 
     if (wireframe) for (i=0; i<24; i++)
@@ -311,17 +313,18 @@ int draw_sphere(CelestialObject* cel, double arad)
     Map* map = nullptr;
     if (cel->cloud_map) map = cel->cloud_map;
     else if (cel->surf_map) map = cel->surf_map;
-    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(0, cel->BV_color));
+    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1);
 
-    int perline = 24;
+    double step = wireframe ? (fiftyseventh*15) : (M_PI*0.1/arad*fiftyseventh);
+    int perline = round(M_PI*2/step);
     l = 0;
-    for (j=-90; j <= 90; j+=10)
+    for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
     {
-        lat = fiftyseventh * j;
         prev_valid = false;
-        for (i=0; i<=24; i++)
+        n = 0;
+        for (lon=0; lon<=M_PI*2; lon+=step)
         {
-            lon = fiftyseventh * i * 15;
+            n++;
             Point cursor = Point::from_ra_dec(lon, lat, cel->volumetric_mean_radius, 0);
 
             if (dwh)
@@ -354,7 +357,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
-            if (i)
+            if (lon)
             {
                 int dx1 = dispcx + zdes.x * dispcx,
                     dy1 = dispcy + zdes.y * dispcx,
@@ -370,7 +373,13 @@ int draw_sphere(CelestialObject* cel, double arad)
                 todraw.push_back(v);
                 tdvalid.push_back(true);
 
-                if (!wireframe && (j>-90) && !dragging)
+                /*if (lon <= step)
+                {
+                    if (distance(todraw[l-perline-1], v) < distance(todraw[l-perline], v)) perline++;
+                    else if (distance(todraw[l-perline+1], v) < distance(todraw[l-perline], v)) perline--;
+                }*/
+
+                if (!wireframe && (lat>-M_PI_2) && !dragging)
                 {
                     if (tdvalid[l-1] && tdvalid[l-perline] && tdvalid[l-perline-1])
                     {
@@ -389,6 +398,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             prev = zdes;
             prev_valid = true;
         }
+        perline = n;
     }
 
     return result;

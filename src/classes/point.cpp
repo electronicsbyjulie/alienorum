@@ -308,6 +308,12 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
     return align_points_3d(pole, yaxis, center);
 }
 
+double distance(ImVec2 a, ImVec2 b)
+{
+    double dx = a.x - b.x, dy = a.y - b.y;
+    return sqrt(dx*dx+dy*dy);
+}
+
 Rotation align_points_3d(Point point, Point align, Point center)
 {
     Point n = compute_normal(point, align, center);

@@ -44,9 +44,18 @@ RGB Color::rgb_from_color(Color c, double bloom_radius)
 {
     RGB result;
     int red, green, blue;
+    double circ, invcirc;
 
-    double circ = 2.0 * M_PI * bloom_radius;
-    double invcirc = 1.0 / circ;
+    if (bloom_radius < 0)
+    {
+        // Normalize
+        invcirc = 1.0 / fmax(c.red, fmax(c.green, c.blue));
+    }
+    else
+    {
+        circ = 2.0 * M_PI * bloom_radius;
+        invcirc = 1.0 / circ;
+    }
 
     red   = 255 * fmin(1.0, pow(c.red   * invcirc, global_inverse_gamma));
     green = 255 * fmin(1.0, pow(c.green * invcirc, global_inverse_gamma));
@@ -59,9 +68,9 @@ RGB Color::rgb_from_color(Color c, double bloom_radius)
         blue *= 0.333;
     }
 
-    result.r = max(0, red);
-    result.g = max(0, green);
-    result.b = max(0, blue);
+    result.r = red;
+    result.g = green;
+    result.b = blue;
     return result;
 }
 

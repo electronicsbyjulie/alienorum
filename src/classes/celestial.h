@@ -76,6 +76,7 @@ class Map
     char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
     int image_height = 0;                           // Number of rows in image
     int image_width = 0;                            // Number of columns in image
+    int allocated = 0;
     double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
 
     public:
@@ -120,6 +121,7 @@ class CelestialObject
 
     Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr;
     float drawnx=-1e9, drawny=-1e9;
+    bool looked_for_maps = false;
 
     CelestialObject();
     virtual ~CelestialObject() = default;

@@ -567,8 +567,8 @@ bool Map::load_from_jpeg(std::string filename)
 
     image_height = cinfo.image_height;
     image_width = cinfo.image_width;
-    lat_scale = M_PI * 2 / image_height;
-    lon_scale = M_PI * 2 / image_width;
+    lat_scale = image_height / M_PI;
+    lon_scale = image_width / (M_PI * 2);
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
     long toalloc = image_height * image_width;
@@ -576,6 +576,7 @@ bool Map::load_from_jpeg(std::string filename)
     red_data = new char[toalloc];
     green_data = new char[toalloc];
     blue_data = new char[toalloc];
+    allocated = toalloc;
 
     row_stride = cinfo.output_width * cinfo.output_components;
     jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
@@ -610,16 +611,25 @@ RGB Map::color_at(double lat, double lon)
 
     lon = fmod(lon, M_PI*2);
     if (lon < 0) lon += M_PI*2;
-    if (lat < -M_PI) lat = -M_PI;
-    else if (lat > M_PI) lat = M_PI;
+    if (lat < -M_PI_2) lat = -M_PI_2;
+    else if (lat > M_PI_2) lat = M_PI_2;
     if (blue_data)
     {
-        double xf = lon * lon_scale, yf = lat * lat_scale;
+        double xf = lon * lon_scale, yf = (M_PI_2-lat) * lat_scale;
         int x0 = floor(xf), x1 = ceil(xf), y0 = floor(yf), y1 = ceil(yf);
         long y0idx = image_width * y1, y1idx = y0idx + image_width;
 
-        // Interpolate
-        double dx0 = (x1 - xf) * inv_lon_scale,
+        if (y0idx < 0) y0idx = 0;
+        if (y0idx > allocated-image_width) y0idx = allocated-image_width;
+        if (x0 < 0) x0 = 0;
+        if (x0 >= image_width) x0 = image_width-1;
+
+        result.r = red_data[y0idx+x0];
+        result.g = green_data[y0idx+x0];
+        result.b = blue_data[y0idx+x0];
+
+        // TODO: fix interpolation
+        /*double dx0 = (x1 - xf) * inv_lon_scale,
                dx1 = 1.0 - dx0,
                dy0 = (y1 - yf) * inv_lat_scale,
                dy1 = 1.0 - dy0;
@@ -630,7 +640,7 @@ RGB Map::color_at(double lat, double lon)
         result.g = fmax(0, fmin(255, d00*green_data[y0idx+x0] + d01*green_data[y1idx+x0]
                                    + d10*green_data[y0idx+x1] + d11*green_data[y1idx+x1] ));
         result.b = fmax(0, fmin(255, d00*blue_data[y0idx+x0] + d01*blue_data[y1idx+x0]
-                                   + d10*blue_data[y0idx+x1] + d11*blue_data[y1idx+x1] ));
+                                   + d10*blue_data[y0idx+x1] + d11*blue_data[y1idx+x1] ));*/
     }
     else
     {
