@@ -364,10 +364,10 @@ int draw_disc(CelestialObject* cel)
 
     xmin = ymin = 1e9;
     xmax = ymax = -1e9;
-    for (j=-90; j <= 90; j++)
+    for (j=-90; j <= 90; j+=5)
     {
         j90 = j + 90;
-        for (i=0; i<360; i++)
+        for (i=0; i<360; i+=5)
         {
             Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, cel->volumetric_mean_radius, 0);
 
