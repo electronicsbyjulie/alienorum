@@ -2,20 +2,20 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image
+#   brew install sdl2 sdl2_image jpeg
 #
 # MSYS2 (Run in MINGW64 environment):
-#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo
 #
 
 CPP = g++
 CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 
 # Uncomment for debug mode
-# CPPFLAGS += -g -DDEBUG
+CPPFLAGS += -g -DDEBUG
 
 # Uncomment to track down memory errors
 # CPPFLAGS += -g -O0 -fsanitize=address -fno-omit-frame-pointer
@@ -25,7 +25,7 @@ CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 # gprof bin/alienorum gmon.out > alienorum.output
 # CPPFLAGS += -g -pg -DDEBUG
 
-IMGUI_DIR = src/imgui
+IMGUI_DIR = src/include/imgui
 CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
@@ -42,21 +42,20 @@ LINUX_GL_LIBS = -lGL
 OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
 
-INCLUDES = -I./src/include -I./src/imgui -I./src/classes
+INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
 
 # Platform-specific configurations
 ifeq ($(UNAME_S), Linux)
     ECHO_MESSAGE = "Building for Linux..."
-    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image
+    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image -ljpeg
     CPPFLAGS += `sdl2-config --cflags`
     CFLAGS = $(CPPFLAGS)
 endif
 
 ifeq ($(UNAME_S), Darwin)
     ECHO_MESSAGE = "Building for Mac OS..."
-    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image
-    
+    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image -ljpeg
     # Support both Intel (/usr/local) and Apple Silicon (/opt/homebrew)
     LIBS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
     CPPFLAGS += `sdl2-config --cflags` -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
@@ -65,7 +64,7 @@ endif
 
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
-    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image
+    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image -ljpeg
     CPPFLAGS += `pkg-config --cflags sdl2`
     CFLAGS = $(CPPFLAGS)
 endif
