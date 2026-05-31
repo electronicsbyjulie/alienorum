@@ -55,6 +55,7 @@ double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,
        distance_lblcut = 25*light_year;
 char lblcut0[256], lblcut1[256], lblcut2[256];
+int planets_lblcut = 1;
 
 double intrinsic_cutoff = pow(magnbase, -6.5);
 

@@ -1975,7 +1975,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
             if (s && p && p->orbit->period)
             {
-                ((Star*)s)->has_planets = true;
+                ((Star*)s)->has_planets++;
+                p->distance_known = true;
                 if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
                 else if (p->mass < 2.5e+29) p->type = ice_giant;
                 else p->type = gas_giant;
@@ -2262,7 +2263,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         Orbit* o = new Orbit();
         o->center = cels[j];
-        if (cels[j]->typeclass() == class_star) ((Star*)cels[j])->has_planets = true;
+        if (cels[j]->typeclass() == class_star) ((Star*)cels[j])->has_planets++;
         Planet *p;
         Moon *m = nullptr;
 

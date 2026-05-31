@@ -210,15 +210,17 @@ void draw_ra_dec_lines()
     }
 }
 
-int draw_sphere(CelestialObject* cel)
+int draw_sphere(CelestialObject* cel, double arad)
 {
-    int i, j, result=0;
+    int i, j, l, m, result=0;
     Cartesian2D prev, zdes;
-    ImU32 gc = rgba_apply_redlight(IM_COL32(255, 255, 255, 128));
-    ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 192));
+    std::vector<ImVec2> todraw;
+    std::vector<bool> tdvalid;
+    ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
+    ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
     bool prev_valid = false;
-    double z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
-    bool dwh = false;
+    double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
+    bool dwh = false, wireframe = dragging;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
     double dep=1, wid=1, hei=1;
     if (dwh)
@@ -240,7 +242,26 @@ int draw_sphere(CelestialObject* cel)
         timeofday += M_PI_2;
     }
 
-    for (i=0; i<24; i++)
+    if (!wireframe && !cel->bump_map && !cel->surf_map)
+    {
+        std::string filename;
+
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.jpg";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_jpeg(filename)) cel->cloud_map = map;
+        }
+
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_jpeg(filename)) cel->surf_map = map;
+        }
+    }
+
+    if (wireframe) for (i=0; i<24; i++)
     {
         prev_valid = false;
         for (j=-80; j<=90; j+=10)
@@ -287,12 +308,21 @@ int draw_sphere(CelestialObject* cel)
         }
     }
 
+    Map* map = nullptr;
+    if (cel->cloud_map) map = cel->cloud_map;
+    else if (cel->surf_map) map = cel->surf_map;
+    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(0, cel->BV_color));
+
+    int perline = 24;
+    l = 0;
     for (j=-90; j <= 90; j+=10)
     {
+        lat = fiftyseventh * j;
         prev_valid = false;
         for (i=0; i<=24; i++)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
+            lon = fiftyseventh * i * 15;
+            Point cursor = Point::from_ra_dec(lon, lat, cel->volumetric_mean_radius, 0);
 
             if (dwh)
             {
@@ -308,12 +338,18 @@ int draw_sphere(CelestialObject* cel)
             cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
             if (cursor.magnitude() > z_cutoff)
             {
+                todraw.push_back(ImVec2(0,0));
+                tdvalid.push_back(false);
+                l++;
                 prev_valid = false;
                 continue;
             }
             zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
+                todraw.push_back(ImVec2(0,0));
+                tdvalid.push_back(false);
+                l++;
                 prev_valid = false;
                 continue;
             }
@@ -328,8 +364,26 @@ int draw_sphere(CelestialObject* cel)
                 double yd = (dy1 - cel->drawny);
                 if (yd > result) result = yd;
 
-                if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+                ImVec2 v = ImVec2(dx1, dy1);
+                if (prev_valid && wireframe)
+                    ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                todraw.push_back(v);
+                tdvalid.push_back(true);
+
+                if (!wireframe && (j>-90) && !dragging)
+                {
+                    if (tdvalid[l-1] && tdvalid[l-perline] && tdvalid[l-perline-1])
+                    {
+                        ImVec2 points[4];
+                        points[0] = v;
+                        points[1] = todraw[l-1];
+                        points[2] = todraw[l-perline-1];
+                        points[3] = todraw[l-perline];
+                        if (map) rgb = map->color_at(lat, lon);
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, IM_COL32(rgb.r, rgb.g, rgb.b, 255));
+                    }
+                }
+                l++;
             }
 
             prev = zdes;
@@ -925,7 +979,7 @@ void compute_object_draw_coordinates()
     double dispw = dispcx*2, disph = dispcy*2;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_dist = mycenobj->location.distance_to(here);
-    if (viewchanged || redo_proper_motions)
+    if (1) // viewchanged || redo_proper_motions)
     {
         num_stars_in_box = 0;
         bool star_in_box;
@@ -1138,7 +1192,7 @@ void draw_objects()
 
         if (angular_radius[i]*zoom > fiftyseventh)
         {
-            if (dragging || 1) magrad_cache[i] = draw_sphere(cels[i]);
+            if (dragging || 1) magrad_cache[i] = draw_sphere(cels[i], angular_radius[i]*zoom);
             else magrad_cache[i] = draw_disc(cels[i]);
         }
         else
@@ -1213,7 +1267,7 @@ void draw_objects()
             || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
             || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
-            || (cbolbls_selected_idx == 4 && cels[i]->type == star && ((Star*)cels[i])->has_planets )
+            || (cbolbls_selected_idx == 4 && cels[i]->type == star && (((Star*)cels[i])->has_planets >= planets_lblcut) )
             || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
             || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
             || i == selected)
@@ -1824,6 +1878,15 @@ void draw_status_window(ImGuiIO& io)
         ImGui::InputText("##distlim", lblcut2, 255);
         statheight += txtyscale;
         distance_lblcut = atof(lblcut2)*light_year;
+    }
+    else if (cbolbls_selected_idx == 4)
+    {
+        ImGui::Text("%s", "# Planets:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputInt("##npltlim", &planets_lblcut, 1, 0);
+        statheight += txtyscale;
+        if (planets_lblcut < 1) planets_lblcut = 1;
     }
 
     flagstr = (std::string)"Redlgt (Sh+R): "
@@ -3043,7 +3106,7 @@ int main (int argc, char** argv)
             else
             {
                 timeout_ms *= 1.5;
-                if (timeout_ms > 250) timeout_ms = 250;
+                if (timeout_ms > 67) timeout_ms = 67;
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
