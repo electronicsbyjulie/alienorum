@@ -290,7 +290,7 @@ int draw_sphere(CelestialObject* cel)
     for (j=-90; j <= 90; j+=10)
     {
         prev_valid = false;
-        for (i=0; i<=25; i++)
+        for (i=0; i<=24; i++)
         {
             Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
 
