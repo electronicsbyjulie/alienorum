@@ -2,6 +2,9 @@
 #define _CelestialObject
 
 #include <string>
+#include <stdio.h>
+#include <setjmp.h>
+#include "jpeglib.h"
 #include "point.h"
 #include "color.h"
 
@@ -25,6 +28,13 @@ enum cel_obj_class
     class_planet,
     class_moon,
     class_satellite
+};
+
+
+struct my_jpeg_error_mgr
+{
+    struct jpeg_error_mgr pub;	/* "public" fields */
+    jmp_buf setjmp_buffer;	/* for return to caller */
 };
 
 class CelestialObject;
@@ -55,6 +65,24 @@ class Orbit
     void compute_center_mass(double my_mass = 0);
     json to_json();
     bool from_json(json j);
+};
+
+class Map
+{
+    protected:
+    JSAMPARRAY jpeg_image_buffer = nullptr;         // Points to large array of R,G,B-order data
+    // EasyBMP::Image *bmp;
+
+    char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
+    int image_height = 0;                           // Number of rows in image
+    int image_width = 0;                            // Number of columns in image
+    double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
+
+    public:
+    bool load_from_bmp(std::string filename);
+    bool load_from_jpeg(std::string filename);
+
+    RGB color_at(double latitude, double longitude);
 };
 
 class CelestialObject
@@ -90,6 +118,7 @@ class CelestialObject
     cel_obj_type type = star;
     char name[32];
 
+    Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr;
     float drawnx=-1e9, drawny=-1e9;
 
     CelestialObject();

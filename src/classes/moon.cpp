@@ -64,6 +64,10 @@ json Moon::to_json()
     // towrite["Laplace_plane"] = Laplace_plane.to_json();
     // towrite["Laplace_set"] = Laplace_set;
 
+    if (depth) towrite["depth"] = depth;
+    if (width) towrite["width"] = width;
+    if (height) towrite["height"] = height;
+
     return towrite;
 }
 
@@ -76,5 +80,8 @@ bool Moon::from_json(json j)
         Laplace_plane.from_json(j1);
     } catch (...) { ; }
     try { j.at("Laplace_set").get_to(Laplace_set); } catch (...) { ; }
+    try { j.at("depth").get_to(depth); } catch (...) { ; }
+    try { j.at("width").get_to(width); } catch (...) { ; }
+    try { j.at("height").get_to(height); } catch (...) { ; }
     return true;
 }

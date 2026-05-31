@@ -7,8 +7,9 @@
 #include <ctime>
 #include <thread>
 #include <mutex>
-#include "../imgui/imgui.h"
-#include "../include/nlohmann/json.hpp"
+#include "imgui/imgui.h"
+#include "nlohmann/json.hpp"
+// #include "EasyBMP/EasyBMP.hpp"
 
 using json = nlohmann::json;
 
@@ -91,6 +92,7 @@ bool is_digit_or_dot(char);
 bool contains_digits_or_dots(const char*);
 bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
+bool file_exists(const char* fname);
 
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);

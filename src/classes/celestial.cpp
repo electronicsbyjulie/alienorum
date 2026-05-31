@@ -11,6 +11,7 @@ CelestialObject **cels, *mycenobj = nullptr;
 bool *celskip;
 double *vmag_cache, *magrad_cache, *angular_radius;
 CelestialLocation here;
+typedef struct my_jpeg_error_mgr * my_error_ptr;
 
 CelestialObject::CelestialObject()
 {
@@ -470,6 +471,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         throw 0xbadc0de;
     }
 
+    assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(z));
+
     Point result;
     if (crp) result = rotate3D(Point(x,y,z), center, crp->v, -crp->a);
     // For exoplanets, assume the planetary orbits and stellar equator are in the same plane and set the stellar inclination to zero.
@@ -519,4 +522,120 @@ bool Orbit::from_json(json j)
     } catch (...) { ; }
 
     return true;
+}
+
+METHODDEF(void)
+my_error_exit (j_common_ptr cinfo)
+{
+  /* cinfo->err really points to a my_error_mgr struct, so coerce pointer */
+  my_error_ptr myerr = (my_error_ptr) cinfo->err;
+
+  /* Always display the message. */
+  /* We could postpone this until after returning, if we chose. */
+  (*cinfo->err->output_message) (cinfo);
+
+  /* Return control to the setjmp point */
+  longjmp(myerr->setjmp_buffer, 1);
+}
+
+bool Map::load_from_jpeg(std::string filename)
+{
+    struct jpeg_decompress_struct cinfo;
+    struct my_jpeg_error_mgr jerr;
+    FILE * infile;
+    int row_stride;
+
+    if ((infile = fopen(filename.c_str(), "rb")) == NULL)
+    {
+        fprintf(stderr, "can't open %s\n", filename.c_str());
+        return false;
+    }
+
+    cinfo.err = jpeg_std_error(&jerr.pub);
+    jerr.pub.error_exit = my_error_exit;
+
+    if (setjmp(jerr.setjmp_buffer))
+    {
+        jpeg_destroy_decompress(&cinfo);
+        fclose(infile);
+        return false;
+    }
+
+    jpeg_create_decompress(&cinfo);
+    jpeg_stdio_src(&cinfo, infile);
+    (void) jpeg_read_header(&cinfo, TRUE);
+    (void) jpeg_start_decompress(&cinfo);
+
+    image_height = cinfo.image_height;
+    image_width = cinfo.image_width;
+    lat_scale = M_PI * 2 / image_height;
+    lon_scale = M_PI * 2 / image_width;
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+    long toalloc = image_height * image_width;
+    std::cout << "Allocating " << toalloc << std::endl;
+    red_data = new char[toalloc];
+    green_data = new char[toalloc];
+    blue_data = new char[toalloc];
+
+    row_stride = cinfo.output_width * cinfo.output_components;
+    jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
+            ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
+
+    int i, j;
+    while (cinfo.output_scanline < cinfo.output_height)
+    {
+        j = cinfo.output_scanline * image_width;
+        assert(j >= 0);
+        (void) jpeg_read_scanlines(&cinfo, jpeg_image_buffer, 1);
+        for (i=0; i<row_stride; i+=cinfo.output_components)
+        {
+            assert(j < toalloc);
+            red_data[j] = jpeg_image_buffer[0][i];
+            green_data[j] = jpeg_image_buffer[0][i+1];
+            blue_data[j] = jpeg_image_buffer[0][i+2];
+            j++;
+        }
+    }
+
+    (void) jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+    fclose(infile);
+
+    return true;
+}
+
+RGB Map::color_at(double lat, double lon)
+{
+    RGB result;
+
+    lon = fmod(lon, M_PI*2);
+    if (lon < 0) lon += M_PI*2;
+    if (lat < -M_PI) lat = -M_PI;
+    else if (lat > M_PI) lat = M_PI;
+    if (blue_data)
+    {
+        double xf = lon * lon_scale, yf = lat * lat_scale;
+        int x0 = floor(xf), x1 = ceil(xf), y0 = floor(yf), y1 = ceil(yf);
+        long y0idx = image_width * y1, y1idx = y0idx + image_width;
+
+        // Interpolate
+        double dx0 = (x1 - xf) * inv_lon_scale,
+               dx1 = 1.0 - dx0,
+               dy0 = (y1 - yf) * inv_lat_scale,
+               dy1 = 1.0 - dy0;
+        double d00 = dx0 * dy0, d01 = dx0 * dy1, d10 = dx1 * dy0, d11 = dx1 * dy1;
+
+        result.r = fmax(0, fmin(255, d00*red_data[y0idx+x0] + d01*red_data[y1idx+x0]
+                                   + d10*red_data[y0idx+x1] + d11*red_data[y1idx+x1] ));
+        result.g = fmax(0, fmin(255, d00*green_data[y0idx+x0] + d01*green_data[y1idx+x0]
+                                   + d10*green_data[y0idx+x1] + d11*green_data[y1idx+x1] ));
+        result.b = fmax(0, fmin(255, d00*blue_data[y0idx+x0] + d01*blue_data[y1idx+x0]
+                                   + d10*blue_data[y0idx+x1] + d11*blue_data[y1idx+x1] ));
+    }
+    else
+    {
+        result.r = result.g = result.b = 255;
+    }
+    return result;
 }

@@ -246,3 +246,14 @@ std::string lop_component(const char *name)
     if (name[n-1] >= 'A' && name[n-1] <= 'Z' && (name[n-2] == ' ' || (name[n-2] >= '0' && name[n-2] <= '9'))) result = trim(result.substr(0, n-1));
     return result;
 }
+
+bool file_exists(const char *fname)
+{
+    FILE *fp = fopen(fname, "r");
+    if (fp)
+    {
+        fclose(fp);
+        return true;
+    }
+    return false;
+}

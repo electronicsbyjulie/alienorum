@@ -26,6 +26,8 @@ class Cartesian2D
     Cartesian2D& operator*=(double multiplier);
     Cartesian2D operator/(double divisor);
     Cartesian2D& operator/=(double divisor);
+
+    double distance_to(Cartesian2D other);
 };
 
 class Point

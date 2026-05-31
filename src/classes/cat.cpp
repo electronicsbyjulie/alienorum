@@ -2194,6 +2194,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     char buffer[1024];
     char field[32];
     int i, j, offset, num_read = 0;
+    int fieldcols[29];
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -2204,10 +2205,44 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     while (fgets(buffer, 1020, fp))
     {
         if (*buffer == '#') continue;
+        if (*buffer == '!')
+        {
+            char* col;
+            fieldcols[0] = 0;
+            col = strstr(buffer, "CENTER_OF_ORBIT")-1;      fieldcols[ 0] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "BODYNAME");               fieldcols[ 1] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "SEMIMAJOR_AXIS");         fieldcols[ 2] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "BVmag");                  fieldcols[ 3] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "UBmag");                  fieldcols[ 4] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Incl");                   fieldcols[ 5] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "AscNode");                fieldcols[ 6] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "ArgPeri");                fieldcols[ 7] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "MeanAnom");               fieldcols[ 8] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "±ABSMG");                 fieldcols[ 9] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "VolMeanRad");             fieldcols[10] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Oblateness");             fieldcols[11] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Depth");                  fieldcols[12] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Width");                  fieldcols[13] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Height");                 fieldcols[14] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Eccentricity");           fieldcols[15] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "OrbitPeriod");            fieldcols[16] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Obliq");                  fieldcols[17] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Equinox");                fieldcols[18] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "RotationPeriod");         fieldcols[19] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Mass");                   fieldcols[20] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Atm");                    fieldcols[21] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "Epoch");                  fieldcols[22] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "PrecEq");                 fieldcols[23] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "J2");                     fieldcols[24] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "PrecNode");               fieldcols[25] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "ProcArgPeri");            fieldcols[26] = col ? (col - buffer) : -1;
+            // for (j=0; j<=26; j++) std::cout << j << ": " << fieldcols[j] << std::endl;
+            continue;
+        }
         if (!trim(buffer).size()) continue;
 
         j = -1;
-        read_field_onebased(buffer, 1, 25, field);
+        read_field_onebased(buffer, fieldcols[0]+1, fieldcols[1], field);
         std::string cenname = trim(field);
         for (i=0; i<offset; i++)
         {
@@ -2220,7 +2255,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
         if (j < 0)
         {
-            read_field_onebased(buffer, 26, 42, field);
+            read_field_onebased(buffer, fieldcols[1]+1, fieldcols[2], field);
             std::cerr << "Warning: center of orbit unknown for " << field << std::endl;
             continue;
         }
@@ -2228,21 +2263,23 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         Orbit* o = new Orbit();
         o->center = cels[j];
         if (cels[j]->typeclass() == class_star) ((Star*)cels[j])->has_planets = true;
-        Planet* p;
+        Planet *p;
+        Moon *m = nullptr;
 
         if (o->center->orbit && o->center->orbit->center)
         {
-            p = (Planet*)new Moon();
+            m = new Moon();
+            p = (Planet*)m;
         }
         else
         {
             p = new Planet();
         }
         p->orbit = o;
-        read_field_onebased(buffer, 26, 42, field);
+        read_field_onebased(buffer, fieldcols[1]+1, fieldcols[2], field);
         strcpy(p->name, trim(field).c_str());
 
-        read_field_onebased(buffer, 44, 58, field);
+        read_field_onebased(buffer, fieldcols[2]+1, fieldcols[3], field);
         o->semimajor_axis = atof(field);
         if (!o->semimajor_axis)
         {
@@ -2251,73 +2288,85 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             continue;
         }
 
-        read_field_onebased(buffer, 60, 64, field);
+        read_field_onebased(buffer, fieldcols[3]+1, fieldcols[4], field);
         p->BV_color = atof(field);
 
-        read_field_onebased(buffer, 66, 70, field);
+        read_field_onebased(buffer, fieldcols[4]+1, fieldcols[5], field);
         p->UB_color = atof(field);
 
-        read_field_onebased(buffer, 72, 77, field);
+        read_field_onebased(buffer, fieldcols[5]+1, fieldcols[6], field);
         o->inclination = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 81, 87, field);
+        read_field_onebased(buffer, fieldcols[6]+1, fieldcols[7], field);
         o->ascending_node = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 91, 98, field);
+        read_field_onebased(buffer, fieldcols[7]+1, fieldcols[8], field);
         o->arg_periapsis = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 101, 110, field);
+        read_field_onebased(buffer, fieldcols[8]+1, fieldcols[9], field);
         o->mean_anomaly = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 112, 117, field);
+        read_field_onebased(buffer, fieldcols[9]+1, fieldcols[10], field);
         p->absolute_magnitude = atof(field);
 
-        read_field_onebased(buffer, 119, 128, field);
+        read_field_onebased(buffer, fieldcols[10], fieldcols[11], field);
         p->volumetric_mean_radius = atof(field);
 
-        read_field_onebased(buffer, 132, 141, field);
+        read_field_onebased(buffer, fieldcols[11], fieldcols[11]+10, field);
         p->oblateness = atof(field);
 
-        read_field_onebased(buffer, 143, 154, field);
+        if (m)
+        {
+            read_field_onebased(buffer, fieldcols[12], fieldcols[13], field);
+            m->depth = atof(field);
+
+            read_field_onebased(buffer, fieldcols[13], fieldcols[14], field);
+            m->width = atof(field);
+
+            read_field_onebased(buffer, fieldcols[14], fieldcols[15], field);
+            m->height = atof(field);
+        }
+
+        read_field_onebased(buffer, fieldcols[15], fieldcols[16]-1, field);
         o->eccentricity = atof(field);
 
-        read_field_onebased(buffer, 156, 173, field);
+        read_field_onebased(buffer, fieldcols[16], fieldcols[17]-1, field);
         o->period = atof(field);
 
-        read_field_onebased(buffer, 175, 181, field);
+        read_field_onebased(buffer, fieldcols[17], fieldcols[18]-1, field);
         p->inclination = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 183, 191, field);
+        read_field_onebased(buffer, fieldcols[18], fieldcols[19]-1, field);
         p->equinox = atof(field) * fiftyseventh;
         p->known_poles = p->inclination && p->equinox;
 
-        read_field_onebased(buffer, 193, 210, field);
+        read_field_onebased(buffer, fieldcols[19], fieldcols[20]-1, field);
         p->sidereal_rotational_period = atof(field);
 
-        read_field_onebased(buffer, 212, 223, field);
+        read_field_onebased(buffer, fieldcols[20], fieldcols[21]-1, field);
         p->mass = atof(field);
         if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
         else if (p->mass < 2.5e+29) p->type = ice_giant;
         else p->type = gas_giant;
 
-        read_field_onebased(buffer, 225, 231, field);
+        read_field_onebased(buffer, fieldcols[21], fieldcols[22]-1, field);
         p->surface_pressure = atof(field);
 
-        read_field_onebased(buffer, 233, 243, field);
+        read_field_onebased(buffer, fieldcols[22], fieldcols[23]-1, field);
         p->epoch = J2000 + (atof(field) - 2000)*(oneyear/oneday);
 
-        read_field_onebased(buffer, 245, 259, field);
+        read_field_onebased(buffer, fieldcols[23], fieldcols[24]-1, field);
         float f = atof(field);
         p->precession = f ? (M_PI * 2 / f) : 0;
 
-        read_field_onebased(buffer, 261, 287, field);           // TODO: Laplace planes
+        read_field_onebased(buffer, fieldcols[24], fieldcols[25]-1, field);           // TODO: Laplace planes
         p->J2 = atof(field);
 
-        read_field_onebased(buffer, 289, 303, field);
+        read_field_onebased(buffer, fieldcols[25], fieldcols[26]-1, field);
         f = atof(field);
         o->prec_node = f ? (M_PI * 2 / f) : 0;
 
-        read_field_onebased(buffer, 305, 316, field);
+        read_field_onebased(buffer, fieldcols[26], fieldcols[26]+10, field);
         f = atof(field);
         o->proc_argperi = f ? (M_PI * 2 / f) : 0;
         p->distance_known = true;
@@ -2335,6 +2384,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
 void CatalogReader::read_field_onebased(char *buffer, int start, int end, char *out)
 {
+    if (start > strlen(buffer))
+    {
+        out[0] = 0;
+        return;
+    }
     start--;
     int len = end - start;
     int i;

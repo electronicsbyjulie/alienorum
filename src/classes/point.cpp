@@ -148,6 +148,12 @@ Cartesian2D &Cartesian2D::operator/=(double divisor)
     return *this;
 }
 
+double Cartesian2D::distance_to(Cartesian2D other)
+{
+    double dx = x - other.x, dy = y - other.y;              // don't have to fabs() because (-x)^2 = x^2.
+    return sqrt(dx*dx+dy*dy);
+}
+
 double find_angle(double dx, double dy)
 {
     double angle = atan2(dy,dx);
