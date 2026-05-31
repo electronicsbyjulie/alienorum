@@ -1117,7 +1117,7 @@ void draw_objects()
         #define max_magrad 10
 
         magrad = magrad_cache[i];
-        flare = (magrad>max_magrad) ? fmin(225, fmax(0, 1.0+sqrt(magrad-max_magrad)*5)) : 0;
+        flare = (magrad>max_magrad) ? fmin(225, fmax(0, 1.0+sqrt(magrad-0.5*max_magrad)*8)) : 0;
         magrad = fmin(max_magrad, magrad);
 
         #define bloom_exponent 2.5
@@ -1139,14 +1139,16 @@ void draw_objects()
                 rgb.b = (int)(col.blue * divisor);
 
                 double flare2 = flare*0.666;
-                for (jay=flare; jay>flare2; jay -= 4.4)
+                #define jmax 3
+                for (j=jmax; j>0; j--)
                 {
+                    jay = 0.25 + 0.25 * j * flare;
                     double jay15 = jay+max_magrad;
                     ImVec2 radii(jay15, jay15*0.333);
-                    ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 4));
-                    for (theta=0; theta<M_PI*2; theta += M_PI/5)
-                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta);
-                    break;
+                    ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
+                    double thoff = M_PI*0.1*j;
+                    for (theta=0; theta<M_PI*2; theta += M_PI*0.2)
+                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
                 }
             }
 
@@ -1925,6 +1927,12 @@ void draw_objinf_window(ImGuiIO& io)
     ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
     int objinfwidth = 225, objinfheight = txtyscale*2, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
 
+    if (trackidx >= 0)
+    {
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "TRACKING");
+        objinfheight += txtyscale;
+    }
+
     ImGui::Text("%s", objname.c_str());
     objinfheight += txtyscale;
 
@@ -2179,6 +2187,12 @@ void draw_objedit_window(ImGuiIO& io)
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
+    objedtheight += txtyscale;
+
+    stringstream massss;
+    massss << "Density: " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-3) << " g/cm^3";
+    std::string dens = massss.str();
+    ImGui::Text("%s", dens.c_str());
     objedtheight += txtyscale;
 
     double edit_oblt = cel->oblateness;
@@ -2865,6 +2879,7 @@ int main (int argc, char** argv)
 
             // Clicking and dragging
             bool is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
+            if (trackidx >= 0) dragging = false;
             if (is_mouse_down && !is_mouse_over_window && dragging) pan_with_crosshairs(io);
             if (is_mouse_down && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
             else if (!is_mouse_down || is_mouse_over_window) dragging = false;
@@ -2873,13 +2888,13 @@ int main (int argc, char** argv)
             if (io.MouseWheel > 0)
             {
                 zoom *= 1.1;
-                global_brightness *= 1.1;
+                global_brightness *= 1.07;
                 viewchanged = true;
             }
             else if (io.MouseWheel < 0 && zoom > 1)
             {
                 zoom = fmax(1, zoom * 0.9);
-                global_brightness *= 0.9;
+                global_brightness *= 0.93;
                 viewchanged = true;
             }
 

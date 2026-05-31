@@ -2325,6 +2325,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
             read_field_onebased(buffer, fieldcols[14], fieldcols[15], field);
             m->height = atof(field);
+
+            std::cout << m->depth << " " << m->width << " " << m->height << std::endl;
         }
 
         read_field_onebased(buffer, fieldcols[15], fieldcols[16]-1, field);
