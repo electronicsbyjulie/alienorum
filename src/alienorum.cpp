@@ -1279,7 +1279,7 @@ void draw_objects()
 
         if (angular_radius[i]*zoom > fiftyseventh)
         {
-            if (dragging) magrad_cache[i] = draw_sphere(cels[i]);
+            if (dragging || 1) magrad_cache[i] = draw_sphere(cels[i]);
             else magrad_cache[i] = draw_disc(cels[i]);
         }
         else
