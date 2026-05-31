@@ -673,7 +673,7 @@ void load_catalogs()
     num_planets += nexo;
     cout << "Read " << nexo << " objects." << endl << flush;
 
-    if (have_CCDM)
+    if (0) // have_CCDM)
     {
         mtx.lock();
         loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");

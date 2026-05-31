@@ -360,7 +360,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         if (!num_read)
         {
             Rotation rot = align_points_3d(solar_north, ecliptic_north, center);
-            s->inclination = rot.a;
+            s->obliquity = rot.a;
             s->equinox = find_angle_along_vector(rot.v, zaxis, center, yaxis);
             if (s->equinox < 0) s->equinox += (M_PI*2);
 
@@ -1009,7 +1009,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
         read_field_onebased(buffer, 54, 59, field);
-        A->inclination = atof(field) * fiftyseventh;
+        A->obliquity = atof(field) * fiftyseventh;
         s->orbit->inclination = 0;
 
         //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
@@ -1153,7 +1153,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         if (!A->known_poles)
         {
             // The inclination is unknown, but let's assume zero degrees
-            s->inclination = A->inclination = 0;
+            s->obliquity = A->obliquity = 0;
             A->location.equatorial_plane = A->location.local_system_plane =
                 align_points_3d(cels[0]->location.system_center, Point(0,light_year*1e9,0), A->location.system_center);
         }
@@ -1912,7 +1912,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                             p->orbit->mean_anomaly = 0;
                         }
                         else if (i == col_argperi) p->orbit->arg_periapsis = atof(field) * fiftyseventh;
-                        else if (i == col_oblt) p->inclination = atof(field) * fiftyseventh;
+                        else if (i == col_oblt) p->obliquity = atof(field) * fiftyseventh;
                         else if (i == col_sptp) spectral_type = field;
                         else if (i == col_srad) star_radius = atof(field) * solar_radius;
                         else if (i == col_smass) star_mass = atof(field) * solar_mass;
@@ -1970,7 +1970,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     }
                 }
 
-                s->inclination = p_incl;
+                s->obliquity = p_incl;
             }
 
             if (s && p && p->orbit->period)
@@ -2110,7 +2110,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
                 A->location.system_center - cels[0]->location.system_center);
             A->location.orbital_plane = A->location.equatorial_plane = A->location.local_system_plane;
-            A->inclination = inclination;
+            A->obliquity = inclination;
             A->equinox = ascending_node;
             A->known_poles = true;
         }
@@ -2177,7 +2177,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (inclination || ascending_node)
         {
             s->location = A->location;
-            s->inclination = inclination;
+            s->obliquity = inclination;
             s->equinox = ascending_node;
             A->known_poles = s->known_poles = true;
         }
@@ -2334,11 +2334,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         o->period = atof(field);
 
         read_field_onebased(buffer, fieldcols[17], fieldcols[18]-1, field);
-        p->inclination = atof(field) * fiftyseventh;
+        p->obliquity = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, fieldcols[18], fieldcols[19]-1, field);
         p->equinox = atof(field) * fiftyseventh;
-        p->known_poles = p->inclination && p->equinox;
+        p->known_poles = p->obliquity && p->equinox;
 
         read_field_onebased(buffer, fieldcols[19], fieldcols[20]-1, field);
         if (!strcmp(trim(field).c_str(), "tidal")) p->sidereal_rotational_period = o->period;
@@ -2373,7 +2373,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         p->distance_known = true;
 
         p->location = o->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
-        p->location.equatorial_plane.a = p->inclination;
+        p->location.equatorial_plane.a = p->obliquity;
         p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
 
         cels[offset++] = p;
