@@ -860,7 +860,7 @@ void compute_object_draw_coordinates()
     double dispw = dispcx*2, disph = dispcy*2;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_dist = mycenobj->location.distance_to(here);
-    if (1) // viewchanged || redo_proper_motions)
+    if (viewchanged || redo_proper_motions)
     {
         num_stars_in_box = 0;
         bool star_in_box;

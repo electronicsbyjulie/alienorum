@@ -1625,7 +1625,9 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
 
         //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
         read_field_onebased(buffer, 55, 58, field);
-        p->BV_color = atof(field);
+        if (trim(field).size())
+            p->BV_color = atof(field);
+        else p->BV_color = 0.71;                            // typical value for asteroids
 
         //  60- 64  F5.1  km      Diam      ? IRAS diameter (see E.F.Tedesco, pp.1151-1161; catalog <II/190>)
         read_field_onebased(buffer, 60, 64, field);
