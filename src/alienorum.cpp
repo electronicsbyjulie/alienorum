@@ -692,7 +692,7 @@ void load_catalogs()
             s->proper_motion_decl = s->proper_motion_RA = s->radial_velocity = 0;
             s->BV_color = 0.5;
             s->epoch = J2000;
-            s->update_location(J2000_TIME_T);
+            s->update_location(simnow);
             cels[ncelobjs++] = s;
         }
     }
@@ -718,12 +718,12 @@ void load_catalogs()
         {
             if (cels[i]->orbit && cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude)
                 cels[i]->absolute_magnitude = cels[i]->cenobj->absolute_magnitude + 1;
-            ((Star*)cels[i])->update_location(J2000_TIME_T);
+            ((Star*)cels[i])->update_location(simnow);
         }
         else if (cels[i]->orbit)
         {
-            if (cels[i]->typeclass() == class_planet) ((Planet*)cels[i])->update_location(J2000_TIME_T);
-            else if (cels[i]->typeclass() == class_moon) ((Moon*)cels[i])->update_location(J2000_TIME_T);
+            if (cels[i]->typeclass() == class_planet) ((Planet*)cels[i])->update_location(simnow);
+            else if (cels[i]->typeclass() == class_moon) ((Moon*)cels[i])->update_location(simnow);
         }
     }
 
@@ -892,7 +892,7 @@ void compute_object_draw_coordinates()
     int i, j, bx, by;
     double dispw = dispcx*2, disph = dispcy*2;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
-    double mycenobj_dist = mycenobj->location.distance_to(here);
+    double mycenobj_dist = mycenobj->location.distance_to(here), lmasslim = lbllsys_mass_lim * 1000;
     if (viewchanged || redo_proper_motions)
     {
         num_stars_in_box = 0;
@@ -949,7 +949,11 @@ void compute_object_draw_coordinates()
                         cels[i]->drawnx = cels[i]->drawny = -1e9;
                         continue;
                     }
-                    else if (cels[i]->orbit && (cels[i]->mass < lbllsys_mass_lim)
+                    else if (cels[i]->orbit &&
+                        (
+                              ((cels[i]->mass >= lmasslim)
+                            && (cels[i]->tmprel.magnitude() > AU)
+                        ))
                         && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
                     {
                         cels[i]->drawnx = cels[i]->drawny = -1e9;
@@ -967,7 +971,11 @@ void compute_object_draw_coordinates()
                         cels[i]->drawnx = cels[i]->drawny = -1e9;
                         continue;
                     }
-                    else if (cels[i]->orbit && (cels[i]->mass < lbllsys_mass_lim)
+                    else if (cels[i]->orbit &&
+                        (
+                              ((cels[i]->mass >= lmasslim)
+                            && (cels[i]->tmprel.magnitude() > AU)
+                        ))
                         && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
                     {
                         cels[i]->drawnx = cels[i]->drawny = -1e9;
@@ -1036,6 +1044,7 @@ void draw_objects()
     ImVec2 xycoord;
     double appmag, magrad, flare, theta;
     double orbseg = 81;
+    double lmasslim = lbllsys_mass_lim*1000;
 
     Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -1045,7 +1054,7 @@ void draw_objects()
     {
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
-        if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lbllsys_mass_lim) continue;
+        if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
         RGB rgb = Color::rgb_from_color(col, 1);
@@ -1182,7 +1191,6 @@ void draw_objects()
     }
 
     // Labels and selection
-    double lmasslim = lbllsys_mass_lim*1000;
     if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->typeclass() == class_star
@@ -1199,19 +1207,19 @@ void draw_objects()
         if (angular_radius[i]*zoom > fiftyseventh)
             magrad = magrad_cache[i];
         else magrad = fmin(max_magrad, magrad_cache[i]);
-        if ( (show_labels && cels[i]->orbit &&
+        if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
                ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
                 || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
                 || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-                || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
-                || (cbolbls_selected_idx == 4 && cels[i]->type == star && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-                || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-                || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
+                || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
+                || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == 5 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+                || (cbolbls_selected_idx == 6 && cels[i]->known_poles)
              ))
-            || (cels[i]->orbit && (cels[i]->orbit->center == mycenobj) && lbl_localsys
+            || (cels[i]->orbit && (cels[i]->cenobj == mycenobj) && lbl_localsys
                 && ((cels[i]->mass >= lmasslim)
                  || (vmag_cache[i] < 2.5)
-                 || (cels[i]->tmprel.magnitude() < 0.1 * AU)
+                 || (cels[i]->tmprel.magnitude() < AU)
                    )
                )
             || i == selected)
