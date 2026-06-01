@@ -765,6 +765,12 @@ void Map::generate_gas_giant_map(int lr, double BV)
     int num_bands = rand() % 9 + 7, i;
     RGB bands[num_bands];
 
+    bool add_storm = frand(0, 1) < 0.2;
+    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29;
+
+    stormlat = frand(-0.3, 0.3);
+    stormlon = frand(0, 1);
+
     for (i=0; i<num_bands; i++)
     {
         double rmult, gmult, bmult;
@@ -803,12 +809,13 @@ void Map::generate_gas_giant_map(int lr, double BV)
             // Apply distortion primarily along the X/longitude axis to emulate wind bands
             double finalNoise = fBm(nx + distortX * 4.0, ny + distortY, nz, 6, 2.0, 0.55);
 
-            // Add an artificial "Great Red Spot" storm at a specific latitude/longitude
-            // Latitude approx -22 degrees (v around 0.62), longitude around center (u around 0.5)
-            double distToStormX = (u - 0.5) * 2.0 * M_PI;
-            double distToStormY = (v - 0.62) * M_PI;
-            // Elliptical distance formula
-            double stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
+            if (add_storm)
+            {
+                distToStormX = (u - stormlon) * 2.0 * M_PI;
+                distToStormY = (v - stormlat) * M_PI;
+                // Elliptical distance formula
+                stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
+            }
 
             int idx = y * image_width + x;
 

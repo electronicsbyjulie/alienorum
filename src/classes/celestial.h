@@ -124,6 +124,7 @@ class CelestialObject
     Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr;
     float drawnx=-1e9, drawny=-1e9;
     bool looked_for_maps = false;
+    bool onscreen = false;
 
     CelestialObject();
     virtual ~CelestialObject() = default;

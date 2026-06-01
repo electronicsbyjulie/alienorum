@@ -214,6 +214,8 @@ double sphresolution = 0.003;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
+    bool wireframe = dragging || !cel->onscreen || (here.distance_to(cel->location) < cel->volumetric_mean_radius);
+    cel->onscreen = false;
     int i, j, l, m, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
@@ -222,7 +224,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
     bool prev_valid = false;
     double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.03, obl = 1.0 - cel->oblateness;
-    bool dwh = false, wireframe = dragging;
+    bool dwh = false;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
     double dep=1, wid=1, hei=1;
     if (dwh)
@@ -316,7 +318,10 @@ int draw_sphere(CelestialObject* cel, double arad)
                     dy2 = dispcy + prev.y * dispcx;
 
                 if (prev_valid)
+                {
                     ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
+                    cel->onscreen = true;
+                }
             }
 
             prev = zdes;
@@ -385,7 +390,10 @@ int draw_sphere(CelestialObject* cel, double arad)
 
                 ImVec2 v = ImVec2(dx1, dy1);
                 if (prev_valid && wireframe)
+                {
                     ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                    cel->onscreen = true;
+                }
                 todraw.push_back(v);
                 tdvalid.push_back(true);
 
@@ -401,6 +409,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                         points[3] = todraw[m];
                         if (map) rgb = map->color_at(lat, lon);
                         ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, IM_COL32(rgb.r, rgb.g, rgb.b, 255));
+                        cel->onscreen = true;
                     }
                 }
                 l++;
@@ -428,170 +437,6 @@ int draw_sphere(CelestialObject* cel, double arad)
     }
 
     return result;
-}
-
-int draw_disc(CelestialObject* cel)
-{
-    int i, j, j90, result=0, xmin, xmax, ymin, ymax, dispw = dispcx*2, disph = dispcy*2;
-    Cartesian2D zdes, carts[181][360];
-    ImU32 gc = rgba_apply_redlight(IM_COL32(0, 255, 0, 128));
-    double z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.01, obl = 1.0 - cel->oblateness, lat, lon;
-    bool dwh = false;
-    if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
-    double dep=1, wid=1, hei=1;
-    if (dwh)
-    {
-        double vol = (((Moon*)cel)->depth+((Moon*)cel)->width+((Moon*)cel)->height)/3;
-        dep = ((Moon*)cel)->depth/vol;
-        wid = ((Moon*)cel)->width/vol;
-        hei = ((Moon*)cel)->height/vol;
-    }
-
-    if (!cel->bump_map && !cel->surf_map)
-    {
-        std::string filename;
-
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.jpg";
-        if (file_exists(filename.c_str()))
-        {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->cloud_map = map;
-        }
-
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
-        if (file_exists(filename.c_str()))
-        {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->surf_map = map;
-        }
-    }
-
-    xmin = ymin = 1e9;
-    xmax = ymax = -1e9;
-    for (j=-90; j <= 90; j+=5)
-    {
-        j90 = j + 90;
-        for (i=0; i<360; i+=5)
-        {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, cel->volumetric_mean_radius, 0);
-
-            if (dwh)
-            {
-                cursor.x *= wid;
-                cursor.y *= hei;
-                cursor.z *= dep;
-            }
-            else cursor.y *= obl;
-
-            cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-            cursor += cel->tmprel;
-            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
-            if (cursor.magnitude() > z_cutoff)
-            {
-                carts[j90][i].x = -1e29;
-                continue;
-            }
-            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
-            if (zdes.x < -1e4 || zdes.y < -1e4)
-            {
-                carts[j90][i].x = -1e29;
-                continue;
-            }
-
-            int dx = dispcx + zdes.x * dispcx,
-                dy = dispcy + zdes.y * dispcx;
-
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(0.5+dx, 0.5+dy), gc, 1);
-
-            carts[j90][i].x = dx;
-            carts[j90][i].y = dy;
-
-            if (dx < xmin) xmin = dx;
-            if (dx > xmax) xmax = dx;
-            if (dy < ymin) ymin = dy;
-            if (dy > ymax) ymax = dy;
-        }
-    }
-
-    int x, y, xlim = min(xmax+1, dispw), ylim = min(ymax+1, disph);
-    int x0 = max(0, xmin), y0 = max(0, ymin);
-    int a1, a2, a3, b1, b2, b3;
-    double r, r1, r2, r3, perimeter, eff1, eff2, eff3, effmult;
-    Cartesian2D drawn(cel->drawnx, cel->drawny);
-    RGB rgb;
-    rgb.r = rgb.g = rgb.b = 192;
-
-    Map* map = nullptr;
-    if (cel->cloud_map) map = cel->cloud_map;
-    else if (cel->surf_map) map = cel->surf_map;
-
-    perimeter = fmax(xmax-xmin, ymax-ymin);
-    for (y = y0; y < ylim; y++)
-    {
-        for (x = x0; x < xlim; x++)
-        {
-            Cartesian2D cart(x, y);
-            if (cart.distance_to(drawn) > perimeter) continue;
-            a1 = a2 = a3 = b1 = b2 = b3 = -1;
-            r1 = r2 = r3 = 1e29;
-
-            for (j=0; j<=180; j++)
-            {
-                for (i=0; i<360; i++)
-                {
-                    r = carts[j][i].distance_to(cart) + 0.0001;
-
-                    if (r < r1)
-                    {
-                        r3 = r2;
-                        a3 = a2;
-                        b3 = b2;
-                        r2 = r1;
-                        a2 = a1;
-                        b2 = b1;
-                        r1 = r;
-                        a1 = i;
-                        b1 = j;
-                    }
-                    else if (r < r2)
-                    {
-                        r3 = r2;
-                        a3 = a2;
-                        b3 = b2;
-                        r2 = r;
-                        a2 = i;
-                        b2 = j;
-                    }
-                    else if (r < r3)
-                    {
-                        r3 = r;
-                        a3 = i;
-                        b3 = j;
-                    }
-                }
-            }
-
-            if (a1<0 || a2<0 || a3<0 || b1<0 || b2<0 || b3<0) continue;
-            r = cart.distance_to(drawn);
-            perimeter = fmax(carts[b1][a1].distance_to(drawn), fmax(carts[b2][a2].distance_to(drawn), carts[b3][a3].distance_to(drawn)));
-            if (r > perimeter) continue;
-
-            // Interpolate
-            effmult = 1.0 / (r1+r2+r3);
-            eff1 = effmult * (1.0 - r1);
-            eff2 = effmult * (1.0 - r2);
-            eff3 = effmult * (1.0 - r3);
-
-            lat = (eff1 * a1 + eff2 * a2 + eff3 * a3 - 90) * fiftyseventh;
-            lon = (eff1 * b1 + eff2 * b2 + eff3 * b3     ) * fiftyseventh;
-
-            if (map) rgb = map->color_at(lat, lon);
-
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(x, y), ImVec2(0.5+x, 0.5+y), IM_COL32(rgb.r, rgb.g, rgb.b, 255));
-        }
-    }
-
-    return y - cel->drawny;
 }
 
 bool look_for_catalogs()
@@ -1228,8 +1073,7 @@ void draw_objects()
 
         if (angular_radius[i]*zoom > fiftyseventh)
         {
-            if (dragging || 1) magrad_cache[i] = draw_sphere(cels[i], angular_radius[i]*zoom);
-            else magrad_cache[i] = draw_disc(cels[i]);
+            magrad_cache[i] = draw_sphere(cels[i], angular_radius[i]*zoom);
         }
         else
         {
@@ -1270,7 +1114,10 @@ void draw_objects()
             {
                 RGB rgb = Color::rgb_from_color(col, 1);
                 if (rgb.r >= 16 || rgb.b >= 16)
+                {
                     ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
+                    cels[i]->onscreen = true;
+                }
                 if (rgb.r == 255 && rgb.b == 255) break;
 
                 col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
