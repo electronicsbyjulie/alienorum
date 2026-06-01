@@ -2290,10 +2290,16 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         }
 
         read_field_onebased(buffer, fieldcols[3]+1, fieldcols[4], field);
-        p->BV_color = atof(field);
+        if (trim(field).size())
+            p->BV_color = atof(field);
+        else
+            p->BV_color = o->center->BV_color;
 
         read_field_onebased(buffer, fieldcols[4]+1, fieldcols[5], field);
-        p->UB_color = atof(field);
+        if (trim(field).size())
+            p->UB_color = atof(field);
+        else
+            p->UB_color = o->center->UB_color;
 
         read_field_onebased(buffer, fieldcols[5]+1, fieldcols[6], field);
         o->inclination = atof(field) * fiftyseventh;

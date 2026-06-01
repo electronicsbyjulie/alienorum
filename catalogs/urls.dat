@@ -33,3 +33,7 @@ comets              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/comet
 # and click Update.
 # Then click the download (save icon) button, choose CSV format, and click the green Download Table arrow.
 # Save the resulting file in the alienorum/catalogs/ folder.
+
+# TODO: Auto-download maps in JPEG format from:
+# https://bjj.mmedia.is/planetary_maps.html
+# https://planetpixelemporium.com/planets.html
