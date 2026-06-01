@@ -58,6 +58,7 @@ char lblcut0[256], lblcut1[256], lblcut2[256];
 int planets_lblcut = 1;
 
 double intrinsic_cutoff = pow(magnbase, -6.5);
+PerlinNoise pn;
 
 const std::string WHITESPACE = " \n\r\t\f\v";
 __uint32_t xonsm[13] = {0x0e432843, 0x0e4328ec, 0x25443485, 0x29cc28ec, 0x29cc513a, 0x43363485, 0x511e0000, 0x511e3485, 0x511e513a, 0x511e5147, 0x511eab3a, 0x2b85e980, 0x57e47000};
@@ -257,4 +258,23 @@ bool file_exists(const char *fname)
         return true;
     }
     return false;
+}
+
+// Fractional Brownian Motion helper
+double fBm(double x, double y, double z, int octaves, double lacunarity, double gain)
+{
+    double total = 0.0;
+    double frequency = 1.0;
+    double amplitude = 1.0;
+    double maxValue = 0.0;  // Used for normalizing
+    for (int i = 0; i < octaves; i++)
+    {
+        total += pn.noise(x * frequency, y * frequency, z * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+
+    // Normalize to [-1, 1] then shift to [0, 1]
+    return (total / maxValue + 1.0) / 2.0;
 }

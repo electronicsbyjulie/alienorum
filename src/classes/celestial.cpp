@@ -572,10 +572,10 @@ bool Map::load_from_jpeg(std::string filename)
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
     long toalloc = image_height * image_width;
-    std::cout << "Allocating " << toalloc << " bytes for " << filename << std::endl;
-    red_data = new char[toalloc];
-    green_data = new char[toalloc];
-    blue_data = new char[toalloc];
+    std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
+    red_data = new unsigned char[toalloc];
+    green_data = new unsigned char[toalloc];
+    blue_data = new unsigned char[toalloc];
     allocated = toalloc;
 
     row_stride = cinfo.output_width * cinfo.output_components;
@@ -634,3 +634,217 @@ RGB Map::color_at(double lat, double lon)
     }
     return result;
 }
+
+void Map::generate_rocky_map(int lr, double BV, bool has_water)
+{
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
+    int octaves = 5 + (rand() % 4);
+    double lacunarity = frand(1.0, 2.9);
+    double gain = has_water ? 0.5 : 2.5;
+    double scale = has_water ? 1.5 : 0.8; // Controls feature sizes (smaller scale = larger continents)
+
+    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+    RGB rgb = Color::rgb_from_color(col, -1);
+
+    image_height = lr;
+    image_width = image_height * 2;
+
+    allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    lat_scale = image_height / M_PI;
+    lon_scale = image_width / (M_PI * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
+
+    for (int y = 0; y < image_height; ++y)
+    {
+        // Convert screen pixel coordinates to spherical angles
+        double v = (double)y / image_height;
+        double theta = v * M_PI; // Latitude angle from 0 to PI
+
+        for (int x = 0; x < image_width; ++x)
+        {
+            double u = (double)x / image_width;
+            double phi = u * 2.0 * M_PI; // Longitude angle from 0 to 2PI
+
+            // Map 2D texture coordinates to a 3D Sphere surface to avoid seam/polar stretching
+            double nx = sin(theta) * cos(phi);
+            double ny = sin(theta) * sin(phi);
+            double nz = cos(theta);
+
+            // Get noise value for this point on the sphere
+            double heightValue = fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain);
+
+            int idx = y * image_width + x;
+
+            if (has_water)
+            {
+                double r_weight = heightValue;
+                int vegr = rand() % 224, vegg = rand() % 192, vegb = rand() % 128;
+                if (vegr < vegg && vegr < vegb) vegb = vegr / 1.5;
+                if (vegg < vegr && vegg < vegb) vegg /= 3;
+                if (vegb < vegr && vegb < vegg) vegb /= 5;
+
+                // Biome allocation based on height thresholds
+                if (heightValue < 0.45)
+                {   // Deep Ocean
+                    red_data[idx] = 10 * r_weight;
+                    green_data[idx] = 30 * r_weight;
+                    blue_data[idx] = 120 * r_weight;
+                }
+                else if (heightValue < 0.50)
+                {   // Shallow Coast
+                    red_data[idx] = 30 * r_weight;
+                    green_data[idx] = 90 * r_weight;
+                    blue_data[idx] = 180 * r_weight;
+                }
+                else if (heightValue < 0.53)
+                {   // Beach / Sand
+                    red_data[idx] = 220 * r_weight;
+                    green_data[idx] = 200 * r_weight;
+                    blue_data[idx] = 150 * r_weight;
+                }
+                else if (heightValue < 0.70)
+                {   // Grassland / Lowlands
+                    // Don't assume alien vegetation is green!
+                    red_data[idx] = vegr * r_weight;
+                    green_data[idx] = vegg * r_weight;
+                    blue_data[idx] = vegb * r_weight;
+                }
+                else if (heightValue < 0.85)
+                {   // Mountains (Dirt / Rock)
+                    red_data[idx] = 110 * r_weight;
+                    green_data[idx] = 90 * r_weight;
+                    blue_data[idx] = 75 * r_weight;
+                }
+                else
+                {   // Snowy Peaks
+                    red_data[idx] = 240 * r_weight;
+                    green_data[idx] = 240 * r_weight;
+                    blue_data[idx] = 255 * r_weight;
+                }
+            }
+            else
+            {
+                // Moon or Dead Desert Planet (Grayscale / Basalt / Rust)
+                // Let's make an iron-rich desert world (Mars-like)
+                double r_weight = heightValue;
+                red_data[idx] = (unsigned char)(rgb.r * r_weight + 40);
+                green_data[idx] = (unsigned char)(rgb.g * r_weight + 20);
+                blue_data[idx] = (unsigned char)(rgb.b * r_weight + 10);
+            }
+        }
+    }
+}
+
+void Map::generate_gas_giant_map(int lr, double BV)
+{
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
+    image_height = lr;
+    image_width = image_height * 2;
+
+    allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    lat_scale = image_height / M_PI;
+    lon_scale = image_width / (M_PI * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
+
+    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+    RGB rgb = Color::rgb_from_color(col, -1);
+
+    double variability = frand(0, 0.666);
+    int num_bands = rand() % 9 + 7, i;
+    RGB bands[num_bands];
+
+    for (i=0; i<num_bands; i++)
+    {
+        double rmult, gmult, bmult;
+
+        rmult = 1.0 - frand(0, variability);
+        bmult = 1.0 - frand(0, variability);
+        gmult = frand(fmin(rmult, bmult), fmax(rmult, bmult));
+
+        bands[i].r = rgb.r * rmult;
+        bands[i].g = rgb.g * gmult;
+        bands[i].b = rgb.b * bmult;
+    }
+
+    double scale = 2.5;
+
+    for (int y = 0; y < image_height; ++y)
+    {
+        double v = (double)y / image_height;
+        double theta = v * M_PI;
+
+        for (int x = 0; x < image_width; ++x)
+        {
+            double u = (double)x / image_width;
+            double phi = u * 2.0 * M_PI;
+
+            // 3D Sphere projection
+            double nx = sin(theta) * cos(phi) * scale;
+            double ny = sin(theta) * sin(phi) * scale;
+            double nz = cos(theta) * scale * 8;
+
+            // Domain Warping: Use noise to distort the coordinates horizontally
+            // This creates the swirling, fluid look of gas clouds
+            double distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
+            double distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 0.1;
+
+            // Apply distortion primarily along the X/longitude axis to emulate wind bands
+            double finalNoise = fBm(nx + distortX * 4.0, ny + distortY, nz, 6, 2.0, 0.55);
+
+            // Add an artificial "Great Red Spot" storm at a specific latitude/longitude
+            // Latitude approx -22 degrees (v around 0.62), longitude around center (u around 0.5)
+            double distToStormX = (u - 0.5) * 2.0 * M_PI;
+            double distToStormY = (v - 0.62) * M_PI;
+            // Elliptical distance formula
+            double stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
+
+            int idx = y * image_width + x;
+
+            if (stormDist < 0.3)
+            {
+                // We are inside the storm; blend into dark colors
+                double stormBlend = (0.3 - stormDist) / 0.3; // 1 at center, 0 at edge
+                // Swirl the storm inside
+                double stormNoise = fBm(nx * 3.0, ny * 3.0, nz * 3.0, 3, 2.0, 0.5);
+
+                red_data[idx] = (unsigned char)(180 * stormNoise + 60);
+                green_data[idx] = (unsigned char)(40 * stormNoise + 10);
+                blue_data[idx] = (unsigned char)(30 * stormNoise + 10);
+
+                // Linear interpolation blending storm with background bands
+                red_data[idx] = (unsigned char)(red_data[idx] * stormBlend + bands[0].r * (1.0 - stormBlend));
+                green_data[idx] = (unsigned char)(green_data[idx] * stormBlend + bands[0].g * (1.0 - stormBlend));
+                blue_data[idx] = (unsigned char)(blue_data[idx] * stormBlend + bands[0].b * (1.0 - stormBlend));
+            }
+            else
+            {
+                // Regular band calculation based on the warped noise
+                // Map finalNoise [0, 1] to the band array
+                double bandVal = fmod(fabs(v - 0.5) * 2 * num_bands + finalNoise * 1.3, num_bands);
+                if (bandVal < 0) bandVal += num_bands;
+                int bandIdx = (int)floor(bandVal);
+                double t = bandVal - bandIdx; // fractional part for linear interpolation
+
+                int nextBandIdx = (bandIdx + 1) % num_bands;
+
+                // Interpolate colors between bands for smooth transitions
+                red_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].r + t * bands[nextBandIdx].r);
+                green_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].g + t * bands[nextBandIdx].g);
+                blue_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].b + t * bands[nextBandIdx].b);
+            }
+        }
+    }
+}
+

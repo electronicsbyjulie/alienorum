@@ -30,7 +30,8 @@ CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp
+            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp \
+			$(CLASSES_DIR)/noise.cpp
 
 BIN = bin
 OBJ = obj
@@ -116,6 +117,9 @@ $(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
 
 $(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJ)/misc.o
+
+$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/noise.h makefile
+	$(CPP) $(CLASSES_DIR)/noise.cpp $(CPPFLAGS) -c -o $(OBJ)/noise.o
 
 $(OBJ)/color.o: $(CLASSES_DIR)/color.cpp $(CLASSES_DIR)/color.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJ)/color.o

@@ -73,7 +73,7 @@ class Map
     JSAMPARRAY jpeg_image_buffer = nullptr;         // Points to large array of R,G,B-order data
     // EasyBMP::Image *bmp;
 
-    char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
+    unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
     int image_height = 0;                           // Number of rows in image
     int image_width = 0;                            // Number of columns in image
     int allocated = 0;
@@ -84,6 +84,8 @@ class Map
     bool load_from_jpeg(std::string filename);
 
     RGB color_at(double latitude, double longitude);
+    void generate_rocky_map(int latitude_resolution, double BV_color, bool has_water);
+    void generate_gas_giant_map(int latitude_resolution, double BV_color);
 };
 
 class CelestialObject

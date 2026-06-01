@@ -263,6 +263,18 @@ int draw_sphere(CelestialObject* cel, double arad)
         }
 
         cel->looked_for_maps = true;
+
+        if ((cel->type == gas_giant || cel->type == ice_giant) && !cel->cloud_map)
+        {
+            cel->cloud_map = new Map();
+            cel->cloud_map->generate_gas_giant_map(503, cel->BV_color);
+        }
+        else if (cel->type == rocky && !cel->surf_map)
+        {
+            cel->surf_map = new Map();
+            double vmag = cel->cenobj->viewer_magnitude(cel->location);
+            cel->surf_map->generate_rocky_map(503, cel->BV_color, vmag >= 26.3 && vmag <= 26.9);
+        }
     }
 
     if (wireframe) for (i=0; i<24; i++)

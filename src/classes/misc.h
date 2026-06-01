@@ -10,6 +10,7 @@
 #include "imgui/imgui.h"
 #include "nlohmann/json.hpp"
 // #include "EasyBMP/EasyBMP.hpp"
+#include "noise.h"
 
 using json = nlohmann::json;
 
@@ -94,6 +95,8 @@ bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
 bool file_exists(const char* fname);
 
+double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
+
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);
 
@@ -120,5 +123,6 @@ extern std::string objname, objinfo;
 extern double simnow;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
+extern PerlinNoise pn;
 
 #endif
