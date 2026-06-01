@@ -210,7 +210,7 @@ void draw_ra_dec_lines()
     }
 }
 
-double sphresolution = 0.03;
+double sphresolution = 0.003;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
@@ -379,7 +379,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
                 if (!wireframe && (lat>-M_PI_2) && !dragging)
                 {
-                    m = l - n - perline + floor(lon*invlaststepcoslat) + 2;
+                    m = l - n - perline + round(lon*invlaststepcoslat) + 2;
                     if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
                     {
                         ImVec2 points[4];
@@ -407,7 +407,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (sphere_elapsed.count() > 1e5)
     {
-        if (sphresolution < 0.1) sphresolution *= 1.1;
+        if (sphresolution < 0.08) sphresolution *= 1.1;
         else if (!bugged)
         {
             std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
