@@ -1474,7 +1474,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
 
         if (!(asno = atoi(field))) continue;
         if ((asno > 4 || absmagn >= 8)
-        /*    && asno != 55
+            && asno != 55
             && asno != 89
             && asno != 105
             && asno != 116
@@ -1584,9 +1584,9 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 6032
             && asno != 6123
             && asno != 6143
-            && asno != 6186*/
+            && asno != 6186
             && asno != 6433
-            /*&& asno != 6469
+            && asno != 6469
             && asno != 6470
             && asno != 6471
             && asno != 6486
@@ -1597,7 +1597,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 6875
             && asno != 6914
             && asno != 6999
-            && asno != 7000*/
+            && asno != 7000
             && asno != 50000
             && asno != 90377
             && asno != 90482
@@ -1619,7 +1619,8 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         p->cenobj = cels[0];
         p->orbit = new Orbit();
         p->orbit->center = cels[0];
-        strcpy(p->name, (std::to_string(asno) + std::string(" ") + name).c_str());
+        // strcpy(p->name, (std::to_string(asno) + std::string(" ") + name).c_str());
+        strcpy(p->name, name.c_str());
         p->absolute_magnitude = absmagn;
 
         //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)

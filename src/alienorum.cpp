@@ -426,7 +426,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     auto sphere_finished = std::chrono::high_resolution_clock::now();
     auto sphere_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(sphere_finished - sphere_began);
 
-    if (sphere_elapsed.count() > 1e5)
+    if (sphere_elapsed.count() >= 5e5)
     {
         if (sphresolution < 0.08) sphresolution *= 1.1;
         else if (!bugged)
@@ -909,19 +909,37 @@ void compute_object_draw_coordinates()
                 break;
 
                 case class_planet:
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
                 {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
+                    if (cels[i]->cenobj!=mycenobj)
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
+                    else if (cels[i]->orbit && (cels[i]->mass < lbllsys_mass_lim)
+                        && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
                 }
                 ((Planet*)cels[i])->update_location(simnow);
                 break;
 
                 case class_moon:
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
                 {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
+                    if (cels[i]->cenobj!=mycenobj)
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
+                    else if (cels[i]->orbit && (cels[i]->mass < lbllsys_mass_lim)
+                        && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
                 }
                 ((Moon*)cels[i])->update_location(simnow);
                 break;
@@ -994,6 +1012,7 @@ void draw_objects()
     {
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
+        if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lbllsys_mass_lim) continue;
 
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
         RGB rgb = Color::rgb_from_color(col, 1);
@@ -1153,6 +1172,7 @@ void draw_objects()
             || (cbolbls_selected_idx == 4 && cels[i]->type == star && (((Star*)cels[i])->has_planets >= planets_lblcut) )
             || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
             || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
+            || (lbl_localsys && cels[i]->orbit && (cels[i]->orbit->center == mycenobj) && (cels[i]->mass >= lbllsys_mass_lim))
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
@@ -1540,6 +1560,7 @@ void process_key_cmd_char(char c)
         break;
 
         case 'O': show_orbits = !show_orbits; break;
+        case 'p': lbl_localsys = !lbl_localsys; break;
 
         case 'r':
         velocity = center;
@@ -1705,6 +1726,19 @@ void draw_status_window(ImGuiIO& io)
         + std::string(show_labels ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
     statheight += txtyscale;
+
+    flagstr = (std::string)"Lbl planets (P): "
+        + std::string(lbl_localsys ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+    statheight += txtyscale;
+
+    if (lbl_localsys)
+    {
+        ImGui::Text("Mass limit:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(123);
+        ImGui::InputDouble("##lbllsysmasslim", &lbllsys_mass_lim, 0, 0, "%.2e");
+    }
 
     flagstr = (std::string)"Orbits (Sh+O): "
         + std::string(show_orbits ? "ON" : "OFF");
