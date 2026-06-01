@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(alienorum LANGUAGES C CXX)
+project(alienorum LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
