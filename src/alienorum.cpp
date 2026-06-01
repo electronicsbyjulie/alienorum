@@ -210,6 +210,8 @@ void draw_ra_dec_lines()
     }
 }
 
+double sphresolution = 0.03;
+bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
     int i, j, l, n, result=0;
@@ -219,7 +221,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
     ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
     bool prev_valid = false;
-    double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
+    double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.03, obl = 1.0 - cel->oblateness;
     bool dwh = false, wireframe = dragging;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
     double dep=1, wid=1, hei=1;
@@ -315,7 +317,8 @@ int draw_sphere(CelestialObject* cel, double arad)
     else if (cel->surf_map) map = cel->surf_map;
     RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1);
 
-    double step = wireframe ? (fiftyseventh*15) : (M_PI*0.1/arad*fiftyseventh);
+    auto sphere_began = std::chrono::high_resolution_clock::now();
+    double step = wireframe ? (fiftyseventh*15) : fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2);
     int perline = round(M_PI*2/step);
     l = 0;
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
@@ -325,7 +328,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (lon=0; lon<=M_PI*2; lon+=step)
         {
             n++;
-            Point cursor = Point::from_ra_dec(lon, lat, cel->volumetric_mean_radius, 0);
+            Point cursor = Point::from_ra_dec(lon+M_PI, lat, cel->volumetric_mean_radius, 0);
 
             if (dwh)
             {
@@ -373,11 +376,11 @@ int draw_sphere(CelestialObject* cel, double arad)
                 todraw.push_back(v);
                 tdvalid.push_back(true);
 
-                /*if (lon <= step)
+                if (lon <= step)
                 {
                     if (distance(todraw[l-perline-1], v) < distance(todraw[l-perline], v)) perline++;
                     else if (distance(todraw[l-perline+1], v) < distance(todraw[l-perline], v)) perline--;
-                }*/
+                }
 
                 if (!wireframe && (lat>-M_PI_2) && !dragging)
                 {
@@ -399,6 +402,19 @@ int draw_sphere(CelestialObject* cel, double arad)
             prev_valid = true;
         }
         perline = n;
+    }
+
+    auto sphere_finished = std::chrono::high_resolution_clock::now();
+    auto sphere_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(sphere_finished - sphere_began);
+
+    if (sphere_elapsed.count() > 1e5)
+    {
+        if (sphresolution < 0.1) sphresolution *= 1.1;
+        else if (!bugged)
+        {
+            std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
+            bugged = true;
+        }
     }
 
     return result;
