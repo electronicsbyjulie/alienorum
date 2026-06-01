@@ -1697,6 +1697,8 @@ void process_key_cmd_char(char c)
 
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
+        case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; break;
+        case '/': zoom *= 0.9; global_brightness *= 0.95; viewchanged = true; break;
 
         case '-':
         vm = velocity.magnitude();
@@ -1737,7 +1739,7 @@ void lookfor_cb()
 void draw_status_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
-    int stattop = 0, statleft = 0, statwidth = 225, statheight = txtyscale*2.3;
+    int stattop = 0, statleft = 0, statwidth = 254, statheight = txtyscale*2.3;
     ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     /////////////////////////////////////////////////////
@@ -1970,7 +1972,7 @@ void draw_objinf_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
-    int objinfwidth = 225, objinfheight = txtyscale*2, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
+    int objinfwidth = 254, objinfheight = txtyscale*2, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
 
     if (trackidx >= 0)
     {
@@ -1997,7 +1999,7 @@ void draw_objinf_window(ImGuiIO& io)
 void draw_addcel_window(ImGuiIO& io)
 {
     ImGui::Begin("Add Object", &addcelwnd);
-    ImGui::SetWindowSize(ImVec2(193, 81));
+    ImGui::SetWindowSize(ImVec2(225, 123));
 
     ImGui::Text("%s", "Type");
     ImGui::SameLine();
@@ -2087,7 +2089,7 @@ void draw_objedit_window(ImGuiIO& io)
 
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    int objedtwidth = 717, objedtheight = 67;
+    int objedtwidth = 768, objedtheight = 81;
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
     cel_obj_class tc = cels[editidx]->typeclass();
