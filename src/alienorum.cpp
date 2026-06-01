@@ -1125,7 +1125,7 @@ void draw_objects()
 
         if (angular_radius[i]*zoom > fiftyseventh)
         {
-            magrad_cache[i] = draw_sphere(cels[i], angular_radius[i]*zoom);
+            magrad_cache[i] = magrad = draw_sphere(cels[i], angular_radius[i]*zoom);
         }
         else
         {
@@ -1174,14 +1174,15 @@ void draw_objects()
 
                 col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
             }
-            if (selected == i)
-            {
-                ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
-            }
+        }
+        if (selected == i)
+        {
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
         }
     }
 
     // Labels and selection
+    double lmasslim = lbllsys_mass_lim*1000;
     if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->typeclass() == class_star
@@ -1207,7 +1208,12 @@ void draw_objects()
                 || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
                 || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
              ))
-            || (cels[i]->orbit && (cels[i]->orbit->center == mycenobj) && lbl_localsys && (cels[i]->mass >= lbllsys_mass_lim))
+            || (cels[i]->orbit && (cels[i]->orbit->center == mycenobj) && lbl_localsys
+                && ((cels[i]->mass >= lmasslim)
+                 || (vmag_cache[i] < 2.5)
+                 || (cels[i]->tmprel.magnitude() < 0.1 * AU)
+                   )
+               )
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
@@ -1771,8 +1777,10 @@ void draw_status_window(ImGuiIO& io)
     {
         ImGui::Text("Mass limit:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(123);
+        ImGui::SetNextItemWidth(81);
         ImGui::InputDouble("##lbllsysmasslim", &lbllsys_mass_lim, 0, 0, "%.2e");
+        ImGui::SameLine();
+        ImGui::Text("kg");
     }
 
     flagstr = (std::string)"Orbits (Sh+O): "
