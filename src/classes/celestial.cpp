@@ -572,7 +572,7 @@ bool Map::load_from_jpeg(std::string filename)
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
     long toalloc = image_height * image_width;
-    std::cout << "Allocating " << toalloc << std::endl;
+    std::cout << "Allocating " << toalloc << " bytes for " << filename << std::endl;
     red_data = new char[toalloc];
     green_data = new char[toalloc];
     blue_data = new char[toalloc];
@@ -627,20 +627,6 @@ RGB Map::color_at(double lat, double lon)
         result.r = red_data[y0idx+x0];
         result.g = green_data[y0idx+x0];
         result.b = blue_data[y0idx+x0];
-
-        // TODO: fix interpolation
-        /*double dx0 = (x1 - xf) * inv_lon_scale,
-               dx1 = 1.0 - dx0,
-               dy0 = (y1 - yf) * inv_lat_scale,
-               dy1 = 1.0 - dy0;
-        double d00 = dx0 * dy0, d01 = dx0 * dy1, d10 = dx1 * dy0, d11 = dx1 * dy1;
-
-        result.r = fmax(0, fmin(255, d00*red_data[y0idx+x0] + d01*red_data[y1idx+x0]
-                                   + d10*red_data[y0idx+x1] + d11*red_data[y1idx+x1] ));
-        result.g = fmax(0, fmin(255, d00*green_data[y0idx+x0] + d01*green_data[y1idx+x0]
-                                   + d10*green_data[y0idx+x1] + d11*green_data[y1idx+x1] ));
-        result.b = fmax(0, fmin(255, d00*blue_data[y0idx+x0] + d01*blue_data[y1idx+x0]
-                                   + d10*blue_data[y0idx+x1] + d11*blue_data[y1idx+x1] ));*/
     }
     else
     {

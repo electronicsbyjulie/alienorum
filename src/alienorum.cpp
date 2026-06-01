@@ -214,7 +214,7 @@ double sphresolution = 0.03;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    int i, j, l, n, result=0;
+    int i, j, l, m, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
     std::vector<bool> tdvalid;
@@ -318,14 +318,15 @@ int draw_sphere(CelestialObject* cel, double arad)
     RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1);
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
-    double step = wireframe ? (fiftyseventh*15) : fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2);
-    int perline = round(M_PI*2/step);
+    double step = wireframe ? (fiftyseventh*15) : fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), stepcoslat, invlaststepcoslat = 1.0 / step;
+    int perline;
     l = 0;
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
     {
         prev_valid = false;
         n = 0;
-        for (lon=0; lon<=M_PI*2; lon+=step)
+        stepcoslat = step / (cos(lat) + 0.1);
+        for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
             n++;
             Point cursor = Point::from_ra_dec(lon+M_PI, lat, cel->volumetric_mean_radius, 0);
@@ -376,21 +377,16 @@ int draw_sphere(CelestialObject* cel, double arad)
                 todraw.push_back(v);
                 tdvalid.push_back(true);
 
-                if (lon <= step)
-                {
-                    if (distance(todraw[l-perline-1], v) < distance(todraw[l-perline], v)) perline++;
-                    else if (distance(todraw[l-perline+1], v) < distance(todraw[l-perline], v)) perline--;
-                }
-
                 if (!wireframe && (lat>-M_PI_2) && !dragging)
                 {
-                    if (tdvalid[l-1] && tdvalid[l-perline] && tdvalid[l-perline-1])
+                    m = l - n - perline + floor(lon*invlaststepcoslat) + 2;
+                    if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
                     {
                         ImVec2 points[4];
                         points[0] = v;
                         points[1] = todraw[l-1];
-                        points[2] = todraw[l-perline-1];
-                        points[3] = todraw[l-perline];
+                        points[2] = todraw[m-1];
+                        points[3] = todraw[m];
                         if (map) rgb = map->color_at(lat, lon);
                         ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, IM_COL32(rgb.r, rgb.g, rgb.b, 255));
                     }
@@ -401,7 +397,9 @@ int draw_sphere(CelestialObject* cel, double arad)
             prev = zdes;
             prev_valid = true;
         }
+
         perline = n;
+        invlaststepcoslat = 1.0/stepcoslat;
     }
 
     auto sphere_finished = std::chrono::high_resolution_clock::now();
