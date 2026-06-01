@@ -216,7 +216,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 {
     bool wireframe = dragging || !cel->onscreen || (here.distance_to(cel->location) < cel->volumetric_mean_radius);
     cel->onscreen = false;
-    int i, j, l, m, n, result=0;
+    int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
     std::vector<bool> tdvalid;
@@ -226,7 +226,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.03, obl = 1.0 - cel->oblateness;
     bool dwh = false;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
-    double dep=1, wid=1, hei=1;
+    double dep=1, wid=1, hei=1, theta, cos_theta, is_day;
     if (dwh)
     {
         double vol = (((Moon*)cel)->depth+((Moon*)cel)->width+((Moon*)cel)->height)/3;
@@ -333,6 +333,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (cel->cloud_map) map = cel->cloud_map;
     else if (cel->surf_map) map = cel->surf_map;
     RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1);
+    Point cursor, land;
+    bool self_luminous;
+    CelestialObject *lightcen;
+
+    self_luminous = cel->type == star;
+    lightcen = cel;
+    if (!self_luminous) while (lightcen->orbit && lightcen->type != star) lightcen = lightcen->orbit->center;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe ? (fiftyseventh*15) : fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), stepcoslat, invlaststepcoslat = 1.0 / step;
@@ -346,19 +353,19 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
             n++;
-            Point cursor = Point::from_ra_dec(lon+M_PI, lat, cel->volumetric_mean_radius, 0);
+            land = Point::from_ra_dec(lon+M_PI, lat, cel->volumetric_mean_radius, 0);
 
             if (dwh)
             {
-                cursor.x *= wid;
-                cursor.y *= hei;
-                cursor.z *= dep;
+                land.x *= wid;
+                land.y *= hei;
+                land.z *= dep;
             }
-            else cursor.y *= obl;
-            cursor = rotate3D(cursor, center, yaxis, -timeofday);
+            else land.y *= obl;
+            land = rotate3D(land, center, yaxis, -timeofday);
 
-            cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-            cursor += cel->tmprel;
+            land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+            cursor = land + cel->tmprel;
             cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
             if (cursor.magnitude() > z_cutoff)
             {
@@ -368,6 +375,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 prev_valid = false;
                 continue;
             }
+
             zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -402,15 +410,40 @@ int draw_sphere(CelestialObject* cel, double arad)
                     m = l - n - perline + round(lon*invlaststepcoslat) + 2;
                     if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
                     {
+                        if (self_luminous)
+                        {
+                            is_day = 1;
+                        }
+                        else
+                        {
+                            land += cel->location.local_position;
+                            theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), M_PI);
+                            if (fabs(theta) < M_PI_2)
+                            {
+                                cos_theta = cos(theta);
+                                is_day = fmin(1, pow(cos_theta, 0.333) + starlight);
+                            }
+                            else is_day = starlight;
+                        }
+
                         ImVec2 points[4];
                         points[0] = v;
                         points[1] = todraw[l-1];
                         points[2] = todraw[m-1];
                         points[3] = todraw[m];
-                        if (map) rgb = map->color_at(lat, lon);
-                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, IM_COL32(rgb.r, rgb.g, rgb.b, 255));
+                        if (map && is_day) rgb = map->color_at(lat, lon);
+                        ImU32 imcol = IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255);
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+                        if (m > lastm+1 && tdvalid[m-2])
+                        {
+                            points[2] = todraw[m-2];
+                            points[3] = todraw[m-1];
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+                        }
                         cel->onscreen = true;
                     }
+
+                    lastm = m;
                 }
                 l++;
             }
@@ -1149,7 +1182,7 @@ void draw_objects()
     }
 
     // Labels and selection
-    if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->typeclass() == class_star
             && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
@@ -1165,14 +1198,16 @@ void draw_objects()
         if (angular_radius[i]*zoom > fiftyseventh)
             magrad = magrad_cache[i];
         else magrad = fmin(max_magrad, magrad_cache[i]);
-        if ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
-            || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
-            || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-            || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
-            || (cbolbls_selected_idx == 4 && cels[i]->type == star && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-            || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-            || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
-            || (lbl_localsys && cels[i]->orbit && (cels[i]->orbit->center == mycenobj) && (cels[i]->mass >= lbllsys_mass_lim))
+        if ( (show_labels && cels[i]->orbit &&
+               ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
+                || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
+                || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
+                || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
+                || (cbolbls_selected_idx == 4 && cels[i]->type == star && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+                || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
+             ))
+            || (cels[i]->orbit && (cels[i]->orbit->center == mycenobj) && lbl_localsys && (cels[i]->mass >= lbllsys_mass_lim))
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
@@ -1646,7 +1681,7 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
-        case '!': show_consln = show_grid = show_labels = show_orbits = false; break;
+        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
 
         case '-':
@@ -2896,12 +2931,14 @@ int main (int argc, char** argv)
             {
                 zoom *= 1.1;
                 global_brightness *= 1.07;
+                dragging = true;
                 viewchanged = true;
             }
             else if (io.MouseWheel < 0 && zoom > 1)
             {
                 zoom = fmax(1, zoom * 0.9);
                 global_brightness *= 0.93;
+                dragging = true;
                 viewchanged = true;
             }
 

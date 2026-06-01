@@ -73,6 +73,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
+#define starlight 0.03
 
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
