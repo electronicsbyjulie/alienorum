@@ -42,7 +42,7 @@ int frames_without_mousemove = 0, num_stars_in_box, editidx=-1, addcenidx=-1;
 double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
 bool is_click;
-double frame_dur = 0, best_frame_dur = 1e9;
+double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
 bool splash = true, magnitude_test = false, redo_proper_motions = true;
 
 // ImGui Example Code
@@ -320,7 +320,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (prev_valid)
                 {
                     ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
-                    cel->onscreen = true;
+                    if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                 }
             }
 
@@ -400,7 +400,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (prev_valid && wireframe)
                 {
                     ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
-                    cel->onscreen = true;
+                    if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                 }
                 todraw.push_back(v);
                 tdvalid.push_back(true);
@@ -459,7 +459,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     auto sphere_finished = std::chrono::high_resolution_clock::now();
     auto sphere_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(sphere_finished - sphere_began);
 
-    if (sphere_elapsed.count() >= 5e5)
+    if (sphere_elapsed.count() >= 3e5)
     {
         if (sphresolution < 0.08) sphresolution *= 1.1;
         else if (!bugged)
@@ -2926,12 +2926,20 @@ int main (int argc, char** argv)
             if (is_mouse_down && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
             else if (!is_mouse_down || is_mouse_over_window) dragging = false;
 
+            if (!dragging && scrollhold)
+            {
+                scrollhold -= frame_dur;
+                if (scrollhold <= 0) scrollhold = 0;
+                else dragging = true;
+            }
+
             // Scroll wheel to zoom
             if (io.MouseWheel > 0)
             {
                 zoom *= 1.1;
                 global_brightness *= 1.07;
                 dragging = true;
+                scrollhold = 1;
                 viewchanged = true;
             }
             else if (io.MouseWheel < 0 && zoom > 1)
@@ -2939,6 +2947,7 @@ int main (int argc, char** argv)
                 zoom = fmax(1, zoom * 0.9);
                 global_brightness *= 0.93;
                 dragging = true;
+                scrollhold = 1;
                 viewchanged = true;
             }
 
