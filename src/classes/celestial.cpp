@@ -768,7 +768,7 @@ void Map::generate_gas_giant_map(int lr, double BV)
     bool add_storm = frand(0, 1) < 0.2;
     double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29;
 
-    stormlat = frand(-0.3, 0.3);
+    stormlat = frand(0.3, 0.7);
     stormlon = frand(0, 1);
 
     for (i=0; i<num_bands; i++)
