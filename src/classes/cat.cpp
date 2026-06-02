@@ -2206,6 +2206,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
+    json output;
+
     while (fgets(buffer, 1020, fp))
     {
         if (*buffer == '#') continue;
@@ -2253,9 +2255,12 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         }
         if (!trim(buffer).size()) continue;
 
+        json pldata;
+
         j = -1;
         read_field_onebased(buffer, fieldcols[0]+1, fieldcols[1], field);
         std::string cenname = trim(field);
+        if (cenname.size()) pldata["CENTER_OF_ORBIT"] = cenname;
         for (i=0; i<offset; i++)
         {
             if (!strcmp(cels[i]->name, cenname.c_str()))
@@ -2289,9 +2294,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         }
         p->orbit = o;
         read_field_onebased(buffer, fieldcols[1]+1, fieldcols[2], field);
+        if (trim(field).size()) pldata["BODYNAME"] = trim(field);
         strcpy(p->name, trim(field).c_str());
 
         read_field_onebased(buffer, fieldcols[2]+1, fieldcols[3], field);
+        if (atof(field)) pldata["SEMIMAJOR_AXIS"] = trim(field);
         o->semimajor_axis = atof(field);
         if (!o->semimajor_axis)
         {
@@ -2301,94 +2308,141 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         }
 
         read_field_onebased(buffer, fieldcols[3]+1, fieldcols[4], field);
+        if (atof(field)) pldata["BVmag"] = trim(field);
         if (trim(field).size())
             p->BV_color = atof(field);
         else
             p->BV_color = o->center->BV_color;
 
         read_field_onebased(buffer, fieldcols[4]+1, fieldcols[5], field);
+        if (atof(field)) pldata["UBmag"] = trim(field);
         if (trim(field).size())
             p->UB_color = atof(field);
         else
             p->UB_color = o->center->UB_color;
 
         read_field_onebased(buffer, fieldcols[5]+1, fieldcols[6], field);
+        if (atof(field)) pldata["Incl"] = trim(field);
         o->inclination = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, fieldcols[6]+1, fieldcols[7], field);
+        if (atof(field)) pldata["AscNode"] = trim(field);
         o->ascending_node = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, fieldcols[7]+1, fieldcols[8], field);
+        if (atof(field)) pldata["ArgPeri"] = trim(field);
         o->arg_periapsis = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, fieldcols[8]+1, fieldcols[9], field);
+        if (atof(field)) pldata["MeanAnom"] = trim(field);
         o->mean_anomaly = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, fieldcols[9]+1, fieldcols[10], field);
+        if (atof(field)) pldata["ABSMG"] = trim(field);
         p->absolute_magnitude = atof(field);
 
         read_field_onebased(buffer, fieldcols[10], fieldcols[11], field);
+        if (atof(field)) pldata["VolMeanRad"] = trim(field);
         p->volumetric_mean_radius = atof(field);
 
         read_field_onebased(buffer, fieldcols[11], fieldcols[11]+10, field);
+        if (atof(field)) pldata["Oblateness"] = trim(field);
         p->oblateness = atof(field);
 
         if (m)
         {
             read_field_onebased(buffer, fieldcols[12], fieldcols[13], field);
+            if (atof(field)) pldata["Depth"] = trim(field);
             m->depth = atof(field);
 
             read_field_onebased(buffer, fieldcols[13], fieldcols[14], field);
+            if (atof(field)) pldata["Width"] = trim(field);
             m->width = atof(field);
 
             read_field_onebased(buffer, fieldcols[14], fieldcols[27], field);
+            if (atof(field)) pldata["Height"] = trim(field);
             m->height = atof(field);
         }
 
         read_field_onebased(buffer, fieldcols[15], fieldcols[16]-1, field);
+        if (atof(field)) pldata["Eccentricity"] = trim(field);
         o->eccentricity = atof(field);
 
         read_field_onebased(buffer, fieldcols[16], fieldcols[17]-1, field);
+        if (atof(field)) pldata["OrbitPeriod"] = trim(field);
         o->period = atof(field);
 
         read_field_onebased(buffer, fieldcols[17], fieldcols[18]-1, field);
+        if (atof(field)) pldata["Obliquity"] = trim(field);
         p->obliquity = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, fieldcols[18], fieldcols[19]-1, field);
+        if (atof(field)) pldata["Equinox"] = trim(field);
         p->equinox = atof(field) * fiftyseventh;
         p->known_poles = p->obliquity && p->equinox;
 
         read_field_onebased(buffer, fieldcols[19], fieldcols[20]-1, field);
+        if (atof(field)) pldata["RotationPeriod"] = trim(field);
         if (!strcmp(trim(field).c_str(), "tidal")) p->sidereal_rotational_period = o->period;
         else p->sidereal_rotational_period = atof(field);
 
         read_field_onebased(buffer, fieldcols[20], fieldcols[21]-1, field);
+        if (atof(field)) pldata["Mass"] = trim(field);
         p->mass = atof(field);
         if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
         else if (p->mass < 2.5e+29) p->type = ice_giant;
         else p->type = gas_giant;
 
         read_field_onebased(buffer, fieldcols[21], fieldcols[22]-1, field);
+        if (atof(field)) pldata["SurfacePressure"] = trim(field);
         p->surface_pressure = atof(field);
 
         read_field_onebased(buffer, fieldcols[22], fieldcols[23]-1, field);
+        if (atof(field)) pldata["Epoch"] = trim(field);
         p->epoch = J2000 + (atof(field) - 2000)*(oneyear/oneday);
 
         read_field_onebased(buffer, fieldcols[23], fieldcols[24]-1, field);
+        if (atof(field)) pldata["EqPrecession"] = trim(field);
         float f = atof(field);
         p->precession = f ? (M_PI * 2 / f) : 0;
 
-        read_field_onebased(buffer, fieldcols[24], fieldcols[25]-1, field);           // TODO: Laplace planes
+        read_field_onebased(buffer, fieldcols[24], fieldcols[25]-1, field);
+        if (atof(field)) pldata["J2"] = trim(field);
         p->J2 = atof(field);
 
         read_field_onebased(buffer, fieldcols[25], fieldcols[26]-1, field);
+        if (atof(field)) pldata["NodePrecession"] = trim(field);
         f = atof(field);
         o->prec_node = f ? (M_PI * 2 / f) : 0;
 
         read_field_onebased(buffer, fieldcols[26], fieldcols[26]+10, field);
+        if (atof(field)) pldata["ArgPeriProcession"] = trim(field);
         f = atof(field);
         o->proc_argperi = f ? (M_PI * 2 / f) : 0;
         p->distance_known = true;
+
+        read_field_onebased(buffer, fieldcols[27], fieldcols[28], field);
+        if (atof(field)) pldata["RingRadius"] = trim(field);
+
+        read_field_onebased(buffer, fieldcols[28], fieldcols[29], field);
+        if (trim(field).size()) pldata["SurfMap"] = trim(field);
+
+        read_field_onebased(buffer, fieldcols[29], fieldcols[30], field);
+        if (trim(field).size()) pldata["CloudMap"] = trim(field);
+
+        read_field_onebased(buffer, fieldcols[30], fieldcols[31], field);
+        if (trim(field).size()) pldata["NightMap"] = trim(field);
+
+        read_field_onebased(buffer, fieldcols[31], fieldcols[32], field);
+        if (trim(field).size()) pldata["RingColorMap"] = trim(field);
+
+        read_field_onebased(buffer, fieldcols[32], fieldcols[33], field);
+        if (trim(field).size()) pldata["RingTranspMap"] = trim(field);
+
+        read_field_onebased(buffer, fieldcols[33], strlen(buffer), field);
+        if (trim(field).size()) pldata["BumpMap"] = trim(field);
+
+        output[output.size()] = pldata;
 
         p->location = o->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
         p->location.equatorial_plane.a = p->obliquity;
@@ -2397,6 +2451,10 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         cels[offset++] = p;
         num_read++;
     }
+
+    /*std::fstream fs(std::string("catalogs/planets.json"), std::ios::out);
+    fs << output.dump(4);
+    fs.close();*/
 
     return num_read;
 }
