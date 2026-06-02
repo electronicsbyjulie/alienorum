@@ -46,6 +46,7 @@
         "J2": "0.000027",
         "Mass": "4.86731e+27",
         "MeanAnom": "050.115",
+        "Oblateness": "0.000",
         "Obliquity": "2.64",
         "OrbitPeriod": "19414200",
         "RotationPeriod": "-20997150",
@@ -65,7 +66,7 @@
         "Eccentricity": ".0167086",
         "Epoch": "2000.0000",
         "EqPrecession": "8.1329e+11",
-        "Equinox": "0.00000000",
+        "Equinox": "000.00000",
         "Incl": "0.00005",
         "J2": "0.0010826",
         "Mass": "5.97217e+27",
@@ -213,7 +214,7 @@
         "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pluto-map-sept-16-2015.jpg/3840px-Pluto-map-sept-16-2015.jpg"
     },
     {
-        "ABSMG": "+0.21  1",
+        "ABSMG": "+0.21",
         "ArgPeri": "309.7634",
         "ArgPeriProcession": "2.793e+8",
         "AscNode": "124.1228",
@@ -232,13 +233,14 @@
         "Oblateness": ".0012",
         "Obliquity": "1.5",
         "OrbitPeriod": "2360591.5",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "384467000",
         "SurfMap": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_2k.jpg",
         "UBmag": "+0.46",
         "VolMeanRad": "1737371.7"
     },
     {
-        "ABSMG": "+11.8  1",
+        "ABSMG": "+11.8",
         "ArgPeri": "37.247",
         "AscNode": "344.17",
         "BODYNAME": "Phobos",
@@ -253,12 +255,12 @@
         "MeanAnom": "100.293",
         "Obliquity": "1.075",
         "OrbitPeriod": "27553.824",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "9380000",
-        "VolMeanRad": "11200.218",
         "Width": "21.6"
     },
     {
-        "ABSMG": "+12.89 6",
+        "ABSMG": "+12.89",
         "ArgPeri": "292.496",
         "AscNode": "339.6",
         "BODYNAME": "Deimos",
@@ -273,12 +275,12 @@
         "MeanAnom": "20.51",
         "Obliquity": "1.793",
         "OrbitPeriod": "109074.9024",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "23460000",
-        "VolMeanRad": "6100.2325",
         "Width": "12"
     },
     {
-        "ABSMG": "+10.62 1",
+        "ABSMG": "+10.62",
         "ArgPeri": "135.777",
         "AscNode": "146.912",
         "BODYNAME": "Metis",
@@ -293,12 +295,12 @@
         "MeanAnom": "350.53",
         "Obliquity": "0.019",
         "OrbitPeriod": "25468.88832",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "128000000",
-        "VolMeanRad": "19999.8432",
         "Width": "40"
     },
     {
-        "ABSMG": "+11.51 1",
+        "ABSMG": "+11.51",
         "ArgPeri": "298.347",
         "AscNode": "28.378",
         "BODYNAME": "Adrastea",
@@ -313,12 +315,12 @@
         "MeanAnom": "2.37",
         "Obliquity": "0.054",
         "OrbitPeriod": "25855.3728",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "129000000",
-        "VolMeanRad": "10299.9957",
         "Width": "16"
     },
     {
-        "ABSMG": "+6.91  9",
+        "ABSMG": "+6.91",
         "ArgPeri": "321.025",
         "AscNode": "112.472",
         "BODYNAME": "Amalthea",
@@ -333,13 +335,12 @@
         "MeanAnom": "336.886",
         "Obliquity": "0.388",
         "OrbitPeriod": "43042.65696",
-        "RotationPeriod": "43027.2",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "181400000",
-        "VolMeanRad": "90333.1348",
         "Width": "146"
     },
     {
-        "ABSMG": "+8.83  5",
+        "ABSMG": "+8.83",
         "ArgPeri": "5.844",
         "AscNode": "352.544",
         "BODYNAME": "Thebe",
@@ -354,12 +355,12 @@
         "MeanAnom": "282.02",
         "Obliquity": "1.07",
         "OrbitPeriod": "58279.9536",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "221900000",
-        "VolMeanRad": "50000.2451",
         "Width": "98"
     },
     {
-        "ABSMG": "+1.71  1",
+        "ABSMG": "+1.71",
         "ArgPeri": "263.604",
         "AscNode": "46.636",
         "BODYNAME": "Io",
@@ -372,11 +373,12 @@
         "MeanAnom": "140.8",
         "Obliquity": "0.036",
         "OrbitPeriod": "152853.5232",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "421800000",
         "VolMeanRad": "1821600.1426"
     },
     {
-        "ABSMG": "+1.48  1",
+        "ABSMG": "+1.48",
         "ArgPeri": "22.486",
         "AscNode": "129.499",
         "BODYNAME": "Europa",
@@ -389,11 +391,12 @@
         "MeanAnom": "224.174",
         "Obliquity": "0.467",
         "OrbitPeriod": "306825.408",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "671100000",
         "VolMeanRad": "1560800.0721"
     },
     {
-        "ABSMG": "+2.14  2",
+        "ABSMG": "+2.14",
         "ArgPeri": "230.87",
         "AscNode": "46.591",
         "BODYNAME": "Ganymede",
@@ -406,11 +409,12 @@
         "MeanAnom": "149.796",
         "Obliquity": "0.172",
         "OrbitPeriod": "618153.3792",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "1070400000",
         "VolMeanRad": "2631200.0644"
     },
     {
-        "ABSMG": "+1.03  2",
+        "ABSMG": "+1.03",
         "ArgPeri": "56.322",
         "AscNode": "300.268",
         "BODYNAME": "Callisto",
@@ -423,11 +427,12 @@
         "MeanAnom": "181.655",
         "Obliquity": "0.306",
         "OrbitPeriod": "1441931.1552",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "1882700000",
         "VolMeanRad": "2410300.2927"
     },
     {
-        "ABSMG": "+13.46 4",
+        "ABSMG": "+13.46",
         "ArgPeri": "272.349",
         "AscNode": "217.137",
         "BODYNAME": "Leda",
@@ -439,11 +444,12 @@
         "MeanAnom": "228.076",
         "Obliquity": "27.457",
         "OrbitPeriod": "20815488",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "11165000000",
-        "VolMeanRad": "4999.9608"
+        "VolMeanRad": "10.8"
     },
     {
-        "ABSMG": "+8.23  8",
+        "ABSMG": "+8.23",
         "ArgPeri": "331.995",
         "AscNode": "57.245",
         "BODYNAME": "Himalia",
@@ -459,11 +465,10 @@
         "OrbitPeriod": "21648919.68",
         "RotationPeriod": "34560",
         "SEMIMAJOR_AXIS": "11461000000",
-        "VolMeanRad": "84999.9707",
         "Width": "150"
     },
     {
-        "ABSMG": "+11.73 1",
+        "ABSMG": "+11.73",
         "ArgPeri": "49.486",
         "AscNode": "5.528",
         "BODYNAME": "Lysithea",
@@ -475,11 +480,12 @@
         "MeanAnom": "329.121",
         "Obliquity": "28.302",
         "OrbitPeriod": "22396608",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "11717000000",
-        "VolMeanRad": "11999.7785"
+        "VolMeanRad": "21100"
     },
     {
-        "ABSMG": "+9.87  3",
+        "ABSMG": "+9.87",
         "ArgPeri": "143.591",
         "AscNode": "109.373",
         "BODYNAME": "Elara",
@@ -493,10 +499,10 @@
         "OrbitPeriod": "22434001.92",
         "RotationPeriod": "43200",
         "SEMIMAJOR_AXIS": "11741000000",
-        "VolMeanRad": "39999.6864"
+        "VolMeanRad": "40000"
     },
     {
-        "ABSMG": "+12.13 9",
+        "ABSMG": "+12.13",
         "ArgPeri": "100.619",
         "AscNode": "7.615",
         "BODYNAME": "Ananke",
@@ -508,11 +514,12 @@
         "MeanAnom": "248.793",
         "Obliquity": "148.889",
         "OrbitPeriod": "54518400",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "21276000000",
-        "VolMeanRad": "9999.9216"
+        "VolMeanRad": "14000"
     },
     {
-        "ABSMG": "+11.25 1",
+        "ABSMG": "+11.25",
         "ArgPeri": "28.199",
         "AscNode": "113.738",
         "BODYNAME": "Carme",
@@ -524,11 +531,12 @@
         "MeanAnom": "234.027",
         "Obliquity": "164.907",
         "OrbitPeriod": "59788800",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "23404000000",
-        "VolMeanRad": "14999.8824"
+        "VolMeanRad": "23400"
     },
     {
-        "ABSMG": "+10.3  1",
+        "ABSMG": "+10.3",
         "ArgPeri": "170.45",
         "AscNode": "312.99",
         "BODYNAME": "Pasiphae",
@@ -540,11 +548,12 @@
         "MeanAnom": "280.193",
         "Obliquity": "151.431",
         "OrbitPeriod": "63504000",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "23624000000",
-        "VolMeanRad": "17999.9863"
+        "VolMeanRad": "28900"
     },
     {
-        "ABSMG": "+11.59 1",
+        "ABSMG": "+11.59",
         "ArgPeri": "346.394",
         "AscNode": "303.081",
         "BODYNAME": "Sinope",
@@ -556,11 +565,12 @@
         "MeanAnom": "168.397",
         "Obliquity": "158.109",
         "OrbitPeriod": "65491200",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "23939000000",
-        "VolMeanRad": "14000.2725"
+        "VolMeanRad": "18000"
     },
     {
-        "ABSMG": "+9.82  9",
+        "ABSMG": "+9.82",
         "BODYNAME": "Pan",
         "CENTER_OF_ORBIT": "Saturn",
         "Depth": "35",
@@ -570,12 +580,12 @@
         "Mass": "3.0E+18",
         "MeanAnom": "46.635",
         "OrbitPeriod": "49683.410208",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "133600000",
-        "VolMeanRad": "9999.9216",
         "Width": "28"
     },
     {
-        "ABSMG": "+8.24  1",
+        "ABSMG": "+8.24",
         "BODYNAME": "Atlas",
         "CENTER_OF_ORBIT": "Saturn",
         "Depth": "41",
@@ -585,12 +595,12 @@
         "Mass": "1.0E+19",
         "MeanAnom": "153.701",
         "OrbitPeriod": "51986.7072",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "137700000",
-        "VolMeanRad": "16400.2282",
         "Width": "35"
     },
     {
-        "ABSMG": "+6.22  5",
+        "ABSMG": "+6.22",
         "ArgPeri": "280.554",
         "BODYNAME": "Prometheus",
         "CENTER_OF_ORBIT": "Saturn",
@@ -602,12 +612,12 @@
         "Mass": "3.3E+20",
         "MeanAnom": "12.25",
         "OrbitPeriod": "52826.83488",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "139400000",
-        "VolMeanRad": "52666.5086",
         "Width": "81"
     },
     {
-        "ABSMG": "+6.28  4",
+        "ABSMG": "+6.28",
         "ArgPeri": "167.649",
         "BODYNAME": "Pandora",
         "CENTER_OF_ORBIT": "Saturn",
@@ -619,12 +629,12 @@
         "Mass": "2.0E+20",
         "MeanAnom": "13.918",
         "OrbitPeriod": "54302.821632",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "141700000",
-        "VolMeanRad": "43333.6307",
         "Width": "81"
     },
     {
-        "ABSMG": "+5.44  5",
+        "ABSMG": "+5.44",
         "ArgPeri": "196.136",
         "AscNode": "195.006",
         "BODYNAME": "Epimetheus",
@@ -639,12 +649,12 @@
         "MeanAnom": "310.289",
         "Obliquity": "0.335",
         "OrbitPeriod": "60012.576",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "151400000",
-        "VolMeanRad": "59666.9634",
         "Width": "114"
     },
     {
-        "ABSMG": "+4.42  8",
+        "ABSMG": "+4.42",
         "ArgPeri": "27.852",
         "AscNode": "303.797",
         "BODYNAME": "Janus",
@@ -659,12 +669,12 @@
         "MeanAnom": "183.455",
         "Obliquity": "0.165",
         "OrbitPeriod": "60012.576",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "151500000",
-        "VolMeanRad": "89666.7282",
         "Width": "185"
     },
     {
-        "ABSMG": "+3.33  1",
+        "ABSMG": "+3.33",
         "ArgPeri": "92.864",
         "AscNode": "317.457",
         "BODYNAME": "Mimas",
@@ -680,12 +690,12 @@
         "MeanAnom": "74.23",
         "Obliquity": "1.566",
         "OrbitPeriod": "81426.53952",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "185600000",
-        "VolMeanRad": "198666.893",
         "Width": "393"
     },
     {
-        "ABSMG": "+2.09  2",
+        "ABSMG": "+2.09",
         "ArgPeri": "334.689",
         "AscNode": "137.077",
         "BODYNAME": "Enceladus",
@@ -700,17 +710,17 @@
         "MeanAnom": "292.89",
         "Obliquity": "0.01",
         "OrbitPeriod": "118386.8352",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "238100000",
-        "VolMeanRad": "249333.5447",
         "Width": "503"
     },
     {
-        "ABSMG": "+0.57  5",
+        "ABSMG": "+0.57",
         "ArgPeri": "149.166",
         "AscNode": "149.174",
         "BODYNAME": "Tethys",
         "CENTER_OF_ORBIT": "Saturn",
-        "Depth": "1077            1",
+        "Depth": "1077",
         "Eccentricity": ".0001",
         "Epoch": "1999.0007",
         "Equinox": "78.7003",
@@ -720,12 +730,12 @@
         "MeanAnom": "159.35",
         "Obliquity": "0.168",
         "OrbitPeriod": "163106.0928",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "294700000",
-        "VolMeanRad": "530000.3045",
-        "Width": "1057            1"
+        "Width": "1057"
     },
     {
-        "ABSMG": "+8.74  1",
+        "ABSMG": "+8.74",
         "ArgPeri": "80.729",
         "AscNode": "68.124",
         "BODYNAME": "Telesto",
@@ -740,12 +750,12 @@
         "MeanAnom": "124.007",
         "Obliquity": "1.158",
         "OrbitPeriod": "163106.0928",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "294700000",
-        "VolMeanRad": "11666.5752",
         "Width": "23"
     },
     {
-        "ABSMG": "+9     1",
+        "ABSMG": "+9",
         "ArgPeri": "43.64",
         "AscNode": "159.184",
         "BODYNAME": "Calypso",
@@ -760,17 +770,17 @@
         "MeanAnom": "314.41",
         "Obliquity": "1.473",
         "OrbitPeriod": "163106.0928",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "294700000",
-        "VolMeanRad": "10333.1249",
         "Width": "19"
     },
     {
-        "ABSMG": "+0.72  5",
+        "ABSMG": "+0.72",
         "ArgPeri": "173.999",
         "AscNode": "57.741",
         "BODYNAME": "Dione",
         "CENTER_OF_ORBIT": "Saturn",
-        "Depth": "1128            1",
+        "Depth": "1128",
         "Eccentricity": ".0002",
         "Epoch": "1999.0007",
         "Equinox": "324.045",
@@ -780,12 +790,12 @@
         "MeanAnom": "240.15",
         "Obliquity": "0.002",
         "OrbitPeriod": "236469.456",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "377400000",
-        "VolMeanRad": "560000.0693",
-        "Width": "1123            1"
+        "Width": "1123"
     },
     {
-        "ABSMG": "+8.39  1",
+        "ABSMG": "+8.39",
         "ArgPeri": "80.357",
         "AscNode": "10.214",
         "BODYNAME": "Helene",
@@ -800,17 +810,17 @@
         "MeanAnom": "48.615",
         "Obliquity": "0.212",
         "OrbitPeriod": "236469.456",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "377400000",
-        "VolMeanRad": "16333.3327",
         "Width": "39"
     },
     {
-        "ABSMG": "+0.04  7",
+        "ABSMG": "+0.04",
         "ArgPeri": "55.869",
         "AscNode": "151.095",
         "BODYNAME": "Rhea",
         "CENTER_OF_ORBIT": "Saturn",
-        "Depth": "1530            1",
+        "Depth": "1530",
         "Eccentricity": ".0009",
         "Epoch": "1999.0007",
         "Equinox": "142.514",
@@ -820,17 +830,17 @@
         "MeanAnom": "9.39",
         "Obliquity": "0.327",
         "OrbitPeriod": "390312",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "527100000",
-        "VolMeanRad": "764000.1264",
-        "Width": "1526            1"
+        "Width": "1526"
     },
     {
-        "ABSMG": "+1.34  2",
+        "ABSMG": "+1.34",
         "ArgPeri": "173.749",
         "AscNode": "161.046",
         "BODYNAME": "Titan",
         "CENTER_OF_ORBIT": "Saturn",
-        "Depth": "5150            5",
+        "Depth": "5150",
         "Eccentricity": ".0288",
         "Epoch": "1999.0007",
         "Equinox": "154.423",
@@ -840,13 +850,13 @@
         "MeanAnom": "192.01",
         "Obliquity": "1.634",
         "OrbitPeriod": "1377684.3744",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "1221900000",
         "SurfacePressure": "146700",
-        "VolMeanRad": "2575000.1992",
-        "Width": "5149            5"
+        "Width": "5149"
     },
     {
-        "ABSMG": "+4.56  1",
+        "ABSMG": "+4.56",
         "ArgPeri": "105.058",
         "AscNode": "273.863",
         "BODYNAME": "Hyperion",
@@ -862,16 +872,15 @@
         "OrbitPeriod": "1838299.0176",
         "RotationPeriod": "1123200",
         "SEMIMAJOR_AXIS": "1464100000",
-        "VolMeanRad": "145999.7473",
         "Width": "266"
     },
     {
-        "ABSMG": "+1.19  7",
+        "ABSMG": "+1.19",
         "ArgPeri": "276.35",
         "AscNode": "92.583",
         "BODYNAME": "Iapetus",
         "CENTER_OF_ORBIT": "Saturn",
-        "Depth": "1491            1",
+        "Depth": "1491",
         "Eccentricity": ".0284",
         "Epoch": "1999.0007",
         "Equinox": "337.237",
@@ -881,12 +890,12 @@
         "MeanAnom": "350.876",
         "Obliquity": "7.57",
         "OrbitPeriod": "6854127.8112",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "3560800000",
-        "VolMeanRad": "718000.2322",
-        "Width": "1491            1"
+        "Width": "1491"
     },
     {
-        "ABSMG": "+6.61  1",
+        "ABSMG": "+6.61",
         "ArgPeri": "337.537",
         "AscNode": "237.143",
         "BODYNAME": "Phoebe",
@@ -903,11 +912,10 @@
         "OrbitPeriod": "47561472",
         "RotationPeriod": "33360.00012",
         "SEMIMAJOR_AXIS": "12944300000",
-        "VolMeanRad": "107000.3079",
         "Width": "217"
     },
     {
-        "ABSMG": "+10.45 1",
+        "ABSMG": "+10.45",
         "ArgPeri": "325.9002",
         "AscNode": "315.4878",
         "BODYNAME": "Cordelia",
@@ -920,12 +928,12 @@
         "MeanAnom": "298.86",
         "Obliquity": "0.085",
         "OrbitPeriod": "28946.92464",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "49800000",
-        "VolMeanRad": "19999.8432",
         "Width": "36"
     },
     {
-        "ABSMG": "+10.35 2",
+        "ABSMG": "+10.35",
         "ArgPeri": "76.78638",
         "AscNode": "98.78516",
         "BODYNAME": "Ophelia",
@@ -938,12 +946,12 @@
         "MeanAnom": "223.44",
         "Obliquity": "0.104",
         "OrbitPeriod": "32520.984192",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "53800000",
-        "VolMeanRad": "21000.0902",
         "Width": "38"
     },
     {
-        "ABSMG": "+9.8   2",
+        "ABSMG": "+9.8",
         "ArgPeri": "55.61722",
         "AscNode": "249.5579",
         "BODYNAME": "Bianca",
@@ -956,12 +964,12 @@
         "MeanAnom": "53.75",
         "Obliquity": "0.193",
         "OrbitPeriod": "37547.620416",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "59200000",
-        "VolMeanRad": "27000.298",
         "Width": "46"
     },
     {
-        "ABSMG": "+8.95  3",
+        "ABSMG": "+8.95",
         "ArgPeri": "7.397621",
         "AscNode": "117.8223",
         "BODYNAME": "Cressida",
@@ -974,12 +982,12 @@
         "MeanAnom": "327.995",
         "Obliquity": "0.006",
         "OrbitPeriod": "40052.41344",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "61800000",
-        "VolMeanRad": "39999.6864",
         "Width": "74"
     },
     {
-        "ABSMG": "+9.43  3",
+        "ABSMG": "+9.43",
         "ArgPeri": "156.5501",
         "AscNode": "139.4565",
         "BODYNAME": "Desdemona",
@@ -992,12 +1000,12 @@
         "MeanAnom": "137.55",
         "Obliquity": "0.113",
         "OrbitPeriod": "40923.326304",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "62700000",
-        "VolMeanRad": "32000.2588",
         "Width": "54"
     },
     {
-        "ABSMG": "+8.6   4",
+        "ABSMG": "+8.6",
         "ArgPeri": "310.7116",
         "AscNode": "338.6255",
         "BODYNAME": "Juliet",
@@ -1010,12 +1018,12 @@
         "MeanAnom": "303.675",
         "Obliquity": "0.065",
         "OrbitPeriod": "42600.86784",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "64400000",
-        "VolMeanRad": "47000.1412",
         "Width": "74"
     },
     {
-        "ABSMG": "+7.8   6",
+        "ABSMG": "+7.8",
         "ArgPeri": "117.1356",
         "AscNode": "314.3064",
         "BODYNAME": "Portia",
@@ -1028,12 +1036,12 @@
         "MeanAnom": "88.857",
         "Obliquity": "0.059",
         "OrbitPeriod": "44340.12576",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "66100000",
-        "VolMeanRad": "68000.2314",
         "Width": "126"
     },
     {
-        "ABSMG": "+9.18  3",
+        "ABSMG": "+9.18",
         "ArgPeri": "105.5986",
         "AscNode": "374.3601",
         "BODYNAME": "Rosalind",
@@ -1046,12 +1054,12 @@
         "MeanAnom": "135.84",
         "Obliquity": "0.279",
         "OrbitPeriod": "48250.9008",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "69900000",
-        "VolMeanRad": "35999.9726",
         "Width": "72"
     },
     {
-        "ABSMG": "+8.95  3",
+        "ABSMG": "+8.95",
         "ArgPeri": "36.80566",
         "AscNode": "282.9229",
         "BODYNAME": "Belinda",
@@ -1064,12 +1072,12 @@
         "MeanAnom": "337.86",
         "Obliquity": "0.031",
         "OrbitPeriod": "53872.776",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "75300000",
-        "VolMeanRad": "39999.6864",
         "Width": "64"
     },
     {
-        "ABSMG": "+7.42  8",
+        "ABSMG": "+7.42",
         "ArgPeri": "274.907",
         "AscNode": "21.8275",
         "BODYNAME": "Puck",
@@ -1082,12 +1090,12 @@
         "MeanAnom": "269.916",
         "Obliquity": "0.319",
         "OrbitPeriod": "65822.36256",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "86000000",
-        "VolMeanRad": "81000.2569",
         "Width": "162"
     },
     {
-        "ABSMG": "+3.63  2",
+        "ABSMG": "+3.63",
         "ArgPeri": "312.697",
         "AscNode": "275.001",
         "BODYNAME": "Miranda",
@@ -1101,17 +1109,17 @@
         "MeanAnom": "148.9",
         "Obliquity": "4.338",
         "OrbitPeriod": "122123.86848",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "129900000",
-        "VolMeanRad": "235700.2418",
         "Width": "468.4"
     },
     {
-        "ABSMG": "+1.4   5",
+        "ABSMG": "+1.4",
         "ArgPeri": "340.555",
         "AscNode": "337.044",
         "BODYNAME": "Ariel",
         "CENTER_OF_ORBIT": "Uranus",
-        "Depth": "1162.2          1",
+        "Depth": "1162.2",
         "Eccentricity": ".0012",
         "Epoch": "2000",
         "Height": "1155.4",
@@ -1120,12 +1128,12 @@
         "MeanAnom": "350.75",
         "Obliquity": "0.042",
         "OrbitPeriod": "217761.08256",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "190900000",
-        "VolMeanRad": "578900.2779",
-        "Width": "1155.8          1"
+        "Width": "1155.8"
     },
     {
-        "ABSMG": "+2.04  5",
+        "ABSMG": "+2.04",
         "ArgPeri": "189.991",
         "AscNode": "325.953",
         "BODYNAME": "Umbriel",
@@ -1137,11 +1145,12 @@
         "MeanAnom": "229.37",
         "Obliquity": "0.133",
         "OrbitPeriod": "358058.1024",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "266000000",
         "VolMeanRad": "584699.7992"
     },
     {
-        "ABSMG": "+0.97  7",
+        "ABSMG": "+0.97",
         "ArgPeri": "322.028",
         "AscNode": "61.667",
         "BODYNAME": "Titania",
@@ -1153,11 +1162,12 @@
         "MeanAnom": "53.85",
         "Obliquity": "0.112",
         "OrbitPeriod": "752190.7968",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "436300000",
         "VolMeanRad": "788899.9057"
     },
     {
-        "ABSMG": "+1.17  7",
+        "ABSMG": "+1.17",
         "ArgPeri": "311.657",
         "AscNode": "118.682",
         "BODYNAME": "Oberon",
@@ -1169,11 +1179,12 @@
         "MeanAnom": "85.18",
         "Obliquity": "0.069",
         "OrbitPeriod": "1163212.704",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "583500000",
         "VolMeanRad": "761400.1213"
     },
     {
-        "ABSMG": "+8.55  4",
+        "ABSMG": "+8.55",
         "ArgPeri": "342.656",
         "AscNode": "163.54",
         "BODYNAME": "Caliban",
@@ -1188,7 +1199,7 @@
         "VolMeanRad": "47999.7511"
     },
     {
-        "ABSMG": "+11.96 9",
+        "ABSMG": "+11.96",
         "ArgPeri": "18.65",
         "AscNode": "188.164",
         "BODYNAME": "Stephano",
@@ -1203,7 +1214,7 @@
         "VolMeanRad": "9999.9216"
     },
     {
-        "ABSMG": "+7.07  9",
+        "ABSMG": "+7.07",
         "ArgPeri": "19.882",
         "AscNode": "260.857",
         "BODYNAME": "Sycorax",
@@ -1218,7 +1229,7 @@
         "VolMeanRad": "94999.8923"
     },
     {
-        "ABSMG": "+11.08 1",
+        "ABSMG": "+11.08",
         "ArgPeri": "173.832",
         "AscNode": "316.778",
         "BODYNAME": "Prospero",
@@ -1233,7 +1244,7 @@
         "VolMeanRad": "14999.8824"
     },
     {
-        "ABSMG": "+11.08 1",
+        "ABSMG": "+11.08",
         "ArgPeri": "358.929",
         "AscNode": "247.62",
         "BODYNAME": "Setebos",
@@ -1248,7 +1259,7 @@
         "VolMeanRad": "14999.8824"
     },
     {
-        "ABSMG": "+9.81  2",
+        "ABSMG": "+9.81",
         "ArgPeri": "354.0778",
         "AscNode": "58.582",
         "BODYNAME": "Naiad",
@@ -1259,11 +1270,12 @@
         "MeanAnom": "150.945",
         "Obliquity": "4.738",
         "OrbitPeriod": "25435.785888",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "48200000",
         "VolMeanRad": "29000.1549"
     },
     {
-        "ABSMG": "+9.12  3",
+        "ABSMG": "+9.12",
         "ArgPeri": "212.6123",
         "AscNode": "142.0225",
         "BODYNAME": "Thalassa",
@@ -1274,11 +1286,12 @@
         "MeanAnom": "90.52",
         "Obliquity": "0.205",
         "OrbitPeriod": "26912.26512",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "50100000",
         "VolMeanRad": "39999.6864"
     },
     {
-        "ABSMG": "+7.78  7",
+        "ABSMG": "+7.78",
         "ArgPeri": "282.4269",
         "AscNode": "5.503906",
         "BODYNAME": "Despina",
@@ -1289,11 +1302,12 @@
         "MeanAnom": "41.69",
         "Obliquity": "0.065",
         "OrbitPeriod": "28914.20928",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "52500000",
         "VolMeanRad": "73999.8021"
     },
     {
-        "ABSMG": "+7.64  7",
+        "ABSMG": "+7.64",
         "ArgPeri": "125.5678",
         "AscNode": "285.3589",
         "BODYNAME": "Galatea",
@@ -1304,11 +1318,12 @@
         "MeanAnom": "348.31",
         "Obliquity": "0.054",
         "OrbitPeriod": "37043.57664",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "62000000",
         "VolMeanRad": "78999.7629"
     },
     {
-        "ABSMG": "+7.2   9",
+        "ABSMG": "+7.2",
         "ArgPeri": "54.12",
         "AscNode": "326.7974",
         "BODYNAME": "Larissa",
@@ -1320,11 +1335,12 @@
         "Oblateness": ".6051",
         "Obliquity": "0.201",
         "OrbitPeriod": "47922.09696",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "73500000",
         "VolMeanRad": "96500.2628"
     },
     {
-        "ABSMG": "+5.53  2",
+        "ABSMG": "+5.53",
         "ArgPeri": "181.2898",
         "AscNode": "217.4241",
         "BODYNAME": "Proteus",
@@ -1336,11 +1352,12 @@
         "Oblateness": ".6671",
         "Obliquity": "0.039",
         "OrbitPeriod": "96968.06352",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "117600000",
         "VolMeanRad": "209000.0179  ."
     },
     {
-        "ABSMG": "+1.3   1",
+        "ABSMG": "+1.3",
         "ArgPeri": "344.046",
         "AscNode": "172.431",
         "BODYNAME": "Triton",
@@ -1352,11 +1369,12 @@
         "MeanAnom": "264.775",
         "Obliquity": "156.834",
         "OrbitPeriod": "507749.3856",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "354800000",
         "VolMeanRad": "1353399.8123"
     },
     {
-        "ABSMG": "+3.91  1",
+        "ABSMG": "+3.91",
         "ArgPeri": "283.9",
         "AscNode": "332.462",
         "BODYNAME": "Nereid",
@@ -1368,11 +1386,12 @@
         "MeanAnom": "215.9",
         "Obliquity": "7.232",
         "OrbitPeriod": "31115766.816",
+        "RotationPeriod": "41470",
         "SEMIMAJOR_AXIS": "5513400000",
-        "VolMeanRad": "169999.9414"
+        "VolMeanRad": "179000"
     },
     {
-        "ABSMG": "+2.15  5",
+        "ABSMG": "+2.15",
         "ArgPeri": "209.793",
         "AscNode": "223.015",
         "BODYNAME": "Charon",
@@ -1382,6 +1401,7 @@
         "Mass": "1.9E+24",
         "MeanAnom": "358.04",
         "OrbitPeriod": "551856.672",
+        "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": "19410000",
         "VolMeanRad": "592999.938"
     }

@@ -223,17 +223,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
     ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
     bool prev_valid = false;
-    double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.03, obl = 1.0 - cel->oblateness;
     bool dwh = false;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
-    double dep=1, wid=1, hei=1, theta, vtheta, cos_theta, cos_vtheta, is_day;
+    double theta, vtheta, cos_theta, cos_vtheta, is_day;
     if (dwh)
-    {
-        double vol = (((Moon*)cel)->depth+((Moon*)cel)->width+((Moon*)cel)->height)/3;
-        dep = ((Moon*)cel)->depth/vol;
-        wid = ((Moon*)cel)->width/vol;
-        hei = ((Moon*)cel)->height/vol;
-    }
+        cel->volumetric_mean_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width * ((Moon*)cel)->height, 0.333333333) * 1000;
+
+    double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
 
     double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
@@ -284,13 +280,13 @@ int draw_sphere(CelestialObject* cel, double arad)
         prev_valid = false;
         for (j=-80; j<=90; j+=10)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, cel->volumetric_mean_radius, 0);
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, dwh ? 1 : cel->volumetric_mean_radius, 0);
 
             if (dwh)
             {
-                cursor.x *= wid;
-                cursor.y *= hei;
-                cursor.z *= dep;
+                cursor.x *= ((Moon*)cel)->width * 1000;
+                cursor.y *= ((Moon*)cel)->height * 1000;
+                cursor.z *= ((Moon*)cel)->depth * 1000;
             }
             else cursor.y *= obl;
             cursor = rotate3D(cursor, center, yaxis, -timeofday);
@@ -356,13 +352,13 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
             n++;
-            land = Point::from_ra_dec(lon+M_PI, lat, cel->volumetric_mean_radius, 0);
+            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : cel->volumetric_mean_radius, 0);
 
             if (dwh)
             {
-                land.x *= wid;
-                land.y *= hei;
-                land.z *= dep;
+                land.x *= ((Moon*)cel)->width * 1000;
+                land.y *= ((Moon*)cel)->height * 1000;
+                land.z *= ((Moon*)cel)->depth * 1000;
             }
             else land.y *= obl;
             land = rotate3D(land, center, yaxis, -timeofday);
@@ -393,7 +389,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             {
                 land += cel->location.local_position;
                 vtheta = fabs(fmod(find_3D_angle(land, here.local_position, cel->location.local_position), M_PI*2));
-                if (vtheta > horizon_angle)
+                if (!wireframe && vtheta > horizon_angle)
                 {
                     todraw.push_back(ImVec2(-1e13, -2e13));
                     tdvalid.push_back(false);
