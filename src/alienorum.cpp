@@ -226,7 +226,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.03, obl = 1.0 - cel->oblateness;
     bool dwh = false;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
-    double dep=1, wid=1, hei=1, theta, cos_theta, is_day;
+    double dep=1, wid=1, hei=1, theta, vtheta, cos_theta, cos_vtheta, is_day;
     if (dwh)
     {
         double vol = (((Moon*)cel)->depth+((Moon*)cel)->width+((Moon*)cel)->height)/3;
@@ -343,8 +343,11 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe ? (fiftyseventh*15) : fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), stepcoslat, invlaststepcoslat = 1.0 / step;
-    int perline;
+    int perline, dx1, dy1, dx2, dy2;
     l = 0;
+    double d = cel->tmprel.magnitude(), horizon_angle;
+    horizon_angle = acos(cel->volumetric_mean_radius / fmax(d, 1e-29));
+
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
     {
         prev_valid = false;
@@ -388,62 +391,72 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             if (lon)
             {
-                int dx1 = dispcx + zdes.x * dispcx,
-                    dy1 = dispcy + zdes.y * dispcx,
-                    dx2 = dispcx + prev.x * dispcx,
+                land += cel->location.local_position;
+                vtheta = fabs(fmod(find_3D_angle(land, here.local_position, cel->location.local_position), M_PI*2));
+                if (vtheta > horizon_angle)
+                {
+                    todraw.push_back(ImVec2(-1e13, -2e13));
+                    tdvalid.push_back(false);
+                }
+                else
+                {
+                    dx1 = dispcx + zdes.x * dispcx;
+                    dy1 = dispcy + zdes.y * dispcx;
+                    dx2 = dispcx + prev.x * dispcx;
                     dy2 = dispcy + prev.y * dispcx;
 
-                double yd = (dy1 - cel->drawny);
-                if (yd > result) result = yd;
+                    double yd = (dy1 - cel->drawny);
+                    if (yd > result) result = yd;
 
-                ImVec2 v = ImVec2(dx1, dy1);
-                if (prev_valid && wireframe)
-                {
-                    ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
-                    if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
-                }
-                todraw.push_back(v);
-                tdvalid.push_back(true);
-
-                if (!wireframe && (lat>-M_PI_2) && !dragging)
-                {
-                    m = l - n - perline + round(lon*invlaststepcoslat) + 2;
-                    if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
+                    ImVec2 v = ImVec2(dx1, dy1);
+                    if (prev_valid && wireframe)
                     {
-                        if (self_luminous)
-                        {
-                            is_day = 1;
-                        }
-                        else
-                        {
-                            land += cel->location.local_position;
-                            theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), M_PI);
-                            if (fabs(theta) < M_PI_2)
-                            {
-                                cos_theta = cos(theta);
-                                is_day = fmin(1, pow(cos_theta, 0.333) + starlight);
-                            }
-                            else is_day = starlight;
-                        }
-
-                        ImVec2 points[4];
-                        points[0] = v;
-                        points[1] = todraw[l-1];
-                        points[2] = todraw[m-1];
-                        points[3] = todraw[m];
-                        if (map && is_day) rgb = map->color_at(lat, lon);
-                        ImU32 imcol = IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255);
-                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
-                        if (m > lastm+1 && tdvalid[m-2])
-                        {
-                            points[2] = todraw[m-2];
-                            points[3] = todraw[m-1];
-                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
-                        }
-                        cel->onscreen = true;
+                        ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                        if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                     }
+                    todraw.push_back(v);
+                    tdvalid.push_back(true);
 
-                    lastm = m;
+                    if (!wireframe && (lat>-M_PI_2) && !dragging)
+                    {
+                        m = l - n - perline + round(lon*invlaststepcoslat) + 2;
+                        if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
+                        {
+                            if (self_luminous)
+                            {
+                                cos_vtheta = cos(vtheta);
+                                is_day = fmin(1, pow(cos_vtheta, 0.333));
+                            }
+                            else
+                            {
+                                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), M_PI);
+                                if (fabs(theta) < M_PI_2)
+                                {
+                                    cos_theta = cos(theta);
+                                    is_day = fmin(1, pow(cos_theta, 0.333) + starlight);
+                                }
+                                else is_day = starlight;
+                            }
+
+                            ImVec2 points[4];
+                            points[0] = v;
+                            points[1] = todraw[l-1];
+                            points[2] = todraw[m-1];
+                            points[3] = todraw[m];
+                            if (map && is_day) rgb = map->color_at(lat, lon);
+                            ImU32 imcol = IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255);
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+                            if (m > lastm+1 && tdvalid[m-2])
+                            {
+                                points[2] = todraw[m-2];
+                                points[3] = todraw[m-1];
+                                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+                            }
+                            cel->onscreen = true;
+                        }
+
+                        lastm = m;
+                    }
                 }
                 l++;
             }
@@ -1514,17 +1527,13 @@ void identify_object_under_cursor(ImGuiIO& io)
         oss.str("");
         oss.clear();
 
-        if (cels[i]->distance_known)
-        {
-            if (cels[i]->type == star)
-            {
-                oss << "AbsMag: " << std::setprecision(2) << ((Star*)cels[i])->absolute_magnitude << "\n";
-            }
-            oss << "Dist:   " << cels[i]->scaled_distance(here) << std::endl;
-        }
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
+            if (s->distance_known)
+            {
+                oss << "AbsMag: " << std::setprecision(2) << s->absolute_magnitude << "\n";
+            }
             objinfo += (std::string)"SpTyp: " + s->spectral_type + (std::string)"\n";
         }
         else if (cels[i]->type == galaxy)
@@ -1533,6 +1542,7 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
+            oss << "Dist:   " << cels[i]->scaled_distance(here) << std::endl;
             oss << "Lit %:  " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
         }
 
@@ -1764,8 +1774,8 @@ void process_key_cmd_char(char c)
 
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
-        case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; break;
-        case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; break;
+        case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
+        case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
 
         case '-':
         vm = velocity.magnitude();
@@ -2305,7 +2315,7 @@ void draw_objedit_window(ImGuiIO& io)
     objedtheight += txtyscale;
 
     stringstream massss;
-    massss << "Density: " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-3) << " g/cm^3";
+    massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-3) << " g/cm^3";
     std::string dens = massss.str();
     ImGui::Text("%s", dens.c_str());
     objedtheight += txtyscale;
