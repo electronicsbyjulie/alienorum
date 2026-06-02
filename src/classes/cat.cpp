@@ -2209,6 +2209,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     while (fgets(buffer, 1020, fp))
     {
         if (*buffer == '#') continue;
+        if (*buffer == '(') continue;                       // For now.
         if (*buffer == '!')
         {
             char* col;
@@ -2240,6 +2241,13 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             col = strstr(buffer, "J2");                     fieldcols[24] = col ? (col - buffer) : -1;
             col = strstr(buffer, "PrecNode");               fieldcols[25] = col ? (col - buffer) : -1;
             col = strstr(buffer, "ProcArgPeri");            fieldcols[26] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "RingRadius");             fieldcols[27] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "SurfMap");                fieldcols[28] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "CloudMap");               fieldcols[29] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "NightMap");               fieldcols[30] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "RingColorMap");           fieldcols[31] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "RingTranspMap");          fieldcols[32] = col ? (col - buffer) : -1;
+            col = strstr(buffer, "BumpMap");                fieldcols[33] = col ? (col - buffer) : -1;
             // for (j=0; j<=26; j++) std::cout << j << ": " << fieldcols[j] << std::endl;
             continue;
         }
@@ -2333,7 +2341,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             read_field_onebased(buffer, fieldcols[13], fieldcols[14], field);
             m->width = atof(field);
 
-            read_field_onebased(buffer, fieldcols[14], strlen(buffer), field);
+            read_field_onebased(buffer, fieldcols[14], fieldcols[27], field);
             m->height = atof(field);
         }
 
