@@ -210,7 +210,7 @@ void draw_ra_dec_lines()
     }
 }
 
-double sphresolution = 0.003;
+double sphresolution = 0.01;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
@@ -1039,12 +1039,14 @@ void compute_object_draw_coordinates()
 
 void draw_objects()
 {
-    int i, j, pass;
+    int i, j, n, pass;
     double jay, step, dispw = dispcx*2, disph = dispcy*2;
     ImVec2 xycoord;
     double appmag, magrad, flare, theta;
     double orbseg = 81;
     double lmasslim = lbllsys_mass_lim*1000;
+    std::vector<CelestialObject*> to_draw_sphere;
+    std::vector<int> to_draw_idx;
 
     Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -1106,8 +1108,8 @@ void draw_objects()
     {
         if (i == whereami) continue;
 
-        if (!pass && magrad_cache[i] > 3) continue;
-        else if (pass && magrad_cache[i] <= 3) continue;
+        if (!pass && fabs(magrad_cache[i]) > 3) continue;
+        else if (pass && fabs(magrad_cache[i]) <= 3) continue;
 
         if (angular_radius[i]*zoom < fiftyseventh)
         {
@@ -1126,7 +1128,7 @@ void draw_objects()
 
         #define max_magrad 10
 
-        magrad = magrad_cache[i];
+        magrad = fabs(magrad_cache[i]);
         flare = (magrad>max_magrad) ? fmin(225, fmax(0, 1.0+sqrt(magrad-0.5*max_magrad)*8)) : 0;
         magrad = fmin(max_magrad, magrad);
 
@@ -1134,10 +1136,37 @@ void draw_objects()
 
         if (angular_radius[i]*zoom > fiftyseventh)
         {
-            magrad_cache[i] = magrad = draw_sphere(cels[i], angular_radius[i]*zoom);
+            n = to_draw_sphere.size();
+            if (!n)
+            {
+                to_draw_sphere.push_back(cels[i]);
+                to_draw_idx.push_back(i);
+            }
+            else
+            {
+                discinstead[i] = false;
+                double trm = cels[i]->tmprel.magnitude();
+                for (j=0; j<n; j++)
+                {
+                    if (to_draw_sphere[j]->tmprel.magnitude() < trm)
+                    {
+                        to_draw_sphere.insert(to_draw_sphere.begin()+j, cels[i]);
+                        to_draw_idx.insert(to_draw_idx.begin()+j, i);
+                        discinstead[i] = true;
+                        break;
+                    }
+                }
+                if (!discinstead[i])
+                {
+                    to_draw_sphere.push_back(cels[i]);
+                    to_draw_idx.push_back(i);
+                }
+                discinstead[i] = true;
+            }
         }
         else
         {
+            discinstead[i] = false;
             Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
             if (flare)
             {
@@ -1199,6 +1228,7 @@ void draw_objects()
             continue;
 
         if (i == whereami) continue;
+        if (discinstead[i]) continue;
         // if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
         // if (cels[i]->orbit) std::cout << cels[i]->name << " " << cels[i]->location.distance_to(here) << " " << cels[i]->orbit->semimajor_axis << std::endl;
         if (cels[i]->orbit && cels[i]->location.distance_to(here) > 1e3*cels[i]->orbit->semimajor_axis) continue;
@@ -1228,6 +1258,43 @@ void draw_objects()
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+magrad+1),
                 rgba_apply_redlight(objlbl_color),
                 cels[i]->name);
+        }
+    }
+
+    n = to_draw_sphere.size();
+    for (j=0; j<n; j++)
+    {
+        i = to_draw_idx[j];
+        CelestialObject *cel = to_draw_sphere[j];
+        magrad_cache[i] = magrad = draw_sphere(cel, angular_radius[i]*zoom);
+        discinstead[i] = false;
+
+        if (selected == i)
+        {
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
+        }
+
+        if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
+               ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
+                || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
+                || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
+                || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
+                || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == 5 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+                || (cbolbls_selected_idx == 6 && cels[i]->known_poles)
+             ))
+            || (cels[i]->orbit && (cels[i]->cenobj == mycenobj) && lbl_localsys
+                && ((cels[i]->mass >= lmasslim)
+                 || (vmag_cache[i] < 2.5)
+                 || (cels[i]->tmprel.magnitude() < AU)
+                   )
+               )
+            || i == selected)
+        {
+            ImVec2 sz = ImGui::CalcTextSize(cel->name);
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+magrad+1),
+                rgba_apply_redlight(objlbl_color),
+                cel->name);
         }
     }
 }
@@ -1698,7 +1765,7 @@ void process_key_cmd_char(char c)
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; break;
-        case '/': zoom *= 0.9; global_brightness *= 0.95; viewchanged = true; break;
+        case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; break;
 
         case '-':
         vm = velocity.magnitude();
@@ -1731,6 +1798,7 @@ void lookfor_cb()
     if (i>=0)
     {
         selected = i;
+        trackidx = -1;
         center_selected();
         searched = true;
     }
@@ -2542,6 +2610,7 @@ int main (int argc, char** argv)
     vmag_cache = new double[MAX_CELOBJS];
     magrad_cache = new double[MAX_CELOBJS];
     angular_radius = new double[MAX_CELOBJS];
+    discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
@@ -3141,6 +3210,7 @@ int main (int argc, char** argv)
     delete[] cels;
     delete[] vmag_cache;
     delete[] magrad_cache;
+    delete[] discinstead;
     delete[] bx_cache;
     delete[] by_cache;
     delete[] consaidx;
