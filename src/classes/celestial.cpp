@@ -9,7 +9,7 @@
 
 CelestialObject **cels, *mycenobj = nullptr;
 bool *celskip, *discinstead;
-double *vmag_cache, *magrad_cache, *angular_radius;
+double *vmag_cache, *bloomrad_cache, *angular_radius;
 CelestialLocation here;
 typedef struct my_jpeg_error_mgr * my_error_ptr;
 

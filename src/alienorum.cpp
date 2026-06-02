@@ -1026,7 +1026,7 @@ void compute_object_draw_coordinates()
                 : cels[i]->viewer_magnitude(here);
 
             double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-            magrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
+            bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
             Cartesian2D cart(rel, azimuth, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -1055,7 +1055,7 @@ void draw_objects()
     int i, j, n, pass;
     double jay, step, dispw = dispcx*2, disph = dispcy*2;
     ImVec2 xycoord;
-    double appmag, magrad, flare, theta;
+    double appmag, bloomrad, flare, theta;
     double orbseg = 81;
     double lmasslim = lbllsys_mass_lim*1000;
     std::vector<CelestialObject*> to_draw_sphere;
@@ -1121,8 +1121,8 @@ void draw_objects()
     {
         if (i == whereami) continue;
 
-        if (!pass && fabs(magrad_cache[i]) > 3) continue;
-        else if (pass && fabs(magrad_cache[i]) <= 3) continue;
+        if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
+        else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
 
         if (angular_radius[i]*zoom < fiftyseventh)
         {
@@ -1139,11 +1139,11 @@ void draw_objects()
         appmag = vmag_cache[i];
         if (appmag > 6.5) continue;
 
-        #define max_magrad 10
+        #define max_bloomrad 10
 
-        magrad = fabs(magrad_cache[i]);
-        flare = (magrad>max_magrad) ? fmin(225, fmax(0, 1.0+sqrt(magrad-0.5*max_magrad)*8)) : 0;
-        magrad = fmin(max_magrad, magrad);
+        bloomrad = fabs(bloomrad_cache[i]);
+        flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
+        bloomrad = fmin(max_bloomrad, bloomrad);
 
         #define bloom_exponent 2.5
 
@@ -1194,7 +1194,7 @@ void draw_objects()
                 for (j=jmax; j>0; j--)
                 {
                     jay = 0.25 + 0.25 * j * flare;
-                    double jay15 = jay+max_magrad;
+                    double jay15 = jay+max_bloomrad;
                     ImVec2 radii(jay15, jay15*0.333);
                     ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
                     double thoff = M_PI*0.1*j;
@@ -1203,7 +1203,7 @@ void draw_objects()
                 }
             }
 
-            double mgrc = magrad_cache[i];
+            double mgrc = bloomrad_cache[i];
             double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
 
             if (mgrc >= 2)
@@ -1213,7 +1213,7 @@ void draw_objects()
             }
 
             col.red *= divisor; col.green *= divisor; col.blue *= divisor;
-            for (jay=magrad; jay>=0; jay-=0.7)
+            for (jay=bloomrad; jay>=0; jay-=0.7)
             {
                 RGB rgb = Color::rgb_from_color(col, 1);
                 if (rgb.r >= 16 || rgb.b >= 16)
@@ -1228,7 +1228,7 @@ void draw_objects()
         }
         if (selected == i)
         {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(selected_color), 0, 2);
         }
     }
 
@@ -1248,8 +1248,8 @@ void draw_objects()
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
         if (angular_radius[i]*zoom > fiftyseventh)
-            magrad = magrad_cache[i];
-        else magrad = fmin(max_magrad, magrad_cache[i]);
+            bloomrad = bloomrad_cache[i];
+        else bloomrad = fmin(max_bloomrad, bloomrad_cache[i]);
         if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
                ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
                 || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
@@ -1268,7 +1268,7 @@ void draw_objects()
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+magrad+1),
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
                 rgba_apply_redlight(objlbl_color),
                 cels[i]->name);
         }
@@ -1279,12 +1279,13 @@ void draw_objects()
     {
         i = to_draw_idx[j];
         CelestialObject *cel = to_draw_sphere[j];
-        magrad_cache[i] = magrad = draw_sphere(cel, angular_radius[i]*zoom);
+        bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
         discinstead[i] = false;
 
+        xycoord = ImVec2(cel->drawnx, cel->drawny);
         if (selected == i)
         {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(selected_color), 0, 2);
         }
 
         if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
@@ -1305,7 +1306,7 @@ void draw_objects()
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cel->name);
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+magrad+1),
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+bloomrad+1),
                 rgba_apply_redlight(objlbl_color),
                 cel->name);
         }
@@ -2618,7 +2619,7 @@ int main (int argc, char** argv)
     int i, j, l, n;
     cels = new CelestialObject*[MAX_CELOBJS];
     vmag_cache = new double[MAX_CELOBJS];
-    magrad_cache = new double[MAX_CELOBJS];
+    bloomrad_cache = new double[MAX_CELOBJS];
     angular_radius = new double[MAX_CELOBJS];
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
@@ -3219,7 +3220,7 @@ int main (int argc, char** argv)
 
     delete[] cels;
     delete[] vmag_cache;
-    delete[] magrad_cache;
+    delete[] bloomrad_cache;
     delete[] discinstead;
     delete[] bx_cache;
     delete[] by_cache;
