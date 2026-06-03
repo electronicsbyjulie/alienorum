@@ -564,8 +564,9 @@ int draw_sphere(CelestialObject* cel, double arad)
         n = 0;
         for (i=0; i<perline; i++)
         {
-            if (!tdvalid[i]) continue;
-            points[n++] = todraw[i];
+            j = l-perline-i-1;
+            if (!tdvalid[j]) continue;
+            points[n++] = todraw[j];
         }
 
         // Certain vars are left over from the last iteration; assume values are still good.
