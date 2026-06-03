@@ -573,7 +573,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         }
 
         n = round(M_PI*2/step) * 5;
-        double step1 = (double)ringsize / fmax(4, round(M_PI*2/step)/4), step2 = M_PI*2/n;
+        double step1 = (double)ringsize / fmax(4, fmin(result, round(M_PI*2/step)/2)), step2 = M_PI*2/n;
 
         Map *rmap = cel->ring_map, *rxmap = cel->ringx_map;
         rgb = {225, 208, 192};
@@ -634,7 +634,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                         if (m>=1 && tdvalidr[l-1] && tdvalidr[m] && tdvalidr[m-1])
                         {
                             is_day = (cel->tmprel.get_distance_to_line(dust, lightcen->tmprel) < equatorial_radius)
-                                ? 0 : (0.2 + 0.8 * pl->amt_lit);
+                                ? 0 : (0.15 + 0.44 * pl->amt_lit);
 
                             ImVec2 points[4];
                             points[0] = v;
