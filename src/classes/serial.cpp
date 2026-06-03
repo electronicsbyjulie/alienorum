@@ -14,16 +14,17 @@ std::string Serialization::load_string(FILE *in)
 {
     __uint8_t n;
     fread(&n, sizeof(__uint8_t), 1, in);
-    char buffer[1+n];
-    fread(buffer, sizeof(char), n, in);
+    auto buffer = std::make_unique<char[]>(n+1);
+    fread(buffer.get(), sizeof(char), n, in);
     buffer[n] = 0;
-    return std::string(buffer);
+    std::string ret(buffer.get());
+    return ret;
 }
 
 int find_object(const char* search_term, bool os)
 {
     int i, n;
-    int is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
+    __uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
     bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L')
         || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'J')
@@ -140,12 +141,12 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
     }
 }
 
-bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
+bool Serialization::load_all(std::fstream& fs, CelestialObject **cels)
 {
     try
     {
         json allobj;
-        allobj << fs;
+        fs >> allobj;
         int i, j, n = allobj.size();
         for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
         for (auto it = allobj.begin(); it != allobj.end(); ++it)

@@ -416,12 +416,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     char buffer[65536];
     char field[32];
     int num_read = 0;
-    int offset, HD, HR, j;
+    int offset, j;
+    __uint32_t HD, HR;
     double deg, mnt, sec;
     bool HDfound;
     double f;
     StarMulti *current_multi = nullptr;
-    int current_multi_hrno = 0;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -484,7 +484,6 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 8, 11, field);
         std::string bayer = trim(field);
         if (field[3] < 'A') s->BayerGrkno = Grkno_from_abbrev(field);
-        int BayerXtraNum = atoi(&field[3]);
         read_field_onebased(buffer, 12, 14, field);
         std::string cons = trim(field);
 
@@ -524,7 +523,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
         {
-            if (HR != current_multi_hrno)
+            if (HR != 0)
             {
                 current_multi = nullptr;
                 A = nullptr;
@@ -668,8 +667,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     char field[32];
     char Bonn[32], Cordoba[32], Cape[32];
     int num_read = 0;
-    int offset, HD, HIP, j, cursor;
-    double deg, mnt, sec, RA, Decl, f, f1;
+    int offset, j;
+    __uint32_t HD, HIP;
+    double deg, mnt, sec, RA, Decl, f;
     Star *s, *A;
 
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -706,7 +706,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             // There are only a handful with no V magnitude; omit them.
             read_field_onebased(buffer, 42, 46, field);
             if (!trim(field).size()) continue;
-            double appmag = atof(field);
 
             #if _filter_Hipparcos_stars_appmag
             f = atof(field);
@@ -879,7 +878,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         s->update_location(J2000_TIME_T);
         if (is_new)
         {
-            cursor = offset;
             cels[offset++] = s;
             mtx.lock();
             loading_msg = std::string("Loading Hipparcos Catalog... Added HIP") + std::to_string(s->HIP);
@@ -1039,15 +1037,13 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     char buffer[1024];
     char field[32];
     int num_read = 0;
-    int offset, HD, HIP, i;
+    int offset;
+    __uint32_t HD, HIP;
     Star *s, *A = nullptr;
     std::string CCDM, CCDM_A;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
-
-    bool already[max];
-    memset(already, 0, max*sizeof(bool));
 
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
@@ -1057,7 +1053,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         //   2- 11  A10    ---     CCDM     (Catalogue of the Components of the Double and Multiple stars) identifier (1)
         read_field_onebased(buffer, 2, 11, field);
         CCDM = trim(field);
-        const char* cCCDM = CCDM.c_str();
         if (CCDM != CCDM_A) A = nullptr;
 
         //  99-104  A6     ---     HD       HD identifier
@@ -1201,7 +1196,8 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     char buffer[1024];
     char field[32], Bonn, Bonn_sign, cen[5], comp[5];
     int num_read = 0;
-    int HD, HIP, SB9, Bonn_decl, Bonn_seq, i, j, l, n, found, offset;
+    int Bonn_decl, i, n, found, offset;
+    __uint32_t HD, HIP, SB9, Bonn_seq;
     Star *s, *A, *B;
     double f;
 
@@ -1930,7 +1926,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             if (s)
             {
                 if (!star_dist || (star_vmag > 1e28)) continue;
-                if (s && (fabs(s->right_ascension - star_ra) > fiftyseventh)
+                if (fabs(s->right_ascension - star_ra) > fiftyseventh
                         || fabs(s->declination - star_decl) > fiftyseventh
                         || fabs(s->apparent_magnitude - star_vmag) > 0.5
                     )
@@ -2013,7 +2009,8 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
     char buffer[1024];
     char field[32];
     int num_read = 0;
-    int HD, HIP, i;
+    int i;
+    __uint32_t HD, HIP;
     std::string Gliese;
 
     FILE* fp = fopen(path.c_str(), "rb");
@@ -2048,9 +2045,8 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
 
                 if (s->multisys && s->multisys->get_member('A') == s)
                 {
-                    char c;
                     Star* companion;
-                    for (c = 'B'; companion = s->multisys->get_member(c); c++)
+                    for (char c = 'B'; (companion = s->multisys->get_member(c)); c++)
                     {
                         strcpy(companion->name, (lop_component(s->name) + std::string(" ") + std::string(1, c)).c_str() );
                     }
@@ -2069,7 +2065,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     std::string path = "catalogs/star_orbits.dat";
     char buffer[1024];
     char field[32];
-    int i, j, offset, num_read = 0;
+    int i, num_read = 0;
     double f;
 
     FILE* fp = fopen(path.c_str(), "rb");
@@ -2087,7 +2083,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         const char* censtr = cenname.c_str();
         A = nullptr;
         for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, censtr)
-            || (cels[i]->typeclass() == class_star && censtr[0] == 'H' && censtr[1] == 'D' && atoi(&censtr[2]) == ((Star*)cels[i])->HD)
+            || (cels[i]->typeclass() == class_star && censtr[0] == 'H' && censtr[1] == 'D' && (__uint32_t)atoi(&censtr[2]) == ((Star*)cels[i])->HD)
             )
         {
             A = (Star*)cels[i];
@@ -2129,7 +2125,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         s = nullptr;
         for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, bdystr)
-            || (cels[i]->typeclass() == class_star && bdystr[0] == 'H' && bdystr[1] == 'D' && atoi(&bdystr[2]) == ((Star*)cels[i])->HD)
+            || (cels[i]->typeclass() == class_star && bdystr[0] == 'H' && bdystr[1] == 'D' && (__uint32_t)atoi(&bdystr[2]) == ((Star*)cels[i])->HD)
             )
         {
             s = (Star*)cels[i];

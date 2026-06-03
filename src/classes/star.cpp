@@ -140,9 +140,8 @@ void Star::rename_from_Bayer_Flamsteed()
 
     if (multisys && multisys->get_member('A') == this)
     {
-        char c;
         Star* companion;
-        for (c = 'B'; companion = multisys->get_member(c); c++)
+        for (char c = 'B'; (companion = multisys->get_member(c)); c++)
         {
             strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
@@ -296,10 +295,11 @@ void Star::gotta_be_named_something()
 
     if (multisys)
     {
-        char c;
         Star* companion;
-        for (c = 'B'; companion = multisys->get_member(c); c++)
+        for (char c = 'B'; (companion = multisys->get_member(c)); c++)
         {
+            if(companion == nullptr)
+                break;
             strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }

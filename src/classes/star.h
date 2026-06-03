@@ -79,6 +79,7 @@ class StarMulti
     Star* get_member(char comp);
     char is_member(Star* s);
     void unlink();                          // Call this before deleting object and before deleting any stars.
+    char get_allocated();
 
     protected:
     Star** members = nullptr;
