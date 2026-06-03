@@ -210,6 +210,39 @@ void draw_ra_dec_lines()
     }
 }
 
+void load_textures(CelestialObject* cel)
+{
+    std::string filename;
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->cloud_map = map;
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->surf_map = map;
+    }
+
+    cel->looked_for_maps = true;
+
+    if ((cel->type == gas_giant || cel->type == ice_giant) && !cel->cloud_map)
+    {
+        cel->cloud_map = new Map();
+        cel->cloud_map->generate_gas_giant_map(503, cel->BV_color);
+    }
+    else if (cel->type == rocky && !cel->surf_map)
+    {
+        cel->surf_map = new Map();
+        double vmag = cel->cenobj->viewer_magnitude(cel->location);
+        cel->surf_map->generate_rocky_map(503, cel->BV_color, vmag >= 26.3 && vmag <= 26.9);
+    }
+}
+
 double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
@@ -245,35 +278,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (!wireframe && !cel->looked_for_maps) // && !cel->bump_map && !cel->surf_map)
     {
-        std::string filename;
-
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.jpg";
-        if (file_exists(filename.c_str()))
-        {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->cloud_map = map;
-        }
-
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
-        if (file_exists(filename.c_str()))
-        {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->surf_map = map;
-        }
-
         cel->looked_for_maps = true;
-
-        if ((cel->type == gas_giant || cel->type == ice_giant) && !cel->cloud_map)
-        {
-            cel->cloud_map = new Map();
-            cel->cloud_map->generate_gas_giant_map(503, cel->BV_color);
-        }
-        else if (cel->type == rocky && !cel->surf_map)
-        {
-            cel->surf_map = new Map();
-            double vmag = cel->cenobj->viewer_magnitude(cel->location);
-            cel->surf_map->generate_rocky_map(503, cel->BV_color, vmag >= 26.3 && vmag <= 26.9);
-        }
+        std::thread ttex(load_textures, cel);
+        ttex.detach();
     }
 
     if (wireframe) for (i=0; i<24; i++)
