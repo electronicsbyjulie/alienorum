@@ -77,7 +77,7 @@ void Star::update_location(double tmnow)
 
     location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (M_PI/2), equinox,
         Point::from_ra_dec(right_ascension, declination, distance));
-    if (!leave_my_damn_equator_the_hell_alone) location.orbital_plane = location.equatorial_plane = location.local_system_plane;
+    if (!lock_equatorial_plane) location.orbital_plane = location.equatorial_plane = location.local_system_plane;
 }
 
 void Star::rename_from_Bayer_Flamsteed()

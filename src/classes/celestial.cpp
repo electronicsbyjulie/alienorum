@@ -460,7 +460,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     Point pole = yaxis;
     pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -obliquity);
-    if (!leave_my_damn_equator_the_hell_alone) location.equatorial_plane = align_points_3d(pole, yaxis, center);
+    if (!lock_equatorial_plane) location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
     if (_class == class_moon && !crp)
     {

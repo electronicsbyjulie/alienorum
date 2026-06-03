@@ -130,7 +130,7 @@ class CelestialObject
     CelestialObject();
     virtual ~CelestialObject() = default;
     CelestialLocation location;
-    bool leave_my_damn_equator_the_hell_alone = false;
+    bool lock_equatorial_plane = false;
     Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
     CelestialObject *cenobj = nullptr;
     Point tmprel;

@@ -210,10 +210,11 @@ void draw_ra_dec_lines()
     }
 }
 
-double sphresolution = 0.01;
+double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
+    if (sphresolution < 0.001) sphresolution = 0.001;
     bool wireframe = dragging || !cel->onscreen || (here.distance_to(cel->location) < cel->volumetric_mean_radius);
     cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
@@ -338,7 +339,8 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (!self_luminous) while (lightcen->orbit && lightcen->type != star) lightcen = lightcen->orbit->center;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
-    double step = wireframe ? (fiftyseventh*15) : fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), stepcoslat, invlaststepcoslat = 1.0 / step;
+    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
+        stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline, dx1, dy1, dx2, dy2;
     l = 0;
     double d = cel->tmprel.magnitude(), horizon_angle;
@@ -468,14 +470,18 @@ int draw_sphere(CelestialObject* cel, double arad)
     auto sphere_finished = std::chrono::high_resolution_clock::now();
     auto sphere_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(sphere_finished - sphere_began);
 
-    if (sphere_elapsed.count() >= 3e5)
+    if (!wireframe && cel->onscreen)
     {
-        if (sphresolution < 0.08) sphresolution *= 1.1;
-        else if (!bugged)
+        if (sphere_elapsed.count() >= 1e5)
         {
-            std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
-            bugged = true;
+            if (sphresolution < 0.2) sphresolution *= 1.3;
+            else if (!bugged)
+            {
+                std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
+                bugged = true;
+            }
         }
+        else if (sphere_elapsed.count() < 3e4) sphresolution *= 0.9;
     }
 
     return result;

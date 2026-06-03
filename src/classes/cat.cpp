@@ -2109,19 +2109,29 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         read_field_onebased(buffer, 77, 87, field);
         double inclination = atof(field) * fiftyseventh;
 
-        if (inclination || ascending_node)
-        {
-            A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
-                A->location.system_center - cels[0]->location.system_center);
-            if (!A->leave_my_damn_equator_the_hell_alone) A->location.orbital_plane = A->location.equatorial_plane = A->location.local_system_plane;
-            A->obliquity = inclination;
-            A->equinox = ascending_node;
-            A->known_poles = true;
-        }
-
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
+
+        if (inclination || ascending_node)
+        {
+            if (!strcmp(bdystr, "(stellar rotation)"))
+            {
+                A->location.equatorial_plane = system_plane_from_incl_and_node(inclination, ascending_node,
+                    A->location.system_center - cels[0]->location.system_center);
+                A->lock_equatorial_plane = true;
+            }
+            else
+            {
+                A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
+                    A->location.system_center - cels[0]->location.system_center);
+                A->location.orbital_plane = A->location.local_system_plane;
+                if (!A->lock_equatorial_plane) A->location.equatorial_plane = A->location.local_system_plane;
+                A->obliquity = inclination;
+                A->equinox = ascending_node;
+            }
+            A->known_poles = true;
+        }
 
         if (bdystr[0] == '(') continue;
 
@@ -2267,7 +2277,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 
                 Point pole = Point::from_ra_dec(ra, decl, light_year*1e29, 0);
                 p->location.equatorial_plane = align_points_3d(pole, yaxis, center);
-                p->leave_my_damn_equator_the_hell_alone = true;
+                p->lock_equatorial_plane = true;
                 p->known_poles = true;
             } catch (...) { ; }
             try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
