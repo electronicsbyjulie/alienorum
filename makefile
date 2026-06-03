@@ -2,13 +2,13 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image jpeg
+#   brew install sdl2 sdl2_image jpeg png
 #
 # MSYS2 (Run in MINGW64 environment):
-#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng
 #
 
 CPP = g++
@@ -49,14 +49,14 @@ CPPFLAGS += $(INCLUDES)
 # Platform-specific configurations
 ifeq ($(UNAME_S), Linux)
     ECHO_MESSAGE = "Building for Linux..."
-    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image -ljpeg
+    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image -ljpeg -lpng
     CPPFLAGS += `sdl2-config --cflags`
     CFLAGS = $(CPPFLAGS)
 endif
 
 ifeq ($(UNAME_S), Darwin)
     ECHO_MESSAGE = "Building for Mac OS..."
-    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image -ljpeg
+    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image -ljpeg -lpng
     # Support both Intel (/usr/local) and Apple Silicon (/opt/homebrew)
     LIBS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
     CPPFLAGS += `sdl2-config --cflags` -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
@@ -65,7 +65,7 @@ endif
 
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
-    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image -ljpeg
+    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image -ljpeg -lpng
     CPPFLAGS += `pkg-config --cflags sdl2`
     CFLAGS = $(CPPFLAGS)
 endif

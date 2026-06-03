@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <setjmp.h>
 #include "jpeglib.h"
+#include "png.h"
 #include "point.h"
 #include "color.h"
 
@@ -82,6 +83,7 @@ class Map
     public:
     bool load_from_bmp(std::string filename);
     bool load_from_jpeg(std::string filename);
+    bool load_from_png(std::string filename);
 
     RGB color_at(double latitude, double longitude);
     void generate_rocky_map(int latitude_resolution, double BV_color, bool has_water);

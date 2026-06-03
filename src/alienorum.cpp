@@ -220,12 +220,94 @@ void load_textures(CelestialObject* cel)
         Map *map = new Map();
         if (map->load_from_jpeg(filename)) cel->cloud_map = map;
     }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->cloud_map = map;
+        }
+    }
 
     filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
     if (file_exists(filename.c_str()))
     {
         Map *map = new Map();
         if (map->load_from_jpeg(filename)) cel->surf_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->surf_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->bump_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->bump_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_night.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->night_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_night.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->night_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ring.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->ring_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ring.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->ring_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ringx.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->ringx_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ringx.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->ringx_map = map;
+        }
     }
 
     cel->looked_for_maps = true;
@@ -555,12 +637,12 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[1] = todrawr[l-1];
                             points[2] = todrawr[m-1];
                             points[3] = todrawr[m];
-                            
-                                if (rmap) rgb = rmap->color_at(0, lon);
-                                if (rxmap) xpar = rxmap->color_at(0, xmapd);
-                                ImU32 imcol = IM_COL32(rgb.r, rgb.g, rgb.b, xpar.g);
-                                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
-                                
+
+                            if (rmap) rgb = rmap->color_at(0, lon);
+                            if (rxmap) xpar = rxmap->color_at(0, xmapd);
+                            ImU32 imcol = IM_COL32(rgb.r, rgb.g, rgb.b, 255-xpar.g);
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+
                             cel->onscreen = true;
                         } // if all vertices valid
                     } // if ready draw filled poly

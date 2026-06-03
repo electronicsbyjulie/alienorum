@@ -605,6 +605,109 @@ bool Map::load_from_jpeg(std::string filename)
     return true;
 }
 
+bool Map::load_from_png(std::string filename)
+{
+    png_structp png_ptr;
+    png_infop info_ptr;
+    unsigned int sig_read = 0;
+    png_uint_32 width, height;
+    int bit_depth, color_type, interlace_type;
+    FILE *fp;
+
+    if ((fp = fopen(filename.c_str(), "rb")) == NULL)
+        return false;
+
+    png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING,
+        nullptr, nullptr, nullptr);
+
+    if (png_ptr == NULL)
+    {
+        fclose(fp);
+        return false;
+    }
+
+    info_ptr = png_create_info_struct(png_ptr);
+    if (info_ptr == NULL)
+    {
+        fclose(fp);
+        png_destroy_read_struct(&png_ptr, NULL, NULL);
+        return false;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr)))
+    {
+        /* Free all of the memory associated with the png_ptr and info_ptr */
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        /* If we get here, we had a problem reading the file */
+        return false;
+    }
+
+    png_init_io(png_ptr, fp);
+    png_read_png(png_ptr, info_ptr, 0, NULL);
+
+    auto bytes_per_row = png_get_rowbytes( png_ptr, info_ptr );
+    image_height = png_get_image_height( png_ptr, info_ptr );
+    image_width = png_get_image_width( png_ptr, info_ptr );
+
+    int bytes_per_pixel = png_get_channels(png_ptr, info_ptr) * (png_get_bit_depth(png_ptr, info_ptr) / 8);
+
+    png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
+
+    if (bytes_per_pixel == 3)
+    {
+        // RGB
+        int toalloc = image_height*bytes_per_row;
+        red_data = new unsigned char[toalloc];
+        green_data = new unsigned char[toalloc];
+        blue_data = new unsigned char[toalloc];
+        allocated = toalloc;
+        int x, y, iy, i=0;
+        for (y=0; y<image_height; y++)
+        {
+            for (x=0; x<image_width; x++)
+            {
+                png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                red_data[i] = pixel[0];
+                green_data[i] = pixel[1];
+                blue_data[i++] = pixel[2];
+            }
+        }
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+    }
+    else if (bytes_per_pixel == 1)
+    {
+        // Grayscale.
+        int toalloc = image_height*bytes_per_row;
+        red_data = new unsigned char[toalloc];
+        green_data = new unsigned char[toalloc];
+        blue_data = new unsigned char[toalloc];
+        allocated = toalloc;
+        int x, y, iy, i=0;
+        for (y=0; y<image_height; y++)
+        {
+            for (x=0; x<image_width; x++)
+            {
+                png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                red_data[i] = green_data[i] = blue_data[i] = pixel[0];
+                i++;
+            }
+        }
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+    }
+    else
+    {
+        std::cerr << "Unsupported bit depth " << bytes_per_pixel << " for " << filename << std::endl;
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    return true;
+}
+
 RGB Map::color_at(double lat, double lon)
 {
     RGB result;

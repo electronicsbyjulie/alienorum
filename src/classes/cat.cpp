@@ -2331,7 +2331,10 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                     if (mapurl.c_str())
                     {
                         std::string destdir = (std::string)"maps/";
-                        std::string destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
+                        std::string destfname;
+                        if (!strcasecmp(mapurl.substr(mapurl.size()-4).c_str(), ".png"))
+                            destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".png");
+                            else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
                         if (!file_exists(destfname.c_str()))
                         {
                             // TODO: Add compatibility for Windows and Mac.
