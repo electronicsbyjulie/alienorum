@@ -104,7 +104,7 @@ double Point::get_distance_to_line(Point a, Point b) const
     double r2 = pow(a.distance_to(b), 2);
     if (!r2) return distance_to(a);
 
-    double t = fmax(0, fmin(1,  ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y) + (z - a.z) * (b.z - a.z)) / r2));
+    double t = fmax(0, fmin(1, ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y) + (z - a.z) * (b.z - a.z)) / r2));
     Point p(a.x + t * (b.x-a.x), a.y + t * (b.y-a.y), a.z + t * (b.z-a.z));
 
     return distance_to(p);
