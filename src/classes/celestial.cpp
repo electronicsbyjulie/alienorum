@@ -649,6 +649,10 @@ bool Map::load_from_png(std::string filename)
     auto bytes_per_row = png_get_rowbytes( png_ptr, info_ptr );
     image_height = png_get_image_height( png_ptr, info_ptr );
     image_width = png_get_image_width( png_ptr, info_ptr );
+    lat_scale = image_height / M_PI;
+    lon_scale = image_width / (M_PI * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
 
     int bytes_per_pixel = png_get_channels(png_ptr, info_ptr) * (png_get_bit_depth(png_ptr, info_ptr) / 8);
 
@@ -658,6 +662,7 @@ bool Map::load_from_png(std::string filename)
     {
         // RGB
         int toalloc = image_height*bytes_per_row;
+        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
         red_data = new unsigned char[toalloc];
         green_data = new unsigned char[toalloc];
         blue_data = new unsigned char[toalloc];
@@ -680,6 +685,7 @@ bool Map::load_from_png(std::string filename)
     {
         // Grayscale.
         int toalloc = image_height*bytes_per_row;
+        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
         red_data = new unsigned char[toalloc];
         green_data = new unsigned char[toalloc];
         blue_data = new unsigned char[toalloc];
@@ -699,7 +705,7 @@ bool Map::load_from_png(std::string filename)
     }
     else
     {
-        std::cerr << "Unsupported bit depth " << bytes_per_pixel << " for " << filename << std::endl;
+        std::cerr << "Unsupported byte depth " << bytes_per_pixel << " for " << filename << std::endl;
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
         fclose(fp);
         return false;
@@ -711,6 +717,9 @@ bool Map::load_from_png(std::string filename)
 RGB Map::color_at(double lat, double lon)
 {
     RGB result;
+
+    assert(lat_scale > 0);
+    assert(lon_scale > 0);
 
     lon = fmod(lon, M_PI*2);
     if (lon < 0) lon += M_PI*2;

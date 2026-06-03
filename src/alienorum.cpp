@@ -572,16 +572,17 @@ int draw_sphere(CelestialObject* cel, double arad)
             throw 0xbadda7a;
         }
 
-        n = round(M_PI*2/step);
-        double step1 = ringsize / fmax(4, round(M_PI*2/step)), step2 = M_PI*2/n;
+        n = round(M_PI*2/step) * 5;
+        double step1 = (double)ringsize / fmax(4, round(M_PI*2/step)/4), step2 = M_PI*2/n;
 
         Map *rmap = cel->ring_map, *rxmap = cel->ringx_map;
         rgb = {225, 208, 192};
         RGB xpar = {128, 128, 128};
         for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
         {
-            double xmapd = (ringd - equatorial_radius) * M_PI*2 / ringsize;
-            for (lon=0; lon<=M_PI*2; lon+=step2)
+            double xmapd = (double)(ringd - equatorial_radius) * M_PI*2 / ringsize;
+            double lonlim = M_PI*2+0.5*step2;
+            for (lon=0; lon<lonlim; lon+=step2)
             {
                 dust = Point::from_ra_dec(lon+M_PI, 0, ringd, 0);
 
@@ -629,18 +630,21 @@ int draw_sphere(CelestialObject* cel, double arad)
 
                     if (prev_valid && !wireframe && !dragging)
                     {
-                        m = l - n;
+                        m = l - n - 1;
                         if (m>=1 && tdvalidr[l-1] && tdvalidr[m] && tdvalidr[m-1])
                         {
+                            is_day = (cel->tmprel.get_distance_to_line(dust, lightcen->tmprel) < equatorial_radius)
+                                ? 0 : (0.2 + 0.8 * pl->amt_lit);
+
                             ImVec2 points[4];
                             points[0] = v;
                             points[1] = todrawr[l-1];
                             points[2] = todrawr[m-1];
                             points[3] = todrawr[m];
 
-                            if (rmap) rgb = rmap->color_at(0, lon);
+                            if (rmap) rgb = rmap->color_at(0, xmapd);
                             if (rxmap) xpar = rxmap->color_at(0, xmapd);
-                            ImU32 imcol = IM_COL32(rgb.r, rgb.g, rgb.b, 255-xpar.g);
+                            ImU32 imcol = IM_COL32(rgb.r*is_day, rgb.g*is_day, rgb.b*is_day, 255-xpar.g);
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
 
                             cel->onscreen = true;
@@ -3034,6 +3038,7 @@ int main (int argc, char** argv)
         screen_y = dm.h;
     }
 
+    srand(std::time(nullptr));
     for (i=0; i<MAX_SPLASH_STARS; i++)
     {
         splash_star_positions[i] = ImVec2(frand(0, screen_x), frand(0, screen_y));
