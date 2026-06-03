@@ -479,7 +479,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (!wireframe && cel->onscreen)
     {
-        if (sphere_elapsed.count() >= 1e5)
+        if (sphere_elapsed.count() >= 1.3e5)
         {
             if (sphresolution < 0.2) sphresolution *= 1.3;
             else if (!bugged)
@@ -488,7 +488,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 bugged = true;
             }
         }
-        else if (sphere_elapsed.count() < 3e4) sphresolution *= 0.9;
+        else if (sphere_elapsed.count() < 8e4) sphresolution *= 0.9;
     }
 
     return result;

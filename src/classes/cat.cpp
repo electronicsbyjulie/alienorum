@@ -2317,6 +2317,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                 try { pl.at("Width").get_to(m->width); } catch (...) { ; }
                 try { pl.at("Height").get_to(m->height); } catch (...) { ; }
                 if (!m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
+                m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333333333) * 500;
             }
 
             const char *mapkeys[6] = {"SurfMap", "CloudMap", "BumpMap", "NightMap", "RingColorMap", "RingTranspMap"};
