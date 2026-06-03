@@ -478,9 +478,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
     {
-        Cartesian2D drawn(cel->drawnx - dispcx, cel->drawny - dispcy);
-        todraw.clear();
-        tdvalid.clear();
+        std::vector<ImVec2> todrawr;
+        std::vector<bool> tdvalidr;
+        l = 0;
         Point dust;
         Planet *pl = (Planet*)cel;
         double ringsize = pl->ring_radius - equatorial_radius, ringd;
@@ -499,83 +499,77 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
         {
             double xmapd = (ringd - equatorial_radius) * M_PI*2 / ringsize;
-            l = 0;
-            for (lon=0; lon<=M_PI*2; lon+=step)
+            for (lon=0; lon<=M_PI*2; lon+=step2)
             {
                 dust = Point::from_ra_dec(lon+M_PI, 0, ringd, 0);
 
                 dust = rotate3D(dust, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-                cursor = dust + cel->tmprel;
-                Point yardstick = center - cursor;
+                dust += cel->tmprel;
+                Point yardstick = center - dust;
                 yardstick.scale(equatorial_radius*2);
-                yardstick += cursor;
-                cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+                yardstick += dust;
+                cursor = rotate3D(dust, center, here.equatorial_plane.v, here.equatorial_plane.a);
 
-                if (cursor.magnitude() > z_cutoff && cel->tmprel.get_distance_to_line(cursor, yardstick) < equatorial_radius )
+                if (cursor.magnitude() > z_cutoff && cel->tmprel.get_distance_to_line(dust, yardstick) < equatorial_radius )
                 {
-                    todraw.push_back(ImVec2(0,0));
-                    tdvalid.push_back(false);
+                    todrawr.push_back(ImVec2(-1e29,-1e53));
+                    tdvalidr.push_back(false);
                     l++;
                     prev_valid = false;
+                    prev = zdes;
                     continue;
                 }
 
                 zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
                 if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
                 {
-                    todraw.push_back(ImVec2(0,0));
-                    tdvalid.push_back(false);
+                    todrawr.push_back(ImVec2(-1e29,-1e9));
+                    tdvalidr.push_back(false);
                     l++;
                     prev_valid = false;
+                    prev = zdes;
                     continue;
                 }
 
+                dx1 = dispcx + zdes.x * dispcx;
+                dy1 = dispcy + zdes.y * dispcx;
+                dx2 = dispcx + prev.x * dispcx;
+                dy2 = dispcy + prev.y * dispcx;
+
+                ImVec2 v = ImVec2(dx1, dy1);
                 if (lon)
                 {
-                    dx1 = dispcx + zdes.x * dispcx;
-                    dy1 = dispcy + zdes.y * dispcx;
-                    dx2 = dispcx + prev.x * dispcx;
-                    dy2 = dispcy + prev.y * dispcx;
-
-                    double yd = (dy1 - cel->drawny);
-                    if (yd > result) result = yd;
-
-                    ImVec2 v = ImVec2(dx1, dy1);
-                    if (prev_valid /*&& wireframe*/)
+                    if (prev_valid && wireframe)
                     {
                         ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                     }
-                    todraw.push_back(v);
-                    tdvalid.push_back(true);
 
-                    if (!wireframe && !dragging)
+                    if (prev_valid && !wireframe && !dragging)
                     {
                         m = l - n;
-                        if (m>=0 && tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
+                        if (m>=1 && tdvalidr[l-1] && tdvalidr[m] && tdvalidr[m-1])
                         {
                             ImVec2 points[4];
                             points[0] = v;
-                            points[1] = todraw[l-1];
-                            points[2] = todraw[m-1];
-                            points[3] = todraw[m];
-                            if (rmap) rgb = rmap->color_at(lat, lon);
-                            if (rxmap) xpar = rxmap->color_at(0, xmapd);
-                            ImU32 imcol = IM_COL32(rgb.r, rgb.g, rgb.b, xpar.g);
-                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
-                            if (m > lastm+1 && tdvalid[m-2])
-                            {
-                                points[2] = todraw[m-2];
-                                points[3] = todraw[m-1];
+                            points[1] = todrawr[l-1];
+                            points[2] = todrawr[m-1];
+                            points[3] = todrawr[m];
+                            
+                                if (rmap) rgb = rmap->color_at(0, lon);
+                                if (rxmap) xpar = rxmap->color_at(0, xmapd);
+                                ImU32 imcol = IM_COL32(rgb.r, rgb.g, rgb.b, xpar.g);
                                 ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
-                            }
+                                
                             cel->onscreen = true;
-                        }
-                    }
-                }
+                        } // if all vertices valid
+                    } // if ready draw filled poly
+                } // if lon
 
-                prev = zdes;
+                todrawr.push_back(v);
+                tdvalidr.push_back(true);
                 prev_valid = true;
+                prev = zdes;
                 l++;
             }
         }
