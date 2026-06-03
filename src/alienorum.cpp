@@ -227,7 +227,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
     double theta, vtheta, cos_theta, cos_vtheta, is_day;
     if (dwh)
-        cel->volumetric_mean_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width * ((Moon*)cel)->height, 0.333333333) * 1000;
+        cel->volumetric_mean_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width * ((Moon*)cel)->height, 0.333333333) * 500;
 
     double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
 
@@ -284,9 +284,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             if (dwh)
             {
-                cursor.x *= ((Moon*)cel)->width * 1000;
-                cursor.y *= ((Moon*)cel)->height * 1000;
-                cursor.z *= ((Moon*)cel)->depth * 1000;
+                cursor.x *= ((Moon*)cel)->width * 500;
+                cursor.y *= ((Moon*)cel)->height * 500;
+                cursor.z *= ((Moon*)cel)->depth * 500;
             }
             else cursor.y *= obl;
             cursor = rotate3D(cursor, center, yaxis, -timeofday);
@@ -356,9 +356,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             if (dwh)
             {
-                land.x *= ((Moon*)cel)->width * 1000;
-                land.y *= ((Moon*)cel)->height * 1000;
-                land.z *= ((Moon*)cel)->depth * 1000;
+                land.x *= ((Moon*)cel)->width * 500;
+                land.y *= ((Moon*)cel)->height * 500;
+                land.z *= ((Moon*)cel)->depth * 500;
             }
             else land.y *= obl;
             land = rotate3D(land, center, yaxis, -timeofday);

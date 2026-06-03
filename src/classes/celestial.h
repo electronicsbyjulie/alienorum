@@ -121,7 +121,8 @@ class CelestialObject
     cel_obj_type type = star;
     char name[32];
 
-    Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr;
+    Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
+        *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;
     float drawnx=-1e9, drawny=-1e9;
     bool looked_for_maps = false;
     bool onscreen = false;
@@ -129,6 +130,7 @@ class CelestialObject
     CelestialObject();
     virtual ~CelestialObject() = default;
     CelestialLocation location;
+    bool leave_my_damn_equator_the_hell_alone = false;
     Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
     CelestialObject *cenobj = nullptr;
     Point tmprel;

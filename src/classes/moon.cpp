@@ -35,7 +35,7 @@ Rotation Moon::get_Laplace_plane()
     Point eqaxis(sin(equinox), 0, cos(equinox));
     Point my_eq_pole = rotate3D(yaxis, center, eqaxis, obliquity);
     my_eq_pole = rotate3D(my_eq_pole, center, Laplace_plane.v, -Laplace_plane.a);
-    location.equatorial_plane = align_points_3d(my_eq_pole, ecliptic_pole, center);
+    if (!leave_my_damn_equator_the_hell_alone) location.equatorial_plane = align_points_3d(my_eq_pole, ecliptic_pole, center);
 
     return Laplace_plane;
 }

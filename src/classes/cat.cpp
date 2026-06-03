@@ -2113,7 +2113,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         {
             A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
                 A->location.system_center - cels[0]->location.system_center);
-            A->location.orbital_plane = A->location.equatorial_plane = A->location.local_system_plane;
+            if (!A->leave_my_damn_equator_the_hell_alone) A->location.orbital_plane = A->location.equatorial_plane = A->location.local_system_plane;
             A->obliquity = inclination;
             A->equinox = ascending_node;
             A->known_poles = true;
@@ -2194,6 +2194,161 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
 int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 {
+    std::fstream fs(std::string("catalogs/planets.json"), std::ios::in);
+    if (!fs) throw 0xbadf12e;
+    int result = 0, offset;
+    json planets;
+    planets << fs;
+    int i, j, k, n = planets.size();
+    bool createnew;
+    Planet *p;
+    Moon *m;
+
+    for (offset=0; offset<max && cels[offset]; offset++);
+    if (offset >= (max-1)) return 0;
+
+    for (i=0; i<n; i++)
+    {
+        json pl = planets[i];
+        std::string bodyname, cenname, mapurl;
+        try
+        {
+            pl.at("BODYNAME").get_to(bodyname);
+            j = find_object(bodyname.c_str(), false);
+            cenname = "";
+            try { pl.at("CENTER_OF_ORBIT").get_to(cenname); } catch (...) { ; }
+            k = -1;
+            if (cenname.size()) k = find_object(cenname.c_str(), false);
+
+            if (j < 0 || k >= 0)                // Name not taken or center of orbit,
+            {                                   // create new.
+                if (k < 0) throw 0xbadda7a;     // Future expansion.
+                if (cels[k]->type == galaxy)
+                    throw 0xbadda7a;            // Future expansion.
+                if (cels[k]->type == star)
+                {
+                    p = new Planet();
+                    p->type = rocky;
+                }
+                else
+                {
+                    m = new Moon();
+                    p = m;
+                    p->type = rocky;
+                }
+                memset(p->name, 0, 32);
+                strcpy(p->name, bodyname.c_str());
+                if (k >= 0)
+                {
+                    p->orbit = new Orbit;
+                    p->orbit->center = cels[k];
+                }
+
+                cels[offset++] = p;
+                cels[offset] = nullptr;
+                result++;
+                createnew = true;
+            }
+            else                                // Name taken and no center specified,
+            {                                   // update existing.
+                p = (Planet*)cels[j];
+                m = (p->typeclass() == class_moon) ? ((Moon*)p) : nullptr;
+                createnew = false;
+            }
+
+            try
+            {
+                double ra, decl;
+                pl.at("NorthPoleRA").get_to(ra);
+                pl.at("NorthPoleDecl").get_to(decl);
+
+                ra *= fiftyseventh;
+                decl *= fiftyseventh;
+
+                Point pole = Point::from_ra_dec(ra, decl, light_year*1e29, 0);
+                p->location.equatorial_plane = align_points_3d(pole, yaxis, center);
+                p->leave_my_damn_equator_the_hell_alone = true;
+                p->known_poles = true;
+            } catch (...) { ; }
+            try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
+            try { pl.at("ArgPeri").get_to(p->orbit->arg_periapsis); p->orbit->arg_periapsis *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
+            try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
+            try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
+            try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
+            try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (M_PI * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (M_PI * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (M_PI * 2 / pro / oneyear) : 0; } catch (...) { ; }
+            try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("J2").get_to(p->J2); } catch (...) { ; }
+            try
+            {
+                pl.at("Mass").get_to(p->mass);
+                p->mass *= 1000;
+                if (p->mass >= 2.5e+29) p->type = ice_giant;
+                else if (p->mass >= 1.6 * earth_mass) p->type = gas_giant;        // https://doi.org/10.1051/0004-6361/202348690
+            } catch (...) { ; }
+            try { pl.at("MeanAnom").get_to(p->orbit->mean_anomaly); p->orbit->mean_anomaly *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
+            try { pl.at("Obliquity").get_to(p->obliquity); p->obliquity *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("OrbitPeriod").get_to(p->orbit->period); } catch (...) { ; }
+            try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
+            try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
+            try { pl.at("SurfacePressure").get_to(p->surface_pressure); } catch (...) { ; }
+            try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
+            try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
+            // try { pl.at("").get_to(p->); } catch (...) { ; }
+
+            if (m)
+            {
+                try { pl.at("Depth").get_to(m->depth); } catch (...) { ; }
+                try { pl.at("Width").get_to(m->width); } catch (...) { ; }
+                try { pl.at("Height").get_to(m->height); } catch (...) { ; }
+                if (!m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
+            }
+
+            const char *mapkeys[6] = {"SurfMap", "CloudMap", "BumpMap", "NightMap", "RingColorMap", "RingTranspMap"};
+            const char *mapsuffs[6] = {"_surf", "_clouds", "_bump", "_night", "_ring", "_ringx"};
+
+            for (j=0; j<6; j++)
+            {
+                try
+                {
+                    pl.at(mapkeys[j]).get_to(mapurl);
+                    if (mapurl.c_str())
+                    {
+                        std::string destdir = (std::string)"maps/";
+                        std::string destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
+                        if (!file_exists(destfname.c_str()))
+                        {
+                            // TODO: Add compatibility for Windows and Mac.
+                            std::string cmd = (std::string)"wget -O " + destfname + (std::string)" " + (std::string)mapurl;
+                            std::cout << cmd << std::endl;
+                            std::system(cmd.c_str());
+                        }
+                    }
+                } catch (...) { ; }
+            }
+
+            if (p->orbit && p->orbit->center && createnew)
+            {
+                p->known_poles = p->obliquity && p->equinox;
+                p->location = p->orbit->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
+                p->location.equatorial_plane.a = p->obliquity;
+                p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
+            }
+        }
+        catch (...)
+        {
+            continue;
+        }
+    }
+
+    return result;
+
+    /*
     std::string path = "catalogs/planets.dat";
     char buffer[1024];
     char field[32];
@@ -2451,12 +2606,13 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         cels[offset++] = p;
         num_read++;
     }
+    */
 
     /*std::fstream fs(std::string("catalogs/planets.json"), std::ios::out);
     fs << output.dump(4);
     fs.close();*/
 
-    return num_read;
+    // return num_read;
 }
 
 void CatalogReader::read_field_onebased(char *buffer, int start, int end, char *out)
