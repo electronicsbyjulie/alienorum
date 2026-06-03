@@ -330,7 +330,7 @@ bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (sphresolution < 0.001) sphresolution = 0.001;
-    bool wireframe = dragging || !cel->onscreen; // || (here.distance_to(cel->location) < cel->volumetric_mean_radius);
+    bool wireframe = dragging || !cel->onscreen;
     cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
@@ -545,17 +545,32 @@ int draw_sphere(CelestialObject* cel, double arad)
                         }
 
                         lastm = m;
-                    }
-                }
+                    } // if not wireframe
+                } // if within horizon angle
                 l++;
-            }
+            } // if lon
 
             prev = zdes;
             prev_valid = true;
-        }
+        } // for lon
 
         perline = n;
         invlaststepcoslat = 1.0/stepcoslat;
+    } // for lat
+
+    if (!wireframe && !dragging)
+    {
+        ImVec2 points[perline];
+        n = 0;
+        for (i=0; i<perline; i++)
+        {
+            if (!tdvalid[i]) continue;
+            points[n++] = todraw[i];
+        }
+
+        // Certain vars are left over from the last iteration; assume values are still good.
+        ImU32 imcol = IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255);
+        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, n, imcol);
     }
 
     if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
