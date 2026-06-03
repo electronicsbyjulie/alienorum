@@ -248,7 +248,7 @@ bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (sphresolution < 0.001) sphresolution = 0.001;
-    bool wireframe = dragging || !cel->onscreen || (here.distance_to(cel->location) < cel->volumetric_mean_radius);
+    bool wireframe = dragging || !cel->onscreen; // || (here.distance_to(cel->location) < cel->volumetric_mean_radius);
     cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
@@ -259,11 +259,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool prev_valid = false;
     bool dwh = false;
     if (cel->typeclass() == class_moon) dwh = ((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height;
-    double theta, vtheta, cos_theta, cos_vtheta, is_day;
+    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day;
     if (dwh)
-        cel->volumetric_mean_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width * ((Moon*)cel)->height, 0.333333333) * 500;
+        equatorial_radius = cel->volumetric_mean_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width * ((Moon*)cel)->height, 0.333333333) * 500;
+    else
+        equatorial_radius = cel->volumetric_mean_radius * pow(1.0 - cel->oblateness, 0.333);
 
-    double lat, lon, z_cutoff = cel->tmprel.magnitude() + cel->volumetric_mean_radius * 0.2, obl = 1.0 - cel->oblateness;
+    double lat, lon, z_cutoff = cel->tmprel.magnitude() + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
 
     double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
@@ -288,7 +290,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         prev_valid = false;
         for (j=-80; j<=90; j+=10)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, dwh ? 1 : cel->volumetric_mean_radius, 0);
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
 
             if (dwh)
             {
@@ -351,7 +353,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     int perline, dx1, dy1, dx2, dy2;
     l = 0;
     double d = cel->tmprel.magnitude(), horizon_angle;
-    horizon_angle = acos(cel->volumetric_mean_radius / fmax(d, 1e-29));
+    horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
 
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
     {
@@ -361,7 +363,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
             n++;
-            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : cel->volumetric_mean_radius, 0);
+            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : equatorial_radius, 0);
 
             if (dwh)
             {
@@ -474,6 +476,74 @@ int draw_sphere(CelestialObject* cel, double arad)
         invlaststepcoslat = 1.0/stepcoslat;
     }
 
+    if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
+    {
+        Cartesian2D drawn(cel->drawnx - dispcx, cel->drawny - dispcy);
+        todraw.clear();
+        tdvalid.clear();
+        Point dust;
+        Planet *pl = (Planet*)cel;
+        double ringsize = pl->ring_radius - equatorial_radius, ringd;
+        if (ringsize <= 0)
+        {
+            std::cerr << "ERROR: Ring size less than equatorial radius for " << cel->name << std::endl << std::flush;
+            throw 0xbadda7a;
+        }
+        for (lon=0; lon<=M_PI*2; lon+=step)
+        {
+            dust = Point::from_ra_dec(lon+M_PI, 0, pl->ring_radius, 0);
+
+            dust = rotate3D(dust, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+            cursor = dust + cel->tmprel;
+            Point yardstick = center - cursor;
+            yardstick.scale(equatorial_radius*2);
+            yardstick += cursor;
+            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+
+            if (cursor.magnitude() > z_cutoff && cel->tmprel.get_distance_to_line(cursor, yardstick) < equatorial_radius )
+            {
+                todraw.push_back(ImVec2(0,0));
+                tdvalid.push_back(false);
+                l++;
+                prev_valid = false;
+                continue;
+            }
+
+            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            {
+                todraw.push_back(ImVec2(0,0));
+                tdvalid.push_back(false);
+                l++;
+                prev_valid = false;
+                continue;
+            }
+
+            if (lon)
+            {
+                dx1 = dispcx + zdes.x * dispcx;
+                dy1 = dispcy + zdes.y * dispcx;
+                dx2 = dispcx + prev.x * dispcx;
+                dy2 = dispcy + prev.y * dispcx;
+
+                double yd = (dy1 - cel->drawny);
+                if (yd > result) result = yd;
+
+                ImVec2 v = ImVec2(dx1, dy1);
+                if (prev_valid /*&& wireframe*/)
+                {
+                    ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                    if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                }
+                todraw.push_back(v);
+                tdvalid.push_back(true);
+            }
+
+            prev = zdes;
+            prev_valid = true;
+        }
+    }
+
     auto sphere_finished = std::chrono::high_resolution_clock::now();
     auto sphere_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(sphere_finished - sphere_began);
 
@@ -488,7 +558,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 bugged = true;
             }
         }
-        else if (sphere_elapsed.count() < 8e4) sphresolution *= 0.9;
+        else if (sphere_elapsed.count() < 8e4 && cel->type != star) sphresolution *= 0.9;
     }
 
     return result;
@@ -1839,7 +1909,7 @@ void draw_status_window(ImGuiIO& io)
 
     std::string flagstr;
 
-    flagstr = (std::string)"Zoom (scroll): " + std::to_string(zoom);
+    flagstr = (std::string)"Zoom (*/): " + std::to_string(zoom);
     ImGui::Text("%s", flagstr.c_str());
     statheight += txtyscale;
 
