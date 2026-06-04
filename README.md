@@ -134,6 +134,8 @@ Shift+B     Decrease brightness
 {scroll}    Zoom
 %           Reset default brightness and zoom
 Shift+R     Toggle red light mode
+Q           Increase texture rendering quality. WARNING: Use cautiously; the value can get too high quickly and render the app unusable!
+Shift+Q     Improve performance by decreasing texture rendering quality.
 ```
 
 ## Info and Tracking

@@ -401,7 +401,7 @@ bool CelestialObject::from_json(json j)
     try { j.at("precession").get_to(precession); } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
-    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period /= oneday; } catch (...) { ; }
+    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
     try { j.at("volumetric_mean_radius").get_to(volumetric_mean_radius); } catch (...) { ; }
@@ -802,12 +802,12 @@ void Map::generate_rocky_map(int lr, double BV, bool has_water)
     int vegr, vegg, vegb;
     if (has_water)
     {
-        vegr = rand() % 224;
-        vegg = rand() % 192;
-        vegb = rand() % 128;
-        if (vegr < vegg && vegr < vegb) vegb = vegr / 1.5;
-        if (vegg < vegr && vegg < vegb) vegg /= 3;
-        if (vegb < vegr && vegb < vegg) vegb /= 5;
+        vegr = 224 * pow(frand(0, 1), 0.4);
+        vegg = 192 * pow(frand(0, 1), 1.7);
+        vegb = 176 * pow(frand(0, 1), 2.9);
+        if (vegr < vegg && vegr < vegb) vegb /= 1.8;
+        if (vegg < vegr && vegg < vegb) vegg /= 2.1;
+        if (vegb < vegr && vegb < vegg) vegb /= 3.7;
     }
 
     for (int y = 0; y < image_height; ++y)

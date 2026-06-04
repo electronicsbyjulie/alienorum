@@ -329,7 +329,7 @@ double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    if (sphresolution < 0.001) sphresolution = 0.001;
+    if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
     bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
     cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
@@ -349,7 +349,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool prev_valid = false;
     bool dwh = false;
     if (cel->typeclass() == class_moon) dwh = (((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height);
-    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day;
+    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day, is_night;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
     else
@@ -425,13 +425,16 @@ int draw_sphere(CelestialObject* cel, double arad)
         }
     }
 
-    Map* map = nullptr;
+    Map *map = nullptr, *nmap = nullptr;
     if (cel->cloud_map) map = cel->cloud_map;
     else if (cel->surf_map) map = cel->surf_map;
-    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1);
+    if (cel->night_map) nmap = cel->night_map;
+    double night_illum = nmap ? 0 : starlight;
+    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
     Point cursor, land;
-    bool self_luminous;
     CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+    ImU32 imcol;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe ? (fiftyseventh*15) : fmax(fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
@@ -526,9 +529,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 if (fabs(theta) < M_PI_2)
                                 {
                                     cos_theta = cos(theta);
-                                    is_day = fmin(1, pow(cos_theta, 0.333) + starlight);
+                                    is_day = fmin(1, pow(cos_theta, 0.333) + night_illum);
                                 }
-                                else is_day = starlight;
+                                else is_day = night_illum;
                             }
 
                             ImVec2 points[4];
@@ -537,7 +540,17 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[2] = todraw[m-1];
                             points[3] = todraw[m];
                             if (map && is_day) rgb = map->color_at(lat, lon);
-                            ImU32 imcol = rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
+                            if (nmap)
+                            {
+                                is_night = 1.0 - is_day;
+                                if (is_night) nrgb = nmap->color_at(lat, lon);
+                                imcol = rgba_apply_redlight(IM_COL32(
+                                    is_day*rgb.r + is_night*nrgb.r,
+                                    is_day*rgb.g + is_night*nrgb.g,
+                                    is_day*rgb.b + is_night*nrgb.b,
+                                    255));
+                            }
+                            else imcol = rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
                             if (m > lastm+1 && tdvalid[m-2])
                             {
@@ -694,16 +707,16 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (!wireframe && cel->onscreen)
     {
-        if (sphere_elapsed.count() >= 1.3e5)
+        if (sphere_elapsed.count() >= (1.3e5*sphere_quality))
         {
-            if (sphresolution < 0.2) sphresolution *= 1.3;
+            if (sphresolution < 0.2/sphere_quality) sphresolution *= 1.3;
             else if (!bugged)
             {
                 std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
                 bugged = true;
             }
         }
-        else if (sphere_elapsed.count() < 8e4 && cel->type != star) sphresolution *= 0.9;
+        else if (sphere_elapsed.count() < (8e4*sphere_quality) && cel->type != star) sphresolution *= 0.9;
     }
 
     return result;
@@ -1389,6 +1402,7 @@ void draw_objects()
             {
                 to_draw_sphere.push_back(cels[i]);
                 to_draw_idx.push_back(i);
+                discinstead[i] = true;
             }
             else
             {
@@ -1928,6 +1942,8 @@ void process_key_cmd_char(char c)
 
         case 'O': show_orbits = !show_orbits; break;
         case 'p': lbl_localsys = !lbl_localsys; break;
+        case 'q': sphere_quality *= 1.3; viewchanged=true; break;
+        case 'Q': sphere_quality *= 0.7; viewchanged=true; break;
 
         case 'r':
         velocity = center;
@@ -1937,7 +1953,7 @@ void process_key_cmd_char(char c)
         trackidx = -1;
         here = cels[whereami]->location;
         global_brightness = default_brightness;
-        break;
+        // Fall through to same functionality
         case '@':
         viewchanged = true;
         simnow = std::time(nullptr);

@@ -125,7 +125,7 @@ extern ImU32 cursor_color, cursor_color1, cursor_color2, cursor_color3, grid_col
     conslbl_color, selected_color, selected_orbit_color, objlbl_color;
 extern std::string objname, objinfo;
 extern double simnow;
-extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff;
+extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
 extern PerlinNoise pn;
 
