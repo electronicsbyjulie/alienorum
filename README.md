@@ -129,6 +129,8 @@ B           Increase brightness
 Shift+B     Decrease brightness
 `           Increase gamma
 ~           Decrease gamma
+*           Zoom in
+/           Zoom out
 {scroll}    Zoom
 %           Reset default brightness and zoom
 Shift+R     Toggle red light mode
