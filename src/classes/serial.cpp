@@ -222,7 +222,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             }
 
             if (i==ncelobjs) ncelobjs++;
-            if (ncelobjs >= max-1) return false;                                // Avoid overflowing the array.
+            if ((unsigned int)ncelobjs >= max-1) return false;                                // Avoid overflowing the array.
         }
 
         for (i=0; cels[i]; i++)

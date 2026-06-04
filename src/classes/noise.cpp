@@ -4,7 +4,9 @@ PerlinNoise::PerlinNoise()
 {
     p.resize(256);
     std::iota(p.begin(), p.end(), 0);
-    std::random_shuffle(p.begin(), p.end());
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(p.begin(), p.end(), g);
     p.insert(p.end(), p.begin(), p.end());
 }
 

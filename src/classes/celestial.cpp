@@ -636,9 +636,6 @@ bool Map::load_from_png(std::string filename)
 {
     png_structp png_ptr;
     png_infop info_ptr;
-    unsigned int sig_read = 0;
-    png_uint_32 width, height;
-    int bit_depth, color_type, interlace_type;
     FILE *fp;
 
     if ((fp = fopen(filename.c_str(), "rb")) == NULL)
@@ -755,8 +752,8 @@ RGB Map::color_at(double lat, double lon)
     if (blue_data)
     {
         double xf = lon * lon_scale, yf = (M_PI_2-lat) * lat_scale;
-        int x0 = floor(xf), x1 = ceil(xf), y0 = floor(yf), y1 = ceil(yf);
-        long y0idx = image_width * y1, y1idx = y0idx + image_width;
+        int x0 = floor(xf), y1 = ceil(yf);
+        long y0idx = image_width * y1;
 
         if (y0idx < 0) y0idx = 0;
         if (y0idx > allocated-image_width) y0idx = allocated-image_width;
@@ -909,7 +906,7 @@ void Map::generate_gas_giant_map(int lr, double BV)
 
     double variability = frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
-    RGB bands[num_bands];
+    auto bands = std::make_unique<RGB[]>(num_bands);
 
     bool add_storm = frand(0, 1) < 0.2;
     double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29;

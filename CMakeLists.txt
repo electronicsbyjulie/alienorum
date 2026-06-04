@@ -10,6 +10,7 @@ find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(PNG REQUIRED)
+find_package(JPEG REQUIRED)
 
 add_library(IMGUI STATIC
 	src/include/imgui/imgui_demo.cpp
@@ -43,7 +44,7 @@ add_library(CLASSES STATIC
 
 target_include_directories(CLASSES PUBLIC src/classes src/include)
 
-target_link_libraries(CLASSES jpeg PNG::PNG)
+target_link_libraries(CLASSES JPEG::JPEG PNG::PNG)
 
 add_executable(alienorum src/alienorum.cpp)
 

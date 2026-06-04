@@ -2221,7 +2221,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     if (!fs) throw 0xbadf12e;
     int result = 0, offset;
     json planets;
-    planets << fs;
+    fs >> planets;
     int i, j, k, n = planets.size();
     bool createnew;
     Planet *p;
@@ -2379,7 +2379,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     return result;
 }
 
-void CatalogReader::read_field_onebased(char *buffer, int start, int end, char *out)
+void CatalogReader::read_field_onebased(char *buffer, size_t start, int end, char *out)
 {
     if (start > strlen(buffer))
     {

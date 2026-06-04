@@ -320,7 +320,6 @@ void load_textures(CelestialObject* cel)
     else if (cel->type == rocky && !cel->surf_map)
     {
         cel->surf_map = new Map();
-        double vmag = cel->cenobj->viewer_magnitude(cel->location);
         cel->surf_map->generate_rocky_map(503, cel->BV_color, ((Planet*)cel)->is_in_con_HZ());
     }
 }
@@ -577,7 +576,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (!wireframe && !dragging)
     {
-        ImVec2 points[perline];
+        auto points = std::make_unique<ImVec2[]>(perline);
         n = 0;
         for (i=0; i<perline; i++)
         {
@@ -588,7 +587,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
         // Certain vars are left over from the last iteration; assume values are still good.
         ImU32 imcol = rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
-        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, n, imcol);
+        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points.get(), n, imcol);
     }
 
     if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
@@ -1438,7 +1437,6 @@ void draw_objects()
                 rgb.g = (int)(col.green* divisor);
                 rgb.b = (int)(col.blue * divisor);
 
-                double flare2 = flare*0.666;
                 #define jmax 3
                 for (j=jmax; j>0; j--)
                 {
@@ -1954,6 +1952,7 @@ void process_key_cmd_char(char c)
         here = cels[whereami]->location;
         global_brightness = default_brightness;
         // Fall through to same functionality
+        [[fallthrough]];
         case '@':
         viewchanged = true;
         simnow = std::time(nullptr);
