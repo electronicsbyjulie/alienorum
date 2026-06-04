@@ -588,16 +588,19 @@ int draw_sphere(CelestialObject* cel, double arad)
             throw 0xbadda7a;
         }
 
-        n = round(M_PI*2/step) * 5;
-        double step1 = (double)ringsize / fmax(4, fmin(result, round(M_PI*2/step)/2)), step2 = M_PI*2/n;
+        n = round(M_PI*2/step) * 13;
+        m = fmax(4, fmin(result, round(M_PI*2/step)/2));
+        double step1 = (double)ringsize / m, step2 = M_PI*2/n;
 
         Map *rmap = cel->ring_map, *rxmap = cel->ringx_map;
         rgb = {225, 208, 192};
-        RGB xpar = {128, 128, 128};
         for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
         {
             double xmapd = (double)(ringd - equatorial_radius) * M_PI*2 / ringsize;
+            double ring_opacity = rxmap ? (255.0 * (1.0-pow((double)rxmap->color_at(0, xmapd).g/255, gossamer_rings))) : 0.5;
+            if (rmap) rgb = rmap->color_at(0, xmapd);
             double lonlim = M_PI*2+0.5*step2;
+
             for (lon=0; lon<lonlim; lon+=step2)
             {
                 dust = Point::from_ra_dec(lon+M_PI, 0, ringd, 0);
@@ -657,10 +660,15 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[1] = todrawr[l-1];
                             points[2] = todrawr[m-1];
                             points[3] = todrawr[m];
+                            double polycx = 0.25 * (points[0].x + points[1].x + points[2].x + points[3].x),
+                                   polycy = 0.25 * (points[0].y + points[1].y + points[2].y + points[3].y);
+                            for (i=0; i<4; i++)
+                            {
+                                points[i].x += sgn(points[i].x-polycx);
+                                points[i].y += sgn(points[i].y-polycy);
+                            }
 
-                            if (rmap) rgb = rmap->color_at(0, xmapd);
-                            if (rxmap) xpar = rxmap->color_at(0, xmapd);
-                            ImU32 imcol = IM_COL32(rgb.r*is_day, rgb.g*is_day, rgb.b*is_day, 255-xpar.g);
+                            ImU32 imcol = IM_COL32(rgb.r*is_day, rgb.g*is_day, rgb.b*is_day, ring_opacity);
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
 
                             cel->onscreen = true;
@@ -1114,6 +1122,7 @@ void cache_cons_lines()
 
 void compute_object_draw_coordinates()
 {
+    if (!ncelobjs) return;
     int i, j, bx, by;
     double dispw = dispcx*2, disph = dispcy*2;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
@@ -1264,6 +1273,7 @@ void compute_object_draw_coordinates()
 
 void draw_objects()
 {
+    if (!ncelobjs) return;
     int i, j, n, pass;
     double jay, step, dispw = dispcx*2, disph = dispcy*2;
     ImVec2 xycoord;
@@ -3097,7 +3107,8 @@ int main (int argc, char** argv)
 
         if (splash)
         {
-            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 21;
+            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y/1.61803398875;
+            double splash_top = io.DisplaySize.y/2 - splash_height/2;
             double aspect_width = splash_height * splash_image_width / splash_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
@@ -3139,7 +3150,7 @@ int main (int argc, char** argv)
             if (ImGui::Begin("Loading...", &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
-                ImGui::SetWindowPos(ImVec2(left,0));
+                ImGui::SetWindowPos(ImVec2(left,splash_top));
                 ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
                 ImGui::Text("%s", lloadmsg);
                 ImGui::Image((ImTextureID)(intptr_t)splash_image_texture, ImVec2(aspect_width, splash_height));

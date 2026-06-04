@@ -278,3 +278,10 @@ double fBm(double x, double y, double z, int octaves, double lacunarity, double 
     // Normalize to [-1, 1] then shift to [0, 1]
     return (total / maxValue + 1.0) / 2.0;
 }
+
+int sgn(double f)
+{
+    if (f < 0) return -1;
+    else if (f > 0) return 1;
+    else return 0;
+}
