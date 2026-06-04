@@ -330,7 +330,7 @@ bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (sphresolution < 0.001) sphresolution = 0.001;
-    bool wireframe = dragging || !cel->onscreen;
+    bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
     cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
