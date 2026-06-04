@@ -2349,6 +2349,11 @@ int main (int argc, char** argv)
     int splash_image_width = 0;
     int splash_image_height = 0;
     GLuint splash_image_texture = 0;
+    bool ret = LoadTextureFromFile("assets/icon_full.png", &splash_image_texture, &splash_image_width, &splash_image_height);
+    if(!ret)
+    {
+        printf("Failed to load icon texture");
+    }
 
     ImVec2 splash_star_positions[MAX_SPLASH_STARS];
     double splash_star_brghtness[MAX_SPLASH_STARS];
