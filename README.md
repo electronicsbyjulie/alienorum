@@ -30,6 +30,9 @@ After downloading finishes, the application will load a selection of stars from 
 stars and during spaceflight, Alienorum dynamically hides stars that are too far away or too dim, that way it
 can load hundreds of thousands of stars and still smoothly animate views of space.
 
+Note to include exoplanets, the catalog must be downloaded manually. See the `catalogs/urls.dat` file for
+instructions.
+
 ## Spaceflight
 
 To begin a spaceflight, point the view in the direction you wish to go, and press the + (plus sign) key.
