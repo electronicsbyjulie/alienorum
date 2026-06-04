@@ -524,7 +524,7 @@ bool Orbit::from_json(json j)
 }
 
 METHODDEF(void)
-my_error_exit (j_common_ptr cinfo)
+alienorum_jpeg_error_exit (j_common_ptr cinfo)
 {
   /* cinfo->err really points to a my_error_mgr struct, so coerce pointer */
   my_error_ptr myerr = (my_error_ptr) cinfo->err;
@@ -551,7 +551,7 @@ bool Map::load_from_jpeg(std::string filename)
     }
 
     cinfo.err = jpeg_std_error(&jerr.pub);
-    jerr.pub.error_exit = my_error_exit;
+    jerr.pub.error_exit = alienorum_jpeg_error_exit;
 
     if (setjmp(jerr.setjmp_buffer))
     {
