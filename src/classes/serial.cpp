@@ -156,6 +156,14 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, int max)
             json js = it.value();
             cel_obj_class c;
             js.at("typeclass").get_to(c);
+            std::string name;
+            js.at("!name").get_to(name);
+
+            if (i<ncelobjs && strcmp(cels[i]->name, name.c_str()))
+            {
+                j = find_object(name.c_str(), c == class_star);
+                if (j >= 0 && cels[j]->typeclass() == c) i = j;
+            }
 
             switch (c)
             {
