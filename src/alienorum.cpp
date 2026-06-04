@@ -2352,7 +2352,7 @@ int main (int argc, char** argv)
     bool ret = LoadTextureFromFile("assets/icon_full.png", &splash_image_texture, &splash_image_width, &splash_image_height);
     if(!ret)
     {
-        printf("Failed to load icon texture");
+        printf("Failed to load icon texture\n");
     }
 
     ImVec2 splash_star_positions[MAX_SPLASH_STARS];
