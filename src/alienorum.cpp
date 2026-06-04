@@ -360,7 +360,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         timeofday += M_PI_2;
     }
 
-    if (!wireframe && !cel->looked_for_maps) // && !cel->bump_map && !cel->surf_map)
+    if (!wireframe && !cel->looked_for_maps)
     {
         cel->looked_for_maps = true;
         std::thread ttex(load_textures, cel);
@@ -874,7 +874,8 @@ void load_catalogs()
     num_planets += nexo;
     cout << "Read " << nexo << " objects." << endl << flush;
 
-    if (0) // have_CCDM)
+    #if _USE_CCDM
+    if (have_CCDM)
     {
         mtx.lock();
         loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
@@ -883,6 +884,7 @@ void load_catalogs()
         int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nCCDM << " objects." << endl << flush;
     }
+    #endif
 
     if (have_SB9)
     {
