@@ -41,7 +41,8 @@ class Star : public CelestialObject
     __uint32_t Bonn_survey_sequential = 0;  // Serial number by right ascension.
 
     bool is_orbit_multiple = false;
-    bool has_planets = false;
+    int has_planets = 0;
+    int has_hz_planets = 0;
     bool tmp_vis_flag;                      // Used only for rendering.
 
     Star();

@@ -8,7 +8,7 @@ CGO                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?III/274
 2MASS               https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?II/246
 
 # multi star systems
-CCDM                https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?I/274
+# CCDM                https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?I/274
 SB9                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/sb9
 
 # galaxies
@@ -33,3 +33,4 @@ comets              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/comet
 # and click Update.
 # Then click the download (save icon) button, choose CSV format, and click the green Download Table arrow.
 # Save the resulting file in the alienorum/catalogs/ folder.
+

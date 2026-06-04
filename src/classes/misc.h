@@ -7,8 +7,10 @@
 #include <ctime>
 #include <thread>
 #include <mutex>
-#include "../imgui/imgui.h"
-#include "../include/nlohmann/json.hpp"
+#include "imgui/imgui.h"
+#include "nlohmann/json.hpp"
+// #include "EasyBMP/EasyBMP.hpp"
+#include "noise.h"
 
 using json = nlohmann::json;
 
@@ -61,16 +63,19 @@ using json = nlohmann::json;
 #define MAX_SPLASH_STARS 5381
 #define MAX_HD 359083
 #define MAX_HIP 120416
-#define its_behind_you 0xbe419d10
+#define _USE_CCDM 1
+#define _ALLOW_CCDM_ADDITIONS 0
 #define default_brightness 1.0
 #define default_gamma 1.0
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
-#define nlbltyp 7
+#define nlbltyp 8
 #define nceltyp 5
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
+#define starlight 0.03
+#define gossamer_rings 0.08
 
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
@@ -91,6 +96,10 @@ bool is_digit_or_dot(char);
 bool contains_digits_or_dots(const char*);
 bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
+bool file_exists(const char* fname);
+
+double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
+int sgn(double f);
 
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);
@@ -108,9 +117,9 @@ long long micronow();
 extern std::string loading_msg;
 extern std::mutex mtx;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome,
-    is_an_obj_under_cursor;
-extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow;
-extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, is_mouse_over_window, dragging, dragged, viewchanged,
+    is_an_obj_under_cursor, planets_lblcut;
+extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim;
+extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
     objinfwnd, statuswnd, objedtwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
 extern ImU32 cursor_color, cursor_color1, cursor_color2, cursor_color3, grid_color, grid_color_brighter, ecliptic_color, consline_color,
     conslbl_color, selected_color, selected_orbit_color, objlbl_color;
@@ -118,5 +127,6 @@ extern std::string objname, objinfo;
 extern double simnow;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
+extern PerlinNoise pn;
 
 #endif

@@ -75,9 +75,12 @@ void Star::update_location(double tmnow)
     // Set system location
     location.system_center = newloc;
 
-    location.local_system_plane = system_plane_from_incl_and_node(known_poles ? inclination : (M_PI/2), equinox,
-        Point::from_ra_dec(right_ascension, declination, distance));
-    location.orbital_plane = location.equatorial_plane = location.local_system_plane;
+    if (!estimated_poles)
+    {
+        location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (M_PI/2), equinox,
+            Point::from_ra_dec(right_ascension, declination, distance));
+        if (!lock_equatorial_plane) location.orbital_plane = location.equatorial_plane = location.local_system_plane;
+    }
 }
 
 void Star::rename_from_Bayer_Flamsteed()
@@ -261,37 +264,39 @@ double Star::estimate_radius()
 
 void Star::gotta_be_named_something()
 {
-    if (!trim(name).size())                                                 // already am
-    if (multisys && multisys->get_member('A') != this) return;              // let somebody else do it
-    else if (orbit && orbit->center && strlen(orbit->center->name))
+    if (!trim(name).size())
     {
-        int n = strlen(orbit->center->name);
-        if (orbit->center->name[n-1] >= 'A' && orbit->center->name[n-2] == ' ')
+        if (multisys && multisys->get_member('A') != this) return;              // update this name later, based on the main star's name
+        else if (orbit && orbit->center && strlen(orbit->center->name))
         {
-            strcpy(name, orbit->center->name);
-            name[n]++;
+            int n = strlen(orbit->center->name);
+            if (orbit->center->name[n-1] >= 'A' && orbit->center->name[n-2] == ' ')
+            {
+                strcpy(name, orbit->center->name);
+                name[n]++;
+            }
+            else
+            {
+                strcpy(name, ( std::string(orbit->center->name) + std::string(" B") ).c_str());
+            }
         }
-        else
+        else if (BayerGrkno && strlen(constellation)) rename_from_Bayer_Flamsteed();
+        else if (FlamsteedNo && strlen(constellation)) rename_from_Bayer_Flamsteed();
+        else if (HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
+        else if (HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
+        else if (SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
+        else if (Bonn_survey_sequential)
         {
-            strcpy(name, ( std::string(orbit->center->name) + std::string(" B") ).c_str());
+            name[0] = Bonn_survey[0];
+            name[1] = Bonn_survey[1];
+            name[2] = Bonn_survey_sign;
+            strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
+                + std::to_string(Bonn_survey_sequential) ).c_str() );
         }
+        else if (SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
+        else std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
+            << " distance " << (distance/light_year) << std::endl;
     }
-    else if (BayerGrkno && strlen(constellation)) rename_from_Bayer_Flamsteed();
-    else if (FlamsteedNo && strlen(constellation)) rename_from_Bayer_Flamsteed();
-    else if (HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
-    else if (HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
-    else if (SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
-    else if (Bonn_survey_sequential)
-    {
-        name[0] = Bonn_survey[0];
-        name[1] = Bonn_survey[1];
-        name[2] = Bonn_survey_sign;
-        strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
-            + std::to_string(Bonn_survey_sequential) ).c_str() );
-    }
-    else if (SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
-    else std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
-        << " distance " << (distance/light_year) << std::endl;
 
     if (multisys)
     {

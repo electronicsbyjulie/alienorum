@@ -26,6 +26,8 @@ class Cartesian2D
     Cartesian2D& operator*=(double multiplier);
     Cartesian2D operator/(double divisor);
     Cartesian2D& operator/=(double divisor);
+
+    double distance_to(Cartesian2D other);
 };
 
 class Point
@@ -116,6 +118,7 @@ double find_angle_along_vector(Point pt1, Point pt2, Point source, Point v);
 Rotation align_points_3d(Point point, Point align, Point center);
 Point rotate3D(Point point, Point source, Point axis, double theta);
 Rotation system_plane_from_incl_and_node(double inclination, double node, Point system_center = Point(0,0,0));
+double distance(ImVec2 a, ImVec2 b);
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
 bool operator==(const Point&, const Point&);

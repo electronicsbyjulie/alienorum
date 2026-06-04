@@ -34,7 +34,7 @@ char lookfor[256], edit_name[256];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
-std::string load_univ = "";
+std::string load_univ = "", setjd = "";
 bool catalogs_found = false;
 int num_galaxies=0, num_stars=0, num_planets=0, num_moons=0, num_asteroids=0, num_comets=0, num_sat=0;
 float dispcx, dispcy;
@@ -42,7 +42,7 @@ int frames_without_mousemove = 0, num_stars_in_box, editidx=-1, addcenidx=-1;
 double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
 bool is_click;
-double frame_dur = 0, best_frame_dur = 1e9;
+double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
 bool splash = true, magnitude_test = false, redo_proper_motions = true;
 
 // ImGui Example Code
@@ -208,6 +208,505 @@ void draw_ra_dec_lines()
             prev_valid = true;
         }
     }
+}
+
+void load_textures(CelestialObject* cel)
+{
+    std::string filename;
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->cloud_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->cloud_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->surf_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->surf_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->bump_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->bump_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_night.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->night_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_night.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->night_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ring.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->ring_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ring.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->ring_map = map;
+        }
+    }
+
+    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ringx.jpg";
+    if (file_exists(filename.c_str()))
+    {
+        Map *map = new Map();
+        if (map->load_from_jpeg(filename)) cel->ringx_map = map;
+    }
+    else
+    {
+        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ringx.png";
+        if (file_exists(filename.c_str()))
+        {
+            Map *map = new Map();
+            if (map->load_from_png(filename)) cel->ringx_map = map;
+        }
+    }
+
+    cel->looked_for_maps = true;
+
+    if ((cel->type == gas_giant || cel->type == ice_giant) && !cel->cloud_map)
+    {
+        cel->cloud_map = new Map();
+        cel->cloud_map->generate_gas_giant_map(503, cel->BV_color);
+    }
+    else if (cel->type == rocky && !cel->surf_map)
+    {
+        cel->surf_map = new Map();
+        double vmag = cel->cenobj->viewer_magnitude(cel->location);
+        cel->surf_map->generate_rocky_map(503, cel->BV_color, ((Planet*)cel)->is_in_con_HZ());
+    }
+}
+
+double sphresolution = 0.1;
+bool bugged = false;
+int draw_sphere(CelestialObject* cel, double arad)
+{
+    if (sphresolution < 0.001) sphresolution = 0.001;
+    bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
+    cel->onscreen = false;
+    int i, j, l, m, lastm, n, result=0;
+    Cartesian2D prev, zdes;
+    std::vector<ImVec2> todraw;
+    std::vector<bool> tdvalid;
+    ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
+    ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
+
+    if (wireframe)
+    {
+        Color wcol = Color::color_from_magnitude_indices(0, cel->BV_color);
+        RGB wrgb = Color::rgb_from_color(wcol, -1);
+        gc = rgba_apply_redlight(IM_COL32(wrgb.r, wrgb.g, wrgb.b, 255));
+    }
+
+    bool prev_valid = false;
+    bool dwh = false;
+    if (cel->typeclass() == class_moon) dwh = (((Moon*)cel)->depth && ((Moon*)cel)->width && ((Moon*)cel)->height);
+    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day;
+    if (dwh)
+        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
+    else
+        equatorial_radius = cel->volumetric_mean_radius * pow(1.0 - cel->oblateness, 0.333);
+
+    double lat, lon, z_cutoff = cel->tmprel.magnitude() + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
+
+    double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
+    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
+    double timeofday = rads_sec * seconds_since_epoch + M_PI_2;
+    if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
+    {
+        timeofday += cel->orbit->ascending_node;
+        timeofday += cel->orbit->arg_periapsis;
+        timeofday += cel->orbit->mean_anomaly;
+        timeofday += M_PI_2;
+    }
+
+    if (!wireframe && !cel->looked_for_maps)
+    {
+        cel->looked_for_maps = true;
+        std::thread ttex(load_textures, cel);
+        ttex.detach();
+    }
+
+    if (wireframe) for (i=0; i<24; i++)
+    {
+        prev_valid = false;
+        for (j=-80; j<=90; j+=10)
+        {
+            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
+
+            if (dwh)
+            {
+                cursor.x *= ((Moon*)cel)->width * 500;
+                cursor.y *= ((Moon*)cel)->height * 500;
+                cursor.z *= ((Moon*)cel)->depth * 500;
+            }
+            else cursor.y *= obl;
+            cursor = rotate3D(cursor, center, yaxis, -timeofday);
+
+            cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+            cursor += cel->tmprel;
+            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            if (cursor.magnitude() > z_cutoff)
+            {
+                prev_valid = false;
+                continue;
+            }
+            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            {
+                prev_valid = false;
+                continue;
+            }
+
+            if (j > -80)
+            {
+                int dx1 = dispcx + zdes.x * dispcx,
+                    dy1 = dispcy + zdes.y * dispcx,
+                    dx2 = dispcx + prev.x * dispcx,
+                    dy2 = dispcy + prev.y * dispcx;
+
+                if (prev_valid)
+                {
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
+                    if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                }
+            }
+
+            prev = zdes;
+            prev_valid = true;
+        }
+    }
+
+    Map* map = nullptr;
+    if (cel->cloud_map) map = cel->cloud_map;
+    else if (cel->surf_map) map = cel->surf_map;
+    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1);
+    Point cursor, land;
+    bool self_luminous;
+    CelestialObject *lightcen = cel->get_light_center();
+
+    auto sphere_began = std::chrono::high_resolution_clock::now();
+    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
+        stepcoslat, invlaststepcoslat = 1.0 / step;
+    int perline, dx1, dy1, dx2, dy2;
+    l = 0;
+    double d = cel->tmprel.magnitude(), horizon_angle;
+    horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
+
+    for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
+    {
+        prev_valid = false;
+        n = 0;
+        stepcoslat = step / (cos(lat) + 0.1);
+        for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
+        {
+            n++;
+            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : equatorial_radius, 0);
+
+            if (dwh)
+            {
+                land.x *= ((Moon*)cel)->width * 500;
+                land.y *= ((Moon*)cel)->height * 500;
+                land.z *= ((Moon*)cel)->depth * 500;
+            }
+            else land.y *= obl;
+            land = rotate3D(land, center, yaxis, -timeofday);
+
+            land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+            cursor = land + cel->tmprel;
+            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            if (cursor.magnitude() > z_cutoff)
+            {
+                todraw.push_back(ImVec2(0,0));
+                tdvalid.push_back(false);
+                l++;
+                prev_valid = false;
+                continue;
+            }
+
+            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            {
+                todraw.push_back(ImVec2(0,0));
+                tdvalid.push_back(false);
+                l++;
+                prev_valid = false;
+                continue;
+            }
+
+            if (lon)
+            {
+                land += cel->location.local_position;
+                vtheta = fabs(fmod(find_3D_angle(land, here.local_position, cel->location.local_position), M_PI*2));
+                if (!wireframe && vtheta > horizon_angle)
+                {
+                    todraw.push_back(ImVec2(-1e13, -2e13));
+                    tdvalid.push_back(false);
+                }
+                else
+                {
+                    dx1 = dispcx + zdes.x * dispcx;
+                    dy1 = dispcy + zdes.y * dispcx;
+                    dx2 = dispcx + prev.x * dispcx;
+                    dy2 = dispcy + prev.y * dispcx;
+
+                    double yd = (dy1 - cel->drawny);
+                    if (yd > result) result = yd;
+
+                    ImVec2 v = ImVec2(dx1, dy1);
+                    if (prev_valid && wireframe)
+                    {
+                        ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                        if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                    }
+                    todraw.push_back(v);
+                    tdvalid.push_back(true);
+
+                    if (!wireframe && (lat>-M_PI_2) && !dragging)
+                    {
+                        m = l - n - perline + round(lon*invlaststepcoslat) + 2;
+                        if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
+                        {
+                            if (self_luminous)
+                            {
+                                cos_vtheta = cos(vtheta);
+                                is_day = fmin(1, pow(cos_vtheta, 0.333));
+                            }
+                            else
+                            {
+                                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), M_PI);
+                                if (fabs(theta) < M_PI_2)
+                                {
+                                    cos_theta = cos(theta);
+                                    is_day = fmin(1, pow(cos_theta, 0.333) + starlight);
+                                }
+                                else is_day = starlight;
+                            }
+
+                            ImVec2 points[4];
+                            points[0] = v;
+                            points[1] = todraw[l-1];
+                            points[2] = todraw[m-1];
+                            points[3] = todraw[m];
+                            if (map && is_day) rgb = map->color_at(lat, lon);
+                            ImU32 imcol = rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+                            if (m > lastm+1 && tdvalid[m-2])
+                            {
+                                points[2] = todraw[m-2];
+                                points[3] = todraw[m-1];
+                                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+                            }
+                            cel->onscreen = true;
+                        }
+
+                        lastm = m;
+                    } // if not wireframe
+                } // if within horizon angle
+                l++;
+            } // if lon
+
+            prev = zdes;
+            prev_valid = true;
+        } // for lon
+
+        perline = n;
+        invlaststepcoslat = 1.0/stepcoslat;
+    } // for lat
+
+    if (!wireframe && !dragging)
+    {
+        ImVec2 points[perline];
+        n = 0;
+        for (i=0; i<perline; i++)
+        {
+            j = l-perline-i-1;
+            if (!tdvalid[j]) continue;
+            points[n++] = todraw[j];
+        }
+
+        // Certain vars are left over from the last iteration; assume values are still good.
+        ImU32 imcol = rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
+        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, n, imcol);
+    }
+
+    if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
+    {
+        std::vector<ImVec2> todrawr;
+        std::vector<bool> tdvalidr;
+        l = 0;
+        Point dust;
+        Planet *pl = (Planet*)cel;
+        double ringsize = pl->ring_radius - equatorial_radius, ringd;
+        if (ringsize <= 0)
+        {
+            std::cerr << "ERROR: Ring size less than equatorial radius for " << cel->name << std::endl << std::flush;
+            throw 0xbadda7a;
+        }
+
+        n = round(M_PI*2/step) * 13;
+        m = fmax(4, fmin(result, round(M_PI*2/step)/2));
+        double step1 = (double)ringsize / m, step2 = M_PI*2/n;
+
+        Map *rmap = cel->ring_map, *rxmap = cel->ringx_map;
+        rgb = {225, 208, 192};
+        for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
+        {
+            double xmapd = (double)(ringd - equatorial_radius) * M_PI*2 / ringsize;
+            double ring_opacity = rxmap ? (255.0 * (1.0-pow((double)rxmap->color_at(0, xmapd).g/255, gossamer_rings))) : 0.5;
+            if (rmap) rgb = rmap->color_at(0, xmapd);
+            double lonlim = M_PI*2+0.5*step2;
+
+            for (lon=0; lon<lonlim; lon+=step2)
+            {
+                dust = Point::from_ra_dec(lon+M_PI, 0, ringd, 0);
+
+                dust = rotate3D(dust, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                dust += cel->tmprel;
+                Point yardstick = center - dust;
+                yardstick.scale(equatorial_radius*2);
+                yardstick += dust;
+                cursor = rotate3D(dust, center, here.equatorial_plane.v, here.equatorial_plane.a);
+
+                if (cursor.magnitude() > z_cutoff && cel->tmprel.get_distance_to_line(dust, yardstick) < equatorial_radius )
+                {
+                    todrawr.push_back(ImVec2(-1e29,-1e53));
+                    tdvalidr.push_back(false);
+                    l++;
+                    prev_valid = false;
+                    prev = zdes;
+                    continue;
+                }
+
+                zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+                if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+                {
+                    todrawr.push_back(ImVec2(-1e29,-1e9));
+                    tdvalidr.push_back(false);
+                    l++;
+                    prev_valid = false;
+                    prev = zdes;
+                    continue;
+                }
+
+                dx1 = dispcx + zdes.x * dispcx;
+                dy1 = dispcy + zdes.y * dispcx;
+                dx2 = dispcx + prev.x * dispcx;
+                dy2 = dispcy + prev.y * dispcx;
+
+                ImVec2 v = ImVec2(dx1, dy1);
+                if (lon)
+                {
+                    if (prev_valid && wireframe)
+                    {
+                        ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                        if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                    }
+
+                    if (prev_valid && !wireframe && !dragging)
+                    {
+                        m = l - n - 1;
+                        if (m>=1 && tdvalidr[l-1] && tdvalidr[m] && tdvalidr[m-1])
+                        {
+                            is_day = (cel->tmprel.get_distance_to_line(dust, lightcen->tmprel) < equatorial_radius)
+                                ? 0 : (0.15 + 0.44 * pl->amt_lit);
+
+                            ImVec2 points[4];
+                            points[0] = v;
+                            points[1] = todrawr[l-1];
+                            points[2] = todrawr[m-1];
+                            points[3] = todrawr[m];
+                            double polycx = 0.25 * (points[0].x + points[1].x + points[2].x + points[3].x),
+                                   polycy = 0.25 * (points[0].y + points[1].y + points[2].y + points[3].y);
+                            for (i=0; i<4; i++)
+                            {
+                                points[i].x += sgn(points[i].x-polycx);
+                                points[i].y += sgn(points[i].y-polycy);
+                            }
+
+                            ImU32 imcol = rgba_apply_redlight(IM_COL32(rgb.r*is_day, rgb.g*is_day, rgb.b*is_day, ring_opacity));
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
+
+                            cel->onscreen = true;
+                        } // if all vertices valid
+                    } // if ready draw filled poly
+                } // if lon
+
+                todrawr.push_back(v);
+                tdvalidr.push_back(true);
+                prev_valid = true;
+                prev = zdes;
+                l++;
+            }
+        }
+    }
+
+    auto sphere_finished = std::chrono::high_resolution_clock::now();
+    auto sphere_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(sphere_finished - sphere_began);
+
+    if (!wireframe && cel->onscreen)
+    {
+        if (sphere_elapsed.count() >= 1.3e5)
+        {
+            if (sphresolution < 0.2) sphresolution *= 1.3;
+            else if (!bugged)
+            {
+                std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
+                bugged = true;
+            }
+        }
+        else if (sphere_elapsed.count() < 8e4 && cel->type != star) sphresolution *= 0.9;
+    }
+
+    return result;
 }
 
 bool look_for_catalogs()
@@ -379,6 +878,7 @@ void load_catalogs()
     num_planets += nexo;
     cout << "Read " << nexo << " objects." << endl << flush;
 
+    #if _USE_CCDM
     if (have_CCDM)
     {
         mtx.lock();
@@ -388,6 +888,7 @@ void load_catalogs()
         int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nCCDM << " objects." << endl << flush;
     }
+    #endif
 
     if (have_SB9)
     {
@@ -430,7 +931,7 @@ void load_catalogs()
             s->proper_motion_decl = s->proper_motion_RA = s->radial_velocity = 0;
             s->BV_color = 0.5;
             s->epoch = J2000;
-            s->update_location(J2000_TIME_T);
+            s->update_location(simnow);
             cels[ncelobjs++] = s;
         }
     }
@@ -456,12 +957,12 @@ void load_catalogs()
         {
             if (cels[i]->orbit && cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude)
                 cels[i]->absolute_magnitude = cels[i]->cenobj->absolute_magnitude + 1;
-            ((Star*)cels[i])->update_location(J2000_TIME_T);
+            ((Star*)cels[i])->update_location(simnow);
         }
         else if (cels[i]->orbit)
         {
-            if (cels[i]->typeclass() == class_planet) ((Planet*)cels[i])->update_location(J2000_TIME_T);
-            else if (cels[i]->typeclass() == class_moon) ((Moon*)cels[i])->update_location(J2000_TIME_T);
+            if (cels[i]->typeclass() == class_planet) ((Planet*)cels[i])->update_location(simnow);
+            else if (cels[i]->typeclass() == class_moon) ((Moon*)cels[i])->update_location(simnow);
         }
     }
 
@@ -554,7 +1055,10 @@ void cache_cons_lines()
         {
             if (cels[j]->type != star) continue;
             Star* s = (Star*)cels[j];
-            if (s->apparent_magnitude > 6.5) continue;
+            // Equuleus has some stars with apparent magnitudes dimmer than 6.5 that form part of the shape of the constellation.
+            // If we remove this line, the constellation lines won't all work.
+            if (!strcmp(s->constellation, "Equ") && s->apparent_magnitude > 7.5) continue;
+            else if (s->apparent_magnitude > 6.5) continue;
             if (founda < 0
                 && 
                 (
@@ -626,10 +1130,11 @@ void cache_cons_lines()
 
 void compute_object_draw_coordinates()
 {
+    if (!ncelobjs) return;
     int i, j, bx, by;
     double dispw = dispcx*2, disph = dispcy*2;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
-    double mycenobj_dist = mycenobj->location.distance_to(here);
+    double mycenobj_dist = mycenobj->location.distance_to(here), lmasslim = lbllsys_mass_lim * 1000;
     if (viewchanged || redo_proper_motions)
     {
         num_stars_in_box = 0;
@@ -667,6 +1172,11 @@ void compute_object_draw_coordinates()
                 ((Star*)cels[i])->update_location(simnow);
                 tmp = cels[i]->location - here;
                 cels[i]->tmprel = Point(tmp);
+                if (whereami >= 0 && cels[i]->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
+                {
+                    cels[i]->drawnx = cels[i]->drawny = -1e9;
+                    continue;
+                }
 
                 // If entering a new star system, change allegiance to new center object.
                 if (whereami < 0
@@ -679,19 +1189,45 @@ void compute_object_draw_coordinates()
                 break;
 
                 case class_planet:
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
                 {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
+                    if (cels[i]->cenobj!=mycenobj)
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
+                    else if (cels[i]->orbit &&
+                        (
+                              ((cels[i]->mass >= lmasslim)
+                            && (cels[i]->tmprel.magnitude() > AU)
+                        ))
+                        && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
                 }
                 ((Planet*)cels[i])->update_location(simnow);
                 break;
 
                 case class_moon:
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
+                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
                 {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
+                    if (cels[i]->cenobj!=mycenobj)
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
+                    else if (cels[i]->orbit &&
+                        (
+                              ((cels[i]->mass >= lmasslim)
+                            && (cels[i]->tmprel.magnitude() > AU)
+                        ))
+                        && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
+                    {
+                        cels[i]->drawnx = cels[i]->drawny = -1e9;
+                        continue;
+                    }
                 }
                 ((Moon*)cels[i])->update_location(simnow);
                 break;
@@ -708,6 +1244,8 @@ void compute_object_draw_coordinates()
 
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            if (isnan(cels[i]->tmprel.x)) continue;
+
             if (cels[i]->typeclass() == class_star
                 && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
                 && !((Star*)cels[i])->tmp_vis_flag)
@@ -717,35 +1255,29 @@ void compute_object_draw_coordinates()
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-            try
-            {
-                vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
-                    ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
-                    : cels[i]->viewer_magnitude(here);
+            vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
+                ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
+                : cels[i]->viewer_magnitude(here);
 
-                double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-                magrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
+            double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
+            bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
-                Cartesian2D cart(rel, azimuth, altitude, zoom);
-                float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-                cels[i]->drawnx = dx;
-                cels[i]->drawny = dy;
+            Cartesian2D cart(rel, azimuth, altitude, zoom);
+            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+            cels[i]->drawnx = dx;
+            cels[i]->drawny = dy;
 
-                if (dx < 0 || dx >= dispw) continue;
-                if (dy < 0 || dy >= disph) continue;
+            if (dx < 0 || dx >= dispw) continue;
+            if (dy < 0 || dy >= disph) continue;
 
-                bx = dx*drawblxscalex;
-                by = dy*drawblxscaley;
-                if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
-                drawnblocks[bx][by].push_back(i);
-                bx_cache[i] = bx;
-                by_cache[i] = by;
-            }
-            catch (...)
-            {
-                // Object is behind the camera.
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
-            }
+            bx = dx*drawblxscalex;
+            by = dy*drawblxscaley;
+            if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
+            drawnblocks[bx][by].push_back(i);
+            bx_cache[i] = bx;
+            by_cache[i] = by;
+
+            angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
         }
     }
 
@@ -754,11 +1286,15 @@ void compute_object_draw_coordinates()
 
 void draw_objects()
 {
-    int i, j, pass;
+    if (!ncelobjs) return;
+    int i, j, n, pass;
     double jay, step, dispw = dispcx*2, disph = dispcy*2;
     ImVec2 xycoord;
-    double appmag, magrad, flare, theta;
+    double appmag, bloomrad, flare, theta;
     double orbseg = 81;
+    double lmasslim = lbllsys_mass_lim*1000;
+    std::vector<CelestialObject*> to_draw_sphere;
+    std::vector<int> to_draw_idx;
 
     Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -768,6 +1304,7 @@ void draw_objects()
     {
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
+        if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
         RGB rgb = Color::rgb_from_color(col, 1);
@@ -819,11 +1356,14 @@ void draw_objects()
     {
         if (i == whereami) continue;
 
-        if (!pass && magrad_cache[i] > 3) continue;
-        else if (pass && magrad_cache[i] <= 3) continue;
+        if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
+        else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
 
-        if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
-        if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
+        if (angular_radius[i]*zoom < fiftyseventh)
+        {
+            if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
+            if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
+        }
 
         if (cels[i]->typeclass() == class_star
             && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
@@ -834,62 +1374,101 @@ void draw_objects()
         appmag = vmag_cache[i];
         if (appmag > 6.5) continue;
 
-        #define max_magrad 10
+        #define max_bloomrad 10
 
-        magrad = magrad_cache[i];
-        flare = (magrad>max_magrad) ? fmin(225, fmax(0, 1.0+sqrt(magrad-max_magrad)*5)) : 0;
-        magrad = fmin(max_magrad, magrad);
+        bloomrad = fabs(bloomrad_cache[i]);
+        flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
+        bloomrad = fmin(max_bloomrad, bloomrad);
 
         #define bloom_exponent 2.5
 
-        Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
-        if (flare)
+        if (angular_radius[i]*zoom > fiftyseventh)
         {
-            double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
-            RGB rgb;
-            rgb.r = (int)(col.red * divisor);
-            rgb.g = (int)(col.green* divisor);
-            rgb.b = (int)(col.blue * divisor);
-
-            double flare2 = flare*0.666;
-            for (jay=flare; jay>flare2; jay -= 4.4)
+            n = to_draw_sphere.size();
+            if (!n)
             {
-                double jay15 = jay+max_magrad;
-                ImVec2 radii(jay15, jay15*0.333);
-                ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 4));
-                for (theta=0; theta<M_PI*2; theta += M_PI/5)
-                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta);
-                break;
+                to_draw_sphere.push_back(cels[i]);
+                to_draw_idx.push_back(i);
+            }
+            else
+            {
+                discinstead[i] = false;
+                double trm = cels[i]->tmprel.magnitude();
+                for (j=0; j<n; j++)
+                {
+                    if (to_draw_sphere[j]->tmprel.magnitude() < trm)
+                    {
+                        to_draw_sphere.insert(to_draw_sphere.begin()+j, cels[i]);
+                        to_draw_idx.insert(to_draw_idx.begin()+j, i);
+                        discinstead[i] = true;
+                        break;
+                    }
+                }
+                if (!discinstead[i])
+                {
+                    to_draw_sphere.push_back(cels[i]);
+                    to_draw_idx.push_back(i);
+                }
+                discinstead[i] = true;
             }
         }
-
-        double mgrc = magrad_cache[i];
-        double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
-
-        if (mgrc >= 2)
+        else
         {
-            mgrc = 2.0 * sqrt(mgrc/2);
-            divisor = (2.9 / fmax(col.red, col.blue));
-        }
+            discinstead[i] = false;
+            Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
+            if (flare)
+            {
+                double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
+                RGB rgb;
+                rgb.r = (int)(col.red * divisor);
+                rgb.g = (int)(col.green* divisor);
+                rgb.b = (int)(col.blue * divisor);
 
-        col.red *= divisor; col.green *= divisor; col.blue *= divisor;
-        for (jay=magrad; jay>=0; jay-=0.7)
-        {
-            RGB rgb = Color::rgb_from_color(col, 1);
-            if (rgb.r >= 16 || rgb.b >= 16)
-                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
-            if (rgb.r == 255 && rgb.b == 255) break;
+                double flare2 = flare*0.666;
+                #define jmax 3
+                for (j=jmax; j>0; j--)
+                {
+                    jay = 0.25 + 0.25 * j * flare;
+                    double jay15 = jay+max_bloomrad;
+                    ImVec2 radii(jay15, jay15*0.333);
+                    ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
+                    double thoff = M_PI*0.1*j;
+                    for (theta=0; theta<M_PI*2; theta += M_PI*0.2)
+                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
+                }
+            }
 
-            col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
+            double mgrc = bloomrad_cache[i];
+            double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
+
+            if (mgrc >= 2)
+            {
+                mgrc = 2.0 * sqrt(mgrc/2);
+                divisor = (2.9 / fmax(col.red, col.blue));
+            }
+
+            col.red *= divisor; col.green *= divisor; col.blue *= divisor;
+            for (jay=bloomrad; jay>=0; jay-=0.7)
+            {
+                RGB rgb = Color::rgb_from_color(col, 1);
+                if (rgb.r >= 16 || rgb.b >= 16)
+                {
+                    ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
+                    cels[i]->onscreen = true;
+                }
+                if (rgb.r == 255 && rgb.b == 255) break;
+
+                col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
+            }
         }
         if (selected == i)
         {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, magrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(selected_color), 0, 2);
         }
     }
 
     // Labels and selection
-    if (show_labels) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->typeclass() == class_star
             && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
@@ -897,25 +1476,76 @@ void draw_objects()
             continue;
 
         if (i == whereami) continue;
+        if (discinstead[i]) continue;
         // if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
         // if (cels[i]->orbit) std::cout << cels[i]->name << " " << cels[i]->location.distance_to(here) << " " << cels[i]->orbit->semimajor_axis << std::endl;
         if (cels[i]->orbit && cels[i]->location.distance_to(here) > 1e3*cels[i]->orbit->semimajor_axis) continue;
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i];
-        magrad = fmin(max_magrad, magrad_cache[i]);
-        if ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
-            || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
-            || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-            || (cbolbls_selected_idx == 3 && cels[i]->type == star && ((Star*)cels[i])->is_sunlike())
-            || (cbolbls_selected_idx == 4 && cels[i]->type == star && ((Star*)cels[i])->has_planets )
-            || (cbolbls_selected_idx == 5 && cels[i]->type == star && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-            || (cbolbls_selected_idx == 6 && cels[i]->type == star && cels[i]->known_poles)
+        if (angular_radius[i]*zoom > fiftyseventh)
+            bloomrad = bloomrad_cache[i];
+        else bloomrad = fmin(max_bloomrad, bloomrad_cache[i]);
+        if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
+               ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
+                || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
+                || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
+                || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
+                || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == 5 && (((Star*)cels[i])->has_hz_planets) )
+                || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+                || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
+             ))
+            || (cels[i]->orbit && (cels[i]->cenobj == mycenobj) && lbl_localsys
+                && ((cels[i]->mass >= lmasslim)
+                 || (vmag_cache[i] < 2.5)
+                 || (cels[i]->tmprel.magnitude() < AU)
+                   )
+               )
             || i == selected)
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+magrad+1),
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
                 rgba_apply_redlight(objlbl_color),
                 cels[i]->name);
+        }
+    }
+
+    n = to_draw_sphere.size();
+    for (j=0; j<n; j++)
+    {
+        i = to_draw_idx[j];
+        CelestialObject *cel = to_draw_sphere[j];
+        bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
+        discinstead[i] = false;
+
+        xycoord = ImVec2(cel->drawnx, cel->drawny);
+        if (selected == i)
+        {
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(selected_color), 0, 2);
+        }
+
+        if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
+               ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
+                || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
+                || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
+                || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
+                || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == 5 && (((Star*)cels[i])->has_hz_planets) )
+                || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+                || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
+             ))
+            || (cels[i]->orbit && (cels[i]->cenobj == mycenobj) && lbl_localsys
+                && ((cels[i]->mass >= lmasslim)
+                 || (vmag_cache[i] < 2.5)
+                 || (cels[i]->tmprel.magnitude() < AU)
+                   )
+               )
+            || i == selected)
+        {
+            ImVec2 sz = ImGui::CalcTextSize(cel->name);
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+bloomrad+1),
+                rgba_apply_redlight(objlbl_color),
+                cel->name);
         }
     }
 }
@@ -1128,33 +1758,33 @@ void identify_object_under_cursor(ImGuiIO& io)
             }
         }
 
-        objinfo += (std::string)"RA:    " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
-                + (std::string)"Decl:  " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
-        oss << "Mag:    " << std::setprecision(2) << lmag << std::endl;
+        objinfo += (std::string)"RA:      " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
+                + (std::string)"Decl:    " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+        oss << "Mag:     " << std::setprecision(2) << lmag << std::endl;
         objinfo += oss.str();
         oss.str("");
         oss.clear();
 
-        if (cels[i]->distance_known)
-        {
-            if (cels[i]->type == star)
-            {
-                oss << "AbsMag: " << std::setprecision(2) << ((Star*)cels[i])->absolute_magnitude << "\n";
-            }
-            oss << "Dist:   " << cels[i]->scaled_distance(here) << std::endl;
-        }
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
-            objinfo += (std::string)"SpTyp: " + s->spectral_type + (std::string)"\n";
+            if (s->distance_known)
+            {
+                oss << "Dist:    " << cels[i]->scaled_distance(here) << std::endl;
+                oss << "AbsMag:  " << std::setprecision(2) << s->absolute_magnitude << "\n";
+            }
+            objinfo += (std::string)"SpTyp:   " + s->spectral_type + (std::string)"\n";
         }
         else if (cels[i]->type == galaxy)
         {
-            //
+            // TODO:
         }
         else
         {
-            oss << "Lit %:  " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
+            oss << "Dist:    " << cels[i]->scaled_distance(here) << std::endl;
+            oss << "Lit %:   " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
+            if (((Planet*)cels[i])->is_in_con_HZ())
+                oss << "*****    In conserv. HZ" << std::endl;
         }
 
         if (cels[i]->mass)
@@ -1163,8 +1793,8 @@ void identify_object_under_cursor(ImGuiIO& io)
                 ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
             else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
             {
-                oss << "Mass:   " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
-                oss << "Mass:   " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
+                oss << "Mass:    " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
+                oss << "Mass:    " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
             }
         }
         if (cels[i]->volumetric_mean_radius)
@@ -1297,6 +1927,7 @@ void process_key_cmd_char(char c)
         break;
 
         case 'O': show_orbits = !show_orbits; break;
+        case 'p': lbl_localsys = !lbl_localsys; break;
 
         case 'r':
         velocity = center;
@@ -1383,8 +2014,10 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
-        case '!': show_consln = show_grid = show_labels = show_orbits = false; break;
+        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
+        case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
+        case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
 
         case '-':
         vm = velocity.magnitude();
@@ -1417,6 +2050,7 @@ void lookfor_cb()
     if (i>=0)
     {
         selected = i;
+        trackidx = -1;
         center_selected();
         searched = true;
     }
@@ -1425,7 +2059,7 @@ void lookfor_cb()
 void draw_status_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
-    int stattop = 0, statleft = 0, statwidth = 225, statheight = txtyscale*2.3;
+    int stattop = 0, statleft = 0, statwidth = 254, statheight = txtyscale*2.3;
     ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     /////////////////////////////////////////////////////
@@ -1437,7 +2071,7 @@ void draw_status_window(ImGuiIO& io)
 
     std::string flagstr;
 
-    flagstr = (std::string)"Zoom (scroll): " + std::to_string(zoom);
+    flagstr = (std::string)"Zoom (*/): " + std::to_string(zoom);
     ImGui::Text("%s", flagstr.c_str());
     statheight += txtyscale;
 
@@ -1463,6 +2097,21 @@ void draw_status_window(ImGuiIO& io)
         + std::string(show_labels ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
     statheight += txtyscale;
+
+    flagstr = (std::string)"Lbl planets (P): "
+        + std::string(lbl_localsys ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+    statheight += txtyscale;
+
+    if (lbl_localsys)
+    {
+        ImGui::Text("Mass limit:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputDouble("##lbllsysmasslim", &lbllsys_mass_lim, 0, 0, "%.2e");
+        ImGui::SameLine();
+        ImGui::Text("kg");
+    }
 
     flagstr = (std::string)"Orbits (Sh+O): "
         + std::string(show_orbits ? "ON" : "OFF");
@@ -1520,6 +2169,15 @@ void draw_status_window(ImGuiIO& io)
         statheight += txtyscale;
         distance_lblcut = atof(lblcut2)*light_year;
     }
+    else if (cbolbls_selected_idx == 4)
+    {
+        ImGui::Text("%s", "# Planets:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputInt("##npltlim", &planets_lblcut, 1, 0);
+        statheight += txtyscale;
+        if (planets_lblcut < 1) planets_lblcut = 1;
+    }
 
     flagstr = (std::string)"Redlgt (Sh+R): "
         + std::string(redlight_mode ? "ON" : "OFF");
@@ -1541,7 +2199,11 @@ void draw_status_window(ImGuiIO& io)
 
     std::string vfstr;
     if (whereami >= 0)
+    {
         vfstr = std::string("View from ") + cels[whereami]->name;
+        if (((Planet*)cels[whereami])->is_in_con_HZ())
+            vfstr += "\nIn conserv. HZ";
+    }
     else vfstr = std::string("View from space");
     ImGui::Text("%s", vfstr.c_str());
     statheight += txtyscale;
@@ -1634,7 +2296,13 @@ void draw_objinf_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
-    int objinfwidth = 225, objinfheight = txtyscale*2, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
+    int objinfwidth = 254, objinfheight = txtyscale*2, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
+
+    if (trackidx >= 0)
+    {
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "TRACKING");
+        objinfheight += txtyscale;
+    }
 
     ImGui::Text("%s", objname.c_str());
     objinfheight += txtyscale;
@@ -1655,7 +2323,7 @@ void draw_objinf_window(ImGuiIO& io)
 void draw_addcel_window(ImGuiIO& io)
 {
     ImGui::Begin("Add Object", &addcelwnd);
-    ImGui::SetWindowSize(ImVec2(193, 81));
+    ImGui::SetWindowSize(ImVec2(225, 123));
 
     ImGui::Text("%s", "Type");
     ImGui::SameLine();
@@ -1745,7 +2413,7 @@ void draw_objedit_window(ImGuiIO& io)
 
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    int objedtwidth = 717, objedtheight = 67;
+    int objedtwidth = 768, objedtheight = 81;
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
     cel_obj_class tc = cels[editidx]->typeclass();
@@ -1785,6 +2453,7 @@ void draw_objedit_window(ImGuiIO& io)
             s->update_location(simnow);
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         char edit_decl[20];
@@ -1798,6 +2467,7 @@ void draw_objedit_window(ImGuiIO& io)
             s->update_location(simnow);
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         }
         objedtheight += txtyscale;
 
@@ -1811,6 +2481,7 @@ void draw_objedit_window(ImGuiIO& io)
             s->update_location(simnow);
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         }
         ImGui::SameLine();
         ImGui::Text("%s", "l.y.");
@@ -1825,22 +2496,26 @@ void draw_objedit_window(ImGuiIO& io)
             s->update_location(simnow);
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         }
         ImGui::SameLine();
         ImGui::Text("%s", "m/s");
         objedtheight += txtyscale;
     }
 
-    edit_eqincl = cel->inclination * fiftyseven;
+    edit_eqincl = cel->obliquity * fiftyseven;
     ImGui::Text("%s", "Obliquity");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid);
     if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
     {
-        cels[editidx]->inclination = edit_eqincl * fiftyseventh;
+        cels[editidx]->obliquity = edit_eqincl * fiftyseventh;
         cels[editidx]->known_poles = true;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     ImGui::SameLine(col2);
     edit_equinox = cel->equinox * fiftyseven;
@@ -1853,6 +2528,9 @@ void draw_objedit_window(ImGuiIO& io)
         cels[editidx]->known_poles = true;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     objedtheight += txtyscale;
 
@@ -1876,7 +2554,16 @@ void draw_objedit_window(ImGuiIO& io)
         cel->volumetric_mean_radius = edit_radius * 1000;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
+    objedtheight += txtyscale;
+
+    stringstream massss;
+    massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-3) << " g/cm^3";
+    std::string dens = massss.str();
+    ImGui::Text("%s", dens.c_str());
     objedtheight += txtyscale;
 
     double edit_oblt = cel->oblateness;
@@ -1888,6 +2575,9 @@ void draw_objedit_window(ImGuiIO& io)
         cel->oblateness = edit_oblt;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     ImGui::SameLine(col2);
     double edit_rot = cel->sidereal_rotational_period / oneday;
@@ -1899,6 +2589,9 @@ void draw_objedit_window(ImGuiIO& io)
         cel->sidereal_rotational_period = edit_rot * oneday;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     objedtheight += txtyscale;
 
@@ -1911,6 +2604,9 @@ void draw_objedit_window(ImGuiIO& io)
         cel->absolute_magnitude = edit_absmag;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
     {
@@ -1931,6 +2627,8 @@ void draw_objedit_window(ImGuiIO& io)
 
             cel->user_edited = true;
             viewchanged = true;
+            if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
     }
     objedtheight += txtyscale;
@@ -1944,6 +2642,9 @@ void draw_objedit_window(ImGuiIO& io)
         cel->precession = edit_prcseq * oneyear;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     ImGui::SameLine(col2);
     double edit_bvcol = cel->BV_color;
@@ -1955,6 +2656,9 @@ void draw_objedit_window(ImGuiIO& io)
         cel->BV_color = edit_bvcol;
         cel->user_edited = true;
         viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
     objedtheight += txtyscale;
 
@@ -1999,13 +2703,16 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f"))
         {
-            cels[editidx]->orbit->period = edit_period * oneday;
-            if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            if (edit_period)
+            {
+                cels[editidx]->orbit->period = edit_period * oneday;
+                if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            }
         }
         ImGui::SameLine();
         ImGui::Text("%s", "days");
@@ -2157,11 +2864,13 @@ int main (int argc, char** argv)
     int i, j, l, n;
     cels = new CelestialObject*[MAX_CELOBJS];
     vmag_cache = new double[MAX_CELOBJS];
-    magrad_cache = new double[MAX_CELOBJS];
+    bloomrad_cache = new double[MAX_CELOBJS];
+    angular_radius = new double[MAX_CELOBJS];
+    discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
-    std::string argsfind = "", argsgo = "";
+    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "";
 
     memset(lookfor, 0, 256);
 
@@ -2198,9 +2907,24 @@ int main (int argc, char** argv)
             argsfind = argv[++l];
         }
 
+        if (!strcmp(argv[l], "track"))
+        {
+            argstrack = argv[++l];
+        }
+
         if (!strcmp(argv[l], "go"))
         {
             argsgo = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "zoom"))
+        {
+            argszoom = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "jd"))
+        {
+            setjd = argv[++l];
         }
 
         if (!strcmp(argv[l], "magtest")) magnitude_test = true;
@@ -2366,6 +3090,7 @@ int main (int argc, char** argv)
         screen_y = dm.h;
     }
 
+    srand(std::time(nullptr));
     for (i=0; i<MAX_SPLASH_STARS; i++)
     {
         splash_star_positions[i] = ImVec2(frand(0, screen_x), frand(0, screen_y));
@@ -2408,7 +3133,8 @@ int main (int argc, char** argv)
 
         if (splash)
         {
-            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y - 21;
+            double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y/1.61803398875;
+            double splash_top = io.DisplaySize.y/2 - splash_height/2;
             double aspect_width = splash_height * splash_image_width / splash_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
@@ -2450,7 +3176,7 @@ int main (int argc, char** argv)
             if (ImGui::Begin("Loading...", &splash, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
-                ImGui::SetWindowPos(ImVec2(left,0));
+                ImGui::SetWindowPos(ImVec2(left,splash_top));
                 ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
                 ImGui::Text("%s", lloadmsg);
                 ImGui::Image((ImTextureID)(intptr_t)splash_image_texture, ImVec2(aspect_width, splash_height));
@@ -2543,31 +3269,60 @@ int main (int argc, char** argv)
 
             // Clicking and dragging
             bool is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
+            if (trackidx >= 0) dragging = false;
             if (is_mouse_down && !is_mouse_over_window && dragging) pan_with_crosshairs(io);
             if (is_mouse_down && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
-            else if (is_click) dragging = false;
+            else if (!is_mouse_down || is_mouse_over_window) dragging = false;
+
+            if (!dragging && scrollhold)
+            {
+                scrollhold -= frame_dur;
+                if (scrollhold <= 0) scrollhold = 0;
+                else dragging = true;
+            }
 
             // Scroll wheel to zoom
             if (io.MouseWheel > 0)
             {
                 zoom *= 1.1;
-                global_brightness *= 1.1;
+                global_brightness *= 1.07;
+                dragging = true;
+                scrollhold = 1;
                 viewchanged = true;
             }
             else if (io.MouseWheel < 0 && zoom > 1)
             {
                 zoom = fmax(1, zoom * 0.9);
-                global_brightness *= 0.9;
+                global_brightness *= 0.93;
+                dragging = true;
+                scrollhold = 1;
                 viewchanged = true;
             }
 
             // Command line args
+            if (setjd.size())
+            {
+                JDnow = atof(setjd.c_str());
+                setjd = "";
+            }
             if (argsgo.size())
             {
                 int goidx = find_object(argsgo.c_str());
                 if (goidx >= 0) whereami = goidx;
                 else std::cerr << "Not found " << argsgo << std::endl;
                 argsgo = "";
+                viewchanged = true;
+            }
+            else if (argstrack.size())
+            {
+                int findidx = find_object(argstrack.c_str());
+                if (findidx >= 0)
+                {
+                    trackidx = findidx;
+                    center_selected();
+                }
+                else std::cerr << "Not found " << argstrack << std::endl;
+                argstrack = "";
                 viewchanged = true;
             }
             else if (argsfind.size())               // After go, wait to get new bearings then seek.
@@ -2582,9 +3337,60 @@ int main (int argc, char** argv)
                 argsfind = "";
                 viewchanged = true;
             }
+            else if (argszoom.size())               // Don't zoom until after go.
+            {
+                zoom = atof(argszoom.c_str());
+                argszoom = "";
+                viewchanged = true;
+            }
 
             // Keyboard commands
             process_keyboard_commands(io);
+            #define steering_rate 0.03
+            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))
+            {
+                Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, yaw, -steering_rate);
+                if (trackidx<0) azimuth -= steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_RightArrow))
+            {
+                Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, yaw,  steering_rate);
+                if (trackidx<0) azimuth += steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_UpArrow))
+            {
+                Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, pitch, -steering_rate);
+                if (trackidx<0) altitude += steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_DownArrow))
+            {
+                Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity = rotate3D(velocity, center, pitch,  steering_rate);
+                if (trackidx<0) altitude -= steering_rate;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_End))
+            {
+                double acceleration = velocity.magnitude() * 0.1;
+                Point forward;
+                forward.x =  sin(azimuth) * cos(altitude) * acceleration;
+                forward.z =  cos(azimuth) * cos(altitude) * acceleration;
+                forward.y =  sin(altitude) * acceleration;
+                forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity += forward;
+            }
+            if (ImGui::IsKeyDown(ImGuiKey_Home))
+            {
+                double acceleration = velocity.magnitude() * 0.1;
+                Point forward;
+                forward.x =  sin(azimuth) * cos(altitude) * acceleration;
+                forward.z =  cos(azimuth) * cos(altitude) * acceleration;
+                forward.y =  sin(altitude) * acceleration;
+                forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                velocity -= forward;
+            }
         }
 
         // More code copied from the ImGui example:
@@ -2611,7 +3417,7 @@ int main (int argc, char** argv)
             else
             {
                 timeout_ms *= 1.5;
-                if (timeout_ms > 250) timeout_ms = 250;
+                if (timeout_ms > 67) timeout_ms = 67;
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
@@ -2664,7 +3470,8 @@ int main (int argc, char** argv)
 
     delete[] cels;
     delete[] vmag_cache;
-    delete[] magrad_cache;
+    delete[] bloomrad_cache;
+    delete[] discinstead;
     delete[] bx_cache;
     delete[] by_cache;
     delete[] consaidx;

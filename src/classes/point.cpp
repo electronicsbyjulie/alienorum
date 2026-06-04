@@ -101,10 +101,10 @@ Point::Point(Cartesian2D cart, double r, double az, double alt, double m)
 // https://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment
 double Point::get_distance_to_line(Point a, Point b) const
 {
-    float r2 = pow(a.distance_to(b), 2);
+    double r2 = pow(a.distance_to(b), 2);
     if (!r2) return distance_to(a);
 
-    float t = fmax(0, fmin(1,  ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y) + (z - a.z) * (b.z - a.z)) / r2));
+    double t = fmax(0, fmin(1, ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y) + (z - a.z) * (b.z - a.z)) / r2));
     Point p(a.x + t * (b.x-a.x), a.y + t * (b.y-a.y), a.z + t * (b.z-a.z));
 
     return distance_to(p);
@@ -146,6 +146,12 @@ Cartesian2D &Cartesian2D::operator/=(double divisor)
     x *= multiplier;
     y *= multiplier;
     return *this;
+}
+
+double Cartesian2D::distance_to(Cartesian2D other)
+{
+    double dx = x - other.x, dy = y - other.y;              // don't have to fabs() because (-x)^2 = x^2.
+    return sqrt(dx*dx+dy*dy);
 }
 
 double find_angle(double dx, double dy)
@@ -298,30 +304,14 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
     // Then orient
     pole = rotate3D(pole, center, axis, ascending_node);
 
-    /*
-    // First, solve for inclination
-    Rotation inclined;
-    if (system_center.magnitude())
-        inclined = align_points_3d(center,
-            Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
-            system_center);
-    else inclined = align_points_3d(yaxis,
-            Point( 0, cos(inclination) * light_year*1e9, sin(inclination) * light_year*1e9 ),
-            center);
-
-    // Then incline the stars' pole
-    Point pole = rotate3D(yaxis, center, inclined.v, -inclined.a);
-
-    // Then rotate along the Sun-star axis
-    if (1) // system_center.magnitude())
-    {
-        Point axis = (system_center.magnitude()) ? (system_center - center) : yaxis;
-        pole = rotate3D(pole, center, axis, (ascending_node - M_PI/2));
-    }
-        */
-
     // Then realign the points for the new pole
     return align_points_3d(pole, yaxis, center);
+}
+
+double distance(ImVec2 a, ImVec2 b)
+{
+    double dx = a.x - b.x, dy = a.y - b.y;
+    return sqrt(dx*dx+dy*dy);
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)

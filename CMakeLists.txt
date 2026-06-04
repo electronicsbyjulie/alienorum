@@ -9,19 +9,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(PNG REQUIRED)
 
 add_library(IMGUI STATIC
-	src/imgui/imgui_demo.cpp
-	src/imgui/imgui_draw.cpp
-	src/imgui/imgui_tables.cpp
-	src/imgui/imgui_widgets.cpp
-	src/imgui/imgui.cpp
-	src/imgui/backends/imgui_impl_opengl3.cpp
-	src/imgui/backends/imgui_impl_sdl2.cpp
+	src/include/imgui/imgui_demo.cpp
+	src/include/imgui/imgui_draw.cpp
+	src/include/imgui/imgui_tables.cpp
+	src/include/imgui/imgui_widgets.cpp
+	src/include/imgui/imgui.cpp
+	src/include/imgui/backends/imgui_impl_opengl3.cpp
+	src/include/imgui/backends/imgui_impl_sdl2.cpp
 )
 
 # PUBLIC so we don't have to do the same for all things that rely on imgui
-target_include_directories(IMGUI PUBLIC src/imgui)
+target_include_directories(IMGUI PUBLIC src/include/imgui)
 
 # SDL required for imgui_impl_sld2.cpp
 target_link_libraries(IMGUI PUBLIC SDL2::SDL2)
@@ -33,14 +34,16 @@ add_library(CLASSES STATIC
 	src/classes/galaxy.cpp
 	src/classes/misc.cpp
 	src/classes/moon.cpp
+	src/classes/noise.cpp
 	src/classes/planet.cpp
 	src/classes/point.cpp
 	src/classes/serial.cpp
 	src/classes/star.cpp
 )
 
-target_include_directories(CLASSES PUBLIC src/classes)
+target_include_directories(CLASSES PUBLIC src/classes src/include)
 
+target_link_libraries(CLASSES jpeg PNG::PNG)
 
 add_executable(alienorum src/alienorum.cpp)
 

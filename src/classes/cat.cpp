@@ -360,7 +360,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         if (!num_read)
         {
             Rotation rot = align_points_3d(solar_north, ecliptic_north, center);
-            s->inclination = rot.a;
+            s->obliquity = rot.a;
             s->equinox = find_angle_along_vector(rot.v, zaxis, center, yaxis);
             if (s->equinox < 0) s->equinox += (M_PI*2);
 
@@ -526,6 +526,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             if (HR != 0)
             {
                 current_multi = nullptr;
+                current_multi_hrno = HR;
                 A = nullptr;
             }
             s->multisys = current_multi;
@@ -706,6 +707,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             // There are only a handful with no V magnitude; omit them.
             read_field_onebased(buffer, 42, 46, field);
             if (!trim(field).size()) continue;
+            #if _filter_Hipparcos_stars_absmag
+            double appmag = atof(field);
+            #endif
 
             #if _filter_Hipparcos_stars_appmag
             f = atof(field);
@@ -1007,7 +1011,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
         read_field_onebased(buffer, 54, 59, field);
-        A->inclination = atof(field) * fiftyseventh;
+        A->obliquity = atof(field) * fiftyseventh;
         s->orbit->inclination = 0;
 
         //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
@@ -1090,11 +1094,15 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         if (!s)
         {
+            #if _ALLOW_CCDM_ADDITIONS
             s = new Star();
             s->epoch = J2000 + (1991.25 - 2000);
 
             cels[offset++] = s;
             cels[offset] = nullptr;
+            #else
+            continue;
+            #endif
         }
         if (s != A) s->make_companion_of(A, conccomp);
 
@@ -1145,12 +1153,19 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
         s->declination = A->declination + rho * cos(theta);
 
-        if (!A->known_poles)
+        if (!A->known_poles && !A->estimated_poles)
         {
-            // The inclination is unknown, but let's assume zero degrees
-            s->inclination = A->inclination = 0;
-            A->location.equatorial_plane = A->location.local_system_plane =
-                align_points_3d(cels[0]->location.system_center, Point(0,light_year*1e9,0), A->location.system_center);
+            // The inclination is unknown, but let's use a trick to put the companion in the local system plane.
+            // Subtract the local system center from [0,0,0] this will give the same as the Sun's coordinates relative to the local system.
+            // The normal would ideally put both the companion star and the Sun on the local ecliptic. This doesn't, though.
+            Point sundir = center - A->location.system_center;
+            sundir.scale(AU*29);
+            Point pole = compute_normal(A->location.local_position, s->location.local_position, sundir);
+
+            A->location.equatorial_plane = A->location.local_system_plane
+                = s->location.equatorial_plane = s->location.local_system_plane
+                = align_points_3d(pole, yaxis, center);
+            A->estimated_poles = s->estimated_poles = true;
         }
         s->location = A->location;                      // Copies local system reference frame
         s->epoch = J2000;
@@ -1470,7 +1485,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
 
         if (!(asno = atoi(field))) continue;
         if ((asno > 4 || absmagn >= 8)
-        /*    && asno != 55
+            && asno != 55
             && asno != 89
             && asno != 105
             && asno != 116
@@ -1580,9 +1595,9 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 6032
             && asno != 6123
             && asno != 6143
-            && asno != 6186*/
+            && asno != 6186
             && asno != 6433
-            /*&& asno != 6469
+            && asno != 6469
             && asno != 6470
             && asno != 6471
             && asno != 6486
@@ -1593,7 +1608,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 6875
             && asno != 6914
             && asno != 6999
-            && asno != 7000*/
+            && asno != 7000
             && asno != 50000
             && asno != 90377
             && asno != 90482
@@ -1615,12 +1630,15 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         p->cenobj = cels[0];
         p->orbit = new Orbit();
         p->orbit->center = cels[0];
-        strcpy(p->name, (std::to_string(asno) + std::string(" ") + name).c_str());
+        // strcpy(p->name, (std::to_string(asno) + std::string(" ") + name).c_str());
+        strcpy(p->name, name.c_str());
         p->absolute_magnitude = absmagn;
 
         //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
         read_field_onebased(buffer, 55, 58, field);
-        p->BV_color = atof(field);
+        if (trim(field).size())
+            p->BV_color = atof(field);
+        else p->BV_color = 0.71;                            // typical value for asteroids
 
         //  60- 64  F5.1  km      Diam      ? IRAS diameter (see E.F.Tedesco, pp.1151-1161; catalog <II/190>)
         read_field_onebased(buffer, 60, 64, field);
@@ -1908,7 +1926,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                             p->orbit->mean_anomaly = 0;
                         }
                         else if (i == col_argperi) p->orbit->arg_periapsis = atof(field) * fiftyseventh;
-                        else if (i == col_oblt) p->inclination = atof(field) * fiftyseventh;
+                        else if (i == col_oblt) p->obliquity = atof(field) * fiftyseventh;
                         else if (i == col_sptp) spectral_type = field;
                         else if (i == col_srad) star_radius = atof(field) * solar_radius;
                         else if (i == col_smass) star_mass = atof(field) * solar_mass;
@@ -1966,12 +1984,14 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     }
                 }
 
-                s->inclination = p_incl;
+                s->obliquity = p_incl;
             }
 
             if (s && p && p->orbit->period)
             {
-                ((Star*)s)->has_planets = true;
+                ((Star*)s)->has_planets++;
+                if (p->is_in_con_HZ()) ((Star*)s)->has_hz_planets++;
+                p->distance_known = true;
                 if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
                 else if (p->mass < 2.5e+29) p->type = ice_giant;
                 else p->type = gas_giant;
@@ -2101,19 +2121,29 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         read_field_onebased(buffer, 77, 87, field);
         double inclination = atof(field) * fiftyseventh;
 
-        if (inclination || ascending_node)
-        {
-            A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
-                A->location.system_center - cels[0]->location.system_center);
-            A->location.orbital_plane = A->location.equatorial_plane = A->location.local_system_plane;
-            A->inclination = inclination;
-            A->equinox = ascending_node;
-            A->known_poles = true;
-        }
-
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
+
+        if (inclination || ascending_node)
+        {
+            if (!strcmp(bdystr, "(stellar rotation)"))
+            {
+                A->location.equatorial_plane = system_plane_from_incl_and_node(inclination, ascending_node,
+                    A->location.system_center - cels[0]->location.system_center);
+                A->lock_equatorial_plane = true;
+            }
+            else
+            {
+                A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
+                    A->location.system_center - cels[0]->location.system_center);
+                A->location.orbital_plane = A->location.local_system_plane;
+                if (!A->lock_equatorial_plane) A->location.equatorial_plane = A->location.local_system_plane;
+                A->obliquity = inclination;
+                A->equinox = ascending_node;
+            }
+            A->known_poles = true;
+        }
 
         if (bdystr[0] == '(') continue;
 
@@ -2173,7 +2203,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (inclination || ascending_node)
         {
             s->location = A->location;
-            s->inclination = inclination;
+            s->obliquity = inclination;
             s->equinox = ascending_node;
             A->known_poles = s->known_poles = true;
         }
@@ -2186,151 +2216,175 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
 int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/planets.dat";
-    char buffer[1024];
-    char field[32];
-    int i, j, offset, num_read = 0;
+    std::fstream fs(std::string("catalogs/planets.json"), std::ios::in);
+    if (!fs) throw 0xbadf12e;
+    int result = 0, offset;
+    json planets;
+    planets << fs;
+    int i, j, k, n = planets.size();
+    bool createnew;
+    Planet *p;
+    Moon *m;
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
-    FILE* fp = fopen(path.c_str(), "rb");
-    if (!fp) return 0;
-
-    while (fgets(buffer, 1020, fp))
+    for (i=0; i<n; i++)
     {
-        if (*buffer == '#') continue;
-        if (!trim(buffer).size()) continue;
-
-        j = -1;
-        read_field_onebased(buffer, 1, 25, field);
-        std::string cenname = trim(field);
-        for (i=0; i<offset; i++)
+        json pl = planets[i];
+        std::string bodyname, cenname, mapurl;
+        try
         {
-            if (!strcmp(cels[i]->name, cenname.c_str()))
+            pl.at("BODYNAME").get_to(bodyname);
+            j = find_object(bodyname.c_str(), false);
+            cenname = "";
+            try { pl.at("CENTER_OF_ORBIT").get_to(cenname); } catch (...) { ; }
+            k = -1;
+            if (cenname.size()) k = find_object(cenname.c_str(), false);
+
+            if (j < 0 || k >= 0)                // Name not taken or center of orbit,
+            {                                   // create new.
+                if (k < 0) throw 0xbadda7a;     // Future expansion.
+                if (cels[k]->type == galaxy)
+                    throw 0xbadda7a;            // Future expansion.
+                if (cels[k]->type == star)
+                {
+                    p = new Planet();
+                    p->type = rocky;
+                }
+                else
+                {
+                    m = new Moon();
+                    p = m;
+                    p->type = rocky;
+                }
+                memset(p->name, 0, 32);
+                strcpy(p->name, bodyname.c_str());
+                if (k >= 0)
+                {
+                    p->orbit = new Orbit;
+                    p->orbit->center = cels[k];
+                }
+
+                cels[offset++] = p;
+                cels[offset] = nullptr;
+                result++;
+                createnew = true;
+            }
+            else                                // Name taken and no center specified,
+            {                                   // update existing.
+                p = (Planet*)cels[j];
+                m = (p->typeclass() == class_moon) ? ((Moon*)p) : nullptr;
+                createnew = false;
+            }
+
+            try
             {
-                j = i;
-                break;
+                double ra, decl;
+                pl.at("NorthPoleRA").get_to(ra);
+                pl.at("NorthPoleDecl").get_to(decl);
+
+                ra *= fiftyseventh;
+                decl *= fiftyseventh;
+
+                Point pole = Point::from_ra_dec(ra, decl, light_year*1e29, 0);
+                p->location.equatorial_plane = align_points_3d(pole, yaxis, center);
+                p->lock_equatorial_plane = true;
+                p->known_poles = true;
+            } catch (...) { ; }
+            try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
+            try { pl.at("ArgPeri").get_to(p->orbit->arg_periapsis); p->orbit->arg_periapsis *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
+            try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
+            try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
+            try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
+            try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (M_PI * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (M_PI * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (M_PI * 2 / pro / oneyear) : 0; } catch (...) { ; }
+            try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("J2").get_to(p->J2); } catch (...) { ; }
+            try
+            {
+                pl.at("Mass").get_to(p->mass);
+                p->mass *= 1000;
+                if (p->mass >= 2.5e+29) p->type = ice_giant;
+                else if (p->mass >= 1.6 * earth_mass) p->type = gas_giant;        // https://doi.org/10.1051/0004-6361/202348690
+            } catch (...) { ; }
+            try { pl.at("MeanAnom").get_to(p->orbit->mean_anomaly); p->orbit->mean_anomaly *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
+            try { pl.at("Obliquity").get_to(p->obliquity); p->obliquity *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("OrbitPeriod").get_to(p->orbit->period); } catch (...) { ; }
+            try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
+            try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
+            try { pl.at("SurfacePressure").get_to(p->surface_pressure); } catch (...) { ; }
+            try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
+            try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
+            // try { pl.at("").get_to(p->); } catch (...) { ; }
+
+            if (m)
+            {
+                try { pl.at("Depth").get_to(m->depth); } catch (...) { ; }
+                try { pl.at("Width").get_to(m->width); } catch (...) { ; }
+                try { pl.at("Height").get_to(m->height); } catch (...) { ; }
+                if (!m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
+                if (m->depth && m->width && m->height) m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333333333) * 500;
+            }
+
+            const char *mapkeys[6] = {"SurfMap", "CloudMap", "BumpMap", "NightMap", "RingColorMap", "RingTranspMap"};
+            const char *mapsuffs[6] = {"_surf", "_clouds", "_bump", "_night", "_ring", "_ringx"};
+
+            for (j=0; j<6; j++)
+            {
+                try
+                {
+                    pl.at(mapkeys[j]).get_to(mapurl);
+                    if (mapurl.c_str())
+                    {
+                        std::string destdir = (std::string)"maps/";
+                        std::string destfname;
+                        if (!strcasecmp(mapurl.substr(mapurl.size()-4).c_str(), ".png"))
+                            destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".png");
+                            else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
+                        if (!file_exists(destfname.c_str()))
+                        {
+                            // TODO: Add compatibility for Windows and Mac.
+                            std::string cmd = (std::string)"wget -O " + destfname + (std::string)" " + (std::string)mapurl;
+                            std::cout << cmd << std::endl;
+                            std::system(cmd.c_str());
+                        }
+                    }
+                } catch (...) { ; }
+            }
+
+            if (p->orbit && p->orbit->center && createnew)
+            {
+                p->known_poles = p->obliquity && p->equinox;
+                p->location = p->orbit->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
+                p->location.equatorial_plane.a = p->obliquity;
+                p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
+
+                ((Star*)p->get_light_center())->has_planets++;
+                if (p->is_in_con_HZ()) ((Star*)p->get_light_center())->has_hz_planets++;
             }
         }
-
-        if (j < 0)
+        catch (...)
         {
-            read_field_onebased(buffer, 26, 42, field);
-            std::cerr << "Warning: center of orbit unknown for " << field << std::endl;
             continue;
         }
-
-        Orbit* o = new Orbit();
-        o->center = cels[j];
-        if (cels[j]->typeclass() == class_star) ((Star*)cels[j])->has_planets = true;
-        Planet* p;
-
-        if (o->center->orbit && o->center->orbit->center)
-        {
-            p = (Planet*)new Moon();
-        }
-        else
-        {
-            p = new Planet();
-        }
-        p->orbit = o;
-        read_field_onebased(buffer, 26, 42, field);
-        strcpy(p->name, trim(field).c_str());
-
-        read_field_onebased(buffer, 44, 58, field);
-        o->semimajor_axis = atof(field);
-        if (!o->semimajor_axis)
-        {
-            delete p;
-            delete o;
-            continue;
-        }
-
-        read_field_onebased(buffer, 60, 64, field);
-        p->BV_color = atof(field);
-
-        read_field_onebased(buffer, 66, 70, field);
-        p->UB_color = atof(field);
-
-        read_field_onebased(buffer, 72, 77, field);
-        o->inclination = atof(field) * fiftyseventh;
-
-        read_field_onebased(buffer, 81, 87, field);
-        o->ascending_node = atof(field) * fiftyseventh;
-
-        read_field_onebased(buffer, 91, 98, field);
-        o->arg_periapsis = atof(field) * fiftyseventh;
-
-        read_field_onebased(buffer, 101, 110, field);
-        o->mean_anomaly = atof(field) * fiftyseventh;
-
-        read_field_onebased(buffer, 112, 117, field);
-        p->absolute_magnitude = atof(field);
-
-        read_field_onebased(buffer, 119, 128, field);
-        p->volumetric_mean_radius = atof(field);
-
-        read_field_onebased(buffer, 132, 141, field);
-        p->oblateness = atof(field);
-
-        read_field_onebased(buffer, 143, 154, field);
-        o->eccentricity = atof(field);
-
-        read_field_onebased(buffer, 156, 173, field);
-        o->period = atof(field);
-
-        read_field_onebased(buffer, 175, 181, field);
-        p->inclination = atof(field) * fiftyseventh;
-
-        read_field_onebased(buffer, 183, 191, field);
-        p->equinox = atof(field) * fiftyseventh;
-        p->known_poles = p->inclination && p->equinox;
-
-        read_field_onebased(buffer, 193, 210, field);
-        p->sidereal_rotational_period = atof(field);
-
-        read_field_onebased(buffer, 212, 223, field);
-        p->mass = atof(field);
-        if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
-        else if (p->mass < 2.5e+29) p->type = ice_giant;
-        else p->type = gas_giant;
-
-        read_field_onebased(buffer, 225, 231, field);
-        p->surface_pressure = atof(field);
-
-        read_field_onebased(buffer, 233, 243, field);
-        p->epoch = J2000 + (atof(field) - 2000)*(oneyear/oneday);
-
-        read_field_onebased(buffer, 245, 259, field);
-        float f = atof(field);
-        p->precession = f ? (M_PI * 2 / f) : 0;
-
-        read_field_onebased(buffer, 261, 287, field);           // TODO: Laplace planes
-        p->J2 = atof(field);
-
-        read_field_onebased(buffer, 289, 303, field);
-        f = atof(field);
-        o->prec_node = f ? (M_PI * 2 / f) : 0;
-
-        read_field_onebased(buffer, 305, 316, field);
-        f = atof(field);
-        o->proc_argperi = f ? (M_PI * 2 / f) : 0;
-        p->distance_known = true;
-
-        p->location = o->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
-        p->location.equatorial_plane.a = p->inclination;
-        p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
-
-        cels[offset++] = p;
-        num_read++;
     }
 
-    return num_read;
+    return result;
 }
 
 void CatalogReader::read_field_onebased(char *buffer, int start, int end, char *out)
 {
+    if (start > strlen(buffer))
+    {
+        out[0] = 0;
+        return;
+    }
     start--;
     int len = end - start;
     int i;

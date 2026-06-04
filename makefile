@@ -2,13 +2,13 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image
+#   brew install sdl2 sdl2_image jpeg png
 #
 # MSYS2 (Run in MINGW64 environment):
-#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng
 #
 
 CPP = g++
@@ -25,12 +25,13 @@ CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 # gprof bin/alienorum gmon.out > alienorum.output
 # CPPFLAGS += -g -pg -DDEBUG
 
-IMGUI_DIR = src/imgui
+IMGUI_DIR = src/include/imgui
 CLASSES_DIR = src/classes
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp
+            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp \
+			$(CLASSES_DIR)/noise.cpp
 
 BIN = bin
 OBJ = obj
@@ -42,21 +43,20 @@ LINUX_GL_LIBS = -lGL
 OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
 
-INCLUDES = -I./src/include -I./src/imgui -I./src/classes
+INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
 
 # Platform-specific configurations
 ifeq ($(UNAME_S), Linux)
     ECHO_MESSAGE = "Building for Linux..."
-    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image
+    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image -ljpeg -lpng
     CPPFLAGS += `sdl2-config --cflags`
     CFLAGS = $(CPPFLAGS)
 endif
 
 ifeq ($(UNAME_S), Darwin)
     ECHO_MESSAGE = "Building for Mac OS..."
-    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image
-    
+    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image -ljpeg -lpng
     # Support both Intel (/usr/local) and Apple Silicon (/opt/homebrew)
     LIBS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
     CPPFLAGS += `sdl2-config --cflags` -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
@@ -65,7 +65,7 @@ endif
 
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
-    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image
+    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image -ljpeg -lpng
     CPPFLAGS += `pkg-config --cflags sdl2`
     CFLAGS = $(CPPFLAGS)
 endif
@@ -117,6 +117,9 @@ $(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
 
 $(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJ)/misc.o
+
+$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/noise.h makefile
+	$(CPP) $(CLASSES_DIR)/noise.cpp $(CPPFLAGS) -c -o $(OBJ)/noise.o
 
 $(OBJ)/color.o: $(CLASSES_DIR)/color.cpp $(CLASSES_DIR)/color.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJ)/color.o

@@ -2,6 +2,10 @@
 #define _CelestialObject
 
 #include <string>
+#include <stdio.h>
+#include <setjmp.h>
+#include "jpeglib.h"
+#include "png.h"
 #include "point.h"
 #include "color.h"
 
@@ -25,6 +29,13 @@ enum cel_obj_class
     class_planet,
     class_moon,
     class_satellite
+};
+
+
+struct my_jpeg_error_mgr
+{
+    struct jpeg_error_mgr pub;	/* "public" fields */
+    jmp_buf setjmp_buffer;	/* for return to caller */
 };
 
 class CelestialObject;
@@ -57,6 +68,28 @@ class Orbit
     bool from_json(json j);
 };
 
+class Map
+{
+    protected:
+    JSAMPARRAY jpeg_image_buffer = nullptr;         // Points to large array of R,G,B-order data
+    // EasyBMP::Image *bmp;
+
+    unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
+    int image_height = 0;                           // Number of rows in image
+    int image_width = 0;                            // Number of columns in image
+    int allocated = 0;
+    double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
+
+    public:
+    bool load_from_bmp(std::string filename);
+    bool load_from_jpeg(std::string filename);
+    bool load_from_png(std::string filename);
+
+    RGB color_at(double latitude, double longitude);
+    void generate_rocky_map(int latitude_resolution, double BV_color, bool has_water);
+    void generate_gas_giant_map(int latitude_resolution, double BV_color);
+};
+
 class CelestialObject
 {
     protected:
@@ -69,13 +102,14 @@ class CelestialObject
     double sidereal_rotational_period = 0;      // seconds
     double right_ascension = 0;                 // RADIANS!
     double declination = 0;                     // RADIANS!
-    double inclination = 0;                     // Equatorial. RADIANS!
+    double obliquity = 0;                       // Equatorial inclination to orbit or to plane of Earth's sky. RADIANS!
     double equinox = 0;                         // RADIANS!
     double equinox_eff = 0;
     double precession = 0;                      // radians/second
     double distance = 0;                        // meters
     bool distance_known = false;
     bool known_poles = false;
+    bool estimated_poles = false;
 
     double epoch = J2000;                       // JD
     double absolute_magnitude = 0;
@@ -90,15 +124,21 @@ class CelestialObject
     cel_obj_type type = star;
     char name[32];
 
+    Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
+        *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;
     float drawnx=-1e9, drawny=-1e9;
+    bool looked_for_maps = false;
+    bool onscreen = false;
 
     CelestialObject();
     virtual ~CelestialObject() = default;
     CelestialLocation location;
+    bool lock_equatorial_plane = false;
     Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
     CelestialObject *cenobj = nullptr;
     Point tmprel;
 
+    CelestialObject* get_light_center();
     double viewer_magnitude(CelestialLocation seen_from);
     static double distance_from_magnitudes(double apparent, double absolute);
     std::string RA_as_hms(double seen_equinox);
@@ -121,8 +161,8 @@ class CelestialObject
 };
 
 extern CelestialObject **cels, *mycenobj;
-extern bool *celskip;
-extern double *vmag_cache, *magrad_cache;
+extern bool *celskip, *discinstead;
+extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;
 
 #endif
