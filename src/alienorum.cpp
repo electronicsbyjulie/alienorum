@@ -111,9 +111,9 @@ void draw_ra_dec_lines()
 {
     int i, j;
     Cartesian2D prev, zdes;
-    ImU32 gc = rgba_apply_redlight(grid_color);
-    ImU32 gcb = rgba_apply_redlight(grid_color_brighter);
-    ImU32 ec = rgba_apply_redlight(ecliptic_color);
+    ImU32 gc = rgba_apply_redlight(global_style.grid_color);
+    ImU32 gcb = rgba_apply_redlight(global_style.grid_color_brighter);
+    ImU32 ec = rgba_apply_redlight(global_style.ecliptic_color);
     double node = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
     bool prev_valid = false;
     // RA and Dec lines.
@@ -1320,7 +1320,7 @@ void draw_objects()
 
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
         RGB rgb = Color::rgb_from_color(col, 1);
-        ImU32 imcol = (i==selected) ? rgba_apply_redlight(selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
+        ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         step = cels[i]->orbit->period / orbseg;
         CelestialLocation was = cels[i]->location;
         bool is_moon = (cels[i]->typeclass() == class_moon);
@@ -1475,7 +1475,7 @@ void draw_objects()
         }
         if (selected == i)
         {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
         }
     }
 
@@ -1517,7 +1517,7 @@ void draw_objects()
         {
             ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
-                rgba_apply_redlight(objlbl_color),
+                rgba_apply_redlight(global_style.objlbl_color),
                 cels[i]->name);
         }
     }
@@ -1533,7 +1533,7 @@ void draw_objects()
         xycoord = ImVec2(cel->drawnx, cel->drawny);
         if (selected == i)
         {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(selected_color), 0, 2);
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
         }
 
         if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
@@ -1556,7 +1556,7 @@ void draw_objects()
         {
             ImVec2 sz = ImGui::CalcTextSize(cel->name);
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+bloomrad+1),
-                rgba_apply_redlight(objlbl_color),
+                rgba_apply_redlight(global_style.objlbl_color),
                 cel->name);
         }
     }
@@ -1599,7 +1599,7 @@ void draw_cons_lines()
         if (draw_actual_conslines)
             ImGui::GetBackgroundDrawList()->AddLine(
                 ImVec2(dx1, dy1), ImVec2(dx2, dy2),
-                rgba_apply_redlight((i<nconsln) ? consline_color : IM_COL32(255, 64, 0, 128)), 1);
+                rgba_apply_redlight((i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128)), 1);
 
         assert (l < (int)conscen.size());
         conscen[l] += Cartesian2D((dx1+dx2)/2, (dy1+dy2)/2);
@@ -1620,7 +1620,7 @@ void draw_cons_lines()
         if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
-                rgba_apply_redlight((l<nconsln) ? conslbl_color : IM_COL32(255, 64, 0, 128)),
+                rgba_apply_redlight((l<nconsln) ? global_style.conslbl_color : IM_COL32(255, 64, 0, 128)),
                 consname[l].c_str());
         }
     }
@@ -1634,9 +1634,9 @@ void draw_mouse_cursor(ImGuiIO& io)
     circle_size = cursor_size / 2.5;
 
     ImU32 cc[3];
-    cc[0] = rgba_apply_redlight(cursor_color1);
-    cc[1] = rgba_apply_redlight(cursor_color2);
-    cc[2] = rgba_apply_redlight(cursor_color3);
+    cc[0] = rgba_apply_redlight(global_style.cursor_color1);
+    cc[1] = rgba_apply_redlight(global_style.cursor_color2);
+    cc[2] = rgba_apply_redlight(global_style.cursor_color3);
 
     int i;
 
@@ -1682,27 +1682,6 @@ void draw_mouse_cursor(ImGuiIO& io)
             ImVec2(io.MousePos.x + cursor_size + circle_size - (i-1)*_cursor_fade, io.MousePos.y),
             cc[i], _cursor_fade+1);
     }
-
-    /*ImU32 c = rgba_apply_redlight(cursor_color);
-    ImGui::GetBackgroundDrawList()->AddLine(
-        ImVec2(io.MousePos.x, io.MousePos.y - cursor_size),
-        ImVec2(io.MousePos.x, io.MousePos.y - circle_size - 1),
-        c, 1);
-    ImGui::GetBackgroundDrawList()->AddLine(
-        ImVec2(io.MousePos.x, io.MousePos.y + cursor_size + 1),
-        ImVec2(io.MousePos.x, io.MousePos.y + circle_size + 2),
-        c, 1);
-    ImGui::GetBackgroundDrawList()->AddLine(
-        ImVec2(io.MousePos.x - cursor_size, io.MousePos.y),
-        ImVec2(io.MousePos.x - circle_size - 1, io.MousePos.y),
-        c, 1);
-    ImGui::GetBackgroundDrawList()->AddLine(
-        ImVec2(io.MousePos.x + cursor_size + 1, io.MousePos.y),
-        ImVec2(io.MousePos.x + circle_size + 2, io.MousePos.y),
-        c, 1);
-    ImGui::GetBackgroundDrawList()->AddCircle(
-        ImVec2(io.MousePos.x, io.MousePos.y),
-        circle_size, c, 8, 1);*/
 }
 
 void identify_object_under_cursor(ImGuiIO& io)
