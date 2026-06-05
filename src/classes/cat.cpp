@@ -1688,6 +1688,11 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         p->orbit->semimajor_axis = sma * AU;
         p->orbit->period = sqrt(sma*sma*sma) * oneyear;
 
+        // Issue #58: Add default parameters for asteroids.
+        p->estimate_rotation();
+        p->estimate_albedo();
+        if (!p->albedo) p->estimate_albedo_and_absmagn();
+
         if (!strcmp(name.c_str(), "Pluto"))
         {
             _day = 0;
