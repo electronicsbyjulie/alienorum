@@ -10,7 +10,6 @@
 #include <thread>
 #include <chrono>
 #include <stdio.h>
-#include <chrono>
 #include <format>
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -38,7 +37,7 @@ std::string load_univ = "", setjd = "";
 bool catalogs_found = false;
 int num_galaxies=0, num_stars=0, num_planets=0, num_moons=0, num_asteroids=0, num_comets=0, num_sat=0;
 float dispcx, dispcy;
-int frames_without_mousemove = 0, num_stars_in_box, editidx=-1, addcenidx=-1;
+int frames_without_mousemove = 0, num_stars_in_box, editidx=-1, addcenidx=-1, themes_selected_idx=-1;
 double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
 bool is_click;
@@ -312,15 +311,17 @@ void load_textures(CelestialObject* cel)
 
     cel->looked_for_maps = true;
 
-    if ((cel->type == gas_giant || cel->type == ice_giant) && !cel->cloud_map)
+    if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == hot_jupiter) && !cel->cloud_map)
     {
         cel->cloud_map = new Map();
         cel->cloud_map->generate_gas_giant_map(503, cel->BV_color);
     }
-    else if (cel->type == rocky && !cel->surf_map)
+    else if ((cel->type == rocky || cel->type == icy) && !cel->surf_map)
     {
         cel->surf_map = new Map();
-        cel->surf_map->generate_rocky_map(503, cel->BV_color, ((Planet*)cel)->is_in_con_HZ());
+        cel->surf_map->generate_rocky_map(503, cel->BV_color,
+            cel->mass > 0.02 * earth_mass                       // Based on Titan's mass.
+            && ((Planet*)cel)->is_in_con_HZ());
     }
 }
 
@@ -328,6 +329,7 @@ double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
+    cel->disc_size = 0;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
     bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
     cel->onscreen = false;
@@ -706,6 +708,8 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (!wireframe && cel->onscreen)
     {
+        cel->disc_size = result;
+
         if (sphere_elapsed.count() >= (1.3e5*sphere_quality))
         {
             if (sphresolution < 0.2/sphere_quality) sphresolution *= 1.3;
@@ -1169,7 +1173,7 @@ void compute_object_draw_coordinates()
                         continue;
                     }
                     if (!redo_proper_motions && !cels[i]->orbit) continue;
-                    if (cels[i]->orbit && cels[i]->orbit->center && cels[i]->orbit->center != cels[whereami]
+                    if (cels[i]->orbit && cels[i]->orbit->center && (whereami < 0 || cels[i]->orbit->center != cels[whereami])
                         && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
                             || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
                             || cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom
@@ -1694,14 +1698,13 @@ void identify_object_under_cursor(ImGuiIO& io)
     if (trackidx >= 0)
     {
         is_an_obj_under_cursor = trackidx;
-        azimuth = -cels[trackidx]->RA_as_radians(here, 0);
-        altitude = cels[trackidx]->Decl_as_radians(here);
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        if (abs(cels[i]->drawnx - io.MousePos.x) < circle_size
+        double cutoff = fmax(cels[i]->disc_size, circle_size*1.3);
+        if (abs(cels[i]->drawnx - io.MousePos.x) < cutoff
             &&
-            abs(cels[i]->drawny - io.MousePos.y) < circle_size
+            abs(cels[i]->drawny - io.MousePos.y) < cutoff
             )
         {
             // Prioritize by brightness.
@@ -1774,15 +1777,15 @@ void identify_object_under_cursor(ImGuiIO& io)
         {
             oss << "Dist:    " << cels[i]->scaled_distance(here) << std::endl;
             oss << "Lit %:   " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
-            if (((Planet*)cels[i])->is_in_con_HZ())
-                oss << "*****    In conserv. HZ" << std::endl;
+            if (((Planet*)cels[i])->is_in_con_HZ()) oss << "         Habitable Zone" << std::endl;
         }
 
+        cel_obj_class cls = cels[i]->typeclass();
         if (cels[i]->mass)
         {
-            if (cels[i]->type == star) 
+            if (cls == class_star) 
                 ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
-            else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
+            else if (cls == class_planet || cls == class_moon)
             {
                 oss << "Mass:    " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
                 oss << "Mass:    " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
@@ -1790,9 +1793,9 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         if (cels[i]->volumetric_mean_radius)
         {
-            if (cels[i]->type == star)
+            if (cls == class_star)
                 ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
-            else if (cels[i]->type == rocky || cels[i]->type == gas_giant || cels[i]->type == ice_giant)
+            else if (cls == class_planet || cls == class_moon)
             {
                 oss << "Radius:  " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
                     << " R(earth)" << std::endl;
@@ -1867,12 +1870,17 @@ void center_selected()
 
 void process_key_cmd_char(char c)
 {
+    cel_obj_class cls;
     switch (c)
     {
         case 'A':
         if (selected >= 0) addcenidx = selected;
         else if (trackidx >= 0) addcenidx = trackidx;
         else if (whereami >= 0) addcenidx = whereami;
+        cboceltyp_selected_idx = 2;
+        cls = cels[addcenidx]->typeclass();
+        if (cls == class_planet) cboceltyp_selected_idx = 3;
+        else if (cls == class_moon) cboceltyp_selected_idx = 4;
         addcelwnd = true;
         break;
 
@@ -2053,7 +2061,7 @@ void lookfor_cb()
 void draw_status_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
-    int stattop = 0, statleft = 0, statwidth = 254, statheight = txtyscale*2.3;
+    int stattop = 0, statleft = 0;
     ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     /////////////////////////////////////////////////////
@@ -2061,41 +2069,33 @@ void draw_status_window(ImGuiIO& io)
     if (ImGui::InputText("##find", lookfor, 255, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
     ImGui::SameLine();
     if (ImGui::Button("Find")) lookfor_cb();
-    statheight += txtyscale;
 
     std::string flagstr;
 
     flagstr = (std::string)"Zoom (*/): " + std::to_string(zoom);
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Brghtns (B): " + std::to_string(global_brightness);
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Gamma (`): " + std::to_string(get_gamma());
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"RA/Decl (G): "
         + std::string(show_grid ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Cons ln (C): "
         + std::string(show_consln ? (draw_actual_conslines ? "ON" : "(hidden)") : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Labels (L): "
         + std::string(show_labels ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Lbl planets (P): "
         + std::string(lbl_localsys ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     if (lbl_localsys)
     {
@@ -2110,7 +2110,6 @@ void draw_status_window(ImGuiIO& io)
     flagstr = (std::string)"Orbits (Sh+O): "
         + std::string(show_orbits ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     // Pass in the preview value visible before opening the combo (it could technically be different contents or not pulled from items[])
     ImGuiComboFlags cbolbls_flags = 0;
@@ -2134,15 +2133,14 @@ void draw_status_window(ImGuiIO& io)
         }
         ImGui::EndCombo();
     }
-    statheight += txtyscale;
 
     if (cbolbls_selected_idx == 0)
     {
         snprintf(lblcut0, sizeof(lblcut0), "%.2f", appmagn_lblcut);
         ImGui::Text("%s", "Mag limit:");
         ImGui::SameLine();
+        ImGui::SetNextItemWidth(67);
         ImGui::InputText("##appmaglim", lblcut0, 255);
-        statheight += txtyscale*1.3;
         appmagn_lblcut = atof(lblcut0);
     }
     else if (cbolbls_selected_idx == 1)
@@ -2150,8 +2148,8 @@ void draw_status_window(ImGuiIO& io)
         snprintf(lblcut1, sizeof(lblcut1), "%.2f", absmagn_lblcut);
         ImGui::Text("%s", "Mag limit:");
         ImGui::SameLine();
+        ImGui::SetNextItemWidth(67);
         ImGui::InputText("##absmaglim", lblcut1, 255);
-        statheight += txtyscale;
         absmagn_lblcut = atof(lblcut1);
     }
     else if (cbolbls_selected_idx == 2)
@@ -2159,48 +2157,47 @@ void draw_status_window(ImGuiIO& io)
         snprintf(lblcut2, sizeof(lblcut2), "%.2f", distance_lblcut/light_year);
         ImGui::Text("%s", "Dist. l.y.:");
         ImGui::SameLine();
+        ImGui::SetNextItemWidth(67);
         ImGui::InputText("##distlim", lblcut2, 255);
-        statheight += txtyscale;
         distance_lblcut = atof(lblcut2)*light_year;
     }
     else if (cbolbls_selected_idx == 4)
     {
         ImGui::Text("%s", "# Planets:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(81);
+        ImGui::SetNextItemWidth(67);
         ImGui::InputInt("##npltlim", &planets_lblcut, 1, 0);
-        statheight += txtyscale;
         if (planets_lblcut < 1) planets_lblcut = 1;
     }
 
     flagstr = (std::string)"Redlgt (Sh+R): "
         + std::string(redlight_mode ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Obj info (N): "
         + std::string(objinfwnd ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
     flagstr = (std::string)"Status (S): "
         + std::string(statuswnd ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
-    statheight += txtyscale;
 
-    ImGui::Text("%s", "-----");
-    statheight += txtyscale;
+    ImGui::Separator();
 
     std::string vfstr;
     if (whereami >= 0)
     {
         vfstr = std::string("View from ") + cels[whereami]->name;
-        if (((Planet*)cels[whereami])->is_in_con_HZ())
-            vfstr += "\nIn conserv. HZ";
     }
     else vfstr = std::string("View from space");
     ImGui::Text("%s", vfstr.c_str());
-    statheight += txtyscale;
+
+    if (whereami > 0 && cels[whereami]->type >= gas_giant
+        && ((Planet*)cels[whereami])->is_in_con_HZ())
+    {
+        ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
+        ImGui::TextColored(hzcolor, "In Habitable Zone");
+    }
 
     double vm = velocity.magnitude() * target_frame_rate;
     if (isnan(vm)) vm = 0;
@@ -2228,26 +2225,22 @@ void draw_status_window(ImGuiIO& io)
         oss.str("");
     }
     ImGui::Text("%s", velocstr.c_str());
-    statheight += txtyscale;
 
     std::string numobjs;
     if (num_stars)
     {
         numobjs = std::to_string(num_stars) + " stars";
         ImGui::Text("%s", numobjs.c_str());
-        statheight += txtyscale;
     }
     if (num_stars_in_box>1)             // There will always be at least one.
     {
         numobjs = std::to_string(num_stars_in_box) + " stars in range";
         ImGui::Text("%s", numobjs.c_str());
-        statheight += txtyscale;
     }
     /* if (num_planets)
     {
         numobjs = std::to_string(num_planets) + " planets";
         ImGui::Text("%s", numobjs.c_str());
-        statheight += txtyscale;
     } */
 
     time_t tmpnow = simnow;
@@ -2257,7 +2250,6 @@ void draw_status_window(ImGuiIO& io)
         + std::string("-") + std::string((mon<10)?"0":"") + std::to_string(mon)
         + std::string("-") + std::string((mday<10)?"0":"") + std::to_string(mday);
     ImGui::Text("%s", datedisp.c_str());
-    statheight += txtyscale;
 
     int hr = utc_time->tm_hour, mn = utc_time->tm_min, sec = utc_time->tm_sec;
     std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
@@ -2265,24 +2257,58 @@ void draw_status_window(ImGuiIO& io)
         + std::string(":") + std::string((sec<10)?"0":"") + std::to_string(sec)
         + std::string(" UTC");
     ImGui::Text("%s", timedisp.c_str());
-    statheight += txtyscale;
 
     std::string JDdisp = std::string("JD") + std::to_string(JDnow);
     ImGui::Text("%s", JDdisp.c_str());
-    statheight += txtyscale;
 
     std::string frame_rate = std::to_string(1.0 / frame_dur) + std::string(" frames/s");
     ImGui::Text("%s", frame_rate.c_str());
-    statheight += txtyscale;
+
+    int th = themes.size();
+    if (themes_selected_idx < 0)
+    {
+        for (int n = 0; n < th; n++)
+        {
+            if (!strcmp(themes[n].c_str(), "Perseus"))
+            {
+                themes_selected_idx = n;
+                break;
+            }
+        }
+    }
+
+    ImGuiComboFlags cbothemes_flags = 0;
+    const char* combo_theme_value = themes[themes_selected_idx].c_str();
+    ImGui::Text("%s", "Theme:");
+    ImGui::SameLine();
+    if (ImGui::BeginCombo("##cbothemes", combo_theme_value, cbothemes_flags))
+    {
+        for (int n = 0; n < th; n++)
+        {
+            const bool is_selected = (n == themes_selected_idx);
+            if (ImGui::Selectable(themes[n].c_str(), is_selected))
+            {
+                themes_selected_idx = n;
+                global_style.load(themes[n]);
+                apply_default_style();
+            }
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (n == themes_selected_idx)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
 
     /////////////////////////////////////////////////////
 
     ImGui::SetWindowPos(ImVec2(statleft, stattop));
-    ImGui::SetWindowSize(ImVec2(statwidth, statheight));
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    ImVec2 siz = ImGui::GetWindowSize();
     ImGui::End();
 
     if (io.MousePos.x >= statleft && io.MousePos.y >= stattop
-        && io.MousePos.x < statleft+statwidth && io.MousePos.y < stattop+statheight)
+        && io.MousePos.x < statleft+siz.x && io.MousePos.y < stattop+siz.y)
         is_mouse_over_window = true;
 }
 
@@ -2290,23 +2316,21 @@ void draw_objinf_window(ImGuiIO& io)
 {
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
-    int objinfwidth = 254, objinfheight = txtyscale*2, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
 
     if (trackidx >= 0)
     {
         ImGui::TextColored(ImVec4(1, 0, 0, 1), "TRACKING");
-        objinfheight += txtyscale;
     }
 
     ImGui::Text("%s", objname.c_str());
-    objinfheight += txtyscale;
 
     int txtlines = std::count(objinfo.begin(), objinfo.end(), '\n');
     ImGui::Text("%s", objinfo.c_str());
-    objinfheight += txtlines*txtycompact;
 
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    ImVec2 siz = ImGui::GetWindowSize();
+    int objinfwidth = siz.x, objinfheight = siz.y, objinftop = 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
     ImGui::SetWindowPos(ImVec2(objinfleft, objinftop));
-    ImGui::SetWindowSize(ImVec2(objinfwidth, objinfheight));
     ImGui::End();
 
     if (io.MousePos.x >= objinfleft && io.MousePos.y >= objinftop
@@ -2317,7 +2341,8 @@ void draw_objinf_window(ImGuiIO& io)
 void draw_addcel_window(ImGuiIO& io)
 {
     ImGui::Begin("Add Object", &addcelwnd);
-    ImGui::SetWindowSize(ImVec2(225, 123));
+
+    ImGui::Text("New object orbiting %s", cels[addcenidx]->name);
 
     ImGui::Text("%s", "Type");
     ImGui::SameLine();
@@ -2346,7 +2371,8 @@ void draw_addcel_window(ImGuiIO& io)
         for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
         if (ncelobjs < (MAX_CELOBJS-1))
         {
-            bool is_cen_planet = (cels[addcenidx]->type == rocky || cels[addcenidx]->type == ice_giant || cels[addcenidx]->type == gas_giant);
+            cel_obj_class cls = cels[addcenidx]->typeclass();
+            bool is_cen_planet = (cls == class_planet || cls == class_moon);
 
             if (cboceltyp_selected_idx == 2 && is_cen_planet) cboceltyp_selected_idx = 3;
             else if (cboceltyp_selected_idx == 3 && !is_cen_planet) cboceltyp_selected_idx = 2;
@@ -2374,9 +2400,18 @@ void draw_addcel_window(ImGuiIO& io)
                     cels[ncelobjs]->orbit = new Orbit();
                     cels[ncelobjs]->orbit->center = cels[addcenidx];
                     cels[ncelobjs]->orbit->semimajor_axis = 1e6;
-                    cels[ncelobjs]->orbit->period = oneday;
+                    cels[ncelobjs]->orbit->period = oneday*7;
                     cels[ncelobjs]->orbit->epoch = JDnow;
                     cels[ncelobjs]->cenobj = cels[addcenidx]->cenobj;
+                }
+                if (cels[ncelobjs]->typeclass() == class_planet || cels[ncelobjs]->typeclass() == class_moon)
+                {
+                    Planet* pl = (Planet*)cels[ncelobjs];
+                    pl->mass = (cels[ncelobjs]->typeclass() == class_moon) ? lunar_mass : earth_mass;
+                    pl->classify();
+                    pl->estimate_radius();
+                    pl->estimate_albedo_and_absmagn();
+                    pl->estimate_rotation();
                 }
                 editidx = ncelobjs;
                 objedtwnd = true;
@@ -2386,6 +2421,7 @@ void draw_addcel_window(ImGuiIO& io)
         }
     }
 
+    ImGui::SetWindowSize(ImVec2(0,0));
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
     ImGui::End();
 
@@ -2407,7 +2443,6 @@ void draw_objedit_window(ImGuiIO& io)
 
     // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    int objedtwidth = 768, objedtheight = 81;
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
     cel_obj_class tc = cels[editidx]->typeclass();
@@ -2430,7 +2465,12 @@ void draw_objedit_window(ImGuiIO& io)
         viewchanged = true;
         center_selected();
     }
-    objedtheight += txtyscale;
+    ImGui::SameLine();
+    if (ImGui::Button("Track"))
+    {
+        trackidx = editidx;
+        viewchanged = true;
+    }
 
     if (tc == class_star)
     {
@@ -2463,7 +2503,6 @@ void draw_objedit_window(ImGuiIO& io)
             viewchanged = true;
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         }
-        objedtheight += txtyscale;
 
         double edit_dist = s->distance / light_year;
         ImGui::Text("%s", "Distance");
@@ -2494,7 +2533,6 @@ void draw_objedit_window(ImGuiIO& io)
         }
         ImGui::SameLine();
         ImGui::Text("%s", "m/s");
-        objedtheight += txtyscale;
     }
 
     edit_eqincl = cel->obliquity * fiftyseven;
@@ -2526,7 +2564,6 @@ void draw_objedit_window(ImGuiIO& io)
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
-    objedtheight += txtyscale;
 
     double edit_mass = cel->mass / 1000;
     ImGui::Text("%s", "Mass, kg");
@@ -2535,6 +2572,7 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
     {
         cel->mass = edit_mass * 1000;
+        if (cel->typeclass() == class_planet) ((Planet*)cel)->classify();
         cel->user_edited = true;
         viewchanged = true;
     }
@@ -2552,13 +2590,43 @@ void draw_objedit_window(ImGuiIO& io)
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
-    objedtheight += txtyscale;
 
     stringstream massss;
-    massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-3) << " g/cm^3";
+    massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-6) << " g/cm^3";
     std::string dens = massss.str();
     ImGui::Text("%s", dens.c_str());
-    objedtheight += txtyscale;
+    if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+    {
+        ImGui::SameLine(col2);
+        ImGui::Text("%s", "Texture");
+        ImGui::SameLine(col3);
+        // TODO:
+        // Important: Do not remove this comment block - it's a new in progress feature.
+        /*if (ImGui::Button("Save"))
+        {
+        }
+        ImGui::SameLine();
+        */
+        if (ImGui::Button("Refresh"))
+        {
+            if (cel->surf_map)
+            {
+                delete cel->surf_map;
+                cel->surf_map = nullptr;
+            }
+            if (cel->cloud_map)
+            {
+                delete cel->cloud_map;
+                cel->cloud_map = nullptr;
+            }
+            if (cel->night_map)
+            {
+                delete cel->night_map;
+                cel->night_map = nullptr;
+            }
+            cel->looked_for_maps = false;
+        }
+    }
 
     double edit_oblt = cel->oblateness;
     ImGui::Text("%s", "Oblateness");
@@ -2587,7 +2655,6 @@ void draw_objedit_window(ImGuiIO& io)
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
-    objedtheight += txtyscale;
 
     double edit_absmag = cel->absolute_magnitude;
     ImGui::Text("%s", "Abs. Magn.");
@@ -2625,7 +2692,6 @@ void draw_objedit_window(ImGuiIO& io)
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
     }
-    objedtheight += txtyscale;
 
     double edit_prcseq = cel->precession / oneyear;
     ImGui::Text("%s", "Precession");
@@ -2654,12 +2720,10 @@ void draw_objedit_window(ImGuiIO& io)
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
-    objedtheight += txtyscale;
 
     if (orb)
     {
         ImGui::Separator();
-        objedtheight += txtyscale;
 
         std::string orbcen = "Center of Orbit: ";
         orbcen += std::string(cel->orbit->center->name);
@@ -2672,15 +2736,20 @@ void draw_objedit_window(ImGuiIO& io)
             oss << "Star apparent mag. " << (star_appmag > 0 ? "+" : "") << std::setprecision(2) << star_appmag;
             ImGui::Text("%s", oss.str().c_str());
         }
-        objedtheight += txtyscale;
 
-        edit_sma = cel->orbit->semimajor_axis / AU;
+        double sma_limit = cel->orbit->center->get_equatorial_radius() + cel->get_equatorial_radius();
+        if (orb->semimajor_axis < sma_limit)
+        {
+            orb->semimajor_axis = sma_limit;
+            orb->compute_period(cel->mass);
+        }
+        edit_sma = orb->semimajor_axis / AU;
         ImGui::Text("%s", "Semimaj.Axis");
         ImGui::SameLine(col1);
         ImGui::SetNextItemWidth(txtwid);
         if (ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.9f"))
         {
-            orb->semimajor_axis = edit_sma * AU;
+            orb->semimajor_axis = fmax(edit_sma * AU, cel->orbit->center->get_equatorial_radius() + cel->get_equatorial_radius());
             if (cel->user_added) orb->compute_period(cel->mass);
             cel->user_edited = true;
             viewchanged = true;
@@ -2701,6 +2770,11 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cels[editidx]->orbit->period = edit_period * oneday;
                 if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
+                if (orb->semimajor_axis < sma_limit)
+                {
+                    orb->semimajor_axis = sma_limit;
+                    orb->compute_period(cel->mass);
+                }
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -2710,7 +2784,6 @@ void draw_objedit_window(ImGuiIO& io)
         }
         ImGui::SameLine();
         ImGui::Text("%s", "days");
-        objedtheight += txtyscale;
 
         edit_incl = cel->orbit->inclination * fiftyseven;
         ImGui::Text("%s", "Inclination");
@@ -2737,7 +2810,6 @@ void draw_objedit_window(ImGuiIO& io)
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
-        objedtheight += txtyscale;
 
         edit_eccn = cel->orbit->eccentricity;
         ImGui::Text("%s", "Eccentricity");
@@ -2764,7 +2836,6 @@ void draw_objedit_window(ImGuiIO& io)
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
-        objedtheight += txtyscale;
 
         edit_epoch = cel->orbit->epoch;
         ImGui::Text("%s", "Epoch, JD");
@@ -2791,7 +2862,6 @@ void draw_objedit_window(ImGuiIO& io)
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
-        objedtheight += txtyscale;
 
         edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
         ImGui::Text("%s", "Prec. Node");
@@ -2818,11 +2888,11 @@ void draw_objedit_window(ImGuiIO& io)
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
         }
-        objedtheight += txtyscale;
     }
 
-    int objedttop = io.DisplaySize.y - objedtheight, objedtleft = io.DisplaySize.x - objedtwidth;
-    ImGui::SetWindowSize(ImVec2(objedtwidth, objedtheight));
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    ImVec2 siz = ImGui::GetWindowSize();
+    int objedttop = io.DisplaySize.y - siz.y, objedtleft = io.DisplaySize.x - siz.x;
     ImGui::SetWindowPos(ImVec2(objedtleft, objedttop));
     ImGui::End();
 
@@ -2919,6 +2989,12 @@ int main (int argc, char** argv)
         if (!strcmp(argv[l], "jd"))
         {
             setjd = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "theme"))
+        {
+            std::string theme = argv[++l];
+            global_style.load(theme);
         }
 
         if (!strcmp(argv[l], "magtest")) magnitude_test = true;
@@ -3091,6 +3167,7 @@ int main (int argc, char** argv)
         splash_star_brghtness[i] = frand(0.1, 2.9) * pow(frand(0,1), 2);
     }
 
+    global_style.load("Perseus");           // default
     apply_default_style();
 
     // Main loop
@@ -3247,6 +3324,11 @@ int main (int argc, char** argv)
                 if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
                 identify_object_under_cursor(io);
             }
+            if (trackidx >= 0)
+            {
+                azimuth = -cels[trackidx]->RA_as_radians(here, 0);
+                altitude = cels[trackidx]->Decl_as_radians(here);
+            }
 
             // Positioning updates
             vm = velocity.magnitude();
@@ -3343,31 +3425,31 @@ int main (int argc, char** argv)
             // Keyboard commands
             process_keyboard_commands(io);
             #define steering_rate 0.03
-            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))
+            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
             {
                 Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
                 velocity = rotate3D(velocity, center, yaw, -steering_rate);
                 if (trackidx<0) azimuth -= steering_rate;
             }
-            if (ImGui::IsKeyDown(ImGuiKey_RightArrow))
+            if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window)
             {
                 Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
                 velocity = rotate3D(velocity, center, yaw,  steering_rate);
                 if (trackidx<0) azimuth += steering_rate;
             }
-            if (ImGui::IsKeyDown(ImGuiKey_UpArrow))
+            if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window)
             {
                 Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
                 velocity = rotate3D(velocity, center, pitch, -steering_rate);
                 if (trackidx<0) altitude += steering_rate;
             }
-            if (ImGui::IsKeyDown(ImGuiKey_DownArrow))
+            if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
             {
                 Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
                 velocity = rotate3D(velocity, center, pitch,  steering_rate);
                 if (trackidx<0) altitude -= steering_rate;
             }
-            if (ImGui::IsKeyDown(ImGuiKey_End))
+            if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
             {
                 double acceleration = velocity.magnitude() * 0.1;
                 Point forward;
@@ -3377,7 +3459,7 @@ int main (int argc, char** argv)
                 forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
                 velocity += forward;
             }
-            if (ImGui::IsKeyDown(ImGuiKey_Home))
+            if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window)
             {
                 double acceleration = velocity.magnitude() * 0.1;
                 Point forward;

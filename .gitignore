@@ -1,0 +1,8 @@
+.gitignore
+bin
+build
+obj
+maps
+catalogs
+imgui.ini
+*.json

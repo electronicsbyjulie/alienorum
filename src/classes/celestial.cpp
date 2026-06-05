@@ -30,7 +30,8 @@ CelestialObject *CelestialObject::get_light_center()
     int i;
     for (i=0; i<5; i++)
     {
-        if (light_center->type == rocky || light_center->type == ice_giant || light_center->type == gas_giant)
+        cel_obj_class cls = light_center->typeclass();
+        if (cls == class_planet || cls == class_moon)
         {
             light_center = light_center->orbit->center;
             if (!light_center)
@@ -47,7 +48,8 @@ CelestialObject *CelestialObject::get_light_center()
 
 double CelestialObject::viewer_magnitude(CelestialLocation seen_from)
 {
-    if (type == rocky || type == ice_giant || type == gas_giant)
+    cel_obj_class cls = typeclass();
+    if (cls == class_planet || cls == class_moon)       // TODO: Some hot jupiters are both reflective and self luminous.
     {
         std::cerr << "Called viewer_magnitude() on a non-self-luminous object." << std::endl;
         throw 0xbadc0de;
@@ -79,6 +81,11 @@ void Orbit::compute_period(double mm)
 
             case star:
             ((Star*)(center))->estimate_mass();
+            break;
+
+            case hot_jupiter:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius) * hot_jupiter_density;
             break;
 
             case gas_giant: case ice_giant:
@@ -114,6 +121,11 @@ void Orbit::compute_semimajor_axis(double mm)
 
             case star:
             ((Star*)(center))->estimate_mass();
+            break;
+
+            case hot_jupiter:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius) * hot_jupiter_density;
             break;
 
             case gas_giant: case ice_giant:
@@ -769,6 +781,12 @@ RGB Map::color_at(double lat, double lon)
         result.r = result.g = result.b = 255;
     }
     return result;
+}
+
+// TODO: Make this also work with Moon class width/depth somehow.
+double CelestialObject::get_equatorial_radius()
+{
+    return volumetric_mean_radius * pow(1.0 - oblateness, 0.333);
 }
 
 void Map::generate_rocky_map(int lr, double BV, bool has_water)

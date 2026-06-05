@@ -72,6 +72,8 @@ class AlienStyle
     ImVec4 button_acv_color = ImVec4(0.37f, 0.53f, 0.18f, 1.00f);
     ImVec4 sep_color = ImVec4(0.80f, 0.10f, 0.10f, 0.60f);
     ImVec4 text_cursor_color = ImVec4(0.90f, 0.05f, 0.08f, 1.00f);
+
+    bool load(std::string theme_name);
 };
 
 extern double global_brightness;

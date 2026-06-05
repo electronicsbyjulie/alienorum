@@ -8,6 +8,7 @@
 #include "misc.h"
 
 std::string loading_msg = "Loading...";
+std::vector<std::string> themes;
 std::mutex mtx;
 int ncelobjs = 0;
 int selected = -1, trackidx = -1;

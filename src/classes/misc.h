@@ -26,9 +26,16 @@ using json = nlohmann::json;
 #define G 6.6743015e-14
 #define kB 1.380649e-23
 #define Planck 6.62607015e-34
+
+// https://doi.org/10.1051/0004-6361/202348690
+#define rocky_mass_cutoff (4.37 * earth_mass)
+#define giant_mass_cutoff (127.0 * earth_mass)
+
+#define lunar_mass 7.349E+22
 #define earth_mass 5.972e+27
 #define jupiter_mass 1.898e+30
 #define solar_mass 1.989e+33
+#define hot_jupiter_density 2.22e+5
 #define earth_radius 6.371e+6
 #define jupiter_radius 6.9886e+7
 #define solar_radius 6.95700e+8
@@ -115,6 +122,7 @@ long long micronow();
 
 // APP STATUS AND SETTINGS
 extern std::string loading_msg;
+extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome,
     is_an_obj_under_cursor, planets_lblcut;

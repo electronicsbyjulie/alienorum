@@ -1990,16 +1990,31 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
             if (s && p && p->orbit->period)
             {
+                bool HZ = p->is_in_con_HZ();
+
+                // Star's planet-hosting metrics.
                 ((Star*)s)->has_planets++;
-                if (p->is_in_con_HZ()) ((Star*)s)->has_hz_planets++;
+                if (HZ) ((Star*)s)->has_hz_planets++;
+
+                // Show distance to planet on mouse hover.
                 p->distance_known = true;
-                if (p->mass < 1.6 * earth_mass) p->type = rocky;        // https://doi.org/10.1051/0004-6361/202348690
-                else if (p->mass < 2.5e+29) p->type = ice_giant;
-                else p->type = gas_giant;
-                if (!p->volumetric_mean_radius) p->estimate_radius();
-                double p_rad_e = fmax(0.01, p->volumetric_mean_radius / earth_radius);
-                p->absolute_magnitude = fmax(-10, earth_absmag - log(p_rad_e*p_rad_e) / log(magnbase));
+
+                // Estimate semimajor axis if unknown.
                 if (!p->orbit->semimajor_axis) p->orbit->compute_semimajor_axis(p->mass);
+
+                // Estimate planet type.
+                p->classify(HZ);
+
+                // Estimate radius if unknown.
+                if (!p->volumetric_mean_radius) p->estimate_radius();
+
+                // Estimate albedo and absolute magnitude.
+                p->estimate_albedo_and_absmagn();
+
+                // Estimate planet rotation.
+                p->estimate_rotation();
+
+                // Add planet to celestial bodies array.
                 cels[offset] = p;
                 offset++;
                 cels[offset] = nullptr;
@@ -2310,8 +2325,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             {
                 pl.at("Mass").get_to(p->mass);
                 p->mass *= 1000;
-                if (p->mass >= 2.5e+29) p->type = ice_giant;
-                else if (p->mass >= 1.6 * earth_mass) p->type = gas_giant;        // https://doi.org/10.1051/0004-6361/202348690
+                if (p->orbit->semimajor_axis >= 2e+12) p->type = ice_giant;
+                else if (p->mass >= rocky_mass_cutoff) p->type = gas_giant;
             } catch (...) { ; }
             try { pl.at("MeanAnom").get_to(p->orbit->mean_anomaly); p->orbit->mean_anomaly *= fiftyseventh; } catch (...) { ; }
             try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }

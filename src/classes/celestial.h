@@ -16,8 +16,9 @@ enum cel_obj_type
     star = 0x200,
     gas_giant = 0x300,
     ice_giant = 0x301,
+    hot_jupiter = 0x302,
     rocky = 0x400,
-    comet = 0x401,
+    icy = 0x401,
     artificial = 0x500
 };
 
@@ -126,7 +127,7 @@ class CelestialObject
 
     Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
         *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;
-    float drawnx=-1e9, drawny=-1e9;
+    float drawnx=-1e9, drawny=-1e9, disc_size = 0;
     bool looked_for_maps = false;
     bool onscreen = false;
 
@@ -139,6 +140,7 @@ class CelestialObject
     Point tmprel;
 
     CelestialObject* get_light_center();
+    double get_equatorial_radius();
     double viewer_magnitude(CelestialLocation seen_from);
     static double distance_from_magnitudes(double apparent, double absolute);
     std::string RA_as_hms(double seen_equinox);
