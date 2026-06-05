@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <random>
 #include "point.h"
 #include "galaxy.h"
 #include "star.h"
