@@ -85,6 +85,14 @@ const std::time_t J2000_TIME_T = 946684800;
 #define gossamer_rings 0.08
 #define zero_isnt_really_zero 9e-298
 
+#define NUM_VIEWMODES 3
+enum ViewMode
+{
+    vm_skyatlas = 0,
+    vm_horizon = 1,
+    vm_sunclock = 2
+};
+
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
 extern __uint32_t xonsm[13];
@@ -126,9 +134,12 @@ long long micronow();
 extern std::string loading_msg;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
+extern const char* vmtext[NUM_VIEWMODES];
+extern ViewMode view_mode;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome,
     is_an_obj_under_cursor, planets_lblcut;
-extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim;
+extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
+    viewer_lat, viewer_lon;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
     objinfwnd, statuswnd, objedtwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
 extern std::string objname, objinfo;

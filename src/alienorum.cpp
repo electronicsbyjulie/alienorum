@@ -458,7 +458,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline, dx1, dy1, dx2, dy2;
     l = 0;
-    double d = cel->tmprel.magnitude(), horizon_angle;
+    double d = cel->tmprel.magnitude(), horizon_angle, elevation;
     horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
 
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
@@ -469,13 +469,15 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
             n++;
-            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : equatorial_radius, 0);
+            elevation = map ? map->elevation_at(lat, lon) : 0;
+            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
             if (dwh)
             {
                 land.x *= ((Moon*)cel)->width * 500;
                 land.y *= ((Moon*)cel)->height * 500;
                 land.z *= ((Moon*)cel)->depth * 500;
+                if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
             }
             else land.y *= obl;
             land = rotate3D(land, center, yaxis, -timeofday);
@@ -527,6 +529,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                         ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                     }
+
+                    // TODO: Also store 3D coordinates of each vertex.
                     todraw.push_back(v);
                     tdvalid.push_back(true);
 
@@ -542,6 +546,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                             }
                             else
                             {
+                                // TODO: Shade based on the normal of the 3D coordinates of the polygon vertices instead of angle to sun and cel center.
                                 theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), M_PI);
                                 if (fabs(theta) < M_PI_2)
                                 {
@@ -1130,6 +1135,39 @@ void cache_cons_lines()
     }
 }
 
+void set_viewer_location_and_plane()
+{
+    if (whereami < 0)
+    {
+        view_mode = vm_skyatlas;
+        return;
+    }
+
+    if (view_mode == vm_skyatlas)
+    {
+        here = cels[whereami]->location;
+    }
+    else if (view_mode == vm_horizon)
+    {
+        CelestialObject *cel = cels[whereami];
+        here = cel->location;
+        assert(cel->sidereal_rotational_period != 0);
+        double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
+        Point ground = Point::from_ra_dec(viewer_lon, viewer_lat,
+                cel->volumetric_mean_radius,                             // TODO: Oblateness, depth/width/height of moons
+            0);
+        ground = rotate3D(ground, center, yaxis, M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period);
+        ground = rotate3D(ground, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+        here.equatorial_plane = align_points_3d(ground, yaxis, center);
+        ground += cel->location.local_position;
+        here.local_position = ground;
+    }
+    else if (view_mode == vm_sunclock)
+    {
+        here = cels[whereami]->location;
+    }
+}
+
 void compute_object_draw_coordinates()
 {
     if (!ncelobjs) return;
@@ -1239,7 +1277,7 @@ void compute_object_draw_coordinates()
             }
         }
 
-        if (whereami >= 0) here = cels[whereami]->location;
+        set_viewer_location_and_plane();
 
         Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
         Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -1905,8 +1943,8 @@ void process_key_cmd_char(char c)
         case 'o':
         if (selected >= 0)
         {
-            here = cels[selected]->location;
             whereami = selected;
+            set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
             zoom = 1;
@@ -1927,7 +1965,8 @@ void process_key_cmd_char(char c)
         spin = 0;
         whereami = iamhome;
         trackidx = -1;
-        here = cels[whereami]->location;
+        view_mode = vm_skyatlas;
+        set_viewer_location_and_plane();
         global_brightness = default_brightness;
         show_consln = show_grid = show_labels = true;
         show_orbits = false;
@@ -2078,6 +2117,8 @@ void draw_status_window(ImGuiIO& io)
     flagstr = (std::string)"Gamma (`): " + std::to_string(get_gamma());
     ImGui::Text("%s", flagstr.c_str());
 
+    ImGui::Separator();
+
     flagstr = (std::string)"RA/Decl (G): "
         + std::string(show_grid ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
@@ -2107,6 +2148,8 @@ void draw_status_window(ImGuiIO& io)
     flagstr = (std::string)"Orbits (Sh+O): "
         + std::string(show_orbits ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
+
+    ImGui::Separator();
 
     // Pass in the preview value visible before opening the combo (it could technically be different contents or not pulled from items[])
     ImGuiComboFlags cbolbls_flags = 0;
@@ -2196,6 +2239,8 @@ void draw_status_window(ImGuiIO& io)
         ImGui::TextColored(hzcolor, "In Habitable Zone");
     }
 
+    ImGui::Separator();
+
     double vm = velocity.magnitude() * target_frame_rate;
     if (isnan(vm)) vm = 0;
     velocmag = vm;
@@ -2223,6 +2268,23 @@ void draw_status_window(ImGuiIO& io)
     }
     ImGui::Text("%s", velocstr.c_str());
 
+    time_t tmpnow = simnow;
+    struct tm *utc_time = std::gmtime(&tmpnow);
+    int mon = utc_time->tm_mon + 1, mday = utc_time->tm_mday;
+    std::string datedisp = std::to_string(utc_time->tm_year + 1900)
+        + std::string("-") + std::string((mon<10)?"0":"") + std::to_string(mon)
+        + std::string("-") + std::string((mday<10)?"0":"") + std::to_string(mday);
+    // ImGui::Text("%s", datedisp.c_str());
+
+    int hr = utc_time->tm_hour, mn = utc_time->tm_min, sec = utc_time->tm_sec;
+    std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
+        + std::string(":") + std::string((mn<10)?"0":"") + std::to_string(mn)
+        + std::string(":") + std::string((sec<10)?"0":"") + std::to_string(sec)
+        + std::string(" UTC");
+    ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
+
+    ImGui::Separator();
+
     std::string numobjs;
     if (num_stars)
     {
@@ -2240,26 +2302,39 @@ void draw_status_window(ImGuiIO& io)
         ImGui::Text("%s", numobjs.c_str());
     } */
 
-    time_t tmpnow = simnow;
-    struct tm *utc_time = std::gmtime(&tmpnow);
-    int mon = utc_time->tm_mon + 1, mday = utc_time->tm_mday;
-    std::string datedisp = std::to_string(utc_time->tm_year + 1900)
-        + std::string("-") + std::string((mon<10)?"0":"") + std::to_string(mon)
-        + std::string("-") + std::string((mday<10)?"0":"") + std::to_string(mday);
-    ImGui::Text("%s", datedisp.c_str());
-
-    int hr = utc_time->tm_hour, mn = utc_time->tm_min, sec = utc_time->tm_sec;
-    std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
-        + std::string(":") + std::string((mn<10)?"0":"") + std::to_string(mn)
-        + std::string(":") + std::string((sec<10)?"0":"") + std::to_string(sec)
-        + std::string(" UTC");
-    ImGui::Text("%s", timedisp.c_str());
-
     std::string JDdisp = std::string("JD") + std::to_string(JDnow);
     ImGui::Text("%s", JDdisp.c_str());
 
     std::string frame_rate = std::to_string(1.0 / frame_dur) + std::string(" frames/s");
     ImGui::Text("%s", frame_rate.c_str());
+
+    ImGui::Separator();
+
+    // view_mode
+
+    ImGuiComboFlags cbovm_flags = 0;
+    const char* combo_vm_value = vmtext[view_mode];
+    ImGui::Text("%s", "View Mode:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(123);
+    if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
+    {
+        for (int n = 0; n < NUM_VIEWMODES; n++)
+        {
+            const bool is_selected = (n == view_mode);
+            if (ImGui::Selectable(vmtext[n], is_selected))
+            {
+                view_mode = (ViewMode)n;
+                set_viewer_location_and_plane();
+                viewchanged = true;
+            }
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (n == view_mode)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
 
     int th = themes.size();
     if (themes_selected_idx < 0)
@@ -2973,6 +3048,9 @@ int main (int argc, char** argv)
 
     memset(lookfor, 0, 256);
 
+    viewer_lat = 32.5425   * fiftyseventh;              // Babylon
+    viewer_lon = 44.421111 * fiftyseventh;
+
     for (l=1; l<argc; l++)
     {
         n = strlen(argv[l]);
@@ -3304,7 +3382,7 @@ int main (int argc, char** argv)
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
             drawblxscaley = drawn_cache_split / io.DisplaySize.y;
 
-            if (whereami >= 0) here = cels[whereami]->location;
+            set_viewer_location_and_plane();
 
             if (show_grid) draw_ra_dec_lines();
             compute_object_draw_coordinates();

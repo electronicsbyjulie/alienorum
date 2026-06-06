@@ -72,15 +72,17 @@ class Orbit
 class Map
 {
     protected:
-    JSAMPARRAY jpeg_image_buffer = nullptr;                 // Points to large array of R,G,B-order data
+    JSAMPARRAY jpeg_image_buffer = nullptr;                     // Points to large array of R,G,B-order data
     // EasyBMP::Image *bmp;
 
     unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
     double *bump_data = nullptr;
-    unsigned int image_height = 0;                           // Number of rows in image
-    unsigned int image_width = 0;                            // Number of columns in image
+    unsigned int image_height = 0;                              // Number of rows in image
+    unsigned int image_width = 0;                               // Number of columns in image
     unsigned int allocated = 0;
     double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
+
+    unsigned int idx_of(double latitude, double longitude);
 
     public:
     bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
@@ -89,6 +91,7 @@ class Map
     bool save_to_png(std::string filename);
 
     RGB color_at(double latitude, double longitude);
+    double elevation_at(double latitude, double longitude);     // Returns meters.
     void generate_rocky_map(CelestialObject *cel);
     void generate_gas_giant_map(int latitude_resolution, double BV_color);
 };

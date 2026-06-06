@@ -914,37 +914,51 @@ bool Map::save_to_png(std::string filename)
     return true;
 }
 
-RGB Map::color_at(double lat, double lon)
+unsigned int Map::idx_of(double lat, double lon)
 {
-    RGB result;
-
+    #ifdef DEBUG
     assert(lat_scale > 0);
     assert(lon_scale > 0);
+    #endif
 
     lon = fmod(lon, M_PI*2);
     if (lon < 0) lon += M_PI*2;
     if (lat < -M_PI_2) lat = -M_PI_2;
     else if (lat > M_PI_2) lat = M_PI_2;
+
+    double xf = lon * lon_scale, yf = (M_PI_2-lat) * lat_scale;
+    unsigned int x0 = floor(xf), y1 = ceil(yf);
+    long y0idx = image_width * y1;
+
+    if (y0idx < 0) y0idx = 0;
+    if (y0idx > allocated-image_width) y0idx = allocated-image_width;
+    if (x0 < 0) x0 = 0;
+    if (x0 >= image_width) x0 = image_width-1;
+
+    return y0idx+x0;
+}
+
+RGB Map::color_at(double lat, double lon)
+{
+    RGB result;
     if (blue_data)
     {
-        double xf = lon * lon_scale, yf = (M_PI_2-lat) * lat_scale;
-        unsigned int x0 = floor(xf), y1 = ceil(yf);
-        long y0idx = image_width * y1;
-
-        if (y0idx < 0) y0idx = 0;
-        if (y0idx > allocated-image_width) y0idx = allocated-image_width;
-        if (x0 < 0) x0 = 0;
-        if (x0 >= image_width) x0 = image_width-1;
-
-        result.r = red_data[y0idx+x0];
-        result.g = green_data[y0idx+x0];
-        result.b = blue_data[y0idx+x0];
+        unsigned int idx = idx_of(lat, lon);
+        result.r = red_data[idx];
+        result.g = green_data[idx];
+        result.b = blue_data[idx];
     }
     else
     {
         result.r = result.g = result.b = 255;
     }
     return result;
+}
+
+double Map::elevation_at(double lat, double lon)
+{
+    if (bump_data) return bump_data[idx_of(lat, lon)];
+    else return 0.0;
 }
 
 // TODO: Make this also work with Moon class width/depth somehow.
