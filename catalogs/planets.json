@@ -219,7 +219,7 @@
         "ArgPeriProcession": 2.793e+8,
         "AscNode": 124.1228,
         "BODYNAME": "Moon",
-        "BumpMap": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_3_8bit.jpg",
+        "#BumpMap": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_3_8bit.jpg",
         "BVmag": 0.92,
         "CENTER_OF_ORBIT": "Earth",
         "Eccentricity": 0.0549,
@@ -235,7 +235,7 @@
         "OrbitPeriod": 2360591.5,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 384467000,
-        "SurfMap": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_2k.jpg",
+        "#SurfMap": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/lroc_color_2k.jpg",
         "UBmag": 0.46,
         "VolMeanRad": 1737371.7
     },
