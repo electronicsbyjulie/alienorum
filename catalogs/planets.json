@@ -71,6 +71,7 @@
         "Equinox": 0.00000,
         "Incl": 0.00005,
         "J2": 0.0010826,
+        "Lon_J2000_offset": -98.92,
         "Mass": 5.97217e+24,
         "MeanAnom": 355.51783,
         "NightMap": "https://planetpixelemporium.com/download/download.php?earthlights1k.jpg",

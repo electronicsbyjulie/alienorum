@@ -116,6 +116,7 @@ class CelestialObject
     bool distance_known = false;
     bool known_poles = false;
     bool estimated_poles = false;
+    double lon_J2000_offset = -M_PI_2;          // For moons.
 
     double epoch = J2000;                       // JD
     double absolute_magnitude = 0;

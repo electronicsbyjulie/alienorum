@@ -2368,6 +2368,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
             try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
             try { pl.at("J2").get_to(p->J2); } catch (...) { ; }
+            try { pl.at("Lon_J2000_offset").get_to(p->lon_J2000_offset); p->lon_J2000_offset *= fiftyseventh; } catch (...) { ; }
             try
             {
                 pl.at("Mass").get_to(p->mass);

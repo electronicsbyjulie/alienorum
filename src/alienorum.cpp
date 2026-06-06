@@ -130,7 +130,7 @@ void draw_ra_dec_lines()
         for (j=-80; j<=80; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+azimuth_correction, altitude, zoom);
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth/*+azimuth_correction*/, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -382,7 +382,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-    double timeofday = rads_sec * seconds_since_epoch + M_PI_2;
+    double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, M_PI*2);
     if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
     {
         timeofday += cel->orbit->ascending_node;
@@ -1163,8 +1163,8 @@ void set_viewer_location_and_plane()
         Point ground = Point::from_ra_dec(viewer_lon, viewer_lat,
                 cel->volumetric_mean_radius,                             // TODO: Oblateness, depth/width/height of moons
             0);
-        azimuth_correction = -M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period;
-        ground = rotate3D(ground, center, yaxis, azimuth_correction-M_PI_2);
+        azimuth_correction = -M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period + cel->lon_J2000_offset;
+        ground = rotate3D(ground, center, yaxis, azimuth_correction);
         ground = rotate3D(ground, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
         here.equatorial_plane = align_points_3d(ground, yaxis, center);
         ground += cel->location.local_position;
@@ -1794,7 +1794,9 @@ void identify_object_under_cursor(ImGuiIO& io)
         else
         {
             objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
-                    + (std::string)"Azimuth:  " + std::to_string(fmod(M_PI+M_PI_2-cels[i]->RA_as_radians(here, myeq), M_PI*2)*fiftyseven) + (std::string)"\n";
+                    + (std::string)"Azimuth:  " 
+                    + std::to_string(fmod(-cels[i]->RA_as_radians(here, myeq)-M_PI, M_PI*2)*fiftyseven)
+                    + (std::string)"\n";
         }
         oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
         objinfo += oss.str();
@@ -2791,14 +2793,55 @@ void draw_objedit_window(ImGuiIO& io)
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
     }
-    ImGui::SameLine(col2);
+    if (cel->typeclass() == class_moon)
+    {
+        ImGui::SameLine();
+        ImGui::Text("%s", ", OR:");
+
+        Moon *m = (Moon*)cel;
+        ImGui::SameLine(col2);
+        ImGui::Text("%s", "D/W/H, km");
+        ImGui::SameLine(col3);
+        ImGui::SetNextItemWidth(txtwid/3);
+        if (ImGui::InputDouble("##edtdep", &m->depth, 0, 0, "%.2f"))
+        {
+            cel->user_edited = true;
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(txtwid/3);
+        if (ImGui::InputDouble("##edtwid", &m->width, 0, 0, "%.2f"))
+        {
+            cel->user_edited = true;
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(txtwid/3);
+        if (ImGui::InputDouble("##edthei", &m->height, 0, 0, "%.2f"))
+        {
+            cel->user_edited = true;
+        }
+    }
+
     double edit_rot = cel->sidereal_rotational_period / oneday;
     ImGui::Text("%s", "Rotation, d");
-    ImGui::SameLine(col3);
+    ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid);
     if (ImGui::InputDouble("##edtrot", &edit_rot, 0, 0, "%.6f"))
     {
         cel->sidereal_rotational_period = edit_rot * oneday;
+        cel->user_edited = true;
+        viewchanged = true;
+        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+    }
+    ImGui::SameLine(col2);
+    double edit_lonoff = cel->lon_J2000_offset * fiftyseven;
+    ImGui::Text("%s", "Lon. Offset");
+    ImGui::SameLine(col3);
+    ImGui::SetNextItemWidth(txtwid);
+    if (ImGui::InputDouble("##edtlonoff", &edit_lonoff, 0, 0, "%.3f"))
+    {
+        cel->lon_J2000_offset = edit_lonoff * fiftyseventh;
         cel->user_edited = true;
         viewchanged = true;
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);

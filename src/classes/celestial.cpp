@@ -360,6 +360,7 @@ json CelestialObject::to_json()
     towrite["equinox"] = equinox * fiftyseven;
     towrite["obliquity"] = obliquity * fiftyseven;
     towrite["location"] = location.to_json();
+    towrite["lon_J2000_offset"] = lon_J2000_offset*fiftyseven;
     towrite["mass"] = mass;
     towrite["!name"] = name;                    // want this to alphabetize to the top.
     towrite["oblateness"] = oblateness;
@@ -403,6 +404,7 @@ bool CelestialObject::from_json(json j)
         json j1 = j.at("location");
         location.from_json(j1);
     } catch (...) { ; }
+    try { j.at("lon_J2000_offset").get_to(lon_J2000_offset); lon_J2000_offset *= fiftyseventh; } catch (...) { ; }
     try { j.at("mass").get_to(mass); } catch (...) { ; }
     try { j.at("oblateness").get_to(oblateness); } catch (...) { ; }
     try
