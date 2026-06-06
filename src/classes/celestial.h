@@ -172,5 +172,6 @@ extern CelestialObject **cels, *mycenobj;
 extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;
+extern double azimuth_correction;
 
 #endif

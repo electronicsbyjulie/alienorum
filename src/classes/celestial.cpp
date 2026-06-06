@@ -11,6 +11,7 @@ CelestialObject **cels, *mycenobj = nullptr;
 bool *celskip, *discinstead;
 double *vmag_cache, *bloomrad_cache, *angular_radius;
 CelestialLocation here;
+double azimuth_correction = 0;
 typedef struct my_jpeg_error_mgr * my_error_ptr;
 
 CelestialObject::CelestialObject()
@@ -581,7 +582,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     struct jpeg_decompress_struct cinfo;
     struct my_jpeg_error_mgr jerr;
     FILE * infile;
-    int row_stride;
+    unsigned int row_stride;
 
     if ((infile = fopen(filename.c_str(), "rb")) == NULL)
     {
@@ -635,7 +636,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
             ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
-    int i, j;
+    unsigned int i, j;
     while (cinfo.output_scanline < cinfo.output_height)
     {
         j = cinfo.output_scanline * image_width;

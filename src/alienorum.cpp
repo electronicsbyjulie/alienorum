@@ -108,6 +108,13 @@ void refresh_star_visibilities()
     for (i=0; cels[i]; i++) if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(here);
 }
 
+Point to_viewer_plane(Point pt, int sign = 1)
+{
+    pt = rotate3D(pt, center, here.equatorial_plane.v, here.equatorial_plane.a*sign);
+    if (azimuth_correction) pt = rotate3D(pt, center, yaxis, azimuth_correction);
+    return pt;
+}
+
 void draw_ra_dec_lines()
 {
     int i, j;
@@ -186,7 +193,7 @@ void draw_ra_dec_lines()
         {
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
             pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
-            pt = rotate3D(pt, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            pt = to_viewer_plane(pt);
             zdes = Cartesian2D(pt, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -410,7 +417,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
-            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            cursor = to_viewer_plane(cursor);
             if (cursor.magnitude() > z_cutoff)
             {
                 prev_valid = false;
@@ -484,7 +491,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor = land + cel->tmprel;
-            cursor = rotate3D(cursor, center, here.equatorial_plane.v, here.equatorial_plane.a);
+            cursor = to_viewer_plane(cursor);
             if (cursor.magnitude() > z_cutoff)
             {
                 todraw.push_back(ImVec2(0,0));
@@ -649,7 +656,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 Point yardstick = center - dust;
                 yardstick.scale(equatorial_radius*2);
                 yardstick += dust;
-                cursor = rotate3D(dust, center, here.equatorial_plane.v, here.equatorial_plane.a);
+                cursor = to_viewer_plane(dust);
 
                 if (cursor.magnitude() > z_cutoff && cel->tmprel.get_distance_to_line(dust, yardstick) < equatorial_radius )
                 {
@@ -1146,6 +1153,7 @@ void set_viewer_location_and_plane()
     if (view_mode == vm_skyatlas)
     {
         here = cels[whereami]->location;
+        azimuth_correction = 0;
     }
     else if (view_mode == vm_horizon)
     {
@@ -1156,7 +1164,8 @@ void set_viewer_location_and_plane()
         Point ground = Point::from_ra_dec(viewer_lon, viewer_lat,
                 cel->volumetric_mean_radius,                             // TODO: Oblateness, depth/width/height of moons
             0);
-        ground = rotate3D(ground, center, yaxis, M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period);
+        azimuth_correction = -M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period;
+        ground = rotate3D(ground, center, yaxis, -azimuth_correction);
         ground = rotate3D(ground, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
         here.equatorial_plane = align_points_3d(ground, yaxis, center);
         ground += cel->location.local_position;
@@ -1165,6 +1174,7 @@ void set_viewer_location_and_plane()
     else if (view_mode == vm_sunclock)
     {
         here = cels[whereami]->location;
+        azimuth_correction = 0;
     }
 }
 
@@ -1279,7 +1289,7 @@ void compute_object_draw_coordinates()
 
         set_viewer_location_and_plane();
 
-        Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
+        Point viewer_pole = to_viewer_plane(yaxis);
         Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -1336,7 +1346,7 @@ void draw_objects()
     std::vector<CelestialObject*> to_draw_sphere;
     std::vector<int> to_draw_idx;
 
-    Point viewer_pole = rotate3D(yaxis, center, here.equatorial_plane.v, here.equatorial_plane.a);
+    Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
     // Orbits
@@ -2008,7 +2018,7 @@ void process_key_cmd_char(char c)
             velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
             velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
             velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+            velocity = to_viewer_plane(velocity, -1);
         }
         spin = 0;
         viewchanged = true;
@@ -2046,7 +2056,7 @@ void process_key_cmd_char(char c)
             velocity.x =  sin(azimuth) * cos(altitude) * 1000;
             velocity.z =  cos(azimuth) * cos(altitude) * 1000;
             velocity.y =  sin(altitude) * 1000;
-            velocity = rotate3D(velocity, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+            velocity = to_viewer_plane(velocity, -1);
             whereami = -1;
         }
         viewchanged = true;
@@ -3563,25 +3573,25 @@ int main (int argc, char** argv)
             #define steering_rate 0.03
             if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
             {
-                Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                Point yaw = to_viewer_plane(yaxis, -1);
                 velocity = rotate3D(velocity, center, yaw, -steering_rate);
                 if (trackidx<0) azimuth -= steering_rate;
             }
             if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window)
             {
-                Point yaw = rotate3D(yaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                Point yaw = to_viewer_plane(yaxis, -1);
                 velocity = rotate3D(velocity, center, yaw,  steering_rate);
                 if (trackidx<0) azimuth += steering_rate;
             }
             if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window)
             {
-                Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                Point pitch = to_viewer_plane(xaxis, -1);
                 velocity = rotate3D(velocity, center, pitch, -steering_rate);
                 if (trackidx<0) altitude += steering_rate;
             }
             if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
             {
-                Point pitch = rotate3D(xaxis, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                Point pitch = to_viewer_plane(xaxis, -1);
                 velocity = rotate3D(velocity, center, pitch,  steering_rate);
                 if (trackidx<0) altitude -= steering_rate;
             }
@@ -3592,7 +3602,7 @@ int main (int argc, char** argv)
                 forward.x =  sin(azimuth) * cos(altitude) * acceleration;
                 forward.z =  cos(azimuth) * cos(altitude) * acceleration;
                 forward.y =  sin(altitude) * acceleration;
-                forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                forward = to_viewer_plane(forward, -1);
                 velocity += forward;
             }
             if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window)
@@ -3602,7 +3612,7 @@ int main (int argc, char** argv)
                 forward.x =  sin(azimuth) * cos(altitude) * acceleration;
                 forward.z =  cos(azimuth) * cos(altitude) * acceleration;
                 forward.y =  sin(altitude) * acceleration;
-                forward = rotate3D(forward, center, here.equatorial_plane.v, -here.equatorial_plane.a);
+                forward = to_viewer_plane(forward, -1);
                 velocity -= forward;
             }
             if (ImGui::IsKeyPressed(ImGuiKey_F4))
