@@ -249,19 +249,25 @@ void load_textures(CelestialObject* cel)
             }
         }
 
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.jpg";
-        if (file_exists(filename.c_str()))
+        if (cel->surf_map)
         {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->bump_map = map;
-        }
-        else
-        {
-            filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.png";
-            if (file_exists(filename.c_str()))
+            cel_obj_class cls = cel->typeclass();
+            if (cls == class_planet || cls == class_moon)
             {
-                Map *map = new Map();
-                if (map->load_from_png(filename)) cel->bump_map = map;
+                Planet *p = (Planet*)cel;
+                filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.jpg";
+                if (file_exists(filename.c_str()))
+                {
+                    cel->surf_map->load_from_jpeg(filename, true, p->estimate_bump_scale());
+                }
+                else
+                {
+                    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.png";
+                    if (file_exists(filename.c_str()))
+                    {
+                        cel->surf_map->load_from_png(filename, true, p->estimate_bump_scale());
+                    }
+                }
             }
         }
 
@@ -325,10 +331,7 @@ void load_textures(CelestialObject* cel)
     else if ((cel->type == rocky || cel->type == icy) && !cel->surf_map)
     {
         cel->surf_map = new Map();
-        cel->surf_map->generate_rocky_map(cel->fictitious_map_height, cel->BV_color,
-            cel->mass > 0.02 * earth_mass                       // Based on Titan's mass.
-            && ((Planet*)cel)->is_in_con_HZ(),
-            cel->volumetric_mean_radius);
+        cel->surf_map->generate_rocky_map(cel);
     }
 }
 

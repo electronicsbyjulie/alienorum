@@ -576,7 +576,7 @@ alienorum_jpeg_error_exit (j_common_ptr cinfo)
   longjmp(myerr->setjmp_buffer, 1);
 }
 
-bool Map::load_from_jpeg(std::string filename)
+bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
     struct jpeg_decompress_struct cinfo;
     struct my_jpeg_error_mgr jerr;
@@ -604,18 +604,32 @@ bool Map::load_from_jpeg(std::string filename)
     (void) jpeg_read_header(&cinfo, TRUE);
     (void) jpeg_start_decompress(&cinfo);
 
-    image_height = cinfo.image_height;
-    image_width = cinfo.image_width;
-    lat_scale = image_height / M_PI;
-    lon_scale = image_width / (M_PI * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
-    long toalloc = image_height * image_width;
-    std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
-    red_data = new unsigned char[toalloc];
-    green_data = new unsigned char[toalloc];
-    blue_data = new unsigned char[toalloc];
-    allocated = toalloc;
+    if (as_bump)
+    {
+        if (image_height != cinfo.image_height || image_width != cinfo.image_width)
+        {
+            std::cerr << "Bump map must have same resolution as surface map." << std::endl;
+            jpeg_destroy_decompress(&cinfo);
+            fclose(infile);
+            return false;
+        }
+        bump_data = new double[allocated];
+    }
+    else
+    {
+        image_height = cinfo.image_height;
+        image_width = cinfo.image_width;
+        lat_scale = image_height / M_PI;
+        lon_scale = image_width / (M_PI * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+        long toalloc = image_height * image_width;
+        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
+        red_data = new unsigned char[toalloc];
+        green_data = new unsigned char[toalloc];
+        blue_data = new unsigned char[toalloc];
+        allocated = toalloc;
+    }
 
     row_stride = cinfo.output_width * cinfo.output_components;
     jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
@@ -629,10 +643,23 @@ bool Map::load_from_jpeg(std::string filename)
         (void) jpeg_read_scanlines(&cinfo, jpeg_image_buffer, 1);
         for (i=0; i<row_stride; i+=cinfo.output_components)
         {
-            assert(j < toalloc);
-            red_data[j] = jpeg_image_buffer[0][i];
-            green_data[j] = jpeg_image_buffer[0][i+1];
-            blue_data[j] = jpeg_image_buffer[0][i+2];
+            assert(j < allocated);
+
+            if (as_bump)
+            {
+                // Allow false color bump maps using the visual luminance as the elevation for better granularity
+                bump_data[j] = bump_scale *
+                            ( 0.001137 * jpeg_image_buffer[0][i]
+                            + 0.002196 * jpeg_image_buffer[0][i+1]
+                            + 0.00588  * jpeg_image_buffer[0][i+2])
+                            - 0.5;
+            }
+            else
+            {
+                red_data[j] = jpeg_image_buffer[0][i];
+                green_data[j] = jpeg_image_buffer[0][i+1];
+                blue_data[j] = jpeg_image_buffer[0][i+2];
+            }
             j++;
         }
     }
@@ -644,7 +671,7 @@ bool Map::load_from_jpeg(std::string filename)
     return true;
 }
 
-bool Map::load_from_png(std::string filename)
+bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
     png_structp png_ptr;
     png_infop info_ptr;
@@ -683,12 +710,32 @@ bool Map::load_from_png(std::string filename)
     png_read_png(png_ptr, info_ptr, 0, NULL);
 
     auto bytes_per_row = png_get_rowbytes( png_ptr, info_ptr );
-    image_height = png_get_image_height( png_ptr, info_ptr );
-    image_width = png_get_image_width( png_ptr, info_ptr );
-    lat_scale = image_height / M_PI;
-    lon_scale = image_width / (M_PI * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
+    if (as_bump)
+    {
+        if (image_height != png_get_image_height( png_ptr, info_ptr ) || image_width != png_get_image_width( png_ptr, info_ptr ))
+        {
+            std::cerr << "Bump map must have same resolution as surface map." << std::endl;
+            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+            fclose(fp);
+            return false;
+        }
+        bump_data = new double[allocated];
+    }
+    else
+    {
+        image_height = png_get_image_height( png_ptr, info_ptr );
+        image_width = png_get_image_width( png_ptr, info_ptr );
+        lat_scale = (double)image_height / M_PI;
+        lon_scale = (double)image_width / (M_PI * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+        int toalloc = image_height*bytes_per_row;
+        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
+        red_data = new unsigned char[toalloc];
+        green_data = new unsigned char[toalloc];
+        blue_data = new unsigned char[toalloc];
+        allocated = toalloc;
+    }
 
     int bytes_per_pixel = png_get_channels(png_ptr, info_ptr) * (png_get_bit_depth(png_ptr, info_ptr) / 8);
 
@@ -697,21 +744,29 @@ bool Map::load_from_png(std::string filename)
     if (bytes_per_pixel == 3)
     {
         // RGB
-        int toalloc = image_height*bytes_per_row;
-        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
-        red_data = new unsigned char[toalloc];
-        green_data = new unsigned char[toalloc];
-        blue_data = new unsigned char[toalloc];
-        allocated = toalloc;
-        int x, y, i=0;
+        unsigned int x, y, i=0;
         for (y=0; y<image_height; y++)
         {
             for (x=0; x<image_width; x++)
             {
                 png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
-                red_data[i] = pixel[0];
-                green_data[i] = pixel[1];
-                blue_data[i++] = pixel[2];
+
+                if (as_bump)
+                {
+                    // Allow false color bump maps using the visual luminance as the elevation for better granularity
+                    png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                    bump_data[i] = bump_scale *
+                            ( 0.001137 * pixel[0]
+                            + 0.002196 * pixel[1]
+                            + 0.00588  * pixel[2])
+                            - 0.5;
+                }
+                else
+                {
+                    red_data[i] = pixel[0];
+                    green_data[i] = pixel[1];
+                    blue_data[i++] = pixel[2];
+                }
             }
         }
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
@@ -720,19 +775,22 @@ bool Map::load_from_png(std::string filename)
     else if (bytes_per_pixel == 1)
     {
         // Grayscale.
-        int toalloc = image_height*bytes_per_row;
-        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
-        red_data = new unsigned char[toalloc];
-        green_data = new unsigned char[toalloc];
-        blue_data = new unsigned char[toalloc];
-        allocated = toalloc;
-        int x, y, i=0;
+        unsigned int x, y, i=0;
         for (y=0; y<image_height; y++)
         {
             for (x=0; x<image_width; x++)
             {
                 png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
-                red_data[i] = green_data[i] = blue_data[i] = pixel[0];
+
+                if (as_bump)
+                {
+                    png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                    bump_data[i] = bump_scale * ( 0.00392 * pixel[0]) - 0.5;
+                }
+                else
+                {
+                    red_data[i] = green_data[i] = blue_data[i] = pixel[0];
+                }
                 i++;
             }
         }
@@ -823,12 +881,12 @@ bool Map::save_to_png(std::string filename)
     png_bytep buffer = (png_bytep)malloc(image_width * image_height * 3);
 
     // Populate the buffer with data.
-    int row_stride = image_width * 3;               // 3 bytes per pixel for RGB
-    for (int y = 0; y < image_height; y++)
+    unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB
+    for (unsigned int y = 0; y < image_height; y++)
     {
         int iy = image_width*y;
         int ry = row_stride*y;
-        for (int x = 0; x < image_width; x++)
+        for (unsigned int x = 0; x < image_width; x++)
         {
             int rx = x*3;
             buffer[ry + rx   ] = red_data[iy + x];
@@ -838,7 +896,7 @@ bool Map::save_to_png(std::string filename)
     }
 
     // Set up the row pointers to point to the buffer.
-    for (int y = 0; y < image_height; y++)
+    for (unsigned int y = 0; y < image_height; y++)
     {
         row_pointers[y] = &buffer[y * row_stride];
     }
@@ -870,7 +928,7 @@ RGB Map::color_at(double lat, double lon)
     if (blue_data)
     {
         double xf = lon * lon_scale, yf = (M_PI_2-lat) * lat_scale;
-        int x0 = floor(xf), y1 = ceil(yf);
+        unsigned int x0 = floor(xf), y1 = ceil(yf);
         long y0idx = image_width * y1;
 
         if (y0idx < 0) y0idx = 0;
@@ -895,18 +953,27 @@ double CelestialObject::get_equatorial_radius()
     return volumetric_mean_radius * pow(1.0 - oblateness, 0.333);
 }
 
-void Map::generate_rocky_map(int lr, double BV, bool has_water, double objr)
+void Map::generate_rocky_map(CelestialObject *cel)
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
+
+    Planet *p = (Planet*)cel;
+    int lr = cel->fictitious_map_height;
+    double BV = cel->BV_color;
+    float has_water = p->is_in_con_HZ()
+        && cel->mass > 0.02 * earth_mass;                      // Based on Titan's mass.
 
     int octaves = 5 + (rand() % 4);
-    double lacbase = sqrt(fmax(1, log(objr)));
+    double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
     double lacunarity = frand(0.51*lacbase, 0.53*lacbase);
     double gain = has_water ? 0.5 : 2.5;
     double scale = frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
 
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
     RGB rgb = Color::rgb_from_color(col, -1);
+
+    int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
 
     image_height = lr;
     image_width = image_height * 2;
@@ -915,10 +982,12 @@ void Map::generate_rocky_map(int lr, double BV, bool has_water, double objr)
     red_data = new unsigned char[allocated];
     green_data = new unsigned char[allocated];
     blue_data = new unsigned char[allocated];
-    lat_scale = image_height / M_PI;
-    lon_scale = image_width / (M_PI * 2);
+    bump_data = new double[allocated];
+    lat_scale = (double)image_height / M_PI;
+    lon_scale = (double)image_width / (M_PI * 2);
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
+    double bump_scale = p->estimate_bump_scale();
     std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
 
     int vegr, vegg, vegb;
@@ -930,13 +999,13 @@ void Map::generate_rocky_map(int lr, double BV, bool has_water, double objr)
         vegb = veg_color.b;
     }
 
-    for (int y = 0; y < image_height; ++y)
+    for (unsigned int y = 0; y < image_height; ++y)
     {
         // Convert screen pixel coordinates to spherical angles
         double v = (double)y / image_height;
         double theta = v * M_PI; // Latitude angle from 0 to PI
 
-        for (int x = 0; x < image_width; ++x)
+        for (unsigned int x = 0; x < image_width; ++x)
         {
             double u = (double)x / image_width;
             double phi = u * 2.0 * M_PI; // Longitude angle from 0 to 2PI
@@ -947,13 +1016,14 @@ void Map::generate_rocky_map(int lr, double BV, bool has_water, double objr)
             double nz = cos(theta);
 
             // Get noise value for this point on the sphere
-            double heightValue = fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain);
+            double height_value = fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain);
 
             int idx = y * image_width + x;
+            bump_data[idx] = bump_scale * (height_value - 0.5);
 
             if (has_water)
             {
-                double r_weight = heightValue;
+                double r_weight = height_value;
 
                 // TODO: Decide polar ice cap size based on estimated temperature based on bolometric flux.
                 double polar_extent = 0.08 * r_weight;
@@ -963,28 +1033,30 @@ void Map::generate_rocky_map(int lr, double BV, bool has_water, double objr)
                     red_data[idx] = 225 * r_weight;
                     green_data[idx] = 240 * r_weight;
                     blue_data[idx] = 253 * r_weight;
+                    bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds
-                else if (heightValue < 0.500)
+                else if (height_value < 0.500)
                 {   // Ocean
-                    double sh = heightValue*2;          // shallowness
+                    double sh = height_value*2;          // shallowness
                     red_data[idx] = (10+20*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh) * r_weight;
                     green_data[idx] = (30+80*sh*sh*sh) * r_weight;
                     blue_data[idx] = (120+100*sh*sh) * r_weight;
+                    bump_data[idx] = 0;
                 }
-                else if (heightValue < 0.503)
+                else if (height_value < 0.503)
                 {   // Beach sand
                     red_data[idx] = 220 * r_weight;
                     green_data[idx] = 200 * r_weight;
                     blue_data[idx] = 150 * r_weight;
                 }
-                else if (heightValue < 0.70)
+                else if (height_value < 0.70)
                 {   // Lowlands
                     red_data[idx] = vegr * r_weight;
                     green_data[idx] = vegg * r_weight;
                     blue_data[idx] = vegb * r_weight;
                 }
-                else if (heightValue < 0.85)
+                else if (height_value < 0.85)
                 {   // Mountains
                     red_data[idx] = 110 * r_weight;
                     green_data[idx] = 90 * r_weight;
@@ -1000,10 +1072,10 @@ void Map::generate_rocky_map(int lr, double BV, bool has_water, double objr)
             else
             {
                 // Lifeless planet or moon
-                double r_weight = heightValue;
-                red_data[idx] = (unsigned char)(rgb.r * r_weight + 40);
-                green_data[idx] = (unsigned char)(rgb.g * r_weight + 20);
-                blue_data[idx] = (unsigned char)(rgb.b * r_weight + 10);
+                double r_weight = height_value;
+                red_data[idx] = (unsigned char)(rgb.r * r_weight + radd);
+                green_data[idx] = (unsigned char)(rgb.g * r_weight + gadd);
+                blue_data[idx] = (unsigned char)(rgb.b * r_weight + badd);
             }
         }
     }
@@ -1054,12 +1126,12 @@ void Map::generate_gas_giant_map(int lr, double BV)
 
     double scale = 2.5;
 
-    for (int y = 0; y < image_height; ++y)
+    for (unsigned int y = 0; y < image_height; ++y)
     {
         double v = (double)y / image_height;
         double theta = v * M_PI;
 
-        for (int x = 0; x < image_width; ++x)
+        for (unsigned int x = 0; x < image_width; ++x)
         {
             double u = (double)x / image_width;
             double phi = u * 2.0 * M_PI;

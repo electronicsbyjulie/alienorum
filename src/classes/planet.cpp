@@ -96,6 +96,11 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
     return -log(apparent) * invlogmagnbase + sourcemagn - cels[0]->absolute_magnitude;
 }
 
+double Planet::estimate_bump_scale()
+{
+    return 0.001 * volumetric_mean_radius * log(surface_pressure) / log(20);
+}
+
 void Planet::estimate_albedo()
 {
     double rearths = volumetric_mean_radius / earth_radius;
