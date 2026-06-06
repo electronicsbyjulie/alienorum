@@ -1719,6 +1719,18 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         p->orbit->semimajor_axis = sma * AU;
         p->orbit->period = sqrt(sma*sma*sma) * oneyear;
 
+        // Issue #58: Add default parameters for asteroids.
+        p->estimate_albedo();
+        if (!p->volumetric_mean_radius)
+        {
+            // Based on 163693 Atira. Ideally, this equation should use the estimated albedo and
+            // #defined constants instead of hard coding it.
+            p->volumetric_mean_radius = 8.74e+6 * sqrt(pow(magnbase, -p->absolute_magnitude));
+        }
+        if (!p->mass) p->mass = 2.0e+6 * sphere_volume(p->volumetric_mean_radius);
+        p->estimate_rotation();
+        if (!p->albedo) p->estimate_albedo_and_absmagn();
+
         if (!strcmp(name.c_str(), "Pluto"))
         {
             _day = 0;

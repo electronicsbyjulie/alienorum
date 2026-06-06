@@ -183,7 +183,7 @@ double find_3D_angle(Point A, Point B, Point source)
     if (isnan(retval))
     {
         std::cerr << "P12 " << P12 << " P13 " << P13 << " P23 " << P23 << std::endl;
-        throw 0xbad9a9;
+        assert(!isnan(retval));
     }
     return retval;
 }

@@ -9,6 +9,7 @@ Rotation Moon::get_Laplace_plane()
     if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
 
     CelestialObject *myplanet = orbit->center, *mystar = orbit->center->orbit->center;
+    assert(myplanet->mass > 0);
 
     double pmu = myplanet->mass * G, smu = mystar->mass * G;
     double n = std::sqrt(pmu / std::pow(smu, 3));
