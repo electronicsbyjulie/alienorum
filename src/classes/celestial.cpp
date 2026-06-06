@@ -308,7 +308,7 @@ double CelestialObject::RA_as_radians(CelestialLocation seen_from, double seen_e
 {
     Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
-    double result = std::fmod(find_angle(relloc.z, -relloc.x) - seen_equinox, M_PI*2);
+    double result = std::fmod(find_angle(relloc.z, -relloc.x) - seen_equinox + azimuth_correction, M_PI*2);
     if (result < 0) result += M_PI*2;
     return result;
 }

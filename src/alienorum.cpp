@@ -1164,7 +1164,7 @@ void set_viewer_location_and_plane()
                 cel->volumetric_mean_radius,                             // TODO: Oblateness, depth/width/height of moons
             0);
         azimuth_correction = -M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period;
-        ground = rotate3D(ground, center, yaxis, azimuth_correction+M_PI_2);
+        ground = rotate3D(ground, center, yaxis, azimuth_correction-M_PI_2);
         ground = rotate3D(ground, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
         here.equatorial_plane = align_points_3d(ground, yaxis, center);
         ground += cel->location.local_position;
@@ -1786,9 +1786,17 @@ void identify_object_under_cursor(ImGuiIO& io)
             }
         }
 
-        objinfo += (std::string)"RA:      " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
-                + (std::string)"Decl:    " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
-        oss << "Mag:     " << std::setprecision(2) << lmag << std::endl;
+        if (view_mode == vm_skyatlas)
+        {
+            objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
+                    + (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+        }
+        else
+        {
+            objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
+                    + (std::string)"Azimuth:  " + std::to_string(fmod(M_PI+M_PI_2-cels[i]->RA_as_radians(here, myeq), M_PI*2)*fiftyseven) + (std::string)"\n";
+        }
+        oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
         objinfo += oss.str();
         oss.str("");
         oss.clear();
@@ -1798,8 +1806,8 @@ void identify_object_under_cursor(ImGuiIO& io)
             Star* s = (Star*)cels[i];
             if (s->distance_known)
             {
-                oss << "Dist:    " << cels[i]->scaled_distance(here) << std::endl;
-                oss << "AbsMag:  " << std::setprecision(2) << s->absolute_magnitude << "\n";
+                oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+                oss << "AbsMag:   " << std::setprecision(2) << s->absolute_magnitude << "\n";
             }
             objinfo += (std::string)"SpTyp:   " + s->spectral_type + (std::string)"\n";
         }
@@ -1809,8 +1817,8 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
-            oss << "Dist:    " << cels[i]->scaled_distance(here) << std::endl;
-            oss << "Lit %:   " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
+            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+            oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
             if (((Planet*)cels[i])->is_in_con_HZ()) oss << "         Habitable Zone" << std::endl;
         }
 
@@ -1821,8 +1829,8 @@ void identify_object_under_cursor(ImGuiIO& io)
                 ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
             else if (cls == class_planet || cls == class_moon)
             {
-                oss << "Mass:    " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
-                oss << "Mass:    " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
+                oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
+                oss << "Mass:     " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
             }
         }
         if (cels[i]->volumetric_mean_radius)
@@ -1831,9 +1839,9 @@ void identify_object_under_cursor(ImGuiIO& io)
                 ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
             else if (cls == class_planet || cls == class_moon)
             {
-                oss << "Radius:  " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
+                oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
                     << " R(earth)" << std::endl;
-                oss << "Radius:  " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km" << std::endl;
+                oss << "Radius:   " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km" << std::endl;
             }
         }
         objinfo += oss.str();
