@@ -3086,8 +3086,8 @@ int main (int argc, char** argv)
         json j;
         fs >> j;
         double dbl;
-        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseven; } catch(...) { ; }
-        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseven; } catch(...) { ; }
+        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseventh; } catch(...) { ; }
         fs.close();
     }
     else
