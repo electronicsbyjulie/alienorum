@@ -111,7 +111,6 @@ void refresh_star_visibilities()
 Point to_viewer_plane(Point pt, int sign = 1)
 {
     pt = rotate3D(pt, center, here.equatorial_plane.v, here.equatorial_plane.a*sign);
-    if (azimuth_correction) pt = rotate3D(pt, center, yaxis, azimuth_correction);
     return pt;
 }
 
@@ -131,7 +130,7 @@ void draw_ra_dec_lines()
         for (j=-80; j<=80; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -162,7 +161,7 @@ void draw_ra_dec_lines()
         for (i=0; i<=24; i++)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -194,7 +193,7 @@ void draw_ra_dec_lines()
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
             pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
             pt = to_viewer_plane(pt);
-            zdes = Cartesian2D(pt, azimuth, altitude, zoom);
+            zdes = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -423,7 +422,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 prev_valid = false;
                 continue;
             }
-            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -501,7 +500,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
-            zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+            zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 todraw.push_back(ImVec2(0,0));
@@ -668,7 +667,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     continue;
                 }
 
-                zdes = Cartesian2D(cursor, azimuth, altitude, zoom);
+                zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
                 if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
                 {
                     todrawr.push_back(ImVec2(-1e29,-1e9));
@@ -1165,7 +1164,7 @@ void set_viewer_location_and_plane()
                 cel->volumetric_mean_radius,                             // TODO: Oblateness, depth/width/height of moons
             0);
         azimuth_correction = -M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period;
-        ground = rotate3D(ground, center, yaxis, -azimuth_correction);
+        ground = rotate3D(ground, center, yaxis, azimuth_correction+M_PI_2);
         ground = rotate3D(ground, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
         here.equatorial_plane = align_points_3d(ground, yaxis, center);
         ground += cel->location.local_position;
@@ -1312,7 +1311,7 @@ void compute_object_draw_coordinates()
             double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
             bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
-            Cartesian2D cart(rel, azimuth, altitude, zoom);
+            Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
             cels[i]->drawnx = dx;
             cels[i]->drawny = dy;
@@ -1386,7 +1385,7 @@ void draw_objects()
             Cartesian2D cart;
             try
             {
-                cart = Cartesian2D(rel, azimuth, altitude, zoom);
+                cart = Cartesian2D(rel, azimuth+azimuth_correction, altitude, zoom);
                 cart.x = dispcx + cart.x * dispcx; cart.y = dispcy + cart.y * dispcx;
                 if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
                     ImGui::GetBackgroundDrawList()->AddLine(ImVec2(lastcart.x, lastcart.y), ImVec2(cart.x, cart.y), imcol);
@@ -2015,8 +2014,8 @@ void process_key_cmd_char(char c)
         }
         else
         {
-            velocity.x =  sin(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity.z =  cos(azimuth) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+            velocity.x =  sin(azimuth+azimuth_correction) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+            velocity.z =  cos(azimuth+azimuth_correction) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
             velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
             velocity = to_viewer_plane(velocity, -1);
         }
@@ -2053,8 +2052,8 @@ void process_key_cmd_char(char c)
         }
         else
         {
-            velocity.x =  sin(azimuth) * cos(altitude) * 1000;
-            velocity.z =  cos(azimuth) * cos(altitude) * 1000;
+            velocity.x =  sin(azimuth+azimuth_correction) * cos(altitude) * 1000;
+            velocity.z =  cos(azimuth+azimuth_correction) * cos(altitude) * 1000;
             velocity.y =  sin(altitude) * 1000;
             velocity = to_viewer_plane(velocity, -1);
             whereami = -1;
@@ -3081,8 +3080,21 @@ int main (int argc, char** argv)
 
     memset(lookfor, 0, 256);
 
-    viewer_lat = 32.5425   * fiftyseventh;              // Babylon
-    viewer_lon = 44.421111 * fiftyseventh;
+    fstream fs("user.json", std::ios::in);
+    if (fs)
+    {
+        json j;
+        fs >> j;
+        double dbl;
+        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseven; } catch(...) { ; }
+        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseven; } catch(...) { ; }
+        fs.close();
+    }
+    else
+    {
+        viewer_lat = 32.5425   * fiftyseventh;              // Babylon
+        viewer_lon = 44.421111 * fiftyseventh;
+    }
 
     for (l=1; l<argc; l++)
     {
@@ -3599,8 +3611,8 @@ int main (int argc, char** argv)
             {
                 double acceleration = velocity.magnitude() * 0.1;
                 Point forward;
-                forward.x =  sin(azimuth) * cos(altitude) * acceleration;
-                forward.z =  cos(azimuth) * cos(altitude) * acceleration;
+                forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+                forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
                 forward.y =  sin(altitude) * acceleration;
                 forward = to_viewer_plane(forward, -1);
                 velocity += forward;
@@ -3609,8 +3621,8 @@ int main (int argc, char** argv)
             {
                 double acceleration = velocity.magnitude() * 0.1;
                 Point forward;
-                forward.x =  sin(azimuth) * cos(altitude) * acceleration;
-                forward.z =  cos(azimuth) * cos(altitude) * acceleration;
+                forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+                forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
                 forward.y =  sin(altitude) * acceleration;
                 forward = to_viewer_plane(forward, -1);
                 velocity -= forward;

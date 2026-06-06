@@ -124,6 +124,19 @@ You can also edit the universe JSON files to modify other parameters not include
 file is still valid JSON after any edits. There are third party apps that will check a JSON file to make sure it's
 valid and find any errors.
 
+## Setting Your Latitude/Longitude
+
+The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge
+in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json`
+and add the following lines, changing the numbers to your own location:
+
+```
+{
+    "Latitude": 45.52,
+    "Longitude": -122.68
+}
+```
+
 ## Keyboard Shortcuts
 
 The current full list of keyboard shortcuts is:
