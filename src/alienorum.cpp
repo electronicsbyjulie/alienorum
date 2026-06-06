@@ -2310,8 +2310,6 @@ void draw_status_window(ImGuiIO& io)
 
     ImGui::Separator();
 
-    // view_mode
-
     ImGuiComboFlags cbovm_flags = 0;
     const char* combo_vm_value = vmtext[view_mode];
     ImGui::Text("%s", "View Mode:");
@@ -2334,6 +2332,31 @@ void draw_status_window(ImGuiIO& io)
                 ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
+    }
+
+    if (view_mode == vm_horizon)
+    {
+        double vlat_edit = viewer_lat * fiftyseven;
+        ImGui::Text("%s", "Latitude:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(123);
+        if (ImGui::InputDouble("##vlat", &vlat_edit, 0.1, 1, "%.3f"))
+        {
+            viewer_lat = vlat_edit * fiftyseventh;
+            set_viewer_location_and_plane();
+            viewchanged = true;
+        }
+
+        double vlon_edit = viewer_lon * fiftyseven;
+        ImGui::Text("%s", "Longitude:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(123);
+        if (ImGui::InputDouble("##vlon", &vlon_edit, 0.1, 1, "%.3f"))
+        {
+            viewer_lon = vlon_edit * fiftyseventh;
+            set_viewer_location_and_plane();
+            viewchanged = true;
+        }
     }
 
     int th = themes.size();
