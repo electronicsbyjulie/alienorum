@@ -1242,112 +1242,162 @@ void set_viewer_location_and_plane()
     }
 }
 
+double dispw, disph, lmasslim;
+bool compute_object_location(CelestialObject* cel, int i)
+{
+    num_stars_in_box = 0;
+    bool star_in_box;
+
+    CelestialLocation tmp = cel->location - here;
+    cel->tmprel = Point(tmp);
+    switch (cel->typeclass())
+    {
+        case class_star:
+        if (i > 0)
+        {
+            if ((star_in_box = (i ? ((Star*)cel)->is_in_visible_box(Point(here)) : true))) num_stars_in_box++;              // ANC
+            ((Star*)cel)->tmp_vis_flag = star_in_box;
+            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj)
+            {
+                if (!star_in_box)
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
+                if (!redo_proper_motions && !cel->orbit) return false;
+                if (cel->orbit && cel->orbit->center && (whereami < 0 || cel->orbit->center != cels[whereami])
+                    && (cel->orbit->center->drawnx < 0 || cel->orbit->center->drawny < 0
+                        || cel->orbit->center->drawnx > dispw || cel->orbit->center->drawny > disph
+                        || cel->orbit->semimajor_axis < cel->location.distance_to(here)*1e-4*zoom
+                        )
+                    )
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
+            }
+        }
+
+        ((Star*)cel)->update_location(simnow);
+        tmp = cel->location - here;
+        cel->tmprel = Point(tmp);
+        if (i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
+        {
+            cel->drawnx = cel->drawny = -1e9;
+            return false;
+        }
+        break;
+
+        case class_planet:
+        if (i > 0)
+        {
+            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
+            {
+                if (cel->cenobj!=mycenobj)
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
+                else if (cel->orbit &&
+                    (
+                            ((cel->mass >= lmasslim)
+                        && (cel->tmprel.magnitude() > AU)
+                    ))
+                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
+            }
+        }
+        ((Planet*)cel)->update_location(simnow);
+        break;
+
+        case class_moon:
+        if (i > 0)
+        {
+            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
+            {
+                if (cel->cenobj!=mycenobj)
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
+                else if (cel->orbit &&
+                    (
+                            ((cel->mass >= lmasslim)
+                        && (cel->tmprel.magnitude() > AU)
+                    ))
+                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
+            }
+        }
+        ((Moon*)cel)->update_location(simnow);
+        break;
+
+        default:
+        ;
+    }
+
+    return true;
+}
+
 void compute_object_draw_coordinates()
 {
+    stellar_flux = starlight;
     if (!ncelobjs) return;
-    int i, j, bx, by;
-    double dispw = dispcx*2, disph = dispcy*2;
+    int i, j, n, bx, by;
+    dispw = dispcx*2;
+    disph = dispcy*2;
+    lmasslim = lbllsys_mass_lim * 1000;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
-    double mycenobj_dist = mycenobj->location.distance_to(here), lmasslim = lbllsys_mass_lim * 1000;
+    double mycenobj_dist = mycenobj->location.distance_to(here);
     if (viewchanged || redo_proper_motions)
     {
-        num_stars_in_box = 0;
-        bool star_in_box;
+        if (whereami >= 0)
+        {
+            std::vector<CelestialObject*> have_to_know;
+            CelestialObject *cursor = cels[whereami];
+            have_to_know.push_back(cursor);
+            while (cursor->orbit && cursor->orbit->center)
+            {
+                cursor = cursor->orbit->center;
+                have_to_know.insert(have_to_know.begin(), cursor);
+            }
+
+            n = have_to_know.size();
+            for (i=0; i<2; i++)
+            {
+                for (j=0; j<n; j++)
+                    compute_object_location(have_to_know[j], -1);
+
+                here = cels[whereami]->location;
+            }
+            if (trackidx >= 0)
+            {
+                azimuth = -cels[trackidx]->RA_as_radians(here, 0);
+                altitude = cels[trackidx]->Decl_as_radians(here);
+            }
+        }
+
         for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
             CelestialLocation tmp = cels[i]->location - here;
             cels[i]->tmprel = Point(tmp);
-            switch (cels[i]->typeclass())
+
+            if (!compute_object_location(cels[i], i)) continue;
+
+            // If entering a new star system, change allegiance to new center object.
+            if (whereami < 0 && cels[i]->type == star
+                // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
+                && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
+                && cels[i]->tmprel.magnitude() < mycenobj_dist)
             {
-                case class_star:
-                if ((star_in_box = (i ? ((Star*)cels[i])->is_in_visible_box(Point(here)) : true))) num_stars_in_box++;              // ANC
-                ((Star*)cels[i])->tmp_vis_flag = star_in_box;
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cels[i]->cenobj!=mycenobj)
-                {
-                    if (!star_in_box)
-                    {
-                        cels[i]->drawnx = cels[i]->drawny = -1e9;
-                        continue;
-                    }
-                    if (!redo_proper_motions && !cels[i]->orbit) continue;
-                    if (cels[i]->orbit && cels[i]->orbit->center && (whereami < 0 || cels[i]->orbit->center != cels[whereami])
-                        && (cels[i]->orbit->center->drawnx < 0 || cels[i]->orbit->center->drawny < 0
-                            || cels[i]->orbit->center->drawnx > dispw || cels[i]->orbit->center->drawny > disph
-                            || cels[i]->orbit->semimajor_axis < cels[i]->location.distance_to(here)*1e-4*zoom
-                            )
-                        )
-                    {
-                        cels[i]->drawnx = cels[i]->drawny = -1e9;
-                        continue;
-                    }
-                }
-
-                ((Star*)cels[i])->update_location(simnow);
-                tmp = cels[i]->location - here;
-                cels[i]->tmprel = Point(tmp);
-                if (whereami >= 0 && cels[i]->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
-                {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
-                }
-
-                // If entering a new star system, change allegiance to new center object.
-                if (whereami < 0
-                    // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
-                    && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
-                    && cels[i]->tmprel.magnitude() < mycenobj_dist)
-                {
-                    mycenobj = cels[i]->cenobj;
-                }
-                break;
-
-                case class_planet:
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
-                {
-                    if (cels[i]->cenobj!=mycenobj)
-                    {
-                        cels[i]->drawnx = cels[i]->drawny = -1e9;
-                        continue;
-                    }
-                    else if (cels[i]->orbit &&
-                        (
-                              ((cels[i]->mass >= lmasslim)
-                            && (cels[i]->tmprel.magnitude() > AU)
-                        ))
-                        && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
-                    {
-                        cels[i]->drawnx = cels[i]->drawny = -1e9;
-                        continue;
-                    }
-                }
-                ((Planet*)cels[i])->update_location(simnow);
-                break;
-
-                case class_moon:
-                if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
-                {
-                    if (cels[i]->cenobj!=mycenobj)
-                    {
-                        cels[i]->drawnx = cels[i]->drawny = -1e9;
-                        continue;
-                    }
-                    else if (cels[i]->orbit &&
-                        (
-                              ((cels[i]->mass >= lmasslim)
-                            && (cels[i]->tmprel.magnitude() > AU)
-                        ))
-                        && (((Planet*)cels[i])->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cels[i]->orbit->semimajor_axis) > 6.5))
-                    {
-                        cels[i]->drawnx = cels[i]->drawny = -1e9;
-                        continue;
-                    }
-                }
-                ((Moon*)cels[i])->update_location(simnow);
-                break;
-
-                default:
-                ;
+                mycenobj = cels[i]->cenobj;
             }
         }
 
@@ -1375,6 +1425,12 @@ void compute_object_draw_coordinates()
 
             double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
             bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
+
+            if (view_mode == vm_horizon && vmag_cache[i] < -10 && rel.y >= 0)
+            {
+                float theta = cels[i]->Decl_as_radians(here);
+                stellar_flux += brght * pow(cos(theta), 0.333);
+            }
 
             cels[i]->viewrel = rel;
 
@@ -1705,7 +1761,11 @@ void draw_objects()
                 bool factor_altitude = false;
                 if (y_extent < 0) y_extent = dispcy*2-1;
 
-                double r = 0.37, g = 0.58, b = 0.81, a = fmin(1, 0.25 * pow(p->surface_pressure, 0.1));
+                double skylight = fmin(1, sqrt(stellar_flux));
+                double r = fmin(1, 0.37 * skylight),
+                       g = fmin(1, 0.58 * skylight),
+                       b = fmin(1, 0.81 * skylight),
+                       a = fmin(1, 0.25 * pow(p->surface_pressure, 0.1) * skylight);
                 if (factor_altitude)
                 {
                     // TODO:
@@ -3626,8 +3686,8 @@ int main (int argc, char** argv)
 
             set_viewer_location_and_plane();
 
-            if (show_grid) draw_ra_dec_lines();
             compute_object_draw_coordinates();
+            if (show_grid) draw_ra_dec_lines();
             if (show_consln) draw_cons_lines();
             draw_objects();
 
@@ -3678,11 +3738,6 @@ int main (int argc, char** argv)
             {
                 if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
                 identify_object_under_cursor(io);
-            }
-            if (trackidx >= 0)
-            {
-                azimuth = -cels[trackidx]->RA_as_radians(here, 0);
-                altitude = cels[trackidx]->Decl_as_radians(here);
             }
 
             // Positioning updates
