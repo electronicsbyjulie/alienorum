@@ -1675,22 +1675,59 @@ void draw_objects()
     }
 
     // TODO: Render according to bump map and generate a fictitious skyline.
+    int x_extent = dispcx*2-1, y_extent = -1;
     if (view_mode == vm_horizon && !dragging)
     {
-        double theta;
+        double theta, dy = dispcy*29;
         for (theta = 0; theta < M_PI*2; theta++)
         {
             Point pt = rotate3D(zaxis, center, yaxis, theta);
             Cartesian2D horizon = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
             if (horizon.x < -1e4) continue;
-            double /*dx = horizon.x * dispcx + dispcx,*/ dy = horizon.y * dispcx + dispcy;
+            // dx = horizon.x * dispcx + dispcx;
+            dy = horizon.y * dispcx + dispcy;
             if (dy < 0) dy = 0;
             if (dy < dispcy*2)
             {
-                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
-                    IM_COL32(0, 8, 24, 255));
+                /*ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
+                    IM_COL32(0, 8, 24, 255));*/
+                if (dy > y_extent) y_extent = dy;
             }
             break;
+        }
+
+        // Sky gradient.
+        if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
+        {
+            Planet *p = (Planet*)cels[whereami];
+            if (p->surface_pressure)
+            {
+                bool factor_altitude = false;
+                if (y_extent < 0) y_extent = dispcy*2-1;
+
+                double r = 0.37, g = 0.58, b = 0.81, a = fmin(1, 0.25 * pow(p->surface_pressure, 0.1));
+                if (factor_altitude)
+                {
+                    // TODO:
+                }
+
+                for (int y=y_extent; y>=0; y--)
+                {
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
+                        IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) );
+
+                    r *= 0.998;
+                    g *= 0.9992;
+                    b *= 0.9998;
+                    a *= 0.99999;
+                }
+            }
+        }
+
+        if (dy < dispcy*2)
+        {
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
+                IM_COL32(0, 8, 24, 255));
         }
     }
 }
@@ -3528,6 +3565,7 @@ int main (int argc, char** argv)
             double aspect_width = splash_height * splash_image_width / splash_image_height;
             double left = fmax(0, (splash_width - aspect_width) / 2);
 
+            // Sky gradient.
             int y;
             double r = 0.0003, g = 0.002, b = 0.02;
             for (y=0; y<io.DisplaySize.y; y++)
