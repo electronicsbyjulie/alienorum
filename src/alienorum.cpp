@@ -126,13 +126,22 @@ void draw_ra_dec_lines()
     double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), M_PI*2) : 0;
     bool prev_valid = false;
+    int jstart = -80; // (view_mode == vm_horizon) ? 0 : -80;
+
     // RA and Dec lines.
     for (i=0; i<24; i++)
     {
         prev_valid = false;
-        for (j=-80; j<=80; j+=10)
+        for (j=jstart; j<=80; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
+            if (view_mode == vm_horizon)
+            {
+                jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center,
+                    cels[whereami]->location.equatorial_plane.v, -cels[whereami]->location.equatorial_plane.a);
+                jadolzhnaperejexatdoma = to_viewer_plane(jadolzhnaperejexatdoma, 1);
+                jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center, yaxis, -azimuth_correction);
+            }
             zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+npaz, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -140,7 +149,7 @@ void draw_ra_dec_lines()
                 continue;
             }
 
-            if (j > -80)
+            if (j > jstart)
             {
                 int dx1 = dispcx + zdes.x * dispcx,
                     dy1 = dispcy + zdes.y * dispcx,
@@ -158,13 +167,20 @@ void draw_ra_dec_lines()
         }
     }
 
-    for (j=-80; j <= 80; j+=10)
+    for (j=jstart; j <= 80; j+=10)
     {
         prev_valid = false;
         for (i=0; i<=24; i++)
         {
-            Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth-npaz, altitude, zoom);
+            Point umenjanetdeneg = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
+            if (view_mode == vm_horizon)
+            {
+                umenjanetdeneg = rotate3D(umenjanetdeneg, center,
+                    cels[whereami]->location.equatorial_plane.v, -cels[whereami]->location.equatorial_plane.a);
+                umenjanetdeneg = to_viewer_plane(umenjanetdeneg, 1);
+                umenjanetdeneg = rotate3D(umenjanetdeneg, center, yaxis, -azimuth_correction);
+            }
+            zdes = Cartesian2D(umenjanetdeneg, azimuth-npaz, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -196,10 +212,19 @@ void draw_ra_dec_lines()
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
             pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
             pt = to_viewer_plane(pt);
+
             zdes = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
+
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
+                continue;
+            }
+
+            if (view_mode == vm_horizon && pt.y<0)
+            {
+                prev = zdes;
+                prev_valid = true;
                 continue;
             }
 
@@ -1351,6 +1376,8 @@ void compute_object_draw_coordinates()
             double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
             bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
+            cels[i]->viewrel = rel;
+
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
             cels[i]->drawnx = dx;
@@ -1452,6 +1479,14 @@ void draw_objects()
         {
             if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
             if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
+        }
+
+        // Counterintuitive that we would process *more* objects during dragging and not *less*,
+        // but since discs become transparent wireframes during drag, it only makes sense that the
+        // ground should become transparent as well.
+        if (view_mode == vm_horizon && !dragging && cels[i]->viewrel.y < 0)
+        {
+            continue;
         }
 
         if (cels[i]->typeclass() == class_star
@@ -1636,6 +1671,19 @@ void draw_objects()
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+bloomrad+1),
                 rgba_apply_redlight(global_style.objlbl_color),
                 cel->name);
+        }
+    }
+
+    // TODO: Render according to bump map and generate a fictitious skyline.
+    if (view_mode == vm_horizon && !dragging)
+    {
+        Cartesian2D horizon = Cartesian2D(zaxis, 0, altitude, zoom);
+        double dx = horizon.x + dispcx, dy = horizon.y + dispcy;
+        if (dy < 0) dy = 0;
+        if (dy < dispcy*2)
+        {
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
+                IM_COL32(0, 8, 24, 255));
         }
     }
 }

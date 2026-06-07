@@ -144,7 +144,7 @@ class CelestialObject
     bool lock_equatorial_plane = false;
     Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
     CelestialObject *cenobj = nullptr;
-    Point tmprel;
+    Point tmprel, viewrel;
 
     CelestialObject* get_light_center();
     double get_equatorial_radius();
