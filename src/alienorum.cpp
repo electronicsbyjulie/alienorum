@@ -1347,7 +1347,6 @@ bool compute_object_location(CelestialObject* cel, int i)
 
 void compute_object_draw_coordinates()
 {
-    stellar_flux = starlight;
     if (!ncelobjs) return;
     int i, j, n, bx, by;
     dispw = dispcx*2;
@@ -1406,9 +1405,11 @@ void compute_object_draw_coordinates()
         Point viewer_pole = to_viewer_plane(yaxis);
         Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
+        luminous_flux = 0;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
             if (isnan(cels[i]->tmprel.x)) continue;
+            if (i == whereami) continue;
 
             if (cels[i]->typeclass() == class_star
                 && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
@@ -1426,10 +1427,11 @@ void compute_object_draw_coordinates()
             double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
             bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
-            if (view_mode == vm_horizon && vmag_cache[i] < -10 && rel.y >= 0)
+            if ((view_mode == vm_horizon) && vmag_cache[i] < -10 && rel.y >= 0)
             {
                 float theta = cels[i]->Decl_as_radians(here);
-                stellar_flux += brght * pow(cos(theta), 0.333);
+                double add_flux = brght * sin(theta);
+                if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
             }
 
             cels[i]->viewrel = rel;
@@ -1731,7 +1733,6 @@ void draw_objects()
     }
 
     // TODO: Render according to bump map and generate a fictitious skyline.
-    int x_extent = dispcx*2-1, y_extent = -1;
     if (view_mode == vm_horizon && !dragging)
     {
         double theta, dy = dispcy*29;
@@ -1747,47 +1748,42 @@ void draw_objects()
             {
                 /*ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
                     IM_COL32(0, 8, 24, 255));*/
-                if (dy > y_extent) y_extent = dy;
             }
             break;
-        }
-
-        // Sky gradient.
-        if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
-        {
-            Planet *p = (Planet*)cels[whereami];
-            if (p->surface_pressure)
-            {
-                bool factor_altitude = false;
-                if (y_extent < 0) y_extent = dispcy*2-1;
-
-                double skylight = fmin(1, sqrt(stellar_flux));
-                double r = fmin(1, 0.37 * skylight),
-                       g = fmin(1, 0.58 * skylight),
-                       b = fmin(1, 0.81 * skylight),
-                       a = fmin(1, 0.25 * pow(p->surface_pressure, 0.1) * skylight);
-                if (factor_altitude)
-                {
-                    // TODO:
-                }
-
-                for (int y=y_extent; y>=0; y--)
-                {
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
-                        IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) );
-
-                    r *= 0.998;
-                    g *= 0.9992;
-                    b *= 0.9998;
-                    a *= 0.99999;
-                }
-            }
         }
 
         if (dy < dispcy*2)
         {
             ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
                 IM_COL32(0, 8, 24, 255));
+        }
+    }
+}
+
+void draw_sky_gradient()
+{
+    if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
+    {
+        Planet *p = (Planet*)cels[whereami];
+        if (p->surface_pressure)
+        {
+            int x_extent = dispcx*2-1;
+            double skylight = fmin(1, pow(luminous_flux/4e+10, 1.0/5.5) + starlight);
+            // std::cout << luminous_flux << " " << skylight << std::endl;
+            double r = fmin(1, 0.37 * skylight),
+                    g = fmin(1, 0.58 * skylight),
+                    b = fmin(1, 0.81 * skylight),
+                    a = fmin(1, pow(p->surface_pressure, 0.1) * skylight);
+            for (int y=dispcy*2-1; y>=0; y--)
+            {
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
+                    IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) );
+
+                r *= 0.998;
+                g *= 0.9992;
+                b *= 0.9998;
+                a *= 0.99999;
+            }
         }
     }
 }
@@ -2531,7 +2527,7 @@ void draw_status_window(ImGuiIO& io)
     ImGui::SetNextItemWidth(123);
     if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
     {
-        for (int n = 0; n < NUM_VIEWMODES; n++)
+        for (int n = 0; n < NUM_VIEWMODES-1; n++)               // Sun clock mode is not yet implemented.
         {
             const bool is_selected = (n == view_mode);
             if (ImGui::Selectable(vmtext[n], is_selected))
@@ -3689,6 +3685,7 @@ int main (int argc, char** argv)
             compute_object_draw_coordinates();
             if (show_grid) draw_ra_dec_lines();
             if (show_consln) draw_cons_lines();
+            if (view_mode == vm_horizon) draw_sky_gradient();
             draw_objects();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
