@@ -123,6 +123,8 @@ void draw_ra_dec_lines()
     ImU32 gcb = rgba_apply_redlight(global_style.grid_color_brighter);
     ImU32 ec = rgba_apply_redlight(global_style.ecliptic_color);
     double node = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+    double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+    npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), M_PI*2) : 0;
     bool prev_valid = false;
     // RA and Dec lines.
     for (i=0; i<24; i++)
@@ -131,7 +133,7 @@ void draw_ra_dec_lines()
         for (j=-80; j<=80; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth/*+azimuth_correction*/, altitude, zoom);
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+npaz, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -162,7 +164,7 @@ void draw_ra_dec_lines()
         for (i=0; i<=24; i++)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+azimuth_correction, altitude, zoom);
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth-npaz, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -1154,6 +1156,7 @@ void set_viewer_location_and_plane()
     {
         here = cels[whereami]->location;
         azimuth_correction = 0;
+        npaz = 0;
     }
     else if (view_mode == vm_horizon)
     {
@@ -1203,13 +1206,14 @@ void set_viewer_location_and_plane()
         npdummy.location = cel->location;
         npdummy.location.local_position = north_pole;
         azimuth_correction = 0;
-        double npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
+        npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
         azimuth_correction = -npaz;
     }
     else if (view_mode == vm_sunclock)
     {
         here = cels[whereami]->location;
         azimuth_correction = 0;
+        npaz = 0;
     }
 }
 
@@ -1829,7 +1833,8 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
-            double objaz = fmod(M_PI*2-cels[i]->RA_as_radians(here, myeq)+azimuth_correction, M_PI*2);
+            npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
+            double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), M_PI*2);
             if (objaz < 0) objaz += M_PI*2;
             objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
                     + (std::string)"Azimuth:  " 
@@ -3653,6 +3658,7 @@ int main (int argc, char** argv)
                 if (!strcmp(argsmode.c_str(), "hz")) view_mode = vm_horizon;
                 else if (!strcmp(argsmode.c_str(), "sun")) view_mode = vm_sunclock;
                 argsmode = "";
+                viewchanged = true;
             }
             else if (argstrack.size())
             {

@@ -42,7 +42,7 @@ const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike",
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
 int cbolbls_selected_idx = 0, cboceltyp_selected_idx = 0;
 double bv_correction = 0;
-double sphere_quality = 1;
+double sphere_quality = 1, npaz = 0;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
 

@@ -143,7 +143,7 @@ extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_un
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
     objinfwnd, statuswnd, objedtwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
 extern std::string objname, objinfo;
-extern double simnow;
+extern double simnow, npaz;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
 extern PerlinNoise pn;
