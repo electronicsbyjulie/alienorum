@@ -1224,7 +1224,7 @@ void set_viewer_location_and_plane()
         cursor = rotate3D(cursor, center, yaxis, -timeofday);
         cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 
-        here.local_position = cursor;
+        here.local_position = cel->location.local_position + cursor;
         here.equatorial_plane = align_points_3d(cursor, yaxis, center);
 
         Point north_pole = rotate3D(yaxis, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
