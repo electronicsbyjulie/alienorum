@@ -142,7 +142,7 @@ void draw_ra_dec_lines()
                 jadolzhnaperejexatdoma = to_viewer_plane(jadolzhnaperejexatdoma, 1);
                 jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center, yaxis, -azimuth_correction);
             }
-            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth+npaz, altitude, zoom);
+            zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -180,7 +180,7 @@ void draw_ra_dec_lines()
                 umenjanetdeneg = to_viewer_plane(umenjanetdeneg, 1);
                 umenjanetdeneg = rotate3D(umenjanetdeneg, center, yaxis, -azimuth_correction);
             }
-            zdes = Cartesian2D(umenjanetdeneg, azimuth-npaz, altitude, zoom);
+            zdes = Cartesian2D(umenjanetdeneg, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
                 prev_valid = false;
@@ -1677,13 +1677,20 @@ void draw_objects()
     // TODO: Render according to bump map and generate a fictitious skyline.
     if (view_mode == vm_horizon && !dragging)
     {
-        Cartesian2D horizon = Cartesian2D(zaxis, 0, altitude, zoom);
-        double dx = horizon.x + dispcx, dy = horizon.y + dispcy;
-        if (dy < 0) dy = 0;
-        if (dy < dispcy*2)
+        double theta;
+        for (theta = 0; theta < M_PI*2; theta++)
         {
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
-                IM_COL32(0, 8, 24, 255));
+            Point pt = rotate3D(zaxis, center, yaxis, theta);
+            Cartesian2D horizon = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
+            if (horizon.x < -1e4) continue;
+            double /*dx = horizon.x * dispcx + dispcx,*/ dy = horizon.y * dispcx + dispcy;
+            if (dy < 0) dy = 0;
+            if (dy < dispcy*2)
+            {
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
+                    IM_COL32(0, 8, 24, 255));
+            }
+            break;
         }
     }
 }
