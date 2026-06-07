@@ -960,7 +960,12 @@ RGB Map::color_at(double lat, double lon)
 
 double Map::elevation_at(double lat, double lon)
 {
-    if (bump_data) return bump_data[idx_of(lat, lon)];
+    if (bump_data)
+    {
+        unsigned int idx = idx_of(lat, lon);
+        if (idx >= allocated) return 0;
+        return (isnan(bump_data[idx]) || isinf(bump_data[idx])) ? 0 : bump_data[idx];
+    }
     else return 0.0;
 }
 
@@ -1000,6 +1005,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
     green_data = new unsigned char[allocated];
     blue_data = new unsigned char[allocated];
     bump_data = new double[allocated];
+
+    memset(bump_data, 0, allocated*sizeof(double));
+
     lat_scale = (double)image_height / M_PI;
     lon_scale = (double)image_width / (M_PI * 2);
     inv_lat_scale = 1.0 / lat_scale;

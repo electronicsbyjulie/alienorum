@@ -45,6 +45,7 @@ double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edi
 bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
 bool splash = true, magnitude_test = false, redo_proper_motions = true, fdlg_shown = false;
+CelestialObject npdummy;
 
 // ImGui Example Code
 
@@ -464,7 +465,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline, dx1, dy1, dx2, dy2;
     l = 0;
-    double d = cel->tmprel.magnitude(), horizon_angle, elevation;
+    double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
 
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
@@ -1159,16 +1160,51 @@ void set_viewer_location_and_plane()
         CelestialObject *cel = cels[whereami];
         here = cel->location;
         assert(cel->sidereal_rotational_period != 0);
+
+        double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
         double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-        Point ground = Point::from_ra_dec(viewer_lon, viewer_lat,
-                cel->volumetric_mean_radius,                             // TODO: Oblateness, depth/width/height of moons
-            0);
-        azimuth_correction = -M_PI*2 * seconds_since_epoch / cel->sidereal_rotational_period + cel->lon_J2000_offset;
-        ground = rotate3D(ground, center, yaxis, azimuth_correction);
-        ground = rotate3D(ground, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-        here.equatorial_plane = align_points_3d(ground, yaxis, center);
-        ground += cel->location.local_position;
-        here.local_position = ground;
+        double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, M_PI*2);
+        if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
+        {
+            timeofday += cel->orbit->ascending_node;
+            timeofday += cel->orbit->arg_periapsis;
+            timeofday += cel->orbit->mean_anomaly;
+            timeofday += M_PI_2;
+        }
+
+        bool dwh = false;
+        if (cel->typeclass() == class_moon)
+            dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
+                && ((Moon*)cel)->width > zero_isnt_really_zero
+                && ((Moon*)cel)->height > zero_isnt_really_zero);
+
+        double obl = 1.0 - cel->oblateness, equatorial_radius;
+        if (dwh)
+            equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
+        else
+            equatorial_radius = cel->volumetric_mean_radius * pow(1.0 - cel->oblateness, 0.333);
+
+        Point cursor = Point::from_ra_dec(viewer_lon, viewer_lat, dwh ? 1 : equatorial_radius, 0);
+
+        if (dwh)
+        {
+            cursor.x *= ((Moon*)cel)->width * 500;
+            cursor.y *= ((Moon*)cel)->height * 500;
+            cursor.z *= ((Moon*)cel)->depth * 500;
+        }
+        else cursor.y *= obl;
+        cursor = rotate3D(cursor, center, yaxis, -timeofday);
+        cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+        here.local_position = cursor;
+        here.equatorial_plane = align_points_3d(cursor, yaxis, center);
+
+        Point north_pole = rotate3D(yaxis, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+        npdummy.location = cel->location;
+        npdummy.location.local_position = north_pole;
+        azimuth_correction = 0;
+        double npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
+        azimuth_correction = -npaz;
     }
     else if (view_mode == vm_sunclock)
     {
@@ -1793,9 +1829,11 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
+            double objaz = fmod(M_PI*2-cels[i]->RA_as_radians(here, myeq)+azimuth_correction, M_PI*2);
+            if (objaz < 0) objaz += M_PI*2;
             objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
                     + (std::string)"Azimuth:  " 
-                    + std::to_string(fmod(-cels[i]->RA_as_radians(here, myeq)-M_PI, M_PI*2)*fiftyseven)
+                    + std::to_string(objaz*fiftyseven)
                     + (std::string)"\n";
         }
         oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
@@ -3127,7 +3165,7 @@ int main (int argc, char** argv)
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
-    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "";
+    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "";
 
     memset(lookfor, 0, 256);
 
@@ -3198,6 +3236,16 @@ int main (int argc, char** argv)
         if (!strcmp(argv[l], "jd"))
         {
             setjd = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "hz") || !strcmp(argv[l], "horizon"))
+        {
+            argsmode = "hz";
+        }
+
+        if (!strcmp(argv[l], "sun") || !strcmp(argv[l], "sunclock"))
+        {
+            argsmode = "sun";
         }
 
         if (!strcmp(argv[l], "theme"))
@@ -3599,6 +3647,12 @@ int main (int argc, char** argv)
                 else std::cerr << "Not found " << argsgo << std::endl;
                 argsgo = "";
                 viewchanged = true;
+            }
+            else if (argsmode.size())
+            {
+                if (!strcmp(argsmode.c_str(), "hz")) view_mode = vm_horizon;
+                else if (!strcmp(argsmode.c_str(), "sun")) view_mode = vm_sunclock;
+                argsmode = "";
             }
             else if (argstrack.size())
             {
