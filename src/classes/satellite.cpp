@@ -10,6 +10,7 @@
 #include "serial.h"
 
 std::vector<SatSource> sat_sources;
+std::vector<SatRecord> sat_data;
 
 Satellite::Satellite()
 {
@@ -35,7 +36,7 @@ json SatSource::to_json()
     j["URL"] = url;
     j["LocalName"] = local_name;
     j["LastAccessed"] = iso_string;
-    if (auto_load) j["AutoLoad"] = auto_load;
+    j["Type"] = is_supplemental ? "supplemental" : "master";
     return j;
 }
 
@@ -45,22 +46,14 @@ bool SatSource::from_json(json j)
     {
         j.at("URL").get_to(url);
         j.at("LocalName").get_to(local_name);
+
+        std::string type;
+        j.at("Type").get_to(type);
+        is_supplemental = (!strcmp(type.c_str(), "supplemental"));
+
         std::string iso_string;
         j.at("LastAccessed").get_to(iso_string);
-
-        std::istringstream iss(iso_string);
-        std::tm tm_struct = {};
-
-        iss >> std::get_time(&tm_struct, "%Y-%m-%d %H:%M:%S");
-
-        if (iss.fail())
-        {
-            std::cerr << "FAILED to parse datetime " << iso_string << std::endl;
-        }
-        else
-        {
-            last_accessed = std::mktime(&tm_struct);
-        }
+        last_accessed = from_iso_string(iso_string, "%Y-%m-%d %H:%M:%S");
     }
     catch (...)
     {
@@ -69,8 +62,6 @@ bool SatSource::from_json(json j)
         #endif
         return false;
     }
-
-    try { j.at("AutoLoad").get_to(auto_load); } catch (...) { auto_load = false; }
 
     return true;
 }
@@ -165,6 +156,10 @@ bool SatSource::download_data()
     request.setOpt(new curlpp::options::Timeout(60));
     request.setOpt(new curlpp::options::FollowLocation(true));
 
+    std::list<std::string> headers;
+    headers.push_back("User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)");
+    request.setOpt(new curlpp::options::HttpHeader(headers));
+
     std::ostringstream response;
     request.setOpt(new curlpp::options::WriteStream(&response));
 
@@ -206,58 +201,115 @@ bool SatSource::read_csv_data()
     if (!fp) return false;
     char buffer[16384];
     fgets(buffer, 16382, fp);
-    csv_header = parse_csv_row(buffer);
+    std::vector<std::string> csv_header = parse_csv_row(buffer);
+
+    int i=0, j, n = sat_data.size();
     while (fgets(buffer, 16382, fp))
     {
-        csv_rows.push_back(parse_csv_row(buffer));
+        std::vector<std::string> row = parse_csv_row(buffer);
+
+        if (is_supplemental)
+        {
+            __uint32_t norad_id = atoi(row[11].c_str());
+            for (j=0; j<n; j++)
+            {
+                if (sat_data[j].NORAD_CAT_ID == norad_id)
+                {
+                    sat_data[j].catalog = local_name;
+                    i = 2;
+                    sat_data[j].EPOCH = row[i++];
+                    sat_data[j].MEAN_MOTION = atof(row[i++].c_str());
+                    sat_data[j].ECCENTRICITY = atof(row[i++].c_str());
+                    sat_data[j].INCLINATION = atof(row[i++].c_str());
+                    sat_data[j].RA_OF_ASC_NODE = atof(row[i++].c_str());
+                    sat_data[j].ARG_OF_PERICENTER = atof(row[i++].c_str());
+                    sat_data[j].MEAN_ANOMALY = atof(row[i++].c_str());
+                    sat_data[j].EPHEMERIS_TYPE = atoi(row[i++].c_str());
+                    sat_data[j].CLASSIFICATION_TYPE = row[i++];
+                    i++;
+                    sat_data[j].ELEMENT_SET_NO = atoi(row[i++].c_str());
+                    sat_data[j].REV_AT_EPOCH = atoi(row[i++].c_str());
+                    sat_data[j].BSTAR = atof(row[i++].c_str());
+                    sat_data[j].MEAN_MOTION_DOT = atof(row[i++].c_str());
+                    sat_data[j].MEAN_MOTION_DDOT = atof(row[i++].c_str());
+
+                    break;
+                }
+            }
+        }
+        else
+        {
+            SatRecord sr;
+            sr.OBJECT_NAME = row[i++];
+            sr.OBJECT_ID = row[i++];
+            sr.NORAD_CAT_ID = atoi(row[i++].c_str());
+            sr.OBJECT_TYPE = row[i++];
+            sr.OPS_STATUS_CODE = row[i++];
+            sr.OWNER = row[i++];
+            sr.LAUNCH_DATE = from_iso_string(row[i++], "%Y-%m-%d %H:%M:%S");
+            sr.LAUNCH_SITE = row[i++];
+            sr.DECAY_DATE = from_iso_string(row[i++], "%Y-%m-%d %H:%M:%S");
+            sr.PERIOD = atof(row[i++].c_str());
+            sr.INCLINATION = atof(row[i++].c_str());
+            sr.APOGEE = atof(row[i++].c_str());
+            sr.PERIGEE = atof(row[i++].c_str());
+            sr.RCS = atof(row[i++].c_str());
+            sr.DATA_STATUS_CODE = row[i++];
+            sr.ORBIT_CENTER = row[i++];
+            sr.ORBIT_TYPE = row[i++];
+
+            sat_data.push_back(sr);
+        }
     }
     fclose(fp);
     return true;
 }
 
-int SatSource::num_satellites()
-{
-    return csv_rows.size();
-}
-
-std::string SatSource::sat_name(unsigned int idx)
-{
-    if (idx >= csv_rows.size()) return std::string();
-    return csv_rows[idx][0];
-}
-
 bool SatSource::populate(Satellite *sat, unsigned int idx)
 {
     if (!sat) return false;
-    if (idx >= csv_rows.size()) return false;
+    if (idx >= sat_data.size()) return false;
     if (sat->typeclass() != class_satellite) return false;
 
-    std::vector<std::string> row = csv_rows[0];
-    strcpy(sat->name, row[0].c_str());
+    SatRecord sr = sat_data[idx];
+    strcpy(sat->name, sr.OBJECT_NAME.c_str());
     if (!sat->orbit) sat->orbit = new Orbit;
-    sat->orbit->center = cels[find_object("Earth")];
+    int cenidx;
 
-    std::istringstream iss(row[2]);
-    std::tm tm_struct = {};
-
-    iss >> std::get_time(&tm_struct, "%Y-%m-%dT%H:%M:%S");
-
-    if (iss.fail())
-    {
-        std::cerr << "FAILED to parse epoch " << row[2] << std::endl;
-    }
+    if (!strcmp(sr.ORBIT_CENTER.c_str(), "EA")) cenidx = find_object("Earth");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "EM")) cenidx = find_object("Earth");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "SU")) cenidx = 0;
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "SS")) cenidx = 0;
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "MO")) cenidx = find_object("Moon");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "ME")) cenidx = find_object("Mercury");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "VE")) cenidx = find_object("Venus");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "MA")) cenidx = find_object("Mars");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "JU")) cenidx = find_object("Jupiter");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "SA")) cenidx = find_object("Saturn");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "UR")) cenidx = find_object("Uranus");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "NE")) cenidx = find_object("Neptune");
+    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "PL")) cenidx = find_object("Pluto");
     else
     {
-        sat->epoch = sat->orbit->epoch = std::mktime(&tm_struct);
+        std::cout << "Unable to add satellite: unsupported orbit center." << std::endl << std::flush;
+        return false;
     }
 
-    sat->orbit->eccentricity = atof(row[4].c_str());
-    sat->orbit->inclination = atof(row[5].c_str());
-    sat->orbit->ascending_node = atof(row[6].c_str());
-    sat->orbit->arg_periapsis = atof(row[7].c_str());
-    sat->orbit->mean_anomaly = atof(row[8].c_str());
-    sat->orbit->mean_anomaly = atof(row[8].c_str());
-    sat->bstar = atof(row[14].c_str());
+    sat->cenobj = sat->orbit->center = cels[cenidx];
+    sat->epoch = sat->orbit->epoch = (double)(from_iso_string(sr.EPOCH, "%Y-%m-%dT%H:%M:%S") - J2000_TIME_T) / oneday + J2000;
+
+    sat->mass = 1e3;                        // unknown
+    sat->volumetric_mean_radius = 5;        // unknown
+    sat->absolute_magnitude = 5;            // unknown
+
+    sat->orbit->eccentricity = sr.ECCENTRICITY;
+    sat->orbit->inclination = sr.INCLINATION * fiftyseventh;
+    sat->orbit->ascending_node = sr.RA_OF_ASC_NODE * fiftyseventh;
+    sat->orbit->arg_periapsis = sr.ARG_OF_PERICENTER * fiftyseventh;
+    sat->orbit->mean_anomaly = sr.MEAN_ANOMALY * fiftyseventh;
+    sat->orbit->period = sr.PERIOD * 60;
+    sat->orbit->compute_semimajor_axis(sat->mass);
+    sat->bstar = sr.BSTAR;
 
     return true;
 }

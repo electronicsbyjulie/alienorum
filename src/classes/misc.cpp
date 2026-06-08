@@ -273,6 +273,26 @@ std::vector<std::string> parse_csv_row(const char *data)
     return result;
 }
 
+time_t from_iso_string(std::string iso_string, const char* format)
+{
+    std::istringstream iss(iso_string);
+    std::tm tm_struct = {};
+
+    iss >> std::get_time(&tm_struct, format ? format : "%Y-%m-%dT%H:%M:%S");
+
+    if (iss.fail())
+    {
+        std::cerr << "FAILED to parse datetime " << iso_string << std::endl;
+        throw 0xbad7177e;                       // Access to satellite data depends on this working. If we fail, we must exit the app or risk an IP ban.
+    }
+    else
+    {
+        return std::mktime(&tm_struct);
+    }
+
+    return time_t();
+}
+
 // Fractional Brownian Motion helper
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain)
 {

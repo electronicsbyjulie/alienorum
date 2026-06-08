@@ -31,7 +31,7 @@
 using namespace std;
 
 SDL_Window* window;
-char lookfor[256], edit_name[256];
+char lookfor[256], edit_name[256], looksat[256];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
@@ -3311,65 +3311,80 @@ void draw_objedit_window(ImGuiIO& io)
 
 void draw_sat_window(ImGuiIO& io)
 {
-    ImGui::Begin("Edit Object", &satwnd, 0);
+    ImGui::Begin("Add Satellite", &satwnd, 0);
 
-    unsigned int nsources = sat_sources.size(), nsats, i, j, l;
+    static std::string mesg = "";
+    ImGui::Text("%s", "Search:");
+    ImGui::SameLine();
+    ImGui::InputText("##looksat", looksat, 256, 0);
+
+    int nsats = sat_data.size(), i, l, looklen = strlen(looksat);
     int n=0;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    if (ImGui::BeginListBox("##satlist", ImVec2(259, 11 * ImGui::GetTextLineHeightWithSpacing())))
+    std::vector<std::string> listlines;
+    if (ImGui::BeginListBox("##satlist", ImVec2(503, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
-        for (i=0; i<nsources; i++)
+        for (n=0; n<nsats; n++)
         {
-            nsats = sat_sources[i].num_satellites();
-            for (j=0; j<nsats; j++)
-            {
-                std::string line = std::string(sat_sources[i].sat_name(j));
-                l = 35 - line.size();
-                if (l > 0) line += std::string(l, ' ');
-                line += sat_sources[i].local_name;
+            std::string line = std::string(sat_data[n].OBJECT_NAME);
 
-                bool is_selected = (item_selected_idx == n);
+            if (looklen && !strcasestr(line.c_str(), looksat)) continue;
 
-                ImGuiSelectableFlags flags = (item_highlighted_idx == n) ? ImGuiSelectableFlags_Highlight : 0;
-                if (ImGui::Selectable(line.c_str(), is_selected, flags))
-                    item_selected_idx = n;
+            l = 35 - line.size();
+            if (l > 0) line += std::string(l, ' ');
+            line += sat_data[n].catalog;
+            line += std::string(" ##") + std::to_string(n);
+            listlines.push_back(line);
 
-                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                if (is_selected)
-                    ImGui::SetItemDefaultFocus();
+            bool is_selected = (item_selected_idx == n);
 
-                n++;
-            }
+            ImGuiSelectableFlags flags = (item_highlighted_idx == n) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.c_str(), is_selected, flags))
+                item_selected_idx = n;
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
         }
         ImGui::EndListBox();
     }
 
     if (ImGui::Button("Load Satellite"))
     {
+        mesg = "";
+        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
         Satellite *sat = new Satellite();
         cels[ncelobjs++] = sat;
         cels[ncelobjs] = 0;
         n = item_selected_idx;
-        for (i=0; i<nsources; i++)
+
+        char buffer[256];
+        strcpy(buffer, listlines[n].c_str());
+        std::cout << buffer << std::endl << std::flush;           // debug step
+        char *hashmarks = strstr(buffer, "##");
+        char *pipe = strchr(hashmarks, '|');
+        *pipe = 0;
+        i = atoi(&hashmarks[2]);
+        std::cout << sat_data[i].OBJECT_NAME << std::endl << std::flush;          // debug step
+
+        if (SatSource::populate(sat, i))
         {
-            nsats = sat_sources[i].num_satellites();
-            for (j=0; j<nsats; j++)
-            {
-                if (!n)
-                {
-                    sat_sources[i].populate(sat, j);
-                    break;
-                }
-                n--;
-            }
+            selected = ncelobjs-1;
+            compute_object_location(sat, -1);
+            compute_object_draw_coordinates();
+            center_selected();
+            satwnd = false;
         }
-        selected = ncelobjs-1;
-        compute_object_location(sat, -1);
-        compute_object_draw_coordinates();
-        center_selected();
-        satwnd = false;
+        else
+        {
+            ncelobjs--;
+            cels[ncelobjs] = 0;
+            mesg = "ERROR";
+        }
     }
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(255, 0, 0, 255), "%s", mesg.c_str());
 
     ImGui::SetWindowSize(ImVec2(0, 0));
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
@@ -3416,6 +3431,7 @@ int main (int argc, char** argv)
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "";
 
     memset(lookfor, 0, 256);
+    memset(looksat, 0, 256);
 
     fstream fs("user.json", std::ios::in);
     if (fs)
