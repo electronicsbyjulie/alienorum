@@ -84,6 +84,8 @@ class Map
 
     unsigned int idx_of(double latitude, double longitude);
 
+    __uint128_t ___ = 0;
+
     public:
     bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
     bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);

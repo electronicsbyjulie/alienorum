@@ -2741,6 +2741,26 @@ void draw_addcel_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+void save_textures(CelestialObject* cel)
+{
+    std::string mapfname;
+    if (cel->surf_map)
+    {
+        mapfname = std::string("maps/") + std::string(cel->name) + std::string("_surf.png");
+        cel->surf_map->save_to_png(mapfname);
+    }
+    if (cel->cloud_map)
+    {
+        mapfname = std::string("maps/") + std::string(cel->name) + std::string("_clouds.png");
+        cel->cloud_map->save_to_png(mapfname);
+    }
+    if (cel->night_map)
+    {
+        mapfname = std::string("maps/") + std::string(cel->name) + std::string("_night.png");
+        cel->cloud_map->save_to_png(mapfname);
+    }
+}
+
 void draw_objedit_window(ImGuiIO& io)
 {
     if (editidx < 0)
@@ -2918,22 +2938,8 @@ void draw_objedit_window(ImGuiIO& io)
         ImGui::SameLine(col3);
         if (ImGui::Button("Save"))
         {
-            std::string mapfname;
-            if (cel->surf_map)
-            {
-                mapfname = std::string("maps/") + std::string(cel->name) + std::string("_surf.png");
-                cel->surf_map->save_to_png(mapfname);
-            }
-            if (cel->cloud_map)
-            {
-                mapfname = std::string("maps/") + std::string(cel->name) + std::string("_clouds.png");
-                cel->cloud_map->save_to_png(mapfname);
-            }
-            if (cel->night_map)
-            {
-                mapfname = std::string("maps/") + std::string(cel->name) + std::string("_night.png");
-                cel->cloud_map->save_to_png(mapfname);
-            }
+            std::thread save_tex(save_textures, cel);
+            save_tex.detach();
         }
         ImGui::SameLine();
         if (ImGui::Button("Refresh"))

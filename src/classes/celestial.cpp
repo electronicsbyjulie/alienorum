@@ -980,9 +980,11 @@ double CelestialObject::get_equatorial_radius()
 
 void Map::generate_rocky_map(CelestialObject *cel)
 {
+    assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
     mtx.lock();
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
-    assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
+    __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
+    ___ = __;
 
     Planet *p = (Planet*)cel;
     int lr = cel->fictitious_map_height;
@@ -1107,6 +1109,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 green_data[idx] = (unsigned char)(rgb.g * r_weight + gadd);
                 blue_data[idx] = (unsigned char)(rgb.b * r_weight + badd);
             }
+
+            if (__ != ___)
+            {
+                std::cout << "Abort previous rocky map." << std::endl << std::flush;
+                return;
+            }
         }
     }
 }
@@ -1116,6 +1124,8 @@ void Map::generate_gas_giant_map(int lr, double BV)
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     mtx.lock();
+    __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
+    ___ = __;
     image_height = lr;
     image_width = image_height * 2;
 
@@ -1223,6 +1233,8 @@ void Map::generate_gas_giant_map(int lr, double BV)
                 green_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].g + t * bands[nextBandIdx].g);
                 blue_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].b + t * bands[nextBandIdx].b);
             }
+
+            if (___ != __) return;
         }
     }
 }
