@@ -1013,8 +1013,13 @@ void load_catalogs()
     mtx.unlock();
     cout << loading_msg << endl << flush;
     SatSource::read_sources_json();
-    if (sat_sources.size() > 2) sat_sources[2].download_data();
-    SatSource::update_sources_json();
+    n = sat_sources.size();
+    for (i=0; i<n; i++)
+    {
+        if (sat_sources[i].data_age_hours() > 24) sat_sources[i].download_data();
+        sat_sources[i].read_csv_data();
+        SatSource::update_sources_json();
+    }
 
     mtx.lock();
     loading_msg = std::string("Naming stars...");
@@ -2287,6 +2292,10 @@ void process_key_cmd_char(char c)
 
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
+
+        case '&': view_mode = vm_skyatlas; break;
+        case '_': view_mode = vm_horizon; break;
+        case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
 
         default:
         ;

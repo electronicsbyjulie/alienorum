@@ -7,12 +7,14 @@
 #include <ctime>
 #include <chrono>
 #include "satellite.h"
+#include "serial.h"
 
 std::vector<SatSource> sat_sources;
 
 Satellite::Satellite()
 {
     _class = class_satellite;
+    type = artificial;
 }
 
 json SatSource::to_json()
@@ -116,12 +118,17 @@ bool SatSource::update_sources_json()
     return true;
 }
 
-bool SatSource::download_data()
+std::string SatSource::csv_fname()
 {
-    std::string outfname = std::string("catalogs/sat/") + local_name + std::string(".csv");
-    if (file_exists(outfname.c_str()))
+    return std::string("catalogs/sat/") + local_name + std::string(".csv");
+}
+
+int SatSource::data_age_hours()
+{
+    std::string csvfname = csv_fname();
+    if (file_exists(csvfname.c_str()))
     {
-        std::filesystem::file_time_type ft = std::filesystem::last_write_time(outfname.c_str());
+        std::filesystem::file_time_type ft = std::filesystem::last_write_time(csvfname.c_str());
         auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
             ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
         std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
@@ -129,6 +136,14 @@ bool SatSource::download_data()
     }
     std::time_t now = std::time(nullptr);
     std::time_t age = now - last_accessed;
+
+    return age/3600;
+}
+
+bool SatSource::download_data()
+{
+    std::string outfname = csv_fname();
+    std::time_t age = data_age_hours() * 3600;
 
     // Under no circumstances should the code ever attempt to access the same remote file twice in two hours.
     // See: https://celestrak.org/NORAD/documentation/gp-data-formats.php#addendum
@@ -149,8 +164,9 @@ bool SatSource::download_data()
     request.setOpt(new curlpp::options::WriteStream(&response));
 
     std::cout << "Downloading " << outfname << "..." << std::flush;
-    last_accessed = now;
+    last_accessed = std::time(nullptr);
     request.perform();
+    last_accessed = std::time(nullptr);
     long response_code = curlpp::infos::ResponseCode::get(request);
 
     std::cout << " HTTP/" << response_code << std::endl << std::flush;
@@ -174,6 +190,69 @@ bool SatSource::download_data()
             << response.str() << std::endl << std::flush;
         return false;
     }
+
+    return true;
+}
+
+bool SatSource::read_csv_data()
+{
+    std::string csvfname = csv_fname();
+    FILE *fp = fopen(csvfname.c_str(), "r");
+    if (!fp) return false;
+    char buffer[16384];
+    fgets(buffer, 16382, fp);
+    csv_header = parse_csv_row(buffer);
+    while (fgets(buffer, 16382, fp))
+    {
+        csv_rows.push_back(parse_csv_row(buffer));
+    }
+    fclose(fp);
+    return true;
+}
+
+int SatSource::num_satellites()
+{
+    return csv_rows.size();
+}
+
+std::string SatSource::sat_name(unsigned int idx)
+{
+    if (idx >= csv_rows.size()) return std::string();
+    return csv_rows[idx][0];
+}
+
+bool SatSource::populate(Satellite *sat, unsigned int idx)
+{
+    if (!sat) return false;
+    if (idx >= csv_rows.size()) return false;
+    if (sat->typeclass() != class_satellite) return false;
+
+    std::vector<std::string> row = csv_rows[0];
+    strcpy(sat->name, row[0].c_str());
+    if (!sat->orbit) sat->orbit = new Orbit;
+    sat->orbit->center = cels[find_object("Earth")];
+
+    std::istringstream iss(row[2]);
+    std::tm tm_struct = {};
+
+    iss >> std::get_time(&tm_struct, "%Y-%m-%dT%H:%M:%S");
+
+    if (iss.fail())
+    {
+        std::cerr << "FAILED to parse epoch " << row[2] << std::endl;
+    }
+    else
+    {
+        sat->epoch = sat->orbit->epoch = std::mktime(&tm_struct);
+    }
+
+    sat->orbit->eccentricity = atof(row[4].c_str());
+    sat->orbit->inclination = atof(row[5].c_str());
+    sat->orbit->ascending_node = atof(row[6].c_str());
+    sat->orbit->arg_periapsis = atof(row[7].c_str());
+    sat->orbit->mean_anomaly = atof(row[8].c_str());
+    sat->orbit->mean_anomaly = atof(row[8].c_str());
+    sat->bstar = atof(row[14].c_str());
 
     return true;
 }

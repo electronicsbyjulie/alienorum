@@ -120,6 +120,7 @@ bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
 bool file_exists(const char* fname);
 
+std::vector<std::string> parse_csv_row(const char* data);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
 double probability_density_function(double x, double mean, double stddev);
 int sgn(double f);

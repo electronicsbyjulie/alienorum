@@ -250,6 +250,28 @@ bool file_exists(const char *fname)
     return false;
 }
 
+std::vector<std::string> parse_csv_row(const char *data)
+{
+    int n = strlen(data);
+    if (!n) return std::vector<std::string>();
+
+    char buffer[n+1];
+    strcpy(buffer, data);
+    char *cursor = buffer, *comma;
+    std::vector<std::string> result;
+
+    do
+    {
+        comma = strchr(cursor, ',');
+        if (comma) *comma = 0;
+        std::string value = cursor;
+        result.push_back(value);
+        cursor = comma+1;
+    } while (comma);
+
+    return result;
+}
+
 // Fractional Brownian Motion helper
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain)
 {
