@@ -1233,6 +1233,7 @@ void set_viewer_location_and_plane()
         azimuth_correction = 0;
         npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
         azimuth_correction = -npaz;
+        viewchanged = true;
     }
     else if (view_mode == vm_sunclock)
     {
@@ -1372,53 +1373,53 @@ void compute_object_draw_coordinates()
     lmasslim = lbllsys_mass_lim * 1000;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_dist = mycenobj->location.distance_to(here);
+    if (whereami >= 0)
+    {
+        std::vector<CelestialObject*> have_to_know;
+        CelestialObject *cursor = cels[whereami];
+        have_to_know.push_back(cursor);
+        while (cursor->orbit && cursor->orbit->center)
+        {
+            cursor = cursor->orbit->center;
+            have_to_know.insert(have_to_know.begin(), cursor);
+        }
+
+        n = have_to_know.size();
+        for (i=0; i<2; i++)
+        {
+            for (j=0; j<n; j++)
+                compute_object_location(have_to_know[j], -1);
+
+            here = cels[whereami]->location;
+        }
+    }
+
+    for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
+    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    {
+        CelestialLocation tmp = cels[i]->location - here;
+        cels[i]->tmprel = Point(tmp);
+
+        if (!compute_object_location(cels[i], i)) continue;
+
+        // If entering a new star system, change allegiance to new center object.
+        if (whereami < 0 && cels[i]->type == star
+            // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
+            && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
+            && cels[i]->tmprel.magnitude() < mycenobj_dist)
+        {
+            mycenobj = cels[i]->cenobj;
+        }
+    }
+
+    set_viewer_location_and_plane();
+    if (trackidx >= 0) center_tracked();
+
+    Point viewer_pole = to_viewer_plane(yaxis);
+    Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
+
     if (viewchanged || redo_proper_motions)
     {
-        if (whereami >= 0)
-        {
-            std::vector<CelestialObject*> have_to_know;
-            CelestialObject *cursor = cels[whereami];
-            have_to_know.push_back(cursor);
-            while (cursor->orbit && cursor->orbit->center)
-            {
-                cursor = cursor->orbit->center;
-                have_to_know.insert(have_to_know.begin(), cursor);
-            }
-
-            n = have_to_know.size();
-            for (i=0; i<2; i++)
-            {
-                for (j=0; j<n; j++)
-                    compute_object_location(have_to_know[j], -1);
-
-                here = cels[whereami]->location;
-            }
-        }
-
-        for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
-        for (i=0; cels[i] && i<MAX_CELOBJS; i++)
-        {
-            CelestialLocation tmp = cels[i]->location - here;
-            cels[i]->tmprel = Point(tmp);
-
-            if (!compute_object_location(cels[i], i)) continue;
-
-            // If entering a new star system, change allegiance to new center object.
-            if (whereami < 0 && cels[i]->type == star
-                // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
-                && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
-                && cels[i]->tmprel.magnitude() < mycenobj_dist)
-            {
-                mycenobj = cels[i]->cenobj;
-            }
-        }
-
-        set_viewer_location_and_plane();
-        if (trackidx >= 0) center_tracked();
-
-        Point viewer_pole = to_viewer_plane(yaxis);
-        Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
-
         luminous_flux = 0;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
