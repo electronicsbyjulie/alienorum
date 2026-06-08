@@ -3317,7 +3317,7 @@ void draw_sat_window(ImGuiIO& io)
     int n=0;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    if (ImGui::BeginListBox("##satlist", ImVec2(-FLT_MIN, 5 * ImGui::GetTextLineHeightWithSpacing())))
+    if (ImGui::BeginListBox("##satlist", ImVec2(259, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         for (i=0; i<nsources; i++)
         {
@@ -3365,6 +3365,10 @@ void draw_sat_window(ImGuiIO& io)
             }
         }
         selected = ncelobjs-1;
+        compute_object_location(sat, -1);
+        compute_object_draw_coordinates();
+        center_selected();
+        satwnd = false;
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));
