@@ -1345,6 +1345,24 @@ bool compute_object_location(CelestialObject* cel, int i)
     return true;
 }
 
+void center_selected()
+{
+    if (selected >= 0)
+    {
+        azimuth = -cels[selected]->RA_as_radians(here, 0);
+        altitude = cels[selected]->Decl_as_radians(here);
+    }
+}
+
+void center_tracked()
+{
+    if (trackidx >= 0)
+    {
+        azimuth = -cels[trackidx]->RA_as_radians(here, 0);
+        altitude = cels[trackidx]->Decl_as_radians(here);
+    }
+}
+
 void compute_object_draw_coordinates()
 {
     if (!ncelobjs) return;
@@ -1375,17 +1393,6 @@ void compute_object_draw_coordinates()
 
                 here = cels[whereami]->location;
             }
-            if (trackidx >= 0)
-            {
-                if (view_mode == vm_horizon)
-                {
-                    npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
-                    double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), M_PI*2);
-                    azimuth = objaz;
-                }
-                else azimuth = -cels[trackidx]->RA_as_radians(here, 0);
-                altitude = cels[trackidx]->Decl_as_radians(here);
-            }
         }
 
         for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
@@ -1407,6 +1414,7 @@ void compute_object_draw_coordinates()
         }
 
         set_viewer_location_and_plane();
+        if (trackidx >= 0) center_tracked();
 
         Point viewer_pole = to_viewer_plane(yaxis);
         Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -2021,7 +2029,7 @@ void identify_object_under_cursor(ImGuiIO& io)
         {
             oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
             oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
-            if (((Planet*)cels[i])->is_in_con_HZ()) oss << "         Habitable Zone" << std::endl;
+            if (((Planet*)cels[i])->is_in_con_HZ()) oss << "          Habitable Zone" << std::endl;
         }
 
         cel_obj_class cls = cels[i]->typeclass();
@@ -2100,15 +2108,6 @@ void pan_with_crosshairs(ImGuiIO& io)
             leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
         ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
         ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
-    }
-}
-
-void center_selected()
-{
-    if (selected >= 0)
-    {
-        azimuth = -cels[selected]->RA_as_radians(here, 0);
-        altitude = cels[selected]->Decl_as_radians(here);
     }
 }
 

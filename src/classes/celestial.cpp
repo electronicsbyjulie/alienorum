@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <thread>
+#include <chrono>
 #include "celestial.h"
 #include "star.h"
 #include "planet.h"
@@ -581,6 +583,7 @@ alienorum_jpeg_error_exit (j_common_ptr cinfo)
 
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
+    mtx.lock();
     struct jpeg_decompress_struct cinfo;
     struct my_jpeg_error_mgr jerr;
     FILE * infile;
@@ -633,6 +636,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
         blue_data = new unsigned char[toalloc];
         allocated = toalloc;
     }
+    mtx.unlock();
 
     row_stride = cinfo.output_width * cinfo.output_components;
     jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
@@ -676,6 +680,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
+    mtx.lock();
     png_structp png_ptr;
     png_infop info_ptr;
     FILE *fp;
@@ -739,6 +744,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         blue_data = new unsigned char[toalloc];
         allocated = toalloc;
     }
+    mtx.unlock();
 
     int bytes_per_pixel = png_get_channels(png_ptr, info_ptr) * (png_get_bit_depth(png_ptr, info_ptr) / 8);
 
@@ -919,10 +925,7 @@ bool Map::save_to_png(std::string filename)
 
 unsigned int Map::idx_of(double lat, double lon)
 {
-    #ifdef DEBUG
-    assert(lat_scale > 0);
-    assert(lon_scale > 0);
-    #endif
+    while (!lat_scale) std::this_thread::sleep_for(std::chrono::milliseconds(29));
 
     lon = fmod(lon, M_PI*2);
     if (lon < 0) lon += M_PI*2;
@@ -977,6 +980,7 @@ double CelestialObject::get_equatorial_radius()
 
 void Map::generate_rocky_map(CelestialObject *cel)
 {
+    mtx.lock();
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
 
@@ -999,6 +1003,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     image_height = lr;
     image_width = image_height * 2;
+    mtx.unlock();
 
     allocated = image_height * image_width;
     red_data = new unsigned char[allocated];
@@ -1110,6 +1115,7 @@ void Map::generate_gas_giant_map(int lr, double BV)
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
+    mtx.lock();
     image_height = lr;
     image_width = image_height * 2;
 
@@ -1135,6 +1141,7 @@ void Map::generate_gas_giant_map(int lr, double BV)
 
     stormlat = frand(0.3, 0.7);
     stormlon = frand(0, 1);
+    mtx.unlock();
 
     for (i=0; i<num_bands; i++)
     {
