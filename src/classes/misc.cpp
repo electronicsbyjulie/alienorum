@@ -35,6 +35,7 @@ double JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
 bool objinfwnd = true;
 bool statuswnd = true;
 bool objedtwnd = false;
+bool satwnd = false;
 bool addcelwnd = false;
 bool hide_mouse = true;
 bool searched = false;

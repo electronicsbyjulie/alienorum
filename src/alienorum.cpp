@@ -2283,6 +2283,7 @@ void process_key_cmd_char(char c)
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
         case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
+        case '^': satwnd = true; break;
 
         case '-':
         vm = velocity.magnitude();
@@ -2327,7 +2328,6 @@ void lookfor_cb()
 
 void draw_status_window(ImGuiIO& io)
 {
-    // TODO: If redlight_mode, set all window and text colors accordingly.
     int stattop = 0, statleft = 0;
     ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
@@ -2640,7 +2640,6 @@ void draw_status_window(ImGuiIO& io)
 
 void draw_objinf_window(ImGuiIO& io)
 {
-    // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     if (trackidx >= 0)
@@ -2785,7 +2784,6 @@ void draw_objedit_window(ImGuiIO& io)
     CelestialObject *cel = cels[editidx];
     Orbit *orb = cel->orbit;
 
-    // TODO: If redlight_mode, set all window and text colors accordingly.
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
@@ -3311,6 +3309,72 @@ void draw_objedit_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+void draw_sat_window(ImGuiIO& io)
+{
+    ImGui::Begin("Edit Object", &satwnd, 0);
+
+    unsigned int nsources = sat_sources.size(), nsats, i, j, l;
+    int n=0;
+    static int item_selected_idx = 0;
+    int item_highlighted_idx = -1;
+    if (ImGui::BeginListBox("##satlist", ImVec2(-FLT_MIN, 5 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        for (i=0; i<nsources; i++)
+        {
+            nsats = sat_sources[i].num_satellites();
+            for (j=0; j<nsats; j++)
+            {
+                std::string line = std::string(sat_sources[i].sat_name(j));
+                l = 35 - line.size();
+                if (l > 0) line += std::string(l, ' ');
+                line += sat_sources[i].local_name;
+
+                bool is_selected = (item_selected_idx == n);
+
+                ImGuiSelectableFlags flags = (item_highlighted_idx == n) ? ImGuiSelectableFlags_Highlight : 0;
+                if (ImGui::Selectable(line.c_str(), is_selected, flags))
+                    item_selected_idx = n;
+
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+
+                n++;
+            }
+        }
+        ImGui::EndListBox();
+    }
+
+    if (ImGui::Button("Load Satellite"))
+    {
+        Satellite *sat = new Satellite();
+        cels[ncelobjs++] = sat;
+        cels[ncelobjs] = 0;
+        n = item_selected_idx;
+        for (i=0; i<nsources; i++)
+        {
+            nsats = sat_sources[i].num_satellites();
+            for (j=0; j<nsats; j++)
+            {
+                if (!n)
+                {
+                    sat_sources[i].populate(sat, j);
+                    break;
+                }
+                n--;
+            }
+        }
+        selected = ncelobjs-1;
+    }
+
+    ImGui::SetWindowSize(ImVec2(0, 0));
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+
 void load_stuff()
 {
     mtx.lock();
@@ -3757,6 +3821,8 @@ int main (int argc, char** argv)
             }
 
             if (addcelwnd) draw_addcel_window(io);
+
+            if (satwnd) draw_sat_window(io);
 
             is_click = io.MouseReleased[0];
             if (!is_mouse_over_window)

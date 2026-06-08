@@ -8,8 +8,6 @@
 
 class Satellite : public CelestialObject
 {
-    void update_orbit_location(double tmnow);
-
     public:
     double bstar;
 

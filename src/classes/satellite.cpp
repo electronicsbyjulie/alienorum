@@ -17,6 +17,11 @@ Satellite::Satellite()
     type = artificial;
 }
 
+void Satellite::update_location(double tmnow)
+{
+    if (orbit && orbit->period) update_orbit_location(tmnow);
+}
+
 json SatSource::to_json()
 {
     std::string iso_string;

@@ -233,6 +233,7 @@ Shift+I     Rewind one minute
 ### Misc.
 
 Shift+A     Add new object in orbit around current object
+^           Add satellite from downloaded lists
 Shift+E     Edit current object
 U           Export user-added and user-modified objects to universe.json
 F4          Load user objects from an external JSON file
