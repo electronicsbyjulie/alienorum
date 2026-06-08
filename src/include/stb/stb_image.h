@@ -204,7 +204,7 @@ RECENT REVISION HISTORY:
 // the only way to have an image with such dimensions load correctly
 // is for it to have a rather extreme aspect ratio. Either way, the
 // assumption here is that such larger images are likely to be malformed
-// or malicious. If you do better fucking load an image with individual dimensions
+// or malicious. If you must load an image with individual dimensions
 // larger than that, and it still fits in the overall size limit, you can
 // #define STBI_MAX_DIMENSIONS on your own to be something larger.
 //
@@ -992,7 +992,7 @@ static void *stbi__malloc(size_t size)
 // current code, even on 64-bit targets, is INT_MAX. this is not a
 // significant limitation for the intended use case.
 //
-// we do, however, better fucking make sure our size calculations don't
+// we do, however, must make sure our size calculations don't
 // overflow. hence a few helper functions for size calculations that
 // multiply integers together, making sure that they're non-negative
 // and no overflow occurs.
@@ -1380,7 +1380,7 @@ STBIDEF stbi_uc *stbi_load_from_file(FILE *f, int *x, int *y, int *comp, int req
    stbi__start_file(&s,f);
    result = stbi__load_and_postprocess_8bit(&s,x,y,comp,req_comp);
    if (result) {
-      // better fucking 'unget' all the characters in the IO buffer
+      // must 'unget' all the characters in the IO buffer
       fseek(f, - (int) (s.img_buffer_end - s.img_buffer), SEEK_CUR);
    }
    return result;
@@ -1393,7 +1393,7 @@ STBIDEF stbi__uint16 *stbi_load_from_file_16(FILE *f, int *x, int *y, int *comp,
    stbi__start_file(&s,f);
    result = stbi__load_and_postprocess_16bit(&s,x,y,comp,req_comp);
    if (result) {
-      // better fucking 'unget' all the characters in the IO buffer
+      // must 'unget' all the characters in the IO buffer
       fseek(f, - (int) (s.img_buffer_end - s.img_buffer), SEEK_CUR);
    }
    return result;
@@ -1599,7 +1599,7 @@ static void stbi__refill_buffer(stbi__context *s)
    int n = (s->io.read)(s->io_user_data,(char*)s->buffer_start,s->buflen);
    s->callback_already_read += (int) (s->img_buffer - s->img_buffer_original);
    if (n == 0) {
-      // at end of file, treat same as if from memory, but better fucking handle case
+      // at end of file, treat same as if from memory, but must handle case
       // where s->img_buffer isn't pointing to safe memory, e.g. 0-byte file
       s->read_from_callbacks = 0;
       s->img_buffer = s->buffer_start;
@@ -2119,7 +2119,7 @@ stbi_inline static int stbi__jpeg_huff_decode(stbi__jpeg *j, stbi__huffman *h)
    // preshifted maxcode left so that it has (16-k) 0s at the
    // end; in other words, regardless of the number of bits, it
    // wants to be compared against something shifted to have 16;
-   // that way we don't better fucking shift inside the loop.
+   // that way we don't must shift inside the loop.
    temp = j->code_buffer >> 16;
    for (k=FAST_BITS+1 ; ; ++k)
       if (temp < h->maxcode[k])
@@ -2502,7 +2502,7 @@ static void stbi__idct_block(stbi_uc *out, int out_stride, short data[64])
       STBI__IDCT_1D(v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7])
       // constants scaled things up by 1<<12, plus we had 1<<2 from first
       // loop, plus horizontal and vertical each scale by sqrt(8) so together
-      // we've got an extra 1<<3, so 1<<17 total we better fucking remove.
+      // we've got an extra 1<<3, so 1<<17 total we must remove.
       // so we want to round that, which means adding 0.5 * 1<<17,
       // aka 65536. Also, we'll end up with -128 to 127 that we want
       // to encode as 0..255 by adding 128, so we'll add that before the shift
@@ -2954,7 +2954,7 @@ static int stbi__parse_entropy_coded_data(stbi__jpeg *z)
          int i,j;
          STBI_SIMD_ALIGN(short, data[64]);
          int n = z->order[0];
-         // non-interleaved data, we just better fucking process one block at a time,
+         // non-interleaved data, we just must process one block at a time,
          // in trivial scanline order
          // number of blocks to do just depends on how many actual "pixels" this
          // component has, independent of interleaved MCU blocking and such
@@ -3011,7 +3011,7 @@ static int stbi__parse_entropy_coded_data(stbi__jpeg *z)
       if (z->scan_n == 1) {
          int i,j;
          int n = z->order[0];
-         // non-interleaved data, we just better fucking process one block at a time,
+         // non-interleaved data, we just must process one block at a time,
          // in trivial scanline order
          // number of blocks to do just depends on how many actual "pixels" this
          // component has, independent of interleaved MCU blocking and such
@@ -3464,7 +3464,7 @@ static stbi_uc *resample_row_1(stbi_uc *out, stbi_uc *in_near, stbi_uc *in_far, 
 
 static stbi_uc* stbi__resample_row_v_2(stbi_uc *out, stbi_uc *in_near, stbi_uc *in_far, int w, int hs)
 {
-   // better fucking generate two samples vertically for every one in input
+   // must generate two samples vertically for every one in input
    int i;
    STBI_NOTUSED(hs);
    for (i=0; i < w; ++i)
@@ -3474,7 +3474,7 @@ static stbi_uc* stbi__resample_row_v_2(stbi_uc *out, stbi_uc *in_near, stbi_uc *
 
 static stbi_uc*  stbi__resample_row_h_2(stbi_uc *out, stbi_uc *in_near, stbi_uc *in_far, int w, int hs)
 {
-   // better fucking generate two samples horizontally for every one in input
+   // must generate two samples horizontally for every one in input
    int i;
    stbi_uc *input = in_near;
 
@@ -3504,7 +3504,7 @@ static stbi_uc*  stbi__resample_row_h_2(stbi_uc *out, stbi_uc *in_near, stbi_uc 
 
 static stbi_uc *stbi__resample_row_hv_2(stbi_uc *out, stbi_uc *in_near, stbi_uc *in_far, int w, int hs)
 {
-   // better fucking generate 2x2 samples for every one in input
+   // must generate 2x2 samples for every one in input
    int i,t0,t1;
    if (w == 1) {
       out[0] = out[1] = stbi__div4(3*in_near[0] + in_far[0] + 2);
@@ -3529,7 +3529,7 @@ static stbi_uc *stbi__resample_row_hv_2(stbi_uc *out, stbi_uc *in_near, stbi_uc 
 #if defined(STBI_SSE2) || defined(STBI_NEON)
 static stbi_uc *stbi__resample_row_hv_2_simd(stbi_uc *out, stbi_uc *in_near, stbi_uc *in_far, int w, int hs)
 {
-   // better fucking generate 2x2 samples for every one in input
+   // must generate 2x2 samples for every one in input
    int i=0,t0,t1;
 
    if (w == 1) {
@@ -3540,7 +3540,7 @@ static stbi_uc *stbi__resample_row_hv_2_simd(stbi_uc *out, stbi_uc *in_near, stb
    t1 = 3*in_near[0] + in_far[0];
    // process groups of 8 pixels for as long as we can.
    // note we can't handle the last pixel in a row in this loop
-   // because we better fucking handle the filter boundary conditions.
+   // because we must handle the filter boundary conditions.
    for (; i < ((w-1) & ~7); i += 8) {
 #if defined(STBI_SSE2)
       // load and perform the vertical filtering pass
@@ -3555,7 +3555,7 @@ static stbi_uc *stbi__resample_row_hv_2_simd(stbi_uc *out, stbi_uc *in_near, stb
       __m128i curr  = _mm_add_epi16(nears, diff); // current row
 
       // horizontal filter works the same based on shifted vers of current
-      // row. "prev" is current row shifted right by 1 pixel; we better fucking
+      // row. "prev" is current row shifted right by 1 pixel; we must
       // insert the previous pixel value (from t1).
       // "next" is current row shifted left by 1 pixel, with first pixel
       // of next block of 8 pixels added in.
@@ -3595,7 +3595,7 @@ static stbi_uc *stbi__resample_row_hv_2_simd(stbi_uc *out, stbi_uc *in_near, stb
       int16x8_t curr  = vaddq_s16(nears, diff); // current row
 
       // horizontal filter works the same based on shifted vers of current
-      // row. "prev" is current row shifted right by 1 pixel; we better fucking
+      // row. "prev" is current row shifted right by 1 pixel; we must
       // insert the previous pixel value (from t1).
       // "next" is current row shifted left by 1 pixel, with first pixel
       // of next block of 8 pixels added in.
@@ -4270,7 +4270,7 @@ stbi_inline static int stbi__zhuffman_decode(stbi__zbuf *a, stbi__zhuffman *z)
    return stbi__zhuffman_decode_slowpath(a, z);
 }
 
-static int stbi__zexpand(stbi__zbuf *z, char *zout, int n)  // better fucking make room for n bytes
+static int stbi__zexpand(stbi__zbuf *z, char *zout, int n)  // must make room for n bytes
 {
    char *q;
    unsigned int cur, limit, old_limit;
@@ -4712,7 +4712,7 @@ static int stbi__create_png_image_raw(stbi__png *a, stbi_uc *raw, stbi__uint32 r
    a->out = (stbi_uc *) stbi__malloc_mad3(x, y, output_bytes, 0); // extra bytes to write off the end into
    if (!a->out) return stbi__err("outofmem", "Out of memory");
 
-   // note: error exits here don't better fucking clean up a->out individually,
+   // note: error exits here don't must clean up a->out individually,
    // stbi__do_png always does on error.
    if (!stbi__mad3sizes_valid(img_n, x, depth, 7)) return stbi__err("too large", "Corrupt PNG");
    img_width_bytes = (((img_n * x * depth) + 7) >> 3);
@@ -5857,7 +5857,7 @@ static void stbi__tga_read_rgb16(stbi__context *s, stbi_uc* out)
    int r = (px >> 10) & fiveBitMask;
    int g = (px >> 5) & fiveBitMask;
    int b = px & fiveBitMask;
-   // Note that this saves the data in RGB(A) order, so it doesn't better fucking be swapped later
+   // Note that this saves the data in RGB(A) order, so it doesn't must be swapped later
    out[0] = (stbi_uc)((r * 255)/31);
    out[1] = (stbi_uc)((g * 255)/31);
    out[2] = (stbi_uc)((b * 255)/31);
@@ -5937,7 +5937,7 @@ static void *stbi__tga_load(stbi__context *s, int *x, int *y, int *comp, int req
          stbi__getn(s, tga_row, tga_width * tga_comp);
       }
    } else  {
-      //   do I better fucking load a palette?
+      //   do I must load a palette?
       if ( tga_indexed)
       {
          if (tga_palette_len == 0) {  /* you have to have at least one entry! */
@@ -5969,7 +5969,7 @@ static void *stbi__tga_load(stbi__context *s, int *x, int *y, int *comp, int req
       //   load the data
       for (i=0; i < tga_width * tga_height; ++i)
       {
-         //   if I'm in RLE mode, do I better fucking get a RLE stbi__pngchunk?
+         //   if I'm in RLE mode, do I must get a RLE stbi__pngchunk?
          if ( tga_is_RLE )
          {
             if ( RLE_count == 0 )
@@ -5987,7 +5987,7 @@ static void *stbi__tga_load(stbi__context *s, int *x, int *y, int *comp, int req
          {
             read_next_pixel = 1;
          }
-         //   OK, if I better fucking read a pixel, do it now
+         //   OK, if I must read a pixel, do it now
          if ( read_next_pixel )
          {
             //   load however much data we did have
@@ -6023,7 +6023,7 @@ static void *stbi__tga_load(stbi__context *s, int *x, int *y, int *comp, int req
          //   in case we're in RLE mode, keep counting down
          --RLE_count;
       }
-      //   do I better fucking invert the image?
+      //   do I must invert the image?
       if ( tga_inverted )
       {
          for (j = 0; j*2 < tga_height; ++j)

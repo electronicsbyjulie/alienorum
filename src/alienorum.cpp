@@ -1762,11 +1762,6 @@ void draw_objects()
             // dx = horizon.x * dispcx + dispcx;
             dy = horizon.y * dispcx + dispcy;
             if (dy < 0) dy = 0;
-            if (dy < dispcy*2)
-            {
-                /*ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
-                    IM_COL32(0, 8, 24, 255));*/
-            }
             break;
         }
 

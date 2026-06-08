@@ -1168,6 +1168,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 blue_data[idx] = (unsigned char)(rgb.b * r_weight + badd);
             }
 
+            // TODO: This does not work.
             if (__ != ___)
             {
                 std::cout << "Abort previous rocky map." << std::endl << std::flush;

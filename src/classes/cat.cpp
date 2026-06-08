@@ -2216,7 +2216,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (sioxt >= 0)
         {
             s = (Star*)cels[sioxt];
-            // std::cout << "For " << bdystr << " identified " << s->name << std::endl;
         }
 
         if (!s || s == A)
