@@ -1,248 +1,248 @@
 [
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=csv",
-        "LocalName": "latest",
-        "LastAccessed": "2026-06-08 00:00:00"
-    },
-    {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=csv",
-        "LocalName": "stations",
-        "LastAccessed": "2026-06-08 07:57:29"
-    },
-    {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=csv",
-        "LocalName": "brightest",
         "LastAccessed": "2026-06-08 00:00:00",
-        "AutoLoad": true
+        "LocalName": "latest",
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=csv",
+        "LastAccessed": "2026-06-08 07:57:29",
+        "LocalName": "stations",
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=csv"
+    },
+    {
+        "AutoLoad": true,
+        "LastAccessed": "2026-06-09 00:00:00",
+        "LocalName": "brightest",
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=csv"
+    },
+    {
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "active",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=analyst&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "analyst",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=analyst&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=fengyun-1c-debris&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "fengyun-1c-debris",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=fengyun-1c-debris&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-33-debris&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "iridium-33-debris",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-33-debris&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=cosmos-2251-debris&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "cosmos-2251-debris",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=cosmos-2251-debris&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "weather",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "resource",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=sar&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "synth-aperture-radar",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=sar&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=sarsat&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "search-and-rescue",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=sarsat&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=dmc&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "disaster-monitoring",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=dmc&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=tdrss&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "tdrss",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=tdrss&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=argos&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "argos",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=argos&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=planet&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "planet",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=planet&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=spire&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "spire",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=spire&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=geo&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "geosynchronous",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=geo&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?SPECIAL=gpz&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "geo-protected-zone",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?SPECIAL=gpz&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?SPECIAL=gpz-plus&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "geo-protected-zone-plus",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?SPECIAL=gpz-plus&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=intelsat&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "intelsat",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=intelsat&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=eutelsat&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "eutelsat",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=eutelsat&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "starlink",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=qianfan&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "qianfan",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=qianfan&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=kuiper&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "kuiper",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=kuiper&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=orbcomm&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "orbcomm",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=orbcomm&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "amateur-radio",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=x-comm&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "experimental-comm",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=x-comm&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=ses&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "ses",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=ses&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=telesat&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "telesat",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=telesat&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=oneweb&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "oneweb",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=oneweb&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "hulianwang",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-NEXT&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "iridium-next",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-NEXT&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=globalstar&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "globalstar",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=globalstar&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=satnogs&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "satnogs",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=satnogs&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=other-comm&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "other-comm",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=other-comm&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=gnss&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "gnss",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=gnss&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "gps-ops",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "galileo",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "glo-ops",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "beidou",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=sbas&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "sbas",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=sbas&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=science&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "science",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=science&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=geodetic&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "geodetic",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=geodetic&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=engineering&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "engineering",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=engineering&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=education&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "education",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=education&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=military&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "military",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=military&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=radar&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "radar",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=radar&FORMAT=csv"
     },
     {
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=cubesat&FORMAT=csv",
+        "LastAccessed": "2026-06-08 00:00:00",
         "LocalName": "cubesat",
-        "LastAccessed": "2026-06-08 00:00:00"
+        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=cubesat&FORMAT=csv"
     }
 ]

@@ -1011,8 +1011,10 @@ void load_catalogs()
     mtx.lock();
     loading_msg = std::string("Downloading satellite data...");
     mtx.unlock();
+    cout << loading_msg << endl << flush;
     SatSource::read_sources_json();
-    if (sat_sources.size()) sat_sources[0].download_data();
+    if (sat_sources.size() > 2) sat_sources[2].download_data();
+    SatSource::update_sources_json();
 
     mtx.lock();
     loading_msg = std::string("Naming stars...");

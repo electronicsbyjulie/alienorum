@@ -22,12 +22,13 @@ json SatSource::to_json()
 
     std::tm* tm_local = std::localtime(&last_accessed);
     oss << std::put_time(tm_local, "%Y-%m-%d %H:%M:%S");
+    iso_string = oss.str();
 
     json j;
     j["URL"] = url;
     j["LocalName"] = local_name;
     j["LastAccessed"] = iso_string;
-    j["AutoLoad"] = auto_load;
+    if (auto_load) j["AutoLoad"] = auto_load;
     return j;
 }
 
@@ -105,12 +106,11 @@ bool SatSource::update_sources_json()
     for (i=0; i<n; i++)
     {
         json j1 = sat_sources[i].to_json();
-        if (!j1) return false;
         j[i] = j1;
     }
 
     std::fstream fs("catalogs/sat/sources.json", std::ios::out);
-    fs << j;
+    fs << j.dump(4);
     fs.close();
 
     return true;
@@ -132,7 +132,11 @@ bool SatSource::download_data()
 
     // Under no circumstances should the code ever attempt to access the same remote file twice in two hours.
     // See: https://celestrak.org/NORAD/documentation/gp-data-formats.php#addendum
-    if (age < sat_download_interval) return true;                               // Downloaded file is already current.
+    if (age < sat_download_interval)
+    {
+        std::cout << outfname << " is already current." << std::endl << std::flush;
+        return true;
+    }
 
     curlpp::Cleanup cleanup;
     curlpp::Easy request;
@@ -144,10 +148,12 @@ bool SatSource::download_data()
     std::ostringstream response;
     request.setOpt(new curlpp::options::WriteStream(&response));
 
+    std::cout << "Downloading " << outfname << "..." << std::flush;
     last_accessed = now;
     request.perform();
     long response_code = curlpp::infos::ResponseCode::get(request);
 
+    std::cout << " HTTP/" << response_code << std::endl << std::flush;
     if (response_code == 200)
     {
         std::string data = response.str();
