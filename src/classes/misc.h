@@ -25,7 +25,9 @@ using json = nlohmann::json;
 #define speed_of_light 299792458.0
 #define G 6.6743015e-14
 #define kB 1.380649e-23
+#define STEFAN_BOLTZMANN 5.670374419e-8
 #define Planck 6.62607015e-34
+#define water_freezing 273.15
 
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)
@@ -85,6 +87,14 @@ const std::time_t J2000_TIME_T = 946684800;
 #define gossamer_rings 0.08
 #define zero_isnt_really_zero 9e-298
 
+#define NUM_VIEWMODES 3
+enum ViewMode
+{
+    vm_skyatlas = 0,
+    vm_horizon = 1,
+    vm_sunclock = 2
+};
+
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
 extern __uint32_t xonsm[13];
@@ -126,13 +136,16 @@ long long micronow();
 extern std::string loading_msg;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
+extern const char* vmtext[NUM_VIEWMODES];
+extern ViewMode view_mode;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome,
     is_an_obj_under_cursor, planets_lblcut;
-extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim;
+extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
+    viewer_lat, viewer_lon;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
     objinfwnd, statuswnd, objedtwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
 extern std::string objname, objinfo;
-extern double simnow;
+extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
 extern PerlinNoise pn;

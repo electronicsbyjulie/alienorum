@@ -102,7 +102,7 @@ class CelestialLocation
     Point local_position;
     Rotation local_system_plane;
     Rotation orbital_plane;
-    Rotation equatorial_plane;
+    Rotation equatorial_plane;                          // Also used for viewer plane in space and horizon plane in horizon mode.
     double distance_to(CelestialLocation other);
     CelestialLocation operator-(CelestialLocation other);
     CelestialLocation& operator-=(CelestialLocation other);

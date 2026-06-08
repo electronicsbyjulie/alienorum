@@ -96,6 +96,11 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
     return -log(apparent) * invlogmagnbase + sourcemagn - cels[0]->absolute_magnitude;
 }
 
+double Planet::estimate_bump_scale()
+{
+    return 0.001 * volumetric_mean_radius * log(surface_pressure) / log(20);
+}
+
 void Planet::estimate_albedo()
 {
     double rearths = volumetric_mean_radius / earth_radius;
@@ -122,17 +127,13 @@ void Planet::update_location(double tmnow)
     if (orbit && orbit->period) update_orbit_location(tmnow);
 }
 
-bool Planet::is_in_con_HZ()
+double Planet::est_bolometric_flux(double t_eff)
 {
-    if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;
-
-    if (!orbit || !orbit->center) return false;
     Star *s = (Star*)get_light_center();
     assert(s->typeclass() == class_star);
-
-    // Mathematical model to approximate this chart: https://personal.ems.psu.edu/~jfk4/ruk15/planets/T_Seff_HZ_plusTRAPPIST_ALL__MM_10202020v2.jpg
-    double t_eff = s->estimate_temperature();
+    if (!t_eff) t_eff = s->estimate_temperature();
     double t_star = t_eff - sun_temp;
+
     double bc_v;
     if (t_eff < 3500.0)
     {
@@ -148,6 +149,47 @@ bool Planet::is_in_con_HZ()
         // Standard calculation for most main sequence stars.
         bc_v = -0.192 - (1.41e-4 * t_star) - (1.25e-7 * std::pow(t_star, 2));
     }
+
+    // Calculate absolute bolometric magnitude.
+    double m_bol = s->absolute_magnitude + bc_v;
+
+    // Convert to bolometric luminosity relative to the Sun's bolometric 4.74 magnitude.
+    double star_intrinsic = std::pow(magnbase, (4.74 - m_bol));
+
+    // Compute planetary illumination
+    CelestialObject *myplanet = this;
+    while (myplanet->orbit && myplanet->orbit->center != s) myplanet = myplanet->orbit->center;
+    double sma_au = myplanet->orbit->semimajor_axis / AU;
+    return star_intrinsic / (sma_au * sma_au);            // inverse square of distance
+}
+
+double Planet::estimate_surface_temperature(double greenhouse_alpha)
+{
+    double absorbed_flux = (est_bolometric_flux() * (1.0 - albedo)) / 4.0;
+    double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN, 0.25);
+
+    // Normalize pressure relative to Earth's sea-level pressure (1 atm)
+    constexpr double P_EARTH = 101325.0; 
+    double normalized_pressure = surface_pressure / P_EARTH;
+
+    // Greenhouse scaling calculation based on atmospheric weight
+    double greenhouse_factor = 1.0 + (greenhouse_alpha * normalized_pressure);
+    double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
+
+    return t_surface;
+}
+
+bool Planet::is_in_con_HZ()
+{
+    if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;
+
+    if (!orbit || !orbit->center) return false;
+    Star *s = (Star*)get_light_center();
+    assert(s->typeclass() == class_star);
+
+    // Mathematical model to approximate this chart: https://personal.ems.psu.edu/~jfk4/ruk15/planets/T_Seff_HZ_plusTRAPPIST_ALL__MM_10202020v2.jpg
+    double t_eff = s->estimate_temperature();
+    double t_star = t_eff - sun_temp;
 
     // Calculate the baseline flux for the given mass
     // Coefficients from Kopparapu et al. (2014)
@@ -183,17 +225,7 @@ bool Planet::is_in_con_HZ()
     double outer_limit = mg_SeffSun + (mg_a * t_star) + (mg_b * std::pow(t_star, 2)) + 
                         (mg_c * std::pow(t_star, 3)) + (mg_d * std::pow(t_star, 4));
 
-    // Calculate absolute bolometric magnitude.
-    double m_bol = s->absolute_magnitude + bc_v;
-
-    // Convert to bolometric luminosity relative to the Sun's bolometric 4.74 magnitude.
-    double star_intrinsic = std::pow(magnbase, (4.74 - m_bol));
-
-    // Compute planetary illumination
-    CelestialObject *myplanet = this;
-    while (myplanet->orbit && myplanet->orbit->center != s) myplanet = myplanet->orbit->center;
-    double sma_au = myplanet->orbit->semimajor_axis / AU;
-    double planet_illumination = star_intrinsic / (sma_au * sma_au);            // inverse square of distance
+    double planet_illumination = est_bolometric_flux(t_eff);
 
     // Check habitability bounds
     cache_in_cons_hz = (planet_illumination >= outer_limit && planet_illumination <= inner_limit);

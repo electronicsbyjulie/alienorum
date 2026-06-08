@@ -10,12 +10,15 @@
 std::string loading_msg = "Loading...";
 std::vector<std::string> themes;
 std::mutex mtx;
+const char* vmtext[NUM_VIEWMODES] = { "Sky Atlas", "Horizon", "Sun Clock" };
+ViewMode view_mode = vm_skyatlas;
 int ncelobjs = 0;
 int selected = -1, trackidx = -1;
 double azimuth = 0, altitude = 0;
 double spin = 0;
 double global_gamma = 1.3;
 double zoom = 1, vm, vmfr;
+double viewer_lat, viewer_lon;
 bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true, show_orbits = false, draw_actual_conslines;
 int cursor_size = 8, circle_size = 2, xaorngsim = 0;
 int is_an_obj_under_cursor = -1;
@@ -39,7 +42,7 @@ const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike",
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
 int cbolbls_selected_idx = 0, cboceltyp_selected_idx = 0;
 double bv_correction = 0;
-double sphere_quality = 1;
+double sphere_quality = 1, npaz = 0, luminous_flux = 0;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
 

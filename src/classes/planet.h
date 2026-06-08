@@ -27,7 +27,10 @@ class Planet : public CelestialObject
     void estimate_albedo();                             // if radius and abs mag known
     void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
     void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
+    double est_bolometric_flux(double t_eff = 0);
+    double estimate_surface_temperature(double greenhouse_alpha);
     bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
+    double estimate_bump_scale();
 
     Planet();
     ~Planet() { if (orbit) delete orbit; }

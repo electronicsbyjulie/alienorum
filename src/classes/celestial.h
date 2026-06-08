@@ -72,23 +72,29 @@ class Orbit
 class Map
 {
     protected:
-    JSAMPARRAY jpeg_image_buffer = nullptr;         // Points to large array of R,G,B-order data
+    JSAMPARRAY jpeg_image_buffer = nullptr;                     // Points to large array of R,G,B-order data
     // EasyBMP::Image *bmp;
 
     unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
-    int image_height = 0;                           // Number of rows in image
-    int image_width = 0;                            // Number of columns in image
-    int allocated = 0;
+    double *bump_data = nullptr;
+    unsigned int image_height = 0;                              // Number of rows in image
+    unsigned int image_width = 0;                               // Number of columns in image
+    unsigned int allocated = 0;
     double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
 
+    unsigned int idx_of(double latitude, double longitude);
+
+    __uint128_t ___ = 0;
+
     public:
-    bool load_from_bmp(std::string filename);
-    bool load_from_jpeg(std::string filename);
-    bool load_from_png(std::string filename);
+    bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
+    bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
+    bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
     bool save_to_png(std::string filename);
 
     RGB color_at(double latitude, double longitude);
-    void generate_rocky_map(int latitude_resolution, double BV_color, bool has_water, double objradius);
+    double elevation_at(double latitude, double longitude);     // Returns meters.
+    void generate_rocky_map(CelestialObject *cel);
     void generate_gas_giant_map(int latitude_resolution, double BV_color);
 };
 
@@ -112,6 +118,7 @@ class CelestialObject
     bool distance_known = false;
     bool known_poles = false;
     bool estimated_poles = false;
+    double lon_J2000_offset = -M_PI_2;          // For moons.
 
     double epoch = J2000;                       // JD
     double absolute_magnitude = 0;
@@ -130,7 +137,7 @@ class CelestialObject
         *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;
     float drawnx=-1e9, drawny=-1e9, disc_size = 0;
     bool looked_for_maps = false, ignore_map_files = false;
-    int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
+    unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
     bool onscreen = false;
 
     CelestialObject();
@@ -139,7 +146,7 @@ class CelestialObject
     bool lock_equatorial_plane = false;
     Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
     CelestialObject *cenobj = nullptr;
-    Point tmprel;
+    Point tmprel, viewrel;
 
     CelestialObject* get_light_center();
     double get_equatorial_radius();
@@ -168,5 +175,6 @@ extern CelestialObject **cels, *mycenobj;
 extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;
+extern double azimuth_correction;
 
 #endif

@@ -76,7 +76,7 @@ class AlienStyle
     bool load(std::string theme_name);
 };
 
-extern double global_brightness;
+extern double global_brightness, sky_mag_shift;
 extern bool redlight_mode;
 extern double drawblxscalex, drawblxscaley;
 extern int *bx_cache, *by_cache;

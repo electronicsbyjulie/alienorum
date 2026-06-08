@@ -6,6 +6,7 @@ A cross-platform desktop planetarium app made using the ImGui library. https://g
 
 The stars are alien suns.
 
+
 ## Features
 
 * OpenGL rendering;
@@ -18,6 +19,7 @@ The stars are alien suns.
 * Ability to select an individual star and teleport to its position;
 * Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
 * More coming soon...
+
 
 ## Initial Run
 
@@ -32,6 +34,7 @@ can load hundreds of thousands of stars and still smoothly animate views of spac
 
 Note to include exoplanets, the catalog must be downloaded manually. See the `catalogs/urls.dat` file for
 instructions.
+
 
 ## Spaceflight
 
@@ -53,6 +56,7 @@ At least there's unlimited in-app spaceflight fuel. If you have some way to hold
 will eventually reach interstellar speed. But we're not going to make you go through all that trouble - we've
 added a cheat code.
 
+
 ## Warp Speed
 
 Point the view in the direction you want to go and press W. Notice that you are now traveling at slightly over
@@ -68,6 +72,7 @@ Sublight speed can be useful for moving between nearby solar system objects, whi
 trips up to and including interstellar flight.
 
 To stop spaceflight, press X.
+
 
 ## Hovering, Selecting, Tracking
 
@@ -87,6 +92,7 @@ To track an object, first select it then press T. The view will remain centered 
 remain in the right pane, and it will not be possible to hover over any other object for info. To stop tracking,
 press Shift+T.
 
+
 ## Flyby
 
 One trick that can make for an impressive display is to do a flyby. Start by finding the object of interest,
@@ -98,6 +104,7 @@ Then speed up to approach the object, watching its distance in the right pane. T
 long as you are tracking the object, the app will automatically slow your approach as you get closer to the
 target. Otherwise it's very easy to overshoot and zip right past it. If your speed is just right, you can float
 by the target and watch it seem to roll across the background stars.
+
 
 ## Editing and Saving Objects
 
@@ -124,9 +131,25 @@ You can also edit the universe JSON files to modify other parameters not include
 file is still valid JSON after any edits. There are third party apps that will check a JSON file to make sure it's
 valid and find any errors.
 
+
+## Setting Your Latitude/Longitude
+
+The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge
+in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json`
+and add the following lines, changing the numbers to your own location:
+
+```
+{
+    "Latitude": 45.52,
+    "Longitude": -122.68
+}
+```
+
+
 ## Keyboard Shortcuts
 
 The current full list of keyboard shortcuts is:
+
 
 ### View Controls
 
@@ -145,6 +168,7 @@ Shift+Q     Improve performance by decreasing texture rendering quality
 F11         Toggle fullscreen
 ```
 
+
 ## Info and Tracking
 
 ```
@@ -153,6 +177,7 @@ Shift+S     Clear selection
 T           Track selected object
 Shift+T     Clear tracking
 ```
+
 
 ### Image Elements
 
@@ -165,6 +190,7 @@ N           Show/hide info panel
 S           Show/hide status panel
 !           Hide all annotations (realism mode)
 ```
+
 
 ### Motion and Location
 
@@ -179,6 +205,7 @@ X           Full stop
 {Home}      Accelerate backward
 {End}       Accelerate forward
 ```
+
 
 ### Time Seeking
 
@@ -198,6 +225,7 @@ Shift+I     Rewind one minute
 @           Return to present moment
 ```
 
+
 ### Misc.
 
 Shift+A     Add new object in orbit around current object
@@ -206,6 +234,22 @@ U           Export user-added and user-modified objects to universe.json
 F4          Load user objects from an external JSON file
 
 IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the
-external file. It will save to universe.json. Make sure to either copy your changes to the external JSON file
-or back up your old file and rename universe.json to the external filename. It's also a good idea to check
+external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file
+or back up your old file and rename universe.json to the working filename. It's also a good idea to check
 universe.json to make sure it has all the custom celestial objects.
+
+
+## Troubleshooting
+
+Some of Alienorum's status messages and error mesages are output to the terminal (the command line), so it is
+recommended to run the app in a command prompt if you notice any unexpected behavior.
+
+If a JSON file fails to load, you can use any third party JSON syntax checker to find and fix whatever might
+be wrong with it. JSON files can be edited in any text editor.
+
+If you see a message in your terminal that reads `Bump map must have same resolution as surface map.`, check
+and see if you have both the normal `maps/Moon_surf.png` map and the full sized `maps/Moon_surf.jpg` map. If
+so, then it's safe to delete the .jpg file. Alternatively, if you wish to keep the higher resolution, you can
+delete the .png instead (it's just a scaled down version of the .jpg) and use your favorite image editor to
+resample the `maps/Moon_bump.jpg` map up to 2048x1024 resolution.
+

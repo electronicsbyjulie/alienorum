@@ -1582,7 +1582,7 @@ void IGFD::FilterManager::SetFileStyle(FileStyle::FileStyleFunctor vFunctor) {
     }
 }
 
-// todo : refactor this fucking function
+// todo : refactor this annoying function
 bool IGFD::FilterManager::GetFileStyle(const IGFD_FileStyleFlags& vFlags, const std::string& vCriteria, ImVec4* vOutColor, std::string* vOutIcon, ImFont** vOutFont) {
     if (vOutColor) {
         if (!m_FilesStyle.empty()) {
