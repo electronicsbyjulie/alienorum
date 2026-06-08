@@ -1377,7 +1377,13 @@ void compute_object_draw_coordinates()
             }
             if (trackidx >= 0)
             {
-                azimuth = -cels[trackidx]->RA_as_radians(here, 0);
+                if (view_mode == vm_horizon)
+                {
+                    npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
+                    double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), M_PI*2);
+                    azimuth = objaz;
+                }
+                else azimuth = -cels[trackidx]->RA_as_radians(here, 0);
                 altitude = cels[trackidx]->Decl_as_radians(here);
             }
         }
@@ -1424,15 +1430,18 @@ void compute_object_draw_coordinates()
                 ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
                 : cels[i]->viewer_magnitude(here);
 
-            double brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-            bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
+            double brght;
 
             if ((view_mode == vm_horizon) && vmag_cache[i] < -10 && rel.y >= 0)
             {
+                brght = global_brightness * pow(magnbase, -vmag_cache[i]);
                 float theta = cels[i]->Decl_as_radians(here);
                 double add_flux = brght * sin(theta);
                 if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
             }
+
+            brght = global_brightness * pow(magnbase, -vmag_cache[i] + sky_mag_shift);
+            bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
 
             cels[i]->viewrel = rel;
 
@@ -1553,7 +1562,7 @@ void draw_objects()
             continue;
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
-        appmag = vmag_cache[i];
+        appmag = vmag_cache[i] - sky_mag_shift;
         if (appmag > 6.5) continue;
 
         #define max_bloomrad 10
@@ -1769,7 +1778,7 @@ void draw_sky_gradient()
         {
             int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux/4e+10, 1.0/5.5) + starlight);
-            // std::cout << luminous_flux << " " << skylight << std::endl;
+            sky_mag_shift = skylight * -10;
             double r = fmin(1, 0.37 * skylight),
                     g = fmin(1, 0.58 * skylight),
                     b = fmin(1, 0.81 * skylight),
@@ -3686,6 +3695,7 @@ int main (int argc, char** argv)
             if (show_grid) draw_ra_dec_lines();
             if (show_consln) draw_cons_lines();
             if (view_mode == vm_horizon) draw_sky_gradient();
+            else sky_mag_shift = 0;
             draw_objects();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
