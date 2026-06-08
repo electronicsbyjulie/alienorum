@@ -7,6 +7,10 @@
 #include <ctime>
 #include <thread>
 #include <mutex>
+#include <curlpp/cURLpp.hpp>
+#include <curlpp/Easy.hpp>
+#include <curlpp/Options.hpp>
+#include <curlpp/Infos.hpp>
 #include "imgui/imgui.h"
 #include "nlohmann/json.hpp"
 // #include "EasyBMP/EasyBMP.hpp"

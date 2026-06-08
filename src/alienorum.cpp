@@ -1009,6 +1009,12 @@ void load_catalogs()
     }
 
     mtx.lock();
+    loading_msg = std::string("Downloading satellite data...");
+    mtx.unlock();
+    SatSource::read_sources_json();
+    if (sat_sources.size()) sat_sources[0].download_data();
+
+    mtx.lock();
     loading_msg = std::string("Naming stars...");
     mtx.unlock();
     rename_all_from_Bayer_Flamsteed();
