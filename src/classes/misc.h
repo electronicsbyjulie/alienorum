@@ -25,7 +25,9 @@ using json = nlohmann::json;
 #define speed_of_light 299792458.0
 #define G 6.6743015e-14
 #define kB 1.380649e-23
+#define STEFAN_BOLTZMANN 5.670374419e-8
 #define Planck 6.62607015e-34
+#define water_freezing 273.15
 
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)

@@ -989,8 +989,65 @@ void Map::generate_rocky_map(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
-    float has_water = p->is_in_con_HZ()
-        && cel->mass > 0.02 * earth_mass;                      // Based on Titan's mass.
+    float has_water = 0;
+    float ice_amount = 0.03;
+    double veg_height = 0, mtn_height = 0, snow_height = 1;
+
+    // TODO: If tidally locked, create an eyeball world.
+
+    if (p->is_in_con_HZ()
+        && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
+    {
+        double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
+        // TODO: Don't overwrite surface pressure here. Randomize it during exoplanet load and make it a setting in the edit dialog.
+        p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
+        std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
+        double greenhouse_alpha = frand(0, frand(1, 10));
+        double T_surf = p->estimate_surface_temperature(greenhouse_alpha);
+        std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
+
+        // Constants for water b.p.
+        const double R = 8.314;                                         // J/(mol*K)
+        const double DELTA_H_VAP = 40660.0;                             // J/mol
+        const double T1 = water_freezing + 100;
+        const double P1 = 1.0e+5;                                       // Reference pressure
+
+        // Clausius-Clapeyron calculation
+        double inv_T1 = 1.0 / T1;
+        double gas_constant_ratio = R / DELTA_H_VAP;
+        double pressure_log = std::log(p->surface_pressure / P1);
+
+        double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
+        double T_boil = 1.0 / inv_T2;
+
+        if (T_surf < 0.9 * water_freezing)
+        {
+            has_water = 1;
+            ice_amount = 0.53;
+            snow_height = 0;
+        }
+        else if (T_surf < T_boil * 1.1)
+        {
+            double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
+            has_water = max_water * pow(10, frand(-2.5, 0));
+            ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 3)));
+            veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
+            mtn_height = 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
+            snow_height = 1.0 - ((1.0 - has_water) * 0.5 * ice_amount);
+            ice_amount *= 0.52;
+        }
+        else
+        {
+            has_water = 0;
+            // TODO: Overcast Venusian-style cloud map.
+        }
+
+        std::cout << "Water level: " << has_water << "." << std::endl << std::flush;
+        std::cout << "Polar ice: " << (ice_amount*2) << "." << std::endl << std::flush;
+        std::cout << "Vegetation level: " << veg_height << "." << std::endl << std::flush;
+        std::cout << "Mountain level: " << mtn_height << "." << std::endl << std::flush;
+        std::cout << "Snow line: " << snow_height << "." << std::endl << std::flush;
+    }
 
     int octaves = 5 + (rand() % 4);
     double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
@@ -1022,6 +1079,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double bump_scale = p->estimate_bump_scale();
     std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
 
+    double inv_h2o_level = 0;
     int vegr, vegg, vegb;
     if (has_water)
     {
@@ -1029,6 +1087,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         vegr = veg_color.r;
         vegg = veg_color.g;
         vegb = veg_color.b;
+        inv_h2o_level = 1.0 / has_water;
     }
 
     for (unsigned int y = 0; y < image_height; ++y)
@@ -1057,8 +1116,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 double r_weight = height_value;
 
-                // TODO: Decide polar ice cap size based on estimated temperature based on bolometric flux.
-                double polar_extent = 0.08 * r_weight;
+                double polar_extent = fmin(0.5, fmax(0, ice_amount * (0.9 + 0.2 * r_weight)));
                 if (v < polar_extent || v > (1.0 - polar_extent))
                 {
                     // Polar ice
@@ -1068,27 +1126,27 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds
-                else if (height_value < 0.500)
+                else if (height_value < has_water)
                 {   // Ocean
-                    double sh = height_value*2;          // shallowness
+                    double sh = height_value*inv_h2o_level;          // shallowness
                     red_data[idx] = (10+20*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh) * r_weight;
                     green_data[idx] = (30+80*sh*sh*sh) * r_weight;
                     blue_data[idx] = (120+100*sh*sh) * r_weight;
                     bump_data[idx] = 0;
                 }
-                else if (height_value < 0.503)
+                else if (height_value < veg_height)
                 {   // Beach sand
                     red_data[idx] = 220 * r_weight;
                     green_data[idx] = 200 * r_weight;
                     blue_data[idx] = 150 * r_weight;
                 }
-                else if (height_value < 0.70)
+                else if (height_value < mtn_height)
                 {   // Lowlands
                     red_data[idx] = vegr * r_weight;
                     green_data[idx] = vegg * r_weight;
                     blue_data[idx] = vegb * r_weight;
                 }
-                else if (height_value < 0.85)
+                else if (height_value < snow_height)
                 {   // Mountains
                     red_data[idx] = 110 * r_weight;
                     green_data[idx] = 90 * r_weight;
