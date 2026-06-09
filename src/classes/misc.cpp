@@ -35,6 +35,7 @@ double JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
 bool objinfwnd = true;
 bool statuswnd = true;
 bool objedtwnd = false;
+bool satwnd = false;
 bool addcelwnd = false;
 bool hide_mouse = true;
 bool searched = false;
@@ -248,6 +249,48 @@ bool file_exists(const char *fname)
         return true;
     }
     return false;
+}
+
+std::vector<std::string> parse_csv_row(const char *data)
+{
+    int n = strlen(data);
+    if (!n) return std::vector<std::string>();
+
+    char buffer[n+1];
+    strcpy(buffer, data);
+    char *cursor = buffer, *comma;
+    std::vector<std::string> result;
+
+    do
+    {
+        comma = strchr(cursor, ',');
+        if (comma) *comma = 0;
+        std::string value = cursor;
+        result.push_back(value);
+        cursor = comma+1;
+    } while (comma);
+
+    return result;
+}
+
+time_t from_iso_string(std::string iso_string, const char* format)
+{
+    std::istringstream iss(iso_string);
+    std::tm tm_struct = {};
+
+    iss >> std::get_time(&tm_struct, format ? format : "%Y-%m-%dT%H:%M:%S");
+
+    if (iss.fail())
+    {
+        std::cerr << "FAILED to parse datetime " << iso_string << std::endl;
+        throw 0xbad7177e;                       // Access to satellite data depends on this working. If we fail, we must exit the app or risk an IP ban.
+    }
+    else
+    {
+        return std::mktime(&tm_struct);
+    }
+
+    return time_t();
 }
 
 // Fractional Brownian Motion helper

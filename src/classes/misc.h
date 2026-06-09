@@ -7,6 +7,10 @@
 #include <ctime>
 #include <thread>
 #include <mutex>
+#include <curlpp/cURLpp.hpp>
+#include <curlpp/Easy.hpp>
+#include <curlpp/Options.hpp>
+#include <curlpp/Infos.hpp>
 #include "imgui/imgui.h"
 #include "nlohmann/json.hpp"
 // #include "EasyBMP/EasyBMP.hpp"
@@ -116,6 +120,8 @@ bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
 bool file_exists(const char* fname);
 
+std::vector<std::string> parse_csv_row(const char* data);
+time_t from_iso_string(std::string iso_string, const char* format = nullptr);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
 double probability_density_function(double x, double mean, double stddev);
 int sgn(double f);
@@ -143,7 +149,7 @@ extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, ob
 extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     viewer_lat, viewer_lon;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
-    objinfwnd, statuswnd, objedtwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
+    objinfwnd, statuswnd, objedtwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines;
 extern std::string objname, objinfo;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

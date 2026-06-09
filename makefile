@@ -2,13 +2,13 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libcurlpp-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image jpeg png
+#   brew install sdl2 sdl2_image jpeg png curlpp
 #
 # MSYS2 (Run in MINGW64 environment):
-#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl mingw-w64-x86_64-curlpp
 #
 
 CPP = g++
@@ -33,12 +33,12 @@ IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgu
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp \
-			$(CLASSES_DIR)/noise.cpp
+			$(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp
 
 BIN = bin
 OBJ = obj
 UNAME_S := $(shell uname -s)
-LIBS =
+LIBS = -lSDL2_image -ljpeg -lpng -lcurl
 LINUX_GL_LIBS = -lGL
 
 # Dynamically track all object files cleanly
@@ -53,14 +53,14 @@ CPPFLAGS += $(INCLUDES)
 # Platform-specific configurations
 ifeq ($(UNAME_S), Linux)
     ECHO_MESSAGE = "Building for Linux..."
-    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs` -lSDL2_image -ljpeg -lpng
-    CPPFLAGS += `sdl2-config --cflags`
+    LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs`
+    CPPFLAGS += `sdl2-config --cflags` `pkg-config --libs curlpp`
     CFLAGS = $(CPPFLAGS)
 endif
 
 ifeq ($(UNAME_S), Darwin)
     ECHO_MESSAGE = "Building for Mac OS..."
-    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs` -lSDL2_image -ljpeg -lpng
+    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo `sdl2-config --libs`
     # Support both Intel (/usr/local) and Apple Silicon (/opt/homebrew)
     LIBS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
     CPPFLAGS += `sdl2-config --cflags` -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
@@ -69,8 +69,8 @@ endif
 
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
-    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2` -lSDL2_image -ljpeg -lpng
-    CPPFLAGS += `pkg-config --cflags sdl2`
+    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2`
+    CPPFLAGS += `pkg-config --cflags sdl2` `pkg-config --libs curlpp`
     CFLAGS = $(CPPFLAGS)
 endif
 
@@ -148,6 +148,9 @@ $(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR
 
 $(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/moon.cpp $(CPPFLAGS) -c -o $(OBJ)/moon.o
+
+$(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/misc.h makefile
+	$(CPP) $(CLASSES_DIR)/satellite.cpp $(CPPFLAGS) -c -o $(OBJ)/satellite.o
 
 $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o

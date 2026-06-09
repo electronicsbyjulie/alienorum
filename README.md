@@ -127,8 +127,10 @@ from the command line with the `load` argument like this: `./bin/alienorum load 
 will not touch your custom file; any changes made will be written to `universe.json` only, so make sure to either
 copy them to your custom universe file or rename the default `universe.json` to your filename.
 
+Any object properties not included in the edit window can be edited in the .json file.
+
 You can also edit the universe JSON files to modify other parameters not included in the window. Just make sure the
-file is still valid JSON after any edits. There are third party apps that will check a JSON file to make sure it's
+file is still valid JSON after any edits. There are third party apps that will check a .json file to make sure it's
 valid and find any errors.
 
 
@@ -166,6 +168,8 @@ Shift+R     Toggle red light mode
 Q           Increase texture rendering quality. WARNING: Use cautiously; the value can get too high quickly and render the app unusable!
 Shift+Q     Improve performance by decreasing texture rendering quality
 F11         Toggle fullscreen
+&           Sky atlas mode
+_           Horizon mode
 ```
 
 
@@ -229,6 +233,7 @@ Shift+I     Rewind one minute
 ### Misc.
 
 Shift+A     Add new object in orbit around current object
+^           Add satellite from downloaded lists
 Shift+E     Edit current object
 U           Export user-added and user-modified objects to universe.json
 F4          Load user objects from an external JSON file

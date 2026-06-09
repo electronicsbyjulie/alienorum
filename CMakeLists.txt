@@ -11,6 +11,11 @@ find_package(SDL2_image REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
+find_package(CURL REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(CURLPP REQUIRED curlpp)
+
 
 add_library(IMGUI STATIC
 	src/include/imgui/imgui_demo.cpp
@@ -49,13 +54,18 @@ add_library(CLASSES STATIC
 	src/classes/noise.cpp
 	src/classes/planet.cpp
 	src/classes/point.cpp
+	src/classes/satellite.cpp
 	src/classes/serial.cpp
 	src/classes/star.cpp
 )
 
-target_include_directories(CLASSES PUBLIC src/classes src/include)
+target_include_directories(CLASSES PUBLIC src/classes src/include
+    ${CURL_INCLUDE_DIRS}
+    ${CURLPP_INCLUDE_DIRS})
 
-target_link_libraries(CLASSES JPEG::JPEG PNG::PNG)
+target_link_libraries(CLASSES JPEG::JPEG PNG::PNG
+    ${CURL_LIBRARIES} 
+    ${CURLPP_LIBRARIES})
 
 add_executable(alienorum src/alienorum.cpp)
 
@@ -74,6 +84,8 @@ elseif(APPLE)
 		${COCOA_FRAMEWORK}
 		${IOKIT_FRAMEWORK}
 		${COREVIDEO_FRAMEWORK}
+		${CURL_LIBRARIES} 
+		${CURLPP_LIBRARIES}
 		SDL2_image::SDL2_image
 	)
 elseif(WIN32)
