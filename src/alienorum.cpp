@@ -1775,7 +1775,7 @@ void draw_objects()
                 || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
                 || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
              ))
-            || (cels[i]->orbit && (cels[i]->cenobj == mycenobj) && lbl_localsys
+            || ((cels[i]->cenobj == mycenobj) && lbl_localsys
                 && ((cels[i]->mass >= lmasslim)
                  || (vmag_cache[i] < 2.5)
                  || (cels[i]->tmprel.magnitude() < AU)
@@ -1814,7 +1814,7 @@ void draw_objects()
                 || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
                 || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
              ))
-            || (cels[i]->orbit && (cels[i]->cenobj == mycenobj) && lbl_localsys
+            || ((cels[i]->cenobj == mycenobj) && lbl_localsys
                 && ((cels[i]->mass >= lmasslim)
                  || (vmag_cache[i] < 2.5)
                  || (cels[i]->tmprel.magnitude() < AU)
@@ -2239,6 +2239,7 @@ void process_key_cmd_char(char c)
         case 'n': objinfwnd = !objinfwnd; break;
 
         case 'o':
+        if (selected < 0 && trackidx >= 0) selected = trackidx;
         if (selected >= 0)
         {
             whereami = selected;
@@ -2287,9 +2288,18 @@ void process_key_cmd_char(char c)
         case 'S': selected = -1; break;
 
         case 't':
-        center_selected();
-        trackidx = selected;
-        selected = -1;
+        if (trackidx >= 0)
+        {
+            selected = trackidx;
+            trackidx = -1;
+            center_selected();
+        }
+        else
+        {
+            center_selected();
+            trackidx = selected;
+            selected = -1;
+        }
         viewchanged = true;
         break;
 

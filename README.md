@@ -178,7 +178,7 @@ _           Horizon mode
 ```
 {click}     Select object
 Shift+S     Clear selection
-T           Track selected object
+T           Track selected object / cease tracking and select
 Shift+T     Clear tracking
 ```
 
@@ -199,7 +199,7 @@ S           Show/hide status panel
 ### Motion and Location
 
 ```
-O           Go to object
+O           Go to object (selected or tracked)
 R           Return to default view, from Earth, at current time
 W           Warp speed
 X           Full stop
