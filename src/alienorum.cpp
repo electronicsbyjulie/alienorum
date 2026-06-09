@@ -1333,7 +1333,7 @@ bool compute_object_location(CelestialObject* cel, int i)
                 }
                 else if (cel->orbit &&
                     (
-                            ((cel->mass >= lmasslim)
+                        ((cel->mass < lmasslim)
                         && (cel->tmprel.magnitude() > AU)
                     ))
                     && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
@@ -1630,6 +1630,7 @@ void draw_objects()
             ImU32 satcol = rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
             if (show_labels || lbl_localsys)
             {
+                // Satellite icons.
                 ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
                 ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
                 ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                    );
