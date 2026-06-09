@@ -108,7 +108,19 @@ bool SatSource::update_sources_json()
         j[i] = j1;
     }
 
-    std::fstream fs("catalogs/sat/sources.json", std::ios::out);
+    std::filesystem::path bak_name = "catalogs/sat/sources.bak.json";
+    std::filesystem::path real_name = "catalogs/sat/sources.json";
+    std::error_code ec;
+
+    std::filesystem::remove(bak_name);                          // don't care if doesn't succeed; failure = nothing to delete = expected
+    std::filesystem::rename(real_name, bak_name, ec);
+    if (ec)
+    {
+        std::cerr << "ERROR - failed to back up sources.json." << std::endl << std::flush;
+        return false;
+    }
+
+    std::fstream fs(real_name.c_str(), std::ios::out);
     fs << j.dump(4);
     fs.close();
 
