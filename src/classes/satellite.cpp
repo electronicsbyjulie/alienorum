@@ -217,7 +217,7 @@ bool SatSource::read_csv_data()
             {
                 if (sat_data[j].NORAD_CAT_ID == norad_id)
                 {
-                    sat_data[j].catalog = local_name;
+                    if (!sat_data[j].catalog.size()) sat_data[j].catalog = local_name;
                     i = 2;
                     sat_data[j].EPOCH = row[i++];
                     sat_data[j].MEAN_MOTION = atof(row[i++].c_str());
@@ -328,7 +328,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
 
     sat->mass = 1e3;                        // unknown
     sat->volumetric_mean_radius = 5;        // unknown
-    sat->absolute_magnitude = 5;            // unknown
+    sat->absolute_magnitude = 50;           // unknown
 
     sat->orbit->eccentricity = sr.ECCENTRICITY;
     sat->orbit->inclination = sr.INCLINATION * fiftyseventh;

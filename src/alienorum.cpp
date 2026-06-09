@@ -3373,14 +3373,15 @@ void draw_sat_window(ImGuiIO& io)
         i=0;
         for (n=0; n<nsats; n++)
         {
+            if (!sat_data[n].catalog.size()) continue;
             std::string line = std::string(sat_data[n].OBJECT_NAME);
-
-            if (looklen && !strcasestr(line.c_str(), looksat)) continue;
 
             l = 35 - line.size();
             if (l > 0) line += std::string(l, ' ');
             line += sat_data[n].catalog;
             line += std::string(" ##") + std::to_string(n);
+
+            if (looklen && !strcasestr(line.c_str(), looksat)) continue;
             listlines.push_back(line);
 
             bool is_selected = (item_selected_idx == i);
@@ -3409,10 +3410,8 @@ void draw_sat_window(ImGuiIO& io)
 
         char buffer[256];
         strcpy(buffer, listlines[n].c_str());
-        std::cout << buffer << std::endl << std::flush;           // debug step
         char *hashmarks = strstr(buffer, "##");
         i = atoi(&hashmarks[2]);
-        std::cout << sat_data[i].OBJECT_NAME << std::endl << std::flush;          // debug step
 
         if (SatSource::populate(sat, i))
         {

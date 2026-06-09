@@ -54,6 +54,7 @@ add_library(CLASSES STATIC
 	src/classes/noise.cpp
 	src/classes/planet.cpp
 	src/classes/point.cpp
+	src/classes/satellite.cpp
 	src/classes/serial.cpp
 	src/classes/star.cpp
 )
