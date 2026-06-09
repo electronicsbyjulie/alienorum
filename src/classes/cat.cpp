@@ -203,7 +203,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             build_name = "GJ ";
         else if (field[0] == 'G' && field[1] == 'J')
             build_name = "GJ ";
-        else if (field[0] == 'W' && field[1] == 'o' && field[2] == ' ')
+        else if (field[0] == 'W' && field[1] == 'o')
             build_name = "GJ ";
         else if (field[0] == 'N' && field[1] == 'N')
             build_name = "GJ ";

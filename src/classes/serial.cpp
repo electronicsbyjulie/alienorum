@@ -28,7 +28,7 @@ int find_object(const char* search_term, bool os, double ml)
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
     bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L')
         || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'J')
-        || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O')
+        || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O' && (search_term[2]&0x5f) != 'L' && (search_term[2]&0x5f) != 'F')
         || ((search_term[0]&0x5f) == 'N' && (search_term[1]&0x5f) == 'N')
         ) && contains_digits_or_dots(search_term);
     int result = -1;
@@ -75,18 +75,28 @@ int find_object(const char* search_term, bool os, double ml)
         }
     }
 
+    char buffer[256];
     if (result < 0)
     {
-        int best_Levenshtein = 1e6;
+        int best_Levenshtein = 11;
         std::string lookstr = search_term;
+        int looklen = strlen(search_term);
         for (i=0; cels[i]; i++)
         {
             if (os && (cels[i]->typeclass() != class_star)) continue;
             if (match_cons && cels[i]->typeclass() == class_star && strcmp(((Star*)cels[i])->constellation, match_cons)) continue;
-            int lev = Damerau_Levenshtein(cels[i]->name, lookstr);
-            if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
+            if (match_comp)
+            {
+                m = strlen(cels[i]->name);
+                if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
+            }
+
+            strcpy(buffer, cels[i]->name);
+            buffer[looklen] = 0;
+            int lev = Damerau_Levenshtein(buffer, lookstr);
             if (cels[i]->type == star)
             {
+                if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
                 int lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Bayer, lookstr);
                 if (!has_same_numbers(((Star*)cels[i])->Bayer, lookstr.c_str())) lev1 = 1e9;
                 if (lev1 < lev) lev = lev1;
