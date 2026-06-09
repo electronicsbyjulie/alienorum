@@ -2058,6 +2058,10 @@ void identify_object_under_cursor(ImGuiIO& io)
         {
             // TODO:
         }
+        else if (cels[i]->type == artificial)
+        {
+            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+        }
         else
         {
             oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
@@ -2487,7 +2491,7 @@ void draw_status_window(ImGuiIO& io)
     else vfstr = std::string("View from space");
     ImGui::Text("%s", vfstr.c_str());
 
-    if (whereami > 0 && cels[whereami]->type >= gas_giant
+    if (whereami > 0 && cels[whereami]->type >= gas_giant && cels[whereami]->type < artificial
         && ((Planet*)cels[whereami])->is_in_con_HZ())
     {
         ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
@@ -2941,7 +2945,9 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
     {
         cel->mass = edit_mass * 1000;
-        if (cel->typeclass() == class_planet) ((Planet*)cel)->classify();
+        if (cel->typeclass() == class_planet
+            || cel->typeclass() == class_moon               // See Kepler-1625b.
+            ) ((Planet*)cel)->classify();
         cel->user_edited = true;
         viewchanged = true;
     }
@@ -3368,7 +3374,7 @@ void draw_sat_window(ImGuiIO& io)
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     std::vector<std::string> listlines;
-    if (ImGui::BeginListBox("##satlist", ImVec2(503, 11 * ImGui::GetTextLineHeightWithSpacing())))
+    if (ImGui::BeginListBox("##satlist", ImVec2(777, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         i=0;
         for (n=0; n<nsats; n++)
@@ -3399,7 +3405,9 @@ void draw_sat_window(ImGuiIO& io)
         ImGui::EndListBox();
     }
 
-    if (ImGui::Button("Load Satellite"))
+    ImVec4 msg_color = ImVec4(255, 255, 255, 255);
+
+    if (ImGui::Button("Add Selected##satellite"))
     {
         mesg = "";
         for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
@@ -3419,15 +3427,83 @@ void draw_sat_window(ImGuiIO& io)
             compute_object_location(sat, -1);
             compute_object_draw_coordinates();
             center_selected();
+            viewchanged = true;
             satwnd = false;
         }
         else
         {
             ncelobjs--;
             cels[ncelobjs] = 0;
-            mesg = "ERROR";
+            mesg = "ERROR - Satellite failed to load.";
+            msg_color = ImVec4(255, 0, 0, 255);
         }
     }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Add and Leave Open##satellite"))
+    {
+        mesg = "";
+        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+        Satellite *sat = new Satellite();
+        cels[ncelobjs++] = sat;
+        cels[ncelobjs] = 0;
+        n = item_selected_idx;
+
+        char buffer[256];
+        strcpy(buffer, listlines[n].c_str());
+        char *hashmarks = strstr(buffer, "##");
+        i = atoi(&hashmarks[2]);
+
+        if (SatSource::populate(sat, i))
+        {
+            selected = ncelobjs-1;
+            compute_object_location(sat, -1);
+            compute_object_draw_coordinates();
+            center_selected();
+            viewchanged = true;
+        }
+        else
+        {
+            ncelobjs--;
+            cels[ncelobjs] = 0;
+            mesg = "ERROR - Satellite failed to load.";
+            msg_color = ImVec4(255, 0, 0, 255);
+        }
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Add All Shown##satellites"))
+    {
+        mesg = "";
+        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+        for (n=0; n<listlines.size(); n++)
+        {
+            Satellite *sat = new Satellite();
+            cels[ncelobjs++] = sat;
+            cels[ncelobjs] = 0;
+
+            char buffer[256];
+            strcpy(buffer, listlines[n].c_str());
+            char *hashmarks = strstr(buffer, "##");
+            i = atoi(&hashmarks[2]);
+
+            if (SatSource::populate(sat, i))
+            {
+                selected = ncelobjs-1;
+                compute_object_location(sat, -1);
+                compute_object_draw_coordinates();
+                viewchanged = true;
+            }
+            else
+            {
+                ncelobjs--;
+                cels[ncelobjs] = 0;
+                mesg = "One or more failed to load.";
+                msg_color = ImVec4(255, 224, 0, 255);
+            }
+        }
+    }
+
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(255, 0, 0, 255), "%s", mesg.c_str());
 
@@ -3928,21 +4004,24 @@ int main (int argc, char** argv)
             }
 
             // Scroll wheel to zoom
-            if (io.MouseWheel > 0)
+            if (!is_mouse_over_window)
             {
-                zoom *= 1.1;
-                global_brightness *= 1.07;
-                dragging = true;
-                scrollhold = 1;
-                viewchanged = true;
-            }
-            else if (io.MouseWheel < 0 && zoom > 1)
-            {
-                zoom = fmax(1, zoom * 0.9);
-                global_brightness *= 0.93;
-                dragging = true;
-                scrollhold = 1;
-                viewchanged = true;
+                if (io.MouseWheel > 0)
+                {
+                    zoom *= 1.1;
+                    global_brightness *= 1.07;
+                    dragging = true;
+                    scrollhold = 1;
+                    viewchanged = true;
+                }
+                else if (io.MouseWheel < 0 && zoom > 1)
+                {
+                    zoom = fmax(1, zoom * 0.9);
+                    global_brightness *= 0.93;
+                    dragging = true;
+                    scrollhold = 1;
+                    viewchanged = true;
+                }
             }
 
             // Command line args

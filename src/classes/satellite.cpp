@@ -20,7 +20,8 @@ Satellite::Satellite()
 
 void Satellite::update_location(double tmnow)
 {
-    if (orbit && orbit->period) update_orbit_location(tmnow);
+    Rotation center_equator = orbit->center->location.equatorial_plane;
+    if (orbit && orbit->period) update_orbit_location(tmnow, &center_equator);
 }
 
 json SatSource::to_json()
@@ -218,6 +219,7 @@ bool SatSource::read_csv_data()
                 if (sat_data[j].NORAD_CAT_ID == norad_id)
                 {
                     if (!sat_data[j].catalog.size()) sat_data[j].catalog = local_name;
+                    else sat_data[j].catalog += std::string(" ") + local_name;
                     i = 2;
                     sat_data[j].EPOCH = row[i++];
                     sat_data[j].MEAN_MOTION = atof(row[i++].c_str());
