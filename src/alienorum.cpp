@@ -3954,7 +3954,7 @@ int main (int argc, char** argv)
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
                 ImGui::SetWindowPos(ImVec2(left,splash_top));
-                ImGui::SetWindowSize(ImVec2(aspect_width, splash_height+25));
+                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+35));
                 ImGui::Text("%s", lloadmsg);
                 ImGui::Image((ImTextureID)(intptr_t)splash_image_texture, ImVec2(aspect_width, splash_height));
             }
