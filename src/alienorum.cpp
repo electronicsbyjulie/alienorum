@@ -1651,10 +1651,13 @@ void draw_objects()
                 ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
                 ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
                 ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
+
+                bloomrad = antenna_height + panel_tilt + panel_width;
             }
             else
             {
                 ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, 1, satcol);
+                bloomrad = 1;
             }
         }
         else if (angular_radius[i]*zoom > fiftyseventh)
