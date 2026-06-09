@@ -1583,6 +1583,7 @@ void draw_objects()
     // Dits and doscs
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        cels[i]->disc_size = 0;
         if (i == whereami) continue;
 
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
@@ -1693,7 +1694,6 @@ void draw_objects()
         }
         else
         {
-            cels[i]->disc_size = 0;
             discinstead[i] = false;
             Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
             if (flare)
@@ -2014,6 +2014,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        if (i == whereami) continue;
         double cutoff = fmax(cels[i]->disc_size, circle_size*1.3);
         if (abs(cels[i]->drawnx - io.MousePos.x) < cutoff
             &&
