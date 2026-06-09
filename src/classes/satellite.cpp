@@ -337,7 +337,8 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
         return false;
     }
 
-    sat->cenobj = sat->orbit->center = cels[cenidx];
+    sat->orbit->center = cels[cenidx];
+    sat->cenobj = sat->orbit->center->cenobj;
     sat->epoch = sat->orbit->epoch = (double)(from_iso_string(sr.EPOCH, "%Y-%m-%dT%H:%M:%S") - J2000_TIME_T) / oneday + J2000;
 
     sat->mass = 1e3;                        // unknown

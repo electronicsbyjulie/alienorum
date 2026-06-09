@@ -1116,7 +1116,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 double r_weight = height_value;
 
-                double polar_extent = fmin(0.5, fmax(0, ice_amount * (0.9 + 0.2 * r_weight)));
+                double polar_extent = fmin(0.503, fmax(0, ice_amount * (0.9 + 0.2 * r_weight)));
                 if (v < polar_extent || v > (1.0 - polar_extent))
                 {
                     // Polar ice
