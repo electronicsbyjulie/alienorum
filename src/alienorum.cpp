@@ -1602,7 +1602,9 @@ void draw_objects()
             continue;
         }
 
-        if (cels[i]->typeclass() == class_star
+        cel_obj_class cls = cels[i]->typeclass();
+
+        if (cls == class_star
             && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
             && !((Star*)cels[i])->tmp_vis_flag)
             continue;
@@ -1618,8 +1620,44 @@ void draw_objects()
         bloomrad = fmin(max_bloomrad, bloomrad);
 
         #define bloom_exponent 2.5
+        #define antenna_height 5
+        #define panel_width 6
+        #define panel_tilt 2
 
-        if (angular_radius[i]*zoom > fiftyseventh)
+        if (cls == class_satellite)
+        {
+            ImU32 satcol = rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+            if (show_labels || lbl_localsys)
+            {
+                ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
+                ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
+                ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                    );
+                ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+                ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
+                ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+                ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
+                ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+                ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
+                ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+                ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
+
+                ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
+            }
+            else
+            {
+                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, 1, satcol);
+            }
+        }
+        else if (angular_radius[i]*zoom > fiftyseventh)
         {
             n = to_draw_sphere.size();
             if (!n)
