@@ -127,6 +127,11 @@ void draw_ra_dec_lines()
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), M_PI*2) : 0;
     bool prev_valid = false;
     int jstart = -80; // (view_mode == vm_horizon) ? 0 : -80;
+    bool is_sat = (whereami>0) && (cels[whereami]->typeclass() == class_satellite);
+    Rotation ra_dec_plane = (whereami>0) ? (is_sat
+            ? cels[whereami]->location.orbital_plane
+            : cels[whereami]->location.equatorial_plane)
+        : here.equatorial_plane;
 
     // RA and Dec lines.
     for (i=0; i<24; i++)
@@ -135,10 +140,9 @@ void draw_ra_dec_lines()
         for (j=jstart; j<=80; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            if (view_mode == vm_horizon)
+            if (view_mode == vm_horizon || is_sat)
             {
-                jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center,
-                    cels[whereami]->location.equatorial_plane.v, -cels[whereami]->location.equatorial_plane.a);
+                jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center, ra_dec_plane.v, -ra_dec_plane.a);
                 jadolzhnaperejexatdoma = to_viewer_plane(jadolzhnaperejexatdoma, 1);
                 jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center, yaxis, -azimuth_correction);
             }
@@ -173,10 +177,9 @@ void draw_ra_dec_lines()
         for (i=0; i<=24; i++)
         {
             Point umenjanetdeneg = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
-            if (view_mode == vm_horizon)
+            if (view_mode == vm_horizon || is_sat)
             {
-                umenjanetdeneg = rotate3D(umenjanetdeneg, center,
-                    cels[whereami]->location.equatorial_plane.v, -cels[whereami]->location.equatorial_plane.a);
+                umenjanetdeneg = rotate3D(umenjanetdeneg, center, ra_dec_plane.v, -ra_dec_plane.a);
                 umenjanetdeneg = to_viewer_plane(umenjanetdeneg, 1);
                 umenjanetdeneg = rotate3D(umenjanetdeneg, center, yaxis, -azimuth_correction);
             }
@@ -853,6 +856,7 @@ void set_center_objects()
         {
             if (cels[i]->typeclass() == class_planet) ((Planet*)cels[i])->update_location(simnow);
             else if (cels[i]->typeclass() == class_moon) ((Moon*)cels[i])->update_location(simnow);
+            else if (cels[i]->typeclass() == class_satellite) ((Satellite*)cels[i])->update_location(simnow);
         }
     }
 }
@@ -1190,6 +1194,21 @@ void set_viewer_location_and_plane()
         return;
     }
 
+    if (whereami >= 0 && cels[whereami]->typeclass() == class_satellite)
+    {
+        view_mode = vm_skyatlas;
+
+        if (cels[whereami]->orbit->center)
+        {
+            here = cels[whereami]->location;
+            Point me = cels[whereami]->location;
+            Point zenith = me - cels[whereami]->orbit->center->location;
+            here.equatorial_plane = align_points_3d(zenith, yaxis, center);
+            viewchanged = true;
+            return;
+        }
+    }
+
     if (view_mode == vm_skyatlas)
     {
         here = cels[whereami]->location;
@@ -1351,6 +1370,9 @@ bool compute_object_location(CelestialObject* cel, int i)
         }
         ((Moon*)cel)->update_location(simnow);
         break;
+
+        case class_satellite:
+        ((Satellite*)cel)->update_location(simnow);
 
         default:
         ;
@@ -1516,7 +1538,7 @@ void draw_objects()
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         step = cels[i]->orbit->period / orbseg;
         CelestialLocation was = cels[i]->location;
-        bool is_moon = (cels[i]->typeclass() == class_moon);
+        bool is_moon = (cels[i]->typeclass() == class_moon), is_sat = (cels[i]->typeclass() == class_satellite);
 
         Cartesian2D lastcart;
         try
@@ -1531,6 +1553,8 @@ void draw_objects()
         {
             if (is_moon)
                 ((Moon*)cels[i])->update_location(simnow + step*j);
+            else if (is_sat)
+                ((Satellite*)cels[i])->update_location(simnow + step*j);
             else
                 ((Planet*)cels[i])->update_location(simnow + step*j);
 
@@ -2541,52 +2565,55 @@ void draw_status_window(ImGuiIO& io)
 
     ImGui::Separator();
 
-    ImGuiComboFlags cbovm_flags = 0;
-    const char* combo_vm_value = vmtext[view_mode];
-    ImGui::Text("%s", "View Mode:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(123);
-    if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
+    if (whereami >= 0 && cels[whereami]->typeclass() != class_satellite)
     {
-        for (int n = 0; n < NUM_VIEWMODES-1; n++)               // Sun clock mode is not yet implemented.
+        ImGuiComboFlags cbovm_flags = 0;
+        const char* combo_vm_value = vmtext[view_mode];
+        ImGui::Text("%s", "View Mode:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(123);
+        if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
         {
-            const bool is_selected = (n == view_mode);
-            if (ImGui::Selectable(vmtext[n], is_selected))
+            for (int n = 0; n < NUM_VIEWMODES-1; n++)               // Sun clock mode is not yet implemented.
             {
-                view_mode = (ViewMode)n;
+                const bool is_selected = (n == view_mode);
+                if (ImGui::Selectable(vmtext[n], is_selected))
+                {
+                    view_mode = (ViewMode)n;
+                    set_viewer_location_and_plane();
+                    viewchanged = true;
+                }
+
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (n == view_mode)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        if (view_mode == vm_horizon)
+        {
+            double vlat_edit = viewer_lat * fiftyseven;
+            ImGui::Text("%s", "Latitude:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(123);
+            if (ImGui::InputDouble("##vlat", &vlat_edit, 0.1, 1, "%.3f"))
+            {
+                viewer_lat = vlat_edit * fiftyseventh;
                 set_viewer_location_and_plane();
                 viewchanged = true;
             }
 
-            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-            if (n == view_mode)
-                ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-
-    if (view_mode == vm_horizon)
-    {
-        double vlat_edit = viewer_lat * fiftyseven;
-        ImGui::Text("%s", "Latitude:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(123);
-        if (ImGui::InputDouble("##vlat", &vlat_edit, 0.1, 1, "%.3f"))
-        {
-            viewer_lat = vlat_edit * fiftyseventh;
-            set_viewer_location_and_plane();
-            viewchanged = true;
-        }
-
-        double vlon_edit = viewer_lon * fiftyseven;
-        ImGui::Text("%s", "Longitude:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(123);
-        if (ImGui::InputDouble("##vlon", &vlon_edit, 0.1, 1, "%.3f"))
-        {
-            viewer_lon = vlon_edit * fiftyseventh;
-            set_viewer_location_and_plane();
-            viewchanged = true;
+            double vlon_edit = viewer_lon * fiftyseven;
+            ImGui::Text("%s", "Longitude:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(123);
+            if (ImGui::InputDouble("##vlon", &vlon_edit, 0.1, 1, "%.3f"))
+            {
+                viewer_lon = vlon_edit * fiftyseventh;
+                set_viewer_location_and_plane();
+                viewchanged = true;
+            }
         }
     }
 
@@ -2936,6 +2963,7 @@ void draw_objedit_window(ImGuiIO& io)
             m->depth = m->width = m->height = 0;
             m->update_location(simnow);
         }
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
 
     stringstream massss;
@@ -3008,6 +3036,7 @@ void draw_objedit_window(ImGuiIO& io)
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
     if (cel->typeclass() == class_moon)
     {
@@ -3049,6 +3078,7 @@ void draw_objedit_window(ImGuiIO& io)
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
     ImGui::SameLine(col2);
     double edit_lonoff = cel->lon_J2000_offset * fiftyseven;
@@ -3063,6 +3093,7 @@ void draw_objedit_window(ImGuiIO& io)
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
 
     double edit_absmag = cel->absolute_magnitude;
@@ -3077,6 +3108,7 @@ void draw_objedit_window(ImGuiIO& io)
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
     if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
     {
@@ -3099,6 +3131,7 @@ void draw_objedit_window(ImGuiIO& io)
             viewchanged = true;
             if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
     }
 
@@ -3114,6 +3147,7 @@ void draw_objedit_window(ImGuiIO& io)
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
     ImGui::SameLine(col2);
     double edit_bvcol = cel->BV_color;
@@ -3128,6 +3162,7 @@ void draw_objedit_window(ImGuiIO& io)
         if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
         else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
     }
 
     if (orb)
@@ -3165,6 +3200,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
         ImGui::SameLine();
         ImGui::Text("%s", "AU");
@@ -3189,6 +3225,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
         }
         ImGui::SameLine();
@@ -3205,6 +3242,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_node = cel->orbit->ascending_node * fiftyseven;
@@ -3218,6 +3256,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
 
         edit_eccn = cel->orbit->eccentricity;
@@ -3231,6 +3270,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
@@ -3244,6 +3284,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
 
         edit_epoch = cel->orbit->epoch;
@@ -3257,6 +3298,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_manom = cel->orbit->mean_anomaly * fiftyseven;
@@ -3270,6 +3312,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
 
         edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
@@ -3283,6 +3326,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
         ImGui::SameLine(col2);
         edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
@@ -3296,6 +3340,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
             else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
         }
     }
 
@@ -3325,6 +3370,7 @@ void draw_sat_window(ImGuiIO& io)
     std::vector<std::string> listlines;
     if (ImGui::BeginListBox("##satlist", ImVec2(503, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
+        i=0;
         for (n=0; n<nsats; n++)
         {
             std::string line = std::string(sat_data[n].OBJECT_NAME);
@@ -3337,15 +3383,17 @@ void draw_sat_window(ImGuiIO& io)
             line += std::string(" ##") + std::to_string(n);
             listlines.push_back(line);
 
-            bool is_selected = (item_selected_idx == n);
+            bool is_selected = (item_selected_idx == i);
 
-            ImGuiSelectableFlags flags = (item_highlighted_idx == n) ? ImGuiSelectableFlags_Highlight : 0;
+            ImGuiSelectableFlags flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.c_str(), is_selected, flags))
-                item_selected_idx = n;
+                item_selected_idx = i;
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
             if (is_selected)
                 ImGui::SetItemDefaultFocus();
+
+            i++;
         }
         ImGui::EndListBox();
     }
@@ -3363,8 +3411,6 @@ void draw_sat_window(ImGuiIO& io)
         strcpy(buffer, listlines[n].c_str());
         std::cout << buffer << std::endl << std::flush;           // debug step
         char *hashmarks = strstr(buffer, "##");
-        char *pipe = strchr(hashmarks, '|');
-        *pipe = 0;
         i = atoi(&hashmarks[2]);
         std::cout << sat_data[i].OBJECT_NAME << std::endl << std::flush;          // debug step
 
@@ -3837,6 +3883,8 @@ int main (int argc, char** argv)
                         ((Planet*)cels[editidx])->update_location(simnow);
                     else if (cels[editidx]->typeclass() == class_moon)
                         ((Moon*)cels[editidx])->update_location(simnow);
+                    else if (cels[editidx]->typeclass() == class_satellite)
+                        ((Satellite*)cels[editidx])->update_location(simnow);
                 }
             }
 

@@ -203,14 +203,16 @@ bool SatSource::read_csv_data()
     fgets(buffer, 16382, fp);
     std::vector<std::string> csv_header = parse_csv_row(buffer);
 
-    int i=0, j, n = sat_data.size();
+    int i, j, n = sat_data.size();
     while (fgets(buffer, 16382, fp))
     {
         std::vector<std::string> row = parse_csv_row(buffer);
+        i = 0;
 
         if (is_supplemental)
         {
             __uint32_t norad_id = atoi(row[11].c_str());
+            bool found = false;
             for (j=0; j<n; j++)
             {
                 if (sat_data[j].NORAD_CAT_ID == norad_id)
@@ -232,9 +234,34 @@ bool SatSource::read_csv_data()
                     sat_data[j].BSTAR = atof(row[i++].c_str());
                     sat_data[j].MEAN_MOTION_DOT = atof(row[i++].c_str());
                     sat_data[j].MEAN_MOTION_DDOT = atof(row[i++].c_str());
+                    found = true;
 
                     break;
                 }
+            }
+            if (!found)
+            {
+                i = 0;
+                SatRecord sr;
+                sr.catalog = local_name;
+                sr.OBJECT_NAME = row[i++];
+                sr.OBJECT_ID = row[i++];
+                sr.EPOCH = row[i++];
+                sr.MEAN_MOTION = atof(row[i++].c_str());
+                sr.ECCENTRICITY = atof(row[i++].c_str());
+                sr.INCLINATION = atof(row[i++].c_str());
+                sr.RA_OF_ASC_NODE = atof(row[i++].c_str());
+                sr.ARG_OF_PERICENTER = atof(row[i++].c_str());
+                sr.MEAN_ANOMALY = atof(row[i++].c_str());
+                sr.EPHEMERIS_TYPE = atoi(row[i++].c_str());
+                sr.CLASSIFICATION_TYPE = row[i++];
+                sr.NORAD_CAT_ID = atoi(row[i++].c_str());
+                sr.ELEMENT_SET_NO = atoi(row[i++].c_str());
+                sr.REV_AT_EPOCH = atoi(row[i++].c_str());
+                sr.BSTAR = atof(row[i++].c_str());
+                sr.MEAN_MOTION_DOT = atof(row[i++].c_str());
+                sr.MEAN_MOTION_DDOT = atof(row[i++].c_str());
+                sr.ORBIT_CENTER = "EA";
             }
         }
         else
@@ -246,9 +273,9 @@ bool SatSource::read_csv_data()
             sr.OBJECT_TYPE = row[i++];
             sr.OPS_STATUS_CODE = row[i++];
             sr.OWNER = row[i++];
-            sr.LAUNCH_DATE = from_iso_string(row[i++], "%Y-%m-%d %H:%M:%S");
+            sr.LAUNCH_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
             sr.LAUNCH_SITE = row[i++];
-            sr.DECAY_DATE = from_iso_string(row[i++], "%Y-%m-%d %H:%M:%S");
+            sr.DECAY_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
             sr.PERIOD = atof(row[i++].c_str());
             sr.INCLINATION = atof(row[i++].c_str());
             sr.APOGEE = atof(row[i++].c_str());
@@ -261,6 +288,7 @@ bool SatSource::read_csv_data()
             sat_data.push_back(sr);
         }
     }
+
     fclose(fp);
     return true;
 }
