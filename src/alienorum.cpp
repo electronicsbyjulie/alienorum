@@ -3475,6 +3475,7 @@ void draw_sat_window(ImGuiIO& io)
     if (ImGui::Button("Add All Shown##satellites"))
     {
         mesg = "";
+        int added = 0;
         for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
         for (n=0; n<listlines.size(); n++)
         {
@@ -3493,19 +3494,26 @@ void draw_sat_window(ImGuiIO& io)
                 compute_object_location(sat, -1);
                 compute_object_draw_coordinates();
                 viewchanged = true;
+                added++;
             }
             else
             {
                 ncelobjs--;
                 cels[ncelobjs] = 0;
                 mesg = "One or more failed to load.";
-                msg_color = ImVec4(255, 224, 0, 255);
+                msg_color = redlight_mode ? ImVec4(255, 24, 0, 255) : ImVec4(255, 224, 0, 255);
             }
+        }
+
+        if (!mesg.size())
+        {
+            mesg = std::string("Added ") + std::to_string(added) + std::string(" satellites.");
+            msg_color = redlight_mode ? ImVec4(64, 24, 0, 255) : ImVec4(0, 255, 0, 255);
         }
     }
 
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(255, 0, 0, 255), "%s", mesg.c_str());
+    ImGui::TextColored(msg_color, "%s", mesg.c_str());
 
     ImGui::SetWindowSize(ImVec2(0, 0));
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
