@@ -3604,6 +3604,10 @@ void draw_system_explorer(ImGuiIO& io)
     {
         i = list_item_celids[item_selected_idx];
         whereami = i;
+        set_viewer_location_and_plane();
+        selected = trackidx = -1;
+        global_brightness = default_brightness;
+        zoom = 1;
         viewchanged = true;
     }
     ImGui::SameLine();
@@ -3803,6 +3807,22 @@ void load_stuff()
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
 
+    fstream fs("user.json", std::ios::in);
+    if (fs)
+    {
+        json j;
+        fs >> j;
+        double dbl;
+        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseventh; } catch(...) { ; }
+        fs.close();
+    }
+    else
+    {
+        viewer_lat = 32.5425   * fiftyseventh;              // Babylon
+        viewer_lon = 44.421111 * fiftyseventh;
+    }
+
     mtx.lock();
     loading_msg = "Done!";
     splash = false;
@@ -3824,22 +3844,6 @@ int main (int argc, char** argv)
 
     memset(lookfor, 0, 40);
     memset(looksat, 0, 40);
-
-    fstream fs("user.json", std::ios::in);
-    if (fs)
-    {
-        json j;
-        fs >> j;
-        double dbl;
-        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseventh; } catch(...) { ; }
-        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseventh; } catch(...) { ; }
-        fs.close();
-    }
-    else
-    {
-        viewer_lat = 32.5425   * fiftyseventh;              // Babylon
-        viewer_lon = 44.421111 * fiftyseventh;
-    }
 
     for (l=1; l<argc; l++)
     {

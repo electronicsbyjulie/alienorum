@@ -49,7 +49,7 @@ class AlienStyle
     ImU32 objlbl_color = IM_COL32(64, 255, 0, 176);
     ImVec4 text_color = ImVec4(0.80f, 0.90f, 0.95f, 1.00f);
     ImVec4 graytext_color = ImVec4(0.90f, 0.60f, 0.10f, 1.00f);
-    ImVec4 window_bg_color = ImVec4(0.00f, 0.03f, 0.06f, 0.97f);
+    ImVec4 window_bg_color = ImVec4(0.00f, 0.03f, 0.06f, 0.67f);
     ImVec4 input_bg_color = ImVec4(0.00f, 0.05f, 0.10f, 0.00f);
     ImVec4 border_color = ImVec4(0.00f, 0.00f, 0.70f, 0.50f);
     ImVec4 border_shadow = ImVec4(0.00f, 0.00f, 0.05f, 0.00f);
