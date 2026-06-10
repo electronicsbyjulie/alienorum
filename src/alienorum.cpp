@@ -2239,7 +2239,8 @@ void process_key_cmd_char(char c)
     {
         case 'A':
         if (whereami < 0) return;
-        if (selected >= 0) addcenidx = selected;
+        if (explorer && celidx_sel_in_sysxplor >= 0) addcenidx = celidx_sel_in_sysxplor;
+        else if (selected >= 0) addcenidx = selected;
         else if (trackidx >= 0) addcenidx = trackidx;
         else if (whereami >= 0) addcenidx = whereami;
         cboceltyp_selected_idx = 2;
@@ -2829,6 +2830,7 @@ void draw_addcel_window(ImGuiIO& io)
                 case 1: cels[ncelobjs] = new Star(); cels[ncelobjs]->type = star; break;
                 case 2: cels[ncelobjs] = new Planet(); cels[ncelobjs]->type = rocky; break;
                 case 3: cels[ncelobjs] = new Moon(); cels[ncelobjs]->type = rocky; break;
+                case 4: cels[ncelobjs] = new Satellite(); cels[ncelobjs]->type = artificial; break;
 
                 default:
                 std::cerr << "Unimplemented object type" << std::endl;
@@ -3578,32 +3580,30 @@ void draw_system_explorer(ImGuiIO& io)
         ImGui::EndListBox();
     }
 
+    celidx_sel_in_sysxplor = list_item_celids[item_selected_idx];
     if (ImGui::Button("Select##explored"))
     {
-        i = list_item_celids[item_selected_idx];
-        selected = i;
+        selected = celidx_sel_in_sysxplor;
         viewchanged = true;
     }
+    ImGui::SameLine();
     if (ImGui::Button("Find##explored"))
     {
-        i = list_item_celids[item_selected_idx];
-        selected = i;
+        selected = celidx_sel_in_sysxplor;
         center_selected();
         viewchanged = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Track##explored"))
     {
-        i = list_item_celids[item_selected_idx];
-        trackidx = i;
+        trackidx = celidx_sel_in_sysxplor;
         center_tracked();
         viewchanged = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Go##explored"))
     {
-        i = list_item_celids[item_selected_idx];
-        whereami = i;
+        whereami = celidx_sel_in_sysxplor;
         set_viewer_location_and_plane();
         selected = trackidx = -1;
         global_brightness = default_brightness;
@@ -3613,9 +3613,18 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::SameLine();
     if (ImGui::Button("Edit##explored"))
     {
-        i = list_item_celids[item_selected_idx];
-        editidx = i;
+        editidx = celidx_sel_in_sysxplor;
         objedtwnd = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Add New...##explored"))
+    {
+        process_key_cmd_char('A');
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Add Satellite...##explored"))
+    {
+        process_key_cmd_char('^');
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
