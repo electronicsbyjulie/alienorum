@@ -509,7 +509,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe ? (fiftyseventh*15) : fmax(fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
         stepcoslat, invlaststepcoslat = 1.0 / step;
-    int perline, dx1, dy1, dx2, dy2;
+    int perline=0, dx1, dy1, dx2, dy2;
     l = 0;
 
     bool lonmin_crosses_zero = (lonmin <= 0 && lonmax < 180), filter_longitudes = ((lonmax - lonmin) <= 180);
@@ -592,7 +592,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     todraw.push_back(v);
                     tdvalid.push_back(true);
 
-                    if (!wireframe && (lat>-M_PI_2) && !dragging)
+                    if (!wireframe && (lat>-M_PI_2) && !dragging && perline)
                     {
                         m = l - n - perline + round(lon*invlaststepcoslat) + 2;
                         if (m > 1 && tdvalid[l-1] && m < l && tdvalid[m] && tdvalid[m-1])
@@ -651,7 +651,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             prev_valid = true;
         } // for lon
 
-        perline = n;
+        perline = max(0, n);
         invlaststepcoslat = 1.0/stepcoslat;
     } // for lat
 
@@ -2223,6 +2223,7 @@ void process_key_cmd_char(char c)
     switch (c)
     {
         case 'A':
+        if (whereami < 0) return;
         if (selected >= 0) addcenidx = selected;
         else if (trackidx >= 0) addcenidx = trackidx;
         else if (whereami >= 0) addcenidx = whereami;
