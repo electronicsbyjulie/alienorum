@@ -2019,7 +2019,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 if (s_is_new)
                 {
                     cels[offset] = s;
-                    std::cout << s->name << std::endl << std::flush;
                     s->BV_color = s->estimate_BV();
                     s->UB_color = s->estimate_UB();
                     offset++;

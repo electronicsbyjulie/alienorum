@@ -46,6 +46,7 @@ bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
 bool splash = true, magnitude_test = false, redo_proper_motions = true, fdlg_shown = false;
 CelestialObject npdummy;
+char xplorfor[40];
 
 // ImGui Example Code
 
@@ -117,6 +118,7 @@ Point to_viewer_plane(Point pt, int sign = 1)
 
 void draw_ra_dec_lines()
 {
+    if (!cels[1]) return;
     int i, j;
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(global_style.grid_color);
@@ -376,7 +378,8 @@ double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    cel->disc_size = 0;
+    cel->drawnxmin = cel->drawnxmax = cel->drawnx;
+    cel->drawnymin = cel->drawnymax = cel->drawny;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
     bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
     cel->onscreen = false;
@@ -582,10 +585,14 @@ int draw_sphere(CelestialObject* cel, double arad)
                     if (yd > result) result = yd;
 
                     ImVec2 v = ImVec2(dx1, dy1);
-                    if (prev_valid && wireframe)
+                    if (prev_valid)
                     {
-                        ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                        if (wireframe) ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                        if (zdes.x < cel->drawnxmin) cel->drawnxmin = zdes.x;
+                        if (zdes.x > cel->drawnxmax) cel->drawnxmax = zdes.x;
+                        if (zdes.y < cel->drawnymin) cel->drawnymin = zdes.y;
+                        if (zdes.y > cel->drawnymax) cel->drawnymax = zdes.y;
                     }
 
                     // TODO: Also store 3D coordinates of each vertex.
@@ -787,8 +794,6 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (!wireframe && cel->onscreen)
     {
-        cel->disc_size = result;
-
         if (sphere_elapsed.count() >= (1.3e5*sphere_quality))
         {
             if (sphresolution < 0.2/sphere_quality) sphresolution *= 1.3;
@@ -1039,12 +1044,17 @@ void load_catalogs()
     cout << loading_msg << endl << flush;
     SatSource::read_sources_json();
     n = sat_sources.size();
+    int j=0;
     for (i=0; i<n; i++)
     {
-        if (sat_sources[i].data_age_hours() > 24) sat_sources[i].download_data();
+        if (sat_sources[i].data_age_hours() > 24)
+        {
+            sat_sources[i].download_data();
+            j++;
+        }
         sat_sources[i].read_csv_data();
-        SatSource::update_sources_json();
     }
+    if (j) SatSource::update_sources_json();
 
     mtx.lock();
     loading_msg = std::string("Naming stars...");
@@ -1604,7 +1614,7 @@ void draw_objects()
     // Dits and doscs
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        cels[i]->disc_size = 0;
+        cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
         if (i == whereami) continue;
 
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
@@ -1762,13 +1772,14 @@ void draw_objects()
                 col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
             }
         }
-        if (selected == i)
+        if (selected == i && cels[1])
         {
             ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
         }
     }
 
     // Labels and selection
+    if (!cels[1]) return;
     if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->typeclass() == class_star
@@ -1968,7 +1979,7 @@ void draw_cons_lines()
 
 void draw_mouse_cursor(ImGuiIO& io)
 {
-    if (frames_without_mousemove > 203) return;
+    if ((frames_without_mousemove > 203) || !cels[1]) return;
 
     cursor_size = (int)io.DisplaySize.x/99;
     circle_size = cursor_size / 2.5;
@@ -2031,6 +2042,7 @@ void identify_object_under_cursor(ImGuiIO& io)
 
     is_an_obj_under_cursor = -1;
     obj_magn_under_cursor = 1e9;
+    int threshold = circle_size*1.3;
     if (trackidx >= 0)
     {
         is_an_obj_under_cursor = trackidx;
@@ -2038,10 +2050,12 @@ void identify_object_under_cursor(ImGuiIO& io)
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (i == whereami) continue;
-        double cutoff = fmax(cels[i]->disc_size, circle_size*1.3);
-        if (abs(cels[i]->drawnx - io.MousePos.x) < cutoff
-            &&
-            abs(cels[i]->drawny - io.MousePos.y) < cutoff
+
+        if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
+            && abs(io.MousePos.y - cels[i]->drawny) < threshold)
+            ||
+            (io.MousePos.x > cels[i]->drawnxmin && io.MousePos.x < cels[i]->drawnxmax
+            && io.MousePos.y > cels[i]->drawnymin && io.MousePos.y < cels[i]->drawnymax)
             )
         {
             // Prioritize by brightness.
@@ -2216,6 +2230,7 @@ void pan_with_crosshairs(ImGuiIO& io)
 void process_key_cmd_char(char c)
 {
     cel_obj_class cls;
+    if (!cels[1]) return;
 
     // Keep this line to uncomment when testing which keystrokes ImGui recognizes.
     // std::cout << c << std::endl;
@@ -2240,9 +2255,7 @@ void process_key_cmd_char(char c)
         case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
 
-        case 'e':
-        // TODO: Solar system explorer, or local system if outside solar system.
-        break;
+        case 'e': explorer = !explorer; break;
 
         case 'E':
         if (selected >= 0) editidx = selected;
@@ -2432,6 +2445,7 @@ void lookfor_cb()
 
 void draw_status_window(ImGuiIO& io)
 {
+    if (!cels[1]) return;
     int stattop = 0, statleft = 0;
     ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
@@ -2747,6 +2761,7 @@ void draw_status_window(ImGuiIO& io)
 
 void draw_objinf_window(ImGuiIO& io)
 {
+    if (!cels[1]) return;
     ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     if (trackidx >= 0)
@@ -2770,6 +2785,7 @@ void draw_objinf_window(ImGuiIO& io)
 
 void draw_addcel_window(ImGuiIO& io)
 {
+    if (!cels[1]) return;
     ImGui::Begin("Add Object", &addcelwnd);
 
     ImGui::Text("New object orbiting %s", cels[addcenidx]->name);
@@ -2882,6 +2898,7 @@ void save_textures(CelestialObject* cel)
 
 void draw_objedit_window(ImGuiIO& io)
 {
+    if (!cels[1]) return;
     if (editidx < 0)
     {
         objedtwnd = false;
@@ -3469,8 +3486,146 @@ void add_batch_satellites(std::vector<std::string> listlines)
     }
 }
 
+#if 0
+// Use this template to add new windows to the application.
+
+// Replace wndbool with a new boolean you create in misc.h and misc.cpp. It will control whether the window is displayed.
+
+void draw_app_window_template(ImGuiIO& io)
+{
+    if (!cels[1]) return;
+    ImGui::Begin("Window Name", &wndbool, 0);
+
+    ImGui::Text("%s", "Text Field");
+    ImGui::SameLine();
+    ImGui::InputText("##textdata", text_data, 256, 0);          // Replace the ## string with a unique id and text_data with a char array.
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+#endif
+
+void draw_system_explorer(ImGuiIO& io)
+{
+    if (!cels[1]) return;
+    ImGui::Begin("System Explorer", &explorer, 0);
+
+    ImGui::Text("%s", "Search:");
+    ImGui::SameLine();
+    ImGui::InputText("##xplorsearch", xplorfor, 40, 0);         // Replace the ## string with a unique id and text_data with a char array.
+
+    int i, j, l, xplorlen = strlen(xplorfor);
+    std::vector<int> list_item_celids;
+    static int item_selected_idx = 0;
+    int item_highlighted_idx = -1;
+    ImGui::Text("%s", " Name                 Orbits             Period, d       Mass, kg");
+    if (ImGui::BeginListBox("##syslist", ImVec2(777, 11 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        j = 0;
+        for (i=0; cels[i]; i++)
+        {
+            if (cels[i]->cenobj != mycenobj) continue;
+            bool is_selected = (item_selected_idx == j);
+
+            std::string line = std::string(cels[i]->name).substr(0, 20);
+            l = 21 - line.size();
+            if (l > 0) line += std::string(l, ' ');
+
+            if (cels[i]->orbit && cels[i]->orbit->center)
+                line += std::string(cels[i]->orbit->center->name).substr(0, 18);
+            else line += std::string("-");
+
+            if (xplorlen && !strcasestr(line.c_str(), xplorfor)) continue;
+            list_item_celids.push_back(i);
+
+            l = 40 - line.size();
+            if (l > 0) line += std::string(l, ' ');
+
+            if (cels[i]->orbit && cels[i]->orbit->period)
+            {
+                stringstream pss;
+                pss << setprecision(7) << (cels[i]->orbit->period/oneday);
+                line += pss.str();
+            }
+            else line += std::string("-");
+
+            l = 56 - line.size();
+            if (l > 0) line += std::string(l, ' ');
+
+            if (cels[i]->mass)
+            {
+                stringstream mss;
+                mss << scientific << setprecision(5) << (cels[i]->mass*1e-3);
+                line += mss.str();
+            }
+            else line += std::string("?");
+
+            ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.c_str(), is_selected, flags))
+                item_selected_idx = j;
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+
+            j++;
+        }
+        ImGui::EndListBox();
+    }
+
+    if (ImGui::Button("Select##explored"))
+    {
+        i = list_item_celids[item_selected_idx];
+        selected = i;
+        viewchanged = true;
+    }
+    if (ImGui::Button("Find##explored"))
+    {
+        i = list_item_celids[item_selected_idx];
+        selected = i;
+        center_selected();
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Track##explored"))
+    {
+        i = list_item_celids[item_selected_idx];
+        trackidx = i;
+        center_tracked();
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Go##explored"))
+    {
+        i = list_item_celids[item_selected_idx];
+        whereami = i;
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Edit##explored"))
+    {
+        i = list_item_celids[item_selected_idx];
+        editidx = i;
+        objedtwnd = true;
+    }
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+
 void draw_sat_window(ImGuiIO& io)
 {
+    if (!cels[1]) return;
     ImGui::Begin("Add Satellite", &satwnd, 0);
 
     static std::string mesg = "";
@@ -4081,8 +4236,8 @@ int main (int argc, char** argv)
                 }
             }
 
+            if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);
-
             if (satwnd) draw_sat_window(io);
 
             is_click = io.MouseReleased[0];
@@ -4308,7 +4463,7 @@ int main (int argc, char** argv)
 
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
 
-            hide_mouse = !splash && !fdlg_shown && (frame_dur < 0.1 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4);
+            hide_mouse = !splash && !fdlg_shown && (frame_dur < 0.1 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4) && cels[1];
 
             lmx = io.MousePos.x;
             lmy = io.MousePos.y;

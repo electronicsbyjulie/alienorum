@@ -135,7 +135,7 @@ class CelestialObject
 
     Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
         *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;
-    float drawnx=-1e9, drawny=-1e9, disc_size = 0;
+    float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;
     bool looked_for_maps = false, ignore_map_files = false;
     unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
     bool onscreen = false;

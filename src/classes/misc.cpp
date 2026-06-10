@@ -37,6 +37,7 @@ bool statuswnd = true;
 bool objedtwnd = false;
 bool satwnd = false;
 bool addcelwnd = false;
+bool explorer = false;
 bool hide_mouse = true;
 bool searched = false;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Has Planets", "Planet in HZ", "Binary Orbit", "Known Poles" };
