@@ -476,7 +476,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (j > latmax) latmax = j;
             }
 
-            if (wireframe && (j > -80))
+            if (wireframe && (j > -80) && !(j % 15))
             {
                 int dx1 = dispcx + zdes.x * dispcx,
                     dy1 = dispcy + zdes.y * dispcx,
@@ -513,7 +513,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     l = 0;
 
     bool lonmin_crosses_zero = (lonmin <= 0 && lonmax < 180), filter_longitudes = ((lonmax - lonmin) <= 180);
-    double latmin_rad = fiftyseventh * latmin - step, latmax_rad = fiftyseventh * latmax + step,
+    double latmin_rad = fiftyseventh * (latmin-5) - step, latmax_rad = fiftyseventh * (latmax+5) + step,
         lonmin_rad = fiftyseventh * lonmin, lonmax_rad = fiftyseventh * lonmax;
     double lon360;
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
@@ -525,7 +525,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
             lon360 = lonmin_crosses_zero ? (lonmin_rad - M_PI*2) : lonmin_rad;
-            if (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat)) continue;
+            if (filter_longitudes && (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat))) continue;
             n++;
             elevation = map ? map->elevation_at(lat, lon) : 0;
             land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
