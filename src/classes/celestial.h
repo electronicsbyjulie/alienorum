@@ -131,7 +131,7 @@ class CelestialObject
     bool user_edited = false;
 
     cel_obj_type type = star;
-    char name[32];
+    char name[40];
 
     Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
         *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;

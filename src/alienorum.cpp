@@ -31,7 +31,7 @@
 using namespace std;
 
 SDL_Window* window;
-char lookfor[256], edit_name[256], looksat[256];
+char lookfor[40], edit_name[40], looksat[40];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
@@ -431,12 +431,12 @@ int draw_sphere(CelestialObject* cel, double arad)
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
 
-    int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9;
-    for (i=0; i<=360; i+=5)
+    int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9, nstep = wireframe ? 10 : 5;
+    for (i=0; i<=360; i+=nstep)
     {
         i360 = (i>=180 && lonmin<=0 && lonmax<180) ? (i - 360) : i;           // Catch if visible longitudes wrap around zero.
         prev_valid = false;
-        for (j=-90; j<=90; j+=5)
+        for (j=-90; j<=90; j+=nstep)
         {
             Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
 
@@ -476,7 +476,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (j > latmax) latmax = j;
             }
 
-            if (wireframe && (j > -80) && !(j % 15))
+            if (wireframe && (j > -80))
             {
                 int dx1 = dispcx + zdes.x * dispcx,
                     dy1 = dispcy + zdes.y * dispcx,
@@ -2436,7 +2436,7 @@ void draw_status_window(ImGuiIO& io)
 
     /////////////////////////////////////////////////////
 
-    if (ImGui::InputText("##find", lookfor, 255, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
+    if (ImGui::InputText("##find", lookfor, 40, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
     ImGui::SameLine();
     if (ImGui::Button("Find")) lookfor_cb();
 
@@ -2899,7 +2899,7 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::Text("%s", "Name");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid*2);
-    if (ImGui::InputText("##edtname", edit_name, 255, 0)) cel->user_edited = true;
+    if (ImGui::InputText("##edtname", edit_name, 40, 0)) cel->user_edited = true;
     ImGui::SameLine(col3);
     if (ImGui::Button("Select"))
     {
@@ -3435,6 +3435,39 @@ void draw_objedit_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+int sats_added = 0, sat_errors = 0;
+void add_batch_satellites(std::vector<std::string> listlines)
+{
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+    char buffer[256];
+
+    int i, m = listlines.size();
+    sats_added = sat_errors = 0;
+    for (int n=0; n<m; n++)
+    {
+        mtx.lock();
+        Satellite *sat = new Satellite();
+        cels[ncelobjs++] = sat;
+        cels[ncelobjs] = 0;
+
+        strcpy(buffer, listlines[n].c_str());
+        char *hashmarks = strstr(buffer, "##");
+        i = atoi(&hashmarks[2]);
+
+        if (SatSource::populate(sat, i))
+        {
+            sats_added++;
+        }
+        else
+        {
+            ncelobjs--;
+            cels[ncelobjs] = 0;
+            sat_errors++;
+        }
+        mtx.unlock();
+    }
+}
+
 void draw_sat_window(ImGuiIO& io)
 {
     ImGui::Begin("Add Satellite", &satwnd, 0);
@@ -3442,22 +3475,26 @@ void draw_sat_window(ImGuiIO& io)
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
-    ImGui::InputText("##looksat", looksat, 256, 0);
+    ImGui::InputText("##looksat", looksat, 40, 0);
 
     int nsats = sat_data.size(), i, l, looklen = strlen(looksat);
     int n=0;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     std::vector<std::string> listlines;
-    if (ImGui::BeginListBox("##satlist", ImVec2(777, 11 * ImGui::GetTextLineHeightWithSpacing())))
+    if (ImGui::BeginListBox("##satlist", ImVec2(821, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         i=0;
         for (n=0; n<nsats; n++)
         {
             if (!sat_data[n].catalog.size()) continue;
             std::string line = std::string(sat_data[n].OBJECT_NAME);
+            l = line.size();
 
-            l = 35 - line.size();
+            l = 40 - l;
+            if (l > 0) line += std::string(l, ' ');
+            line += sat_data[n].OBJECT_ID;
+            l = 52 - line.size();
             if (l > 0) line += std::string(l, ' ');
             line += sat_data[n].catalog;
             line += std::string(" ##") + std::to_string(n);
@@ -3480,7 +3517,7 @@ void draw_sat_window(ImGuiIO& io)
         ImGui::EndListBox();
     }
 
-    ImVec4 msg_color = ImVec4(255, 255, 255, 255);
+    static ImVec4 msg_color = ImVec4(255, 255, 255, 255);
 
     if (ImGui::Button("Add Selected##satellite"))
     {
@@ -3550,45 +3587,40 @@ void draw_sat_window(ImGuiIO& io)
     if (ImGui::Button("Add All Shown##satellites"))
     {
         mesg = "";
-        int added = 0;
-        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
-        for (n=0; n<listlines.size(); n++)
+
+        std::thread tsat(add_batch_satellites, listlines);
+        tsat.detach();
+
+        if (sats_added)
         {
-            Satellite *sat = new Satellite();
-            cels[ncelobjs++] = sat;
-            cels[ncelobjs] = 0;
-
-            char buffer[256];
-            strcpy(buffer, listlines[n].c_str());
-            char *hashmarks = strstr(buffer, "##");
-            i = atoi(&hashmarks[2]);
-
-            if (SatSource::populate(sat, i))
+            if (sat_errors)
             {
-                selected = ncelobjs-1;
-                compute_object_location(sat, -1);
-                compute_object_draw_coordinates();
-                viewchanged = true;
-                added++;
+                mesg = std::string("Added ") + std::to_string(sats_added)
+                    + std::string("; ") + std::to_string(sat_errors) + std::string(" failed.");
+                msg_color = ImVec4(255, 224, 0, 255);
             }
             else
             {
-                ncelobjs--;
-                cels[ncelobjs] = 0;
-                mesg = "One or more failed to load.";
-                msg_color = redlight_mode ? ImVec4(255, 24, 0, 255) : ImVec4(255, 224, 0, 255);
+                mesg = std::string("Added ") + std::to_string(sats_added) + std::string(" satellites.");
+                msg_color = ImVec4(0, 255, 0, 255);
             }
         }
-
-        if (!mesg.size())
+        else
         {
-            mesg = std::string("Added ") + std::to_string(added) + std::string(" satellites.");
-            msg_color = redlight_mode ? ImVec4(64, 24, 0, 255) : ImVec4(0, 255, 0, 255);
+            if (sat_errors)
+            {
+                mesg = std::string("ERROR");
+                msg_color = ImVec4(255, 0, 0, 255);
+            }
+            else
+            {
+                mesg = "";
+            }
         }
     }
 
     ImGui::SameLine();
-    ImGui::TextColored(msg_color, "%s", mesg.c_str());
+    ImGui::TextColored(redlight_mode ? ImVec4(255, 24, 0, 255) : msg_color, "%s", mesg.c_str());
 
     ImGui::SetWindowSize(ImVec2(0, 0));
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
@@ -3634,8 +3666,8 @@ int main (int argc, char** argv)
     by_cache = new int[MAX_CELOBJS];
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "";
 
-    memset(lookfor, 0, 256);
-    memset(looksat, 0, 256);
+    memset(lookfor, 0, 40);
+    memset(looksat, 0, 40);
 
     fstream fs("user.json", std::ios::in);
     if (fs)
