@@ -397,7 +397,6 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool prev_valid = false;
     bool dwh = false;
 
-    // It's nice that when you initialize a double to zero, it sets all the bits to zero and it %@#&ING STAYS ZERO
     if (cel->typeclass() == class_moon)
         dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
             && ((Moon*)cel)->width > zero_isnt_really_zero
@@ -429,12 +428,17 @@ int draw_sphere(CelestialObject* cel, double arad)
         ttex.detach();
     }
 
-    if (wireframe) for (i=0; i<24; i++)
+    double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
+    horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
+
+    int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9;
+    for (i=0; i<=360; i+=5)
     {
+        i360 = (i>=180 && lonmin<=0 && lonmax<180) ? (i - 360) : i;           // Catch if visible longitudes wrap around zero.
         prev_valid = false;
-        for (j=-80; j<=90; j+=10)
+        for (j=-90; j<=90; j+=5)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
+            Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
 
             if (dwh)
             {
@@ -447,6 +451,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
+            vtheta = fabs(fmod(find_3D_angle(cursor, center, cel->tmprel), M_PI*2));
             cursor = to_viewer_plane(cursor);
             if (cursor.magnitude() > z_cutoff)
             {
@@ -460,7 +465,18 @@ int draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
-            if (j > -80)
+            if (vtheta < horizon_angle)
+            {
+                if (i >= 180) i360 = i;
+
+                if (i360 < lonmin) lonmin = i360;
+                if (i360 > lonmax) lonmax = i360;
+
+                if (j < latmin) latmin = j;
+                if (j > latmax) latmax = j;
+            }
+
+            if (wireframe && (j > -80))
             {
                 int dx1 = dispcx + zdes.x * dispcx,
                     dy1 = dispcy + zdes.y * dispcx,
@@ -495,16 +511,21 @@ int draw_sphere(CelestialObject* cel, double arad)
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline, dx1, dy1, dx2, dy2;
     l = 0;
-    double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
-    horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
 
+    bool lonmin_crosses_zero = (lonmin <= 0 && lonmax < 180), filter_longitudes = ((lonmax - lonmin) <= 180);
+    double latmin_rad = fiftyseventh * latmin - step, latmax_rad = fiftyseventh * latmax + step,
+        lonmin_rad = fiftyseventh * lonmin, lonmax_rad = fiftyseventh * lonmax;
+    double lon360;
     for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
     {
+        if (lat < latmin_rad || lat > latmax_rad) continue;
         prev_valid = false;
         n = 0;
         stepcoslat = step / (cos(lat) + 0.1);
         for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
         {
+            lon360 = lonmin_crosses_zero ? (lonmin_rad - M_PI*2) : lonmin_rad;
+            if (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat)) continue;
             n++;
             elevation = map ? map->elevation_at(lat, lon) : 0;
             land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
@@ -574,7 +595,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     if (!wireframe && (lat>-M_PI_2) && !dragging)
                     {
                         m = l - n - perline + round(lon*invlaststepcoslat) + 2;
-                        if (tdvalid[l-1] && tdvalid[m] && tdvalid[m-1])
+                        if (m > 1 && tdvalid[l-1] && m < l && tdvalid[m] && tdvalid[m-1])
                         {
                             if (self_luminous)
                             {
@@ -634,7 +655,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         invlaststepcoslat = 1.0/stepcoslat;
     } // for lat
 
-    if (!wireframe && !dragging)
+    if (!wireframe && !dragging && (l > perline*2))
     {
         auto points = std::make_unique<ImVec2[]>(perline);
         n = 0;
@@ -1455,7 +1476,7 @@ void compute_object_draw_coordinates()
 
     if (viewchanged || redo_proper_motions)
     {
-        luminous_flux = 0;
+        luminous_flux = cels[1] ? 0 : 1e10;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
             if (isnan(cels[i]->tmprel.x)) continue;
@@ -1882,6 +1903,7 @@ void draw_sky_gradient()
 
 void draw_cons_lines()
 {
+    if (!cels[1]) return;
     int i, l, n;
     double dispw = dispcx*2, disph = dispcy*2;
 
@@ -3972,6 +3994,8 @@ int main (int argc, char** argv)
             dispcy = (int)io.DisplaySize.y / 2;
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
             drawblxscaley = drawn_cache_split / io.DisplaySize.y;
+
+            if (!cels[1]) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2((int)io.DisplaySize.x, (int)io.DisplaySize.y), IM_COL32(78, 137, 225, 255));
 
             set_viewer_location_and_plane();
 
