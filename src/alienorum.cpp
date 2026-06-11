@@ -3525,7 +3525,7 @@ void draw_system_explorer(ImGuiIO& io)
     std::vector<int> list_item_celids;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    ImGui::Text("%s", " Name                 Orbits             Period, d       Mass, kg");
+    ImGui::Text("%s", " Name                 Orbits             Period, d       Mass, kg         HZ?");
     if (ImGui::BeginListBox("##syslist", ImVec2(777, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
@@ -3566,6 +3566,18 @@ void draw_system_explorer(ImGuiIO& io)
                 line += mss.str();
             }
             else line += std::string("?");
+
+            l = 75 - line.size();
+            if (l > 0) line += std::string(l, ' ');
+
+            if (cels[i]->orbit && cels[i]->orbit->period)
+            {
+                cel_obj_class cls = cels[i]->typeclass();
+                if ((cls == class_planet || cls == class_moon) && ((Planet*)cels[i])->is_in_con_HZ())
+                    line += "Y";
+                else line += std::string("");
+            }
+            else line += std::string("");
 
             ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.c_str(), is_selected, flags))
