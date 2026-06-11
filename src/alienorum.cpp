@@ -1822,6 +1822,7 @@ void draw_objects()
         }
     }
 
+    // Spheres
     n = to_draw_sphere.size();
     for (j=0; j<n; j++)
     {
@@ -1878,7 +1879,7 @@ void draw_objects()
 
         if (dy < dispcy*2)
         {
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2-1, dispcy*2-1),
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2, dispcy*2),
                 IM_COL32(0, 8, 24, 255));
         }
     }
@@ -2412,8 +2413,8 @@ void process_key_cmd_char(char c)
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
 
-        case '&': view_mode = vm_skyatlas; break;
-        case '_': view_mode = vm_horizon; break;
+        case '&': view_mode = vm_skyatlas; viewchanged = true; break;
+        case '_': view_mode = vm_horizon; viewchanged = true; break;
         case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
 
         default:
@@ -2913,414 +2914,88 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
-    cel_obj_class tc = cels[editidx]->typeclass();
+    cel_obj_class tc = cel->typeclass();
 
-    strcpy(edit_name, cel->name);
-    ImGui::Text("%s", "Name");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid*2);
-    if (ImGui::InputText("##edtname", edit_name, 40, 0)) cel->user_edited = true;
-    ImGui::SameLine(col3);
-    if (ImGui::Button("Select"))
+    ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+    if (ImGui::BeginTabBar("##edittabs", tab_bar_flags))
     {
-        selected = editidx;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Focus"))
-    {
-        selected = editidx;
-        searched = true;
-        viewchanged = true;
-        center_selected();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Track"))
-    {
-        trackidx = editidx;
-        viewchanged = true;
-    }
-
-    if (tc == class_star)
-    {
-        Star* s = (Star*)cels[editidx];
-
-        char edit_ra[20];
-        strcpy(edit_ra, s->RA_as_hms(0).c_str());
-        ImGui::Text("%s", "R.Ascension");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputText("##edtra", edit_ra, 20))
+        if (ImGui::BeginTabItem("Basics"))
         {
-            s->RA_from_hms(edit_ra);
-            s->update_location(simnow);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine(col2);
-        char edit_decl[20];
-        strcpy(edit_decl, s->Decl_as_degms().c_str());
-        ImGui::Text("%s", "Declination");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputText("##edtdecl", edit_decl, 20))
-        {
-            s->Decl_from_degms(edit_decl);
-            s->update_location(simnow);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        }
-
-        double edit_dist = s->distance / light_year;
-        ImGui::Text("%s", "Distance");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtdist", &edit_dist, 0, 0, "%.3f"))
-        {
-            s->distance = edit_dist * light_year;
-            s->update_location(simnow);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine();
-        ImGui::Text("%s", "l.y.");
-        ImGui::SameLine(col2);
-        double edit_rv = s->radial_velocity;
-        ImGui::Text("%s", "Rad. Vel.");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtrv", &edit_rv, 0, 0, "%.9f"))
-        {
-            s->radial_velocity = edit_rv;
-            s->update_location(simnow);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine();
-        ImGui::Text("%s", "m/s");
-    }
-
-    edit_eqincl = cel->obliquity * fiftyseven;
-    ImGui::Text("%s", "Obliquity");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
-    {
-        cels[editidx]->obliquity = edit_eqincl * fiftyseventh;
-        cels[editidx]->known_poles = true;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-    }
-    ImGui::SameLine(col2);
-    edit_equinox = cel->equinox * fiftyseven;
-    ImGui::Text("%s", "Equinox");
-    ImGui::SameLine(col3);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f"))
-    {
-        cels[editidx]->equinox = edit_equinox * fiftyseventh;
-        cels[editidx]->known_poles = true;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-    }
-
-    double edit_mass = cel->mass / 1000;
-    ImGui::Text("%s", "Mass, kg");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
-    {
-        cel->mass = edit_mass * 1000;
-        if (cel->typeclass() == class_planet
-            || cel->typeclass() == class_moon               // See Kepler-1625b.
-            ) ((Planet*)cel)->classify();
-        cel->user_edited = true;
-        viewchanged = true;
-    }
-    ImGui::SameLine(col2);
-    double edit_radius = cel->volumetric_mean_radius / 1000;
-    ImGui::Text("%s", "Radius, km");
-    ImGui::SameLine(col3);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
-    {
-        cel->volumetric_mean_radius = edit_radius * 1000;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon)
-        {
-            Moon *m = (Moon*)cel;
-            m->depth = m->width = m->height = 0;
-            m->update_location(simnow);
-        }
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-
-    stringstream massss;
-    massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-6) << " g/cm^3";
-    std::string dens = massss.str();
-    ImGui::Text("%s", dens.c_str());
-    if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
-    {
-        ImGui::SameLine(col2);
-        ImGui::Text("%s", "Texture");
-        ImGui::SameLine(col3);
-        if (ImGui::Button("Save"))
-        {
-            std::thread save_tex(save_textures, cel);
-            save_tex.detach();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Refresh"))
-        {
-            if (cel->surf_map)
+            strcpy(edit_name, cel->name);
+            ImGui::Text("%s", "Name");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid*2);
+            if (ImGui::InputText("##edtname", edit_name, 40, 0))
             {
-                delete cel->surf_map;
-                cel->surf_map = nullptr;
+                strcpy(cels[editidx]->name, edit_name);
+                cel->user_edited = true;
             }
-            if (cel->cloud_map)
+            ImGui::SameLine(col3);
+            if (ImGui::Button("Select"))
             {
-                delete cel->cloud_map;
-                cel->cloud_map = nullptr;
+                selected = editidx;
             }
-            if (cel->night_map)
+            ImGui::SameLine();
+            if (ImGui::Button("Focus"))
             {
-                delete cel->night_map;
-                cel->night_map = nullptr;
+                selected = editidx;
+                searched = true;
+                viewchanged = true;
+                center_selected();
             }
-            cel->looked_for_maps = false;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Regenerate"))
-        {
-            if (cel->surf_map)
+            ImGui::SameLine();
+            if (ImGui::Button("Track"))
             {
-                delete cel->surf_map;
-                cel->surf_map = nullptr;
+                trackidx = editidx;
+                viewchanged = true;
             }
-            if (cel->cloud_map)
+
+            double edit_mass = cel->mass / 1000;
+            ImGui::Text("%s", "Mass, kg");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
             {
-                delete cel->cloud_map;
-                cel->cloud_map = nullptr;
+                cel->mass = edit_mass * 1000;
+                if (cel->typeclass() == class_planet
+                    || cel->typeclass() == class_moon               // See Kepler-1625b.
+                    ) ((Planet*)cel)->classify();
+                cel->user_edited = true;
+                viewchanged = true;
             }
-            if (cel->night_map)
-            {
-                delete cel->night_map;
-                cel->night_map = nullptr;
-            }
-            cel->fictitious_map_height = 5000;          // World-building resolution.
-            cel->looked_for_maps = false;
-            cel->ignore_map_files = true;
-        }
-    }
-
-    double edit_oblt = cel->oblateness;
-    ImGui::Text("%s", "Oblateness");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtoblt", &edit_oblt, 0, 0, "%.9e"))
-    {
-        cel->oblateness = edit_oblt;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-    if (cel->typeclass() == class_moon)
-    {
-        ImGui::SameLine();
-        ImGui::Text("%s", ", OR:");
-
-        Moon *m = (Moon*)cel;
-        ImGui::SameLine(col2);
-        ImGui::Text("%s", "D/W/H, km");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid/3);
-        if (ImGui::InputDouble("##edtdep", &m->depth, 0, 0, "%.2f"))
-        {
-            cel->user_edited = true;
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(txtwid/3);
-        if (ImGui::InputDouble("##edtwid", &m->width, 0, 0, "%.2f"))
-        {
-            cel->user_edited = true;
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(txtwid/3);
-        if (ImGui::InputDouble("##edthei", &m->height, 0, 0, "%.2f"))
-        {
-            cel->user_edited = true;
-        }
-    }
-
-    double edit_rot = cel->sidereal_rotational_period / oneday;
-    ImGui::Text("%s", "Rotation, d");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtrot", &edit_rot, 0, 0, "%.6f"))
-    {
-        cel->sidereal_rotational_period = edit_rot * oneday;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-    ImGui::SameLine(col2);
-    double edit_lonoff = cel->lon_J2000_offset * fiftyseven;
-    ImGui::Text("%s", "Lon. Offset");
-    ImGui::SameLine(col3);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtlonoff", &edit_lonoff, 0, 0, "%.3f"))
-    {
-        cel->lon_J2000_offset = edit_lonoff * fiftyseventh;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-
-    double edit_absmag = cel->absolute_magnitude;
-    ImGui::Text("%s", "Abs. Magn.");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtabsmag", &edit_absmag, 0, 0, "%.3f"))
-    {
-        cel->absolute_magnitude = edit_absmag;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-    if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
-    {
-        Planet* p = (Planet*)cel;
-        p->estimate_albedo();
-        ImGui::SameLine(col2);
-        ImGui::Text("%s", "Albedo");
-        double edit_albedo = p->albedo;
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtalbdo", &edit_albedo, 0, 0, "%.3f"))
-        {
-            p->albedo = edit_albedo;
-
-            double disc_area = pow(p->volumetric_mean_radius / earth_radius, 2);
-            double absmag = earth_absmag - log(disc_area * p->albedo / earth_albedo) / log(magnbase);
-            if (!isnan(absmag)) p->absolute_magnitude = absmag;
-
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-    }
-
-    double edit_prcseq = cel->precession / oneyear;
-    ImGui::Text("%s", "Precession");
-    ImGui::SameLine(col1);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtprcs", &edit_prcseq, 0, 0, "%.9e"))
-    {
-        cel->precession = edit_prcseq * oneyear;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-    ImGui::SameLine(col2);
-    double edit_bvcol = cel->BV_color;
-    ImGui::Text("%s", "B-V color");
-    ImGui::SameLine(col3);
-    ImGui::SetNextItemWidth(txtwid);
-    if (ImGui::InputDouble("##edtbv", &edit_bvcol, 0, 0, "%.6f"))
-    {
-        cel->BV_color = edit_bvcol;
-        cel->user_edited = true;
-        viewchanged = true;
-        if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-        else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-    }
-
-    if (orb)
-    {
-        ImGui::Separator();
-
-        std::string orbcen = "Center of Orbit: ";
-        orbcen += std::string(cel->orbit->center->name);
-        ImGui::Text("%s", orbcen.c_str());
-        if (orb->center && orb->center->type == star)
-        {
             ImGui::SameLine(col2);
-            stringstream oss;
-            double star_appmag = orb->center->viewer_magnitude(cel->location);
-            oss << "Star apparent mag. " << (star_appmag > 0 ? "+" : "") << std::setprecision(2) << star_appmag;
-            ImGui::Text("%s", oss.str().c_str());
-        }
-
-        double sma_limit = cel->orbit->center->get_equatorial_radius() + cel->get_equatorial_radius();
-        if (orb->semimajor_axis < sma_limit)
-        {
-            orb->semimajor_axis = sma_limit;
-            orb->compute_period(cel->mass);
-        }
-        edit_sma = orb->semimajor_axis / AU;
-        ImGui::Text("%s", "Semimaj.Axis");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.9f"))
-        {
-            orb->semimajor_axis = fmax(edit_sma * AU, cel->orbit->center->get_equatorial_radius() + cel->get_equatorial_radius());
-            if (cel->user_added) orb->compute_period(cel->mass);
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine();
-        ImGui::Text("%s", "AU");
-        edit_period = cel->orbit->period / oneday;
-        ImGui::SameLine(col2);
-        ImGui::Text("%s", "Period");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f"))
-        {
-            if (edit_period)
+            double edit_radius = cel->volumetric_mean_radius / 1000;
+            ImGui::Text("%s", "Radius, km");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
             {
-                cels[editidx]->orbit->period = edit_period * oneday;
-                if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
-                if (orb->semimajor_axis < sma_limit)
+                cel->volumetric_mean_radius = edit_radius * 1000;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon)
                 {
-                    orb->semimajor_axis = sma_limit;
-                    orb->compute_period(cel->mass);
+                    Moon *m = (Moon*)cel;
+                    m->depth = m->width = m->height = 0;
+                    m->update_location(simnow);
                 }
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            stringstream massss;
+            massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-6) << " g/cm^3";
+            std::string dens = massss.str();
+            ImGui::Text("%s", dens.c_str());
+
+            double edit_absmag = cel->absolute_magnitude;
+            ImGui::Text("%s", "Abs. Magn.");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtabsmag", &edit_absmag, 0, 0, "%.3f"))
+            {
+                cel->absolute_magnitude = edit_absmag;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -3328,121 +3003,558 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
-        }
-        ImGui::SameLine();
-        ImGui::Text("%s", "days");
+            if (tc == class_planet || tc == class_moon)
+            {
+                ImGui::SameLine(col2);
+                Planet* p = (Planet*)cel;
+                p->estimate_albedo();
+                ImGui::Text("%s", "Albedo");
+                double edit_albedo = p->albedo;
+                ImGui::SameLine(col3);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtalbdo", &edit_albedo, 0, 0, "%.3f"))
+                {
+                    p->albedo = edit_albedo;
 
-        edit_incl = cel->orbit->inclination * fiftyseven;
-        ImGui::Text("%s", "Inclination");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+                    double disc_area = pow(p->volumetric_mean_radius / earth_radius, 2);
+                    double absmag = earth_absmag - log(disc_area * p->albedo / earth_albedo) / log(magnbase);
+                    if (!isnan(absmag)) p->absolute_magnitude = absmag;
+
+                    cel->user_edited = true;
+                    viewchanged = true;
+                    if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                    else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                    else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+                }
+            }
+
+            double edit_bvcol = cel->BV_color;
+            ImGui::Text("%s", "B-V color");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtbv", &edit_bvcol, 0, 0, "%.2f"))
+            {
+                cel->BV_color = edit_bvcol;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            ImGui::SameLine(col2);
+            double edit_ubcol = cel->UB_color;
+            ImGui::Text("%s", "U-B color");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtub", &edit_ubcol, 0, 0, "%.2f"))
+            {
+                cel->UB_color = edit_ubcol;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            edit_eqincl = cel->obliquity * fiftyseven;
+            ImGui::Text("%s", "Obliquity");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
+            {
+                cels[editidx]->obliquity = edit_eqincl * fiftyseventh;
+                cels[editidx]->known_poles = true;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            edit_equinox = cel->equinox * fiftyseven;
+            ImGui::Text("%s", "Equinox");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f"))
+            {
+                cels[editidx]->equinox = edit_equinox * fiftyseventh;
+                cels[editidx]->known_poles = true;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            }
+
+            double edit_prcseq = cel->precession / oneyear;
+            ImGui::Text("%s", "Precession");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtprcs", &edit_prcseq, 0, 0, "%.9e"))
+            {
+                cel->precession = edit_prcseq * oneyear;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            double edit_oblt = cel->oblateness;
+            ImGui::Text("%s", "Oblateness");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtoblt", &edit_oblt, 0, 0, "%.9e"))
+            {
+                cel->oblateness = edit_oblt;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            if (cel->typeclass() == class_moon)
+            {
+                ImGui::SameLine();
+                ImGui::Text("%s", ", OR:");
+
+                Moon *m = (Moon*)cel;
+                ImGui::SameLine(col2);
+                ImGui::Text("%s", "D/W/H, km");
+                ImGui::SameLine(col3);
+                ImGui::SetNextItemWidth(txtwid/3);
+                if (ImGui::InputDouble("##edtdep", &m->depth, 0, 0, "%.2f"))
+                {
+                    cel->user_edited = true;
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(txtwid/3);
+                if (ImGui::InputDouble("##edtwid", &m->width, 0, 0, "%.2f"))
+                {
+                    cel->user_edited = true;
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(txtwid/3);
+                if (ImGui::InputDouble("##edthei", &m->height, 0, 0, "%.2f"))
+                {
+                    cel->user_edited = true;
+                }
+            }
+
+            double edit_rot = cel->sidereal_rotational_period / oneday;
+            ImGui::Text("%s", "Rotation, d");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtrot", &edit_rot, 0, 0, "%.6f"))
+            {
+                cel->sidereal_rotational_period = edit_rot * oneday;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            double edit_lonoff = cel->lon_J2000_offset * fiftyseven;
+            ImGui::Text("%s", "Lon. Offset");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtlonoff", &edit_lonoff, 0, 0, "%.3f"))
+            {
+                cel->lon_J2000_offset = edit_lonoff * fiftyseventh;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            ImGui::EndTabItem();
         }
-        ImGui::SameLine(col2);
-        edit_node = cel->orbit->ascending_node * fiftyseven;
-        ImGui::Text("%s", "Asc. Node");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.9f"))
+        /* if (ImGui::BeginTabItem("Template"))
         {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            ImGui::EndTabItem();
+        } */
+        if ((tc == class_star) && ImGui::BeginTabItem("Starstuff"))
+        {
+            Star* s = (Star*)cels[editidx];
+
+            char edit_ra[20];
+            strcpy(edit_ra, s->RA_as_hms(0).c_str());
+            ImGui::Text("%s", "R.Ascension");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputText("##edtra", edit_ra, 20))
+            {
+                s->RA_from_hms(edit_ra);
+                s->update_location(simnow);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            char edit_decl[20];
+            strcpy(edit_decl, s->Decl_as_degms().c_str());
+            ImGui::Text("%s", "Declination");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputText("##edtdecl", edit_decl, 20))
+            {
+                s->Decl_from_degms(edit_decl);
+                s->update_location(simnow);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            }
+
+            double edit_dist = s->distance / light_year;
+            ImGui::Text("%s", "Distance");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtdist", &edit_dist, 0, 0, "%.3f"))
+            {
+                s->distance = edit_dist * light_year;
+                s->update_location(simnow);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", "l.y.");
+            ImGui::SameLine(col2);
+            double edit_rv = s->radial_velocity;
+            ImGui::Text("%s", "Rad. Vel.");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtrv", &edit_rv, 0, 0, "%.9f"))
+            {
+                s->radial_velocity = edit_rv;
+                s->update_location(simnow);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", "m/s");
+
+            ImGui::EndTabItem();
+        }
+        if (orb && ImGui::BeginTabItem("Orbit"))
+        {
+            std::string orbcen = "Center of Orbit: ";
+            orbcen += std::string(cel->orbit->center->name);
+            ImGui::Text("%s", orbcen.c_str());
+            if (orb->center && orb->center->type == star)
+            {
+                ImGui::SameLine(col2);
+                stringstream oss;
+                double star_appmag = orb->center->viewer_magnitude(cel->location);
+                oss << "Star apparent mag. " << (star_appmag > 0 ? "+" : "") << std::setprecision(2) << star_appmag;
+                ImGui::Text("%s", oss.str().c_str());
+            }
+
+            double sma_limit = cel->orbit->center->get_equatorial_radius() + cel->get_equatorial_radius();
+            if (orb->semimajor_axis < sma_limit)
+            {
+                orb->semimajor_axis = sma_limit;
+                orb->compute_period(cel->mass);
+            }
+            edit_sma = orb->semimajor_axis / AU;
+            ImGui::Text("%s", "Semimaj.Axis");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.9f"))
+            {
+                orb->semimajor_axis = fmax(edit_sma * AU, cel->orbit->center->get_equatorial_radius() + cel->get_equatorial_radius());
+                if (cel->user_added) orb->compute_period(cel->mass);
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", "AU");
+            edit_period = cel->orbit->period / oneday;
+            ImGui::SameLine(col2);
+            ImGui::Text("%s", "Period");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f"))
+            {
+                if (edit_period)
+                {
+                    cels[editidx]->orbit->period = edit_period * oneday;
+                    if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
+                    if (orb->semimajor_axis < sma_limit)
+                    {
+                        orb->semimajor_axis = sma_limit;
+                        orb->compute_period(cel->mass);
+                    }
+                    cel->user_edited = true;
+                    viewchanged = true;
+                    if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                    else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                    else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                    else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+                }
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", "days");
+
+            edit_incl = cel->orbit->inclination * fiftyseven;
+            ImGui::Text("%s", "Inclination");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->inclination = edit_incl * fiftyseventh;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            edit_node = cel->orbit->ascending_node * fiftyseven;
+            ImGui::Text("%s", "Asc. Node");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtnode", &edit_node, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->ascending_node = edit_node * fiftyseventh;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            edit_eccn = cel->orbit->eccentricity;
+            ImGui::Text("%s", "Eccentricity");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->eccentricity = edit_eccn;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
+            ImGui::Text("%s", "Arg.Periapsis");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->arg_periapsis = edit_argperi * fiftyseventh;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            edit_epoch = cel->orbit->epoch;
+            ImGui::Text("%s", "Epoch, JD");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->epoch = edit_epoch;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            edit_manom = cel->orbit->mean_anomaly * fiftyseven;
+            ImGui::Text("%s", "Mean Anomaly");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->mean_anomaly = edit_manom * fiftyseventh;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
+            ImGui::Text("%s", "Prec. Node");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtprcnd", &edit_precnode, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->prec_node = edit_precnode ? (M_PI * 2 / (edit_precnode * oneday)) : 0;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine(col2);
+            edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
+            ImGui::Text("%s", "ProcArgPeri");
+            ImGui::SameLine(col3);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f"))
+            {
+                cels[editidx]->orbit->proc_argperi = edit_procargperi ? (M_PI * 2 / (edit_procargperi * oneday)) : 0;
+                cel->user_edited = true;
+                viewchanged = true;
+                if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+                else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            ImGui::EndTabItem();
+        }
+        if ((tc == class_planet || tc == class_moon) && ImGui::BeginTabItem("Maps"))
+        {
+            Planet* p = (Planet*)cel;
+
+            ImGui::SameLine();
+            ImGui::Text("%s", "Texture");
+            ImGui::SameLine();
+            if (ImGui::Button("Save"))
+            {
+                std::thread save_tex(save_textures, cel);
+                save_tex.detach();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Refresh"))
+            {
+                if (cel->surf_map)
+                {
+                    delete cel->surf_map;
+                    cel->surf_map = nullptr;
+                }
+                if (cel->cloud_map)
+                {
+                    delete cel->cloud_map;
+                    cel->cloud_map = nullptr;
+                }
+                if (cel->night_map)
+                {
+                    delete cel->night_map;
+                    cel->night_map = nullptr;
+                }
+                cel->looked_for_maps = false;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Regenerate"))
+            {
+                if (cel->surf_map)
+                {
+                    delete cel->surf_map;
+                    cel->surf_map = nullptr;
+                }
+                if (cel->cloud_map)
+                {
+                    delete cel->cloud_map;
+                    cel->cloud_map = nullptr;
+                }
+                if (cel->night_map)
+                {
+                    delete cel->night_map;
+                    cel->night_map = nullptr;
+                }
+                cel->fictitious_map_height = 5000;          // World-building resolution.
+                cel->looked_for_maps = false;
+                cel->ignore_map_files = true;
+            }
+
+            if (!cel->looked_for_maps)
+            {
+                cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+                std::thread ttex(load_textures, cel);
+                ttex.detach();
+            }
+
+            Map *celmaps[3];
+            celmaps[0] = cel->surf_map;
+            celmaps[1] = cel->cloud_map;
+            celmaps[2] = cel->night_map;
+
+            const char *maptabs[3] = { "Surface", "Clouds", "Night" };
+
+            if (ImGui::BeginTabBar("##editmaps", tab_bar_flags))
+            {
+                int i;
+                for (i=0; i<3; i++)
+                {
+                    Map *map = celmaps[i];
+                    int x, y;
+                    double xrad, yrad;
+                    RGB rgb;
+                    ImU32 imu;
+
+                    if (map)
+                    {
+                        if (ImGui::BeginTabItem(maptabs[i]))
+                        {
+                            ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // ImDrawList API uses screen coordinates.
+                            // canvas_p0.x += col2;
+                            ImVec2 canvas_sz;
+                            canvas_sz.x = 360.0f;
+                            canvas_sz.y = 180.0f;
+                            ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
+
+                            // Draw border and background color
+                            ImGuiIO& io = ImGui::GetIO();
+                            ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                            draw_list->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(0, 0, 0, 255));
+                            draw_list->AddRect(canvas_p0, canvas_p1, rgba_apply_redlight(IM_COL32(0, 16, 128, 255)));
+
+                            for (y=0; y<180; y++)
+                            {
+                                yrad = (90-y) * fiftyseventh;
+                                for (x=0; x<360; x++)
+                                {
+                                    xrad = x * fiftyseventh;
+
+                                    rgb = map->color_at(yrad, xrad);
+                                    imu = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255));
+                                    draw_list->AddRectFilled(ImVec2(canvas_p0.x+x, canvas_p0.y+y), ImVec2(canvas_p0.x+x+1, canvas_p0.y+y+1), imu);
+                                }
+                            }
+
+                            // Hold my place.
+                            ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+                            ImGui::EndTabItem();
+                        }
+                    }
+                }
+                ImGui::EndTabBar();
+            }
+
+            ImGui::EndTabItem();
         }
 
-        edit_eccn = cel->orbit->eccentricity;
-        ImGui::Text("%s", "Eccentricity");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine(col2);
-        edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
-        ImGui::Text("%s", "Arg.Periapsis");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-
-        edit_epoch = cel->orbit->epoch;
-        ImGui::Text("%s", "Epoch, JD");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine(col2);
-        edit_manom = cel->orbit->mean_anomaly * fiftyseven;
-        ImGui::Text("%s", "Mean Anomaly");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-
-        edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
-        ImGui::Text("%s", "Prec. Node");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtprcnd", &edit_precnode, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
-        ImGui::SameLine(col2);
-        edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
-        ImGui::Text("%s", "ProcArgPeri");
-        ImGui::SameLine(col3);
-        ImGui::SetNextItemWidth(txtwid);
-        if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f"))
-        {
-            cel->user_edited = true;
-            viewchanged = true;
-            if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
-            else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-        }
+        ImGui::EndTabBar();
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));
@@ -4239,35 +4351,8 @@ int main (int argc, char** argv)
 
             viewchanged = searched || (trackidx>=0) || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
 
-            // Edit dialog
-            if (objedtwnd)
-            {
-                draw_objedit_window(io);
-                if (editidx >= 0)
-                {
-                    strcpy(cels[editidx]->name, edit_name);
-                    if (cels[editidx]->orbit)
-                    {
-                        cels[editidx]->orbit->inclination = edit_incl * fiftyseventh;
-                        cels[editidx]->orbit->ascending_node = edit_node * fiftyseventh;
-                        cels[editidx]->orbit->eccentricity = edit_eccn;
-                        cels[editidx]->orbit->arg_periapsis = edit_argperi * fiftyseventh;
-                        cels[editidx]->orbit->epoch = edit_epoch;
-                        cels[editidx]->orbit->mean_anomaly = edit_manom * fiftyseventh;
-                        cels[editidx]->orbit->prec_node = edit_precnode ? (M_PI * 2 / (edit_precnode * oneday)) : 0;
-                        cels[editidx]->orbit->proc_argperi = edit_procargperi ? (M_PI * 2 / (edit_procargperi * oneday)) : 0;
-                    }
-                    if (cels[editidx]->typeclass() == class_star)
-                        ((Star*)cels[editidx])->update_location(simnow);
-                    else if (cels[editidx]->typeclass() == class_planet)
-                        ((Planet*)cels[editidx])->update_location(simnow);
-                    else if (cels[editidx]->typeclass() == class_moon)
-                        ((Moon*)cels[editidx])->update_location(simnow);
-                    else if (cels[editidx]->typeclass() == class_satellite)
-                        ((Satellite*)cels[editidx])->update_location(simnow);
-                }
-            }
-
+            // Dialogs
+            if (objedtwnd) draw_objedit_window(io);
             if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);
             if (satwnd) draw_sat_window(io);
