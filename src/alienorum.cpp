@@ -3592,7 +3592,8 @@ void draw_system_explorer(ImGuiIO& io)
         ImGui::EndListBox();
     }
 
-    celidx_sel_in_sysxplor = list_item_celids[item_selected_idx];
+    if (item_selected_idx < list_item_celids.size()) celidx_sel_in_sysxplor = list_item_celids[item_selected_idx];
+    else celidx_sel_in_sysxplor = -1;
     if (ImGui::Button("Select##explored"))
     {
         selected = celidx_sel_in_sysxplor;
@@ -3615,18 +3616,24 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::SameLine();
     if (ImGui::Button("Go##explored"))
     {
-        whereami = celidx_sel_in_sysxplor;
-        set_viewer_location_and_plane();
-        selected = trackidx = -1;
-        global_brightness = default_brightness;
-        zoom = 1;
-        viewchanged = true;
+        if (celidx_sel_in_sysxplor >= 0)
+        {
+            whereami = celidx_sel_in_sysxplor;
+            set_viewer_location_and_plane();
+            selected = trackidx = -1;
+            global_brightness = default_brightness;
+            zoom = 1;
+            viewchanged = true;
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Edit##explored"))
     {
-        editidx = celidx_sel_in_sysxplor;
-        objedtwnd = true;
+        if (celidx_sel_in_sysxplor >= 0)
+        {
+            editidx = celidx_sel_in_sysxplor;
+            objedtwnd = true;
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Add New...##explored"))
