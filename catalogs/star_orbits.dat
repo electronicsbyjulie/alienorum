@@ -1,5 +1,5 @@
 
-#Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch
+#Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
 Sun                     (system inclination)                    000         023.45
 
 # https://en.wikipedia.org/wiki/Alpha_Centauri
@@ -9,8 +9,8 @@ Rigil Kentaurus         Toliman                 2.5170e+9       205.073     079.
 HD20807                 HD20766                 5.36e+12?       296.2       065.5?      ?           5.610e+14?  ?                               2013.
 
 # https://en.wikipedia.org/wiki/Algol
-Algol                   HIP 14576 B             247737.1        043.43      098.70      000.00      3.337e+12   .0          316.57              2025.00274
-Algol                   Algol C                 5.87665e+7      132.66      083.66      310.02      1.4502e+14  .227        000.0000000         1987.35831
+Algol                   Algol B                 247737.1        043.43      098.70      000.00      3.337e+12   .0          316.57              2025.00274      K0IV            +2.9            0.70        3.48         6.92        4500
+Algol                   Algol C                 5.87665e+7      132.66      083.66      310.02      1.4502e+14  .227        000.0000000         1987.35831      F1V             +2.3            1.76        1.73        10.0         7500
 
 # https://doi.org/10.1093%2Fmnras%2Fstv511
 HD20794                 (dust disk)                             004.        050.                    3.7e+12
@@ -23,7 +23,7 @@ HD10700                 (debris disk)                                       035
 HD22049                 (asteroid belt)                         358         033.7                   1e+13
 
 # https://en.wikipedia.org/wiki/Gliese_86
-HD13445                 Gliese 86 B             3e+9            234.2       126.44      ?           3.55e12     .429
+HD13445                 WD 0208-510             3e+9            234.2       126.44      ?           3.55e12     .429
 
 # https://en.wikipedia.org/wiki/Fomalhaut
 # https://upload.wikimedia.org/wikipedia/commons/8/84/Fomalhaut_Dusty_Debris_Disk_%28MIRI_Compass_Image%29.png
@@ -42,3 +42,4 @@ Gliese 234 A            (system inclination)                    210.385     052.
 Gliese 473 A            (system inclination)                    143.2       102.8
 HD8890                  (system inclination)                    201.28      127.57
 HD39801                 (stellar rotation)                      145         020
+HD10307                 (companion orbit)                       032.25      100.36

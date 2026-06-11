@@ -2209,7 +2209,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (!A)
         {
-            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << std::endl;
+            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": center not found." << std::endl;
             continue;
         }
 
@@ -2222,8 +2222,44 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (!s || s == A)
         {
-            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << std::endl;
-            continue;
+            int bs = trim(buffer).size();
+            if (bs >= 180)
+            {
+                for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+                s = new Star();
+                cels[ncelobjs] = s;
+                cels[++ncelobjs] =  nullptr;
+                strcpy(s->name, bdyname.c_str());
+                read_field_onebased(buffer, 161, 175, field);
+                strcpy(s->spectral_type, trim(field).c_str());
+                read_field_onebased(buffer, 177, 191, field);
+                s->absolute_magnitude = atof(field);
+                if (bs > 193)
+                {
+                    read_field_onebased(buffer, 193, 203, field);
+                    s->mass  = atof(field) * solar_mass;
+                }
+                if (bs > 205)
+                {
+                    read_field_onebased(buffer, 205, 215, field);
+                    s->volumetric_mean_radius = atof(field) * solar_radius;
+                }
+                if (bs > 217)
+                {
+                    read_field_onebased(buffer, 217, 227, field);
+                    double lum = atof(field) * solar_radius;
+                    if (!s->absolute_magnitude)
+                    {
+                        double magshift = log(lum)/log(magnbase);
+                        s->absolute_magnitude = 4.85 - magshift;
+                    }
+                }
+            }
+            else
+            {
+                std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": member not found and insufficient data to construct new." << std::endl;
+                continue;
+            }
         }
 
         if (A->HD == 20766)

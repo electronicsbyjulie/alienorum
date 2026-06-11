@@ -588,11 +588,14 @@ int draw_sphere(CelestialObject* cel, double arad)
                     if (prev_valid)
                     {
                         if (wireframe) ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
-                        if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
-                        if (zdes.x < cel->drawnxmin) cel->drawnxmin = zdes.x;
-                        if (zdes.x > cel->drawnxmax) cel->drawnxmax = zdes.x;
-                        if (zdes.y < cel->drawnymin) cel->drawnymin = zdes.y;
-                        if (zdes.y > cel->drawnymax) cel->drawnymax = zdes.y;
+                        if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1)
+                        {
+                            cel->onscreen = true;
+                            if (dx1 < cel->drawnxmin) cel->drawnxmin = dx1;
+                            if (dx1 > cel->drawnxmax) cel->drawnxmax = dx1;
+                            if (dy1 < cel->drawnymin) cel->drawnymin = dy1;
+                            if (dy1 > cel->drawnymax) cel->drawnymax = dy1;
+                        }
                     }
 
                     // TODO: Also store 3D coordinates of each vertex.
@@ -1522,8 +1525,8 @@ void compute_object_draw_coordinates()
 
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-            cels[i]->drawnx = dx;
-            cels[i]->drawny = dy;
+            cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
+            cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = dy;
 
             if (dx < 0 || dx >= dispw) continue;
             if (dy < 0 || dy >= disph) continue;
@@ -2055,8 +2058,9 @@ void identify_object_under_cursor(ImGuiIO& io)
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
             && abs(io.MousePos.y - cels[i]->drawny) < threshold)
             ||
-            (io.MousePos.x > cels[i]->drawnxmin && io.MousePos.x < cels[i]->drawnxmax
-            && io.MousePos.y > cels[i]->drawnymin && io.MousePos.y < cels[i]->drawnymax)
+            (   cels[i]->drawnxmin < cels[i]->drawnxmax
+                && io.MousePos.x > cels[i]->drawnxmin && io.MousePos.x < cels[i]->drawnxmax
+                && io.MousePos.y > cels[i]->drawnymin && io.MousePos.y < cels[i]->drawnymax)
             )
         {
             // Prioritize by brightness.
@@ -2919,37 +2923,37 @@ void draw_objedit_window(ImGuiIO& io)
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("##edittabs", tab_bar_flags))
     {
-        if (ImGui::BeginTabItem("Basics"))
+        strcpy(edit_name, cel->name);
+        ImGui::Text("%s", "Name");
+        ImGui::SameLine(col1);
+        ImGui::SetNextItemWidth(txtwid*2);
+        if (ImGui::InputText("##edtname", edit_name, 40, 0))
         {
-            strcpy(edit_name, cel->name);
-            ImGui::Text("%s", "Name");
-            ImGui::SameLine(col1);
-            ImGui::SetNextItemWidth(txtwid*2);
-            if (ImGui::InputText("##edtname", edit_name, 40, 0))
-            {
-                strcpy(cels[editidx]->name, edit_name);
-                cel->user_edited = true;
-            }
-            ImGui::SameLine(col3);
-            if (ImGui::Button("Select"))
-            {
-                selected = editidx;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Focus"))
-            {
-                selected = editidx;
-                searched = true;
-                viewchanged = true;
-                center_selected();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Track"))
-            {
-                trackidx = editidx;
-                viewchanged = true;
-            }
+            strcpy(cels[editidx]->name, edit_name);
+            cel->user_edited = true;
+        }
+        ImGui::SameLine(col3);
+        if (ImGui::Button("Select"))
+        {
+            selected = editidx;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Focus"))
+        {
+            selected = editidx;
+            searched = true;
+            viewchanged = true;
+            center_selected();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Track"))
+        {
+            trackidx = editidx;
+            viewchanged = true;
+        }
 
+        if (ImGui::BeginTabItem("Bulk"))
+        {
             double edit_mass = cel->mass / 1000;
             ImGui::Text("%s", "Mass, kg");
             ImGui::SameLine(col1);
