@@ -2920,37 +2920,38 @@ void draw_objedit_window(ImGuiIO& io)
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
     cel_obj_class tc = cel->typeclass();
 
+    strcpy(edit_name, cel->name);
+    ImGui::Text("%s", "Name");
+    ImGui::SameLine(col1);
+    ImGui::SetNextItemWidth(txtwid*2);
+    if (ImGui::InputText("##edtname", edit_name, 40, 0))
+    {
+        strcpy(cels[editidx]->name, edit_name);
+        cel->user_edited = true;
+    }
+    ImGui::SameLine(col3);
+    if (ImGui::Button("Select"))
+    {
+        selected = editidx;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Focus"))
+    {
+        selected = editidx;
+        searched = true;
+        viewchanged = true;
+        center_selected();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Track"))
+    {
+        trackidx = editidx;
+        viewchanged = true;
+    }
+
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("##edittabs", tab_bar_flags))
     {
-        strcpy(edit_name, cel->name);
-        ImGui::Text("%s", "Name");
-        ImGui::SameLine(col1);
-        ImGui::SetNextItemWidth(txtwid*2);
-        if (ImGui::InputText("##edtname", edit_name, 40, 0))
-        {
-            strcpy(cels[editidx]->name, edit_name);
-            cel->user_edited = true;
-        }
-        ImGui::SameLine(col3);
-        if (ImGui::Button("Select"))
-        {
-            selected = editidx;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Focus"))
-        {
-            selected = editidx;
-            searched = true;
-            viewchanged = true;
-            center_selected();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Track"))
-        {
-            trackidx = editidx;
-            viewchanged = true;
-        }
 
         if (ImGui::BeginTabItem("Bulk"))
         {
@@ -3440,7 +3441,157 @@ void draw_objedit_window(ImGuiIO& io)
         {
             Planet* p = (Planet*)cel;
 
+            double edit_surf_presh = p->surface_pressure / oneatm;
+            ImGui::Text("%s", "Pressure, atm");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtpresh", &edit_surf_presh, 0, 0, "%.3f"))
+            {
+                p->surface_pressure = edit_surf_presh * oneatm;
+                cel->user_edited = true;
+            }
+            ImGui::SameLine(col2);
+            ImGui::Text("%s", "Total tau");
+            ImGui::SameLine(col3);
+            double edit_atm_tau = p->atmospheric_tau;
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edttau", &edit_atm_tau, 0, 0, "%.5f"))
+            {
+                p->atmospheric_tau = edit_atm_tau;
+                cel->user_edited = true;
+            }
             ImGui::SameLine();
+            if (ImGui::Button("...##tau_calculator"))
+            {
+                show_taucalc = !show_taucalc;
+            }
+
+            if (show_taucalc)
+            {
+                // Normalize pressure relative to Earth's sea-level pressure (1 atm)
+                constexpr double P_EARTH = 101325.0;
+                double normalized_pressure = p->surface_pressure / P_EARTH;
+
+                ImGui::Text("%s", "Use this tool to calculate total tau from atmospheric pressure and composition.");
+                ImGui::Text("%s", "We ignore gases like nitrogen, oxygen, argon that do not contribute to the greenhouse effect.");
+                static double co2_percent=(p->is_in_con_HZ()?0.04:90),
+                    ch4_percent=(p->is_in_con_HZ()?0.0002:0),
+                    h2o_percent=(p->is_in_con_HZ()?1:0),
+                    n2o_percent = 0, o3_percent = 0, so2_percent = 0, h2s_percent = 0, co_percent = 0,
+                    hcn_percent = 0, h2_percent = 0, nh3_percent = 0, c2h6_percent = 0;
+
+                ImGui::Text("%s", "Carbon dioxide %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtc02", &co2_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Methane %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtch4", &ch4_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Water vapor %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edth2o", &h2o_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Nitrous oxide %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtn2o", &n2o_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Ozone %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Sulfur dioxide %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Hydrogen sulfide %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Carbon monoxide %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtco", &co_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Hydrogen cyanide %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edthcn", &hcn_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Hydrogen %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edth2", &h2_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Ammonia %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtnh3", &nh3_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+                ImGui::Text("%s", "Ethane %");
+                ImGui::SameLine(col2);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtc2h6", &c2h6_percent, 0, 0, "%.6f"))
+                {
+                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
+                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    cel->user_edited = true;
+                }
+            }
+
+            ImGui::Text("Surface temperature: %fK", p->estimate_surface_temperature());
+
             ImGui::Text("%s", "Texture");
             ImGui::SameLine();
             if (ImGui::Button("Save"))

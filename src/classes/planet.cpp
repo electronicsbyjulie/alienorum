@@ -163,17 +163,16 @@ double Planet::est_bolometric_flux(double t_eff)
     return star_intrinsic / (sma_au * sma_au);            // inverse square of distance
 }
 
-double Planet::estimate_surface_temperature(double greenhouse_alpha)
+double Planet::estimate_surface_temperature()
 {
     double absorbed_flux = (est_bolometric_flux() * (1.0 - albedo)) / 4.0;
-    double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN, 0.25);
+    double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN_NORM, 0.25);
 
-    // Normalize pressure relative to Earth's sea-level pressure (1 atm)
-    constexpr double P_EARTH = 101325.0; 
-    double normalized_pressure = surface_pressure / P_EARTH;
+    // 4. Apply the Eddington Gray-Atmosphere Approximation
+    double empirical_tau_scale = 2.4; 
+    double greenhouse_factor = 1.0 + (0.75 * atmospheric_tau * empirical_tau_scale);
 
-    // Greenhouse scaling calculation based on atmospheric weight
-    double greenhouse_factor = 1.0 + (greenhouse_alpha * normalized_pressure);
+    // 5. Calculate final surface temperature
     double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
 
     return t_surface;
@@ -248,6 +247,7 @@ json Planet::to_json()
     if (albedo) towrite["albedo"] = albedo;
     towrite["surface_pressure"] = surface_pressure;
     towrite["opposition_surge"] = opposition_surge;
+    towrite["atmospheric_tau"] = atmospheric_tau;
     towrite["J2"] = J2;
 
     return towrite;
@@ -259,6 +259,7 @@ bool Planet::from_json(json j)
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
     try { j.at("surface_pressure").get_to(surface_pressure); } catch (...) { ; }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
+    try { j.at("atmospheric_tau").get_to(atmospheric_tau); } catch (...) { ; }
     try { j.at("J2").get_to(J2); } catch (...) { ; }
     return true;
 }

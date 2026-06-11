@@ -38,6 +38,7 @@ bool objedtwnd = false;
 bool satwnd = false;
 bool addcelwnd = false;
 bool explorer = false;
+bool show_taucalc = false;
 bool hide_mouse = true;
 bool searched = false;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Has Planets", "Planet in HZ", "Binary Orbit", "Known Poles" };
@@ -133,6 +134,59 @@ double solve_Kepler(double M, double e)
         E = E - delta / (1.0 - e * std::cos(E));
     } while (std::abs(delta) > 1e-10);
     return E;
+}
+
+// TODO: Consider storing the gases in a JSON file.
+double atmospheric_tau(double normalized_pressure,
+    double co2_fraction,
+    double ch4_fraction,
+    double h2o_fraction,
+    double n2o_fraction,
+    double o3_fraction,
+    double so2_fraction,
+    double h2s_fraction,
+    double co_fraction,
+    double hcn_fraction,
+    double h2_fraction,
+    double nh3_fraction,
+    double c2h6_fraction)
+{
+    // Calculate partial pressures of greenhouse gases
+    double p_co2 = normalized_pressure * co2_fraction;
+    double p_ch4 = normalized_pressure * ch4_fraction;
+    double p_h2o = normalized_pressure * h2o_fraction;
+    double p_n2o = normalized_pressure * n2o_fraction; // Nitrous Oxide
+    double p_o3  = normalized_pressure * o3_fraction;  // Ozone
+    double p_so2 = normalized_pressure * so2_fraction; // Sulfur Dioxide
+    double p_h2s = normalized_pressure * h2s_fraction; // Hydrogen Sulfide
+    double p_co  = normalized_pressure * co_fraction;  // Carbon Monoxide
+    double p_hcn = normalized_pressure * hcn_fraction; // Hydrogen Cyanide
+    double p_nh3 = normalized_pressure * nh3_fraction;
+    double p_h2  = normalized_pressure * h2_fraction;
+    double p_c2h6 = normalized_pressure * c2h6_fraction;
+
+    // 4. Dense Atmosphere Collision-Induced Absorption (CIA)
+    double tau_cia = 0.0;
+    if (normalized_pressure > 0.5) {
+        tau_cia += 0.08 * (p_h2 * normalized_pressure); 
+    }
+
+    double h2_feedback = 1.0 + (p_h2 * 25.0);
+
+    // Calculate Greenhouse Optical Depth (tau) using logarithmic scaling.
+    double tau_co2 = 0.5  * std::log1p(p_co2 * 100.0);
+    double tau_ch4 = 1.2  * std::log1p(p_ch4 * 500.0 * h2_feedback);
+    double tau_h2o = 0.8  * std::log1p(p_h2o * 50.0);
+    double tau_n2o = 0.7  * std::log1p(p_n2o * 350.0); // Potent, severe saturation curve
+    double tau_o3  = 0.4  * std::log1p(p_o3  * 150.0); // Moderate greenhouse agent
+    double tau_so2 = 0.5  * std::log1p(p_so2 * 80.0);  // Volcanic greenhouse component
+    double tau_h2s = 0.15 * std::log1p(p_h2s * 20.0);  // Volcanic greenhouse component
+    double tau_co  = 0.05 * std::log1p(p_co  * 10.0);  // Extremely weak direct thermal trapping
+    double tau_hcn = 0.1  * std::log1p(p_hcn * 30.0);  // Minor primordial trace gas
+    double tau_nh3 = 1.7  * std::log1p(p_nh3 * 800.0);
+    double tau_c2h6 = 0.20 * std::log1p(p_c2h6 * 600.0);
+
+    return fmax(0, tau_co2 + tau_ch4 + tau_h2o + tau_n2o + tau_o3 + tau_so2 + tau_h2s + tau_co + tau_hcn + tau_nh3 + tau_cia - tau_c2h6);
 }
 
 long long micronow()

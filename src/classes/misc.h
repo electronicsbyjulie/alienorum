@@ -30,8 +30,10 @@ using json = nlohmann::json;
 #define G 6.6743015e-14
 #define kB 1.380649e-23
 #define STEFAN_BOLTZMANN 5.670374419e-8
+#define STEFAN_BOLTZMANN_NORM 4.11659e-11
 #define Planck 6.62607015e-34
 #define water_freezing 273.15
+#define oneatm 101325
 
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)
@@ -132,6 +134,21 @@ double compute_time_dilation(double velocity);
 // For orbits.
 double solve_Kepler(double M, double e);
 
+double atmospheric_tau(double normalized_pressure,
+    double co2_fraction,
+    double ch4_fraction,
+    double h2o_fraction,
+    double n2o_fraction = 0, // Nitrous Oxide
+    double o3_fraction  = 0, // Ozone
+    double so2_fraction = 0, // Sulfur Dioxide
+    double h2s_fraction = 0, // Hydrogen Sulfide
+    double co_fraction  = 0, // Carbon Monoxide
+    double hcn_fraction = 0, // Hydrogen Cyanide
+    double h2_fraction = 0,
+    double nh3_fraction = 0,
+    double c2h6_fraction = 0
+    );
+
 extern const char *lbltypes[nlbltyp], *celtypes[nceltyp];
 extern int cbolbls_selected_idx, cboceltyp_selected_idx;
 extern double bv_correction;
@@ -149,7 +166,7 @@ extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, ob
 extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     viewer_lat, viewer_lon;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
-    objinfwnd, statuswnd, objedtwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer;
+    objinfwnd, statuswnd, objedtwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, show_taucalc;
 extern std::string objname, objinfo;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

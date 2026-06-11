@@ -1000,10 +1000,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
         // TODO: Don't overwrite surface pressure here. Randomize it during exoplanet load and make it a setting in the edit dialog.
-        p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
+        if (!p->surface_pressure) p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
         std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
-        double greenhouse_alpha = frand(0, frand(1, 10));
-        double T_surf = p->estimate_surface_temperature(greenhouse_alpha);
+        double T_surf = p->estimate_surface_temperature();
         std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
 
         // Constants for water b.p.
@@ -1032,7 +1031,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             has_water = max_water * pow(10, frand(-2.5, 0));
             ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 3)));
             veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
-            mtn_height = 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
+            mtn_height = (veg_height ?: has_water) + has_water*0.29; // 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
             snow_height = 1.0 - ((1.0 - has_water) * 0.5 * ice_amount);
             ice_amount *= 0.52;
         }

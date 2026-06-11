@@ -13,6 +13,7 @@ class Planet : public CelestialObject
     public:
     double albedo;
     double surface_pressure = 0;                        // For gas giants, pressure at the top of the cloud deck if known.
+    double atmospheric_tau  = 0;                        // Earth value. How well the atmosphere absorbs thermal infrared. Thickness dependent.
     double opposition_surge = 0;                        // TODO: A full moon is 13 times as bright, or 2.7 magnitudes brighter, compared to a quarter moon.
     double amt_lit = 0;
     double J2;
@@ -28,7 +29,7 @@ class Planet : public CelestialObject
     void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
     void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
     double est_bolometric_flux(double t_eff = 0);
-    double estimate_surface_temperature(double greenhouse_alpha);
+    double estimate_surface_temperature();
     bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
     double estimate_bump_scale();
 
