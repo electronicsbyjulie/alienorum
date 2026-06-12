@@ -15,4 +15,6 @@ void cache_cons_lines();
 void add_batch_satellites(std::vector<std::string> listlines);
 void load_stuff();
 
+extern int sats_added, sat_errors;
+
 #endif

@@ -1,6 +1,8 @@
 
 #include "loaders.h"
+#include "housekeeping.h"
 
+int sats_added = 0, sat_errors = 0;
 
 void load_textures(CelestialObject* cel)
 {
@@ -536,7 +538,6 @@ void cache_cons_lines()
     }
 }
 
-int sats_added = 0, sat_errors = 0;
 void add_batch_satellites(std::vector<std::string> listlines)
 {
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count

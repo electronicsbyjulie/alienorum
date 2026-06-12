@@ -27,6 +27,7 @@
 
 using namespace std;
 
+extern SDL_Window* window;
 extern char lookfor[40], edit_name[40], looksat[40];
 extern bool edtname_dirty;
 extern std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];

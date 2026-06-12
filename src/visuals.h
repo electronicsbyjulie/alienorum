@@ -2,6 +2,13 @@
 #ifndef _Visuals
 #define _Visuals
 
+#include "globals.h"
+
+#define bloom_exponent 2.5
+#define antenna_height 5
+#define panel_width 6
+#define panel_tilt 2
+
 void draw_ra_dec_lines();
 
 int draw_sphere(CelestialObject *cel, double arad);

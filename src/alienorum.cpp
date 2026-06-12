@@ -6,6 +6,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
+#include "dialogs.h"
 #include "visuals.h"
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 

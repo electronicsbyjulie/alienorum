@@ -694,11 +694,6 @@ void draw_objects()
         flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
         bloomrad = fmin(max_bloomrad, bloomrad);
 
-        #define bloom_exponent 2.5
-        #define antenna_height 5
-        #define panel_width 6
-        #define panel_tilt 2
-
         if (cls == class_satellite)
         {
             ImU32 satcol = rgba_apply_redlight(IM_COL32(255, 255, 255, 255));

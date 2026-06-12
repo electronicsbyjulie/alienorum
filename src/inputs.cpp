@@ -1,5 +1,7 @@
 
 #include "globals.h"
+#include "loaders.h"
+#include "housekeeping.h"
 #include "inputs.h"
 
 void center_selected()

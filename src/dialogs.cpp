@@ -1,6 +1,8 @@
 
 #include "dialogs.h"
-
+#include "inputs.h"
+#include "loaders.h"
+#include "housekeeping.h"
 
 void draw_status_window(ImGuiIO& io)
 {

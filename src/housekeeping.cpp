@@ -1,5 +1,6 @@
 
 #include "housekeeping.h"
+#include "inputs.h"
 
 void refresh_star_visibilities()
 {
