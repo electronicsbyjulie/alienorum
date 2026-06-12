@@ -5,7 +5,7 @@
         "NorthPoleDecl": 63.87,
         "Oblateness": 0.00005,
         "RotationPeriod": 2164000,
-        "SurfMap": "https://planetpixelemporium.com/download/download.php?sunmap.jpg",
+        "SurfMap": "https://svs.gsfc.nasa.gov/vis/a000000/a003800/a003851/solarSphere304A.0200.jpg",
         "SystemInclination": 90.00,
         "SystemNode": 23.45
     },
@@ -29,7 +29,7 @@
         "RotationPeriod": 5067000,
         "SEMIMAJOR_AXIS": 57909100000,
         "SurfacePressure": 5e-10,
-        "SurfMap": "https://planetpixelemporium.com/download/download.php?mercurymap.jpg",
+        "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/solar/2023/09/p/i/a/1/PIA17386.jpg",
         "UBmag": 0.40,
         "VolMeanRad": 2439700
     },
@@ -55,7 +55,7 @@
         "RotationPeriod": -20997150,
         "SEMIMAJOR_AXIS": 108209000000,
         "SurfacePressure": 9.3e+6,
-        "SurfMap": "https://planetpixelemporium.com/download/download.php?venusmap.jpg",
+        "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/cds/3d/resources/image/venus/preview.webp?w=2048",
         "UBmag": 0.50,
         "VolMeanRad": 6051800
     },
@@ -76,14 +76,14 @@
         "Lon_J2000_offset": -98.92,
         "Mass": 5.97217e+24,
         "MeanAnom": 355.51783,
-        "NightMap": "https://planetpixelemporium.com/download/download.php?earthlights1k.jpg",
+        "NightMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_01deg.jpg",
         "Oblateness": 0.00335,
         "Obliquity": 23.45,
         "OrbitPeriod": 31558149.7635,
         "RotationPeriod": 86164.100,
         "SEMIMAJOR_AXIS": 149598023000,
         "SurfacePressure": 101325,
-        "SurfMap": "https://planetpixelemporium.com/download/download.php?earthmap1k.jpg",
+        "SurfMap": "https://science.nasa.gov/wp-content/uploads/2011/10/elegant-figures_land_shallow_topo_720.jpg",
         "VolMeanRad": 6371000
     },
     {
@@ -108,7 +108,7 @@
         "RotationPeriod": 88642.68,
         "SEMIMAJOR_AXIS": 227939366000,
         "SurfacePressure": 636,
-        "SurfMap": "https://planetpixelemporium.com/download/download.php?mars_1k_color.jpg",
+        "SurfMap": "https://planetary.s3.amazonaws.com/web/assets/pictures/20140303_Mars_Viking_MDIM21_ClrMosaic_global_2500m.jpg",
         "UBmag": 0.63,
         "VolMeanRad": 3389500
     },
@@ -170,7 +170,7 @@
         "BODYNAME": "Uranus",
         "BVmag": 0.56,
         "CENTER_OF_ORBIT": "Sun",
-        "CloudMap": "https://planetpixelemporium.com/download/download.php?uranusmap.jpg",
+        "CloudMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Solarsystemscope_texture_2k_uranus.jpg/960px-Solarsystemscope_texture_2k_uranus.jpg",
         "Eccentricity": 0.04717,
         "Epoch": 2000,
         "Equinox": 347.48,

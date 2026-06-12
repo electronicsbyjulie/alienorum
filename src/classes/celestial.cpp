@@ -1028,8 +1028,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         else if (T_surf < T_boil * 1.1)
         {
             double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
-            has_water = max_water * pow(10, frand(-2.5, 0));
-            ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 3)));
+            has_water = frand(0, max_water);
+            ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 10)));
             veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
             mtn_height = (veg_height ?: has_water) + has_water*0.29; // 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
             snow_height = 1.0 - ((1.0 - has_water) * 0.5 * ice_amount);
@@ -1296,4 +1296,5 @@ void Map::generate_gas_giant_map(int lr, double BV)
         }
     }
 }
+
 

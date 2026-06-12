@@ -2915,7 +2915,7 @@ void draw_objedit_window(ImGuiIO& io)
     CelestialObject *cel = cels[editidx];
     Orbit *orb = cel->orbit;
 
-    ImGui::Begin("Edit Object", &objedtwnd, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin("Edit Object", &objedtwnd, 0);
 
     double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
     cel_obj_class tc = cel->typeclass();
@@ -3713,12 +3713,11 @@ void draw_objedit_window(ImGuiIO& io)
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));
-    ImVec2 siz = ImGui::GetWindowSize();
-    int objedttop = io.DisplaySize.y - siz.y, objedtleft = io.DisplaySize.x - siz.x;
-    ImGui::SetWindowPos(ImVec2(objedtleft, objedttop));
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
     ImGui::End();
 
-    if (io.MousePos.x >= objedtleft && io.MousePos.y >= objedttop)
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
+        && io.MousePos.x < pos.x+siz.x && io.MousePos.y < pos.y+siz.y)
         is_mouse_over_window = true;
 }
 
