@@ -871,6 +871,8 @@ bool save_universe()
 void set_center_objects()
 {
     int i;
+    first_letter_index.clear();
+    for (i=0; i<35; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
     for (i=0; cels[i]; i++)
     {
         // Center of each star system
@@ -898,7 +900,39 @@ void set_center_objects()
             else if (cels[i]->typeclass() == class_moon) ((Moon*)cels[i])->update_location(simnow);
             else if (cels[i]->typeclass() == class_satellite) ((Satellite*)cels[i])->update_location(simnow);
         }
+
+        // Name and constellation indices
+        char c = cels[i]->name[0];
+        if (c != 'H' || cels[i]->name[1] != 'D')
+        {
+            bool indexable = true;
+            if (c >= '0' && c <= '9') c -= '0';
+            else if (c >= 'A' && c <= 'Z') c = c - 'A' + 10;
+            else if (c >= 'a' && c <= 'z') c = c - 'a' + 10;
+            else indexable = false;
+            if (indexable) first_letter_index[c].push_back(cels[i]);
+        }
+
+        if (cels[i]->typeclass() == class_star)
+        {
+            Star *s = (Star*)cels[i];
+            if (strlen(s->constellation))
+            {
+                constellation_index[std::string(s->constellation)].push_back(cels[i]);
+            }
+        }
     }
+
+    #ifdef DEBUG
+    // Test a sample constellation.
+    const char* test_cons = "Vir";
+    int n = constellation_index[test_cons].size();
+    for (i=0; i<n; i++)
+    {
+        Star *s = (Star*)constellation_index[test_cons][i];
+        std::cout << s->Bayer << " " << s->name << std::endl << std::flush;
+    }
+    #endif
 }
 
 bool load_universe(std::string universe_fname = "universe.json")
@@ -976,7 +1010,6 @@ void load_catalogs()
         cout << "Reading Gliese catalog..." << endl << flush;
         int nGliese = cr.read_Gliese_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nGliese << " objects." << endl << flush;
-        ncelobjs += nGliese;
     }
     if (have_astorb)
     {
@@ -1005,7 +1038,6 @@ void load_catalogs()
         cout << "Reading Bright Star Catalog..." << endl << flush;
         int nBSC = cr.read_BrightStars_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nBSC << " objects." << endl << flush;
-        ncelobjs += nBSC;
     }
     Gliese_doubles_fix();
     if (have_HIP)
@@ -1096,7 +1128,7 @@ void load_catalogs()
             s->BV_color = 0.5;
             s->epoch = J2000;
             s->update_location(simnow);
-            cels[ncelobjs++] = s;
+            append_cel(s);
         }
     }
 
@@ -1183,20 +1215,37 @@ void read_cons_lines()
 
 void cache_cons_lines()
 {
-    int i, j;
+    int i, j, n;
 
     // Cache star indices of consline termini
     consaidx = new int[nconsln+16];
     consbidx = new int[nconsln+16];
     for (i=0; i<nconsln; i++)
     {
+        double mag_limit = (considx[i] == 34) ? 7.5 : 6.5;
         int founda = -1, foundb = -1, rechercher;
 
-        double mag_limit = (considx[i] == 34) ? 7.5 : 6.5;
-        rechercher = find_object(consline_a[i].c_str(), true, mag_limit);
-        if (rechercher >= 0) founda = rechercher;
-        rechercher = find_object(consline_b[i].c_str(), true, mag_limit);
-        if (rechercher >= 0) foundb = rechercher;
+        if (constellation_index.count(consabbrev[considx[i]]))
+        {
+            n = constellation_index[consabbrev[considx[i]]].size();
+            for (j=0; j<n; j++)
+            {
+                Star* s = (Star*) constellation_index[consabbrev[considx[i]]][j];
+                if (s->apparent_magnitude > mag_limit) continue;
+                if (!founda && !strcmp(s->Bayer, consline_a[i].c_str())) founda = s->seqno;
+                if (!founda && !strcmp(s->Flamsteed, consline_a[i].c_str())) founda = s->seqno;
+                if (!foundb && !strcmp(s->Bayer, consline_b[i].c_str())) foundb = s->seqno;
+                if (!foundb && !strcmp(s->Flamsteed, consline_b[i].c_str())) foundb = s->seqno;
+            }
+        }
+
+        if (founda<0 || foundb<0)
+        {
+            rechercher = find_object(consline_a[i].c_str(), true, mag_limit);
+            if (rechercher >= 0) founda = rechercher;
+            rechercher = find_object(consline_b[i].c_str(), true, mag_limit);
+            if (rechercher >= 0) foundb = rechercher;
+        }
 
         if (founda < 0) std::cerr << "Warning: Failed to identify " << consline_a[i] << " for constellation lines." << std::endl;
         if (foundb < 0) std::cerr << "Warning: Failed to identify " << consline_b[i] << " for constellation lines." << std::endl;
@@ -2840,38 +2889,39 @@ void draw_addcel_window(ImGuiIO& io)
             if (cboceltyp_selected_idx == 2 && is_cen_planet) cboceltyp_selected_idx = 3;
             else if (cboceltyp_selected_idx == 3 && !is_cen_planet) cboceltyp_selected_idx = 2;
 
+            CelestialObject *cel;
             switch (cboceltyp_selected_idx)
             {
-                case 0: cels[ncelobjs] = new Galaxy(); cels[ncelobjs]->type = galaxy; break;
-                case 1: cels[ncelobjs] = new Star(); cels[ncelobjs]->type = star; break;
-                case 2: cels[ncelobjs] = new Planet(); cels[ncelobjs]->type = rocky; break;
-                case 3: cels[ncelobjs] = new Moon(); cels[ncelobjs]->type = rocky; break;
-                case 4: cels[ncelobjs] = new Satellite(); cels[ncelobjs]->type = artificial; break;
+                case 0: cel = new Galaxy();     append_cel(cel); cel->type = galaxy;        break;
+                case 1: cel = new Star();       append_cel(cel); cel->type = star;          break;
+                case 2: cel = new Planet();     append_cel(cel); cel->type = rocky;         break;
+                case 3: cel = new Moon();       append_cel(cel); cel->type = rocky;         break;
+                case 4: cel = new Satellite();  append_cel(cel); cel->type = artificial;    break;
 
                 default:
                 std::cerr << "Unimplemented object type" << std::endl;
                 break;
             }
 
-            if (cels[ncelobjs])
+            if (cel)
             {
-                strcpy(cels[ncelobjs]->name, "new");
-                cels[ncelobjs]->user_added = true;
+                strcpy(cel->name, "new");
+                cel->user_added = true;
                 cels[addcenidx]->distance_known = true;
-                cels[ncelobjs]->distance_known = true;
-                if (cels[ncelobjs]->type >= cels[addcenidx]->type)
+                cel->distance_known = true;
+                if (cel->type >= cels[addcenidx]->type)
                 {
-                    cels[ncelobjs]->orbit = new Orbit();
-                    cels[ncelobjs]->orbit->center = cels[addcenidx];
-                    cels[ncelobjs]->orbit->semimajor_axis = 1e8;
-                    cels[ncelobjs]->orbit->period = oneday*7;
-                    cels[ncelobjs]->orbit->epoch = JDnow;
-                    cels[ncelobjs]->cenobj = cels[addcenidx]->cenobj;
+                    cel->orbit = new Orbit();
+                    cel->orbit->center = cels[addcenidx];
+                    cel->orbit->semimajor_axis = 1e8;
+                    cel->orbit->period = oneday*7;
+                    cel->orbit->epoch = JDnow;
+                    cel->cenobj = cels[addcenidx]->cenobj;
                 }
-                if (cels[ncelobjs]->typeclass() == class_planet || cels[ncelobjs]->typeclass() == class_moon)
+                if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
                 {
-                    Planet* pl = (Planet*)cels[ncelobjs];
-                    pl->mass = (cels[ncelobjs]->typeclass() == class_moon) ? lunar_mass : earth_mass;
+                    Planet* pl = (Planet*)cel;
+                    pl->mass = (cel->typeclass() == class_moon) ? lunar_mass : earth_mass;
                     pl->classify();
                     pl->estimate_radius();
                     pl->estimate_albedo_and_absmagn();
@@ -2880,7 +2930,6 @@ void draw_addcel_window(ImGuiIO& io)
                 editidx = ncelobjs;
                 objedtwnd = true;
                 addcelwnd = false;
-                ncelobjs++;
             }
         }
     }
@@ -3839,8 +3888,7 @@ void add_batch_satellites(std::vector<std::string> listlines)
     {
         mtx.lock();
         Satellite *sat = new Satellite();
-        cels[ncelobjs++] = sat;
-        cels[ncelobjs] = 0;
+        append_cel(sat);
 
         strcpy(buffer, listlines[n].c_str());
         char *hashmarks = strstr(buffer, "##");
@@ -4087,8 +4135,7 @@ void draw_sat_window(ImGuiIO& io)
         mesg = "";
         for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
         Satellite *sat = new Satellite();
-        cels[ncelobjs++] = sat;
-        cels[ncelobjs] = 0;
+        append_cel(sat);
         n = item_selected_idx;
 
         char buffer[256];
@@ -4120,8 +4167,7 @@ void draw_sat_window(ImGuiIO& io)
         mesg = "";
         for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
         Satellite *sat = new Satellite();
-        cels[ncelobjs++] = sat;
-        cels[ncelobjs] = 0;
+        append_cel(sat);
         n = item_selected_idx;
 
         char buffer[256];

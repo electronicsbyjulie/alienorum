@@ -50,7 +50,6 @@ std::vector<int> considx, lnpercons;
 std::vector<Cartesian2D> conscen;
 int nconsln = 0;
 int *consaidx, *consbidx;
-Star **hdcache, **hipcache;
 
 #if _debug_sbinaries_zetret
 Star *zet1ret = nullptr, *zet2ret = nullptr;
@@ -176,6 +175,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     StarMulti *current_multi = nullptr;
     float current_multi_gjno = 0;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
@@ -403,7 +403,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->estimate_mass();
         }
 
-        cels[offset+num_read] = s;
+        append_cel(s);
 
         num_read++;
         if ((offset+num_read) >= (max-1)) break;
@@ -431,6 +431,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     char comp = 0;
     StarMulti *current_multi = nullptr;
     unsigned int current_multi_hrno;
+
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
@@ -672,7 +674,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         if (!HDfound)
         {
-            cels[offset+num_read] = s;
+            append_cel(s);
             num_read++;
             if ((offset+num_read) >= (max-1)) break;
         }
@@ -697,6 +699,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     double deg, mnt, sec, RA, Decl, f;
     Star *s, *A;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
@@ -914,7 +917,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         s->update_location(J2000_TIME_T);
         if (is_new)
         {
-            cels[offset++] = s;
+            append_cel(s);
+            offset++;
             mtx.lock();
             loading_msg = std::string("Loading Hipparcos Catalog... Added HIP") + std::to_string(s->HIP);
             mtx.unlock();
@@ -959,7 +963,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             if (!s)
             {
                 s = new Star();
-                cels[offset++] = s;
+                append_cel(s);
+                offset++;
                 if (offset >= max-2) return num_read++;
             }
             s->make_companion_of(A, buffer[40]);
@@ -1015,7 +1020,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (!s)
         {
             s = new Star();
-            cels[offset++] = s;
+            append_cel(s);
+            offset++;
             s->absolute_magnitude = 1e29;
         }
         s->make_companion_of(A, 'B');
@@ -1078,6 +1084,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     Star *s, *A = nullptr;
     std::string CCDM, CCDM_A;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
@@ -1130,8 +1138,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             s = new Star();
             s->epoch = J2000 + (1991.25 - 2000);
 
-            cels[offset++] = s;
-            cels[offset] = nullptr;
+            append_cel(s);
+            offset++;
             #else
             continue;
             #endif
@@ -1251,6 +1259,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; cels[offset]; offset++);
     if (offset >= (max-1)) return num_read;
 
@@ -1381,8 +1390,8 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             B->make_companion_of(A, comp[0]);
             B->absolute_magnitude = B->apparent_magnitude = 1e29;
             B->epoch = A->epoch;
-            cels[offset++] = B;
-            cels[offset] = 0;
+            append_cel(B);
+            offset++;
         }
 
         //   1-  4  I4    ---     Seq     System Number (SB8 number when Seq<=1469)
@@ -1495,6 +1504,8 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
     int asno, num_read = 0, offset, _year, _month, _day;
     std::string name;
     double absmagn, sma;
+
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
@@ -1737,7 +1748,8 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         }
 
         num_read++;
-        cels[offset++] = p;
+        append_cel(p);
+        offset++;
         if (offset >= (max-1))
         {
             fclose(fp);
@@ -1753,6 +1765,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 {
     int offset, num_added = 0;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
@@ -2018,11 +2031,10 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
                 if (s_is_new)
                 {
-                    cels[offset] = s;
+                    append_cel(s);
                     s->BV_color = s->estimate_BV();
                     s->UB_color = s->estimate_UB();
                     offset++;
-                    cels[offset] = nullptr;
                     if (offset >= max-1)
                     {
                         fclose(fp);
@@ -2060,9 +2072,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 p->estimate_rotation();
 
                 // Add planet to celestial bodies array.
-                cels[offset] = p;
+                append_cel(p);
                 offset++;
-                cels[offset] = nullptr;
                 num_added++;
                 std::stringstream lmss1;
                 lmss1 << "Loaded " << num_added << " exoplanets from " << path << "...";
@@ -2094,6 +2105,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
     __uint32_t HD, HIP;
     std::string Gliese;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
@@ -2153,6 +2165,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     if (!fp) return 0;
 
     Star *A, *s;
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     while (fgets(buffer, 1020, fp))
     {
@@ -2227,8 +2240,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             {
                 for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
                 s = new Star();
-                cels[ncelobjs] = s;
-                cels[++ncelobjs] =  nullptr;
+                append_cel(s);
                 strcpy(s->name, bdyname.c_str());
                 read_field_onebased(buffer, 161, 175, field);
                 strcpy(s->spectral_type, trim(field).c_str());
@@ -2320,6 +2332,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     Planet *p;
     Moon *m;
 
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
@@ -2360,8 +2373,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                     p->orbit->center = cels[k];
                 }
 
-                cels[offset++] = p;
-                cels[offset] = nullptr;
+                append_cel(p);
+                offset++;
                 result++;
                 createnew = true;
             }

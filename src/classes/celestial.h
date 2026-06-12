@@ -4,6 +4,7 @@
 #include <string>
 #include <stdio.h>
 #include <setjmp.h>
+#include <map>
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
@@ -104,6 +105,8 @@ class CelestialObject
     cel_obj_class _class = class_unknown;
 
     public:
+    int seqno = 0;
+
     double mass = 0;                            // grams
     double volumetric_mean_radius = 0;          // meters
     double oblateness = 0;
@@ -172,6 +175,10 @@ class CelestialObject
 };
 
 extern CelestialObject **cels, *mycenobj;
+extern std::vector<std::vector<CelestialObject*>> first_letter_index;
+extern std::map<std::string,std::vector<CelestialObject*>> constellation_index;
+void append_cel(CelestialObject* cel);          // maintain indices
+
 extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;

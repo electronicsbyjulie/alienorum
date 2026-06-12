@@ -10,6 +10,10 @@ int find_object(const char* search_term, bool os, double ml)
 
     __uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
+
+    if (is_hd && hdcache && hdcache[is_hd]) return hdcache[is_hd]->seqno;
+    if (is_hip && hipcache && hipcache[is_hip]) return hipcache[is_hip]->seqno;
+
     bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L')
         || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'J')
         || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O' && (search_term[2]&0x5f) != 'L' && (search_term[2]&0x5f) != 'F')
@@ -28,10 +32,99 @@ int find_object(const char* search_term, bool os, double ml)
         && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z')))
         match_comp = search_term[n-1];
 
+    #if 0
+    char c = search_term[0];
+    bool indexable = true;
+    if (c >= '0' && c <= '9') c -= '0';
+    else if (c >= 'A' && c <= 'Z') c = c - 'A' + 10;
+    else if (c >= 'a' && c <= 'z') c = c - 'a' + 10;
+    else indexable = false;
+    if (indexable && c < first_letter_index.size())
+    {
+        int n = first_letter_index[c].size();
+        for (i=0; i<n; i++)
+        {
+            cel_obj_class cls = first_letter_index[c][i]->typeclass();
+            if (os && (cls != class_star)) continue;
+            if (match_cons && cls == class_star && strcasecmp(((Star*)first_letter_index[c][i])->constellation, match_cons)) continue;
+            if (match_comp)
+            {
+                m = strlen(first_letter_index[c][i]->name);
+                if (first_letter_index[c][i]->name[m-2] == ' ' && first_letter_index[c][i]->name[m-1] != match_comp) continue;
+            }
+            if (!strcmp(first_letter_index[c][i]->name, search_term))
+            {
+                result = first_letter_index[c][i]->seqno;
+                break;
+            }
+            if (first_letter_index[c][i]->typeclass() == class_star)
+            {
+                if (((Star*)first_letter_index[c][i])->apparent_magnitude > ml) continue;
+                if ((is_hd && is_hd == ((Star*)first_letter_index[c][i])->HD)
+                    || (is_hip && is_hip == ((Star*)first_letter_index[c][i])->HIP))
+                {
+                    result = first_letter_index[c][i]->seqno;
+                    break;
+                }
+                if (is_gliese && has_same_numbers(((Star*)first_letter_index[c][i])->Gliese, search_term))
+                {
+                    result = first_letter_index[c][i]->seqno;
+                    break;
+                }
+            }
+        }
+    }
+    if (result >= 0) return result;
+    #endif
+
+    #if 0
+    if (match_cons)
+    {
+        char casecons[4];
+        int n = consabbrev.size();
+        for (i=0; i<n; i++)
+        {
+            if (!strcasecmp(consabbrev[i].c_str(), match_cons))
+            {
+                strcpy(casecons, consabbrev[i].c_str());
+                break;
+            }
+        }
+
+        if (constellation_index.count(casecons))
+        {
+            n = constellation_index[casecons].size();
+            int best_Levenshtein = 11;
+            std::string lookstr = search_term;
+            for (i=0; i<n; i++)
+            {
+                int lev = Damerau_Levenshtein(constellation_index[casecons][i]->name, lookstr);
+                if (cels[i]->type == star)
+                {
+                    if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
+                    int lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Bayer, lookstr);
+                    if (!has_same_numbers(((Star*)cels[i])->Bayer, lookstr.c_str())) lev1 = 1e9;
+                    if (lev1 < lev) lev = lev1;
+                    lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Flamsteed, lookstr);
+                    if (!has_same_numbers(((Star*)cels[i])->Flamsteed, lookstr.c_str())) lev1 = 1e9;
+                    if (lev1 < lev) lev = lev1;
+                }
+                if (lev < best_Levenshtein)
+                {
+                    best_Levenshtein = lev;
+                    result = i;
+                    if (!lev) break;
+                }
+            }
+        }
+    }
+    if (result >= 0) return result;
+    #endif
+
     for (i=0; cels[i]; i++)
     {
         if (os && (cels[i]->typeclass() != class_star)) continue;
-        if (match_cons && cels[i]->typeclass() == class_star && strcmp(((Star*)cels[i])->constellation, match_cons)) continue;
+        if (match_cons && cels[i]->typeclass() == class_star && strcasecmp(((Star*)cels[i])->constellation, match_cons)) continue;
         if (match_comp)
         {
             m = strlen(cels[i]->name);
@@ -195,6 +288,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             }
 
             cels[i]->user_edited = true;
+            cels[i]->seqno = i;
 
             mtx.lock();
             loading_msg = std::string("Loaded ") + std::to_string(i+1) + std::string(" of ") + std::to_string(n) + std::string(" objects...");

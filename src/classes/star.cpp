@@ -4,6 +4,8 @@
 #include <math.h>
 #include "star.h"
 
+Star **hdcache = nullptr, **hipcache = nullptr;
+
 char Star::get_component()
 {
     if (!multisys) return 0;

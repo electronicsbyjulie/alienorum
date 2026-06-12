@@ -10,6 +10,9 @@
 #include "planet.h"
 
 CelestialObject **cels, *mycenobj = nullptr;
+std::vector<std::vector<CelestialObject*>> first_letter_index;
+std::map<std::string,std::vector<CelestialObject*>> constellation_index;
+
 bool *celskip, *discinstead;
 double *vmag_cache, *bloomrad_cache, *angular_radius;
 CelestialLocation here;
@@ -1296,4 +1299,11 @@ void Map::generate_gas_giant_map(int lr, double BV)
     }
 }
 
-
+void append_cel(CelestialObject *cel)
+{
+    if (ncelobjs >= MAX_CELOBJS-1) return;
+    cels[ncelobjs] = cel;
+    cel->seqno = ncelobjs;
+    ncelobjs++;
+    cels[ncelobjs] = 0;
+}

@@ -90,4 +90,6 @@ class StarMulti
 void rename_all_from_Bayer_Flamsteed();
 void Gliese_doubles_fix();
 
+extern Star **hdcache, **hipcache;
+
 #endif
