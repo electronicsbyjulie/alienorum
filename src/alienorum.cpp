@@ -2914,6 +2914,7 @@ void save_textures(CelestialObject* cel)
     }
 }
 
+double rp, ra;
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -2963,8 +2964,7 @@ void draw_objedit_window(ImGuiIO& io)
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("##edittabs", tab_bar_flags))
     {
-
-        if (ImGui::BeginTabItem("Bulk"))
+        if (tc != class_satellite && ImGui::BeginTabItem("Bulk"))
         {
             double edit_mass = cel->mass / 1000;
             ImGui::Text("%s", "Mass, kg");
@@ -3264,6 +3264,7 @@ void draw_objedit_window(ImGuiIO& io)
         }
         if (orb && ImGui::BeginTabItem("Orbit"))
         {
+            double eqrad = (orb && orb->center) ? orb->center->get_equatorial_radius() : 0;
             std::string orbcen = "Center of Orbit: ";
             orbcen += std::string(cel->orbit->center->name);
             ImGui::Text("%s", orbcen.c_str());
@@ -3292,6 +3293,8 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->user_added) orb->compute_period(cel->mass);
                 cel->user_edited = true;
                 viewchanged = true;
+                rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - eqrad) * 1e-3;
+                ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - eqrad) * 1e-3;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
@@ -3315,6 +3318,8 @@ void draw_objedit_window(ImGuiIO& io)
                         orb->semimajor_axis = sma_limit;
                         orb->compute_period(cel->mass);
                     }
+                    rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - eqrad) * 1e-3;
+                    ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - eqrad) * 1e-3;
                     cel->user_edited = true;
                     viewchanged = true;
                     if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -3326,13 +3331,63 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             ImGui::Text("%s", "days");
 
+            if (orb->eccentricity >= 0 && orb->eccentricity < 1)
+            {
+                rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - eqrad) * 1e-3;
+                ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - eqrad) * 1e-3;
+            }
+
+            if (tc == class_satellite && orb && orb->center)
+            {
+                Satellite* sat = ((Satellite*)cel);
+                double periapsis, apoapsis;
+                ImGui::Text("%s", "Periapsis, km");
+                ImGui::SameLine(col1);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtperi", &rp, 0, 0, "%.9f") && ra<rp)
+                {
+                    if (rp < 0) rp = 0;
+                    if (ra < 0) ra = 0;
+                    double rp1 = rp * 1e3+eqrad, ra1 = ra * 1e3+eqrad;
+                    double a = (rp1+ra1);
+                    double e = (ra1-rp1)/a;
+                    a *= 0.5;
+                    orb->semimajor_axis = a;
+                    orb->eccentricity = e;
+                    orb->compute_period(cel->mass);
+                    cel->user_edited = true;
+                    viewchanged = true;
+                    sat->update_location(simnow);
+                }
+                ImGui::SameLine(col2);
+                edit_node = cel->orbit->ascending_node * fiftyseven;
+                ImGui::Text("%s", "Apoapsis, km");
+                ImGui::SameLine(col3);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtapo", &ra, 0, 0, "%.9f") && ra<rp)
+                {
+                    if (rp < 0) rp = 0;
+                    if (ra < 0) ra = 0;
+                    double rp1 = rp * 1e3+eqrad, ra1 = ra * 1e3+eqrad;
+                    double a = (rp1+ra1);
+                    double e = (ra1-rp1)/a;
+                    a *= 0.5;
+                    orb->semimajor_axis = a;
+                    orb->eccentricity = e;
+                    orb->compute_period(cel->mass);
+                    cel->user_edited = true;
+                    viewchanged = true;
+                    sat->update_location(simnow);
+                }
+            }
+
             edit_incl = cel->orbit->inclination * fiftyseven;
             ImGui::Text("%s", "Inclination");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->inclination = edit_incl * fiftyseventh;
+                orb->inclination = edit_incl * fiftyseventh;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
