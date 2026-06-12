@@ -390,6 +390,11 @@ int draw_sphere(CelestialObject* cel, double arad)
     std::vector<bool> tdvalid;
     ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
     ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
+    Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
+    double f = fmax(fmax(daylight.red, daylight.green), daylight.blue);
+    daylight.red /= f;
+    daylight.green /= f;
+    daylight.blue /= f;
 
     if (wireframe)
     {
@@ -631,6 +636,11 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[2] = todraw[m-1];
                             points[3] = todraw[m];
                             if (map && is_day) rgb = map->color_at(lat, lon);
+
+                            rgb.r *= daylight.red;
+                            rgb.g *= daylight.green;
+                            rgb.b *= daylight.blue;
+
                             if (nmap)
                             {
                                 is_night = 1.0 - is_day;
@@ -3525,25 +3535,6 @@ void draw_objedit_window(ImGuiIO& io)
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
-                if (ice_amount < 0) ice_amount = 0;
-                if (ice_amount > 1) ice_amount = 1;
-                if (!randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Ice amount ");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edticeamt", &ice_amount);
-                }
-
-                ImGui::Text("%s", "Nitrous oxide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtn2o", &n2o_percent, 0, 0, "%.6f"))
-                {
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
                 if (veg_height < 0) veg_height = 0;
                 if (veg_height > 1) veg_height = 1;
                 if (!randomize_txgen)
@@ -3555,10 +3546,10 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::InputFloat("##edtveglvl", &veg_height);
                 }
 
-                ImGui::Text("%s", "Ozone %");
+                ImGui::Text("%s", "Nitrous oxide %");
                 ImGui::SameLine(col15);
                 ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
+                if (ImGui::InputDouble("##edtn2o", &n2o_percent, 0, 0, "%.6f"))
                 {
                     update_taucalc = true;
                     cel->user_edited = true;
@@ -3574,6 +3565,15 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::InputFloat("##edtmtnlvl", &mtn_height);
                 }
 
+                ImGui::Text("%s", "Ozone %");
+                ImGui::SameLine(col15);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
+                {
+                    update_taucalc = true;
+                    cel->user_edited = true;
+                }
+
                 ImGui::Text("%s", "Sulfur dioxide %");
                 ImGui::SameLine(col15);
                 ImGui::SetNextItemWidth(txtwid);
@@ -3581,16 +3581,6 @@ void draw_objedit_window(ImGuiIO& io)
                 {
                     update_taucalc = true;
                     cel->user_edited = true;
-                }
-                if (snow_height < 0) snow_height = 0;
-                if (snow_height > 1) snow_height = 1;
-                if (!randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Snowline   ");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edtsnolvl", &snow_height);
                 }
 
                 ImGui::Text("%s", "Hydrogen sulfide %");

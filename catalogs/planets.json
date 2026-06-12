@@ -379,6 +379,7 @@
         "OrbitPeriod": 152853.5232,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 421800000,
+        "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Io_modest_scale_map_Io_SSI-only_color_SIMP0_med.cub.jpg/960px-Io_modest_scale_map_Io_SSI-only_color_SIMP0_med.cub.jpg",
         "VolMeanRad": 1821600.1426
     },
     {
@@ -397,6 +398,7 @@
         "OrbitPeriod": 306825.408,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 671100000,
+        "SurfMap": "https://planetary.s3.amazonaws.com/web/assets/pictures/20150218_europa_global_map_20000x10000.jpg",
         "VolMeanRad": 1560800.0721
     },
     {
@@ -415,6 +417,7 @@
         "OrbitPeriod": 618153.3792,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 1070400000,
+        "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Map_of_Ganymede_by_Bj%C3%B6rn_J%C3%B3nsson.jpg/960px-Map_of_Ganymede_by_Bj%C3%B6rn_J%C3%B3nsson.jpg",
         "VolMeanRad": 2631200.0644
     },
     {
@@ -433,6 +436,7 @@
         "OrbitPeriod": 1441931.1552,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 1882700000,
+        "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Map_of_Ganymede_by_Bj%C3%B6rn_J%C3%B3nsson.jpg/960px-Map_of_Ganymede_by_Bj%C3%B6rn_J%C3%B3nsson.jpg",
         "VolMeanRad": 2410300.2927
     },
     {
@@ -696,6 +700,7 @@
         "OrbitPeriod": 81426.53952,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 185600000,
+        "SurfMap": "https://d2pn8kiwq2w21t.cloudfront.net/images/jpegPIA17214.width-1600.jpg",
         "Width": 393
     },
     {
@@ -716,6 +721,7 @@
         "OrbitPeriod": 118386.8352,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 238100000,
+        "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/photojournal/pia/pia18/pia18435/PIA18435.jpg",
         "Width": 503
     },
     {
@@ -736,6 +742,7 @@
         "OrbitPeriod": 163106.0928,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 294700000,
+        "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/photojournal/pia/pia18/pia18439/PIA18439.jpg",
         "Width": 1057
     },
     {
@@ -796,6 +803,7 @@
         "OrbitPeriod": 236469.456,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 377400000,
+        "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/photojournal/pia/pia18/pia18434/PIA18434.jpg",
         "Width": 1123
     },
     {
@@ -835,6 +843,7 @@
         "Obliquity": 0.327,
         "OrbitPeriod": 390312,
         "RotationPeriod": "tidal",
+        "SurfMap": "https://d2pn8kiwq2w21t.cloudfront.net/original_images/jpegPIA18438.jpg",
         "SEMIMAJOR_AXIS": 527100000,
         "Width": 1526
     },
@@ -897,6 +906,7 @@
         "OrbitPeriod": 6854127.8112,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 3560800000,
+        "SurfMap": "https://d2pn8kiwq2w21t.cloudfront.net/images/jpegPIA18436.width-1600.jpg",
         "Width": 1491
     },
     {

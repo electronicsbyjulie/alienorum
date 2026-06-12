@@ -998,6 +998,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     // TODO: If tidally locked, create an eyeball world.
 
+    double T_surf = p->estimate_surface_temperature();
     if (p->is_in_con_HZ()
         && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
     {
@@ -1005,7 +1006,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
         // TODO: Don't overwrite surface pressure here. Randomize it during exoplanet load and make it a setting in the edit dialog.
         if (!p->surface_pressure) p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
         std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
-        double T_surf = p->estimate_surface_temperature();
         std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
 
         // Constants for water b.p.
@@ -1120,13 +1120,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 double r_weight = height_value;
 
-                double polar_extent = fmin(0.503, fmax(0, ice_amount * 0.53 * (0.9 + 0.2 * r_weight)));
-                if (v < polar_extent || v > (1.0 - polar_extent))
+                double T_local = T_surf - 40.0 + 70.0 * sin(theta);
+                T_local -= 62.5 * (height_value - has_water);
+                if (T_local < water_freezing)
                 {
-                    // Polar ice
-                    red_data[idx] = 187 + 37 * r_weight;
-                    green_data[idx] = 196 + 44 * r_weight;
-                    blue_data[idx] = 200 + 53 * r_weight;
+                    // Polar and elevation ice
+                    red_data[idx] = 167 + 67 * r_weight;
+                    green_data[idx] = 181 + 57 * r_weight;
+                    blue_data[idx] = 190 + 63 * r_weight;
                     bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds
@@ -1145,22 +1146,16 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     blue_data[idx] = 150 * r_weight;
                 }
                 else if (height_value < mtn_height)
-                {   // Lowlands
+                {   // Forests
                     red_data[idx] = vegr * r_weight;
                     green_data[idx] = vegg * r_weight;
                     blue_data[idx] = vegb * r_weight;
                 }
-                else if (height_value < snow_height)
+                else
                 {   // Mountains
                     red_data[idx] = 110 * r_weight;
                     green_data[idx] = 90 * r_weight;
                     blue_data[idx] = 75 * r_weight;
-                }
-                else
-                {   // Snowy peaks
-                    red_data[idx] = 225 * r_weight;
-                    green_data[idx] = 240 * r_weight;
-                    blue_data[idx] = 253 * r_weight;
                 }
             }
             else
