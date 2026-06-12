@@ -7,6 +7,21 @@ A cross-platform desktop planetarium app made using the ImGui library. https://g
 The stars are alien suns.
 
 
+## Dependencies
+
+Alienorum can be built and run on Linux, Mac, and Windows. Before building, please make sure to install
+all the dependency packages:
+
+Linux:
+   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libcurlpp-dev
+
+Mac OS:
+   brew install sdl2 sdl2_image jpeg png curlpp
+
+MSYS2 (Run in MINGW64 environment):
+   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl mingw-w64-x86_64-curlpp
+
+
 ## Features
 
 * OpenGL rendering;
@@ -31,9 +46,6 @@ one-time thing.
 After downloading finishes, the application will load a selection of stars from the catalogs. When displaying
 stars and during spaceflight, Alienorum dynamically hides stars that are too far away or too dim, that way it
 can load hundreds of thousands of stars and still smoothly animate views of space.
-
-Note to include exoplanets, the catalog must be downloaded manually. See the `catalogs/urls.dat` file for
-instructions.
 
 
 ## Spaceflight
@@ -104,6 +116,51 @@ Then speed up to approach the object, watching its distance in the right pane. T
 long as you are tracking the object, the app will automatically slow your approach as you get closer to the
 target. Otherwise it's very easy to overshoot and zip right past it. If your speed is just right, you can float
 by the target and watch it seem to roll across the background stars.
+
+
+## Exoplanets
+
+Note to include exoplanets, the catalog must be downloaded manually:
+
+- First, open https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=PSCompPars in a web browser;
+- Then manually select to include the following columns:
+    - HD ID
+    - Inclination
+    - Epoch of Periastron
+    - Argument of Periastron
+    - True Obliquity
+    - RA[deg]
+    - Dec[deg]
+    - Distance[pc]
+    - V Magnitude
+- Then click Update.
+- Then click the download (save icon) button, choose CSV format, and click the green Download Table arrow.
+- Save the resulting file in the alienorum/catalogs/ folder.
+
+After completing these steps, every time you run Alienorum it will load the exoplanets file.
+
+Exoplanets will not automatically update; if you wish to loop at a new planet discovered since your last download,
+please follow the above steps to obtain a new exoplanet catalog. The filenames are timestamped and Alienorum will
+only use the file with the most recent datetime.
+
+
+## Satellites
+
+To add a satellite, press ^ (Shift+6 on US keyboards). A searchable list will appear; you can search by satellite
+name, e.g. ISS or HST, or by category, e.g. gps-ops or iridium-next. The search is not case sensitive. Once a
+satellite has been loaded, it will be selected and, if having clicked the first button, the satellite will be
+centered in the view. Pressing O takes you to the satellite, where the orbit center (usually Earth) appears at the
+nadir of the view. The resulting effect is if you choose an LEO (low Earth orbit) satellite and O to it, you will
+see the Earth along the bottom of the view as if you were up in the satellite positioned so that Earth is "down".
+LEO views make great background views to leave open; they slowly change over time and you can enable realism mode
+by pressing ! (Shift+1 on US keyboards) and close all dialog windows for maximum immersion.
+
+Alienorum auto-downloads satellite data from CelesTrak (https://celestrak.org/). Automatic download is set to only
+happen at most once per day. You can override this by opening `catalogs/sat/sources.json` and changing one of the
+"LastAccessed" days to a date in the past like "2000-01-01 00:00:00", then deleting whichever local .csv file that
+JSON entry is for. The next time you run Alienorum it will re-fetch the file. CAUTION: CelesTrak's data only update
+every two hours, and the site admin has limited bandwidth. Fetching the same file(s) too frequently may result in
+CelesTrak blocking your IP. This can be avoided by letting Alienorum manage the downloads.
 
 
 ## Editing and Saving Objects
