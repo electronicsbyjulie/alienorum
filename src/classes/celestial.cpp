@@ -1307,3 +1307,9 @@ void append_cel(CelestialObject *cel)
     ncelobjs++;
     cels[ncelobjs] = 0;
 }
+
+Point to_viewer_plane(Point pt, int sign)
+{
+    pt = rotate3D(pt, center, here.equatorial_plane.v, here.equatorial_plane.a*sign);
+    return pt;
+}

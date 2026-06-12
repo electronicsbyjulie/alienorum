@@ -179,6 +179,8 @@ extern std::vector<std::vector<CelestialObject*>> first_letter_index;
 extern std::map<std::string,std::vector<CelestialObject*>> constellation_index;
 void append_cel(CelestialObject* cel);          // maintain indices
 
+Point to_viewer_plane(Point pt, int sign = 1);
+
 extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;

@@ -1,0 +1,48 @@
+#ifndef _Globals
+#define _Globals
+
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <string>
+#include <filesystem>
+#include "imgui/backends/imgui_impl_sdl2.h"
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include <algorithm> 
+#include <thread>
+#include <chrono>
+#include <stdio.h>
+#include <format>
+#include <SDL.h>
+#include <SDL_opengl.h>
+#include <SDL_image.h>
+#ifdef _WIN32
+#include <windows.h>        // SetProcessDPIAware()
+#endif
+#include "classes/misc.h"
+#include "classes/color.h"
+#include "classes/serial.h"
+#include "classes/cat.h"
+#include "include/igfd/ImGuiFileDialog.h"
+
+using namespace std;
+
+extern char lookfor[40], edit_name[40], looksat[40];
+extern bool edtname_dirty;
+extern std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
+extern std::filesystem::path p;
+extern std::string load_univ, setjd;
+extern bool catalogs_found, fullscreen;
+extern int num_galaxies, num_stars, num_planets, num_moons, num_asteroids, num_comets, num_sat;
+extern float dispcx, dispcy;
+extern int frames_without_mousemove, num_stars_in_box, editidx, addcenidx, themes_selected_idx;
+extern double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
+    edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
+extern bool is_click;
+extern double frame_dur, best_frame_dur, scrollhold;
+extern bool splash, magnitude_test, redo_proper_motions, fdlg_shown;
+extern CelestialObject npdummy;
+extern char xplorfor[40];
+extern CelestialObject *last_xplored_cen;
+
+#endif

@@ -46,6 +46,7 @@ IMGUI_OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SR
 OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
+OBJS += $(OBJ)/globals.o $(OBJ)/loaders.o $(OBJ)/housekeeping.o $(OBJ)/inputs.o $(OBJ)/dialogs.o $(OBJ)/visuals.o
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
@@ -157,6 +158,24 @@ $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h 
 
 $(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
+
+$(OBJ)/globals.o: src/globals.cpp src/globals.h makefile
+	$(CPP) src/globals.cpp $(CPPFLAGS) -c -o $(OBJ)/globals.o
+
+$(OBJ)/loaders.o: src/loaders.cpp src/loaders.h makefile
+	$(CPP) src/loaders.cpp $(CPPFLAGS) -c -o $(OBJ)/loaders.o
+
+$(OBJ)/housekeeping.o: src/housekeeping.cpp src/housekeeping.h makefile
+	$(CPP) src/housekeeping.cpp $(CPPFLAGS) -c -o $(OBJ)/housekeeping.o
+
+$(OBJ)/inputs.o: src/inputs.cpp src/inputs.h makefile
+	$(CPP) src/inputs.cpp $(CPPFLAGS) -c -o $(OBJ)/inputs.o
+
+$(OBJ)/dialogs.o: src/dialogs.cpp src/dialogs.h makefile
+	$(CPP) src/dialogs.cpp $(CPPFLAGS) -c -o $(OBJ)/dialogs.o
+
+$(OBJ)/visuals.o: src/visuals.cpp src/visuals.h makefile
+	$(CPP) src/visuals.cpp $(CPPFLAGS) -c -o $(OBJ)/visuals.o
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp makefile
