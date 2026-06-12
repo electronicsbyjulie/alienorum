@@ -2,9 +2,9 @@
 
 A cross-platform desktop planetarium app made using the ImGui library. https://github.com/ocornut/imgui
 
-<img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/7a42c429-6c14-4b70-8095-4d48eb478d94" /> <img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/33745731-b6e0-4ed2-adfa-7b9b3173fb23" /> <img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/285dea8d-8609-41a0-b741-53ddf8a7471e" />
-<img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/7ca4673d-8507-4b97-91e4-a9be9ad7f827" /> <img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/296ef493-0c65-4654-84ea-e5db9e327a24" /> <img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/8278e35e-6429-4bd8-bda4-73361b642d30" />
-<img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/c6efd128-458d-4cf7-93f2-38e714e89c71" /> <img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/769edb76-9810-4fa3-98ac-f47991bdcddb" /> <img width="300" height="170" alt="image" src="https://github.com/user-attachments/assets/3b464155-d74d-496e-8d71-5f76d0fd4414" />
+<img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/7a42c429-6c14-4b70-8095-4d48eb478d94" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/33745731-b6e0-4ed2-adfa-7b9b3173fb23" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/285dea8d-8609-41a0-b741-53ddf8a7471e" />
+<img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/7ca4673d-8507-4b97-91e4-a9be9ad7f827" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/296ef493-0c65-4654-84ea-e5db9e327a24" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/8278e35e-6429-4bd8-bda4-73361b642d30" />
+<img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/c6efd128-458d-4cf7-93f2-38e714e89c71" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/769edb76-9810-4fa3-98ac-f47991bdcddb" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/3b464155-d74d-496e-8d71-5f76d0fd4414" />
 
 The stars are alien suns.
 
