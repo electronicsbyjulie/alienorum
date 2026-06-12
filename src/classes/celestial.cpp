@@ -625,8 +625,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     {
         image_height = cinfo.image_height;
         image_width = cinfo.image_width;
-        lat_scale = image_height / M_PI;
-        lon_scale = image_width / (M_PI * 2);
+        lat_scale = lon_scale = image_width / (M_PI * 2);
         inv_lat_scale = 1.0 / lat_scale;
         inv_lon_scale = 1.0 / lon_scale;
         long toalloc = image_height * image_width;

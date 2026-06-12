@@ -2,25 +2,6 @@
 #include <iostream>
 #include "serial.h"
 
-bool Serialization::save_string(FILE *of, std::string str)
-{
-    __uint8_t n = str.size();
-    fwrite(&n, sizeof(__uint8_t), 1, of);
-    fwrite(str.c_str(), sizeof(char), n, of);
-    return true;
-}
-
-std::string Serialization::load_string(FILE *in)
-{
-    __uint8_t n;
-    fread(&n, sizeof(__uint8_t), 1, in);
-    auto buffer = std::make_unique<char[]>(n+1);
-    fread(buffer.get(), sizeof(char), n, in);
-    buffer[n] = 0;
-    std::string ret(buffer.get());
-    return ret;
-}
-
 int find_object(const char* search_term, bool os, double ml)
 {
     int i, m, n;
@@ -175,19 +156,15 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         for (auto it = allobj.begin(); it != allobj.end(); ++it)
         {
             std::string key = it.key();
-            i = atoi(key.c_str());
-            if (i>ncelobjs) i = ncelobjs;
+            i = ncelobjs;
             json js = it.value();
             cel_obj_class c;
             js.at("typeclass").get_to(c);
             std::string name;
             js.at("!name").get_to(name);
 
-            if (i<ncelobjs && strcmp(cels[i]->name, name.c_str()))
-            {
-                j = find_object(name.c_str(), c == class_star);
-                if (j >= 0 && cels[j]->typeclass() == c && (c == class_star || !strcmp(name.c_str(), cels[j]->name))) i = j;
-            }
+            j = find_object(name.c_str(), c == class_star);
+            if (j >= 0 && cels[j]->typeclass() == c && (c == class_star || !strcmp(name.c_str(), cels[j]->name))) i = j;
 
             switch (c)
             {

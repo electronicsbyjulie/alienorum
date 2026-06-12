@@ -11,8 +11,6 @@
 class Serialization
 {
     public:
-    static bool save_string(FILE *out_file, std::string str);
-    static std::string load_string(FILE *in_file);
     static bool save_all(std::fstream& fs, CelestialObject **cels, bool only_edited = false);
     static bool load_all(std::fstream& fs, CelestialObject **cels, unsigned int max);
 };
