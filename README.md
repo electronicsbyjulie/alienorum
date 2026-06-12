@@ -250,6 +250,7 @@ Shift+O     Show/hide orbits
 N           Show/hide info panel
 S           Show/hide status panel
 !           Hide all annotations (realism mode)
+,           Hide mouse cursor until next mouse move (e.g. for taking screenshots)
 ```
 
 
@@ -291,6 +292,7 @@ Shift+I     Rewind one minute
 
 Shift+A     Add new object in orbit around current object
 ^           Add satellite from downloaded lists
+.           Add asteroid/minor planet from astorb
 Shift+E     Edit current object
 U           Export user-added and user-modified objects to universe.json
 F4          Load user objects from an external JSON file

@@ -6,6 +6,8 @@
 #include "star.h"
 #include "point.h"
 
+std::vector<AstorbRow> astorb;
+
 void Planet::classify()
 {
     classify(is_in_con_HZ());
@@ -48,6 +50,7 @@ void Planet::estimate_radius()
         volumetric_mean_radius = pow(volume*3 / M_PI*4, 1.0/3);
     }
     else volumetric_mean_radius = 18.6 * earth_radius;
+    assert(!isinf(volumetric_mean_radius));
 }
 
 void Planet::estimate_rotation()

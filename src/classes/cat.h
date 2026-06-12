@@ -40,16 +40,17 @@ class CatalogReader
     int read_SB9_catalog(CelestialObject** cels, int max);
 
     // Planets, Minor Planets, Comets
+    static bool load_asteroid(AstorbRow *r, char *buffer = nullptr);        // If buffer is null, open astorb.dat and search for the astroid matching the row object.
     int read_astorb_catalog(CelestialObject** cels, int max);
     int read_exoplanets_catalog(CelestialObject** cels, int max);
 
     // Internal Catalogs
-    int read_starname_dat(CelestialObject** cels);                  // No max because we are not adding stars, only setting names.
+    int read_starname_dat(CelestialObject** cels);                          // No max because we are not adding stars, only setting names.
     int read_star_orbits_dat(CelestialObject** cels);
     int read_local_planets(CelestialObject** cels, int max);
 
     protected:
-    void read_field_onebased(char* buffer, size_t start, int end, char* out);
+    static void read_field_onebased(char* buffer, size_t start, int end, char* out);
 };
 
 #endif

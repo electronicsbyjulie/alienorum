@@ -1,8 +1,9 @@
 
 #include "globals.h"
 
+// IMPORTANT: Any variables defined here must also be declared extern in globals.h.
 SDL_Window* window;
-char lookfor[40], edit_name[40], looksat[40];
+char lookfor[40], edit_name[40], looksat[40], lookast[40];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";

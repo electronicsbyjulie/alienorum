@@ -11,6 +11,7 @@ void center_selected()
         azimuth = -cels[selected]->RA_as_radians(here, 0);
         altitude = cels[selected]->Decl_as_radians(here);
     }
+    viewchanged = true;
 }
 
 void center_tracked()
@@ -20,6 +21,7 @@ void center_tracked()
         azimuth = -cels[trackidx]->RA_as_radians(here, 0);
         altitude = cels[trackidx]->Decl_as_radians(here);
     }
+    viewchanged = true;
 }
 
 void identify_object_under_cursor(ImGuiIO& io)
@@ -119,7 +121,7 @@ void identify_object_under_cursor(ImGuiIO& io)
                 oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
                 oss << "AbsMag:   " << std::setprecision(2) << s->absolute_magnitude << "\n";
             }
-            objinfo += (std::string)"SpTyp:   " + s->spectral_type + (std::string)"\n";
+            objinfo += (std::string)"SpTyp:    " + s->spectral_type + (std::string)"\n";
         }
         else if (cels[i]->type == galaxy)
         {
@@ -385,6 +387,8 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
+        case '.': astwnd = !astwnd; break;
+        case ',': frames_without_mousemove = 1000; break;
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
