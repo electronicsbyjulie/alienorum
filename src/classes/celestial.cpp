@@ -989,9 +989,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
-    float has_water = 0;
-    float ice_amount = 0.03;
-    double veg_height = 0, mtn_height = 0, snow_height = 1;
+    if (randomize_txgen)
+    {
+        has_water = veg_height = mtn_height = 0;
+        ice_amount = 0.03;
+        snow_height = 1;
+    }
 
     // TODO: If tidally locked, create an eyeball world.
 
@@ -1019,30 +1022,32 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
         double T_boil = 1.0 / inv_T2;
 
-        if (T_surf < 0.9 * water_freezing)
+        if (randomize_txgen)
         {
-            has_water = 1;
-            ice_amount = 0.53;
-            snow_height = 0;
-        }
-        else if (T_surf < T_boil * 1.1)
-        {
-            double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
-            has_water = frand(0, max_water);
-            ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 10)));
-            veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
-            mtn_height = (veg_height ?: has_water) + has_water*0.29; // 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
-            snow_height = 1.0 - ((1.0 - has_water) * 0.5 * ice_amount);
-            ice_amount *= 0.52;
-        }
-        else
-        {
-            has_water = 0;
-            // TODO: Overcast Venusian-style cloud map.
+            if (T_surf < 0.9 * water_freezing)
+            {
+                has_water = 1;
+                ice_amount = 1;
+                snow_height = 0;
+            }
+            else if (T_surf < T_boil * 1.1)
+            {
+                double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
+                has_water = frand(0, max_water);
+                ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 10)));
+                veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
+                mtn_height = (veg_height ?: has_water) + has_water*0.29; // 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
+                snow_height = 1.0 - ((1.0 - has_water) * 0.5 * ice_amount);
+            }
+            else
+            {
+                has_water = 0;
+                // TODO: Overcast Venusian-style cloud map.
+            }
         }
 
         std::cout << "Water level: " << has_water << "." << std::endl << std::flush;
-        std::cout << "Polar ice: " << (ice_amount*2) << "." << std::endl << std::flush;
+        std::cout << "Polar ice: " << ice_amount << "." << std::endl << std::flush;
         std::cout << "Vegetation level: " << veg_height << "." << std::endl << std::flush;
         std::cout << "Mountain level: " << mtn_height << "." << std::endl << std::flush;
         std::cout << "Snow line: " << snow_height << "." << std::endl << std::flush;
@@ -1115,13 +1120,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 double r_weight = height_value;
 
-                double polar_extent = fmin(0.503, fmax(0, ice_amount * (0.9 + 0.2 * r_weight)));
+                double polar_extent = fmin(0.503, fmax(0, ice_amount * 0.53 * (0.9 + 0.2 * r_weight)));
                 if (v < polar_extent || v > (1.0 - polar_extent))
                 {
                     // Polar ice
-                    red_data[idx] = 225 * r_weight;
-                    green_data[idx] = 240 * r_weight;
-                    blue_data[idx] = 253 * r_weight;
+                    red_data[idx] = 187 + 37 * r_weight;
+                    green_data[idx] = 196 + 44 * r_weight;
+                    blue_data[idx] = 200 + 53 * r_weight;
                     bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds

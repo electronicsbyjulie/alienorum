@@ -8,6 +8,9 @@ Rotation Moon::get_Laplace_plane()
     if (Laplace_set) return Laplace_plane;
     if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
 
+    // Fix for minor planets tidally locked to their moons.
+    if (fabs(1.0 - (orbit->center->sidereal_rotational_period / orbit->period)) < 0.01) return orbit->center->location.equatorial_plane;
+
     CelestialObject *myplanet = orbit->center, *mystar = orbit->center->orbit->center;
     assert(myplanet->mass > 0);
 

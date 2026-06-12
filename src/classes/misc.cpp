@@ -27,7 +27,7 @@ std::string objname, objinfo;
 bool is_mouse_over_window;
 int objinfwnd_hei = 0;
 int timeout_ms = 5;
-bool dragging, dragged, viewchanged;
+bool dragging, dragged, viewchanged, randomize_txgen=true;
 int lmx, lmy, whereami=0, iamhome=0;
 double velocmag;
 double simnow = std::time(nullptr);
@@ -48,6 +48,7 @@ double bv_correction = 0;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
+float has_water, ice_amount, veg_height, mtn_height, snow_height;
 
 double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,

@@ -22,6 +22,7 @@ void Satellite::update_location(double tmnow)
 {
     if (!orbit || !orbit->center) return;
     Rotation center_equator = orbit->center->location.equatorial_plane;
+    orbit->center->onscreen = true;
     if (orbit && orbit->period) update_orbit_location(tmnow, &center_equator);
 }
 
