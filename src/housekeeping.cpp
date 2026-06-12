@@ -373,7 +373,7 @@ void set_center_objects()
 
     #ifdef DEBUG
     // Test a sample constellation.
-    const char* test_cons = "Vir";
+    const char* test_cons = "UMa";
     int n = constellation_index[test_cons].size();
     for (i=0; i<n; i++)
     {

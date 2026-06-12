@@ -422,7 +422,7 @@ void draw_addcel_window(ImGuiIO& io)
                     pl->estimate_albedo_and_absmagn();
                     pl->estimate_rotation();
                 }
-                editidx = ncelobjs;
+                editidx = ncelobjs-1;
                 objedtwnd = true;
                 addcelwnd = false;
             }
