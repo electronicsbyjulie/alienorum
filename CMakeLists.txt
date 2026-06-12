@@ -67,7 +67,14 @@ target_link_libraries(CLASSES JPEG::JPEG PNG::PNG
     ${CURL_LIBRARIES} 
     ${CURLPP_LIBRARIES})
 
-add_executable(alienorum src/alienorum.cpp)
+add_executable(alienorum
+	src/dialogs.cpp
+	src/globals.cpp
+	src/housekeeping.cpp
+	src/inputs.cpp
+	src/loaders.cpp
+	src/visuals.cpp
+	src/alienorum.cpp)
 
 target_link_libraries(alienorum IMGUI CLASSES ImGuiFileDialog)
 
