@@ -15,8 +15,8 @@ used here pursuant to the MIT License. https://opensource.org/licenses/MIT
 stb_image.h is copyright (c) 2017 Sean Barrett,
 used here pursuant to the MIT License. https://opensource.org/licenses/MIT
 
-cURLpp is Copyright 2002-2009 Jean-Philippe Barrette-LaPierre.
-See the src/include/cURLpp/cURLpp.hpp file for the license for this library.
+The cURLpp single include is Copyright (c) 2014 - 2018 Sebastian Nickels,
+used here, with modifications, pursuant to the MIT License.
 
 Star catalogs are copyright their respective owners,
 where copyright is applicable. Consult the readme for each
