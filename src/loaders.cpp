@@ -225,6 +225,7 @@ bool load_universe(std::string universe_fname = "universe.json")
             }
             if (resave_json) save_universe();
             set_center_objects();
+            refresh_star_visibilities();
 
             return true;
         }
@@ -396,7 +397,6 @@ void load_catalogs()
     }
 
     set_center_objects();
-
     refresh_star_visibilities();
 }
 
