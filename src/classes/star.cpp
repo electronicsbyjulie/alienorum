@@ -31,6 +31,9 @@ void Star::set_component(char comp, Star* compA)
         orbit->center = compA;
     }
     else orbit = nullptr;
+
+    origname = name;
+    if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
 Star::Star()
@@ -152,6 +155,9 @@ void Star::rename_from_Bayer_Flamsteed()
             strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
+
+    origname = name;
+    if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
 bool Star::is_sunlike()
@@ -186,20 +192,17 @@ bool Star::is_sunlike()
 
 bool Star::is_in_visible_box(Point seen_from)
 {
-    if (frand(0,1) > 0.03) return _is_in_visible_range;
+    if (visible_area_set && frand(0,1) > 0.03) return _is_in_visible_range;
     return is_really_truly_in_visible_box(seen_from);
 }
 
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
-    if (!visible_area_set)
-    {
-        if (orbit && !orbit->semimajor_axis && orbit->center) orbit->semimajor_axis = location.distance_to(orbit->center->location);
-        double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance);
-        visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
-        visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
-        visible_area_set = true;
-    }
+    if (orbit && !orbit->semimajor_axis && orbit->center) orbit->semimajor_axis = location.distance_to(orbit->center->location);
+    double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance);
+    visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
+    visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
+    visible_area_set = true;
 
     return _is_in_visible_range = visible_area.point_in_box(seen_from);
 }
@@ -311,6 +314,9 @@ void Star::gotta_be_named_something()
             strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
+
+    origname = name;
+    if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
 json Star::to_json()

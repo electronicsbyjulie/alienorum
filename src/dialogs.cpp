@@ -377,7 +377,9 @@ void draw_addcel_window(ImGuiIO& io)
 
     if (ImGui::Button("Go"))
     {
-        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+        int i;
+        for (i=0; cels[i]; i++);
+        ncelobjs = i;
         if (ncelobjs < (MAX_CELOBJS-1))
         {
             cel_obj_class cls = cels[addcenidx]->typeclass();

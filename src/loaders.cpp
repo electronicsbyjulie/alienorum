@@ -225,6 +225,7 @@ bool load_universe(std::string universe_fname = "universe.json")
             }
             if (resave_json) save_universe();
             set_center_objects();
+            refresh_star_visibilities();
 
             return true;
         }
@@ -396,7 +397,6 @@ void load_catalogs()
     }
 
     set_center_objects();
-
     refresh_star_visibilities();
 }
 
@@ -544,10 +544,12 @@ void cache_cons_lines()
 
 void add_batch_satellites(std::vector<std::string> listlines)
 {
-    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+    int i;
+    for (i=0; cels[i]; i++);               // get count
+    ncelobjs = i;
     char buffer[256];
 
-    int i, m = listlines.size();
+    int m = listlines.size();
     sats_added = sat_errors = 0;
     for (int n=0; n<m; n++)
     {

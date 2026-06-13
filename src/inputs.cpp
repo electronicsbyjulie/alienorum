@@ -160,6 +160,11 @@ void identify_object_under_cursor(ImGuiIO& io)
                 oss << "Radius:   " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km" << std::endl;
             }
         }
+
+        #ifdef DEBUG
+        oss << "index:    " << is_an_obj_under_cursor << std::endl;
+        #endif
+
         objinfo += oss.str();
         oss.clear();
     }
