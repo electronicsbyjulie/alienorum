@@ -207,6 +207,9 @@ bool compute_object_location(CelestialObject* cel, int i)
 void compute_object_draw_coordinates()
 {
     if (!ncelobjs) return;
+    if (!bx_cache) bx_cache = new int[MAX_CELOBJS];
+    if (!by_cache) by_cache = new int[MAX_CELOBJS];
+
     int i, j, n, bx, by;
     dispw = dispcx*2;
     disph = dispcy*2;

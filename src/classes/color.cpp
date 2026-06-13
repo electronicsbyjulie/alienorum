@@ -18,7 +18,7 @@ AlienStyle global_style;
 bool redlight_mode = false;
 
 double drawblxscalex, drawblxscaley;
-int *bx_cache = new int[MAX_CELOBJS], *by_cache = new int[MAX_CELOBJS];
+int *bx_cache = nullptr, *by_cache = nullptr;
 
 double Color::luminance()
 {

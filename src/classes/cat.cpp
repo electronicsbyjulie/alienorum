@@ -1970,7 +1970,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         || fabs(s->apparent_magnitude - star_vmag) > 0.5
                     )
                 {
-                    if (!s_is_new)                  // If s was already allocated, we won't die from not allocating it anew.
+                    if (!s_is_new)                  // If s was already allocated, we don't have to allocate it anew.
                     {
                         s = new Star();
                         s->type = star;
@@ -2054,6 +2054,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     return num_added;
                 }
             }
+            else delete p;
         }
 
         wasfirst = buffer[0];
