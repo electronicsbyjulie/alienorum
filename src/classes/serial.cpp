@@ -259,13 +259,6 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             try { js.at("!origcenname").get_to(origcenname); } catch (...) { origcenname = std::to_string(ncelobjs+1000); }     // at least don't match anything
             const char *origname_c = origname.c_str(), *origcenname_c = origcenname.c_str();
 
-            if (i != ncelobjs)
-                std::cout << "Clobbering " << i << " " << cels[i]->name << " with " << name << ", originally " << origname << std::endl << std::flush;
-            else std::cout << "Creating new " << i << " " << name << ", originally " << origname << std::endl << std::flush;
-
-            /* j = find_object(name.c_str(), c == class_star);
-            if (j >= 0 && cels[j]->typeclass() == c && (c == class_star || !strcmp(name.c_str(), cels[j]->name))) i = j; */
-
             for (j=0; cels[j]; j++)
             {
                 if (cels[j]->typeclass() != c) continue;
