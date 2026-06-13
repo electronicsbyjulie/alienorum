@@ -171,7 +171,7 @@ bool SatSource::download_data()
         std::string buffer;
         curlpp::Easy easy;
 
-        easy.setOpt(CURLOPT_URL, url);
+        easy.setOpt(CURLOPT_URL, url.c_str());
         curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
         easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
         easy.setOpt(CURLOPT_WRITEDATA, &buffer);
