@@ -121,7 +121,6 @@ void CatalogReader::download_catalogs()
             p = destfname.c_str();
             if (!fs::exists(p))
             {
-                // TODO: Add compatibility for Windows and Mac.
                 if (frist)
                 {
                     mtx.lock();
@@ -129,10 +128,7 @@ void CatalogReader::download_catalogs()
                     mtx.unlock();
                     std::cout << loading_msg << std::endl;
                 }
-                std::string cmd = (std::string)"wget -O " + destfname + (std::string)" " + (std::string)url;
-                std::cout << cmd << std::endl;
-                std::system(cmd.c_str());
-                frist = false;
+                download_file(url, destfname);
             }
 
             // Extract the tarball.
@@ -2429,12 +2425,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                             destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".png");
                             else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
                         if (!file_exists(destfname.c_str()))
-                        {
-                            // TODO: Add compatibility for Windows and Mac.
-                            std::string cmd = (std::string)"wget -O " + destfname + (std::string)" " + (std::string)mapurl;
-                            std::cout << cmd << std::endl;
-                            std::system(cmd.c_str());
-                        }
+                            download_file(mapurl, destfname);
                     }
                 } catch (...) { ; }
             }
