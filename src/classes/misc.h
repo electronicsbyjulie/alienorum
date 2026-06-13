@@ -119,6 +119,7 @@ bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
 bool file_exists(const char* fname);
 
+bool download_file(std::string URL, std::string save_path);
 std::vector<std::string> parse_csv_row(const char* data);
 time_t from_iso_string(std::string iso_string, const char* format = nullptr);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);

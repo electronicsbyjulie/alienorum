@@ -4,6 +4,7 @@
 #include <chrono>
 #include <algorithm>
 #include <math.h>
+#include <fstream.h>
 
 #include "misc.h"
 
@@ -308,6 +309,44 @@ bool file_exists(const char *fname)
         return true;
     }
     return false;
+}
+
+bool download_file(std::string URL, std::string save_path)
+{
+    curlpp::init();
+
+    try
+    {
+        std::string buffer;
+        curlpp::Easy easy;
+
+        easy.setOpt(CURLOPT_URL, URL.c_str());
+        curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
+        easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
+        easy.setOpt(CURLOPT_WRITEDATA, &buffer);
+        easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
+
+        easy.perform();
+
+        std::fstream fs(save_path.c_str(), std::ios::out);
+        if (!fs)
+        {
+            curlpp::cleanup();
+            std::cerr << "FAILED to write " << save_path << std::endl << std::flush;
+            return false;
+        }
+
+        fs << buffer;
+        fs.close();
+    }
+    catch (const curlpp::Exception& e)
+    {
+        std::cerr << "FAILED to download " << URL << ": " << e.what() << std::endl << std::flush;
+        return false;
+    }
+
+    curlpp::cleanup();
+    return true;
 }
 
 std::vector<std::string> parse_csv_row(const char *data)

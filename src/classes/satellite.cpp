@@ -180,42 +180,7 @@ bool SatSource::download_data()
         return true;
     }
 
-    curlpp::init();
-
-    try
-    {
-        std::string buffer;
-        curlpp::Easy easy;
-
-        easy.setOpt(CURLOPT_URL, url.c_str());
-        curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
-        easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
-        easy.setOpt(CURLOPT_WRITEDATA, &buffer);
-        easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
-
-        easy.perform();
-
-        // std::cout << "Success: " << buffer << std::endl;
-
-        std::fstream fs(outfname.c_str(), std::ios::out);
-        if (!fs)
-        {
-            std::cerr << "FAILED to write " << outfname << std::endl << std::flush;
-            return false;
-        }
-
-        fs << buffer;
-        fs.close();
-    }
-    catch (const curlpp::Exception& e)
-    {
-        std::cerr << "FAILED to download satellite orbits: " << e.what() << std::endl << std::flush;
-        return false;
-    }
-
-    curlpp::cleanup();
-
-    return true;
+    return download_file(url, outfname);
 }
 
 bool SatSource::read_csv_data()
