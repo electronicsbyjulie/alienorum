@@ -1133,8 +1133,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 else if (height_value < has_water)
                 {   // Ocean
                     double sh = height_value*inv_h2o_level;          // shallowness
-                    red_data[idx] = (10+20*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh) * r_weight;
-                    green_data[idx] = (30+80*sh*sh*sh) * r_weight;
+                    red_data[idx] = (10+20*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh) * r_weight;
+                    green_data[idx] = (30+80*sh*sh*sh*sh*sh) * r_weight;
                     blue_data[idx] = (120+100*sh*sh) * r_weight;
                     bump_data[idx] = 0;
                 }

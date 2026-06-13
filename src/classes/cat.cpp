@@ -1960,17 +1960,24 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
             if (s)
             {
-                if (!star_dist || (star_vmag > 1e28)) continue;
+                if (!star_dist || (star_vmag > 1e28))
+                {
+                    if (s_is_new) delete s;
+                    continue;
+                }
                 if (fabs(s->right_ascension - star_ra) > fiftyseventh
                         || fabs(s->declination - star_decl) > fiftyseventh
                         || fabs(s->apparent_magnitude - star_vmag) > 0.5
                     )
                 {
-                    s = new Star();
-                    s->type = star;
-                    strcpy(s->name, star_name.c_str());
-                    p->orbit->center = p->cenobj = s;
-                    s_is_new = true;
+                    if (!s_is_new)                  // If s was already allocated, we won't die from not allocating it anew.
+                    {
+                        s = new Star();
+                        s->type = star;
+                        strcpy(s->name, star_name.c_str());
+                        p->orbit->center = p->cenobj = s;
+                        s_is_new = true;
+                    }
                 }
 
                 s->right_ascension = star_ra;
