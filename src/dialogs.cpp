@@ -375,6 +375,8 @@ void draw_addcel_window(ImGuiIO& io)
         ImGui::EndCombo();
     }
 
+    if (cboceltyp_selected_idx == 4) ImGui::Text("Note: To add real satellites (such as ISS,\nGPS, Iridium, Hubble) use the ^ command instead.");
+
     if (ImGui::Button("Go"))
     {
         int i;

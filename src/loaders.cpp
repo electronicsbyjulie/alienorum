@@ -344,7 +344,7 @@ void load_catalogs()
     }
 
     mtx.lock();
-    loading_msg = std::string("Downloading satellite data...");
+    loading_msg = std::string("Loading satellite data...");
     mtx.unlock();
     cout << loading_msg << endl << flush;
     SatSource::read_sources_json();
