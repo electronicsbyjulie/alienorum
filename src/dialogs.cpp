@@ -1139,6 +1139,63 @@ void draw_objedit_window(ImGuiIO& io)
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
+                if (vegetation_r < 0) vegetation_r = 0;
+                if (vegetation_r > 255) vegetation_r = 255;
+                if (!randomize_txgen)
+                {
+                    ImGui::SameLine();
+                    ImGui::Text("%s", "Vegetation R:   ");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(txtwid*.6);
+                    ImGui::InputInt("##edtvegr", &vegetation_r);
+                }
+
+                ImGui::Text("%s", "Ozone %");
+                ImGui::SameLine(col15);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
+                {
+                    update_taucalc = true;
+                    cel->user_edited = true;
+                }
+                if (vegetation_g < 0) vegetation_g = 0;
+                if (vegetation_g > 255) vegetation_g = 255;
+                if (!randomize_txgen)
+                {
+                    ImGui::SameLine();
+                    ImGui::Text("%s", "Vegetation G:   ");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(txtwid*.6);
+                    ImGui::InputInt("##edtvegg", &vegetation_g);
+                }
+
+                ImGui::Text("%s", "Sulfur dioxide %");
+                ImGui::SameLine(col15);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
+                {
+                    update_taucalc = true;
+                    cel->user_edited = true;
+                }
+                if (vegetation_b < 0) vegetation_b = 0;
+                if (vegetation_b > 255) vegetation_b = 255;
+                if (!randomize_txgen)
+                {
+                    ImGui::SameLine();
+                    ImGui::Text("%s", "Vegetation B:   ");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(txtwid*.6);
+                    ImGui::InputInt("##edtvegb", &vegetation_b);
+                }
+
+                ImGui::Text("%s", "Hydrogen sulfide %");
+                ImGui::SameLine(col15);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
+                {
+                    update_taucalc = true;
+                    cel->user_edited = true;
+                }
                 if (mtn_height < 0) mtn_height = 0;
                 if (mtn_height > 1) mtn_height = 1;
                 if (!randomize_txgen)
@@ -1150,32 +1207,6 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::InputFloat("##edtmtnlvl", &mtn_height);
                 }
 
-                ImGui::Text("%s", "Ozone %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
-                {
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-
-                ImGui::Text("%s", "Sulfur dioxide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
-                {
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-
-                ImGui::Text("%s", "Hydrogen sulfide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
-                {
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
                 ImGui::Text("%s", "Carbon monoxide %");
                 ImGui::SameLine(col15);
                 ImGui::SetNextItemWidth(txtwid);

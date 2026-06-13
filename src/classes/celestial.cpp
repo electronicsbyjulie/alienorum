@@ -1093,13 +1093,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
     std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
 
     double inv_h2o_level = 0;
-    int vegr, vegg, vegb;
-    if (has_water)
+    if (has_water && randomize_txgen)
     {
         RGB veg_color = generate_vegetation_color();
-        vegr = veg_color.r;
-        vegg = veg_color.g;
-        vegb = veg_color.b;
+        vegetation_r = veg_color.r;
+        vegetation_g = veg_color.g;
+        vegetation_b = veg_color.b;
         inv_h2o_level = 1.0 / has_water;
     }
 
@@ -1156,9 +1155,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
                 else if (height_value < mtn_height)
                 {   // Forests
-                    red_data[idx] = vegr * r_weight;
-                    green_data[idx] = vegg * r_weight;
-                    blue_data[idx] = vegb * r_weight;
+                    red_data[idx] = vegetation_r * r_weight;
+                    green_data[idx] = vegetation_g * r_weight;
+                    blue_data[idx] = vegetation_b * r_weight;
                 }
                 else
                 {   // Mountains
