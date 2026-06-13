@@ -320,7 +320,7 @@ void set_center_objects()
 {
     int i;
     first_letter_index.clear();
-    for (i=0; i<35; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
+    for (i=0; i<36; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
     for (i=0; cels[i]; i++)
     {
         // Center of each star system
@@ -353,12 +353,12 @@ void set_center_objects()
         char c = cels[i]->name[0];
         if (c != 'H' || cels[i]->name[1] != 'D')
         {
-            bool indexable = true;
             if (c >= '0' && c <= '9') c -= '0';
             else if (c >= 'A' && c <= 'Z') c = c - 'A' + 10;
             else if (c >= 'a' && c <= 'z') c = c - 'a' + 10;
-            else indexable = false;
-            if (indexable) first_letter_index[c].push_back(cels[i]);
+            if (c >= 0 && c < 36)
+                first_letter_index[c]
+                    .push_back(cels[i]);
         }
 
         if (cels[i]->typeclass() == class_star)

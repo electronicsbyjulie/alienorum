@@ -1510,9 +1510,9 @@ void draw_ast_window(ImGuiIO & io)
     ImGui::SameLine();
     if (ImGui::InputText("##lookast", lookast, 40, 0)) astlistlines.clear();
 
-    int nasts = astorb.size(), i, l, looklen = strlen(lookast);
-    int n=0;
-    static int item_selected_idx = 0;
+    int i, l, looklen = strlen(lookast);
+    unsigned int n=0, nasts = astorb.size();
+    static unsigned int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     ImGui::Text(" Number Name               S.M.A.          Diam.         Incl.");
     if (ImGui::BeginListBox("##astlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))
@@ -1525,7 +1525,7 @@ void draw_ast_window(ImGuiIO & io)
             {
                 bool is_selected = (item_selected_idx == n);
 
-                ImGuiSelectableFlags flags = (item_highlighted_idx == n) ? ImGuiSelectableFlags_Highlight : 0;
+                ImGuiSelectableFlags flags = ((__int64_t)item_highlighted_idx == (__int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
                 if (ImGui::Selectable(astlistlines[n].c_str(), is_selected, flags))
                     item_selected_idx = n;
 
@@ -1564,7 +1564,7 @@ void draw_ast_window(ImGuiIO & io)
             line << " ##" << n;
             astlistlines.push_back(line.str());
 
-            bool is_selected = (item_selected_idx == i);
+            bool is_selected = ((__int64_t)item_selected_idx == (__int64_t)i);
 
             ImGuiSelectableFlags flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
@@ -1595,7 +1595,7 @@ void draw_ast_window(ImGuiIO & io)
         i = -1;
     }
 
-    if (i<astorb.size())
+    if (i < (int)astorb.size())
     {
         if (i>=0 && astorb[i].cel)
         {

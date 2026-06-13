@@ -1500,7 +1500,8 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
 {
     std::string path = "catalogs/astorb/astorb.dat";
-    int asno, _year, _month, _day;
+    __uint32_t asno;
+    int _year, _month, _day;
     float absmagn;
     char field[32];
     bool delete_buffer = false;
@@ -1632,7 +1633,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
     std::string path = "catalogs/astorb/astorb.dat";
     char buffer[1024];
     char field[32];
-    int asno, num_read = 0, offset, _year, _month, _day;
+    int asno, num_read = 0, offset;
     AstorbRow row;
     float absmagn;
 
