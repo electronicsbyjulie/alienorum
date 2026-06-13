@@ -5,7 +5,7 @@
 #   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image jpeg png
+#   brew install sdl2 sdl2_image jpeg png curl
 #
 # MSYS2 (Run in MINGW64 environment):
 #   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl

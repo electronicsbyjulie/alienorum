@@ -63,27 +63,21 @@ namespace curlpp
     // Form
     class Form
     {
-    public:
-        typedef CURLFORMcode codeType;
-        typedef curl_httppost handleType;
-
-        Form() = default;
+        public:
+        typedef CURLcode codeType;
+        typedef curl_mime handleType;
+        Form();
         ~Form();
-
         Form(const Form&) = delete;
         Form& operator=(const Form&) = delete;
-
         handleType* getHandle() const;
-
         void addContent(const std::string& name, const std::string& value);
         void addContent(const std::string& name, const std::string& value, const std::string& type);
-
         void addFile(const std::string& name, const std::string& filename);
         void addFile(const std::string& name, const std::string& filename, const std::string& type);
 
-    private:
-        handleType* last_ = nullptr;
-        handleType* post_ = nullptr;
+        private:
+        handleType* mime_ = nullptr;
     };
 
     // List
@@ -282,91 +276,55 @@ inline void curlpp::Easy::setOpt(optionType option, T arg)
     }
 }
 
+inline curlpp::Form::Form()
+{
+    mime_ = curl_mime_init(nullptr);
+    if (!mime_) throw FormException(CURLE_OUT_OF_MEMORY);
+}
+
 // Form
 inline curlpp::Form::~Form()
 {
-    curl_formfree(post_);
+    curl_mime_free(mime_);
 }
 
 inline curlpp::Form::handleType* curlpp::Form::getHandle() const
 {
-    return post_;
+    return mime_;
 }
 
 inline void curlpp::Form::addContent(const std::string& name, const std::string& value)
 {
-    const codeType error = curl_formadd(
-        &post_,
-        &last_,
-        CURLFORM_COPYNAME,
-        name.c_str(),
-        CURLFORM_COPYCONTENTS,
-        value.c_str(),
-        CURLFORM_END
-    );
-
-    if (error != CURL_FORMADD_OK)
-    {
-        throw FormException(error);
-    }
+    curl_mimepart* part = curl_mime_addpart(mime_);
+    if (!part) throw FormException(CURLE_OUT_OF_MEMORY);
+    curl_mime_name(part, name.c_str());
+    curl_mime_data(part, value.c_str(), CURL_ZERO_TERMINATED);
 }
 
 inline void curlpp::Form::addContent(const std::string& name, const std::string& value, const std::string& type)
 {
-    const codeType error = curl_formadd(
-        &post_,
-        &last_,
-        CURLFORM_COPYNAME,
-        name.c_str(),
-        CURLFORM_COPYCONTENTS,
-        value.c_str(),
-        CURLFORM_CONTENTTYPE,
-        type.c_str(),
-        CURLFORM_END
-    );
-
-    if (error != CURL_FORMADD_OK)
-    {
-        throw FormException(error);
-    }
+    curl_mimepart* part = curl_mime_addpart(mime_);
+    if (!part) throw FormException(CURLE_OUT_OF_MEMORY);
+    curl_mime_name(part, name.c_str());
+    curl_mime_data(part, value.c_str(), CURL_ZERO_TERMINATED);
+    curl_mime_type(part, type.c_str());
 }
 
 inline void curlpp::Form::addFile(const std::string& name, const std::string& filename)
 {
-    const codeType error = curl_formadd(
-            &post_,
-            &last_,
-            CURLFORM_COPYNAME,
-            name.c_str(),
-            CURLFORM_FILE,
-            filename.c_str(),
-            CURLFORM_END
-    );
-
-    if (error != CURL_FORMADD_OK)
-    {
-        throw FormException(error);
-    }
+    curl_mimepart* part = curl_mime_addpart(mime_);
+    if (!part) throw FormException(CURLE_OUT_OF_MEMORY);
+    curl_mime_name(part, name.c_str());
+    curl_mime_filedata(part, filename.c_str());
 }
 
 inline void curlpp::Form::addFile(const std::string& name, const std::string& filename, const std::string& type)
 {
-    const codeType error = curl_formadd(
-            &post_,
-            &last_,
-            CURLFORM_COPYNAME,
-            name.c_str(),
-            CURLFORM_FILE,
-            filename.c_str(),
-            CURLFORM_CONTENTTYPE,
-            type.c_str(),
-            CURLFORM_END
-    );
-
-    if (error != CURL_FORMADD_OK)
-    {
-        throw FormException(error);
-    }
+    curl_mimepart* part = curl_mime_addpart(mime_);
+    if (!part) throw FormException(CURLE_OUT_OF_MEMORY);
+    curl_mime_name(part, name.c_str());
+    curl_mime_type(part, type.c_str());
+    curl_mime_filedata(part, filename.c_str());
 }
 
 // List
