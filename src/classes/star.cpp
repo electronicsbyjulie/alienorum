@@ -192,6 +192,15 @@ bool Star::is_in_visible_box(Point seen_from)
 
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
+    if (seqno == 4554)          // debug step
+    {
+        visible_area_set = false;
+        std::cout << name << " Cutoff distance = " << (orbit ? (orbit->semimajor_axis*100) : (pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance))
+            << " because " << (orbit ? "has orbit" : "has no orbit")
+            << " and " << (orbit ? "sma=" : "appmagn=") << (orbit ? orbit->semimajor_axis : apparent_magnitude)
+            << " at distance " << distance
+            << std::endl << std::flush;
+    }
     if (!visible_area_set)
     {
         if (orbit && !orbit->semimajor_axis && orbit->center) orbit->semimajor_axis = location.distance_to(orbit->center->location);

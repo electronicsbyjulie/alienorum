@@ -544,10 +544,12 @@ void cache_cons_lines()
 
 void add_batch_satellites(std::vector<std::string> listlines)
 {
-    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+    int i;
+    for (i=0; cels[i]; i++);               // get count
+    ncelobjs = i;
     char buffer[256];
 
-    int i, m = listlines.size();
+    int m = listlines.size();
     sats_added = sat_errors = 0;
     for (int n=0; n<m; n++)
     {

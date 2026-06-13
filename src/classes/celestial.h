@@ -135,6 +135,7 @@ class CelestialObject
 
     cel_obj_type type = star;
     char name[40];
+    std::string origname = "", origcenname = "";
 
     Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
         *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;

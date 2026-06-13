@@ -367,7 +367,13 @@ json CelestialObject::to_json()
     towrite["location"] = location.to_json();
     towrite["lon_J2000_offset"] = lon_J2000_offset*fiftyseven;
     towrite["mass"] = mass;
-    towrite["!name"] = name;                    // want this to alphabetize to the top.
+
+    // want these to alphabetize to the top.
+    towrite["!name"] = name;
+    if (!origname.size()) origname = name;
+    towrite["!origname"] = origname;
+    towrite["!origcenname"] = origcenname;
+
     towrite["oblateness"] = oblateness;
     if (orbit) towrite["orbit"] = orbit->to_json();
     towrite["precession"] = precession * oneyear;
@@ -391,6 +397,8 @@ bool CelestialObject::from_json(json j)
         j.at("!name").get_to(str);
         strcpy(name, str.c_str());
     } catch (...) { ; }
+    try { j.at("!origname").get_to(origname); } catch (...) { ; }
+    try { j.at("!origcenname").get_to(origcenname); } catch (...) { ; }
     try { j.at("typeclass").get_to(_class); } catch (...) { ; }
     try { j.at("absolute_magnitude").get_to(absolute_magnitude); } catch (...) { ; }
     try { j.at("BV_color").get_to(BV_color); } catch (...) { ; }
@@ -453,6 +461,8 @@ bool CelestialObject::from_json(json j)
         j.at("").get_to(str);
         strcpy(, str.c_str());
     } catch (...) { ; } */
+
+    estimated_poles = true;
 
     return true;
 }

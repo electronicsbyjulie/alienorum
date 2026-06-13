@@ -370,6 +370,9 @@ void set_center_objects()
                 constellation_index[std::string(s->constellation)].push_back(cels[i]);
             }
         }
+
+        cels[i]->origname = cels[i]->name;
+        if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
 
     #ifdef DEBUG

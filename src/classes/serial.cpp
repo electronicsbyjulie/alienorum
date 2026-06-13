@@ -245,19 +245,35 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         json allobj;
         fs >> allobj;
         int i, j, n = allobj.size();
-        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+        for (i=0; cels[i]; i++);
+        ncelobjs = i;
         for (auto it = allobj.begin(); it != allobj.end(); ++it)
         {
-            std::string key = it.key();
             i = ncelobjs;
             json js = it.value();
             cel_obj_class c;
             js.at("typeclass").get_to(c);
-            std::string name;
+            std::string name, origname, origcenname;
             js.at("!name").get_to(name);
+            try { js.at("!origname").get_to(origname); } catch (...) { origname = name; }
+            try { js.at("!origcenname").get_to(origcenname); } catch (...) { origcenname = std::to_string(ncelobjs+1000); }     // at least don't match anything
+            const char *origname_c = origname.c_str(), *origcenname_c = origcenname.c_str();
 
-            j = find_object(name.c_str(), c == class_star);
-            if (j >= 0 && cels[j]->typeclass() == c && (c == class_star || !strcmp(name.c_str(), cels[j]->name))) i = j;
+            if (i != ncelobjs)
+                std::cout << "Clobbering " << i << " " << cels[i]->name << " with " << name << ", originally " << origname << std::endl << std::flush;
+            else std::cout << "Creating new " << i << " " << name << ", originally " << origname << std::endl << std::flush;
+
+            /* j = find_object(name.c_str(), c == class_star);
+            if (j >= 0 && cels[j]->typeclass() == c && (c == class_star || !strcmp(name.c_str(), cels[j]->name))) i = j; */
+
+            for (j=0; cels[j]; j++)
+            {
+                if (cels[j]->typeclass() != c) continue;
+                if (strcmp(cels[j]->origname.c_str(), origname_c)) continue;
+                if (strcmp(cels[j]->origcenname.c_str(), origcenname_c)) continue;
+                i = j;
+                break;
+            }
 
             switch (c)
             {
@@ -280,6 +296,11 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 case class_moon:
                 if (!cels[i]) cels[i] = new Moon();
                 ((Moon*)cels[i])->from_json(js);
+                break;
+
+                case class_satellite:
+                if (!cels[i]) cels[i] = new Satellite();
+                ((Satellite*)cels[i])->from_json(js);
                 break;
 
                 default:
@@ -311,8 +332,13 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
 
             if (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
             {
-                ((Star*)cels[i]->get_light_center())->has_planets++;
-                if (((Planet*)cels[i])->is_in_con_HZ()) ((Star*)cels[i]->get_light_center())->has_hz_planets++;
+                Star* s = (Star*) cels[i]->get_light_center();
+                if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
+                else
+                {
+                    s->has_planets++;
+                    if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
+                }
             }
 
             if (i==ncelobjs) ncelobjs++;
@@ -331,7 +357,11 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
     }
     catch (...)
     {
+        #ifdef DEBUG
+        assert(false);
+        #else
         std::cerr << "FAILED to load universe: incorrectly formatted JSON." << std::endl;
+        #endif
         return false;
     }
 }

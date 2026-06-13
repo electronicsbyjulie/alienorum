@@ -26,6 +26,22 @@ void Satellite::update_location(double tmnow)
     if (orbit && orbit->period) update_orbit_location(tmnow, &center_equator);
 }
 
+json Satellite::to_json()
+{
+    json towrite = CelestialObject::to_json();
+
+    if (bstar) towrite["bstar"] = bstar;
+
+    return towrite;
+}
+
+bool Satellite::from_json(json j)
+{
+    CelestialObject::from_json(j);
+    try { j.at("bstar").get_to(bstar); } catch (...) { ; }
+    return true;
+}
+
 json SatSource::to_json()
 {
     std::string iso_string;
