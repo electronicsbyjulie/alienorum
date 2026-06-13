@@ -1,12 +1,12 @@
 [
     {
-        "LastAccessed": "2026-06-12 20:07:41",
+        "LastAccessed": "2026-03-12 20:07:41",
         "LocalName": "satcat",
         "Type": "master",
         "URL": "https://celestrak.org/pub/satcat.csv"
     },
     {
-        "LastAccessed": "2026-06-12 18:20:16",
+        "LastAccessed": "2026-05-12 18:20:16",
         "LocalName": "brightest",
         "Type": "supplemental",
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=csv"

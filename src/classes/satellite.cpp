@@ -164,30 +164,22 @@ bool SatSource::download_data()
         return true;
     }
 
-    curlpp::Cleanup cleanup;
-    curlpp::Easy request;
+    curlpp::init();
 
-    request.setOpt(new curlpp::options::Url(url));
-    request.setOpt(new curlpp::options::Timeout(60));
-    request.setOpt(new curlpp::options::FollowLocation(true));
-
-    std::list<std::string> headers;
-    headers.push_back("User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)");
-    request.setOpt(new curlpp::options::HttpHeader(headers));
-
-    std::ostringstream response;
-    request.setOpt(new curlpp::options::WriteStream(&response));
-
-    std::cout << "Downloading " << outfname << "..." << std::flush;
-    last_accessed = std::time(nullptr);
-    request.perform();
-    last_accessed = std::time(nullptr);
-    long response_code = curlpp::infos::ResponseCode::get(request);
-
-    std::cout << " HTTP/" << response_code << std::endl << std::flush;
-    if (response_code == 200)
+    try
     {
-        std::string data = response.str();
+        std::string buffer;
+        curlpp::Easy easy;
+
+        easy.setOpt(CURLOPT_URL, url);
+        curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
+        easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
+        easy.setOpt(CURLOPT_WRITEDATA, &buffer);
+        easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
+
+        easy.perform();
+
+        // std::cout << "Success: " << buffer << std::endl;
 
         std::fstream fs(outfname.c_str(), std::ios::out);
         if (!fs)
@@ -196,15 +188,16 @@ bool SatSource::download_data()
             return false;
         }
 
-        fs << data;
+        fs << buffer;
         fs.close();
     }
-    else
+    catch (const curlpp::Exception& e)
     {
-        std::cerr << "FAILED to download satellite orbits: HTTP " << response_code << std::endl
-            << response.str() << std::endl << std::flush;
+        std::cerr << "FAILED to download satellite orbits: " << e.what() << std::endl << std::flush;
         return false;
     }
+
+    curlpp::cleanup();
 
     return true;
 }
