@@ -356,9 +356,7 @@ void set_center_objects()
             if (c >= '0' && c <= '9') c -= '0';
             else if (c >= 'A' && c <= 'Z') c = c - 'A' + 10;
             else if (c >= 'a' && c <= 'z') c = c - 'a' + 10;
-            if (c >= 0 && c < 36)
-                first_letter_index[c]
-                    .push_back(cels[i]);
+            if (c >= 0 && c < 36) first_letter_index[c].push_back(cels[i]);
         }
 
         if (cels[i]->typeclass() == class_star)
