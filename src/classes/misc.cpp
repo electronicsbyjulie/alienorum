@@ -9,6 +9,7 @@
 
 std::string loading_msg = "Loading...";
 std::vector<std::string> themes;
+std::string viewer_theme = "Perseus";
 std::mutex mtx;
 const char* vmtext[NUM_VIEWMODES] = { "Sky Atlas", "Horizon", "Sun Clock" };
 ViewMode view_mode = vm_skyatlas;

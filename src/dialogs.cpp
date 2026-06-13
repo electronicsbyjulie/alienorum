@@ -277,7 +277,7 @@ void draw_status_window(ImGuiIO& io)
     {
         for (int n = 0; n < th; n++)
         {
-            if (!strcmp(themes[n].c_str(), "Perseus"))
+            if (!strcmp(themes[n].c_str(), viewer_theme.c_str()))
             {
                 themes_selected_idx = n;
                 break;
@@ -297,8 +297,10 @@ void draw_status_window(ImGuiIO& io)
             if (ImGui::Selectable(themes[n].c_str(), is_selected))
             {
                 themes_selected_idx = n;
+                viewer_theme = themes[n];
                 global_style.load(themes[n]);
                 apply_default_style();
+                save_user_json();
             }
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
@@ -1308,7 +1310,6 @@ void draw_objedit_window(ImGuiIO& io)
                             ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
 
                             // Draw border and background color
-                            ImGuiIO& io = ImGui::GetIO();
                             ImDrawList* draw_list = ImGui::GetWindowDrawList();
                             draw_list->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(0, 0, 0, 255));
                             draw_list->AddRect(canvas_p0, canvas_p1, rgba_apply_redlight(IM_COL32(0, 16, 128, 255)));
@@ -1433,7 +1434,8 @@ void draw_system_explorer(ImGuiIO& io)
         ImGui::EndListBox();
     }
 
-    if (item_selected_idx < list_item_celids.size()) celidx_sel_in_sysxplor = list_item_celids[item_selected_idx];
+    if ((__int64_t)item_selected_idx < (__int64_t)list_item_celids.size())
+        celidx_sel_in_sysxplor = list_item_celids[item_selected_idx];
     else celidx_sel_in_sysxplor = -1;
     if (ImGui::Button("Select##explored"))
     {
