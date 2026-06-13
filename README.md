@@ -15,7 +15,7 @@ Alienorum can be built and run on Linux, Mac, and Windows. Before building, plea
 all the dependency packages:
 
 Linux:
-   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libcurlpp-dev
+   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev
 
 Mac OS:
    brew install sdl2 sdl2_image jpeg png
