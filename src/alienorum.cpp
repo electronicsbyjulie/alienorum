@@ -317,7 +317,7 @@ int main (int argc, char** argv)
         splash_star_brghtness[i] = frand(0.1, 2.9) * pow(frand(0,1), 2);
     }
 
-    global_style.load("Perseus");           // default
+    global_style.load(viewer_theme);
     apply_default_style();
 
     // Main loop

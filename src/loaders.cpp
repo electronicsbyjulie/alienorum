@@ -575,6 +575,23 @@ void add_batch_satellites(std::vector<std::string> listlines)
 
 void load_stuff()
 {
+    fstream fs("user.json", std::ios::in);
+    if (fs)
+    {
+        json j;
+        fs >> j;
+        double dbl;
+        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Theme").get_to(viewer_theme); } catch(...) { ; }
+        fs.close();
+    }
+    else
+    {
+        viewer_lat = 32.5425   * fiftyseventh;              // Babylon
+        viewer_lon = 44.421111 * fiftyseventh;
+    }
+
     mtx.lock();
     loading_msg = "Reading constellations...";
     mtx.unlock();
@@ -590,24 +607,30 @@ void load_stuff()
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
 
-    fstream fs("user.json", std::ios::in);
-    if (fs)
-    {
-        json j;
-        fs >> j;
-        double dbl;
-        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseventh; } catch(...) { ; }
-        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseventh; } catch(...) { ; }
-        fs.close();
-    }
-    else
-    {
-        viewer_lat = 32.5425   * fiftyseventh;              // Babylon
-        viewer_lon = 44.421111 * fiftyseventh;
-    }
-
     mtx.lock();
     loading_msg = "Done!";
     splash = false;
     mtx.unlock();
+}
+
+bool save_user_json()
+{
+    try
+    {
+        json j;
+
+        j["Latitude"] = viewer_lat * fiftyseven;
+        j["Longitude"] = viewer_lon * fiftyseven;
+        j["Theme"] = viewer_theme;
+
+        std::fstream fs("user.json", std::ios::out);
+        fs << j.dump(4);
+        fs.close();
+
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }

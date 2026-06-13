@@ -156,7 +156,7 @@ extern double bv_correction;
 long long micronow();
 
 // APP STATUS AND SETTINGS
-extern std::string loading_msg;
+extern std::string loading_msg, viewer_theme;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
