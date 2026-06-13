@@ -2,13 +2,13 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libcurlpp-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image jpeg png curlpp
+#   brew install sdl2 sdl2_image jpeg png
 #
 # MSYS2 (Run in MINGW64 environment):
-#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl mingw-w64-x86_64-curlpp
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl
 #
 
 CPP = g++
@@ -55,7 +55,7 @@ CPPFLAGS += $(INCLUDES)
 ifeq ($(UNAME_S), Linux)
     ECHO_MESSAGE = "Building for Linux..."
     LIBS += $(LINUX_GL_LIBS) -ldl `sdl2-config --libs`
-    CPPFLAGS += `sdl2-config --cflags` `pkg-config --libs curlpp`
+    CPPFLAGS += `sdl2-config --cflags`
     CFLAGS = $(CPPFLAGS)
 endif
 
@@ -71,7 +71,7 @@ endif
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
     LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2`
-    CPPFLAGS += `pkg-config --cflags sdl2` `pkg-config --libs curlpp`
+    CPPFLAGS += `pkg-config --cflags sdl2`
     CFLAGS = $(CPPFLAGS)
 endif
 

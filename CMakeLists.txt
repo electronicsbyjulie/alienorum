@@ -14,7 +14,7 @@ find_package(JPEG REQUIRED)
 find_package(CURL REQUIRED)
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(CURLPP REQUIRED curlpp)
+# pkg_check_modules(CURLPP REQUIRED curlpp)
 
 
 add_library(IMGUI STATIC
@@ -32,6 +32,11 @@ add_library(ImGuiFileDialog
     src/include/igfd/ImGuiFileDialog.h
     src/include/igfd/ImGuiFileDialogConfig.h
 )
+
+add_library(cURLpp
+    src/include/cURLpp_single/cURLpp.hpp
+)
+set_target_properties(cURLpp PROPERTIES LINKER_LANGUAGE CXX)
 
 if(UNIX)
     target_compile_options(ImGuiFileDialog PUBLIC -Wno-unknown-pragmas)
@@ -64,8 +69,8 @@ target_include_directories(CLASSES PUBLIC src/classes src/include
     ${CURLPP_INCLUDE_DIRS})
 
 target_link_libraries(CLASSES JPEG::JPEG PNG::PNG
-    ${CURL_LIBRARIES} 
-    ${CURLPP_LIBRARIES})
+    ${CURL_LIBRARIES}
+    cURLpp)
 
 add_executable(alienorum
 	src/dialogs.cpp
