@@ -1513,7 +1513,7 @@ void draw_ast_window(ImGuiIO & io)
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     ImGui::Text(" Number Name               S.M.A.          Diam.         Incl.");
-    if (ImGui::BeginListBox("##astlist", ImVec2(916, 13 * ImGui::GetTextLineHeightWithSpacing())))
+    if (ImGui::BeginListBox("##astlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))
     {
         i=0;
         if (astlistlines.size())
