@@ -31,6 +31,9 @@ void Star::set_component(char comp, Star* compA)
         orbit->center = compA;
     }
     else orbit = nullptr;
+
+    origname = name;
+    if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
 Star::Star()
@@ -152,6 +155,9 @@ void Star::rename_from_Bayer_Flamsteed()
             strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
+
+    origname = name;
+    if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
 bool Star::is_sunlike()
@@ -308,6 +314,9 @@ void Star::gotta_be_named_something()
             strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
+
+    origname = name;
+    if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
 json Star::to_json()

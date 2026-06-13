@@ -1309,6 +1309,10 @@ void Map::generate_gas_giant_map(int lr, double BV)
 void append_cel(CelestialObject *cel)
 {
     if (ncelobjs >= MAX_CELOBJS-1) return;
+
+    cel->origname = cel->name;
+    if (cel->orbit && cel->orbit->center) cel->origcenname = cel->orbit->center->name;
+
     cels[ncelobjs] = cel;
     cel->seqno = ncelobjs;
     ncelobjs++;

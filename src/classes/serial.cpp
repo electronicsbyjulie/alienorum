@@ -268,6 +268,12 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 break;
             }
 
+            #ifdef DEBUG
+            if (i != ncelobjs)
+                std::cout << "Clobbering " << i << " " << cels[i]->name << " with " << name << ", originally " << origname << std::endl << std::flush;
+            else std::cout << "Creating new " << i << " " << name << ", originally " << origname << std::endl << std::flush;
+            #endif
+
             switch (c)
             {
                 case class_galaxy:
@@ -302,6 +308,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             }
 
             cels[i]->user_edited = true;
+            cels[i]->estimated_poles = true;
             cels[i]->seqno = i;
 
             mtx.lock();

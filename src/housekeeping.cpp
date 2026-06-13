@@ -375,6 +375,7 @@ void set_center_objects()
         if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
 
+    #if 0
     #ifdef DEBUG
     // Test a sample constellation.
     const char* test_cons = "UMa";
@@ -384,5 +385,6 @@ void set_center_objects()
         Star *s = (Star*)constellation_index[test_cons][i];
         std::cout << s->Bayer << " " << s->name << std::endl << std::flush;
     }
+    #endif
     #endif
 }
