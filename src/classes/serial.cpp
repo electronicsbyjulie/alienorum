@@ -201,8 +201,16 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
         json allobjs;
         for (i=0; cels[i]; i++)
         {
-            std::string j = std::to_string(i);
-            const char* l = j.c_str();
+            std::string key = "";
+            key = std::string(cels[i]->name);
+            CelestialObject *cursor = cels[i];
+            while (cursor->orbit && cursor->orbit->center)
+            {
+                cursor = cursor->orbit->center;
+                key = std::string(cursor->name) + std::string(".") + key;
+            }
+
+            const char* l = key.c_str();
             if (oe && !cels[i]->user_edited) continue;
             switch (cels[i]->typeclass())
             {
@@ -221,6 +229,10 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 
                 case class_moon:
                 allobjs[l] = ((Moon*)cels[i])->to_json();
+                break;
+
+                case class_satellite:
+                allobjs[l] = ((Satellite*)cels[i])->to_json();
                 break;
 
                 default:

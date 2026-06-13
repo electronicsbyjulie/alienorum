@@ -293,7 +293,7 @@ int main (int argc, char** argv)
     int splash_image_width = 0;
     int splash_image_height = 0;
     GLuint splash_image_texture = 0;
-    bool ret = LoadTextureFromFile("assets/icon_full.png", &splash_image_texture, &splash_image_width, &splash_image_height);
+    bool ret = LoadTextureFromFile("assets/icon_full_seethru.png", &splash_image_texture, &splash_image_width, &splash_image_height);
     if(!ret)
     {
         printf("Failed to load icon texture\n");
@@ -319,6 +319,8 @@ int main (int argc, char** argv)
 
     global_style.load(viewer_theme);
     apply_default_style();
+
+    ImU32 alien_color = global_style.ecliptic_color | IM_COL32(0,0,0,192);
 
     // Main loop
     bool done = false;
@@ -403,6 +405,9 @@ int main (int argc, char** argv)
                 ImGui::SetWindowPos(ImVec2(left,splash_top));
                 ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+35));
                 ImGui::Text("%s", lloadmsg);
+                ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                ImVec2 canvas_p0 = ImGui::GetCursorScreenPos(), canvas_p1(canvas_p0.x+aspect_width, canvas_p0.y+splash_height);
+                draw_list->AddRectFilled(canvas_p0, canvas_p1, alien_color);
                 ImGui::Image((ImTextureID)(intptr_t)splash_image_texture, ImVec2(aspect_width, splash_height));
             }
             else std::cout << "ImGui::Begin() failed." << std::endl;
