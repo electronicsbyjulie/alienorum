@@ -513,6 +513,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
             {
                 cel->volumetric_mean_radius = edit_radius * 1000;
+                assert(!isinf(cel->volumetric_mean_radius));
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -1101,7 +1102,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (!randomize_txgen)
                 {
                     ImGui::SameLine();
-                    ImGui::Text("%s", "Water level");
+                    ImGui::Text("%s", "Water up to:    ");
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(txtwid*.6);
                     ImGui::InputFloat("##edth2olvl", &has_water);
@@ -1120,7 +1121,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (!randomize_txgen)
                 {
                     ImGui::SameLine();
-                    ImGui::Text("%s", "Vegetation ");
+                    ImGui::Text("%s", "Vegetation from:");
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(txtwid*.6);
                     ImGui::InputFloat("##edtveglvl", &veg_height);
@@ -1139,7 +1140,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (!randomize_txgen)
                 {
                     ImGui::SameLine();
-                    ImGui::Text("%s", "Mountains  ");
+                    ImGui::Text("%s", "Mountains from: ");
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(txtwid*.6);
                     ImGui::InputFloat("##edtmtnlvl", &mtn_height);
@@ -1368,7 +1369,7 @@ void draw_system_explorer(ImGuiIO& io)
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     ImGui::Text("%s", " Name                 Orbits             Period, d       Mass, kg         HZ?");
-    if (ImGui::BeginListBox("##syslist", ImVec2(777, 11 * ImGui::GetTextLineHeightWithSpacing())))
+    if (ImGui::BeginListBox("##syslist", ImVec2(777, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
         for (i=0; cels[i]; i++)
@@ -1488,6 +1489,158 @@ void draw_system_explorer(ImGuiIO& io)
     {
         process_key_cmd_char('^');
     }
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+
+void draw_ast_window(ImGuiIO & io)
+{
+    if (!cels[1]) return;
+    static std::vector<std::string> astlistlines;
+    ImGui::Begin("Add Asteroids", &astwnd, 0);
+
+    static std::string mesg = "";
+    ImGui::Text("%s", "Search:");
+    ImGui::SameLine();
+    if (ImGui::InputText("##lookast", lookast, 40, 0)) astlistlines.clear();
+
+    int i, l, looklen = strlen(lookast);
+    unsigned int n=0, nasts = astorb.size();
+    static unsigned int item_selected_idx = 0;
+    int item_highlighted_idx = -1;
+    ImGui::Text(" Number Name               S.M.A.          Diam.         Incl.");
+    if (ImGui::BeginListBox("##astlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        i=0;
+        if (astlistlines.size())
+        {
+            nasts = astlistlines.size();
+            for (n=0; n<nasts; n++)
+            {
+                bool is_selected = (item_selected_idx == n);
+
+                ImGuiSelectableFlags flags = ((__int64_t)item_highlighted_idx == (__int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
+                if (ImGui::Selectable(astlistlines[n].c_str(), is_selected, flags))
+                    item_selected_idx = n;
+
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+        }
+        else for (n=0; n<nasts; n++)
+        {
+            stringstream line;
+            if (astorb[n].number) line << astorb[n].number;
+
+            l = 7 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            line << astorb[n].name;
+
+            l = 26 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            if (looklen && !strcasestr(line.str().c_str(), lookast)) continue;
+
+            line << astorb[n].sma;
+
+            l = 42 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            if (astorb[n].diam) line << astorb[n].diam;
+            else line << "?";
+
+            l = 56 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            line << astorb[n].incl;
+            line << " ##" << n;
+            astlistlines.push_back(line.str());
+
+            bool is_selected = ((__int64_t)item_selected_idx == (__int64_t)i);
+
+            ImGuiSelectableFlags flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+                item_selected_idx = i;
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+
+            i++;
+            if (i >= 25) break;
+        }
+
+        ImGui::EndListBox();
+    }
+
+    static ImVec4 msg_color = ImVec4(255, 255, 255, 255);
+
+    if (item_selected_idx < astlistlines.size())
+    {
+        n = item_selected_idx;
+        const char *hashmarks = strstr(astlistlines[n].c_str(), "##");
+        i = atoi(&hashmarks[2]);
+    }
+    else
+    {
+        item_selected_idx = 0;
+        i = -1;
+    }
+
+    if (i < (int)astorb.size())
+    {
+        if (i>=0 && astorb[i].cel)
+        {
+            if (ImGui::Button("Find##asteroid"))
+            {
+                selected = astorb[i].cel->seqno;
+                center_selected();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Track##asteroid"))
+            {
+                trackidx = astorb[i].cel->seqno;
+                center_tracked();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Go##asteroid"))
+            {
+                whereami = astorb[i].cel->seqno;
+                viewchanged = true;
+            }
+        }
+        else if (ImGui::Button("Add Selected##asteroid"))
+        {
+            mesg = "";
+            for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+            Planet *ast = new Planet();
+
+            if (!CatalogReader::load_asteroid(&astorb[i]))
+            {
+                mesg = "ERROR - Asteroid failed to load.";
+                msg_color = ImVec4(255, 0, 0, 255);
+            }
+            else
+            {
+                selected = ncelobjs-1;
+                compute_object_location(ast, -1);
+                compute_object_draw_coordinates();
+                center_selected();
+                viewchanged = true;
+                astwnd = false;
+            }
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextColored(redlight_mode ? ImVec4(255, 24, 0, 255) : msg_color, "%s", mesg.c_str());
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
@@ -1667,11 +1820,13 @@ void draw_sat_window(ImGuiIO& io)
 void draw_app_window_template(ImGuiIO& io)
 {
     if (!cels[1]) return;
-    ImGui::Begin("Window Name", &wndbool, 0);
+    ImGui::Begin("Window Name", &wnd, 0);                       // Replace wnd with a new dedicated bool.
 
-    ImGui::Text("%s", "Text Field");
+    ImGui::Text("%s", "Text Field");                            // Example text label.
     ImGui::SameLine();
     ImGui::InputText("##textdata", text_data, 256, 0);          // Replace the ## string with a unique id and text_data with a char array.
+
+    // Add the main body of the window here.
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();

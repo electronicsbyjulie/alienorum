@@ -7,6 +7,7 @@
 
 #include "misc.h"
 
+// IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
 std::string loading_msg = "Loading...";
 std::vector<std::string> themes;
 std::string viewer_theme = "Perseus";
@@ -37,6 +38,7 @@ bool objinfwnd = true;
 bool statuswnd = true;
 bool objedtwnd = false;
 bool satwnd = false;
+bool astwnd = false;
 bool addcelwnd = false;
 bool explorer = false;
 bool show_taucalc = false;
@@ -49,7 +51,7 @@ double bv_correction = 0;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
-float has_water, ice_amount, veg_height, mtn_height, snow_height;
+float has_water, ice_amount, veg_height, mtn_height;
 
 double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,

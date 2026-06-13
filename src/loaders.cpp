@@ -490,10 +490,14 @@ void cache_cons_lines()
             {
                 Star* s = (Star*) constellation_index[consabbrev[considx[i]]][j];
                 if (s->apparent_magnitude > mag_limit) continue;
-                if (!founda && !strcmp(s->Bayer, consline_a[i].c_str())) founda = s->seqno;
-                if (!founda && !strcmp(s->Flamsteed, consline_a[i].c_str())) founda = s->seqno;
-                if (!foundb && !strcmp(s->Bayer, consline_b[i].c_str())) foundb = s->seqno;
-                if (!foundb && !strcmp(s->Flamsteed, consline_b[i].c_str())) foundb = s->seqno;
+                if ((founda<0) && !strcmp(s->Bayer, consline_a[i].c_str()))
+                    founda = s->seqno;
+                if ((founda<0) && !strcmp(s->Flamsteed, consline_a[i].c_str()))
+                    founda = s->seqno;
+                if ((foundb<0) && !strcmp(s->Bayer, consline_b[i].c_str()))
+                    foundb = s->seqno;
+                if ((foundb<0) && !strcmp(s->Flamsteed, consline_b[i].c_str()))
+                    foundb = s->seqno;
             }
         }
 

@@ -44,4 +44,14 @@ class Planet : public CelestialObject
     double cached_in_cons_hz = -1;
 };
 
+struct AstorbRow
+{
+    __uint32_t number;
+    std::string name;
+    float diam = 0, sma = 0, incl = 0;
+    Planet *cel = nullptr;
+};
+
+extern std::vector<AstorbRow> astorb;
+
 #endif

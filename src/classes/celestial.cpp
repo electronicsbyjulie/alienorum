@@ -995,7 +995,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         has_water = veg_height = mtn_height = 0;
         ice_amount = 0.03;
-        snow_height = 1;
     }
 
     // TODO: If tidally locked, create an eyeball world.
@@ -1005,10 +1004,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
         && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
     {
         double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
-        // TODO: Don't overwrite surface pressure here. Randomize it during exoplanet load and make it a setting in the edit dialog.
         if (!p->surface_pressure) p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
-        std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
-        std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
+        #ifdef DEBUG
+            std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
+            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
+        #endif
 
         // Constants for water b.p.
         const double R = 8.314;                                         // J/(mol*K)
@@ -1030,7 +1030,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 has_water = 1;
                 ice_amount = 1;
-                snow_height = 0;
             }
             else if (T_surf < T_boil * 1.1)
             {
@@ -1039,7 +1038,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 10)));
                 veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
                 mtn_height = (veg_height ?: has_water) + has_water*0.29; // 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
-                snow_height = 1.0 - ((1.0 - has_water) * 0.5 * ice_amount);
             }
             else
             {
@@ -1052,7 +1050,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
         std::cout << "Polar ice: " << ice_amount << "." << std::endl << std::flush;
         std::cout << "Vegetation level: " << veg_height << "." << std::endl << std::flush;
         std::cout << "Mountain level: " << mtn_height << "." << std::endl << std::flush;
-        std::cout << "Snow line: " << snow_height << "." << std::endl << std::flush;
     }
 
     int octaves = 5 + (rand() % 4);

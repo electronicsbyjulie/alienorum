@@ -349,6 +349,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 s->distance_known = true;
                 s->mass = Msun;
                 s->volumetric_mean_radius = Rsun;
+                assert(!isinf(s->volumetric_mean_radius));
             }
             else
             {
@@ -1496,14 +1497,145 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
+{
+    std::string path = "catalogs/astorb/astorb.dat";
+    __uint32_t asno;
+    int _year, _month, _day;
+    float absmagn;
+    char field[32];
+    bool delete_buffer = false;
+
+    if (!buffer)
+    {
+        FILE* fp = fopen(path.c_str(), "rb");
+        if (!fp) return false;
+        buffer = new char[1024];
+        delete_buffer = true;
+
+        bool found = false;
+        while (fgets(buffer, 1020, fp))
+        {
+            //   1-  6  I6    ---     Planet    [1,]?+ Asteroid number (blank if unnumbered)
+            read_field_onebased(buffer, 1, 6, field);
+            asno = atoi(field);
+            if (r->number == asno) found = true;
+            if (atoi(field) == 5747 && !strcmp(r->name.c_str(), "Williamina")) found = true;
+
+            //   8- 25  A18   ---     Name      Name or preliminary designation.
+            read_field_onebased(buffer, 8, 25, field);
+            if (!strcmp(r->name.c_str(), trim(field).c_str())) found = true;
+
+            //  60- 64  F5.1  km      Diam      ? IRAS diameter (see E.F.Tedesco, pp.1151-1161; catalog <II/190>)
+            read_field_onebased(buffer, 60, 64, field);
+            r->diam = atof(field);
+
+            // 148-157  F10.6 deg     i         Inclination (3)
+            read_field_onebased(buffer, 148, 157, field);
+            r->incl = atof(field);
+
+            // 169-181  F13.8 AU      a         ? Semimajor axis (3)
+            read_field_onebased(buffer, 169, 181, field);
+            r->sma = atof(field);
+
+            if (found) break;
+        }
+        fclose(fp);
+        if (!found)
+        {
+            delete[] buffer;
+            return false;
+        }
+    }
+
+    //  43- 47  F5.2  mag     H         Absolute magnitude H parameter (1)
+    read_field_onebased(buffer, 43, 47, field);
+    absmagn = atof(field);
+
+    Planet *p = new Planet();
+    r->cel = p;
+    p->type = rocky;
+    p->asteroid_no = r->number;
+    p->location = cels[0]->location;
+    p->cenobj = cels[0];
+    p->orbit = new Orbit();
+    p->orbit->center = cels[0];
+    strcpy(p->name, r->name.c_str());
+    p->absolute_magnitude = absmagn;
+
+    //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
+    read_field_onebased(buffer, 55, 58, field);
+    if (trim(field).size())
+        p->BV_color = atof(field);
+    else p->BV_color = 0.71;                            // typical value for asteroids
+
+    p->volumetric_mean_radius = r->diam * 500;
+    if (!p->volumetric_mean_radius && !strcmp(r->name.c_str(), "Pluto")) p->volumetric_mean_radius = 1188300;
+    assert(!isinf(p->volumetric_mean_radius));
+    p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * M_PI * 1853;  // Pluto density.
+
+    // 107-114  A8 "YYYYMMDD" Epoch     Epoch of osculation, yyyymmdd (TDT) (2)
+    read_field_onebased(buffer, 107, 110, field);
+    _year = atoi(field);
+    read_field_onebased(buffer, 111, 112, field);
+    _month = atoi(field);
+    read_field_onebased(buffer, 113, 114, field);
+    _day = atoi(field);
+
+    tm epoch;
+    epoch.tm_year = _year-1900;
+    epoch.tm_mon = _month-1;
+    epoch.tm_mday = _day;
+    time_t t = mktime(&epoch);
+    p->epoch = (t/oneday) + 2440587.5;
+
+    // 116-125  F10.6 deg     M         Mean anomaly (3)
+    read_field_onebased(buffer, 116, 125, field);
+    p->orbit->mean_anomaly = atof(field) * fiftyseventh;
+
+    // 127-136  F10.6 deg     omega     Argument of perihelion (3)
+    read_field_onebased(buffer, 127, 136, field);
+    p->orbit->arg_periapsis = atof(field) * fiftyseventh;
+
+    // 138-147  F10.6 deg     Omega     Longitude of ascending node (3)
+    read_field_onebased(buffer, 138, 147, field);
+    p->orbit->ascending_node = atof(field) * fiftyseventh;
+
+    p->orbit->inclination = r->incl * fiftyseventh;
+
+    // 159-168  F10.8 ---     e         Eccentricity (3)
+    read_field_onebased(buffer, 159, 168, field);
+    p->orbit->eccentricity = atof(field);
+
+    p->orbit->semimajor_axis = r->sma * AU;
+    p->orbit->period = sqrt(r->sma*r->sma*r->sma) * oneyear;
+
+    // Issue #58: Add default parameters for asteroids.
+    p->estimate_albedo();
+    if (!p->volumetric_mean_radius)
+    {
+        // Based on 163693 Atira. Ideally, this equation should use the estimated albedo and
+        // #defined constants instead of hard coding it.
+        p->volumetric_mean_radius = 8.74e+6 * sqrt(pow(magnbase, -p->absolute_magnitude));
+        assert(!isinf(p->volumetric_mean_radius));
+    }
+    if (!p->mass) p->mass = 2.0e+6 * sphere_volume(p->volumetric_mean_radius);
+    p->estimate_rotation();
+    if (!p->albedo) p->estimate_albedo_and_absmagn();
+
+    append_cel(p);
+    if (delete_buffer) delete[] buffer;
+    return true;
+}
+
 int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
 {
     std::string path = "catalogs/astorb/astorb.dat";
     char buffer[1024];
     char field[32];
-    int asno, num_read = 0, offset, _year, _month, _day;
-    std::string name;
-    double absmagn, sma;
+    int asno, num_read = 0, offset;
+    AstorbRow row;
+    float absmagn;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
@@ -1515,240 +1647,68 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
 
     while (fgets(buffer, 1020, fp))
     {
+        row.cel = nullptr;
+
         //   8- 25  A18   ---     Name      Name or preliminary designation.
         read_field_onebased(buffer, 8, 25, field);
-        name = trim(field);
+        row.name = trim(field);
+
+        //   1-  6  I6    ---     Planet    [1,]?+ Asteroid number (blank if unnumbered)
+        read_field_onebased(buffer, 1, 6, field);
+        row.number = asno = atoi(field);
+        if (asno == 5747) row.name = "Williamina";              // She invented the OBAFGKM system and astorb can't even honor her namesake????
 
         //  43- 47  F5.2  mag     H         Absolute magnitude H parameter (1)
         read_field_onebased(buffer, 43, 47, field);
         absmagn = atof(field);
 
-        //   1-  6  I6    ---     Planet    [1,]?+ Asteroid number (blank if unnumbered)
-        read_field_onebased(buffer, 1, 6, field);
-
-        if (!(asno = atoi(field))) continue;
-        if ((asno > 4 || absmagn >= 8)
-            && asno != 55
-            && asno != 89
-            && asno != 105
-            && asno != 116
-            && asno != 490
-            && asno != 742
-            && asno != 896
-            && asno != 1001
-            && asno != 1006
-            && asno != 1134
-            && asno != 1143
-            && asno != 1221
-            && asno != 1388
-            && asno != 1404
-            && asno != 1421
-            && asno != 1566
-            && asno != 1604
-            && asno != 1691
-            && asno != 1693
-            && asno != 1709
-            && asno != 1741
-            && asno != 1776
-            && asno != 1789
-            && asno != 1790
-            && asno != 1791
-            && asno != 1814
-            && asno != 1815
-            && asno != 1823
-            && asno != 1862
-            && asno != 1964
-            && asno != 1991
-            && asno != 2000
-            && asno != 2001
-            && asno != 2002
-            && asno != 2060
-            && asno != 2062
-            && asno != 2069
-            && asno != 2101
-            && asno != 2161
-            && asno != 2244
-            && asno != 2247
-            && asno != 2309
-            && asno != 2322
-            && asno != 2362
-            && asno != 2476
-            && asno != 2675
-            && asno != 2688
-            && asno != 2709
-            && asno != 2769
-            && asno != 2801
-            && asno != 2807
-            && asno != 2810
-            && asno != 2830
-            && asno != 2937
-            && asno != 2985
-            && asno != 2999
-            && asno != 3130
-            && asno != 3142
-            && asno != 3153
-            && asno != 3163
-            && asno != 3313
-            && asno != 3350
-            && asno != 3351
-            && asno != 3352
-            && asno != 3353
-            && asno != 3354
-            && asno != 3355
-            && asno != 3356
-            && asno != 3366
-            && asno != 3412
-            && asno != 3524
-            && asno != 3534
-            && asno != 3600
-            && asno != 3768
-            && asno != 3838
-            && asno != 3895
-            && asno != 3905
-            && asno != 3948
-            && asno != 4062
-            && asno != 4147
-            && asno != 4169
-            && asno != 4179
-            && asno != 4180
-            && asno != 4221
-            && asno != 4330
-            && asno != 4337
-            && asno != 4444
-            && asno != 4457
-            && asno != 4500
-            && asno != 4513
-            && asno != 4628
-            && asno != 4659
-            && asno != 4716
-            && asno != 4804
-            && asno != 4987
-            && asno != 5000
-            && asno != 5020
-            && asno != 5370
-            && asno != 5471
-            && asno != 5535
-            && asno != 5668
-            && asno != 5747
-            && asno != 5773
-            && asno != 5790
-            && asno != 5803
-            && asno != 5811
-            && asno != 6006
-            && asno != 6032
-            && asno != 6123
-            && asno != 6143
-            && asno != 6186
-            && asno != 6433
-            && asno != 6469
-            && asno != 6470
-            && asno != 6471
-            && asno != 6486
-            && asno != 6493
-            && asno != 6701
-            && asno != 6714
-            && asno != 6826
-            && asno != 6875
-            && asno != 6914
-            && asno != 6999
-            && asno != 7000
-            && asno != 50000
-            && asno != 90377
-            && asno != 90482
-            && asno != 134340
-            && asno != 136108
-            && asno != 136199
-            && asno != 136472
-            && asno != 163693
-            && asno != 541132
-            )
-            continue;
-
-        if (asno == 5747) name = "Williamina";              // She invented the OBAFGKM system and you chauvanists can't honor her namesake in astorb????
-
-        Planet *p = new Planet();
-        p->type = rocky;
-        p->asteroid_no = asno;
-        p->location = cels[0]->location;
-        p->cenobj = cels[0];
-        p->orbit = new Orbit();
-        p->orbit->center = cels[0];
-        // strcpy(p->name, (std::to_string(asno) + std::string(" ") + name).c_str());
-        strcpy(p->name, name.c_str());
-        p->absolute_magnitude = absmagn;
-
-        //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
-        read_field_onebased(buffer, 55, 58, field);
-        if (trim(field).size())
-            p->BV_color = atof(field);
-        else p->BV_color = 0.71;                            // typical value for asteroids
-
         //  60- 64  F5.1  km      Diam      ? IRAS diameter (see E.F.Tedesco, pp.1151-1161; catalog <II/190>)
         read_field_onebased(buffer, 60, 64, field);
-        p->volumetric_mean_radius = atof(field) * 500;
-        if (!p->volumetric_mean_radius && !strcmp(name.c_str(), "Pluto")) p->volumetric_mean_radius = 1188300;
-        p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * M_PI * 1853;  // Pluto density.
-
-        // 107-114  A8 "YYYYMMDD" Epoch     Epoch of osculation, yyyymmdd (TDT) (2)
-        read_field_onebased(buffer, 107, 110, field);
-        _year = atoi(field);
-        read_field_onebased(buffer, 111, 112, field);
-        _month = atoi(field);
-        read_field_onebased(buffer, 113, 114, field);
-        _day = atoi(field);
-
-        tm epoch;
-        epoch.tm_year = _year-1900;
-        epoch.tm_mon = _month-1;
-        epoch.tm_mday = _day;
-        time_t t = mktime(&epoch);
-        p->epoch = (t/oneday) + 2440587.5;
-
-        // 116-125  F10.6 deg     M         Mean anomaly (3)
-        read_field_onebased(buffer, 116, 125, field);
-        p->orbit->mean_anomaly = atof(field) * fiftyseventh;
-
-        // 127-136  F10.6 deg     omega     Argument of perihelion (3)
-        read_field_onebased(buffer, 127, 136, field);
-        p->orbit->arg_periapsis = atof(field) * fiftyseventh;
-
-        // 138-147  F10.6 deg     Omega     Longitude of ascending node (3)
-        read_field_onebased(buffer, 138, 147, field);
-        p->orbit->ascending_node = atof(field) * fiftyseventh;
+        row.diam = atof(field);
 
         // 148-157  F10.6 deg     i         Inclination (3)
         read_field_onebased(buffer, 148, 157, field);
-        p->orbit->inclination = atof(field) * fiftyseventh;
-
-        // 159-168  F10.8 ---     e         Eccentricity (3)
-        read_field_onebased(buffer, 159, 168, field);
-        p->orbit->eccentricity = atof(field);
+        row.incl = atof(field);
 
         // 169-181  F13.8 AU      a         ? Semimajor axis (3)
         read_field_onebased(buffer, 169, 181, field);
-        sma = atof(field);
-        p->orbit->semimajor_axis = sma * AU;
-        p->orbit->period = sqrt(sma*sma*sma) * oneyear;
+        row.sma = atof(field);
 
-        // Issue #58: Add default parameters for asteroids.
-        p->estimate_albedo();
-        if (!p->volumetric_mean_radius)
+        if (!asno)
         {
-            // Based on 163693 Atira. Ideally, this equation should use the estimated albedo and
-            // #defined constants instead of hard coding it.
-            p->volumetric_mean_radius = 8.74e+6 * sqrt(pow(magnbase, -p->absolute_magnitude));
-        }
-        if (!p->mass) p->mass = 2.0e+6 * sphere_volume(p->volumetric_mean_radius);
-        p->estimate_rotation();
-        if (!p->albedo) p->estimate_albedo_and_absmagn();
-
-        if (!strcmp(name.c_str(), "Pluto"))
-        {
-            _day = 0;
+            astorb.push_back(row);
+            continue;
         }
 
+        if ((asno > 4 || absmagn >= 8)
+            && asno != 55 && asno != 89 && asno != 105 && asno != 116 && asno != 490 && asno != 742 && asno != 896 
+            && asno != 1001 && asno != 1006 && asno != 1134 && asno != 1143 && asno != 1221 && asno != 1388 && asno != 1404 && asno != 1421
+            && asno != 1566 && asno != 1604 && asno != 1691 && asno != 1693 && asno != 1709 && asno != 1741 && asno != 1772 && asno != 1776 && asno != 1789
+            && asno != 1790 && asno != 1791 && asno != 1814 && asno != 1815 && asno != 1823 && asno != 1862 && asno != 1964 && asno != 1991
+            && asno != 2000 && asno != 2001 && asno != 2002 && asno != 2060 && asno != 2062 && asno != 2069 && asno != 2101 && asno != 2161
+            && asno != 2244 && asno != 2247 && asno != 2309 && asno != 2322 && asno != 2362 && asno != 2476 && asno != 2675 && asno != 2688 
+            && asno != 2709 && asno != 2769 && asno != 2801 && asno != 2807 && asno != 2810 && asno != 2830 && asno != 2937 && asno != 2985 && asno != 2999
+            && asno != 3130 && asno != 3142 && asno != 3153 && asno != 3163 && asno != 3313 && asno != 3350 && asno != 3351 && asno != 3352
+            && asno != 3353 && asno != 3354 && asno != 3355 && asno != 3356 && asno != 3366 && asno != 3412 && asno != 3524 && asno != 3534
+            && asno != 3600 && asno != 3768 && asno != 3838 && asno != 3895 && asno != 3905 && asno != 3948 
+            && asno != 4062 && asno != 4147 && asno != 4169 && asno != 4179 && asno != 4180 && asno != 4221 && asno != 4330 && asno != 4337
+            && asno != 4444 && asno != 4457 && asno != 4500 && asno != 4513 && asno != 4628 && asno != 4659 && asno != 4716 && asno != 4804 && asno != 4987 
+            && asno != 5000 && asno != 5020 && asno != 5370 && asno != 5471 && asno != 5535 && asno != 5668 && asno != 5747 && asno != 5773
+            && asno != 5790 && asno != 5803 && asno != 5811
+            && asno != 6006 && asno != 6032 && asno != 6123 && asno != 6143 && asno != 6186 && asno != 6433 && asno != 6469 && asno != 6470
+            && asno != 6471 && asno != 6486 && asno != 6493 && asno != 6701 && asno != 6714 && asno != 6826 && asno != 6875 && asno != 6914 && asno != 6999
+            && asno != 7000 && asno != 50000 && asno != 90377 && asno != 90482 && asno != 134340 && asno != 136108 && asno != 136199
+            && asno != 136472 && asno != 163693 && asno != 541132
+            )
+        {
+            astorb.push_back(row);
+            continue;
+        }
+
+        load_asteroid(&row, buffer);
+
+        astorb.push_back(row);
         num_read++;
-        append_cel(p);
         offset++;
         if (offset >= (max-1))
         {
@@ -2019,6 +1979,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 s->distance_known = true;
                 s->mass = star_mass;
                 s->volumetric_mean_radius = star_radius;
+                assert(!isinf(s->volumetric_mean_radius));
                 s->apparent_magnitude = star_vmag;
                 double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
                 s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
@@ -2255,6 +2216,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 {
                     read_field_onebased(buffer, 205, 215, field);
                     s->volumetric_mean_radius = atof(field) * solar_radius;
+                    assert(!isinf(s->volumetric_mean_radius));
                 }
                 if (bs > 217)
                 {
@@ -2440,6 +2402,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                 if (!m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
                 if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
                     m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333333333) * 500;
+                assert(!isinf(m->volumetric_mean_radius));
             }
 
             const char *mapkeys[6] = {"SurfMap", "CloudMap", "BumpMap", "NightMap", "RingColorMap", "RingTranspMap"};
