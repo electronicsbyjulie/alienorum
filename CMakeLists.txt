@@ -101,7 +101,7 @@ elseif(APPLE)
 		SDL2_image::SDL2_image
 	)
 elseif(WIN32)
-	target_link_libraries(alienorum PRIVATE
+	target_link_libraries(alienorum
 		SDL2_image
 		OpenGL::GL
 		gdi32
