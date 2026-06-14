@@ -164,7 +164,7 @@ class CelestialObject
     void Decl_from_degms(std::string);
     double RA_as_radians(CelestialLocation seen_from, double seen_equinox);
     double Decl_as_radians(CelestialLocation seen_from);
-    std::string scaled_distance(CelestialLocation fromwhere);
+    std::string scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat = false);
     json to_json();
     bool from_json(json j);
 

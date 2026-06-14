@@ -66,6 +66,7 @@ void identify_object_under_cursor(ImGuiIO& io)
         i = is_an_obj_under_cursor;
         double lmag = vmag_cache[i];
         bool am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
+        bool sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
 
         std::stringstream oss;
 
@@ -112,7 +113,7 @@ void identify_object_under_cursor(ImGuiIO& io)
                     + std::to_string(objaz*fiftyseven)
                     + (std::string)"\n";
         }
-        if (!am_satellite || (cels[i]->tmprel.magnitude() > cels[i]->volumetric_mean_radius*2))
+        if (!sat_low_orbit)
             oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
 
         objinfo += oss.str();
@@ -124,7 +125,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             Star* s = (Star*)cels[i];
             if (s->distance_known)
             {
-                oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+                oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
                 oss << "AbsMag:   " << std::setprecision(2) << s->absolute_magnitude << "\n";
             }
             objinfo += (std::string)"SpTyp:    " + s->spectral_type + (std::string)"\n";
@@ -139,8 +140,9 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
-            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
-            oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
+            oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
+            if (!sat_low_orbit)
+                oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
             if (((Planet*)cels[i])->is_in_con_HZ()) oss << "          Habitable Zone" << std::endl;
         }
 

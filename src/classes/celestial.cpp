@@ -327,9 +327,10 @@ double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
     return result;
 }
 
-std::string CelestialObject::scaled_distance(CelestialLocation fromwhere)
+std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat)
 {
     double r = location.distance_to(fromwhere), dispr = r;
+    if (is_low_orbit_sat) r -= volumetric_mean_radius;
     std::string units = " m";
 
     if (r >= light_year)
