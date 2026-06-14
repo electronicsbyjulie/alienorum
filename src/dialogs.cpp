@@ -3,6 +3,15 @@
 #include "inputs.h"
 #include "loaders.h"
 #include "housekeeping.h"
+#include <cstdint>
+
+#ifdef __MINGW32__
+#include <shlwapi.h>
+#define strcasestr StrStrI
+#else
+#define _GNU_SOURCE
+#include <string.h>
+#endif
 
 void draw_status_window(ImGuiIO& io)
 {

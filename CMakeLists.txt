@@ -101,10 +101,12 @@ elseif(APPLE)
 		SDL2_image::SDL2_image
 	)
 elseif(WIN32)
-	target_link_libraries(alienorum
-		SDL2_image
-		OpenGL::GL
-		gdi32
-		mm32
-	)
+    target_link_libraries(alienorum
+            SDL2::SDL2main
+            SDL2::SDL2
+            SDL2_image
+            OpenGL::GL
+            gdi32
+            winmm
+    )
 endif()
