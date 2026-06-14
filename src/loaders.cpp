@@ -156,7 +156,7 @@ bool look_for_catalogs()
         {
             std::filesystem::path up = "..";
             std::filesystem::current_path(up);
-            if (strlen(std::filesystem::current_path().c_str()) < 5) break;
+            if (std::filesystem::current_path().string().size() < 5) break;
         }
         if (std::filesystem::exists(p)) catalogs_found = true;
     }

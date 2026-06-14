@@ -3,6 +3,15 @@
 #include "inputs.h"
 #include "loaders.h"
 #include "housekeeping.h"
+#include <cstdint>
+
+#ifdef __MINGW32__
+#include <shlwapi.h>
+#define strcasestr StrStrI
+#else
+#define _GNU_SOURCE
+#include <string.h>
+#endif
 
 void draw_status_window(ImGuiIO& io)
 {
@@ -1474,7 +1483,7 @@ void draw_system_explorer(ImGuiIO& io)
         ImGui::EndListBox();
     }
 
-    if ((__int64_t)item_selected_idx < (__int64_t)list_item_celids.size())
+    if ((int64_t)item_selected_idx < (int64_t)list_item_celids.size())
         celidx_sel_in_sysxplor = list_item_celids[item_selected_idx];
     else celidx_sel_in_sysxplor = -1;
     if (ImGui::Button("Select##explored"))
@@ -1564,7 +1573,7 @@ void draw_ast_window(ImGuiIO & io)
             {
                 bool is_selected = (item_selected_idx == n);
 
-                ImGuiSelectableFlags flags = ((__int64_t)item_highlighted_idx == (__int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
+                ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
                 if (ImGui::Selectable(astlistlines[n].c_str(), is_selected, flags))
                     item_selected_idx = n;
 
@@ -1603,7 +1612,7 @@ void draw_ast_window(ImGuiIO & io)
             line << " ##" << n;
             astlistlines.push_back(line.str());
 
-            bool is_selected = ((__int64_t)item_selected_idx == (__int64_t)i);
+            bool is_selected = ((int64_t)item_selected_idx == (int64_t)i);
 
             ImGuiSelectableFlags flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
