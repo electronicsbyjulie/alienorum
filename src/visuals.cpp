@@ -3,6 +3,9 @@
 #include "visuals.h"
 #include "loaders.h"
 
+double jay, appmag, bloomrad, flare, theta, lmasslim;
+ImVec2 xycoord;
+
 void draw_ra_dec_lines()
 {
     if (!cels[1]) return;
@@ -454,6 +457,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points.get(), n, imcol);
     }
 
+    // Rings
     if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
     {
         std::vector<ImVec2> todrawr;
@@ -585,17 +589,160 @@ int draw_sphere(CelestialObject* cel, double arad)
     return result;
 }
 
+bool draw_one_object(int i)
+{
+    int j;
+    cel_obj_class cls = cels[i]->typeclass();
+    xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
+    bloomrad = fabs(bloomrad_cache[i]);
+    flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
+    bloomrad = fmin(max_bloomrad, bloomrad);
+    if (cls == class_satellite)
+    {
+        if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*2))
+        {
+            cels[i]->drawnx = cels[i]->drawny = -1e9;
+            return false;
+        }
+
+        double line_of_sight = cels[i]->orbit->center->location.local_position.get_distance_to_line(
+            cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
+        ImU32 satcol = (line_of_sight < cels[i]->orbit->center->volumetric_mean_radius)
+            ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+            : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+        if (show_labels || lbl_localsys)
+        {
+            // Satellite icons.
+            ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
+            ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
+            ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                    );
+            ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+            ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
+            ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+            ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
+            ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+            ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
+            ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+            ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
+
+            ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
+            ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
+
+            bloomrad_cache[i] = bloomrad = antenna_height + panel_tilt + panel_width;
+        }
+        else
+        {
+            ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, 1, satcol);
+            bloomrad_cache[i] = bloomrad = 1;
+        }
+    }
+    else if (angular_radius[i]*zoom > fiftyseventh)
+    {
+        CelestialObject *cel = cels[i];
+        bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
+        discinstead[i] = false;
+
+        if (selected == i)
+        {
+            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+        }
+    }
+    else
+    {
+        discinstead[i] = false;
+
+        Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
+        if (flare)
+        {
+            double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
+            RGB rgb;
+            rgb.r = (int)(col.red * divisor);
+            rgb.g = (int)(col.green* divisor);
+            rgb.b = (int)(col.blue * divisor);
+
+            #define jmax 3
+            for (j=jmax; j>0; j--)
+            {
+                jay = 0.25 + 0.25 * j * flare;
+                double jay15 = jay+max_bloomrad;
+                ImVec2 radii(jay15, jay15*0.333);
+                ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
+                double thoff = _pi*0.1*j;
+                for (theta=0; theta<_pi*2; theta += _pi*0.2)
+                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
+            }
+        }
+
+        double mgrc = bloomrad_cache[i];
+        double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
+
+        if (mgrc >= 2)
+        {
+            mgrc = 2.0 * sqrt(mgrc/2);
+            divisor = (2.9 / fmax(col.red, col.blue));
+        }
+
+        col.red *= divisor; col.green *= divisor; col.blue *= divisor;
+        for (jay=bloomrad; jay>=0; jay-=0.7)
+        {
+            RGB rgb = Color::rgb_from_color(col, 1);
+            if (rgb.r >= 16 || rgb.b >= 16)
+            {
+                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
+                cels[i]->onscreen = true;
+            }
+            if (rgb.r == 255 && rgb.b == 255) break;
+
+            col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
+        }
+    }
+    if (selected == i && cels[1])
+    {
+        ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+    }
+
+    if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
+            ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
+            || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
+            || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
+            || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
+            || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+            || (cbolbls_selected_idx == 5 && (((Star*)cels[i])->has_hz_planets) )
+            || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+            || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
+            ))
+        || ((cels[i]->cenobj == mycenobj) && lbl_localsys
+            && ((cels[i]->mass >= lmasslim)
+                || (vmag_cache[i] < 2.5)
+                || (cels[i]->tmprel.magnitude() < AU)
+                )
+            )
+        || i == selected)
+    {
+        ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
+        ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
+            rgba_apply_redlight(global_style.objlbl_color),
+            cels[i]->name);
+    }
+    return true;
+}
+
 void draw_objects()
 {
     if (!ncelobjs) return;
     int i, j, n, pass;
-    double jay, step, dispw = dispcx*2, disph = dispcy*2;
-    ImVec2 xycoord;
-    double appmag, bloomrad, flare, theta;
+    double step, dispw = dispcx*2, disph = dispcy*2;
     double orbseg = 81;
-    double lmasslim = lbllsys_mass_lim*1000;
-    std::vector<CelestialObject*> to_draw_sphere;
-    std::vector<int> to_draw_idx;
+    lmasslim = lbllsys_mass_lim*1000;
+    std::vector<CelestialObject*> to_draw_layered;
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -654,7 +801,7 @@ void draw_objects()
         cels[i]->location = was;
     }
 
-    // Dits and doscs
+    // Faraway objects
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
@@ -688,60 +835,17 @@ void draw_objects()
         appmag = vmag_cache[i] - sky_mag_shift;
         if (appmag > 6.5) continue;
 
-        #define max_bloomrad 10
-
         bloomrad = fabs(bloomrad_cache[i]);
         flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
         bloomrad = fmin(max_bloomrad, bloomrad);
 
-        if (cls == class_satellite)
+        // if (cls != class_satellite && angular_radius[i]*zoom > fiftyseventh)
+        if (cels[i]->tmprel.squared_magnitude() < mycenobj->tmprel.squared_magnitude() * 1.1 * zoom * zoom)
         {
-            double line_of_sight = cels[i]->orbit->center->location.local_position.get_distance_to_line(
-                cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
-            ImU32 satcol = (line_of_sight < cels[i]->orbit->center->volumetric_mean_radius)
-                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
-                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
-            if (show_labels || lbl_localsys)
-            {
-                // Satellite icons.
-                ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
-                ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
-                ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                    );
-                ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
-                ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
-                ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
-                ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
-                ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
-                ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
-                ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
-                ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
-
-                ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
-                ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
-
-                bloomrad_cache[i] = bloomrad = antenna_height + panel_tilt + panel_width;
-            }
-            else
-            {
-                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, 1, satcol);
-                bloomrad_cache[i] = bloomrad = 1;
-            }
-        }
-        else if (angular_radius[i]*zoom > fiftyseventh)
-        {
-            n = to_draw_sphere.size();
+            n = to_draw_layered.size();
             if (!n)
             {
-                to_draw_sphere.push_back(cels[i]);
-                to_draw_idx.push_back(i);
+                to_draw_layered.push_back(cels[i]);
                 discinstead[i] = true;
             }
             else
@@ -750,77 +854,24 @@ void draw_objects()
                 double trm = cels[i]->tmprel.magnitude();
                 for (j=0; j<n; j++)
                 {
-                    if (to_draw_sphere[j]->tmprel.magnitude() < trm)
+                    if (to_draw_layered[j]->tmprel.magnitude() < trm)
                     {
-                        to_draw_sphere.insert(to_draw_sphere.begin()+j, cels[i]);
-                        to_draw_idx.insert(to_draw_idx.begin()+j, i);
+                        to_draw_layered.insert(to_draw_layered.begin()+j, cels[i]);
                         discinstead[i] = true;
                         break;
                     }
                 }
                 if (!discinstead[i])
                 {
-                    to_draw_sphere.push_back(cels[i]);
-                    to_draw_idx.push_back(i);
+                    to_draw_layered.push_back(cels[i]);
                 }
                 discinstead[i] = true;
             }
         }
-        else
-        {
-            discinstead[i] = false;
-            Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
-            if (flare)
-            {
-                double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
-                RGB rgb;
-                rgb.r = (int)(col.red * divisor);
-                rgb.g = (int)(col.green* divisor);
-                rgb.b = (int)(col.blue * divisor);
-
-                #define jmax 3
-                for (j=jmax; j>0; j--)
-                {
-                    jay = 0.25 + 0.25 * j * flare;
-                    double jay15 = jay+max_bloomrad;
-                    ImVec2 radii(jay15, jay15*0.333);
-                    ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
-                    double thoff = _pi*0.1*j;
-                    for (theta=0; theta<_pi*2; theta += _pi*0.2)
-                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
-                }
-            }
-
-            double mgrc = bloomrad_cache[i];
-            double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
-
-            if (mgrc >= 2)
-            {
-                mgrc = 2.0 * sqrt(mgrc/2);
-                divisor = (2.9 / fmax(col.red, col.blue));
-            }
-
-            col.red *= divisor; col.green *= divisor; col.blue *= divisor;
-            for (jay=bloomrad; jay>=0; jay-=0.7)
-            {
-                RGB rgb = Color::rgb_from_color(col, 1);
-                if (rgb.r >= 16 || rgb.b >= 16)
-                {
-                    ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
-                    cels[i]->onscreen = true;
-                }
-                if (rgb.r == 255 && rgb.b == 255) break;
-
-                col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
-            }
-        }
-        if (selected == i && cels[1])
-        {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
-        }
+        else draw_one_object(i);
     }
 
-    // Labels and selection
+    // Labels
     if (!cels[1]) return;
     if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
@@ -864,44 +915,11 @@ void draw_objects()
         }
     }
 
-    // Spheres
-    n = to_draw_sphere.size();
+    // Near objects
+    n = to_draw_layered.size();
     for (j=0; j<n; j++)
     {
-        i = to_draw_idx[j];
-        CelestialObject *cel = to_draw_sphere[j];
-        bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
-        discinstead[i] = false;
-
-        xycoord = ImVec2(cel->drawnx, cel->drawny);
-        if (selected == i)
-        {
-            ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
-        }
-
-        if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
-               ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
-                || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
-                || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-                || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
-                || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-                || (cbolbls_selected_idx == 5 && (((Star*)cels[i])->has_hz_planets) )
-                || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-                || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
-             ))
-            || ((cels[i]->cenobj == mycenobj) && lbl_localsys
-                && ((cels[i]->mass >= lmasslim)
-                 || (vmag_cache[i] < 2.5)
-                 || (cels[i]->tmprel.magnitude() < AU)
-                   )
-               )
-            || i == selected)
-        {
-            ImVec2 sz = ImGui::CalcTextSize(cel->name);
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cel->drawnx - sz.x/2, cel->drawny+bloomrad+1),
-                rgba_apply_redlight(global_style.objlbl_color),
-                cel->name);
-        }
+        draw_one_object(to_draw_layered[j]->seqno);
     }
 
     // TODO: Render according to bump map and generate a fictitious skyline.

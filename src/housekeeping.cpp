@@ -98,7 +98,7 @@ void set_viewer_location_and_plane()
     }
 }
 
-double dispw, disph, lmasslim;
+double dispw, disph, celmasslim;
 bool compute_object_location(CelestialObject* cel, int i)
 {
     num_stars_in_box = 0;
@@ -156,7 +156,7 @@ bool compute_object_location(CelestialObject* cel, int i)
                 }
                 else if (cel->orbit &&
                     (
-                        ((cel->mass < lmasslim)
+                        ((cel->mass < celmasslim)
                         && (cel->tmprel.magnitude() > AU)
                     ))
                     && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
@@ -181,7 +181,7 @@ bool compute_object_location(CelestialObject* cel, int i)
                 }
                 else if (cel->orbit &&
                     (
-                            ((cel->mass >= lmasslim)
+                            ((cel->mass >= celmasslim)
                         && (cel->tmprel.magnitude() > AU)
                     ))
                     && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
@@ -213,7 +213,7 @@ void compute_object_draw_coordinates()
     int i, j, n, bx, by;
     dispw = dispcx*2;
     disph = dispcy*2;
-    lmasslim = lbllsys_mass_lim * 1000;
+    celmasslim = lbllsys_mass_lim * 1000;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_dist = mycenobj->location.distance_to(here);
     if (whereami >= 0)
@@ -261,7 +261,7 @@ void compute_object_draw_coordinates()
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
-    if (viewchanged || redo_proper_motions)
+    if (1) // viewchanged || redo_proper_motions)
     {
         luminous_flux = cels[1] ? 0 : 1e10;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)

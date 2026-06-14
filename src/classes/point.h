@@ -49,6 +49,7 @@ class Point
     Point& operator*=(double multiplier);
     double distance_to(Point other) const;
     double magnitude() const;
+    double squared_magnitude() const;
     void scale(double new_magn);
     json to_json();
     bool from_json(json j);

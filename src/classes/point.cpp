@@ -193,6 +193,11 @@ double Point::magnitude() const
     return sqrt(x*x + y*y + z*z);
 }
 
+double Point::squared_magnitude() const
+{
+    return x*x + y*y + z*z;
+}
+
 void Point::scale(double new_magn)
 {
     double old_magn = magnitude();
