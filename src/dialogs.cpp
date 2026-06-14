@@ -1015,6 +1015,8 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
+            ImGui::SameLine();
+            ImGui::Text("%s", "d.");
             ImGui::SameLine(col2);
             edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
             ImGui::Text("%s", "ProcArgPeri");
@@ -1030,6 +1032,8 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
+            ImGui::SameLine();
+            ImGui::Text("%s", "d.");
 
             ImGui::EndTabItem();
         }

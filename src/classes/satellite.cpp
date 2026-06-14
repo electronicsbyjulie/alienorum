@@ -23,7 +23,7 @@ void Satellite::update_location(double tmnow)
     if (!orbit || !orbit->center) return;
     Rotation center_equator = orbit->center->location.equatorial_plane;
     orbit->center->onscreen = true;
-    if (orbit && orbit->period) update_orbit_location(tmnow, &center_equator);
+    if (orbit->period) update_orbit_location(tmnow, &center_equator);
 }
 
 json Satellite::to_json()
@@ -321,6 +321,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
     sat->volumetric_mean_radius = 5;        // unknown
     sat->absolute_magnitude = 50;           // unknown
 
+    sat->mean_motion = sr.MEAN_MOTION * 2.0 * M_PI / oneday;                // convert to radians/second.
     sat->orbit->eccentricity = sr.ECCENTRICITY;
     sat->orbit->inclination = sr.INCLINATION * fiftyseventh;
     sat->orbit->ascending_node = sr.RA_OF_ASC_NODE * fiftyseventh;
@@ -329,6 +330,22 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
     sat->orbit->period = sr.PERIOD * 60;
     sat->orbit->compute_semimajor_axis(sat->mass);
     sat->bstar = sr.BSTAR;
+
+    if (sat->orbit->center->typeclass() == class_planet || sat->orbit->center->typeclass() == class_moon)
+    {
+        Planet* pl = (Planet*)sat->orbit->center;
+
+        // Precession of the nodes.
+        double p = sat->orbit->semimajor_axis * (1.0 - sat->orbit->eccentricity*sat->orbit->eccentricity);
+        double paren = pl->get_equatorial_radius() / p;
+        paren *= paren;
+        double common_term = pl->J2 * paren * sat->mean_motion;
+        double cos_incl = cos(sat->orbit->inclination);
+        sat->orbit->prec_node = 1.5 * common_term * cos_incl;
+
+        // Procession of the arg peri
+        sat->orbit->proc_argperi = 0.75 * common_term * (5.0 * cos_incl * cos_incl - 1);
+    }
 
     return true;
 }

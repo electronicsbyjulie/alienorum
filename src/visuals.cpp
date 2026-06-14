@@ -696,7 +696,11 @@ void draw_objects()
 
         if (cls == class_satellite)
         {
-            ImU32 satcol = rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+            double line_of_sight = cels[i]->orbit->center->location.local_position.get_distance_to_line(
+                cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
+            ImU32 satcol = (line_of_sight < cels[i]->orbit->center->volumetric_mean_radius)
+                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
             if (show_labels || lbl_localsys)
             {
                 // Satellite icons.

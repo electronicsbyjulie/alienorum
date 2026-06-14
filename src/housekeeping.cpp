@@ -65,7 +65,7 @@ void set_viewer_location_and_plane()
         if (dwh)
             equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
         else
-            equatorial_radius = cel->volumetric_mean_radius * pow(1.0 - cel->oblateness, 0.333);
+            equatorial_radius = cel->get_equatorial_radius();
 
         Point cursor = Point::from_ra_dec(viewer_lon, viewer_lat, dwh ? 1 : equatorial_radius, 0);
 
@@ -233,7 +233,7 @@ void compute_object_draw_coordinates()
             for (j=0; j<n; j++)
                 compute_object_location(have_to_know[j], -1);
 
-            here = cels[whereami]->location;
+            set_viewer_location_and_plane();
         }
     }
 

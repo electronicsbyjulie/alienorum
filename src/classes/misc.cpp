@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <math.h>
 #include <fstream>
+#include <ctime>
 
 #include "misc.h"
 
@@ -386,7 +387,11 @@ time_t from_iso_string(std::string iso_string, const char* format)
     }
     else
     {
-        return std::mktime(&tm_struct);
+#ifdef _WIN32
+        return _mkgmtime(&tm_struct); // Windows SDK
+#else
+        return timegm(&tm_struct);    // Linux/macOS POSIX
+#endif
     }
 
     return time_t();

@@ -45,6 +45,7 @@ class Satellite : public CelestialObject
 {
     public:
     double bstar;
+    double mean_motion;
 
     Satellite();
     void update_location(double tmnow);
