@@ -159,7 +159,7 @@ double find_angle(double dx, double dy)
     double angle = atan2(dy,dx);
     if (angle < 0)
     {
-        angle += 2 * M_PI;
+        angle += 2 * _pi;
     }
     return angle;
 }
@@ -242,9 +242,9 @@ double find_angle_along_vector(Point pt1, Point pt2, Point source, Point v)
     npt2.z = 0;
     // return find_3d_angle(&npt1, &npt2, &z);
     double a1 = find_angle(npt1.x, npt1.y);
-    if (a1 > M_PI) a1 -= M_PI*2;
+    if (a1 > _pi) a1 -= _pi*2;
     double a2 = find_angle(npt2.x, npt2.y);
-    if (a2 > M_PI) a2 -= M_PI*2;
+    if (a2 > _pi) a2 -= _pi*2;
     return a2 - a1;
 }
 
@@ -346,7 +346,7 @@ Rotation align_points_3d(Point point, Point align, Point center)
         }
 
         rot.v = n;
-        rot.a = M_PI;
+        rot.a = _pi;
         return rot;
     }
 

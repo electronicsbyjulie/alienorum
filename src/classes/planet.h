@@ -46,7 +46,7 @@ class Planet : public CelestialObject
 
 struct AstorbRow
 {
-    __uint32_t number;
+    uint32_t number;
     std::string name;
     float diam = 0, sma = 0, incl = 0;
     Planet *cel = nullptr;

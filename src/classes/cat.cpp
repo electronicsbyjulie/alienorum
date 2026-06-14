@@ -62,7 +62,7 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
     {
         for (const auto& entry : fs::directory_iterator(path))
         {
-            std::string entry_name = entry.path().filename();
+            std::string entry_name = entry.path().filename().string();
             if (fs::is_directory(entry.path())
                 &&
                 std::find(known_catalog_names.begin(), known_catalog_names.end(), entry_name) != known_catalog_names.end()
@@ -142,7 +142,7 @@ void CatalogReader::download_catalogs()
             // Any .gz files in the destination folder, unzip them.
             for (const auto& entry : fs::directory_iterator(destdir))
             {
-                std::string entry_name = entry.path().filename();
+                std::string entry_name = entry.path().filename().string();
                 i = entry_name.size();
                 j = i - 3;
                 if (!strcmp(".gz", &entry_name.c_str()[j]))
@@ -366,7 +366,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             Rotation rot = align_points_3d(solar_north, ecliptic_north, center);
             s->obliquity = rot.a;
             s->equinox = find_angle_along_vector(rot.v, zaxis, center, yaxis);
-            if (s->equinox < 0) s->equinox += (M_PI*2);
+            if (s->equinox < 0) s->equinox += (_pi*2);
 
             s->location.local_system_plane = s->location.equatorial_plane = rot;
             s->known_poles = true;
@@ -421,7 +421,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     char field[32];
     int num_read = 0;
     int offset, j;
-    __uint32_t HD, HR;
+    uint32_t HD, HR;
     double deg, mnt, sec;
     bool HDfound;
     double f;
@@ -692,7 +692,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     char Bonn[32], Cordoba[32], Cape[32];
     int num_read = 0;
     int offset, j;
-    __uint32_t HD, HIP;
+    uint32_t HD, HIP;
     double deg, mnt, sec, RA, Decl, f;
     Star *s, *A;
 
@@ -1077,7 +1077,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     char field[32];
     int num_read = 0;
     int offset;
-    __uint32_t HD, HIP;
+    uint32_t HD, HIP;
     Star *s, *A = nullptr;
     std::string CCDM, CCDM_A;
 
@@ -1249,7 +1249,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     char field[32], Bonn, Bonn_sign, cen[5], comp[5];
     int num_read = 0;
     int Bonn_decl, i, n, found, offset;
-    __uint32_t HD, HIP, SB9, Bonn_seq;
+    uint32_t HD, HIP, SB9, Bonn_seq;
     Star *s, *A, *B;
     double f;
 
@@ -1496,7 +1496,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
 {
     std::string path = "catalogs/astorb/astorb.dat";
-    __uint32_t asno;
+    uint32_t asno;
     int _year, _month, _day;
     float absmagn;
     char field[32];
@@ -1568,7 +1568,7 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     p->volumetric_mean_radius = r->diam * 500;
     if (!p->volumetric_mean_radius && !strcmp(r->name.c_str(), "Pluto")) p->volumetric_mean_radius = 1188300;
     assert(!isinf(p->volumetric_mean_radius));
-    p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * M_PI * 1853;  // Pluto density.
+    p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * _pi * 1853;  // Pluto density.
 
     // 107-114  A8 "YYYYMMDD" Epoch     Epoch of osculation, yyyymmdd (TDT) (2)
     read_field_onebased(buffer, 107, 110, field);
@@ -1733,7 +1733,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     {
         for (const auto& entry : fs::directory_iterator(path))
         {
-            std::string entry_name = entry.path().filename();
+            std::string entry_name = entry.path().filename().string();
             if (!fs::is_directory(entry.path())
                 &&
                 !strcmp(entry_name.substr(0, startswith.size()).c_str(), startswith.c_str())
@@ -2067,7 +2067,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
     char field[32];
     int num_read = 0;
     int i;
-    __uint32_t HD, HIP;
+    uint32_t HD, HIP;
     std::string Gliese;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
@@ -2373,9 +2373,9 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
             try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
             try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
-            try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (M_PI * 2 / pre / oneyear) : 0; } catch (...) { ; }
-            try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (M_PI * 2 / pre / oneyear) : 0; } catch (...) { ; }
-            try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (M_PI * 2 / pro / oneyear) : 0; } catch (...) { ; }
+            try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0; } catch (...) { ; }
             try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
             try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
             try { pl.at("J2").get_to(p->J2); } catch (...) { ; }

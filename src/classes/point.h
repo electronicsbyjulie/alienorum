@@ -110,7 +110,7 @@ class CelestialLocation
     bool from_json(json j);
 };
 
-inline double sphere_volume(double r) { return 4.0/3 * M_PI * r*r*r; }
+inline double sphere_volume(double r) { return 4.0/3 * _pi * r*r*r; }
 Point compute_normal(Point pt1, Point pt2, Point pt3);
 double find_angle(double dx, double dy);
 double find_3D_angle(Point pt1, Point pt2, Point source);

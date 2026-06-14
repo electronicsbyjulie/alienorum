@@ -44,15 +44,15 @@ void set_viewer_location_and_plane()
         here = cel->location;
         assert(cel->sidereal_rotational_period != 0);
 
-        double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
+        double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
         double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-        double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, M_PI*2);
+        double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
         if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
         {
             timeofday += cel->orbit->ascending_node;
             timeofday += cel->orbit->arg_periapsis;
             timeofday += cel->orbit->mean_anomaly;
-            timeofday += M_PI_2;
+            timeofday += half_pi;
         }
 
         bool dwh = false;
@@ -86,7 +86,7 @@ void set_viewer_location_and_plane()
         npdummy.location = cel->location;
         npdummy.location.local_position = north_pole;
         azimuth_correction = 0;
-        npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
+        npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
         azimuth_correction = -npaz;
         viewchanged = true;
     }

@@ -15,6 +15,8 @@
 
 using json = nlohmann::json;
 
+#define _pi 3.141592653589793238462643383
+#define half_pi (_pi * 0.5)
 #define light_year 9460730472580800.0
 #define parsec 3.08567758128E+16
 #define AU 149597870700.0
@@ -46,8 +48,8 @@ using json = nlohmann::json;
 #define solar_radius 6.95700e+8
 #define earth_absmag (-3.86)
 #define earth_albedo 0.434
-#define fiftyseven (180.0/M_PI)
-#define fiftyseventh (M_PI/180)
+#define fiftyseven (180.0/_pi)
+#define fiftyseventh (_pi/180)
 #define arcminute (fiftyseventh / 60)
 #define arcsecond (arcminute / 60)
 #define color_ref_temp 9758.5
@@ -100,7 +102,7 @@ enum ViewMode
 
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
-extern __uint32_t xonsm[13];
+extern uint32_t xonsm[13];
 extern const std::string WHITESPACE;
 extern std::vector<std::string> consname, consabbrev, consgen;
 

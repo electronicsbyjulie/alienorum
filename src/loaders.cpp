@@ -521,7 +521,7 @@ void cache_cons_lines()
         for (i=0; i<11; i++)
         {
             int founda = -1, foundb = -1;
-            __uint32_t ztym = xonsm[i] & 65535, srap = xonsm[i] / 65536;
+            uint32_t ztym = xonsm[i] & 65535, srap = xonsm[i] / 65536;
             for (j=0; cels[j]; j++)
             {
                 if (cels[j]->type != star) continue;

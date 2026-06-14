@@ -8,7 +8,7 @@ int find_object(const char* search_term, bool os, double ml)
 
     if (!strcmp(search_term, "oshibka")) { whereami = selected = trackidx = -1; memset( &cels[1], 0, MAX_CELOBJS-2); }
 
-    __uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
+    uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
 
     if (is_hd && hdcache && hdcache[is_hd]) return hdcache[is_hd]->seqno;

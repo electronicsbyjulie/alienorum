@@ -30,15 +30,15 @@ class Star : public CelestialObject
     char get_component();
     void set_component(char comp, Star* compA);
 
-    __uint32_t HR = 0;                      // Harvard Revised catalog number
-    __uint32_t HD = 0;                      // Henry Draper catalog number
-    __uint32_t HIP = 0;                     // Hipparcos catalog number
-    __uint32_t SAO = 0;                     // USNO/SAO catalog number
-    __uint32_t SB9 = 0;                     // 9th Catalogue of Spectroscopic Binary Orbits designation
+    uint32_t HR = 0;                      // Harvard Revised catalog number
+    uint32_t HD = 0;                      // Henry Draper catalog number
+    uint32_t HIP = 0;                     // Hipparcos catalog number
+    uint32_t SAO = 0;                     // USNO/SAO catalog number
+    uint32_t SB9 = 0;                     // 9th Catalogue of Spectroscopic Binary Orbits designation
     char Bonn_survey[3] = {0,0,0};          // BD = Bonn, CD = Cordoba, CP = Cape Town
     char Bonn_survey_sign = '+';
     int Bonn_survey_declination = 0;        // Declination category
-    __uint32_t Bonn_survey_sequential = 0;  // Serial number by right ascension.
+    uint32_t Bonn_survey_sequential = 0;  // Serial number by right ascension.
 
     bool is_orbit_multiple = false;
     int has_planets = 0;

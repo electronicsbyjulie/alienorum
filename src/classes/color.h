@@ -85,7 +85,7 @@ extern AlienStyle global_style;
 void set_gamma(double new_gamma);
 double get_gamma();
 void rgb_apply_redlight(float *r, float *g, float *b);
-__uint32_t rgba_apply_redlight(__uint32_t input);
+uint32_t rgba_apply_redlight(uint32_t input);
 ImVec4 rgba_apply_redlight(ImVec4 input);
 void apply_default_style();
 RGB generate_vegetation_color();

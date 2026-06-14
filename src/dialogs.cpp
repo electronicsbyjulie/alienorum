@@ -1001,13 +1001,13 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
 
-            edit_precnode = cel->orbit->prec_node ? (M_PI * 2 / cel->orbit->prec_node / oneday) : 0;
+            edit_precnode = cel->orbit->prec_node ? (_pi * 2 / cel->orbit->prec_node / oneday) : 0;
             ImGui::Text("%s", "Prec. Node");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtprcnd", &edit_precnode, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->prec_node = edit_precnode ? (M_PI * 2 / (edit_precnode * oneday)) : 0;
+                cels[editidx]->orbit->prec_node = edit_precnode ? (_pi * 2 / (edit_precnode * oneday)) : 0;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -1018,13 +1018,13 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             ImGui::Text("%s", "d.");
             ImGui::SameLine(col2);
-            edit_procargperi = cel->orbit->proc_argperi ? (M_PI * 2 / cel->orbit->proc_argperi / oneday) : 0;
+            edit_procargperi = cel->orbit->proc_argperi ? (_pi * 2 / cel->orbit->proc_argperi / oneday) : 0;
             ImGui::Text("%s", "ProcArgPeri");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtprcap", &edit_procargperi, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->proc_argperi = edit_procargperi ? (M_PI * 2 / (edit_procargperi * oneday)) : 0;
+                cels[editidx]->orbit->proc_argperi = edit_procargperi ? (_pi * 2 / (edit_procargperi * oneday)) : 0;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);

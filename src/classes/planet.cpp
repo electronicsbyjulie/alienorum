@@ -47,7 +47,7 @@ void Planet::estimate_radius()
     else if (type == hot_jupiter)
     {
         double volume = mass / hot_jupiter_density;
-        volumetric_mean_radius = pow(volume*3 / M_PI*4, 1.0/3);
+        volumetric_mean_radius = pow(volume*3 / _pi*4, 1.0/3);
     }
     else volumetric_mean_radius = 18.6 * earth_radius;
     assert(!isinf(volumetric_mean_radius));
@@ -87,7 +87,7 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
     if (phase<0) phase = find_3D_angle(seen_from.local_position, light_center->location.local_position, location.local_position);
     double phabs = fabs(phase);
-    amt_lit = fabs(M_PI - fmin(phabs, M_PI*2-phabs)) / M_PI;
+    amt_lit = fabs(_pi - fmin(phabs, _pi*2-phabs)) / _pi;
 
     double reflectivity = pow(magnbase, -absolute_magnitude);
     double apparent = reflectivity * amt_lit / rsq;

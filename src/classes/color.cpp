@@ -61,7 +61,7 @@ RGB Color::rgb_from_color(Color c, double bloom_radius)
     }
     else
     {
-        circ = 2.0 * M_PI * bloom_radius;
+        circ = 2.0 * _pi * bloom_radius;
         invcirc = 1.0 / circ;
     }
 
@@ -134,12 +134,12 @@ void rgb_apply_redlight(float *r, float *g, float *b)
     *b /= 3;
 }
 
-__uint32_t rgba_apply_redlight(__uint32_t i)
+uint32_t rgba_apply_redlight(uint32_t i)
 {
     if (!redlight_mode) return i;
     float r = (i & 0xFF), g = (i & 0xFF00) >> 8, b = (i & 0xFF0000) >> 16;
     rgb_apply_redlight(&r, &g, &b);
-    return __uint32_t((i & 0xFF000000) + (__uint32_t)r + ((__uint32_t)g << 8) + ((__uint32_t)b << 16));
+    return uint32_t((i & 0xFF000000) + (uint32_t)r + ((uint32_t)g << 8) + ((uint32_t)b << 16));
 }
 
 ImVec4 rgba_apply_redlight(ImVec4 i)

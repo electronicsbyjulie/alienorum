@@ -13,7 +13,7 @@ void draw_ra_dec_lines()
     ImU32 ec = rgba_apply_redlight(global_style.ecliptic_color);
     double node = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
     double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
-    npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), M_PI*2) : 0;
+    npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
     bool prev_valid = false;
     int jstart = -80; // (view_mode == vm_horizon) ? 0 : -80;
     bool is_sat = (whereami>0) && (cels[whereami]->typeclass() == class_satellite);
@@ -145,7 +145,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     cel->drawnymin = cel->drawnymax = cel->drawny;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
     bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
-    cel->onscreen = false;
+    if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
@@ -181,15 +181,15 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     double lat, lon, z_cutoff = cel->tmprel.magnitude() + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
 
-    double rads_sec = cel->sidereal_rotational_period ? ((M_PI * 2) / cel->sidereal_rotational_period) : 0;
+    double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-    double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, M_PI*2);
+    double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
     if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
     {
         timeofday += cel->orbit->ascending_node;
         timeofday += cel->orbit->arg_periapsis;
         timeofday += cel->orbit->mean_anomaly;
-        timeofday += M_PI_2;
+        timeofday += half_pi;
     }
 
     if (!wireframe && !cel->looked_for_maps)
@@ -222,7 +222,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
-            vtheta = fabs(fmod(find_3D_angle(cursor, center, cel->tmprel), M_PI*2));
+            vtheta = fabs(fmod(find_3D_angle(cursor, center, cel->tmprel), _pi*2));
             cursor = to_viewer_plane(cursor);
             if (cursor.magnitude() > z_cutoff)
             {
@@ -278,7 +278,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 imcol;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
-    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(M_PI*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
+    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline=0, dx1, dy1, dx2, dy2;
     l = 0;
@@ -287,19 +287,19 @@ int draw_sphere(CelestialObject* cel, double arad)
     double latmin_rad = fiftyseventh * (latmin-5) - step, latmax_rad = fiftyseventh * (latmax+5) + step,
         lonmin_rad = fiftyseventh * lonmin, lonmax_rad = fiftyseventh * lonmax;
     double lon360;
-    for (lat=-M_PI_2; lat <= M_PI_2; lat+=step)
+    for (lat=-half_pi; lat <= half_pi; lat+=step)
     {
         if (lat < latmin_rad || lat > latmax_rad) continue;
         prev_valid = false;
         n = 0;
         stepcoslat = step / (cos(lat) + 0.1);
-        for (lon=0; lon<=M_PI*2; lon+=stepcoslat)
+        for (lon=0; lon<=_pi*2; lon+=stepcoslat)
         {
-            lon360 = lonmin_crosses_zero ? (lonmin_rad - M_PI*2) : lonmin_rad;
+            lon360 = lonmin_crosses_zero ? (lonmin_rad - _pi*2) : lonmin_rad;
             if (filter_longitudes && (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat))) continue;
             n++;
             elevation = map ? map->elevation_at(lat, lon) : 0;
-            land = Point::from_ra_dec(lon+M_PI, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
+            land = Point::from_ra_dec(lon+_pi, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
             if (dwh)
             {
@@ -336,7 +336,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             if (lon)
             {
                 land += cel->location.local_position;
-                vtheta = fabs(fmod(find_3D_angle(land, here.local_position, cel->location.local_position), M_PI*2));
+                vtheta = fabs(fmod(find_3D_angle(land, here.local_position, cel->location.local_position), _pi*2));
                 if (!wireframe && vtheta > horizon_angle)
                 {
                     todraw.push_back(ImVec2(-1e13, -2e13));
@@ -370,7 +370,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     todraw.push_back(v);
                     tdvalid.push_back(true);
 
-                    if (!wireframe && (lat>-M_PI_2) && !dragging && perline)
+                    if (!wireframe && (lat>-half_pi) && !dragging && perline)
                     {
                         m = l - n - perline + round(lon*invlaststepcoslat) + 2;
                         if (m > 1 && tdvalid[l-1] && m < l && tdvalid[m] && tdvalid[m-1])
@@ -383,8 +383,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                             else
                             {
                                 // TODO: Shade based on the normal of the 3D coordinates of the polygon vertices instead of angle to sun and cel center.
-                                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), M_PI);
-                                if (fabs(theta) < M_PI_2)
+                                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+                                if (fabs(theta) < half_pi)
                                 {
                                     cos_theta = cos(theta);
                                     is_day = fmin(1, pow(cos_theta, 0.333) + night_illum);
@@ -468,22 +468,22 @@ int draw_sphere(CelestialObject* cel, double arad)
             throw 0xbadda7a;
         }
 
-        n = round(M_PI*2/step) * 13;
-        m = fmax(4, fmin(result, round(M_PI*2/step)/2));
-        double step1 = (double)ringsize / m, step2 = M_PI*2/n;
+        n = round(_pi*2/step) * 13;
+        m = fmax(4, fmin(result, round(_pi*2/step)/2));
+        double step1 = (double)ringsize / m, step2 = _pi*2/n;
 
         Map *rmap = cel->ring_map, *rxmap = cel->ringx_map;
         rgb = {225, 208, 192};
         for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
         {
-            double xmapd = (double)(ringd - equatorial_radius) * M_PI*2 / ringsize;
+            double xmapd = (double)(ringd - equatorial_radius) * _pi*2 / ringsize;
             double ring_opacity = rxmap ? (255.0 * (1.0-pow((double)rxmap->color_at(0, xmapd).g/255, gossamer_rings))) : 0.5;
             if (rmap) rgb = rmap->color_at(0, xmapd);
-            double lonlim = M_PI*2+0.5*step2;
+            double lonlim = _pi*2+0.5*step2;
 
             for (lon=0; lon<lonlim; lon+=step2)
             {
-                dust = Point::from_ra_dec(lon+M_PI, 0, ringd, 0);
+                dust = Point::from_ra_dec(lon+_pi, 0, ringd, 0);
 
                 dust = rotate3D(dust, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
                 dust += cel->tmprel;
@@ -785,8 +785,8 @@ void draw_objects()
                     double jay15 = jay+max_bloomrad;
                     ImVec2 radii(jay15, jay15*0.333);
                     ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
-                    double thoff = M_PI*0.1*j;
-                    for (theta=0; theta<M_PI*2; theta += M_PI*0.2)
+                    double thoff = _pi*0.1*j;
+                    for (theta=0; theta<_pi*2; theta += _pi*0.2)
                         ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
                 }
             }
@@ -908,7 +908,7 @@ void draw_objects()
     if (view_mode == vm_horizon && !dragging)
     {
         double theta, dy = dispcy*29;
-        for (theta = 0; theta < M_PI*2; theta++)
+        for (theta = 0; theta < _pi*2; theta++)
         {
             Point pt = rotate3D(zaxis, center, yaxis, theta);
             Cartesian2D horizon = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);

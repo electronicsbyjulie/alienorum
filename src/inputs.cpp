@@ -100,9 +100,9 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
         else
         {
-            npaz = fmod(npdummy.RA_as_radians(here, 0), M_PI*2);
-            double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), M_PI*2);
-            if (objaz < 0) objaz += M_PI*2;
+            npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
+            double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
+            if (objaz < 0) objaz += _pi*2;
             objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
                     + (std::string)"Azimuth:  " 
                     + std::to_string(objaz*fiftyseven)
@@ -182,8 +182,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.01 * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.01 * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  M_PI/2) altitude =  M_PI/2;
-        if (altitude < -M_PI/2) altitude = -M_PI/2;
+        if (altitude >  _pi/2) altitude =  _pi/2;
+        if (altitude < -_pi/2) altitude = -_pi/2;
         spin = 0;
         viewchanged = true;
 
@@ -196,8 +196,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.03 * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.03 * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  M_PI/2) altitude =  M_PI/2;
-        if (altitude < -M_PI/2) altitude = -M_PI/2;
+        if (altitude >  _pi/2) altitude =  _pi/2;
+        if (altitude < -_pi/2) altitude = -_pi/2;
         spin = 0;
         viewchanged = true;
 
@@ -210,8 +210,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.1 * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.1 * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  M_PI/2) altitude =  M_PI/2;
-        if (altitude < -M_PI/2) altitude = -M_PI/2;
+        if (altitude >  _pi/2) altitude =  _pi/2;
+        if (altitude < -_pi/2) altitude = -_pi/2;
         spin = 0;
         viewchanged = true;
 

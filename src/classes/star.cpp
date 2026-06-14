@@ -83,7 +83,7 @@ void Star::update_location(double tmnow)
 
     if (!estimated_poles)
     {
-        location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (M_PI/2), equinox,
+        location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (_pi/2), equinox,
             Point::from_ra_dec(right_ascension, declination, distance));
         if (!lock_equatorial_plane) location.orbital_plane = location.equatorial_plane = location.local_system_plane;
     }

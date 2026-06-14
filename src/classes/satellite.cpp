@@ -22,8 +22,6 @@ void Satellite::update_location(double tmnow)
 {
     if (!orbit || !orbit->center) return;
     Rotation center_equator = orbit->center->location.equatorial_plane;
-    angular_radius[orbit->center->seqno] = 1e9;                             // Just a ridiculously large number to get it to draw.
-    viewchanged = true;
     if (orbit->period) update_orbit_location(tmnow, &center_equator);
 }
 
@@ -202,7 +200,7 @@ bool SatSource::read_csv_data()
 
         if (is_supplemental)
         {
-            __uint32_t norad_id = atoi(row[11].c_str());
+            uint32_t norad_id = atoi(row[11].c_str());
             bool found = false;
             for (j=0; j<n; j++)
             {
@@ -323,7 +321,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
     sat->volumetric_mean_radius = 5;        // unknown
     sat->absolute_magnitude = 50;           // unknown
 
-    sat->mean_motion = sr.MEAN_MOTION * 2.0 * M_PI / oneday;                // convert to radians/second.
+    sat->mean_motion = sr.MEAN_MOTION * 2.0 * _pi / oneday;                // convert to radians/second.
     sat->orbit->eccentricity = sr.ECCENTRICITY;
     sat->orbit->inclination = sr.INCLINATION * fiftyseventh;
     sat->orbit->ascending_node = sr.RA_OF_ASC_NODE * fiftyseventh;

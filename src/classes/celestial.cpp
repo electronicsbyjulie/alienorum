@@ -111,7 +111,7 @@ void Orbit::compute_period(double mm)
     }
 
     double mass = center->mass + mm;
-    period = (M_PI+M_PI) * sqrt(semimajor_axis*semimajor_axis*semimajor_axis/(G*mass));
+    period = (_pi+_pi) * sqrt(semimajor_axis*semimajor_axis*semimajor_axis/(G*mass));
 }
 
 void Orbit::compute_semimajor_axis(double mm)
@@ -151,12 +151,12 @@ void Orbit::compute_semimajor_axis(double mm)
     }
 
     double mass = center->mass + mm;
-    semimajor_axis = pow(G*mass*period*period / (M_PI*M_PI*4), 1.0/3);
+    semimajor_axis = pow(G*mass*period*period / (_pi*_pi*4), 1.0/3);
 }
 
 void Orbit::compute_center_mass(double mm)
 {
-    double a3_over_gm = period / (M_PI+M_PI);
+    double a3_over_gm = period / (_pi+_pi);
     a3_over_gm *= a3_over_gm;
     double GM = semimajor_axis*semimajor_axis*semimajor_axis / a3_over_gm;
     center->mass = (GM / G) - mm;
@@ -313,8 +313,8 @@ double CelestialObject::RA_as_radians(CelestialLocation seen_from, double seen_e
 {
     Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
-    double result = std::fmod(find_angle(relloc.z, -relloc.x) - seen_equinox + azimuth_correction, M_PI*2);
-    if (result < 0) result += M_PI*2;
+    double result = std::fmod(find_angle(relloc.z, -relloc.x) - seen_equinox + azimuth_correction, _pi*2);
+    if (result < 0) result += _pi*2;
     return result;
 }
 
@@ -323,7 +323,7 @@ double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
     Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
     double result = find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y);
-    if (result > M_PI/2) result -= M_PI*2;
+    if (result > _pi/2) result -= _pi*2;
     return result;
 }
 
@@ -474,7 +474,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     location.local_system_plane = orbit->center->location.local_system_plane;
 
     // Calculate orbit radians per second and seconds since epoch
-    double rads_sec = (M_PI * 2) / orbit->period;
+    double rads_sec = (_pi * 2) / orbit->period;
     double seconds_since_epoch = (tmnow - J2000_TIME_T) + ((J2000 - epoch)*oneday);
 
     // Precess the ascending node and process the arg peri
@@ -485,7 +485,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     // Calculate current Mean Anomaly
     double M = orbit->mean_anomaly + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
-    M = std::fmod(M, 2.0 * M_PI);
+    M = std::fmod(M, 2.0 * _pi);
 
     // Solve for Eccentric Anomaly
     double E = solve_Kepler(M, orbit->eccentricity);
@@ -638,7 +638,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     {
         image_height = cinfo.image_height;
         image_width = cinfo.image_width;
-        lat_scale = lon_scale = image_width / (M_PI * 2);
+        lat_scale = lon_scale = image_width / (_pi * 2);
         inv_lat_scale = 1.0 / lat_scale;
         inv_lon_scale = 1.0 / lon_scale;
         long toalloc = image_height * image_width;
@@ -745,8 +745,8 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     {
         image_height = png_get_image_height( png_ptr, info_ptr );
         image_width = png_get_image_width( png_ptr, info_ptr );
-        lat_scale = (double)image_height / M_PI;
-        lon_scale = (double)image_width / (M_PI * 2);
+        lat_scale = (double)image_height / _pi;
+        lon_scale = (double)image_width / (_pi * 2);
         inv_lat_scale = 1.0 / lat_scale;
         inv_lon_scale = 1.0 / lon_scale;
         int toalloc = image_height*bytes_per_row;
@@ -939,12 +939,12 @@ unsigned int Map::idx_of(double lat, double lon)
 {
     while (!lat_scale) std::this_thread::sleep_for(std::chrono::milliseconds(29));
 
-    lon = fmod(lon, M_PI*2);
-    if (lon < 0) lon += M_PI*2;
-    if (lat < -M_PI_2) lat = -M_PI_2;
-    else if (lat > M_PI_2) lat = M_PI_2;
+    lon = fmod(lon, _pi*2);
+    if (lon < 0) lon += _pi*2;
+    if (lat < -half_pi) lat = -half_pi;
+    else if (lat > half_pi) lat = half_pi;
 
-    double xf = lon * lon_scale, yf = (M_PI_2-lat) * lat_scale;
+    double xf = lon * lon_scale, yf = (half_pi-lat) * lat_scale;
     unsigned int x0 = floor(xf), y1 = ceil(yf);
     long y0idx = image_width * y1;
 
@@ -1085,8 +1085,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     memset(bump_data, 0, allocated*sizeof(double));
 
-    lat_scale = (double)image_height / M_PI;
-    lon_scale = (double)image_width / (M_PI * 2);
+    lat_scale = (double)image_height / _pi;
+    lon_scale = (double)image_width / (_pi * 2);
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
     double bump_scale = p->estimate_bump_scale();
@@ -1106,12 +1106,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         // Convert screen pixel coordinates to spherical angles
         double v = (double)y / image_height;
-        double theta = v * M_PI; // Latitude angle from 0 to PI
+        double theta = v * _pi; // Latitude angle from 0 to PI
 
         for (unsigned int x = 0; x < image_width; ++x)
         {
             double u = (double)x / image_width;
-            double phi = u * 2.0 * M_PI; // Longitude angle from 0 to 2PI
+            double phi = u * 2.0 * _pi; // Longitude angle from 0 to 2PI
 
             // Map 2D texture coordinates to a 3D Sphere surface to avoid seam/polar stretching
             double nx = sin(theta) * cos(phi);
@@ -1199,8 +1199,8 @@ void Map::generate_gas_giant_map(int lr, double BV)
     red_data = new unsigned char[allocated];
     green_data = new unsigned char[allocated];
     blue_data = new unsigned char[allocated];
-    lat_scale = image_height / M_PI;
-    lon_scale = image_width / (M_PI * 2);
+    lat_scale = image_height / _pi;
+    lon_scale = image_width / (_pi * 2);
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
     std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
@@ -1237,12 +1237,12 @@ void Map::generate_gas_giant_map(int lr, double BV)
     for (unsigned int y = 0; y < image_height; ++y)
     {
         double v = (double)y / image_height;
-        double theta = v * M_PI;
+        double theta = v * _pi;
 
         for (unsigned int x = 0; x < image_width; ++x)
         {
             double u = (double)x / image_width;
-            double phi = u * 2.0 * M_PI;
+            double phi = u * 2.0 * _pi;
 
             // 3D Sphere projection
             double nx = sin(theta) * cos(phi) * scale;
@@ -1259,8 +1259,8 @@ void Map::generate_gas_giant_map(int lr, double BV)
 
             if (add_storm)
             {
-                distToStormX = (u - stormlon) * 2.0 * M_PI;
-                distToStormY = (v - stormlat) * M_PI;
+                distToStormX = (u - stormlon) * 2.0 * _pi;
+                distToStormY = (v - stormlat) * _pi;
                 // Elliptical distance formula
                 stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
             }

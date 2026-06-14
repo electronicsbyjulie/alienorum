@@ -11,7 +11,7 @@ struct SatRecord
     std::string catalog = "";
     std::string OBJECT_NAME;
     std::string OBJECT_ID;
-    __uint32_t NORAD_CAT_ID;
+    uint32_t NORAD_CAT_ID;
     std::string OBJECT_TYPE;
     std::string OPS_STATUS_CODE;
     std::string OWNER;
@@ -32,10 +32,10 @@ struct SatRecord
     double RA_OF_ASC_NODE;
     double ARG_OF_PERICENTER;
     double MEAN_ANOMALY;
-    __uint32_t EPHEMERIS_TYPE;
+    uint32_t EPHEMERIS_TYPE;
     std::string CLASSIFICATION_TYPE;
-    __uint32_t ELEMENT_SET_NO;
-    __uint32_t REV_AT_EPOCH;
+    uint32_t ELEMENT_SET_NO;
+    uint32_t REV_AT_EPOCH;
     double BSTAR;
     double MEAN_MOTION_DOT;
     double MEAN_MOTION_DDOT;
