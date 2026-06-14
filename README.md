@@ -33,8 +33,11 @@ MSYS2 (Run in MINGW64 environment):
 * View space from any vantage point;
 * Time travel (in-universe only) - set the view for any date by stepping forward/backward;
 * Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
+* Realtime satellite positions;
+* Exoplanets;
 * Ability to select an individual star/planet/moon/satellite and teleport to its position;
 * Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
+* Custom texture map generation;
 * More coming soon...
 
 
