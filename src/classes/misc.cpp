@@ -330,7 +330,7 @@ bool download_file(std::string URL, std::string save_path)
 
         easy.perform();
 
-        std::fstream fs(save_path.c_str(), std::ios::out, std::ios::binary);
+        std::fstream fs(save_path.c_str(), std::ios::out | std::ios::binary);
         if (!fs)
         {
             curlpp::cleanup();
