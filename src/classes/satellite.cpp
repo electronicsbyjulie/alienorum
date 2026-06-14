@@ -22,7 +22,8 @@ void Satellite::update_location(double tmnow)
 {
     if (!orbit || !orbit->center) return;
     Rotation center_equator = orbit->center->location.equatorial_plane;
-    orbit->center->onscreen = true;
+    angular_radius[orbit->center->seqno] = 1e9;                             // Just a ridiculously large number to get it to draw.
+    viewchanged = true;
     if (orbit->period) update_orbit_location(tmnow, &center_equator);
 }
 
