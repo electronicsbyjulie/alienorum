@@ -47,6 +47,8 @@ class AlienStyle
     ImU32 selected_color = IM_COL32(0, 255, 96, 192);
     ImU32 selected_orbit_color = IM_COL32(0, 255, 96, 64);
     ImU32 objlbl_color = IM_COL32(64, 255, 0, 176);
+    ImVec4 grayed_color = ImVec4(0.37, 0.35, 0.21, 1.00);
+    ImVec4 grayed_brighter_color = ImVec4(0.44, 0.41, 0.25, 1.00);
     ImVec4 text_color = ImVec4(0.80f, 0.90f, 0.95f, 1.00f);
     ImVec4 graytext_color = ImVec4(0.90f, 0.60f, 0.10f, 1.00f);
     ImVec4 window_bg_color = ImVec4(0.00f, 0.03f, 0.06f, 0.67f);

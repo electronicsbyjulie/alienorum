@@ -65,9 +65,13 @@ void identify_object_under_cursor(ImGuiIO& io)
     {
         i = is_an_obj_under_cursor;
         double lmag = vmag_cache[i];
+        bool am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
 
         std::stringstream oss;
 
+        // TODO: Refactor this as multi-line ImGui::Text() and move it to the show_objinfo_window ftn
+        // in dialogs.cpp make the objinfo window look more like the status window. That way it can also
+        // turn the "habitable zone" text green (don't forget the redlight mode correction).
         objname = cels[i]->name;
         objinfo = "";
         if (cels[i]->type == star)
@@ -108,7 +112,9 @@ void identify_object_under_cursor(ImGuiIO& io)
                     + std::to_string(objaz*fiftyseven)
                     + (std::string)"\n";
         }
-        oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
+        if (!am_satellite || (cels[i]->tmprel.magnitude() > cels[i]->volumetric_mean_radius*2))
+            oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
+
         objinfo += oss.str();
         oss.str("");
         oss.clear();

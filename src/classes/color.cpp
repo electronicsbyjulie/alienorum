@@ -191,13 +191,12 @@ void apply_default_style()
     colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.78f, 0.82f, 1.00f, 0.90f);
     colors[ImGuiCol_InputTextCursor]        = rgba_apply_redlight(global_style.text_cursor_color);
     colors[ImGuiCol_TabHovered]             = colors[ImGuiCol_HeaderHovered];
-    // TODO: Bring these back if ever we add tabbed interfaces. May require #include imgui_internal.h.
-    // colors[ImGuiCol_Tab]                    = ImGui::ImLerp(colors[ImGuiCol_Header],       colors[ImGuiCol_TitleBgActive], 0.80f);
-    // colors[ImGuiCol_TabSelected]            = ImGui::ImLerp(colors[ImGuiCol_HeaderActive], colors[ImGuiCol_TitleBgActive], 0.60f);
-    colors[ImGuiCol_TabSelectedOverline]    = colors[ImGuiCol_HeaderActive];
-    // colors[ImGuiCol_TabDimmed]              = ImGui::ImLerp(colors[ImGuiCol_Tab],          colors[ImGuiCol_TitleBg], 0.80f);
-    // colors[ImGuiCol_TabDimmedSelected]      = ImGui::ImLerp(colors[ImGuiCol_TabSelected],  colors[ImGuiCol_TitleBg], 0.40f);
-    colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.53f, 0.53f, 0.87f, 0.00f);
+    colors[ImGuiCol_Tab]                    = colors[ImGuiCol_TitleBg];
+    colors[ImGuiCol_TabSelected]            = colors[ImGuiCol_FrameBgActive];
+    colors[ImGuiCol_TabSelectedOverline]    = colors[ImGuiCol_FrameBgHovered];
+    colors[ImGuiCol_TabDimmed]              = rgba_apply_redlight(global_style.grayed_color);
+    colors[ImGuiCol_TabDimmedSelected]      = rgba_apply_redlight(global_style.grayed_brighter_color);
+    colors[ImGuiCol_TabDimmedSelectedOverline] = rgba_apply_redlight(global_style.grayed_brighter_color);
     colors[ImGuiCol_PlotLines]              = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
     colors[ImGuiCol_PlotLinesHovered]       = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
     colors[ImGuiCol_PlotHistogram]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
@@ -409,7 +408,9 @@ bool AlienStyle::load(std::string theme)
                 {
                     json l = j.at("conslbl");
                     l.at(0).get_to(r); l.at(1).get_to(g); l.at(2).get_to(b); l.at(3).get_to(a);
-                    conslbl_color = IM_COL32(255*r, 255*g, 255*b, 255*a);
+                    conslbl_color           = IM_COL32(255*r, 255*g, 255*b, 255*a);
+                    grayed_color            = ImVec4(0.35*r, 0.37*g, 0.67*b, 1.00f);
+                    grayed_brighter_color   = ImVec4(0.41*r, 0.44*g, 0.81*b, 1.00f);
                 }
                 catch (...) { ; }
                 try
