@@ -161,6 +161,7 @@ int SatSource::data_age_hours()
         std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
         if (last_accessed < mt) last_accessed = mt;
     }
+    else return 1e5;
     std::time_t now = std::time(nullptr);
     std::time_t age = now - last_accessed;
 
