@@ -660,8 +660,8 @@ Ome Psc, Del Psc
 Del Psc, Eps Psc
 Eps Psc, Mu  Psc
 Mu  Psc, Nu  Psc
-Nu  Psc, Alp Psc
-Alp Psc, Omi Psc
+Nu  Psc, HD12447
+HD12447, Omi Psc
 Omi Psc, Eta Psc
 Eta Psc, Rho Psc
 Rho Psc, Phi Psc
