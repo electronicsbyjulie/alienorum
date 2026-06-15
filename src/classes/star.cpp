@@ -248,12 +248,22 @@ double Star::estimate_luminosity(double tempK)
 double Star::estimate_BV()
 {
     double T = estimate_temperature();
-    return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+    return estimate_BV(T);
 }
 
 double Star::estimate_UB()
 {
     double T = estimate_temperature();
+    return estimate_UB(T);
+}
+
+double Star::estimate_BV(double T)
+{
+    return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+}
+
+double Star::estimate_UB(double T)
+{
     return log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
 }
 

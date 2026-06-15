@@ -2215,6 +2215,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             {
                 for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
                 s = new Star();
+                s->distance_known = true;
                 append_cel(s);
                 strcpy(s->name, bdyname.c_str());
                 read_field_onebased(buffer, 161, 175, field);
@@ -2246,10 +2247,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 if (bs > 229)
                 {
                     read_field_onebased(buffer, 229, 238, field);
-                    tempK = atof(field) * solar_radius;
+                    tempK = atof(field);
                     if (!lum && s->volumetric_mean_radius && tempK)
                     {
-                        s->absolute_magnitude = log(s->estimate_luminosity(tempK))/log(magnbase);
+                        s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
+                        s->estimate_BV(tempK);
+                        s->estimate_UB(tempK);
                     }
                 }
             }

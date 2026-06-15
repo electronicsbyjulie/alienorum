@@ -60,6 +60,8 @@ class Star : public CelestialObject
     double estimate_mass();
     double estimate_BV();                   // Blackbody value from estimated temperature from MK spectral type
     double estimate_UB();                   // "
+    double estimate_BV(double tempK);       // Blackbody value from known temperature
+    double estimate_UB(double tempK);       // Blackbody value from known temperature
 
     double estimate_radius();
     void gotta_be_named_something();
