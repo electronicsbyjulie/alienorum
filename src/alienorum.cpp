@@ -469,6 +469,12 @@ int main (int argc, char** argv)
             if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
             here.local_position += vdil;
             azimuth += spin;
+            if (!cels[1])
+            {
+                here.system_center = cels[0]->location.system_center;
+                velocity = cels[0]->location.local_position - here.local_position;
+                velocity.scale((velocity.magnitude() - AU) * 0.01);
+            }
 
             // Slow down to avoid zipping past tracked object
             if (trackidx >= 0)

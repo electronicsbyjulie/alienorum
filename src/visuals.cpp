@@ -144,10 +144,27 @@ double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
+    double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
+    cel_obj_class cls = cel->typeclass();
+
+    if (d < cel->volumetric_mean_radius && velocity.magnitude())
+    {
+        double d1 = (cel->tmprel + velocity).magnitude();
+        if (d1 > d)
+        {
+            if (cls == class_star)
+            {
+                whereami = selected = trackidx = -1;
+                memset( &cels[1], 0, MAX_CELOBJS-2);
+                return 0;
+            }
+        }
+    }
+
     cel->drawnxmin = cel->drawnxmax = cel->drawnx;
     cel->drawnymin = cel->drawnymax = cel->drawny;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
-    bool wireframe = dragging || !cel->onscreen || cel->tmprel.magnitude() < cel->volumetric_mean_radius;
+    bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
@@ -171,7 +188,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool prev_valid = false;
     bool dwh = false;
 
-    if (cel->typeclass() == class_moon)
+    if (cls == class_moon)
         dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
             && ((Moon*)cel)->width > zero_isnt_really_zero
             && ((Moon*)cel)->height > zero_isnt_really_zero);
@@ -182,7 +199,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     else
         equatorial_radius = cel->volumetric_mean_radius * pow(1.0 - cel->oblateness, 0.333);
 
-    double lat, lon, z_cutoff = cel->tmprel.magnitude() + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
+    double lat, lon, z_cutoff = d + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
 
     double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
@@ -202,7 +219,6 @@ int draw_sphere(CelestialObject* cel, double arad)
         ttex.detach();
     }
 
-    double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
 
     int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9, nstep = wireframe ? 10 : 5;
@@ -458,7 +474,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     }
 
     // Rings
-    if (cel->typeclass() == class_planet && ((Planet*)cel)->ring_radius)
+    if (cls == class_planet && ((Planet*)cel)->ring_radius)
     {
         std::vector<ImVec2> todrawr;
         std::vector<bool> tdvalidr;
@@ -649,6 +665,7 @@ bool draw_one_object(int i)
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
         discinstead[i] = false;
+        if (!cels[1]) return false;
 
         if (selected == i)
         {
@@ -743,6 +760,9 @@ void draw_objects()
     double orbseg = 81;
     lmasslim = lbllsys_mass_lim*1000;
     std::vector<CelestialObject*> to_draw_layered;
+
+    double mycensq = mycenobj->tmprel.squared_magnitude();
+    double layer_cutoff = mycensq * 1.1 * zoom * zoom;
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -840,7 +860,8 @@ void draw_objects()
         bloomrad = fmin(max_bloomrad, bloomrad);
 
         // if (cls != class_satellite && angular_radius[i]*zoom > fiftyseventh)
-        if (cels[i]->tmprel.squared_magnitude() < mycenobj->tmprel.squared_magnitude() * 1.1 * zoom * zoom)
+        if (mycensq < light_year_sq
+            && cels[i]->tmprel.squared_magnitude() < layer_cutoff)
         {
             n = to_draw_layered.size();
             if (!n)
@@ -869,6 +890,7 @@ void draw_objects()
             }
         }
         else draw_one_object(i);
+        if (!cels[1]) return;
     }
 
     // Labels
@@ -920,6 +942,7 @@ void draw_objects()
     for (j=0; j<n; j++)
     {
         draw_one_object(to_draw_layered[j]->seqno);
+        if (!cels[1]) return;
     }
 
     // TODO: Render according to bump map and generate a fictitious skyline.

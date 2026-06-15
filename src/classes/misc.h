@@ -18,6 +18,7 @@ using json = nlohmann::json;
 #define _pi 3.141592653589793238462643383
 #define half_pi (_pi * 0.5)
 #define light_year 9460730472580800.0
+#define light_year_sq (light_year*light_year)
 #define parsec 3.08567758128E+16
 #define AU 149597870700.0
 #define invAU (1.0 / AU)
