@@ -1006,7 +1006,7 @@ void draw_objects()
             Map *map = cel->surf_map;
             RGB rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB(0, 8, 24);
             ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy1), ImVec2(dispcx*2, dispcy*2),
-                IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, dragging ? (192-128*is_day) : 255));
+                rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, dragging ? (192-128*is_day) : 255)));
         }
 
         ImU32 mkrcol = rgba_apply_redlight(is_day > 0.67 ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
@@ -1035,7 +1035,7 @@ void draw_sky_gradient()
             for (int y=dispcy*2-1; y>=0; y--)
             {
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
-                    IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) );
+                    rgba_apply_redlight(IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) ));
 
                 r *= 0.998;
                 g *= 0.9992;
