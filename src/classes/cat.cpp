@@ -147,7 +147,11 @@ void CatalogReader::download_catalogs()
                 j = i - 3;
                 if (!strcmp(".gz", &entry_name.c_str()[j]))
                 {
+                    #ifdef _WIN32
+                    cmd = (std::string)"tar -xzf " + destdir + (std::string)"/" + entry_name;
+                    #else
                     cmd = (std::string)"gunzip " + destdir + (std::string)"/" + entry_name;
+                    #endif
                     std::cout << cmd << std::endl;
                     std::system(cmd.c_str());
                 }
