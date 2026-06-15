@@ -199,12 +199,13 @@ bool Star::is_in_visible_box(Point seen_from)
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
     if (orbit && !orbit->semimajor_axis && orbit->center) orbit->semimajor_axis = location.distance_to(orbit->center->location);
-    double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(10.0, 0.2*(6.5-apparent_magnitude)) * distance);
+    double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(100.0, 0.2*(6.5-apparent_magnitude)) * distance);
     visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
     visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
     visible_area_set = true;
 
-    return _is_in_visible_range = visible_area.point_in_box(seen_from);
+    _is_in_visible_range = visible_area.point_in_box(seen_from);
+    return _is_in_visible_range;
 }
 
 void Star::make_universally_visible()
