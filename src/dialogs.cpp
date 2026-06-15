@@ -266,26 +266,34 @@ void draw_status_window(ImGuiIO& io)
 
         if (view_mode == vm_horizon)
         {
-            double vlat_edit = viewer_lat * fiftyseven;
-            ImGui::Text("%s", "Latitude:");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(123);
-            if (ImGui::InputDouble("##vlat", &vlat_edit, 0.1, 1, "%.3f"))
+            if (save_viewer_latlon)
             {
-                viewer_lat = vlat_edit * fiftyseventh;
-                set_viewer_location_and_plane();
-                viewchanged = true;
-            }
+                double vlat_edit = viewer_lat * fiftyseven;
+                ImGui::Text("%s", "Latitude:");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(123);
+                if (ImGui::InputDouble("##vlat", &vlat_edit, 0.1, 1, "%.3f"))
+                {
+                    viewer_home_lat = viewer_lat = vlat_edit * fiftyseventh;
+                    set_viewer_location_and_plane();
+                    viewchanged = true;
+                }
 
-            double vlon_edit = viewer_lon * fiftyseven;
-            ImGui::Text("%s", "Longitude:");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(123);
-            if (ImGui::InputDouble("##vlon", &vlon_edit, 0.1, 1, "%.3f"))
+                double vlon_edit = viewer_lon * fiftyseven;
+                ImGui::Text("%s", "Longitude:");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(123);
+                if (ImGui::InputDouble("##vlon", &vlon_edit, 0.1, 1, "%.3f"))
+                {
+                    viewer_home_lon = viewer_lon = vlon_edit * fiftyseventh;
+                    set_viewer_location_and_plane();
+                    viewchanged = true;
+                }
+            }
+            else
             {
-                viewer_lon = vlon_edit * fiftyseventh;
-                set_viewer_location_and_plane();
-                viewchanged = true;
+                ImGui::Text("%s %s%.6f", "Latitude: ", (viewer_lat >= 0) ? "+" : "", viewer_lat*fiftyseven );
+                ImGui::Text("%s %s%.6f", "Longitude:", (viewer_lon >= 0) ? "+" : "", viewer_lon*fiftyseven );
             }
         }
     }

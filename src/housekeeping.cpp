@@ -14,6 +14,7 @@ void set_viewer_location_and_plane()
     if (whereami < 0)
     {
         view_mode = vm_skyatlas;
+        save_viewer_latlon = true;
         return;
     }
 
@@ -41,6 +42,14 @@ void set_viewer_location_and_plane()
     else if (view_mode == vm_horizon)
     {
         CelestialObject *cel = cels[whereami];
+        if (cel->typeclass() == class_star)
+        {
+            view_mode = vm_skyatlas;
+            here = cels[whereami]->location;
+            azimuth_correction = 0;
+            npaz = 0;
+            return;
+        }
         here = cel->location;
         assert(cel->sidereal_rotational_period != 0);
 

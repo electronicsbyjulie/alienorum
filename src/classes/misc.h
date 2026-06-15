@@ -162,13 +162,13 @@ extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
 extern ViewMode view_mode;
-extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome,
+extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, took_off_from,
     is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor;
 extern double azimuth, altitude, spin, global_gamma, zoom, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
-    viewer_lat, viewer_lon;
+    viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, is_mouse_over_window, dragging, dragged, viewchanged,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, show_taucalc, randomize_txgen,
-    have_Gliese, have_BSC, have_HIP, have_CCDM, have_SB9, have_astorb, have_exo;
+    save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_CCDM, have_SB9, have_astorb, have_exo;
 extern std::string objname, objinfo;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

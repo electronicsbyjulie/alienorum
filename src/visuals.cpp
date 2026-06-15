@@ -147,19 +147,47 @@ int draw_sphere(CelestialObject* cel, double arad)
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
 
-    if (d < cel->volumetric_mean_radius && velocity.magnitude())
+    if ((d < cel->volumetric_mean_radius || (cls == class_satellite && d < 100)))
     {
-        double d1 = (cel->tmprel + velocity).magnitude();
-        if (d1 > d)
+        if (velocity.magnitude() && took_off_from != cel->seqno)
         {
-            if (cls == class_star)
+            double d1 = (cel->tmprel + velocity).magnitude();
+            if (d1 > d)
             {
-                whereami = selected = trackidx = -1;
-                memset( &cels[1], 0, MAX_CELOBJS-2);
-                return 0;
+                if (cls == class_star)
+                {
+                    whereami = selected = trackidx = -1;
+                    here = cels[0]->location;
+                    here.local_position.y -= AU;
+                    velocity = Point(0,0,0);
+                    memset( &cels[1], 0, MAX_CELOBJS-2);
+                    return 0;
+                }
+                else if (cls == class_satellite)
+                {
+                    whereami = cel->seqno;
+                    velocity = Point(0,0,0);
+                    return 0;
+                }
+                else
+                {
+                    double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
+                    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
+                    double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
+                    here.system_center = cel->location.system_center;
+                    here.equatorial_plane = cel->location.equatorial_plane;
+                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ timeofday) - M_PI;
+                    viewer_lat = -cel->Decl_as_radians(here);
+                    save_viewer_latlon = false;
+                    whereami = cel->seqno;
+                    velocity = Point(0,0,0);
+                    view_mode = vm_horizon;
+                    trackidx = -1;
+                }
             }
         }
     }
+    else took_off_from = -1;
 
     cel->drawnxmin = cel->drawnxmax = cel->drawnx;
     cel->drawnymin = cel->drawnymax = cel->drawny;
@@ -977,7 +1005,7 @@ void draw_objects()
         {
             Map *map = cel->surf_map;
             RGB rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB(0, 8, 24);
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy1), ImVec2(dispcx*2, /*dragging ? dy1+1 :*/ dispcy*2),
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy1), ImVec2(dispcx*2, dispcy*2),
                 IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, dragging ? (192-128*is_day) : 255));
         }
 

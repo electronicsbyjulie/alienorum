@@ -583,8 +583,8 @@ void load_stuff()
         json j;
         fs >> j;
         double dbl;
-        try { j.at("Latitude").get_to(dbl); viewer_lat = dbl * fiftyseventh; } catch(...) { ; }
-        try { j.at("Longitude").get_to(dbl); viewer_lon = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Latitude").get_to(dbl); viewer_lat = viewer_home_lat = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Longitude").get_to(dbl); viewer_lon = viewer_home_lon = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Theme").get_to(viewer_theme); } catch(...) { ; }
         fs.close();
     }

@@ -360,6 +360,7 @@ void process_key_cmd_char(char c)
         }
         spin = 0;
         viewchanged = true;
+        took_off_from = whereami;
         whereami = -1;
         break;
 
@@ -395,6 +396,7 @@ void process_key_cmd_char(char c)
             velocity.z =  cos(azimuth+azimuth_correction) * cos(altitude) * 1000;
             velocity.y =  sin(altitude) * 1000;
             velocity = to_viewer_plane(velocity, -1);
+            if (whereami >= 0) took_off_from = whereami;
             whereami = -1;
         }
         viewchanged = true;
@@ -417,7 +419,7 @@ void process_key_cmd_char(char c)
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
 
-        case '&': view_mode = vm_skyatlas; viewchanged = true; break;
+        case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; break;
         case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
 
