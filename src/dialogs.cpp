@@ -131,6 +131,13 @@ void draw_status_window(ImGuiIO& io)
         if (planets_lblcut < 1) planets_lblcut = 1;
     }
 
+    if (!have_exo && (cbolbls_selected_idx == 4 || cbolbls_selected_idx == 5))
+    {
+        ImVec4 warncol = rgba_apply_redlight(ImVec4(1, 0.9, 0, 1));
+        ImGui::TextColored(warncol,
+            "%s", "Note: No exoplanets found.\nTo obtain the exoplanet\ncatalog, please follow the\ninstructions in README.md,\nthen restart Alienorum.");
+    }
+
     flagstr = (std::string)"Redlgt (Sh+R): "
         + std::string(redlight_mode ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());

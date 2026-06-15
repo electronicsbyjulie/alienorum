@@ -42,9 +42,6 @@ std::vector<std::string> known_catalog_names =
     // TODO: Add hundreds more...
 };
 
-bool have_Gliese = false, have_BSC = false, have_HIP = false, have_CCDM = false, have_SB9 = false,
-    have_astorb = false;
-
 std::vector<std::string> consline_a, consline_b;
 std::vector<int> considx, lnpercons;
 std::vector<Cartesian2D> conscen;
@@ -1754,6 +1751,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         }
         if (!candidate.size()) return 0;
         std::cout << "Found " << candidate << std::endl;
+        have_exo = true;
     }
     catch (const fs::filesystem_error& e)
     {
