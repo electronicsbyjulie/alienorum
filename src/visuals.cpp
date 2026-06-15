@@ -945,25 +945,47 @@ void draw_objects()
         if (!cels[1]) return;
     }
 
+    // Horizon
     // TODO: Render according to bump map and generate a fictitious skyline.
-    if (view_mode == vm_horizon && !dragging)
+    if (view_mode == vm_horizon)
     {
-        double theta, dy = dispcy*29;
-        for (theta = 0; theta < _pi*2; theta++)
+        CelestialObject *cel = cels[whereami];
+        if (!cel->looked_for_maps)
         {
-            Point pt = rotate3D(zaxis, center, yaxis, theta);
-            Cartesian2D horizon = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
-            if (horizon.x < -1e4) continue;
-            // dx = horizon.x * dispcx + dispcx;
-            dy = horizon.y * dispcx + dispcy;
-            if (dy < 0) dy = 0;
-            break;
+            cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+            std::thread ttex(load_textures, cel);
+            ttex.detach();
         }
 
-        if (dy < dispcy*2)
+        double theta = 0, step = M_PI/8, dx[16], dy[16], dy1 = dispcy*29;
+        bool draw_marker[16];
+        for (j = 0; j < 16; j++)
         {
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy), ImVec2(dispcx*2, dispcy*2),
-                IM_COL32(0, 8, 24, 255));
+            draw_marker[j] = false;
+            Point pt = rotate3D(zaxis, center, yaxis, theta);
+            Cartesian2D horizon = Cartesian2D(pt, azimuth, altitude, zoom);
+            dx[j] = horizon.x * dispcx + dispcx;
+            dy[j] = horizon.y * dispcx + dispcy;
+            if (dy[j] < 0) dy[j] = 0;
+            else draw_marker[j] = (dx[j] >= 0 && dx[j] < dispcx*2);
+            if (draw_marker[j] && dy1 > dispcy*2) dy1 = dy[j];
+            theta += step;
+        }
+
+        double is_day = fmin(1, luminous_flux/4e+10 + starlight);
+        if (dy1 < dispcy*2)
+        {
+            Map *map = cel->surf_map;
+            RGB rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB(0, 8, 24);
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy1), ImVec2(dispcx*2, dragging ? dy1+1 : dispcy*2),
+                IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
+        }
+
+        ImU32 mkrcol = rgba_apply_redlight(is_day > 0.67 ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
+        for (j = 0; j < 16; j++) if (draw_marker[j])
+        {
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j], dy[j]), mkrcol, compass[j]);
+            if (is_day > 0.67) ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j]-1, dy[j]), mkrcol, compass[j]);
         }
     }
 }

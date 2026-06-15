@@ -48,6 +48,7 @@ bool hide_mouse = true;
 bool searched = false;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Sunlike", "Has Planets", "Planet in HZ", "Binary Orbit", "Known Poles" };
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
+const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_CCDM = false, have_SB9 = false,
     have_astorb = false, have_exo = false;
 int cbolbls_selected_idx = 0, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0;
