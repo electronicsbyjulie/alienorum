@@ -23,6 +23,9 @@ Mac OS:
 MSYS2 (Run in MINGW64 environment):
    pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl
 
+Additionally, for those running Windows, since the star catalogs all download as compressed .gz files and Windows
+has incomplete support for gzip, Alienorum will require 7zip (https://www.7-zip.org/download.html) to be installed.
+
 
 ## Features
 
