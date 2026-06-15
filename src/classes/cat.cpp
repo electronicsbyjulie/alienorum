@@ -145,7 +145,13 @@ void CatalogReader::download_catalogs()
                 std::string entry_name = entry.path().filename().string();
                 i = entry_name.size();
                 j = i - 3;
-                if (!strcmp(".gz", &entry_name.c_str()[j]))
+                if (!strcmp(".tar.gz", &entry_name.c_str()[j]))
+                {
+                    cmd = (std::string)"tar -xvzf " + destdir + (std::string)"/" + entry_name;
+                    std::cout << cmd << std::endl;
+                    std::system(cmd.c_str());
+                }
+                else if (!strcmp(".gz", &entry_name.c_str()[j]))
                 {
                     #ifdef _WIN32
                     cmd = (std::string)"tar -xzf " + destdir + (std::string)"/" + entry_name;
@@ -2215,6 +2221,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 strcpy(s->spectral_type, trim(field).c_str());
                 read_field_onebased(buffer, 177, 191, field);
                 s->absolute_magnitude = atof(field);
+                double lum, tempK;
                 if (bs > 193)
                 {
                     read_field_onebased(buffer, 193, 203, field);
@@ -2229,11 +2236,20 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 if (bs > 217)
                 {
                     read_field_onebased(buffer, 217, 227, field);
-                    double lum = atof(field) * solar_radius;
+                    lum = atof(field) * solar_radius;
                     if (!s->absolute_magnitude)
                     {
                         double magshift = log(lum)/log(magnbase);
                         s->absolute_magnitude = 4.85 - magshift;
+                    }
+                }
+                if (bs > 229)
+                {
+                    read_field_onebased(buffer, 229, 238, field);
+                    tempK = atof(field) * solar_radius;
+                    if (!lum && s->volumetric_mean_radius && tempK)
+                    {
+                        s->absolute_magnitude = log(s->estimate_luminosity(tempK))/log(magnbase);
                     }
                 }
             }

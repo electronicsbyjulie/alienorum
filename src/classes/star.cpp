@@ -240,6 +240,11 @@ double Star::estimate_temperature()
     return 2000;
 }
 
+double Star::estimate_luminosity(double tempK)
+{
+    return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
+}
+
 double Star::estimate_BV()
 {
     double T = estimate_temperature();
