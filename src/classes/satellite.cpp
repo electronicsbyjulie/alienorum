@@ -200,6 +200,8 @@ bool SatSource::read_csv_data()
         std::vector<std::string> row = parse_csv_row(buffer);
         i = 0;
 
+        if (!strcmp(row[0].c_str(), "OBJECT_NAME")) continue;               // Ignore headers.
+
         if (is_supplemental)
         {
             uint32_t norad_id = atoi(row[11].c_str());
