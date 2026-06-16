@@ -646,7 +646,7 @@ bool draw_one_object(int i)
     bloomrad = fmin(max_bloomrad, bloomrad);
     if (cls == class_satellite)
     {
-        if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*2))
+        if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
         {
             cels[i]->drawnx = cels[i]->drawny = -1e9;
             return false;
@@ -657,7 +657,7 @@ bool draw_one_object(int i)
         ImU32 satcol = (line_of_sight < cels[i]->orbit->center->volumetric_mean_radius)
             ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
             : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
-        if (show_labels || lbl_localsys)
+        if (show_labels || lbl_localsys || show_consln || show_grid)
         {
             // Satellite icons.
             ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );

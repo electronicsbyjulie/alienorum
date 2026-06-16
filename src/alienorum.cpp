@@ -75,7 +75,7 @@ int main (int argc, char** argv)
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
-    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "";
+    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
 
     memset(lookfor, 0, 40);
     memset(looksat, 0, 40);
@@ -85,7 +85,7 @@ int main (int argc, char** argv)
         n = strlen(argv[l]);
         if (n == 1)
         {
-            process_key_cmd_char(argv[l][0]);
+            args1char += std::string(argv[l]);
             continue;
         }
 
@@ -564,6 +564,12 @@ int main (int argc, char** argv)
                 zoom = atof(argszoom.c_str());
                 argszoom = "";
                 viewchanged = true;
+            }
+            else while (args1char.size())
+            {
+                char c = args1char.c_str()[0];
+                args1char = args1char.substr(1);
+                process_key_cmd_char(c);
             }
 
             // Keyboard commands

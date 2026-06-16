@@ -443,8 +443,8 @@ void process_keyboard_commands(ImGuiIO& io)
         process_key_cmd_char(c);
     }
 
-    double steering_rate = _pi/16;
-    double walk_speed = 4;                                        // a fast run
+    double steering_rate = _pi/16/zoom;
+    double walk_speed = 4 * frame_dur;                              // a fast run
     if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
     {
         Point yaw = to_viewer_plane(yaxis, -1);
