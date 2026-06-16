@@ -298,7 +298,7 @@ void compute_object_draw_coordinates()
 
             double brght;
 
-            if ((view_mode == vm_horizon) && vmag_cache[i] < -10 && rel.y >= 0)
+            if ((view_mode == vm_horizon) && vmag_cache[i] < -10 && rel.y >= 0 && angular_radius[i] < fiftyseventh)
             {
                 brght = global_brightness * pow(magnbase, -vmag_cache[i]);
                 float theta = cels[i]->Decl_as_radians(here);

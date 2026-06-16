@@ -184,6 +184,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     whereami = cel->seqno;
                     velocity = Point(0,0,0);
                     view_mode = vm_horizon;
+                    altitude = 0;
                     trackidx = -1;
                 }
             }
@@ -1007,15 +1008,19 @@ void draw_objects()
         {
             Map *map = cel->surf_map;
             RGB rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB(0, 8, 24);
+            rgb.r *= is_day;
+            rgb.g *= is_day;
+            rgb.b *= is_day;
             ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy1), ImVec2(dispcx*2, dispcy*2),
-                rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, dragging ? (192-128*is_day) : 255)));
-        }
+                rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
 
-        ImU32 mkrcol = rgba_apply_redlight(is_day > 0.67 ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
-        for (j = 0; j < 16; j++) if (draw_marker[j])
-        {
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j], dy[j]), mkrcol, compass[j]);
-            if (is_day > 0.53) ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j]-1, dy[j]), mkrcol, compass[j]);
+            double hzbrt = 0.29*rgb.r + 0.56*rgb.g * 0.15*rgb.b;
+            ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
+            for (j = 0; j < 16; j++) if (draw_marker[j])
+            {
+                ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j], dy[j]), mkrcol, compass[j]);
+                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j]-1, dy[j]), mkrcol, compass[j]);
+            }
         }
     }
 }

@@ -443,7 +443,7 @@ void process_keyboard_commands(ImGuiIO& io)
         process_key_cmd_char(c);
     }
 
-    double steering_rate = _pi/8;
+    double steering_rate = _pi/16;
     double walk_speed = 4;                                        // a fast run
     if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
     {
@@ -462,12 +462,14 @@ void process_keyboard_commands(ImGuiIO& io)
         Point pitch = to_viewer_plane(xaxis, -1);
         velocity = rotate3D(velocity, center, pitch, -steering_rate);
         if (trackidx<0) altitude += steering_rate;
+        if (altitude > half_pi) altitude = half_pi;
     }
     if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
     {
         Point pitch = to_viewer_plane(xaxis, -1);
         velocity = rotate3D(velocity, center, pitch,  steering_rate);
         if (trackidx<0) altitude -= steering_rate;
+        if (altitude < -half_pi) altitude = -half_pi;
     }
     if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
     {
