@@ -870,7 +870,7 @@ void draw_objects()
         // Counterintuitive that we would process *more* objects during dragging and not *less*,
         // but since discs become transparent wireframes during drag, it only makes sense that the
         // ground should become transparent as well.
-        if (view_mode == vm_horizon && !dragging && cels[i]->viewrel.y < 0)
+        if (view_mode == vm_horizon && !dragging && cels[i]->viewrel.y < 0 && angular_radius[i] < fiftyseventh)
         {
             continue;
         }
