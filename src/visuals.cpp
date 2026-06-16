@@ -190,7 +190,11 @@ int draw_sphere(CelestialObject* cel, double arad)
             }
         }
     }
-    else took_off_from = -1;
+    else if (tookoff_countdown)
+    {
+        tookoff_countdown--;
+        if (!tookoff_countdown) took_off_from = -1;
+    }
 
     cel->drawnxmin = cel->drawnxmax = cel->drawnx;
     cel->drawnymin = cel->drawnymax = cel->drawny;
@@ -1097,7 +1101,7 @@ void draw_cons_lines()
         if (dx2 < -1e3) continue;
         if (dy2 < -1e3) continue;
 
-        if (draw_actual_conslines)
+        if (draw_actual_conslines || i >= nconsln)
             ImGui::GetBackgroundDrawList()->AddLine(
                 ImVec2(dx1, dy1), ImVec2(dx2, dy2),
                 rgba_apply_redlight((i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128)), 1);

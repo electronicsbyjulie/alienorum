@@ -366,6 +366,7 @@ void process_key_cmd_char(char c)
         spin = 0;
         viewchanged = true;
         took_off_from = whereami;
+        tookoff_countdown = 5;
         whereami = -1;
         break;
 
@@ -401,7 +402,11 @@ void process_key_cmd_char(char c)
             velocity.z =  cos(azimuth+azimuth_correction) * cos(altitude) * 1000;
             velocity.y =  sin(altitude) * 1000;
             velocity = to_viewer_plane(velocity, -1);
-            if (whereami >= 0) took_off_from = whereami;
+            if (whereami >= 0)
+            {
+                took_off_from = whereami;
+                tookoff_countdown = 5;
+            }
             whereami = -1;
         }
         viewchanged = true;

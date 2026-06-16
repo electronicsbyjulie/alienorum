@@ -126,7 +126,7 @@ bool compute_object_location(CelestialObject* cel, int i)
             ((Star*)cel)->tmp_vis_flag = star_in_box;
             if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj)
             {
-                if (!star_in_box)
+                if (!star_in_box && !((Star*)cel)->is_universally_visible())
                 {
                     cel->drawnx = cel->drawny = -1e9;
                     return false;
@@ -137,6 +137,7 @@ bool compute_object_location(CelestialObject* cel, int i)
                         || cel->orbit->center->drawnx > dispw || cel->orbit->center->drawny > disph
                         || cel->orbit->semimajor_axis < cel->location.distance_to(here)*1e-4*zoom
                         )
+                     && !((Star*)cel)->is_universally_visible()
                     )
                 {
                     cel->drawnx = cel->drawny = -1e9;
@@ -285,7 +286,8 @@ void compute_object_draw_coordinates()
 
             if (cels[i]->typeclass() == class_star
                 && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
-                && !((Star*)cels[i])->tmp_vis_flag)
+                && !((Star*)cels[i])->tmp_vis_flag
+                && !((Star*)cels[i])->is_universally_visible())
                 continue;
 
             Point rel = cels[i]->tmprel;

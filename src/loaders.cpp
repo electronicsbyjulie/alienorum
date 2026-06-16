@@ -516,6 +516,8 @@ void cache_cons_lines()
 
         consaidx[i] = founda;
         consbidx[i] = foundb;
+        if (founda >= 0) ((Star*)cels[founda])->make_universally_visible();
+        if (foundb >= 0) ((Star*)cels[foundb])->make_universally_visible();
     }
 
     if (show_xonsm)

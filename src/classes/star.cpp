@@ -200,6 +200,7 @@ bool Star::is_in_visible_box(Point seen_from)
 
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
+    if (_is_always_visible) return true;
     if (orbit && !orbit->semimajor_axis && orbit->center) orbit->semimajor_axis = location.distance_to(orbit->center->location);
     double cutoff_dist = orbit ? (orbit->semimajor_axis*100) : (pow(100.0, 0.2*(6.5-apparent_magnitude)) * distance);
     visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
@@ -215,6 +216,7 @@ void Star::make_universally_visible()
     visible_area.corner1 = Point(-1.37e+9*light_year, -1.37e+9*light_year, -1.37e+9*light_year);
     visible_area.corner2 = Point( 1.37e+9*light_year,  1.37e+9*light_year,  1.37e+9*light_year);
     visible_area_set = true;
+    _is_always_visible = true;
 }
 
 double Star::estimate_temperature()
