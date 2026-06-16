@@ -3,6 +3,8 @@
 #include <math.h>
 #include "moon.h"
 
+using namespace alienorum;
+
 Rotation Moon::get_Laplace_plane()
 {
     if (Laplace_set) return Laplace_plane;

@@ -7,6 +7,8 @@
 #include <sstream>
 #include "point.h"
 
+using namespace alienorum;
+
 Point center(0,0,0), xaxis(1e37, 0, 0), yaxis(0, 1e37, 0), zaxis(0, 0, 1e37);
 
 Point solar_north    = Point::from_ra_dec(solar_north_RA_J2000,    solar_north_Decl_J2000,    light_year);

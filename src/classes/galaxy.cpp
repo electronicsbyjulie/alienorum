@@ -1,5 +1,7 @@
 #include "galaxy.h"
 
+using namespace alienorum;
+
 Galaxy::Galaxy()
 {
     _class = class_galaxy;

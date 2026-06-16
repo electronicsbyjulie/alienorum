@@ -1,6 +1,8 @@
 
 #include "globals.h"
 
+using namespace alienorum;
+
 // IMPORTANT: Any variables defined here must also be declared extern in globals.h.
 SDL_Window* window;
 char lookfor[40], edit_name[40], looksat[40], lookast[40];

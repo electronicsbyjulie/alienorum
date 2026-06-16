@@ -11,6 +11,8 @@
 #include "nlohmann/json.hpp"
 #include "imgui/imgui.h"
 
+using namespace alienorum;
+
 using namespace std;
 double global_brightness = default_brightness, sky_mag_shift = 0;
 double global_inverse_gamma = 1.0 / default_gamma;

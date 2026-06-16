@@ -1,5 +1,7 @@
 #include "noise.h"
 
+using namespace alienorum;
+
 PerlinNoise::PerlinNoise()
 {
     p.resize(256);

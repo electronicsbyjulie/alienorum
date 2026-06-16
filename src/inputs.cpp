@@ -4,6 +4,8 @@
 #include "housekeeping.h"
 #include "inputs.h"
 
+using namespace alienorum;
+
 void center_selected()
 {
     if (selected >= 0)

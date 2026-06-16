@@ -13,6 +13,7 @@
 // #include "EasyBMP/EasyBMP.hpp"
 #include "noise.h"
 
+using namespace alienorum;
 using json = nlohmann::json;
 
 #define _pi 3.141592653589793238462643383

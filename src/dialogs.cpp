@@ -15,6 +15,8 @@
 #include <string.h>
 #endif
 
+using namespace alienorum;
+
 void draw_status_window(ImGuiIO& io)
 {
     if (!cels[1]) return;

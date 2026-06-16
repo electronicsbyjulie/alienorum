@@ -4,12 +4,15 @@
 
 #include "celestial.h"
 
-class Galaxy : public CelestialObject
+namespace alienorum
 {
-    public:
-    Galaxy();
-    json to_json();
-    bool from_json(json j);
-};
+    class Galaxy : public CelestialObject
+    {
+        public:
+        Galaxy();
+        json to_json();
+        bool from_json(json j);
+    };
+}
 
 #endif

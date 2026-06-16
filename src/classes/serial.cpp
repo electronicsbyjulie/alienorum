@@ -2,6 +2,8 @@
 #include <iostream>
 #include "serial.h"
 
+using namespace alienorum;
+
 int find_object(const char* search_term, bool os, double ml)
 {
     int i, m, n;

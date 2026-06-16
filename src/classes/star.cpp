@@ -4,6 +4,8 @@
 #include <math.h>
 #include "star.h"
 
+using namespace alienorum;
+
 Star **hdcache = nullptr, **hipcache = nullptr;
 
 char Star::get_component()

@@ -8,6 +8,7 @@
 #include <ctime>
 
 #include "misc.h"
+using namespace alienorum;
 
 // IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
 std::string loading_msg = "Loading...";

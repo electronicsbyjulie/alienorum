@@ -9,6 +9,8 @@
 #include "star.h"
 #include "planet.h"
 
+using namespace alienorum;
+
 CelestialObject **cels, *mycenobj = nullptr;
 std::vector<std::vector<CelestialObject*>> first_letter_index;
 std::map<std::string,std::vector<CelestialObject*>> constellation_index;

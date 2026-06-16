@@ -3,6 +3,8 @@
 #include "visuals.h"
 #include "loaders.h"
 
+using namespace alienorum;
+
 double jay, appmag, bloomrad, flare, theta, lmasslim;
 ImVec2 xycoord;
 

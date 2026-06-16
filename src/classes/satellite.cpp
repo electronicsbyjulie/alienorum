@@ -9,6 +9,8 @@
 #include "satellite.h"
 #include "serial.h"
 
+using namespace alienorum;
+
 std::vector<SatSource> sat_sources;
 std::vector<SatRecord> sat_data;
 

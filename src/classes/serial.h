@@ -8,12 +8,15 @@
 #include "moon.h"
 #include "satellite.h"
 
-class Serialization
+namespace alienorum
 {
-    public:
-    static bool save_all(std::fstream& fs, CelestialObject **cels, bool only_edited = false);
-    static bool load_all(std::fstream& fs, CelestialObject **cels, unsigned int max);
-};
+    class Serialization
+    {
+        public:
+        static bool save_all(std::fstream& fs, CelestialObject **cels, bool only_edited = false);
+        static bool load_all(std::fstream& fs, CelestialObject **cels, unsigned int max);
+    };
+}
 
 #endif
 

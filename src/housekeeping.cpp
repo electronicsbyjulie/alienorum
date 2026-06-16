@@ -2,6 +2,8 @@
 #include "housekeeping.h"
 #include "inputs.h"
 
+using namespace alienorum;
+
 void refresh_star_visibilities()
 {
     int i;

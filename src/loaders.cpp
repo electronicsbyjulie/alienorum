@@ -2,6 +2,8 @@
 #include "loaders.h"
 #include "housekeeping.h"
 
+using namespace alienorum;
+
 int sats_added = 0, sat_errors = 0;
 
 void load_textures(CelestialObject* cel)

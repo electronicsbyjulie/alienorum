@@ -6,6 +6,8 @@
 #include "star.h"
 #include "point.h"
 
+using namespace alienorum;
+
 std::vector<AstorbRow> astorb;
 
 void Planet::classify()
