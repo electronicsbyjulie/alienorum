@@ -224,7 +224,7 @@ void compute_object_draw_coordinates()
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
-    double mycenobj_dist = mycenobj->location.distance_to(here);
+    double mycenobj_distsq = mycenobj->location.squared_distance_to(here);
     if (whereami >= 0)
     {
         std::vector<CelestialObject*> have_to_know;
@@ -257,10 +257,13 @@ void compute_object_draw_coordinates()
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star
             // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
-            && cels[i]->tmprel.x < mycenobj_dist && cels[i]->tmprel.y < mycenobj_dist && cels[i]->tmprel.z < mycenobj_dist
-            && cels[i]->tmprel.magnitude() < mycenobj_dist)
+            && cels[i]->tmprel.x < mycenobj_distsq && cels[i]->tmprel.y < mycenobj_distsq && cels[i]->tmprel.z < mycenobj_distsq
+            && cels[i]->tmprel.squared_magnitude() < mycenobj_distsq)
         {
             mycenobj = cels[i]->cenobj;
+            CelestialLocation was_here = here;
+            here.system_center = cels[i]->location.system_center;
+            here.local_position = Point(was_here) - here.system_center;
         }
     }
 

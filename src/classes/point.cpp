@@ -411,6 +411,12 @@ double CelestialLocation::distance_to(CelestialLocation other)
     return relloc.magnitude();
 }
 
+double CelestialLocation::squared_distance_to(CelestialLocation other)
+{
+    Point relloc = (system_center - other.system_center) + (local_position - other.local_position);
+    return relloc.squared_magnitude();
+}
+
 CelestialLocation CelestialLocation::operator-(CelestialLocation other)             // it sure is nice that this fuction does its job!
 {
     CelestialLocation result = *this;

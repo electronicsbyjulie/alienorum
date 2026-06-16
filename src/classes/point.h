@@ -105,6 +105,7 @@ class CelestialLocation
     Rotation orbital_plane;
     Rotation equatorial_plane;                          // Also used for viewer plane in space and horizon plane in horizon mode.
     double distance_to(CelestialLocation other);
+    double squared_distance_to(CelestialLocation other);
     CelestialLocation operator-(CelestialLocation other);
     CelestialLocation& operator-=(CelestialLocation other);
     json to_json();
