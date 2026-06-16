@@ -1,0 +1,37 @@
+# stars
+Gliese              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?V/70A
+BSC                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?V/50
+Hipparcos           https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?I/239
+GAIA                https://gaia.ari.uni-heidelberg.de/gaiasky/repository/catalog/dr3/014-best/v01_20250530/catalog-gaia-dr3-best.tar.gz
+GCVS                https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/gcvs
+CGO                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?III/274
+2MASS               https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?II/246
+WD                  https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/wd
+
+# multi star systems
+# CCDM                https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?I/274
+SB9                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?V/122
+
+# galaxies
+# REGALADE            https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?J/A+A/706/A284
+GALEX               https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?J/ApJS/173/185
+
+# REGALADE is not available for auto download because the gzipped tarball is too big,
+# however this may still be a good resource to use with the caveat that the user must
+# download the catalog manually.
+
+# solar system objects
+astorb              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/astorb
+comets              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/comets
+
+# Complete list of auto-downloadable catalogs from VizieR:
+# https://vizier.cds.unistra.fr/vizier/cats/U.htx
+
+# exoplanets
+# https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=PSCompPars
+# open the above link in a browser, manually select to include the columns:
+# HD ID, Inclination, Epoch of Periastron, Argument of Periastron, True Obliquity, RA[deg], Dec[deg], Distance[pc], V Magnitude.
+# and click Update.
+# Then click the download (save icon) button, choose CSV format, and click the green Download Table arrow.
+# Save the resulting file in the alienorum/catalogs/ folder.
+
