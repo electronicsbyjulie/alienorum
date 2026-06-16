@@ -940,7 +940,7 @@ unsigned int Map::idx_of(double lat, double lon)
 {
     while (!lat_scale) std::this_thread::sleep_for(std::chrono::milliseconds(29));
 
-    lon = fmod(lon, _pi*2);
+    lon = fmod(lon+_pi, _pi*2);
     if (lon < 0) lon += _pi*2;
     if (lat < -half_pi) lat = -half_pi;
     else if (lat > half_pi) lat = half_pi;

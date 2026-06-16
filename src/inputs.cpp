@@ -305,6 +305,9 @@ void process_key_cmd_char(char c)
         whereami = iamhome;
         trackidx = -1;
         view_mode = vm_skyatlas;
+        viewer_lat = viewer_home_lat;
+        viewer_lon = viewer_home_lon;
+        save_viewer_latlon = true;
         set_viewer_location_and_plane();
         global_brightness = default_brightness;
         show_consln = show_grid = show_labels = true;
@@ -436,6 +439,92 @@ void process_keyboard_commands(ImGuiIO& io)
         timeout_ms = 5;
         ImWchar c = io.InputQueueCharacters[i];
         process_key_cmd_char(c);
+    }
+
+    double steering_rate = _pi/8;
+    double walk_speed = 4;                                        // a fast run
+    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
+    {
+        Point yaw = to_viewer_plane(yaxis, -1);
+        velocity = rotate3D(velocity, center, yaw, -steering_rate);
+        if (trackidx<0) azimuth -= steering_rate;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window)
+    {
+        Point yaw = to_viewer_plane(yaxis, -1);
+        velocity = rotate3D(velocity, center, yaw,  steering_rate);
+        if (trackidx<0) azimuth += steering_rate;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window)
+    {
+        Point pitch = to_viewer_plane(xaxis, -1);
+        velocity = rotate3D(velocity, center, pitch, -steering_rate);
+        if (trackidx<0) altitude += steering_rate;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
+    {
+        Point pitch = to_viewer_plane(xaxis, -1);
+        velocity = rotate3D(velocity, center, pitch,  steering_rate);
+        if (trackidx<0) altitude -= steering_rate;
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
+    {
+        double vmag;
+        if (view_mode == vm_horizon)
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
+            if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
+            if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
+            double inv_circ = 1.0 / (_pi * 2 * cels[whereami]->volumetric_mean_radius);
+            double coslat = cos(viewer_lat);
+            viewer_lat += walk_speed * inv_circ * cos(azimuth);
+            if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
+            save_viewer_latlon = false;
+        }
+        else if ((vmag = velocity.magnitude()))                 // assignment not comparison
+        {
+            double acceleration = vmag * 0.1;
+            Point forward;
+            forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+            forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+            forward.y =  sin(altitude) * acceleration;
+            forward = to_viewer_plane(forward, -1);
+            velocity += forward;
+        }
+    }
+    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window)
+    {
+        double vmag;
+        if (view_mode == vm_horizon)
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
+            if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
+            if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
+            double inv_circ = 1.0 / (_pi * 2 * cels[whereami]->volumetric_mean_radius);
+            double coslat = cos(viewer_lat);
+            viewer_lat -= walk_speed * inv_circ * cos(azimuth);
+            if (coslat) viewer_lon -= walk_speed * inv_circ * sin(azimuth) / coslat;
+            save_viewer_latlon = false;
+        }
+        else if ((vmag = velocity.magnitude()))                 // assignment not comparison
+        {
+            double acceleration = velocity.magnitude() * 0.1;
+            Point forward;
+            forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+            forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+            forward.y =  sin(altitude) * acceleration;
+            forward = to_viewer_plane(forward, -1);
+            velocity -= forward;
+        }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F4))
+    {
+        IGFD::FileDialogConfig config;
+        config.path = ".";
+        ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
+        fdlg_shown = true;
     }
 }
 

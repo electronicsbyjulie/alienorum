@@ -1399,7 +1399,7 @@ void draw_objedit_window(ImGuiIO& io)
                                 {
                                     xrad = x * fiftyseventh;
 
-                                    rgb = map->color_at(yrad, xrad);
+                                    rgb = map->color_at(yrad, xrad-_pi);
                                     imu = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255));
                                     draw_list->AddRectFilled(ImVec2(canvas_p0.x+x, canvas_p0.y+y), ImVec2(canvas_p0.x+x+1, canvas_p0.y+y+1), imu);
                                 }

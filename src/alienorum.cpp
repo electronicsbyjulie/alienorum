@@ -566,58 +566,6 @@ int main (int argc, char** argv)
 
             // Keyboard commands
             process_keyboard_commands(io);
-            #define steering_rate 0.03
-            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
-            {
-                Point yaw = to_viewer_plane(yaxis, -1);
-                velocity = rotate3D(velocity, center, yaw, -steering_rate);
-                if (trackidx<0) azimuth -= steering_rate;
-            }
-            if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window)
-            {
-                Point yaw = to_viewer_plane(yaxis, -1);
-                velocity = rotate3D(velocity, center, yaw,  steering_rate);
-                if (trackidx<0) azimuth += steering_rate;
-            }
-            if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window)
-            {
-                Point pitch = to_viewer_plane(xaxis, -1);
-                velocity = rotate3D(velocity, center, pitch, -steering_rate);
-                if (trackidx<0) altitude += steering_rate;
-            }
-            if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
-            {
-                Point pitch = to_viewer_plane(xaxis, -1);
-                velocity = rotate3D(velocity, center, pitch,  steering_rate);
-                if (trackidx<0) altitude -= steering_rate;
-            }
-            if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
-            {
-                double acceleration = velocity.magnitude() * 0.1;
-                Point forward;
-                forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
-                forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
-                forward.y =  sin(altitude) * acceleration;
-                forward = to_viewer_plane(forward, -1);
-                velocity += forward;
-            }
-            if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window)
-            {
-                double acceleration = velocity.magnitude() * 0.1;
-                Point forward;
-                forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
-                forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
-                forward.y =  sin(altitude) * acceleration;
-                forward = to_viewer_plane(forward, -1);
-                velocity -= forward;
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_F4))
-            {
-                IGFD::FileDialogConfig config;
-                config.path = ".";
-                ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
-                fdlg_shown = true;
-            }
 
             if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
             {

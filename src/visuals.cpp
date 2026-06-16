@@ -176,7 +176,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ timeofday) - M_PI;
+                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ timeofday) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
                     save_viewer_latlon = false;
                     whereami = cel->seqno;
@@ -444,7 +444,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[1] = todraw[l-1];
                             points[2] = todraw[m-1];
                             points[3] = todraw[m];
-                            if (map && is_day) rgb = map->color_at(lat, lon);
+                            if (map && is_day) rgb = map->color_at(lat, lon-_pi);
 
                             rgb.r *= daylight.red;
                             rgb.g *= daylight.green;
@@ -453,7 +453,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                             if (nmap)
                             {
                                 is_night = 1.0 - is_day;
-                                if (is_night) nrgb = nmap->color_at(lat, lon);
+                                if (is_night) nrgb = nmap->color_at(lat, lon-_pi);
                                 imcol = rgba_apply_redlight(IM_COL32(
                                     is_day*rgb.r + is_night*nrgb.r,
                                     is_day*rgb.g + is_night*nrgb.g,
@@ -985,7 +985,7 @@ void draw_objects()
             ttex.detach();
         }
 
-        double theta = 0, step = M_PI/8, dx[16], dy[16], dy1 = dispcy*29;
+        double theta = 0, step = _pi/8, dx[16], dy[16], dy1 = dispcy*29;
         bool draw_marker[16];
         for (j = 0; j < 16; j++)
         {
