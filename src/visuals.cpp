@@ -1102,7 +1102,8 @@ void draw_cons_lines()
         if (!lnpercons[l]) continue;
         if (initcons) consdir[l].scale(1e303);
 
-        Cartesian2D cart(consdir[l], azimuth+azimuth_correction, altitude, zoom);
+        Point lconsdir = to_viewer_plane(consdir[l]);
+        Cartesian2D cart(lconsdir, azimuth+azimuth_correction, altitude, zoom);
         float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
         if (dx < 0 || dy < 0) continue;
