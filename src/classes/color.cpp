@@ -50,9 +50,9 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR)
     return c;
 }
 
-RGB Color::rgb_from_color(Color c, double bloom_radius)
+RGB3Byte Color::rgb_from_color(Color c, double bloom_radius)
 {
-    RGB result;
+    RGB3Byte result;
     int red, green, blue;
     double circ, invcirc;
 
@@ -221,7 +221,7 @@ void apply_default_style()
 }
 
 #define _dbg_veg_color 0
-RGB generate_vegetation_color()
+RGB3Byte generate_vegetation_color()
 {
     // Don't assume alien vegetation is green!
     // Seed random value

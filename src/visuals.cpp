@@ -212,7 +212,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (wireframe)
     {
         Color wcol = Color::color_from_magnitude_indices(0, cel->BV_color);
-        RGB wrgb = Color::rgb_from_color(wcol, -1);
+        RGB3Byte wrgb = Color::rgb_from_color(wcol, -1);
         gc = rgba_apply_redlight(IM_COL32(wrgb.r, wrgb.g, wrgb.b, 255));
     }
 
@@ -321,7 +321,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     else if (cel->surf_map) map = cel->surf_map;
     if (cel->night_map) nmap = cel->night_map;
     double night_illum = nmap ? 0 : starlight;
-    RGB rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
+    RGB3Byte rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
     Point cursor, land;
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
@@ -711,7 +711,7 @@ bool draw_one_object(int i)
         if (flare)
         {
             double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
-            RGB rgb;
+            RGB3Byte rgb;
             rgb.r = (int)(col.red * divisor);
             rgb.g = (int)(col.green* divisor);
             rgb.b = (int)(col.blue * divisor);
@@ -741,7 +741,7 @@ bool draw_one_object(int i)
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         for (jay=bloomrad; jay>=0; jay-=0.7)
         {
-            RGB rgb = Color::rgb_from_color(col, 1);
+            RGB3Byte rgb = Color::rgb_from_color(col, 1);
             if (rgb.r >= 16 || rgb.b >= 16)
             {
                 ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
@@ -806,7 +806,7 @@ void draw_objects()
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
         Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
-        RGB rgb = Color::rgb_from_color(col, 1);
+        RGB3Byte rgb = Color::rgb_from_color(col, 1);
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         step = cels[i]->orbit->period / orbseg;
         CelestialLocation was = cels[i]->location;
@@ -1007,7 +1007,7 @@ void draw_objects()
         if (dy1 < dispcy*2)
         {
             Map *map = cel->surf_map;
-            RGB rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB(0, 8, 24);
+            RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
             rgb.r *= is_day;
             rgb.g *= is_day;
             rgb.b *= is_day;

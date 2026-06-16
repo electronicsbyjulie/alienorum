@@ -2347,7 +2347,7 @@ void ImDrawData::ScaleClipRects(const ImVec2& fb_scale)
 // [SECTION] Helpers ShadeVertsXXX functions
 //-----------------------------------------------------------------------------
 
-// Generic linear color gradient, write to RGB fields, leave A untouched.
+// Generic linear color gradient, write to RGB3Byte fields, leave A untouched.
 void ImGui::ShadeVertsLinearColorGradientKeepAlpha(ImDrawList* draw_list, int vert_start_idx, int vert_end_idx, ImVec2 gradient_p0, ImVec2 gradient_p1, ImU32 col0, ImU32 col1)
 {
     ImVec2 gradient_extent = gradient_p1 - gradient_p0;

@@ -95,7 +95,7 @@ namespace alienorum
         bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool save_to_png(std::string filename);
 
-        RGB color_at(double latitude, double longitude);
+        RGB3Byte color_at(double latitude, double longitude);
         double elevation_at(double latitude, double longitude);     // Returns meters.
         void generate_rocky_map(CelestialObject *cel);
         void generate_gas_giant_map(int latitude_resolution, double BV_color);

@@ -8,15 +8,22 @@
 
 namespace alienorum
 {
-    class RGB
+    // To maintain Windows compatibility, one cannot define a class called RGB.
+    // It conflicts with a macro in wingdi.h, and using a namespace does nothing.
+    // Someone raised this as an issue through Micro$oft's User Voice system
+    // (https://stackoverflow.com/questions/26719529/class-called-rgb-in-visual-c#answer-26719726)
+    // but if you click on the link now, that specific User Voice has been deleted, and the problem is still not fixed.
+    // So the class had to be renamed to something much more awkward than its original name.
+    // Yet another reason why Linux/FOSS is friendlier.
+    class RGB3Byte
     {
         public:
         unsigned char r = 0;
         unsigned char g = 0;
         unsigned char b = 0;
 
-        RGB() { r=g=b=0; }
-        RGB(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
+        RGB3Byte() { r=g=b=0; }
+        RGB3Byte(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
     };
 
     class Color
@@ -29,8 +36,8 @@ namespace alienorum
         double luminance();
         static Color color_from_magnitude_indices(double Vmag, double BV);
         static Color color_from_magnitude_indices(double Vmag, double BV, double VR);
-        static RGB rgb_from_color(Color c, double bloom_radius = 0);                    // Bloom radius = distance in pixels from center.
-        static RGB disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
+        static RGB3Byte rgb_from_color(Color c, double bloom_radius = 0);                    // Bloom radius = distance in pixels from center.
+        static RGB3Byte disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
         json to_json();
@@ -97,6 +104,6 @@ void rgb_apply_redlight(float *r, float *g, float *b);
 uint32_t rgba_apply_redlight(uint32_t input);
 ImVec4 rgba_apply_redlight(ImVec4 input);
 void apply_default_style();
-RGB generate_vegetation_color();
+RGB3Byte generate_vegetation_color();
 
 #endif

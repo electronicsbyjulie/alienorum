@@ -447,18 +447,33 @@ void process_keyboard_commands(ImGuiIO& io)
     double walk_speed = 4 * frame_dur;                              // a fast run
     if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
     {
+        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
+        }
         Point yaw = to_viewer_plane(yaxis, -1);
         velocity = rotate3D(velocity, center, yaw, -steering_rate);
         if (trackidx<0) azimuth -= steering_rate;
     }
     if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window)
     {
+        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
+        }
         Point yaw = to_viewer_plane(yaxis, -1);
         velocity = rotate3D(velocity, center, yaw,  steering_rate);
         if (trackidx<0) azimuth += steering_rate;
     }
     if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window)
     {
+        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
+        }
         Point pitch = to_viewer_plane(xaxis, -1);
         velocity = rotate3D(velocity, center, pitch, -steering_rate);
         if (trackidx<0) altitude += steering_rate;
@@ -466,6 +481,11 @@ void process_keyboard_commands(ImGuiIO& io)
     }
     if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
     {
+        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
+        }
         Point pitch = to_viewer_plane(xaxis, -1);
         velocity = rotate3D(velocity, center, pitch,  steering_rate);
         if (trackidx<0) altitude -= steering_rate;

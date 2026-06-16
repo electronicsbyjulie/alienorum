@@ -1375,7 +1375,7 @@ void draw_objedit_window(ImGuiIO& io)
                     Map *map = celmaps[i];
                     int x, y;
                     double xrad, yrad;
-                    RGB rgb;
+                    RGB3Byte rgb;
                     ImU32 imu;
 
                     if (map)

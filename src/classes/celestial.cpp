@@ -767,7 +767,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
     if (bytes_per_pixel == 3)
     {
-        // RGB
+        // RGB3Byte
         unsigned int x, y, i=0;
         for (y=0; y<image_height; y++)
         {
@@ -885,7 +885,7 @@ bool Map::save_to_png(std::string filename)
         image_width,
         image_height,
         8,                          // 8 bits per channel
-        PNG_COLOR_TYPE_RGB,         // RGB channels (3 bytes per pixel)
+        PNG_COLOR_TYPE_RGB,         // RGB3Byte channels (3 bytes per pixel)
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_DEFAULT,
         PNG_FILTER_TYPE_DEFAULT
@@ -905,7 +905,7 @@ bool Map::save_to_png(std::string filename)
     png_bytep buffer = (png_bytep)malloc(image_width * image_height * 3);
 
     // Populate the buffer with data.
-    unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB
+    unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB3Byte
     for (unsigned int y = 0; y < image_height; y++)
     {
         int iy = image_width*y;
@@ -959,9 +959,9 @@ unsigned int Map::idx_of(double lat, double lon)
     return y0idx+x0;
 }
 
-RGB Map::color_at(double lat, double lon)
+RGB3Byte Map::color_at(double lat, double lon)
 {
-    RGB result;
+    RGB3Byte result;
     if (blue_data)
     {
         unsigned int idx = idx_of(lat, lon);
@@ -1072,7 +1072,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double scale = frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
 
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-    RGB rgb = Color::rgb_from_color(col, -1);
+    RGB3Byte rgb = Color::rgb_from_color(col, -1);
 
     int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
 
@@ -1098,7 +1098,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double inv_h2o_level = 0;
     if (has_water && randomize_txgen)
     {
-        RGB veg_color = generate_vegetation_color();
+        RGB3Byte veg_color = generate_vegetation_color();
         vegetation_r = veg_color.r;
         vegetation_g = veg_color.g;
         vegetation_b = veg_color.b;
@@ -1209,11 +1209,11 @@ void Map::generate_gas_giant_map(int lr, double BV)
     std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
 
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-    RGB rgb = Color::rgb_from_color(col, -1);
+    RGB3Byte rgb = Color::rgb_from_color(col, -1);
 
     double variability = frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
-    auto bands = std::make_unique<RGB[]>(num_bands);
+    auto bands = std::make_unique<RGB3Byte[]>(num_bands);
 
     bool add_storm = frand(0, 1) < 0.2;
     double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29;

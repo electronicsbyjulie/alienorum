@@ -383,7 +383,7 @@ int main (int argc, char** argv)
             {
                 for (jay=splash_star_brghtness[i]; jay>=0; jay-=0.5)
                 {
-                    RGB rgb = Color::rgb_from_color(col, 1);
+                    RGB3Byte rgb = Color::rgb_from_color(col, 1);
                     if (rgb.r >= 16 || rgb.b >= 16)
                         ImGui::GetBackgroundDrawList()->AddCircleFilled(splash_star_positions[i],
                             jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 64)), 0);
