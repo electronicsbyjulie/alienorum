@@ -449,21 +449,22 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[3] = todraw[m];
                             if (map && is_day) rgb = map->color_at(lat, lon-_pi);
 
-                            rgb.r *= daylight.red;
-                            rgb.g *= daylight.green;
-                            rgb.b *= daylight.blue;
+                            RGB3Byte rgblit = rgb;
+                            rgblit.r *= daylight.red;
+                            rgblit.g *= daylight.green;
+                            rgblit.b *= daylight.blue;
 
                             if (nmap)
                             {
                                 is_night = 1.0 - is_day;
                                 if (is_night) nrgb = nmap->color_at(lat, lon-_pi);
                                 imcol = rgba_apply_redlight(IM_COL32(
-                                    is_day*rgb.r + is_night*nrgb.r,
-                                    is_day*rgb.g + is_night*nrgb.g,
-                                    is_day*rgb.b + is_night*nrgb.b,
+                                    is_day*rgblit.r + is_night*nrgb.r,
+                                    is_day*rgblit.g + is_night*nrgb.g,
+                                    is_day*rgblit.b + is_night*nrgb.b,
                                     255));
                             }
-                            else imcol = rgba_apply_redlight(IM_COL32(is_day*rgb.r, is_day*rgb.g, is_day*rgb.b, 255));
+                            else imcol = rgba_apply_redlight(IM_COL32(is_day*rgblit.r, is_day*rgblit.g, is_day*rgblit.b, 255));
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
                             if (m > lastm+1 && tdvalid[m-2])
                             {
