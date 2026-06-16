@@ -44,7 +44,7 @@ std::vector<std::string> known_catalog_names =
 
 std::vector<std::string> consline_a, consline_b;
 std::vector<int> considx, lnpercons;
-std::vector<Cartesian2D> conscen;
+std::vector<Point> consdir;
 int nconsln = 0;
 int *consaidx, *consbidx;
 

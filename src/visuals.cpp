@@ -1051,16 +1051,20 @@ void draw_cons_lines()
     if (!cels[1]) return;
     int i, l, n;
     double dispw = dispcx*2, disph = dispcy*2;
+    bool initcons = false;
 
     // Hide lines if more than 10 l.y. from Sun.
     draw_actual_conslines = here.distance_to(cels[0]->location) < light_year*10;
 
-    conscen.clear();
     n = consname.size();
-    for (l=0; l<n; l++)
+    if (!consdir.size())
     {
-        conscen.push_back(Cartesian2D(0,0));
-        lnpercons[l] = 0;
+        initcons = true;
+        for (l=0; l<n; l++)
+        {
+            consdir.push_back(Point(0,0,0));
+            lnpercons[l] = 0;
+        }
     }
     n = show_xonsm ? (nconsln+11) : nconsln;
     for (i=0; i<n; i++)
@@ -1070,6 +1074,10 @@ void draw_cons_lines()
         int dx1, dx2, dy1, dy2;
         if (i >= nconsln) considx[i] = consname.size()-1;
         l = considx[i];
+
+        assert (l < (int)consdir.size());
+        if (initcons) consdir[l] += Point(cels[consaidx[i]]->location) + Point(cels[consbidx[i]]->location);
+        lnpercons[l]++;
 
         dx1 = cels[consaidx[i]]->drawnx;
         dy1 = cels[consaidx[i]]->drawny;
@@ -1085,10 +1093,6 @@ void draw_cons_lines()
             ImGui::GetBackgroundDrawList()->AddLine(
                 ImVec2(dx1, dy1), ImVec2(dx2, dy2),
                 rgba_apply_redlight((i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128)), 1);
-
-        assert (l < (int)conscen.size());
-        conscen[l] += Cartesian2D((dx1+dx2)/2, (dy1+dy2)/2);
-        lnpercons[l]++;
     }
 
     // Constellation labels
@@ -1096,9 +1100,12 @@ void draw_cons_lines()
     if (show_labels) for (l=0; l<n; l++)
     {
         if (!lnpercons[l]) continue;
-        conscen[l] /= lnpercons[l];
-        if (conscen[l].x < 0 || conscen[l].y < 0) continue;
-        int dx = conscen[l].x, dy = conscen[l].y;
+        if (initcons) consdir[l].scale(1e303);
+
+        Cartesian2D cart(consdir[l], azimuth+azimuth_correction, altitude, zoom);
+        float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+
+        if (dx < 0 || dy < 0) continue;
         ImVec2 sz = ImGui::CalcTextSize(consname[l].c_str());
         dx -= sz.x/2;
         dy -= sz.y/2;
