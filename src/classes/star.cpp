@@ -246,26 +246,26 @@ double Star::estimate_luminosity(double tempK)
     return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
 }
 
-double Star::estimate_BV()
+void Star::estimate_BV()
 {
     double T = estimate_temperature();
-    return estimate_BV(T);
+    estimate_BV(T);
 }
 
-double Star::estimate_UB()
+void Star::estimate_UB()
 {
     double T = estimate_temperature();
-    return estimate_UB(T);
+    estimate_UB(T);
 }
 
-double Star::estimate_BV(double T)
+void Star::estimate_BV(double T)
 {
-    return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+    BV_color = log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
 }
 
-double Star::estimate_UB(double T)
+void Star::estimate_UB(double T)
 {
-    return log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
+    UB_color = log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
 }
 
 double Star::estimate_radius()

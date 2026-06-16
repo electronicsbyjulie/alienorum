@@ -58,10 +58,10 @@ class Star : public CelestialObject
     double estimate_temperature();          // Based on MK spectral type code
     double estimate_luminosity(double tempK);   // Based on radius and supplied temperature. Returns output scaled to absolute magnitude zero.
     double estimate_mass();
-    double estimate_BV();                   // Blackbody value from estimated temperature from MK spectral type
-    double estimate_UB();                   // "
-    double estimate_BV(double tempK);       // Blackbody value from known temperature
-    double estimate_UB(double tempK);       // Blackbody value from known temperature
+    void estimate_BV();                   // Blackbody value from estimated temperature from MK spectral type
+    void estimate_UB();                   // "
+    void estimate_BV(double tempK);       // Blackbody value from known temperature
+    void estimate_UB(double tempK);       // Blackbody value from known temperature
 
     double estimate_radius();
     void gotta_be_named_something();

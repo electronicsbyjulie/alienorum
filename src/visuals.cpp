@@ -1013,7 +1013,7 @@ void draw_objects()
         for (j = 0; j < 16; j++) if (draw_marker[j])
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j], dy[j]), mkrcol, compass[j]);
-            if (is_day > 0.67) ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j]-1, dy[j]), mkrcol, compass[j]);
+            if (is_day > 0.53) ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j]-1, dy[j]), mkrcol, compass[j]);
         }
     }
 }

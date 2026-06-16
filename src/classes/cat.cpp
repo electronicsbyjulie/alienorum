@@ -1736,6 +1736,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     std::string startswith = "PSCompPars_";
     std::string candidate = "";
     std::vector<std::string> results;
+
     try
     {
         for (const auto& entry : fs::directory_iterator(path))
@@ -1765,12 +1766,14 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     mtx.lock();
     loading_msg = lmss.str();
     mtx.unlock();
-    FILE *fp = fopen(path.c_str(), "r");
+    FILE *fp;
     char buffer[2048], wasfirst = 0;
+
+    fp = fopen(path.c_str(), "r");
     int i=0;
     int col_plnm=-1, col_stnm=-1, col_hd=-1, col_orbper=-1, col_sma=-1, col_rade=-1, col_radj=-1,
         col_mass_e=-1, col_mass_j=-1, col_eccn=-1, col_incl=-1, col_periepo=-1, col_argperi=-1,
-        col_oblt=-1, col_sptp=-1, col_srad=-1, col_smass=-1,
+        col_oblt=-1, col_sptp=-1, col_srad=-1, col_smass=-1, col_stemp=-1,
         col_ra=-1, col_decl=-1, col_dist=-1, col_vmag=-1;
     while (fgets(buffer, 2046, fp))
     {
@@ -1799,6 +1802,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             if (!strcmp(buffer, "# COLUMN st_spectype")) col_sptp = i;
             if (!strcmp(buffer, "# COLUMN st_rad")) col_srad = i;
             if (!strcmp(buffer, "# COLUMN st_mass")) col_smass = i;
+            if (!strcmp(buffer, "# COLUMN st_teff")) col_stemp = i;
             if (!strcmp(buffer, "# COLUMN ra")) col_ra = i;
             if (!strcmp(buffer, "# COLUMN dec")) col_decl = i;
             if (!strcmp(buffer, "# COLUMN sy_dist")) col_dist = i;
@@ -1830,10 +1834,11 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             int j=-1, HD, HIP;
             Star *s = nullptr;
             bool s_is_new = false;
+            searched = false;
             Planet *p = nullptr;
             char *comma, *field = buffer;
             std::string planet_name = "", star_name = "", spectral_type = "";
-            double p_incl, star_radius=0, star_mass=0, star_ra=0, star_decl=0, star_dist=0, star_vmag = 1e29;
+            double p_incl, star_radius=0, star_mass=0, star_ra=0, star_decl=0, star_dist=0, star_vmag = 1e29, star_temp=sun_temp;
             for (i=0; strlen(field); i++)
             {
                 comma = strchr(field, ',');
@@ -1886,6 +1891,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
                         if (!s && do_search)
                         {
+                            searched = true;
                             j = find_object(star_name.c_str(), true);
                             if (j < 0)
                             {
@@ -1951,6 +1957,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         else if (i == col_sptp) spectral_type = field;
                         else if (i == col_srad) star_radius = atof(field) * solar_radius;
                         else if (i == col_smass) star_mass = atof(field) * solar_mass;
+                        else if (i == col_stemp) star_temp = atof(field);
                         else if (i == col_ra) star_ra = atof(field) * fiftyseventh;
                         else if (i == col_decl) star_decl = atof(field) * fiftyseventh;
                         else if (i == col_dist) star_dist = atof(field) * parsec;
@@ -1989,6 +1996,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 s->distance = star_dist;
                 s->distance_known = true;
                 s->mass = star_mass;
+                s->estimate_BV(star_temp);
+                s->estimate_UB(star_temp);
                 s->volumetric_mean_radius = star_radius;
                 assert(!isinf(s->volumetric_mean_radius));
                 s->apparent_magnitude = star_vmag;
@@ -2004,8 +2013,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 if (s_is_new)
                 {
                     append_cel(s);
-                    s->BV_color = s->estimate_BV();
-                    s->UB_color = s->estimate_UB();
+                    s->estimate_BV(star_temp);
+                    s->estimate_UB(star_temp);
                     offset++;
                     if (offset >= max-1)
                     {
@@ -2065,6 +2074,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+
     return num_added;
 }
 

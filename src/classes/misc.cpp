@@ -53,7 +53,7 @@ const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_CCDM = false, have_SB9 = false,
     have_astorb = false, have_exo = false;
 int cbolbls_selected_idx = 0, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0;
-double bv_correction = 0;
+double bv_correction = -0.62;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
