@@ -523,3 +523,77 @@ bool Rotation::from_json(json j)
     try { j.at("a").get_to(a); a*=fiftyseventh; } catch (...) { ; }
     return true;
 }
+
+
+// Calculates precession angles based on IAU 1976 formulation
+// T0 and T are in Julian years from J2000.0
+void get_Earth_precession_angles(double T0, double T, double& zeta, double& z, double& theta)
+{
+    double t = (T - T0) * 0.01;
+
+    // convert coefficients to radians
+    zeta  = ((2306.2181 + 1.39656 * T0 - 0.000139 * T0 * T0) * t
+            + (0.30188 - 0.000344 * T0) * t * t
+            + 0.017998 * t * t * t) * arcsecond;
+
+    z     = ((2306.2181 + 1.39656 * T0 - 0.000139 * T0 * T0) * t
+            + (1.09468 + 0.00066 * T0) * t * t
+            + 0.018203 * t * t * t) * arcsecond;
+
+    theta = ((2004.3109 - 0.8533 * T0 - 0.000217 * T0 * T0) * t
+            - (0.42665 + 0.000217 * T0) * t * t
+            - 0.041833 * t * t * t) * arcsecond;
+}
+
+// Rotates a vector using the calculated precession angles
+Point apply_precession_rotation(const Point& vec, double zeta, double z, double theta)
+{
+    // Row components of the IAU 1976 precession matrix (P = Rz(-z) * Ry(theta) * Rz(-zeta))
+    double r11 = std::cos(zeta) * std::cos(theta) * std::cos(z) - std::sin(zeta) * std::sin(z);
+    double r12 = -std::sin(zeta) * std::cos(theta) * std::cos(z) - std::cos(zeta) * std::sin(z);
+    double r13 = -std::sin(theta) * std::cos(z);
+
+    double r21 = std::cos(zeta) * std::cos(theta) * std::sin(z) + std::sin(zeta) * std::cos(z);
+    double r22 = -std::sin(zeta) * std::cos(theta) * std::sin(z) + std::cos(zeta) * std::cos(z);
+    double r23 = -std::sin(theta) * std::sin(z);
+
+    double r31 = std::cos(zeta) * std::sin(theta);
+    double r32 = -std::sin(zeta) * std::sin(theta);
+    double r33 = std::cos(theta);
+
+    return Point(   r11 * vec.x + r12 * vec.y + r13 * vec.z,
+                    r21 * vec.x + r22 * vec.y + r23 * vec.z,
+                    r31 * vec.x + r32 * vec.y + r33 * vec.z);
+}
+
+// Main conversion function
+void convert_to_J2000(const double RA_radians, const double Decl_radians, double input_year, double& RA_J2000, double& Decl_J2000, bool is_besselian)
+{
+    double T0; // Starting epoch in Julian years from J2000.0
+
+    if (is_besselian)
+    {
+        // Convert Besselian year (B1950) to Julian years relative to J2000
+        // B1950.0 is exactly JD 2433282.42345905
+        // J2000.0 is exactly JD 2451545.0
+        double jd_b1950 = 2433282.42345905;
+        double jd_input = jd_b1950 + (input_year - 1950.0) * 365.242198781; // Besselian year length
+        T0 = (jd_input - 2451545.0) / 365.25;
+    }
+    else
+    {
+        // Convert Julian year (J1991.25) to Julian Centuries relative to J2000
+        T0 = (input_year - 2000.0);
+    }
+
+    double T = 0.0; // Target epoch is J2000.0, which means T = 0
+
+    double zeta, z, theta;
+    get_Earth_precession_angles(T0, T, zeta, z, theta);
+
+    Point initial_vector = Point::from_ra_dec(RA_radians, Decl_radians, light_year, 0);
+    Point final_vector = apply_precession_rotation(initial_vector, zeta, z, theta);
+
+    RA_J2000 = std::fmod(find_angle(final_vector.z, -final_vector.x), _pi*2);
+    Decl_J2000 = find_angle(sqrt(final_vector.x*final_vector.x+final_vector.z*final_vector.z), final_vector.y);
+}

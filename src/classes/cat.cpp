@@ -259,6 +259,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         strcpy(s->name, trim(build_name.c_str()).c_str());
         strcpy(s->Gliese, trim(build_name.c_str()).c_str());
 
+        double ra, dec, ra2000, dec2000;
+
         //  13- 14  I2     h       RAh      ? Right Ascension B1950 (hours)
         read_field_onebased(buffer, 13, 14, field);
         deg = atof(field) * 15;
@@ -271,7 +273,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 19, 20, field);
         sec = atof(field) * 15;
 
-        s->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
+        ra = (deg + mnt/60 + sec/3600) * fiftyseventh;
 
         //      22  A1     ---     DE-      Declination B1950 (sign)
         read_field_onebased(buffer, 22, 22, field);
@@ -286,13 +288,19 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         mnt = atof(field);
         sec = 0;
 
-        s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
-        s->epoch = 2433282.42345905;
-
-        // TODO: Keep the epoch but translate the coordinates to the J2000 system.
-        // Have to apply precession of the equinoxes; this is the major component.
-        // Also take into account nutation, at least the two largest terms.
-        // See: https://en.wikipedia.org/wiki/Nutation#Earth
+        dec = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+        if (ra || dec)
+        {
+            convert_to_J2000(ra, dec, 1950, ra2000, dec2000, true);
+            s->right_ascension = ra2000;
+            s->declination = dec2000;
+            s->epoch = J2000; // 2433282.42345905;
+        }
+        else
+        {
+            s->mass = solar_mass;
+            s->epoch = J2000;
+        }
 
         //  31- 36  F6.3 arcsec/yr pm       ? Total proper motion
         read_field_onebased(buffer, 31, 36, field);
@@ -845,9 +853,11 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         if (RA && Decl)
         {
-            s->right_ascension = RA;
-            s->declination = Decl;
-            s->epoch = J2000 + (1991.25 - 2000);
+            double ra2000, dec2000;
+            convert_to_J2000(RA, Decl, 1950, ra2000, dec2000, true);
+            s->right_ascension = ra2000;
+            s->declination = dec2000;
+            s->epoch = J2000;
         }
         else
         {
@@ -1879,7 +1889,9 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         bool do_search = false;      // Full search is expensive. Only search if good chance of finding it (Gliese, named stars).
 
                         if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) do_search = true;
-                        else if (star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z'
+                        else if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
+                                || (star_name.c_str()[0] >= 'a' && star_name.c_str()[0] <= 'z')
+                                )
                                 && star_name.c_str()[1] >= 'a' && star_name.c_str()[1] <= 'z'
                                 && star_name.c_str()[2] >= 'a' && star_name.c_str()[2] <= 'z'
                                 )

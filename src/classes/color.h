@@ -14,7 +14,7 @@ namespace alienorum
     // (https://stackoverflow.com/questions/26719529/class-called-rgb-in-visual-c#answer-26719726)
     // but if you click on the link now, that specific User Voice has been deleted, and the problem is still not fixed.
     // So the class had to be renamed to something much more awkward than its original name.
-    // Yet another reason why Linux/FOSS is friendlier.
+    // Yet another reason to prefer Linux/FOSS.
     class RGB3Byte
     {
         public:
