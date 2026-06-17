@@ -258,6 +258,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs/Gliese")) have_Gliese = true;
         if (!strcmp(cats[i].c_str(), "catalogs/BSC")) have_BSC = true;
         if (!strcmp(cats[i].c_str(), "catalogs/Hipparcos")) have_HIP = true;
+        if (!strcmp(cats[i].c_str(), "catalogs/WD")) have_WD = true;
         if (!strcmp(cats[i].c_str(), "catalogs/CCDM")) have_CCDM = true;
         if (!strcmp(cats[i].c_str(), "catalogs/SB9")) have_SB9 = true;
         if (!strcmp(cats[i].c_str(), "catalogs/astorb")) have_astorb = true;
@@ -309,6 +310,16 @@ void load_catalogs()
         cout << "Reading Hipparcos catalog..." << endl << flush;
         int nHIP = cr.read_Hipparcos_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nHIP << " objects." << endl << flush;
+        Gliese_doubles_fix();
+    }
+    if (0) // have_WD)
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading White Dwarfs Catalog...");
+        mtx.unlock();
+        cout << "Reading White Dwarfs catalog..." << endl << flush;
+        int nWD = cr.read_WD_catalog(cels, MAX_CELOBJS);
+        cout << "Read " << nWD << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
 

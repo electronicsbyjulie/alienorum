@@ -92,6 +92,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
             if (s->HR) objinfo += (std::string)"HR" + std::to_string(s->HR) + (std::string)"\n";
             if (s->HIP) objinfo += (std::string)"HIP" + std::to_string(s->HIP) + (std::string)"\n";
+            if (s->WD.size()) objinfo += std::string(s->WD) + (std::string)"\n";
             if (s->Bonn_survey[0])
             {
                 char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};

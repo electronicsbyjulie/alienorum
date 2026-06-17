@@ -32,6 +32,7 @@ std::vector<std::string> known_catalog_names =
     "Hipparcos",
     "USNO", "SAO",
     "BSC", "BrightStarCatalog", "BrightStarCatalogue",
+    "WD",
     "CCDM",
     "SB9",
     "2MASS",
@@ -1084,6 +1085,274 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+    return num_read;
+}
+
+int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
+{
+    std::string namespath = "catalogs/WD/names.dat";
+    std::string catpath = "catalogs/WD/catalog.dat";
+    char buffer[1024];
+    char field[32];
+    int i, num_read = 0;
+    double deg, mnt, sec, pm, pmtheta, vmag, absmag;
+    std::map<std::string, Star*> exist_stars, comp_of_exist;
+    std::map<std::string, char> comp;
+    Star *s, *A;
+
+    FILE* fp = fopen(catpath.c_str(), "rb");
+    if (!fp) return 0;
+
+    while (fgets(buffer, 1020, fp))
+    {
+        //   1- 14  A14    ---     Name     Common name of the object
+        read_field_onebased(buffer, 1, 14, field);
+        std::string star_name = trim(field);
+
+        if (star_name.c_str()[1] >= 'A' && star_name.c_str()[1] <= 'Z')
+        {
+            if (strcmp(star_name.substr(0,2).c_str(), "HD")
+                && strcmp(star_name.substr(0,2).c_str(), "BD")
+                && strcmp(star_name.substr(0,2).c_str(), "CD")
+                && strcmp(star_name.substr(0,2).c_str(), "CP")
+                ) continue;
+        }
+
+        //  17- 26  A10    ---     WD       White Dwarf (WD) number
+        read_field_onebased(buffer, 15, 26, field);
+        std::string WD = trim(field);
+
+        if (exist_stars.find(WD) != exist_stars.end()) continue;
+        if (comp_of_exist.find(WD) != comp_of_exist.end()) continue;
+
+        char lcomp = 0;
+        int l = star_name.size();
+        const char* cstr = star_name.c_str();
+        char c = cstr[l-1], penult = cstr[l-2], ante = cstr[l-3];
+        std::string nameA = "", name0 = "";
+
+        if (c >= 'B' && c <= 'Z' && penult <= '9')
+        {
+            lcomp = c;
+            name0 = nameA = star_name.substr(0, l-2);
+        }
+        else if (c >= 'a' && c <= 'z' && penult >= 'A' && penult <= 'Z' && ante <= '9')
+        {
+            lcomp = c & 0x5f;
+            lcomp = c;
+            nameA = star_name.substr(0, l-1);
+            name0 = star_name.substr(0, l-3);
+        }
+
+        comp[WD] = lcomp;
+
+        i = find_object(star_name.c_str(), true, 9e29);
+        if (i < 0)
+        {
+            if (lcomp)
+            {
+                i = find_object(nameA.c_str(), true, 9e29);
+                if (i<0) i = find_object(name0.c_str(), true, 9e29);
+                if (i<0)
+                {
+                    // Example: WD2124+191/BD+18 4794B: host star absent, ignore
+                    comp_of_exist[WD] = nullptr;
+                }
+                else
+                {
+                    // Example: WD1253+261/HD112313 B: create new companion
+                    comp_of_exist[WD] = (Star*)cels[i];
+                }
+            }
+            else
+            {
+                // Example: WD0347+171/BD+16 0516: not already present; add new
+                continue;
+            }
+        }
+        else
+        {
+            //  73- 78  F6.3   mag     Vmag    [6.4/24.3]? V or other magnitude (see n_Vmag)
+            read_field_onebased(buffer, 73, 78, field);
+            vmag = atof(field);
+
+            // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
+            read_field_onebased(buffer, 146, 150, field);
+            absmag = atof(field);
+
+            if (fabs(vmag - ((Star*)cels[i])->apparent_magnitude) > 1.5
+                && fabs(absmag - ((Star*)cels[i])->absolute_magnitude) > 1.5
+                )
+            {
+                // Example: WD0114-027/HD7672 B: names entry is incorrect, verify vmag/absmag
+                // TODO: Find out if this happens just a few times and hard code (eww!) a workaround,
+                // or if it happens often and requires more code thingie.
+                std::cout << "ERROR: Magnitudes of " << cels[i]->name << " and " << star_name << "/" << WD << " do not match." << std::endl << std::flush;
+                comp_of_exist[WD] = nullptr;
+            }
+            else
+            {
+                // Example: WD0642-166/Sirius B: update existing star, including WD #
+                // Example: WD1121+216/GJ 427: update existing star, including WD #
+                exist_stars[WD] = (Star*)cels[i];
+                std::cout << "Found " << (Star*)cels[i]->name << std::endl << std::flush;
+            }
+        }
+    }
+    fclose(fp);
+
+    fp = fopen(catpath.c_str(), "rb");
+    if (!fp) return 0;
+
+    std::string prev_name = "kwyjibo";
+    while (fgets(buffer, 1020, fp))
+    {
+        //   2- 11  A10    ---     WD      White Dwarf (WD) number (1)
+        read_field_onebased(buffer, 2, 11, field);
+
+        std::string star_name = std::string("WD") + trim(field);
+        if (star_name == prev_name) continue;
+        if (exist_stars.find(star_name) != exist_stars.end())
+        {
+            s = exist_stars[star_name];
+            A = nullptr;
+        }
+        else if (comp_of_exist.find(star_name) != comp_of_exist.end())
+        {
+            A = comp_of_exist[star_name];
+            if (!A) continue;
+            s = new Star();
+            strcpy(s->name, field);
+            s->make_companion_of(A, comp[star_name]);
+            append_cel(s);
+        }
+        else
+        {
+            s = new Star();
+            strcpy(s->name, field);
+            append_cel(s);
+            A = nullptr;
+        }
+        s->WD = field;
+
+        double ra, dec, ra2000, dec2000;
+
+        //  13- 14  I2     h       RAh     ?Hours RA, Equinox=B1950, Epoch=1950.0 (2)
+        read_field_onebased(buffer, 13, 14, field);
+        deg = atof(field) * 15;
+
+        //  16- 17  I2     min     RAm     ?Minutes RA, Equinox=B1950, Epoch=1950.0 (2)
+        read_field_onebased(buffer, 16, 17, field);
+        mnt = atof(field) * 15;
+
+        //  19- 20  I2     s       RAs     [0/60]? Seconds RA (2)
+        read_field_onebased(buffer, 19, 20, field);
+        sec = atof(field) * 15;
+
+        ra = (deg + mnt/60 + sec/3600) * fiftyseventh;
+
+        //      22  A1     ---     DE-     ?Declination sign (2)
+        read_field_onebased(buffer, 22, 22, field);
+        int sgndecl = (field[0] == '-') ? -1 : 1;
+
+        //  23- 24  I2     deg     DEd     ?Degrees Dec, Equinox=B1950, Epoch=1950.0 (2)
+        read_field_onebased(buffer, 23, 24, field);
+        deg = atof(field);
+
+        //  26- 29  F4.1   arcmin  DEm     ?Minutes Dec, Equinox=B1950, Epoch=1950.0 (2)
+        read_field_onebased(buffer, 26, 29, field);
+        mnt = atof(field);
+        sec = 0;
+
+        dec = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+        if (ra || dec)
+        {
+            convert_to_J2000(ra, dec, 1950, ra2000, dec2000, true);
+            s->right_ascension = ra2000;
+            s->declination = dec2000;
+            s->epoch = J2000; // 2433282.42345905;
+        }
+        else
+        {
+            s->mass = solar_mass;
+            s->epoch = J2000;
+        }
+
+        //  31- 40  A10    ---     SpT     Spectral type (definitions in the paper, or in file "preface.tex").
+        read_field_onebased(buffer, 31, 40, field);
+        strcpy(s->spectral_type, trim(field).c_str());
+
+        //      41  A1     ---     bNote   [*b?] 'b' if white dwarf is member of binary, '*' indicates a note in file "notes.dat"
+        // TODO:
+
+        //  73- 78  F6.3   mag     Vmag    [6.4/24.3]? V or other magnitude (see n_Vmag)
+        read_field_onebased(buffer, 73, 78, field);
+        double f = atof(field);
+        if (f) s->apparent_magnitude = f;
+
+        //  82- 87  F6.3   mag     B-V     [-0.7/2]? B-V color index in the UBV system
+        read_field_onebased(buffer, 82, 87, field);
+        f = atof(field);
+        if (f) s->BV_color = f;
+
+        //  92- 97  F6.3   mag     U-B     [-9.9/1.4]? U-B color index in the UBV system
+        read_field_onebased(buffer, 92, 97, field);
+        f = atof(field);
+        if (f) s->UB_color = f;
+
+        // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
+        read_field_onebased(buffer, 146, 150, field);
+        f = atof(field);
+        if (f) s->absolute_magnitude = f;
+
+        // 153-155  I3     kK      Teff    [10/170]? Effective temperature
+        read_field_onebased(buffer, 153, 155, field);
+        double T = atof(field);
+        if (T && !s->BV_color) s->estimate_BV(T);
+        if (T && !s->UB_color) s->estimate_UB(T);
+
+        // 162-167  F6.4 arcsec/yr pm      [0/7]? Total proper motion
+        read_field_onebased(buffer, 162, 167, field);
+        pm = atof(field) / 3600 * fiftyseventh / oneyear;
+
+        // 170-174  F5.1   deg     pmPA    ? Position angle of proper motion vector
+        read_field_onebased(buffer, 170, 174, field);
+        pmtheta = atof(field) * fiftyseventh;
+
+        if (pm)
+        {
+            s->proper_motion_RA = pm * sin(pmtheta);
+            s->proper_motion_decl = pm * cos(pmtheta);
+        }
+
+        // 180-186  F7.2   km/s    RadVel  [-262/422]? Radial velocity
+        read_field_onebased(buffer, 180, 186, field);
+        f = atof(field);
+        if (f) s->radial_velocity = f*0.001;
+
+        // 200-206  F7.4   arcsec  Plx     [-0.003/0.6]? Trigonometric parallax
+        f = atof(field);
+        if (f)
+        {
+            s->distance = parsec / f;
+            s->distance_known = true;
+        }
+        else if (A)
+        {
+            s->distance = A->distance;
+            s->distance_known = true;
+        }
+
+        if (!s->absolute_magnitude && s->distance_known)
+        {
+            double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+            s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        }
+
+        prev_name = star_name;
+    }
+
+
     return num_read;
 }
 

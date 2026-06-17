@@ -26,7 +26,7 @@ namespace alienorum
         int BayerGrkno = -1;
         int FlamsteedNo = -1;
         char constellation[32];
-        std::string CCDM;
+        std::string CCDM, WD;
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;
         char get_component();
