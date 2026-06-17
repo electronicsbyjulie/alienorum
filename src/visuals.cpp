@@ -68,9 +68,9 @@ void draw_ra_dec_lines()
     for (j=jstart; j <= 80; j+=10)
     {
         prev_valid = false;
-        for (i=0; i<=24; i++)
+        for (i=0; i<=360; i++)
         {
-            Point umenjanetdeneg = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
+            Point umenjanetdeneg = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, 5, node);
             if (view_mode == vm_horizon || is_sat)
             {
                 umenjanetdeneg = rotate3D(umenjanetdeneg, center, ra_dec_plane.v, -ra_dec_plane.a);
