@@ -120,9 +120,9 @@ bool compute_object_location(CelestialObject* cel, int i)
     switch (cel->typeclass())
     {
         case class_star:
+        if ((star_in_box = (i ? ((Star*)cel)->is_in_visible_box(Point(here)) : true))) num_stars_in_box++;              // ANC
         if (i > 0)
         {
-            if ((star_in_box = (i ? ((Star*)cel)->is_in_visible_box(Point(here)) : true))) num_stars_in_box++;              // ANC
             ((Star*)cel)->tmp_vis_flag = star_in_box;
             if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj)
             {

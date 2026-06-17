@@ -425,7 +425,12 @@ void draw_addcel_window(ImGuiIO& io)
                 case 0: cel = new Galaxy();     append_cel(cel); cel->type = galaxy;        break;
                 case 1: cel = new Star();       append_cel(cel); cel->type = star;          break;
                 case 2: cel = new Planet();     append_cel(cel); cel->type = rocky;         break;
-                case 3: cel = new Moon();       append_cel(cel); cel->type = rocky;         break;
+                case 3:
+                    cel = new Moon();
+                    append_cel(cel);
+                    cel->type = rocky;
+                    ((Moon*)cel)->orbit_type = ot_equatorial;
+                    break;
                 case 4: cel = new Satellite();  append_cel(cel); cel->type = artificial;    break;
 
                 default:
@@ -838,6 +843,54 @@ void draw_objedit_window(ImGuiIO& io)
                 double star_appmag = orb->center->viewer_magnitude(cel->location);
                 oss << "Star apparent mag. " << (star_appmag > 0 ? "+" : "") << std::setprecision(2) << star_appmag;
                 ImGui::Text("%s", oss.str().c_str());
+            }
+
+            if (cel->typeclass() == class_moon)
+            {
+                Moon *m = (Moon*)cel;
+                ImGui::SameLine(col2);
+                ImGui::Text("%s", "Plane");
+                ImGui::SameLine(col3);
+                ImGui::SetNextItemWidth(txtwid);
+                std::vector<const char*> orb_planes;
+                std::vector<OrbitType> orb_types;
+                orb_planes.push_back("Ecliptic");
+                orb_types.push_back(ot_ecliptic);
+                orb_planes.push_back("Equatorial");
+                orb_types.push_back(ot_equatorial);
+                if (((Planet*)orb->center)->J2)
+                {
+                    orb_planes.push_back("Laplace");
+                    orb_types.push_back(ot_Laplace);
+                }
+
+                long unsigned int n;
+                const char* preview_orb_plane = "";
+                for (n = 0; n < orb_planes.size(); n++)
+                {
+                    if (orb_types[n] == m->orbit_type) preview_orb_plane = orb_planes[n];
+                }
+
+                if (ImGui::BeginCombo("##cboorbplane", preview_orb_plane, 0))
+                {
+                    for (n = 0; n < orb_planes.size(); n++)
+                    {
+                        const bool is_selected = (orb_types[n] == m->orbit_type);
+                        if (ImGui::Selectable(orb_planes[n], is_selected))
+                        {
+                            m->orbit_type = orb_types[n];
+                            m->user_edited = true;
+                            viewchanged = true;
+                        }
+
+                        // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                        if (is_selected)
+                        {
+                            ImGui::SetItemDefaultFocus();
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
             }
 
             double cen_radius = cel->orbit->center->get_equatorial_radius();

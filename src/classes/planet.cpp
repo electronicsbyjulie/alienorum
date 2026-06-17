@@ -253,7 +253,7 @@ json Planet::to_json()
     towrite["surface_pressure"] = surface_pressure;
     towrite["opposition_surge"] = opposition_surge;
     towrite["atmospheric_tau"] = atmospheric_tau;
-    towrite["J2"] = J2;
+    if (J2) towrite["J2"] = J2;
 
     return towrite;
 }

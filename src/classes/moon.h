@@ -4,8 +4,16 @@
 
 #include "planet.h"
 
+
 namespace alienorum
 {
+    enum OrbitType
+    {
+        ot_equatorial,
+        ot_ecliptic,
+        ot_Laplace
+    };
+
     class Moon : public Planet
     {
         Rotation Laplace_plane;
@@ -21,6 +29,8 @@ namespace alienorum
         void update_location(double tmnow);
         json to_json();
         bool from_json(json j);
+
+        OrbitType orbit_type = ot_Laplace;
     };
 }
 

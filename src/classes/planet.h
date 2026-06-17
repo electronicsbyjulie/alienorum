@@ -18,7 +18,7 @@ namespace alienorum
         double atmospheric_tau  = 0;                        // Earth value. How well the atmosphere absorbs thermal infrared. Thickness dependent.
         double opposition_surge = 0;                        // TODO: A full moon is 13 times as bright, or 2.7 magnitudes brighter, compared to a quarter moon.
         double amt_lit = 0;
-        double J2;
+        double J2 = 0;
         double ring_radius = 0;
         int asteroid_no = 0;                                // Zero if major planet or moon.
 

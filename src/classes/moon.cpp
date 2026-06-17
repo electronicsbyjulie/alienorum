@@ -7,7 +7,9 @@ using namespace alienorum;
 
 Rotation Moon::get_Laplace_plane()
 {
-    if (Laplace_set) return Laplace_plane;
+    if (orbit_type == ot_equatorial) return orbit->center->location.equatorial_plane;
+    else if (orbit_type == ot_ecliptic) return orbit->center->location.orbital_plane;
+    if (Laplace_set && frand(0,1) > 0.25) return Laplace_plane;
     if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
 
     // Fix for minor planets tidally locked to their moons.
@@ -48,8 +50,8 @@ Rotation Moon::get_Laplace_plane()
 
 void Moon::update_orbit_location(double tmnow)
 {
-    get_Laplace_plane();
-    CelestialObject::update_orbit_location(tmnow, &Laplace_plane);
+    Rotation plane = get_Laplace_plane();
+    CelestialObject::update_orbit_location(tmnow, &plane);
 }
 
 Moon::Moon()
