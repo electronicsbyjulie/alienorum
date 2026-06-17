@@ -642,8 +642,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
             {
-                cels[editidx]->obliquity = edit_eqincl * fiftyseventh;
-                cels[editidx]->known_poles = true;
+                cel->obliquity = edit_eqincl * fiftyseventh;
+                cel->lock_equatorial_plane = false;
+                cel->known_poles = true;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -657,8 +658,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f"))
             {
-                cels[editidx]->equinox = edit_equinox * fiftyseventh;
-                cels[editidx]->known_poles = true;
+                cel->equinox = edit_equinox * fiftyseventh;
+                cel->lock_equatorial_plane = false;
+                cel->known_poles = true;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -673,6 +675,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtprcs", &edit_prcseq, 0, 0, "%.9e"))
             {
                 cel->precession = edit_prcseq * oneyear;
+                cel->lock_equatorial_plane = false;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -958,6 +961,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f"))
             {
                 orb->inclination = edit_incl * fiftyseventh;
+                cel->lock_equatorial_plane = false;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -967,6 +971,7 @@ void draw_objedit_window(ImGuiIO& io)
             }
             ImGui::SameLine(col2);
             edit_node = cel->orbit->ascending_node * fiftyseven;
+            cel->lock_equatorial_plane = false;
             ImGui::Text("%s", "Asc. Node");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
@@ -1048,6 +1053,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtprcnd", &edit_precnode, 0, 0, "%.9f"))
             {
                 cels[editidx]->orbit->prec_node = edit_precnode ? (_pi * 2 / (edit_precnode * oneday)) : 0;
+                cel->lock_equatorial_plane = false;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);

@@ -10,116 +10,49 @@ int find_object(const char* search_term, bool os, double ml)
 
     uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
-
-    if (is_hd && hdcache && hdcache[is_hd]) return hdcache[is_hd]->seqno;
-    if (is_hip && hipcache && hipcache[is_hip]) return hipcache[is_hip]->seqno;
-
-    bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L')
-        || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'J')
-        || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O' && (search_term[2]&0x5f) != 'L' && (search_term[2]&0x5f) != 'F')
-        || ((search_term[0]&0x5f) == 'N' && (search_term[1]&0x5f) == 'N')
-        ) && contains_digits_or_dots(search_term);
     int result = -1;
     const char *match_cons = nullptr;
     char match_comp = 0;
     n = strlen(search_term);
+    if (n > 2 && search_term[n-2] == ' '
+        && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z')))
+        match_comp = search_term[n-1];
+
+    if (is_hd && hdcache && hdcache[is_hd])
+    {
+        Star *s = hdcache[is_hd];
+        if (match_comp && s->multisys)
+        {
+            Star *b = s->multisys->get_member(match_comp);
+            if (b) s = b;
+        }
+        return s->seqno;
+    }
+    if (is_hip && hipcache && hipcache[is_hip])
+    {
+        Star *s = hipcache[is_hip];
+        if (match_comp && s->multisys)
+        {
+            Star *b = s->multisys->get_member(match_comp);
+            if (b) s = b;
+        }
+        return s->seqno;
+    }
+    if (is_hd || is_hip) return -1;
+
+    bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L' && (search_term[2] <= '9'))
+        || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L' && (search_term[2]&0x5f) == 'I' && (search_term[3]&0x5f) == 'E' && (search_term[4]&0x5f) == 'S' && (search_term[5]&0x5f) == 'E')
+        || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'J' && (search_term[2] <= '9'))
+        || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O' && (search_term[2] <= '9'))
+        || ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O' && (search_term[2]&0x5f) == 'O' && (search_term[3]&0x5f) == 'L' && (search_term[4]&0x5f) == 'L' && (search_term[5]&0x5f) == 'E')
+        || ((search_term[0]&0x5f) == 'N' && (search_term[1]&0x5f) == 'N' && (search_term[2] <= '9') && (search_term[3] <= '9'))
+        ) && contains_digits_or_dots(search_term);
+
     if (n>4 && search_term[n-4] == ' ' && search_term[n-3] >= 'A' && search_term[n-3] <= 'Z'
         && ((search_term[n-2] >= 'A' && search_term[n-2] <= 'Z') || (search_term[n-2] >= 'a' && search_term[n-2] <= 'z'))
         && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z'))
         )
         match_cons = &search_term[n-3];
-    if (n > 2 && search_term[n-2] == ' '
-        && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z')))
-        match_comp = search_term[n-1];
-
-    #if 0
-    char c = search_term[0];
-    bool indexable = true;
-    if (c >= '0' && c <= '9') c -= '0';
-    else if (c >= 'A' && c <= 'Z') c = c - 'A' + 10;
-    else if (c >= 'a' && c <= 'z') c = c - 'a' + 10;
-    else indexable = false;
-    if (indexable && c < first_letter_index.size())
-    {
-        int n = first_letter_index[c].size();
-        for (i=0; i<n; i++)
-        {
-            cel_obj_class cls = first_letter_index[c][i]->typeclass();
-            if (os && (cls != class_star)) continue;
-            if (match_cons && cls == class_star && strcasecmp(((Star*)first_letter_index[c][i])->constellation, match_cons)) continue;
-            if (match_comp)
-            {
-                m = strlen(first_letter_index[c][i]->name);
-                if (first_letter_index[c][i]->name[m-2] == ' ' && first_letter_index[c][i]->name[m-1] != match_comp) continue;
-            }
-            if (!strcmp(first_letter_index[c][i]->name, search_term))
-            {
-                result = first_letter_index[c][i]->seqno;
-                break;
-            }
-            if (first_letter_index[c][i]->typeclass() == class_star)
-            {
-                if (((Star*)first_letter_index[c][i])->apparent_magnitude > ml) continue;
-                if ((is_hd && is_hd == ((Star*)first_letter_index[c][i])->HD)
-                    || (is_hip && is_hip == ((Star*)first_letter_index[c][i])->HIP))
-                {
-                    result = first_letter_index[c][i]->seqno;
-                    break;
-                }
-                if (is_gliese && has_same_numbers(((Star*)first_letter_index[c][i])->Gliese, search_term))
-                {
-                    result = first_letter_index[c][i]->seqno;
-                    break;
-                }
-            }
-        }
-    }
-    if (result >= 0) return result;
-    #endif
-
-    #if 0
-    if (match_cons)
-    {
-        char casecons[4];
-        int n = consabbrev.size();
-        for (i=0; i<n; i++)
-        {
-            if (!strcasecmp(consabbrev[i].c_str(), match_cons))
-            {
-                strcpy(casecons, consabbrev[i].c_str());
-                break;
-            }
-        }
-
-        if (constellation_index.count(casecons))
-        {
-            n = constellation_index[casecons].size();
-            int best_Levenshtein = 11;
-            std::string lookstr = search_term;
-            for (i=0; i<n; i++)
-            {
-                int lev = Damerau_Levenshtein(constellation_index[casecons][i]->name, lookstr);
-                if (cels[i]->type == star)
-                {
-                    if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
-                    int lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Bayer, lookstr);
-                    if (!has_same_numbers(((Star*)cels[i])->Bayer, lookstr.c_str())) lev1 = 1e9;
-                    if (lev1 < lev) lev = lev1;
-                    lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Flamsteed, lookstr);
-                    if (!has_same_numbers(((Star*)cels[i])->Flamsteed, lookstr.c_str())) lev1 = 1e9;
-                    if (lev1 < lev) lev = lev1;
-                }
-                if (lev < best_Levenshtein)
-                {
-                    best_Levenshtein = lev;
-                    result = i;
-                    if (!lev) break;
-                }
-            }
-        }
-    }
-    if (result >= 0) return result;
-    #endif
 
     for (i=0; cels[i]; i++)
     {
@@ -138,12 +71,12 @@ int find_object(const char* search_term, bool os, double ml)
         if (cels[i]->typeclass() == class_star)
         {
             if (((Star*)cels[i])->apparent_magnitude > ml) continue;
-            if ((is_hd && is_hd == ((Star*)cels[i])->HD)
+            /*if ((is_hd && is_hd == ((Star*)cels[i])->HD)
                 || (is_hip && is_hip == ((Star*)cels[i])->HIP))
             {
                 result = i;
                 break;
-            }
+            }*/
             if (is_gliese && has_same_numbers(((Star*)cels[i])->Gliese, search_term))
             {
                 result = i;
@@ -151,6 +84,7 @@ int find_object(const char* search_term, bool os, double ml)
             }
         }
     }
+    if (is_gliese) return result;
 
     char buffer[256];
     if (result < 0)
@@ -334,7 +268,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             {
                 if (j==i) continue;
                 if (cels[i]->type < cels[j]->type) continue;                    // There are two objects named Atlas, and one of them has a companion.
-                if (!strcmp(cenname, cels[j]->name))
+                if (!strcmp(cenname, cels[j]->name) || !strcmp(cenname, cels[j]->origname.c_str()))
                 {
                     cels[i]->orbit->center = cels[j];
                     break;
