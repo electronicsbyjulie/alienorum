@@ -26,8 +26,19 @@ Star catalogs are copyright their respective owners,
 where copyright is applicable. Consult the readme for each
 catalog for that catalog's license.
 
+The Earth surface map is (C) 2014 Solar System Scope, used pursuant to CC-BY-4.0.
+https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_8k_earth_daymap.jpg
+
+The Earth bump map is (C) 2023 Avsa, used pursuant to CC-BY-SA 4.0.
+https://commons.wikimedia.org/wiki/File:World_elevation_map.png
+
 The Moon surface and bump maps are courtesy NASA's Scientific Visualization Studio,
 https://svs.gsfc.nasa.gov/4720, and are believed to be in the Public Domain.
+
+The Mars surface and bump maps are courtesy USGS Astrogeology Science Center and
+MOLA Team/Goddard Space Flight Center, respectively, and are in the Public Domain.
+https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m
+https://astrogeology.usgs.gov/search/map/mars_mgs_mola_dem_463m
 
 The Pluto texture map is courtesy NASA/JHUAPL/SwRI, with blank areas manually
 filled in, and is believed to be in the Public Domain.

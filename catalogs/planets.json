@@ -83,7 +83,7 @@
         "RotationPeriod": 86164.100,
         "SEMIMAJOR_AXIS": 149598023000,
         "SurfacePressure": 101325,
-        "SurfMap": "https://science.nasa.gov/wp-content/uploads/2011/10/elegant-figures_land_shallow_topo_720.jpg",
+        "#SurfMap": "https://science.nasa.gov/wp-content/uploads/2011/10/elegant-figures_land_shallow_topo_720.jpg",
         "VolMeanRad": 6371000
     },
     {
@@ -92,6 +92,7 @@
         "AscNode": 49.57854,
         "AtmosphericTau": 0.2358,
         "BODYNAME": "Mars",
+        "BumpMap": "https://astrogeology.usgs.gov/ckan/dataset/83c20dbd-e2b3-4e5b-b019-f13d4fdffa38/resource/57f84b24-d56c-42dd-a34d-cf9d61a82d2c/download/mars_mgs_mola_dem_mosaic_global_1024.jpg",
         "BVmag": 1.43,
         "CENTER_OF_ORBIT": "Sun",
         "Eccentricity": 0.0934,
@@ -108,7 +109,7 @@
         "RotationPeriod": 88642.68,
         "SEMIMAJOR_AXIS": 227939366000,
         "SurfacePressure": 636,
-        "SurfMap": "https://planetary.s3.amazonaws.com/web/assets/pictures/20140303_Mars_Viking_MDIM21_ClrMosaic_global_2500m.jpg",
+        "SurfMap": "https://astrogeology.usgs.gov/ckan/dataset/dfdc2242-52dc-4126-bc89-03af8253ae79/resource/0d7b31dc-0b2e-4ca6-89dc-e3c1404c0232/download/mars_viking_clrmosaic_global_1024.jpg",
         "UBmag": 0.63,
         "VolMeanRad": 3389500
     },

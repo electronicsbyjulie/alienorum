@@ -5,6 +5,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <algorithm>
 #include "celestial.h"
 #include "star.h"
 #include "planet.h"
@@ -1077,24 +1078,33 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
 
-    image_height = lr;
-    image_width = image_height * 2;
-    mtx.unlock();
+    bool create_bump = (bump_data == nullptr);
+    std::cout << cel->name << " bump data = " << bump_data << std::endl << std::flush;
+    if (create_bump)
+    {
+        image_height = lr;
+        image_width = image_height * 2;
+        allocated = image_height * image_width;
+        bump_data = new double[allocated];
+        memset(bump_data, 0, allocated*sizeof(double));
+    }
+    else
+    {
+        lr = cel->fictitious_map_height = image_height;
+    }
 
     allocated = image_height * image_width;
     red_data = new unsigned char[allocated];
     green_data = new unsigned char[allocated];
     blue_data = new unsigned char[allocated];
-    bump_data = new double[allocated];
-
-    memset(bump_data, 0, allocated*sizeof(double));
 
     lat_scale = (double)image_height / _pi;
     lon_scale = (double)image_width / (_pi * 2);
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
-    double bump_scale = p->estimate_bump_scale();
+    double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
     std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
+    mtx.unlock();
 
     double inv_h2o_level = 0;
     if (has_water && randomize_txgen)
@@ -1103,8 +1113,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
         vegetation_r = veg_color.r;
         vegetation_g = veg_color.g;
         vegetation_b = veg_color.b;
-        inv_h2o_level = 1.0 / has_water;
     }
+    inv_h2o_level = 1.0 / has_water;
+    std::cout << "inv_h2o_level: " << inv_h2o_level << std::endl << std::flush;
 
     for (unsigned int y = 0; y < image_height; ++y)
     {
@@ -1122,11 +1133,15 @@ void Map::generate_rocky_map(CelestialObject *cel)
             double ny = sin(theta) * sin(phi);
             double nz = cos(theta);
 
-            // Get noise value for this point on the sphere
-            double height_value = fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain);
-
             int idx = y * image_width + x;
-            bump_data[idx] = bump_scale * (height_value - 0.5);
+
+            // Get noise value for this point on the sphere
+            double height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
+                : fmin(1, fmax(0, (inv_bump_scale * bump_data[idx] - 0.5)));
+
+            if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
+            /*else if (frand(0,1) < 0.01) std::cout << x << "," << y << ": bump = " << bump_data[idx] 
+                << " height_value = " << height_value << std::endl << std::flush;*/
 
             if (has_water)
             {
@@ -1140,16 +1155,17 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     red_data[idx] = 167 + 67 * r_weight;
                     green_data[idx] = 181 + 57 * r_weight;
                     blue_data[idx] = 190 + 63 * r_weight;
-                    bump_data[idx] = fmax(0, bump_data[idx]);
+                    if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds
                 else if (height_value < has_water)
                 {   // Ocean
                     double sh = height_value*inv_h2o_level;          // shallowness
-                    red_data[idx] = (10+20*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh*sh) * r_weight;
-                    green_data[idx] = (30+80*sh*sh*sh*sh*sh) * r_weight;
-                    blue_data[idx] = (120+100*sh*sh) * r_weight;
-                    bump_data[idx] = 0;
+                    sh = sh*sh*sh;
+                    red_data[idx] = (12+16*sh);
+                    green_data[idx] = (24+168*sh);
+                    blue_data[idx] = (192+32*sh);
+                    if (create_bump) bump_data[idx] = 0;
                 }
                 else if (height_value < veg_height)
                 {   // Beach sand
@@ -1174,9 +1190,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 // Lifeless planet or moon
                 double r_weight = height_value;
-                red_data[idx] = (unsigned char)(rgb.r * r_weight + radd);
-                green_data[idx] = (unsigned char)(rgb.g * r_weight + gadd);
-                blue_data[idx] = (unsigned char)(rgb.b * r_weight + badd);
+                red_data[idx] = (unsigned char)(fmin(255, rgb.r * r_weight + radd));
+                green_data[idx] = (unsigned char)(fmin(255, rgb.g * r_weight + gadd));
+                blue_data[idx] = (unsigned char)(fmin(255, rgb.b * r_weight + badd));
             }
 
             // TODO: This does not work.
@@ -1305,6 +1321,42 @@ void Map::generate_gas_giant_map(int lr, double BV)
             }
 
             if (___ != __) return;
+        }
+    }
+}
+
+void alienorum::Map::mark_for_map_regen(CelestialObject *cel)
+{
+    if (bump_data && cel->type == rocky)
+    {
+        if (red_data) delete[] red_data;
+        if (green_data) delete[] green_data;
+        if (blue_data) delete[] blue_data;
+        red_data = green_data = blue_data = nullptr;
+        generate_rocky_map(cel);
+    }
+    else
+    {
+        bool go_ahead = false;
+        if (cel->surf_map == this)
+        {
+            cel->surf_map = nullptr;
+            go_ahead = true;
+        }
+        else if (cel->cloud_map == this)
+        {
+            cel->cloud_map = nullptr;
+            go_ahead = true;
+        }
+        else if (cel->night_map == this)
+        {
+            cel->night_map = nullptr;
+            go_ahead = true;
+        }
+
+        if (go_ahead)
+        {
+            delete this; return;            // CAREFUL!!!!! See: https://isocpp.org/wiki/faq/freestore-mgmt#delete-this
         }
     }
 }

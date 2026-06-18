@@ -598,8 +598,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
         {
-            if (fabs(current_multi_ra - s->right_ascension) <= ra_dec_multi_limit
-                && fabs(current_multi_decl - s->declination) <= ra_dec_multi_limit
+            if (fabs(current_multi_ra - s->right_ascension) > ra_dec_multi_limit
+                && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
                 )
             {
                 current_multi = nullptr;

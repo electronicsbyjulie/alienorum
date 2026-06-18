@@ -1093,7 +1093,7 @@ void draw_cons_lines()
 
     // Constellation labels
     n=l;
-    if (show_labels) for (l=0; l<n; l++)
+    if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
         if (!lnpercons[l]) continue;
         if (initcons) consdir[l].scale(1e303);

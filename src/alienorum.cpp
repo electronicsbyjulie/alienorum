@@ -584,8 +584,7 @@ int main (int argc, char** argv)
             }
 
             // Keyboard commands
-            if (io.InputQueueCharacters.Size)
-                process_keyboard_commands(io);
+            process_keyboard_commands(io);
 
             if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
             {

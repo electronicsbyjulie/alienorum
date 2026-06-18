@@ -99,6 +99,7 @@ namespace alienorum
         double elevation_at(double latitude, double longitude);     // Returns meters.
         void generate_rocky_map(CelestialObject *cel);
         void generate_gas_giant_map(int latitude_resolution, double BV_color);
+        void mark_for_map_regen(CelestialObject *cel);
     };
 
     class CelestialObject

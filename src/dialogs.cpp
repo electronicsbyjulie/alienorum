@@ -1392,24 +1392,21 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("Regenerate"))
             {
-                if (cel->surf_map)
-                {
-                    delete cel->surf_map;
-                    cel->surf_map = nullptr;
-                }
-                if (cel->cloud_map)
-                {
-                    delete cel->cloud_map;
-                    cel->cloud_map = nullptr;
-                }
-                if (cel->night_map)
-                {
-                    delete cel->night_map;
-                    cel->night_map = nullptr;
-                }
                 cel->fictitious_map_height = 5000;          // World-building resolution.
                 cel->looked_for_maps = false;
                 cel->ignore_map_files = true;
+                if (cel->surf_map)
+                {
+                    cel->surf_map->mark_for_map_regen(cel);
+                }
+                if (cel->cloud_map)
+                {
+                    cel->cloud_map->mark_for_map_regen(cel);
+                }
+                if (cel->night_map)
+                {
+                    cel->night_map->mark_for_map_regen(cel);
+                }
             }
 
             if (!cel->looked_for_maps)

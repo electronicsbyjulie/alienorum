@@ -103,7 +103,7 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
 double Planet::estimate_bump_scale()
 {
-    return 0.001 * volumetric_mean_radius * log(surface_pressure) / log(20);
+    return 0.001 * volumetric_mean_radius * (surface_pressure ? log(surface_pressure) : 1) / log(20);
 }
 
 void Planet::estimate_albedo()
