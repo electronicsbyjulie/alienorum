@@ -84,7 +84,10 @@ int find_object(const char* search_term, bool os, double ml)
             }
         }
     }
-    if (is_gliese) return result;
+    if (is_gliese)
+    {
+        return result;
+    }
 
     char buffer[256];
     if (result < 0)

@@ -241,6 +241,7 @@ void process_key_cmd_char(char c)
     // Keep this line to uncomment when testing which keystrokes ImGui recognizes.
     // std::cout << c << std::endl;
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
     switch (c)
     {
         case 'A':
@@ -444,7 +445,7 @@ void process_keyboard_commands(ImGuiIO& io)
     int i;
     for (i = 0; i < io.InputQueueCharacters.Size; i++)
     {
-        timeout_ms = 5;
+        timeout_ms = 100;
         ImWchar c = io.InputQueueCharacters[i];
         process_key_cmd_char(c);
     }

@@ -766,11 +766,13 @@ bool draw_one_object(int i)
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-            || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
-            || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-            || (cbolbls_selected_idx == 5 && (((Star*)cels[i])->has_hz_planets) )
-            || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-            || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
+            || (cbolbls_selected_idx == 3 && strlen(((Star*)cels[i])->Bayer))
+            || (cbolbls_selected_idx == 4 && strlen(((Star*)cels[i])->Flamsteed))
+            || (cbolbls_selected_idx == 5 && ((Star*)cels[i])->is_sunlike())
+            || (cbolbls_selected_idx == 6 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+            || (cbolbls_selected_idx == 7 && (((Star*)cels[i])->has_hz_planets) )
+            || (cbolbls_selected_idx == 8 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
+            || (cbolbls_selected_idx == 9 && cels[i]->known_poles)
             ))
         || ((cels[i]->cenobj == mycenobj) && lbl_localsys
             && ((cels[i]->mass >= lmasslim)
@@ -780,10 +782,21 @@ bool draw_one_object(int i)
             )
         || i == selected)
     {
-        ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
+        const char *dispname = cels[i]->name;
+        if (cbolbls_selected_idx == 3)
+        {
+            std::string Bayer = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
+            dispname = Bayer.c_str();
+        }
+        else if (cbolbls_selected_idx == 4)
+        {
+            std::string Flamsteed = trim(std::string(((Star*)cels[i])->Flamsteed).substr(0, strlen(((Star*)cels[i])->Flamsteed)-3));
+            dispname = Flamsteed.c_str();
+        }
+        ImVec2 sz = ImGui::CalcTextSize(dispname);
         ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
             rgba_apply_redlight(global_style.objlbl_color),
-            cels[i]->name);
+            dispname);
     }
     return true;
 }
@@ -931,47 +944,6 @@ void draw_objects()
 
     // Labels
     if (!cels[1]) return;
-    if (show_labels || lbl_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
-    {
-        if (cels[i]->typeclass() == class_star
-            && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
-            && !((Star*)cels[i])->tmp_vis_flag)
-            continue;
-
-        if (i == whereami) continue;
-        if (discinstead[i]) continue;
-        // if (cels[i]->type == star && i!=selected && i!=trackidx && !((Star*)cels[i])->is_in_visible_box(here.system_center)) continue;
-        // if (cels[i]->orbit) std::cout << cels[i]->name << " " << cels[i]->location.distance_to(here) << " " << cels[i]->orbit->semimajor_axis << std::endl;
-        if (cels[i]->orbit && cels[i]->location.distance_to(here) > 1e3*cels[i]->orbit->semimajor_axis) continue;
-        xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
-        appmag = vmag_cache[i];
-        if (angular_radius[i]*zoom > fiftyseventh)
-            bloomrad = bloomrad_cache[i];
-        else bloomrad = fmin(max_bloomrad, bloomrad_cache[i]);
-        if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
-               ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
-                || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
-                || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-                || (cbolbls_selected_idx == 3 && ((Star*)cels[i])->is_sunlike())
-                || (cbolbls_selected_idx == 4 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-                || (cbolbls_selected_idx == 5 && (((Star*)cels[i])->has_hz_planets) )
-                || (cbolbls_selected_idx == 6 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-                || (cbolbls_selected_idx == 7 && cels[i]->known_poles)
-             ))
-            || ((cels[i]->cenobj == mycenobj) && lbl_localsys
-                && ((cels[i]->mass >= lmasslim)
-                 || (vmag_cache[i] < 2.5)
-                 || (cels[i]->tmprel.magnitude() < AU)
-                   )
-               )
-            || i == selected)
-        {
-            ImVec2 sz = ImGui::CalcTextSize(cels[i]->name);
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
-                rgba_apply_redlight(global_style.objlbl_color),
-                cels[i]->name);
-        }
-    }
 
     // Near objects
     n = to_draw_layered.size();

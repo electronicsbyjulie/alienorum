@@ -259,6 +259,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         strcpy(s->name, trim(build_name.c_str()).c_str());
         strcpy(s->Gliese, trim(build_name.c_str()).c_str());
+        if (!strcmp(s->Gliese, "GJ 324 B")) strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
 
         double ra, dec, ra2000, dec2000;
 
@@ -2110,7 +2111,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         }
         else if (buffer[0] != '#')
         {
-            int j=-1, HD, HIP;
+            int j=-1, l, HD, HIP;
             Star *s = nullptr;
             bool s_is_new = false;
             searched = false;
@@ -2130,6 +2131,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 else if (i == col_stnm)
                 {
                     star_name = field;
+                    l = star_name.size();
                 }
                 else if (i == col_hd)
                 {
@@ -2165,6 +2167,12 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                                 && star_name.c_str()[2] >= 'a' && star_name.c_str()[2] <= 'z'
                                 )
                             do_search = true;
+                        else if ((star_name.c_str()[0] >= '1' && star_name.c_str()[0] <= '9')
+                                && (star_name.c_str()[l-1] >= 'A' && star_name.c_str()[l-1] <= 'z')
+                                )
+                            do_search = true;       // e.g. 55 Cnc B
+
+                        if (!strcmp(star_name.substr(0, 5).c_str(), "2MASS")) do_search = false;
                         if (!strcmp(star_name.substr(0, 6).c_str(), "Kepler")) do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "CoRoT")) do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) do_search = false;

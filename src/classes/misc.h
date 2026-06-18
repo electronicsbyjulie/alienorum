@@ -85,7 +85,7 @@ using json = nlohmann::json;
 #define default_gamma 1.0
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
-#define nlbltyp 8
+#define nlbltyp 10
 #define nceltyp 5
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0

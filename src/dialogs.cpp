@@ -124,7 +124,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::InputText("##distlim", lblcut2, 255);
         distance_lblcut = atof(lblcut2)*light_year;
     }
-    else if (cbolbls_selected_idx == 4)
+    else if (cbolbls_selected_idx == 6)
     {
         ImGui::Text("%s", "# Planets:");
         ImGui::SameLine();
@@ -133,7 +133,7 @@ void draw_status_window(ImGuiIO& io)
         if (planets_lblcut < 1) planets_lblcut = 1;
     }
 
-    if (!have_exo && (cbolbls_selected_idx == 4 || cbolbls_selected_idx == 5))
+    if (!have_exo && (cbolbls_selected_idx == 6 || cbolbls_selected_idx == 7))
     {
         ImVec4 warncol = rgba_apply_redlight(ImVec4(1, 0.9, 0, 1));
         ImGui::TextColored(warncol,
