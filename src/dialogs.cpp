@@ -1508,8 +1508,8 @@ void draw_system_explorer(ImGuiIO& io)
     std::vector<int> list_item_celids;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    ImGui::Text("%s", " Name                 Orbits             Period, d       Mass, kg         HZ?");
-    if (ImGui::BeginListBox("##syslist", ImVec2(777, 16 * ImGui::GetTextLineHeightWithSpacing())))
+    ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, kg         HZ?");
+    if (ImGui::BeginListBox("##syslist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
         for (i=0; cels[i]; i++)
@@ -1518,7 +1518,7 @@ void draw_system_explorer(ImGuiIO& io)
             bool is_selected = (item_selected_idx == j);
 
             std::string line = std::string(cels[i]->name).substr(0, 20);
-            l = 21 - line.size();
+            l = 36 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
             if (cels[i]->orbit && cels[i]->orbit->center)
@@ -1528,7 +1528,7 @@ void draw_system_explorer(ImGuiIO& io)
             if (xplorlen && !strcasestr(line.c_str(), xplorfor)) continue;
             list_item_celids.push_back(i);
 
-            l = 40 - line.size();
+            l = 70 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
             if (cels[i]->orbit && cels[i]->orbit->period)
@@ -1539,7 +1539,7 @@ void draw_system_explorer(ImGuiIO& io)
             }
             else line += std::string("-");
 
-            l = 56 - line.size();
+            l = 86 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
             if (cels[i]->mass)
@@ -1550,7 +1550,7 @@ void draw_system_explorer(ImGuiIO& io)
             }
             else line += std::string("?");
 
-            l = 75 - line.size();
+            l = 105 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
             if (cels[i]->orbit && cels[i]->orbit->period)

@@ -19,7 +19,11 @@ void draw_cons_lines();
 void draw_mouse_cursor(ImGuiIO &io);
 
 #define max_bloomrad 10
+#define global_font_size (8.647 * 1.776)
+
 extern double jay, appmag, bloomrad, flare, theta, lmasslim;
 extern ImVec2 xycoord;
+extern ImFont *global_font, *Greek_font;
+extern const char *Greek_symbol_mapping;
 
 #endif

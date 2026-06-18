@@ -7,6 +7,8 @@ using namespace alienorum;
 
 double jay, appmag, bloomrad, flare, theta, lmasslim;
 ImVec2 xycoord;
+ImFont *global_font = nullptr, *Greek_font = nullptr;
+const char *Greek_symbol_mapping = "abgdezhuiklmnqoprstyfxjv";
 
 void draw_ra_dec_lines()
 {
@@ -783,18 +785,28 @@ bool draw_one_object(int i)
         || i == selected)
     {
         const char *dispname = cels[i]->name;
-        if (cbolbls_selected_idx == 3)
+        ImFont *font = global_font;
+        std::string str;
+        cel_obj_class cls = cels[i]->typeclass();
+        double lfontsz = global_font_size;
+        if (cbolbls_selected_idx == 3 && cls == class_star)
         {
-            std::string Bayer = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
-            dispname = Bayer.c_str();
+            // str = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
+            // dispname = str.c_str();
+            char c = Greek_symbol_mapping[((Star*)cels[i])->BayerGrkno];
+            str = std::string(1, c);
+            if (((Star*)cels[i])->Bayer[3] >= '1') str += std::string(1, ((Star*)cels[i])->Bayer[3]);
+            dispname = str.c_str();
+            font = Greek_font;
+            lfontsz *= 1.312;           // for better visibility
         }
-        else if (cbolbls_selected_idx == 4)
+        else if (cbolbls_selected_idx == 4 && cls == class_star)
         {
-            std::string Flamsteed = trim(std::string(((Star*)cels[i])->Flamsteed).substr(0, strlen(((Star*)cels[i])->Flamsteed)-3));
-            dispname = Flamsteed.c_str();
+            str = trim(std::string(((Star*)cels[i])->Flamsteed).substr(0, strlen(((Star*)cels[i])->Flamsteed)-3));
+            dispname = str.c_str();
         }
         ImVec2 sz = ImGui::CalcTextSize(dispname);
-        ImGui::GetBackgroundDrawList()->AddText(ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
+        ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
             rgba_apply_redlight(global_style.objlbl_color),
             dispname);
     }

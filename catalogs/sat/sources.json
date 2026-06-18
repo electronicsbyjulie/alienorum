@@ -1,18 +1,18 @@
 [
     {
-        "LastAccessed": "2026-06-16 21:46:10",
+        "LastAccessed": "2026-06-17 22:55:35",
         "LocalName": "satcat",
         "Type": "master",
         "URL": "https://celestrak.org/pub/satcat.csv"
     },
     {
-        "LastAccessed": "2026-06-16 21:46:11",
+        "LastAccessed": "2026-06-17 22:55:36",
         "LocalName": "brightest",
         "Type": "supplemental",
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=csv"
     },
     {
-        "LastAccessed": "2026-06-16 21:46:11",
+        "LastAccessed": "2026-06-17 22:55:36",
         "LocalName": "latest",
         "Type": "supplemental",
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=csv"
@@ -210,7 +210,7 @@
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=globalstar&FORMAT=csv"
     },
     {
-        "LastAccessed": "2026-06-16 21:46:29",
+        "LastAccessed": "2026-06-17 22:55:58",
         "LocalName": "satnogs",
         "Type": "supplemental",
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=satnogs&FORMAT=csv"

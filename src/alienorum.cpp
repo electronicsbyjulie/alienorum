@@ -284,6 +284,17 @@ int main (int argc, char** argv)
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf");
     //IM_ASSERT(font != nullptr);
 
+    #ifdef _WIN32
+    global_font = io.Fonts->AddFontFromFileTTF("assets\\LiberationMono\\LiberationMono-Regular.ttf");
+    Greek_font = io.Fonts->AddFontFromFileTTF("assets\\LiberationSerif\\LiberationSerif-GreekSymbol.ttf");
+    #else
+    global_font = io.Fonts->AddFontFromFileTTF("assets/LiberationMono/LiberationMono-Regular.ttf");
+    Greek_font = io.Fonts->AddFontFromFileTTF("assets/LiberationSerif/LiberationSerif-GreekSymbol.ttf");                    // really craving a gyro right now
+    #endif
+    IM_ASSERT(global_font != nullptr);
+    IM_ASSERT(Greek_font != nullptr);
+    ImGui::GetStyle().FontSizeBase = global_font_size;
+
     // Our state
     ImVec4 background = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
     set_gamma(global_gamma);

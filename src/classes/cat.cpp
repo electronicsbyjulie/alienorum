@@ -444,7 +444,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     double f;
     char comp = 0;
     StarMulti *current_multi = nullptr;
-    unsigned int current_multi_hrno;
+    double current_multi_ra, current_multi_decl;
+    #define ra_dec_multi_limit (fiftyseventh / 60)
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
@@ -561,20 +562,6 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         s->gotta_be_named_something();
 
-        if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
-        {
-            if (HR != current_multi_hrno)
-            {
-                current_multi = nullptr;
-                current_multi_hrno = HR;
-                A = nullptr;
-            }
-            s->multisys = current_multi;
-            s->set_component(buffer[49], A);
-            current_multi = s->multisys;
-            if (buffer[49] == 'A') A = s;
-        }
-
         //   76- 77  I2     h       RAh      ?Hours RA, equinox J2000, epoch 2000.0 (1)
         read_field_onebased(buffer, 76, 77, field);
         deg = atof(field) * 15;
@@ -608,6 +595,23 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
         if (!s->right_ascension && !s->declination) continue;
         s->epoch = J2000;
+
+        if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
+        {
+            if (fabs(current_multi_ra - s->right_ascension) <= ra_dec_multi_limit
+                && fabs(current_multi_decl - s->declination) <= ra_dec_multi_limit
+                )
+            {
+                current_multi = nullptr;
+                current_multi_ra = s->right_ascension;
+                current_multi_decl = s->declination;
+                A = nullptr;
+            }
+            s->multisys = current_multi;
+            s->set_component(buffer[49], A);
+            current_multi = s->multisys;
+            if (buffer[49] == 'A') A = s;
+        }
 
         //  103-107  F5.2   mag     Vmag     ?Visual magnitude (1)
         read_field_onebased(buffer, 103, 107, field);
