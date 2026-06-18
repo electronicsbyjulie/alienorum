@@ -34,11 +34,12 @@ CelestialObject *CelestialObject::get_light_center()
         return nullptr;
     }
 
-    CelestialObject *light_center = orbit->center;
+    CelestialObject *light_center = this;
     int i;
     for (i=0; i<5; i++)
     {
         cel_obj_class cls = light_center->typeclass();
+        if (cls == class_star) break;
         if (cls == class_planet || cls == class_moon)
         {
             light_center = light_center->orbit->center;
