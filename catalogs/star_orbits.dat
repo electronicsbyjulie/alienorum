@@ -45,9 +45,40 @@ Gliese 473 A            (system inclination)                    143.2       102.
 HD8890                  (system inclination)                    201.28      127.57
 HD39801                 (stellar rotation)                      145         020
 HD10307                 (companion orbit)                       032.25      100.36
-HD12447                 HD12446                 89050000        003.09      113.01      150         5.37e+13    0.4650      0                   2188.6          kA2hF2mF2 (IV)                  1.668       1.76                    8000
-HD12446                 HD12446 B               2159950.5792    073.08      065.2       140.14      3.729e+10   0.6004                                                                          1.646       1.55                    8000
+HD12447                 HD12446                 89050000        003.09      113.01      150         5.37e+13    .4650       0                   2188.6          kA2hF2mF2 (IV)                  1.668       1.76                    8000
+HD12446                 HD12446 B               2159950.5792    073.08      065.2       140.14      3.729e+10   .6004                                                                           1.646       1.55                    8000
 HD129989                HD129988                3.2e+8                                              2.77e+13
+HD217782                HD217782 B              2.3351e+9       159.5       021.7       356.4       4.14e+12    .800        0                   1870.280        F1V                             1.78        1.6?        6.2?        7720
+HD198571                HD198571 B              6.333e+9        174.31      064.06      045.9       7.08e+12    .535        0                   1896.8          F6V                             1.331       1.4?        2.7?        6350?
+HD184759                HD184760                1.44e+8         029.3       114.6       045.5       7.8e+11     .82         0                   1985.56                                         2.7         3.5                     9247
+HD64096                 HD64096 B               7.16374e+8      102.9       080.4       073.1       1.42e+12    .741        0                   1985.92                                         0.900       0.87        0.67        5620
+HD12558                 HD12558 B               1.03e+10        020.5       051         165         9.68e+12    .59         0                   1932.0
+HD107966                (system inclination)                    164.0       032.3       275.1
+HD188260                (system inclination)                    068.1       085.9       169.7
+HD20610                 (system inclination)                    271.6       066.6       333.5
+HD50522                 (system inclination)                    043.4       078.0       098.0
+HD190406                HD190406 B              2.012e+9        330.88      097.73      266.23      2.525e+12   .4683       0                   2015.12832                                      0.07194     0.08        6.46e-5     1544
+HD190004                (system inclination)                    084.5       079.0       276.5
+HD115271                (system inclination)                    022.2       044.5       273.3
+HD17904                 (system inclination)                    026.62      120.48      265.54
+HD13872                 (system inclination)                    236.44      104.52      084.16
+HD109485                (system inclination)                    024.3       109.7       214.5
+HD118623                (system inclination)                    087         147         159
+HD37269                 (system inclination)                    127.08      124.22      309.07
+HD56014                 (system inclination)                    131.3       080.2       085.0
+HD224533                (system inclination)                    081.1       081.0       109.6
+HD191610                (system inclination)                    146.0       118.7       090
+HD16234                 (system inclination)                    145.0       112.7       003.7
+HD129002                HD129002 B              8.08e+8         122.5       098         176         1.66e+12    .87         0                   2032.46476                                      .057        .1704       5.3e-4      2700
+
+#Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
+
+# https://en.wikipedia.org
+HD5286                  (system inclination)                    173.60      044.80
+HD141851                HD141851 B              9.271e+7                                                        .7
+HD141851                HD141851 C              1.60e+9         074.00      098.08      072.84      2.84e+12    .8323       0                   2002.78                                         1.27        1.26                    6255
+HD170073                HD170073 B              1.2e+8          179.9       107.7       128.0       5.7e+13     .553        0                   5671.40                                         1.18        1.15        1.85        6271
+
 
 # Unresolved WD multiples
 WD2058+342              WD2058+342.1
