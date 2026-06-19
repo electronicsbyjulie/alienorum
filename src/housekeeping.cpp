@@ -385,6 +385,12 @@ void set_center_objects()
             {
                 constellation_index[std::string(s->constellation)].push_back(cels[i]);
             }
+
+            if (!s->BV_color && !s->UB_color)
+            {
+                s->estimate_BV();
+                s->estimate_UB();
+            }
         }
 
         cels[i]->origname = cels[i]->name;

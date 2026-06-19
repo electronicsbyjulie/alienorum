@@ -117,6 +117,14 @@ HD78045                 (system inclination)                    105.3       101.
 HD196982                AT Mic B                4.4618e+9       082.6       148.4       054.6       4.010e+12   .607        0                   2035.10                                         0.25        0.590       0.0308       3150
 HD137909                Bet CrB B               3.156e+8        148.2       111.1       181.3       1.01e+12    .524        0                   1980.929                                        1.40        1.56        4.5          6750
 HD196524                Bet Del B               8.4131e+8       177         061         349         1.95e+12    .36         0                   1989.50                                         1.75                    24           6587
+HD90537                 Bet LMi B               1.2066e+9                   081.4       215.7       2.551e+12   .680        0                   1998.6348                                       1.92        2.0         17.6         5484
+HD110879                Bet Mus B               6.1309e+9       349.4       037.1       209.0       1.44e+13    .598        0                   1857.50                                         6.40        3.5         1200        18500
+HD6595                  Bet Phe B               5.387e+9        126.4       144.0       293.5       7.54e+12    .718        0                   2003.41                                         2.7         14          100          4950
+HD170153                Chi Dra Ab              2.423761e+7     230.30      074.42      119.3       1.480e+11   .428        0                   1984.8324                                       0.748       0.73        0.29         4940
+HD96202                 (system inclination)                    224.00      096.50
+HD39587                 (system inclination)                    306.51      092.69
+HD26612                 (system inclination)                    193.0       110.6
+HD208450                (system inclination)                    090.8       076.3
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
