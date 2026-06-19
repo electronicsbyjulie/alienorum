@@ -59,7 +59,7 @@ double bv_correction = -0.62;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
-float has_water, ice_amount, veg_height, mtn_height;
+float has_water, ice_amount, veg_height, mtn_height, veg_min_temp = 278, veg_max_temp = 310;
 int vegetation_r, vegetation_g, vegetation_b;
 
 double appmagn_lblcut = 2.5,

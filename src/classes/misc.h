@@ -173,7 +173,7 @@ extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_lo
 extern std::string objname, objinfo;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
-extern float has_water, ice_amount, veg_height, mtn_height;
+extern float has_water, ice_amount, veg_height, mtn_height, veg_min_temp, veg_max_temp;
 extern int vegetation_r, vegetation_g, vegetation_b;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
 extern const char* compass[16];
