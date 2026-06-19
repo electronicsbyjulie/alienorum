@@ -673,10 +673,10 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
             {
                 // Allow false color bump maps using the visual luminance as the elevation for better granularity
                 bump_data[j] = bump_scale *
-                            ( 0.001137 * jpeg_image_buffer[0][i]
-                            + 0.002196 * jpeg_image_buffer[0][i+1]
-                            + 0.00588  * jpeg_image_buffer[0][i+2])
-                            - 0.5;
+                            (( 0.001137 * jpeg_image_buffer[0][i]
+                             + 0.002196 * jpeg_image_buffer[0][i+1]
+                             + 0.000588 * jpeg_image_buffer[0][i+2])
+                             - 0.5);
             }
             else
             {
@@ -782,10 +782,10 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
                     // Allow false color bump maps using the visual luminance as the elevation for better granularity
                     png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
                     bump_data[i] = bump_scale *
-                            ( 0.001137 * pixel[0]
-                            + 0.002196 * pixel[1]
-                            + 0.00588  * pixel[2])
-                            - 0.5;
+                            (( 0.001137 * pixel[0]
+                             + 0.002196 * pixel[1]
+                             + 0.000588 * pixel[2])
+                             - 0.5);
                 }
                 else
                 {
@@ -1079,7 +1079,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
 
     bool create_bump = (bump_data == nullptr);
-    std::cout << cel->name << " bump data = " << bump_data << std::endl << std::flush;
     if (create_bump)
     {
         image_height = lr;
@@ -1115,7 +1114,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
         vegetation_b = veg_color.b;
     }
     inv_h2o_level = 1.0 / has_water;
-    std::cout << "inv_h2o_level: " << inv_h2o_level << std::endl << std::flush;
 
     for (unsigned int y = 0; y < image_height; ++y)
     {
@@ -1137,11 +1135,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
             // Get noise value for this point on the sphere
             double height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
-                : fmin(1, fmax(0, (inv_bump_scale * bump_data[idx] - 0.5)));
+                : fmin(1, fmax(0, (inv_bump_scale * bump_data[idx] + 0.5)));
 
             if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
-            /*else if (frand(0,1) < 0.01) std::cout << x << "," << y << ": bump = " << bump_data[idx] 
-                << " height_value = " << height_value << std::endl << std::flush;*/
 
             if (has_water)
             {
