@@ -125,6 +125,8 @@ HD96202                 (system inclination)                    224.00      096.
 HD39587                 (system inclination)                    306.51      092.69
 HD26612                 (system inclination)                    193.0       110.6
 HD208450                (system inclination)                    090.8       076.3
+HD143275                Del Sco B               3.41105e+8      174.0       036         357.7       2.119e+12   .936        0                   2011.504                                        8.2                                 20000
+HD283654                DF Tauri B              1.67e+9         036.7       040.4       286.6       2.647e+12   .172        0                   2024.0                                          0.42        1.6                      3433
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
