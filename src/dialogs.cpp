@@ -1768,7 +1768,7 @@ void draw_ast_window(ImGuiIO & io)
             else
             {
                 selected = ncelobjs-1;
-                compute_object_location(ast, -1);
+                compute_object_location(ast);
                 compute_object_draw_coordinates();
                 center_selected();
                 viewchanged = true;
@@ -1856,7 +1856,7 @@ void draw_sat_window(ImGuiIO& io)
         if (SatSource::populate(sat, i))
         {
             selected = ncelobjs-1;
-            compute_object_location(sat, -1);
+            compute_object_location(sat);
             compute_object_draw_coordinates();
             center_selected();
             viewchanged = true;
@@ -1888,7 +1888,7 @@ void draw_sat_window(ImGuiIO& io)
         if (SatSource::populate(sat, i))
         {
             selected = ncelobjs-1;
-            compute_object_location(sat, -1);
+            compute_object_location(sat);
             compute_object_draw_coordinates();
             center_selected();
             viewchanged = true;

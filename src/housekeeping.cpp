@@ -110,10 +110,11 @@ void set_viewer_location_and_plane()
 }
 
 double dispw, disph, celmasslim;
-bool compute_object_location(CelestialObject* cel, int i)
+bool compute_object_location(CelestialObject* cel)
 {
     num_stars_in_box = 0;
     bool star_in_box;
+    int i = cel->seqno;
 
     CelestialLocation tmp = cel->location - here;
     cel->tmprel = Point(tmp);
@@ -243,7 +244,7 @@ void compute_object_draw_coordinates()
         for (i=0; i<2; i++)
         {
             for (j=0; j<n; j++)
-                compute_object_location(have_to_know[j], -1);
+                compute_object_location(have_to_know[j]);
 
             set_viewer_location_and_plane();
         }
@@ -255,7 +256,7 @@ void compute_object_draw_coordinates()
         CelestialLocation tmp = cels[i]->location - here;
         cels[i]->tmprel = Point(tmp);
 
-        if (!compute_object_location(cels[i], i)) continue;
+        if (!compute_object_location(cels[i])) continue;
 
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star
@@ -285,6 +286,7 @@ void compute_object_draw_coordinates()
             if (i == whereami) continue;
 
             if (cels[i]->typeclass() == class_star
+                && i
                 && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
                 && !((Star*)cels[i])->tmp_vis_flag
                 && !((Star*)cels[i])->is_universally_visible())
@@ -386,6 +388,15 @@ void set_center_objects()
                 constellation_index[std::string(s->constellation)].push_back(cels[i]);
             }
 
+            if (s->orbit && s->orbit->center && s->orbit->center->type > s->type)
+            {
+                #ifdef DEBUG
+                assert(false);
+                #endif
+                s->orbit = nullptr;
+                s->cenobj = s;
+            }
+
             if (!s->BV_color && !s->UB_color)
             {
                 s->estimate_BV();
@@ -396,6 +407,8 @@ void set_center_objects()
         cels[i]->origname = cels[i]->name;
         if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
+
+    ((Star*)cels[0])->make_universally_visible();
 
     #if 0
     #ifdef DEBUG

@@ -908,13 +908,14 @@ void draw_objects()
         cel_obj_class cls = cels[i]->typeclass();
 
         if (cls == class_star
+            && i
             && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
             && !((Star*)cels[i])->tmp_vis_flag)
             continue;
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i] - sky_mag_shift;
-        if (appmag > 6.5) continue;
+        if (appmag > 6.5 && i) continue;
 
         bloomrad = fabs(bloomrad_cache[i]);
         flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;

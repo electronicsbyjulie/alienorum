@@ -6,7 +6,7 @@
 #pragma once
 void refresh_star_visibilities();
 void set_viewer_location_and_plane();
-bool compute_object_location(CelestialObject *cel, int i);
+bool compute_object_location(CelestialObject *cel);
 void compute_object_draw_coordinates();
 void set_center_objects();
 #endif
