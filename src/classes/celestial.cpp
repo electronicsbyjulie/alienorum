@@ -1156,8 +1156,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // Biome allocation based on height thresholds
                 else if (height_value < has_water)
                 {   // Ocean
-                    double sh = height_value*inv_h2o_level;          // shallowness
-                    sh = sh*sh*sh;
+                    double sh = pow(height_value*inv_h2o_level, 20);          // shallowness multiplied to show water optical density
                     red_data[idx] = (12+16*sh);
                     green_data[idx] = (24+168*sh);
                     blue_data[idx] = (192+32*sh);

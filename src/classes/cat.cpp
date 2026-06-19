@@ -860,7 +860,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (RA && Decl)
         {
             double ra2000, dec2000;
-            convert_to_J2000(RA, Decl, 1950, ra2000, dec2000, true);
+            convert_to_J2000(RA, Decl, 1991.25, ra2000, dec2000, false);
             s->right_ascension = ra2000;
             s->declination = dec2000;
             s->epoch = J2000;
