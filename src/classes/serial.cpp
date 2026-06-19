@@ -57,16 +57,16 @@ int find_object(const char* search_term, bool os, double ml)
     for (i=0; cels[i]; i++)
     {
         if (os && (cels[i]->typeclass() != class_star)) continue;
+        if (!strcmp(cels[i]->name, search_term))
+        {
+            result = i;
+            break;
+        }
         if (match_cons && cels[i]->typeclass() == class_star && strcasecmp(((Star*)cels[i])->constellation, match_cons)) continue;
         if (match_comp)
         {
             m = strlen(cels[i]->name);
             if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
-        }
-        if (!strcmp(cels[i]->name, search_term))
-        {
-            result = i;
-            break;
         }
         if (cels[i]->typeclass() == class_star)
         {
@@ -92,7 +92,7 @@ int find_object(const char* search_term, bool os, double ml)
     char buffer[256];
     if (result < 0)
     {
-        int best_Levenshtein = 11;
+        int best_Levenshtein = 5;
         std::string lookstr = search_term;
         int looklen = strlen(search_term);
         for (i=0; cels[i]; i++)

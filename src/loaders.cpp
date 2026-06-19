@@ -323,6 +323,12 @@ void load_catalogs()
         Gliese_doubles_fix();
     }
 
+    mtx.lock();
+    loading_msg = std::string("Naming stars...");
+    mtx.unlock();
+    rename_all_from_Bayer_Flamsteed();
+    cr.read_starname_dat(cels);
+
     cout << "Reading exoplanets..." << endl << flush;
     int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
     num_planets += nexo;

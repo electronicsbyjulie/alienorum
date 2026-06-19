@@ -2152,16 +2152,18 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         // In case of multi-planet system, scan the last several objects for an EXACT name match.
                         for (j=0; j<10; j++)
                         {
-                            CelestialObject *cel = cels[offset-2-j];
-                            if (cel->typeclass() != class_star) continue;
-                            if (!strcmp(cel->name, star_name.c_str()))
+                            CelestialObject *cel = cels[ncelobjs-1-j];
+                            // if (cel->typeclass() != class_star) continue;
+                            if (cel->cenobj && !strcmp(cel->cenobj->name, star_name.c_str()))
                             {
-                                s = (Star*)cel;
+                                s = (Star*)cel->cenobj;
                                 break;
                             }
                         }
 
                         bool do_search = false;      // Full search is expensive. Only search if good chance of finding it (Gliese, named stars).
+
+                        // if (!strcmp(star_name.c_str(), "Barnard's star")) star_name = "GJ 699";
 
                         if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) do_search = true;
                         else if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
@@ -2181,6 +2183,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         if (!strcmp(star_name.substr(0, 5).c_str(), "CoRoT")) do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) do_search = false;
                         if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) do_search = false;
+                        if (!strcmp(star_name.c_str(), "Teegarden's Star")) do_search = false;
 
                         if (!s && do_search)
                         {
@@ -2204,6 +2207,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     {
                         s = new Star();
                         strcpy(s->name, star_name.c_str());
+                        s->cenobj = s;
                         s_is_new = true;
                     }
 
@@ -2316,6 +2320,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
             if (s && p && p->orbit->period)
             {
+                p->cenobj = s;
                 bool HZ = p->is_in_con_HZ();
 
                 // Star's planet-hosting metrics.
