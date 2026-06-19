@@ -150,7 +150,7 @@ namespace alienorum
         CelestialObject();
         virtual ~CelestialObject() = default;
         CelestialLocation location;
-        bool lock_equatorial_plane = false;
+        bool lock_equatorial_plane = false, lock_system_plane = false;
         Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
         CelestialObject *cenobj = nullptr;
         Point tmprel, viewrel;

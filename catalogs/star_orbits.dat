@@ -4,6 +4,7 @@ Sun                     (system inclination)                    000         023.
 
 # https://en.wikipedia.org/wiki/Alpha_Centauri
 Rigil Kentaurus         Toliman                 2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
+Rigil Kentaurus         Proxima Cen             1.73e+13        126         107.6       072.3       1.3e+15     .50         0                    283                                            0.1221      0.1542      0.00005      2992
 
 # https://doi.org/10.1051/0004-6361/201322469
 HD20807                 HD20766                 5.36e+12?       296.2       065.5?      ?           5.610e+14?  ?                               2013.
@@ -127,6 +128,7 @@ HD26612                 (system inclination)                    193.0       110.
 HD208450                (system inclination)                    090.8       076.3
 HD143275                Del Sco B               3.41105e+8      174.0       036         357.7       2.119e+12   .936        0                   2011.504                                        8.2                                 20000
 HD283654                DF Tauri B              1.67e+9         036.7       040.4       286.6       2.647e+12   .172        0                   2024.0                                          0.42        1.6                      3433
+HD4614                  Achird B                1.490e+10       098.31      034.938     088.34      1.055e+13   .494        0                   1889.6                                          0.5487      0.57        0.082        4011
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

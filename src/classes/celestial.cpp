@@ -476,7 +476,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center || !orbit->period) return;
     location.system_center = orbit->center->location.system_center;
-    location.local_system_plane = orbit->center->location.local_system_plane;
+    if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
 
     // Calculate orbit radians per second and seconds since epoch
     double rads_sec = (_pi * 2) / orbit->period;

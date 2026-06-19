@@ -2474,20 +2474,27 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
 
+        Rotation new_orbital_plane = system_plane_from_incl_and_node(inclination, ascending_node,
+            A->location.system_center - cels[0]->location.system_center);
         if (inclination || ascending_node)
         {
             if (!strcmp(bdystr, "(stellar rotation)"))
             {
-                A->location.equatorial_plane = system_plane_from_incl_and_node(inclination, ascending_node,
-                    A->location.system_center - cels[0]->location.system_center);
+                A->location.equatorial_plane = new_orbital_plane;
                 A->lock_equatorial_plane = true;
             }
             else
             {
-                A->location.local_system_plane = system_plane_from_incl_and_node(inclination, ascending_node,
-                    A->location.system_center - cels[0]->location.system_center);
-                A->location.orbital_plane = A->location.local_system_plane;
-                if (!A->lock_equatorial_plane) A->location.equatorial_plane = A->location.local_system_plane;
+                if (!A->lock_system_plane)
+                {
+                    A->location.local_system_plane = new_orbital_plane;
+                    A->location.orbital_plane = A->location.local_system_plane;
+                    A->lock_system_plane = true;
+                }
+                if (!A->lock_equatorial_plane)
+                {
+                    A->location.equatorial_plane = A->location.local_system_plane;
+                }
                 A->obliquity = inclination;
                 A->equinox = ascending_node;
             }
@@ -2598,9 +2605,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (inclination || ascending_node)
         {
-            s->location = A->location;
-            s->obliquity = inclination;
-            s->equinox = ascending_node;
+            // s->location = A->location;
+            s->location.equatorial_plane = s->location.orbital_plane = s->location.local_system_plane = new_orbital_plane;
+            s->lock_system_plane = true;
+            s->obliquity = 0;
+            s->equinox = 0;
             A->known_poles = s->known_poles = true;
         }
 

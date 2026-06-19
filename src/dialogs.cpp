@@ -642,7 +642,9 @@ void draw_objedit_window(ImGuiIO& io)
             }
 
             edit_eqincl = cel->obliquity * fiftyseven;
-            ImGui::Text("%s", "Obliquity");
+            if (tc == class_star && !cel->orbit)
+                ImGui::Text("%s", "Inclination");
+            else ImGui::Text("%s", "Obliquity");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
@@ -658,7 +660,9 @@ void draw_objedit_window(ImGuiIO& io)
             }
             ImGui::SameLine(col2);
             edit_equinox = cel->equinox * fiftyseven;
-            ImGui::Text("%s", "Equinox");
+            if (tc == class_star && !cel->orbit)
+                ImGui::Text("%s", "Asc. Node");
+            else ImGui::Text("%s", "Equinox");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f"))
