@@ -1233,7 +1233,7 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::Text("%s", "Coldest vegetation:");
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edtveglvl", &veg_min_temp);
+                    ImGui::InputFloat("##edtvegcold", &veg_min_temp);
                     ImGui::SameLine();
                     ImGui::Text("%s", "degK");
                 }
@@ -1252,7 +1252,7 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::Text("%s", "Hottest vegetation:");
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edtveglvl", &veg_max_temp);
+                    ImGui::InputFloat("##edtveghot", &veg_max_temp);
                     ImGui::SameLine();
                     ImGui::Text("%s", "degK");
                 }
