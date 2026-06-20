@@ -1195,10 +1195,14 @@ void draw_objedit_window(ImGuiIO& io)
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
-                ImGui::SameLine();
-                ImGui::Text("%s", "Randomize  ");
-                ImGui::SameLine();
-                ImGui::Checkbox("##randomize_txgen", &randomize_txgen);
+                if (p->type == rocky)
+                {
+                    ImGui::SameLine();
+                    ImGui::Text("%s", "Randomize  ");
+                    ImGui::SameLine();
+                    ImGui::Checkbox("##randomize_txgen", &randomize_txgen);
+                }
+                else randomize_txgen = true;
 
                 ImGui::Text("%s", "Methane %");
                 ImGui::SameLine(col15);
@@ -1210,7 +1214,7 @@ void draw_objedit_window(ImGuiIO& io)
                 }
                 if (has_water < 0) has_water = 0;
                 if (has_water > 1) has_water = 1;
-                if (!randomize_txgen)
+                if (p->type == rocky && !randomize_txgen)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Water up to:    ");
@@ -1227,7 +1231,7 @@ void draw_objedit_window(ImGuiIO& io)
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
-                if (!randomize_txgen)
+                if (p->type == rocky && !randomize_txgen)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Coldest vegetation:");
@@ -1246,7 +1250,7 @@ void draw_objedit_window(ImGuiIO& io)
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
-                if (!randomize_txgen)
+                if (p->type == rocky && !randomize_txgen)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Hottest vegetation:");
@@ -1267,7 +1271,7 @@ void draw_objedit_window(ImGuiIO& io)
                 }
                 if (vegetation_r < 0) vegetation_r = 0;
                 if (vegetation_r > 255) vegetation_r = 255;
-                if (!randomize_txgen)
+                if (p->type == rocky && !randomize_txgen)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Vegetation R:   ");
@@ -1286,7 +1290,7 @@ void draw_objedit_window(ImGuiIO& io)
                 }
                 if (vegetation_g < 0) vegetation_g = 0;
                 if (vegetation_g > 255) vegetation_g = 255;
-                if (!randomize_txgen)
+                if (p->type == rocky && !randomize_txgen)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Vegetation G:   ");
@@ -1305,7 +1309,7 @@ void draw_objedit_window(ImGuiIO& io)
                 }
                 if (vegetation_b < 0) vegetation_b = 0;
                 if (vegetation_b > 255) vegetation_b = 255;
-                if (!randomize_txgen)
+                if (p->type == rocky && !randomize_txgen)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Vegetation B:   ");

@@ -1103,7 +1103,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
     mtx.unlock();
 
-    double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_local, sh;
+    double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
     unsigned int x, y;
     int idx;
     if (has_water && randomize_txgen)
@@ -1115,7 +1115,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
     inv_h2o_level = 1.0 / has_water;
 
-    bool tidal_locked = (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
+    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
+        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
     for (y = 0; y < image_height; ++y)
     {
@@ -1133,7 +1134,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             ny = sin(theta) * sin(phi);
             nz = cos(theta);
 
-            if (tidal_locked) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
+            if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
 
             idx = y * image_width + x;
 
@@ -1147,28 +1148,28 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 r_weight = height_value;
 
-                T_local = tidal_locked
+                T_base = tidal_locked_to_star
                     ? (T_surf + 128.0 - 256.0 * cos(psi*0.5))
                     : (T_surf - 40.0 + 70.0 * sin(theta));
-                T_local -= 62.5 * (height_value - has_water);
+                T_local = T_base - 62.5 * fmax(0, height_value - has_water);
                 if (T_local < water_freezing)
                 {
                     // Polar and elevation ice
                     red_data[idx] = 167 + 67 * r_weight;
                     green_data[idx] = 181 + 57 * r_weight;
                     blue_data[idx] = 190 + 63 * r_weight;
-                    if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
+                    // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds
                 else if (height_value < has_water && (T_local < Tboil))
                 {   // Ocean
                     sh = height_value*inv_h2o_level;
-                    sh *= (Tboil - T_local) * 0.01;
+                    sh *= (Tboil - T_base) / (Tboil - water_freezing);
                     sh = pow(sh, 20);                                                           // shallowness multiplied to show water optical density
                     red_data[idx] = (12+16*sh);
                     green_data[idx] = (24+168*sh);
                     blue_data[idx] = (192+32*sh);
-                    if (create_bump) bump_data[idx] = 0;
+                    // if (create_bump) bump_data[idx] = 0;
                 }
                 else if (T_local > veg_max_temp)
                 {   // Beach or desert sand
@@ -1176,7 +1177,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     green_data[idx] = 200 * r_weight;
                     blue_data[idx] = 150 * r_weight;
                 }
-                else if (T_local >= veg_min_temp && (!tidal_locked || psi >= half_pi))          // vegetation only on the day side
+                else if (T_local >= veg_min_temp && (!tidal_locked_to_star || psi >= half_pi))          // vegetation only on the day side
                 {   // Forests
                     red_data[idx] = vegetation_r * r_weight;
                     green_data[idx] = vegetation_g * r_weight;

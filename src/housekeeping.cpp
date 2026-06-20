@@ -121,13 +121,21 @@ bool compute_object_location(CelestialObject* cel)
     switch (cel->typeclass())
     {
         case class_star:
-        if ((star_in_box = (i ? ((Star*)cel)->is_in_visible_box(Point(here)) : true))) num_stars_in_box++;              // ANC
+        if ((star_in_box = (i
+            ? (((Star*)cel)->is_in_visible_box(Point(here))
+                || (cbolbls_selected_idx == 6 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == 7 && (((Star*)cels[i])->has_hz_planets) )
+                )
+            : true))) num_stars_in_box++;              // ANC
         if (i > 0)
         {
             ((Star*)cel)->tmp_vis_flag = star_in_box;
             if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj)
             {
-                if (!star_in_box && !((Star*)cel)->is_universally_visible())
+                if (!star_in_box && !((Star*)cel)->is_universally_visible()
+                    && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
+                    && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) )
+                    )
                 {
                     cel->drawnx = cel->drawny = -1e9;
                     return false;

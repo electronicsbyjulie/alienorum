@@ -915,12 +915,16 @@ void draw_objects()
         if (cls == class_star
             && i
             && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
-            && !((Star*)cels[i])->tmp_vis_flag)
+            && !((Star*)cels[i])->tmp_vis_flag
+            && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
+            && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) ))
             continue;
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i] - sky_mag_shift;
-        if (appmag > 6.5 && i) continue;
+        if (appmag > 6.5 && i
+            && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
+            && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) )) continue;
 
         bloomrad = fabs(bloomrad_cache[i]);
         flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;

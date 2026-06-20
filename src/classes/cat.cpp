@@ -2179,7 +2179,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                             do_search = true;       // e.g. 55 Cnc B
 
                         if (!strcmp(star_name.substr(0, 5).c_str(), "2MASS")) do_search = false;
-                        if (!strcmp(star_name.substr(0, 6).c_str(), "Kepler")) do_search = false;
+                        if (!strcmp(star_name.substr(0, 6).c_str(), "Kepler"))
+                            do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "CoRoT")) do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) do_search = false;
                         if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) do_search = false;
@@ -2273,15 +2274,10 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     if (s_is_new) delete s;
                     continue;
                 }
-                if (fabs(s->right_ascension - star_ra) > fiftyseventh
-                        || fabs(s->declination - star_decl) > fiftyseventh
-                        || fabs(s->apparent_magnitude - star_vmag) > 0.5
-                    )
-                {
-                    s->type = star;
-                    strcpy(s->name, star_name.c_str());
-                    p->orbit->center = p->cenobj = s;
-                }
+
+                s->type = star;
+                strcpy(s->name, star_name.c_str());
+                p->orbit->center = p->cenobj = s;
 
                 s->right_ascension = star_ra;
                 s->declination = star_decl;
