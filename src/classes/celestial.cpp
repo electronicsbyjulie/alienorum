@@ -91,7 +91,7 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
             #ifdef _WIN32
             std::string cmd = (std::string)"7z e -y " + gzfilename;
             #else
-            std::string cmd = (std::string)"gunzip " + gzfilename;
+            std::string cmd = (std::string)"gunzip -k " + gzfilename;
             #endif
             std::cout << cmd << std::endl;
             std::system(cmd.c_str());
@@ -105,6 +105,7 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
 
 void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, double &i, double &w, double &a, double &e, double &m, double &p, double& precn, double& procarg, double& effe)
 {
+    long int h = num_osc - 1;
     if (!num_osc || for_epoch < osculating[0].epoch || for_epoch > osculating[h].epoch)
     {
         // If no osculating parameters, just use mean.
@@ -122,21 +123,26 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
     }
 
     // A maybe faster way to search.
-    long int l = num_osc/2, j = i/2;
+    long int l = num_osc/2, j = l/2;
     while (1)                           // DANGER!
     {
         if (l <= 0) break;
-        if (l >= num_osc) break;
-        if (j < 10) break;
+        if ((unsigned)l >= num_osc) break;
+        if (!j) break;
 
+        #if 0
+        std::cout << std::fixed << l << "/" << num_osc << ": " << osculating[l].epoch << " vs. " << for_epoch << " vs. "
+            << osculating[l+1].epoch << " +/-" << j << std::endl << std::flush;
+        #endif
         if (osculating[l].epoch > for_epoch) l -= j;
         else if (osculating[l+1].epoch < for_epoch) l += j;
+        else if (osculating[l].epoch <= for_epoch && osculating[l+1].epoch >= for_epoch) break;
         j /= 2;
     }
-    j = i - 13;
-    if (j < 0) j = 0;
-    h = i + 13;
-    for (; j <= h; j++)
+    long int k = l - 13;
+    if (k < 0) k = 0;
+    h = l + 13;
+    for (j = k; j <= h; j++)
     {
         if (osculating[j].epoch < for_epoch && osculating[j+1].epoch > for_epoch)
         {
@@ -154,6 +160,10 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
         }
     }
 
+    #if 0
+    std::cout << std::fixed << k << "-" << h << "/" << num_osc << ": " << osculating[k].epoch << " vs. " << for_epoch << " vs. "
+        << osculating[h].epoch << " +/-" << j << std::endl << std::flush;
+    #endif
     assert(false);
 }
 
@@ -557,9 +567,9 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
 
-    double tmnow_as_epoch = (tmnow - J2000_TIME_T) + J2000;
-    double N, I, W, A, E, M, P, PN, PW, EFFE;
-    orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, E, M, P, PN, PW, EFFE);
+    double tmnow_as_epoch = (tmnow - J2000_TIME_T)/oneday + J2000;
+    double N, I, W, A, e, m, P, PN, PW, EFFE;
+    orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, e, m, P, PN, PW, EFFE);
 
     // Calculate orbit radians per second and seconds since epoch
     double rads_sec = (_pi * 2) / P;
@@ -572,15 +582,15 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double argperi = W + peri_adjustment;
 
     // Calculate current Mean Anomaly
-    double M = M + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
+    double M = m + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
     M = std::fmod(M, 2.0 * _pi);
 
     // Solve for Eccentric Anomaly
-    double E = solve_Kepler(M, E);
+    double E = solve_Kepler(M, e);
 
     // Calculate position in orbital plane (x', y')
-    double x_plane = A * (std::cos(E) - E);
-    double y_plane = A * std::sqrt(1.0 - E * E) * std::sin(E);
+    double x_plane = A * (std::cos(e) - e);
+    double y_plane = A * std::sqrt(1.0 - e * e) * std::sin(E);
 
     // Rotate to 3D Heliocentric Coordinates
     double cosO = std::cos(node);
@@ -612,7 +622,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         std::cerr << "CelestialObject::update_orbit_location() called on moon " << name
             << " of planet " << orbit->center->name
             << " of star " << orbit->center->orbit->center->name
-            << " without Laplace plane." << std::endl;
+            << " without Laplace plane." << std::endl << std::flush;
         throw 0xbadc0de;
     }
 
@@ -1476,7 +1486,6 @@ OsculatingElement *alienorum::OsculatingElement::read_from_file(std::string file
 
     unsigned long int num_elements = fs/372;                    // should be plenty.
     OsculatingElement *result = new OsculatingElement[num_elements];
-    memset(result, 0, num_elements*sizeof(OsculatingElement));
 
     FILE *fp = fopen(filename.c_str(), "r");
     if (!fp) return nullptr;
@@ -1498,13 +1507,13 @@ OsculatingElement *alienorum::OsculatingElement::read_from_file(std::string file
             }
             else
             {
-                if (variable = strstr(buffer, "EC=")) result[i].eccentricity = atof(&variable[3]);
-                if (variable = strstr(buffer, "IN=")) result[i].inclination = atof(&variable[3]) * fiftyseventh;
-                if (variable = strstr(buffer, "OM=")) result[i].ascending_node = atof(&variable[3]) * fiftyseventh;
-                if (variable = strstr(buffer, "W =")) result[i].arg_perifocus = atof(&variable[3]) * fiftyseventh;
-                if (variable = strstr(buffer, "MA=")) result[i].mean_anomaly = atof(&variable[3]) * fiftyseventh;
-                if (variable = strstr(buffer, "A =")) result[i].semimajor_axis = atof(&variable[3]) * 1000;
-                if (variable = strstr(buffer, "PR=")) result[i].period = atof(&variable[3]);
+                if ((variable = strstr(buffer, "EC="))) result[i].eccentricity = atof(&variable[3]);
+                if ((variable = strstr(buffer, "IN="))) result[i].inclination = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "OM="))) result[i].ascending_node = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "W ="))) result[i].arg_perifocus = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "MA="))) result[i].mean_anomaly = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "A ="))) result[i].semimajor_axis = atof(&variable[3]) * 1000;
+                if ((variable = strstr(buffer, "PR="))) result[i].period = atof(&variable[3]);
             }
         }
     }
