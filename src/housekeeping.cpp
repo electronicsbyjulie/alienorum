@@ -112,12 +112,13 @@ void set_viewer_location_and_plane()
 double dispw, disph, celmasslim;
 bool compute_object_location(CelestialObject* cel)
 {
-    num_stars_in_box = 0;
     bool star_in_box;
     int i = cel->seqno;
 
     CelestialLocation tmp = cel->location - here;
     cel->tmprel = Point(tmp);
+    double AU_zoomed_squared = AU*AU*zoom*zoom;
+    mag_limit_adjusted = log(pow(magnbase, 6.5)*zoom) * invlogmagnbase;
     switch (cel->typeclass())
     {
         case class_star:
@@ -178,9 +179,9 @@ bool compute_object_location(CelestialObject* cel)
                 else if (cel->orbit &&
                     (
                         ((cel->mass < celmasslim)
-                        && (cel->tmprel.magnitude() > AU)
+                        && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
                     ))
-                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
+                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > mag_limit_adjusted))
                 {
                     cel->drawnx = cel->drawny = -1e9;
                     return false;
@@ -203,9 +204,9 @@ bool compute_object_location(CelestialObject* cel)
                 else if (cel->orbit &&
                     (
                             ((cel->mass >= celmasslim)
-                        && (cel->tmprel.magnitude() > AU)
+                        && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
                     ))
-                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > 6.5))
+                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > mag_limit_adjusted))
                 {
                     cel->drawnx = cel->drawny = -1e9;
                     return false;
@@ -227,6 +228,7 @@ bool compute_object_location(CelestialObject* cel)
 
 void compute_object_draw_coordinates()
 {
+    num_stars_in_box = 0;
     if (!ncelobjs) return;
     if (!bx_cache) bx_cache = new int[MAX_CELOBJS];
     if (!by_cache) by_cache = new int[MAX_CELOBJS];

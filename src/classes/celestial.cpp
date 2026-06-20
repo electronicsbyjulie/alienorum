@@ -147,15 +147,18 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
         if (osculating[j].epoch < for_epoch && osculating[j+1].epoch > for_epoch)
         {
             double coeff1 = (for_epoch - osculating[j].epoch) / (osculating[j+1].epoch - osculating[j].epoch), coeff0 = 1.0 - coeff1;
-            n = coeff0 * osculating[j].ascending_node   + coeff1 * osculating[j+1].ascending_node;
+            // n = coeff0 * osculating[j].ascending_node   + coeff1 * osculating[j+1].ascending_node;
+            n = interpolate_angles(osculating[j].ascending_node, osculating[j+1].ascending_node, coeff1);
             i = coeff0 * osculating[j].inclination      + coeff1 * osculating[j+1].inclination;
-            w = coeff0 * osculating[j].arg_perifocus    + coeff1 * osculating[j+1].arg_perifocus;
+            // w = coeff0 * osculating[j].arg_perifocus    + coeff1 * osculating[j+1].arg_perifocus;
+            w = interpolate_angles(osculating[j].arg_perifocus, osculating[j+1].arg_perifocus, coeff1);
             a = coeff0 * osculating[j].semimajor_axis   + coeff1 * osculating[j+1].semimajor_axis;
             e = coeff0 * osculating[j].eccentricity     + coeff1 * osculating[j+1].eccentricity;
-            m = coeff0 * osculating[j].mean_anomaly     + coeff1 * osculating[j+1].mean_anomaly;
+            // m = coeff0 * osculating[j].mean_anomaly     + coeff1 * osculating[j+1].mean_anomaly;
+            m = 0; // interpolate_angles(osculating[j].mean_anomaly, osculating[j+1].mean_anomaly, coeff1);
             p = coeff0 * osculating[j].period           + coeff1 * osculating[j+1].period;
             precn = procarg = 0;
-            effe = for_epoch;
+            effe = osculating[j].T_periapsis;
             return;
         }
     }
@@ -589,7 +592,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double E = solve_Kepler(M, e);
 
     // Calculate position in orbital plane (x', y')
-    double x_plane = A * (std::cos(e) - e);
+    double x_plane = A * (std::cos(E) - e);
     double y_plane = A * std::sqrt(1.0 - e * e) * std::sin(E);
 
     // Rotate to 3D Heliocentric Coordinates
@@ -1511,6 +1514,7 @@ OsculatingElement *alienorum::OsculatingElement::read_from_file(std::string file
                 if ((variable = strstr(buffer, "IN="))) result[i].inclination = atof(&variable[3]) * fiftyseventh;
                 if ((variable = strstr(buffer, "OM="))) result[i].ascending_node = atof(&variable[3]) * fiftyseventh;
                 if ((variable = strstr(buffer, "W ="))) result[i].arg_perifocus = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "Tp="))) result[i].T_periapsis = atof(&variable[3]);
                 if ((variable = strstr(buffer, "MA="))) result[i].mean_anomaly = atof(&variable[3]) * fiftyseventh;
                 if ((variable = strstr(buffer, "A ="))) result[i].semimajor_axis = atof(&variable[3]) * 1000;
                 if ((variable = strstr(buffer, "PR="))) result[i].period = atof(&variable[3]);

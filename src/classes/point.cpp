@@ -255,6 +255,19 @@ double find_angle_along_vector(Point pt1, Point pt2, Point source, Point v)
     return a2 - a1;
 }
 
+double interpolate_angles(double theta1, double theta2, double coeff1)
+{
+    double coeff0 = 1.0 - coeff1;
+    double delta = fabs(theta1 - theta2);
+    if (theta1 < theta2)
+    {
+        if (fabs(theta1 + _pi + _pi - theta2) < delta) theta1 += _pi+_pi;
+    }
+    else if (fabs(theta1 - _pi - _pi - theta2) < delta) theta1 -= _pi+_pi;
+
+    return coeff0 * theta1 + coeff1 * theta2;
+}
+
 Point rotate3D(Point point, Point source, Point axis, double theta)
 {
     // Originally from https://web.archive.org/web/20131229124319/http://inside.mines.edu/fs_home/gmurray/ArbitraryAxisRotation/

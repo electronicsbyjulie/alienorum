@@ -51,6 +51,7 @@ namespace alienorum
         double inclination = 0;
         double ascending_node = 0;
         double arg_perifocus = 0;
+        double T_periapsis = 0;
         double mean_anomaly = 0;
         double semimajor_axis = 0;
         double period = 0;

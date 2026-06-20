@@ -783,7 +783,7 @@ bool draw_one_object(int i)
             ))
         || ((cels[i]->cenobj == mycenobj) && lbl_localsys
             && ((cels[i]->mass >= lmasslim)
-                || (vmag_cache[i] < 2.5)
+                || (vmag_cache[i] < (mag_limit_adjusted-4))
                 || (cels[i]->tmprel.magnitude() < AU)
                 )
             )
@@ -829,6 +829,7 @@ void draw_objects()
 
     double mycensq = mycenobj->tmprel.squared_magnitude();
     double layer_cutoff = mycensq * 1.1 * zoom * zoom;
+    mag_limit_adjusted = log(pow(magnbase, 6.5)*zoom) * invlogmagnbase;
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -910,7 +911,7 @@ void draw_objects()
             continue;
         }
 
-        cel_obj_class cls = cels[i]->typeclass();
+        /*cel_obj_class cls = cels[i]->typeclass();
 
         if (cls == class_star
             && i
@@ -918,11 +919,11 @@ void draw_objects()
             && !((Star*)cels[i])->tmp_vis_flag
             && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
             && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) ))
-            continue;
+            continue;*/
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i] - sky_mag_shift;
-        if (appmag > 6.5 && i
+        if (appmag > mag_limit_adjusted && i
             && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
             && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) )) continue;
 
