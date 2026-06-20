@@ -129,6 +129,13 @@ HD208450                (system inclination)                    090.8       076.
 HD143275                Del Sco B               3.41105e+8      174.0       036         357.7       2.119e+12   .936        0                   2011.504                                        8.2                                 20000
 HD283654                DF Tauri B              1.67e+9         036.7       040.4       286.6       2.647e+12   .172        0                   2024.0                                          0.42        1.6                      3433
 HD4614                  Achird B                1.490e+10       098.31      034.938     088.34      1.055e+13   .494        0                   1889.6                                          0.5487      0.57        0.082        4011
+HD10830                 Eps Scl B               6.9372e+10                  105.3                   6.817e+13                                                                                   0.84        0.74        0.30         4973
+HIP116132               EQ Peg B                7.228624e+9     255.0919    130.065     307.1416    4.7325e+12  .108047     0                   1864.05415                                      0.16527     0.303       0.008        3072
+HD200499                Eta Cap B               8.789e+8        171.1       162.6       238.2       2.27e+12    .410        0                   2002.46                         +3.72           1.21
+HD93308                 (stellar rotation)                      049         049
+HD155125                Eta Oph B               2.770e+9        039.241     096.305     275.90      4.645e+12   .93077      0                   2024.526                                        2.03        2.0         21           8700
+HD9270                  (system inclination)                    032.8       058.5
+
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
