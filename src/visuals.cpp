@@ -215,6 +215,11 @@ int draw_sphere(CelestialObject* cel, double arad)
     daylight.green /= f;
     daylight.blue /= f;
 
+    // Compensate for the eye's white balance adjustment
+    daylight.red = pow(daylight.red, 0.333);
+    daylight.green = pow(daylight.green, 0.333);
+    daylight.blue = pow(daylight.blue, 0.333);
+
     if (wireframe)
     {
         Color wcol = Color::color_from_magnitude_indices(0, cel->BV_color);
