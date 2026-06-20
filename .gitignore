@@ -5,3 +5,11 @@ maps
 catalogs
 imgui.ini
 *.json
+*[m-o][d-f]e[c-e]*
+*[e-g][t-v][b-d][j-l]*
+assets/mascot*
+ephemerides/*.txt
+wget-log*
+a[h-j]*
+!*needle*
+*_legacy*

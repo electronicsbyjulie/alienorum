@@ -2769,6 +2769,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                 ((Star*)p->get_light_center())->has_planets++;
                 if (p->is_in_con_HZ()) ((Star*)p->get_light_center())->has_hz_planets++;
             }
+
+            if (p->orbit && p->orbit->center) p->orbit->read_osc_elements(p->name);
         }
         catch (...)
         {

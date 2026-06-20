@@ -44,6 +44,20 @@ namespace alienorum
 
     class CelestialObject;
 
+    struct OsculatingElement
+    {
+        double epoch = 0;
+        double eccentricity = 0;
+        double inclination = 0;
+        double ascending_node = 0;
+        double arg_perifocus = 0;
+        double mean_anomaly = 0;
+        double semimajor_axis = 0;
+        double period = 0;
+
+        static OsculatingElement* read_from_file(std::string filename, uint64_t *elements_read);
+    };
+
     class Orbit
     {
         public:
@@ -63,8 +77,15 @@ namespace alienorum
         double period = 0;                          // seconds
 
         Rotation laplace;
+        OsculatingElement *osculating = nullptr;
+        uint64_t num_osc = 0;
 
         CelestialLocation compute_3d_location(double epoch);
+        bool read_osc_elements(std::string cel_name);
+        void interpolate_osculating_e(double for_epoch,
+            double& n, double& i, double& w, double& a, double& e, double& m, double& p,
+            double& precn, double& procarg,         // Bescause we interpolate, we only will die without these if using mean elements.
+            double& eff_epoch);
         void compute_period(double my_mass = 0);
         void compute_semimajor_axis(double my_mass = 0);
         void compute_center_mass(double my_mass = 0);
