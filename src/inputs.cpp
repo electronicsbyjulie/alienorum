@@ -313,7 +313,7 @@ void process_key_cmd_char(char c)
         save_viewer_latlon = true;
         set_viewer_location_and_plane();
         global_brightness = default_brightness;
-        show_consln = show_grid = show_labels = true;
+        show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = true;
         show_orbits = false;
         cbolbls_selected_idx = 0;
         appmagn_lblcut = 2.5;

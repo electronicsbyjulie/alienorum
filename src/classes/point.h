@@ -122,6 +122,7 @@ Point compute_normal(Point pt1, Point pt2, Point pt3);
 double find_angle(double dx, double dy);
 double find_3D_angle(Point pt1, Point pt2, Point source);
 double find_angle_along_vector(Point pt1, Point pt2, Point source, Point v);
+double interpolate_angles(double theta1, double theta2, double coeff1);
 Rotation align_points_3d(Point point, Point align, Point center);
 Point rotate3D(Point point, Point source, Point axis, double theta);
 Rotation system_plane_from_incl_and_node(double inclination, double node, Point system_center = Point(0,0,0));

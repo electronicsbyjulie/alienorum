@@ -48,6 +48,7 @@ bool explorer = false;
 bool show_taucalc = false;
 bool hide_mouse = true;
 bool searched = false;
+double mag_limit_adjusted = 6.5;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Bayer", "Flamsteed",
     "Sunlike", "Has Planets", "Planet in HZ", "Binary Orbit", "Known Poles" };
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
