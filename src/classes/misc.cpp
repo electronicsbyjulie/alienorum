@@ -99,10 +99,13 @@ int Grkno_from_abbrev(char *abbrev)
     for (i=0; i<24; i++)
     {
         if (Greek_letter[i][0] == abbrev[0]
-            && Greek_letter[i][1] == abbrev[1]
-            && Greek_letter[i][2] == abbrev[2]
-            )
-            return i;
+            && Greek_letter[i][1] == abbrev[1])
+        {
+            if (Greek_letter[i][2] == abbrev[2])
+                return i;
+            if (!Greek_letter[i][2] && abbrev[2] <= ' ')
+                return i;
+        }
     }
     return -1;
 }

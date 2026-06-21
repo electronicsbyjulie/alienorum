@@ -76,12 +76,36 @@ Bet Ari, Gam2Ari
 ~Aur, Auriga, Aurigae
 Alp Aur, Eps Aur
 Eps Aur, Eta Aur
-Eta Aur, Zet Aur
-Zet Aur, Iot Aur
-Iot Aur, Bet Tau
-Bet Tau, The Aur
-The Aur, Bet Aur
-Bet Aur, Alp Aur
+11  Aur, Zet Aur
+Zet Aur, Eps Aur
+Iot Aur, Chi Aur
+Chi Aur, 14  Aur
+14  Aur, 16  Aur
+16  Aur, Phi Aur
+Phi Aur, Chi Aur
+Chi Aur, The Aur
+Bet Aur, The Aur
+The Aur, 40  Aur
+40  Aur, Tau Aur
+Tau Aur, Ups Aur
+Ups Aur, The Aur
+Bet Aur, Lam Aur
+Lam Aur, 11  Aur
+11  Aur, Iot Aur
+11  Aur, Ome Aur
+Ome Aur, 2   Aur
+Lam Aur, Eta Aur
+Bet Aur, 35  Aur
+35  Aur, Psi1Aur
+Psi1Aur, Psi6Aur
+Psi6Aur, 47  Aur
+35  Aur, Psi4Aur
+Psi4Aur, Psi7Aur
+Psi7Aur, Psi2Aur
+45  Aur, Omi Aur
+Del Aur, 45  Aur
+35  Aur, Omi Aur
+Omi Aur, Del Aur
 ~Boo, Bootes, Bootis
 Alp Boo, Rho Boo
 Rho Boo, Gam Boo
@@ -129,9 +153,6 @@ Alp CMa, Omi2CMa
 Omi2CMa, Del CMa
 Del CMa, Eps CMa
 Eps CMa, Zet CMa
-Del CMa, 28  CMa
-28  CMa, Eta CMa
-28  CMa, Tau CMa
 Del CMa, Ome CMa
 Ome CMa, Eta CMa
 Ome CMa, Tau CMa
@@ -199,6 +220,7 @@ HD105382, Rho Cen
 ~Cep, Cepheus, Cephei
 Alp Cep, Bet Cep
 Bet Cep, Gam Cep
+Bet Cep, Iot Cep
 Gam Cep, Iot Cep
 Iot Cep, Zet Cep
 Zet Cep, Alp Cep
@@ -232,8 +254,15 @@ Del Col, Kap Col
 Kap Col, Gam Col
 Gam Col, Bet Col
 Bet Col, Alp Col
-Bet Col, Eta Col
+The Col, Eta Col
 Alp Col, Eps Col
+Kap Col, The Col
+The Col, Xi  Col
+Xi  Col, Bet Col
+Gam Col, Lam Col
+Lam Col, Mu  Col
+Mu  Col, Alp Col
+Eps Col, Omi Col
 ~Com, Coma Berenices, Comae Berenices
 Alp Com, Bet Com
 Bet Com, Gam Com
@@ -292,9 +321,15 @@ Del Del, Bet Del
 ~Dor, Dorado, Doradus
 Gam Dor, Alp Dor
 Alp Dor, Zet Dor
-Zet Dor, Bet Dor
-Bet Dor, Del Dor
+Eps Dor, Del Dor
 Bet Dor, HD40409
+HD40409, Eta2Dor
+Alp Dor, Kap Dor
+Kap Dor, The Dor
+The Dor, Nu  Dor
+Nu  Dor, Eta2Dor
+Bet Dor, Lam Dor
+Lam Dor, Zet Dor
 ~Dra, Draco, Draconis
 Gam Dra, Bet Dra
 Bet Dra, Nu 2Dra
@@ -517,9 +552,21 @@ Gam Lup, The Lup
 2   Lyn, 15  Lyn
 15  Lyn, 21  Lyn
 21  Lyn, 31  Lyn
+15  Lyn, 16  Lyn
+16  Lyn, 31  Lyn
 31  Lyn, HD76943
 HD76943, 38  Lyn
 38  Lyn, Alp Lyn
+2   Lyn, 1   Lyn
+1   Lyn, 12  Lyn
+12  Lyn, 15  Lyn
+21  Lyn, 27  Lyn
+27  Lyn, 24  Lyn
+24  Lyn, 29  Lyn
+29  Lyn, 30  Lyn
+31  Lyn, 34  Lyn
+34  Lyn, 36  Lyn
+36  Lyn, 42  Lyn
 ~Lyr, Lyra, Lyrae
 13  Lyr, Alp Lyr
 Alp Lyr, Kap Lyr
@@ -664,6 +711,10 @@ Tau Phe, HD142
 ~Pic, Pictor, Pictoris
 Alp Pic, Gam Pic
 Gam Pic, Bet Pic
+Bet Pic, Del Pic
+Del Pic, Alp Pic
+Gam Pic, Iot Pic
+Bet Pic, Eta2Pic
 ~Psc, Pisces, Piscium
 Gam Psc, 7   Psc
 7   Psc, The Psc
@@ -899,10 +950,14 @@ Del Vir, Eps Vir
 ~Vol, Volans, Volantis
 Alp Vol, Bet Vol
 Bet Vol, Eps Vol
+Eps Vol, Alp Vol
 Eps Vol, Zet Vol
-Zet Vol, Gam2Vol
+Zet Vol, Kap1Vol
 Gam2Vol, Del Vol
+Gam2Vol, Eps Vol
 Del Vol, Eps Vol
+Kap1Vol, The Vol
+The Vol, Eps Vol
 ~Vul, Vulpecula, Vulpeculae
 13  Vul, Alp Vul
 Alp Vul, 1   Vul
