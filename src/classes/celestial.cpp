@@ -100,6 +100,9 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
     }
 
     osculating = OsculatingElement::read_from_file(filename, &num_osc);
+    #ifdef DEBUG
+    std::cout << "Read " << num_osc << " osculating ephemerides for " << cel_name << std::endl << std::flush;
+    #endif
     return (num_osc > 0);
 }
 
@@ -144,7 +147,7 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
     h = l + 13;
     for (j = k; j <= h; j++)
     {
-        if (osculating[j].epoch < for_epoch && osculating[j+1].epoch > for_epoch)
+        if (osculating[j].epoch <= for_epoch && osculating[j+1].epoch >= for_epoch)
         {
             double coeff1 = (for_epoch - osculating[j].epoch) / (osculating[j+1].epoch - osculating[j].epoch), coeff0 = 1.0 - coeff1;
             // n = coeff0 * osculating[j].ascending_node   + coeff1 * osculating[j+1].ascending_node;

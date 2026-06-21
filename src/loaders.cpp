@@ -179,10 +179,6 @@ bool look_for_catalogs()
 
 bool save_universe()
 {
-    mtx.lock();
-    loading_msg = std::string("Writing Universe file...");
-    mtx.unlock();
-
     fstream fs;
     fs.open("universe.json", std::ios::out);
     if (fs)
