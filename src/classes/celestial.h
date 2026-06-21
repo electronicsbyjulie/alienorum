@@ -159,7 +159,7 @@ namespace alienorum
         bool user_edited = false;
 
         cel_obj_type type = star;
-        char name[40];
+        char name[name_max_len];
         std::string origname = "", origcenname = "";
 
         Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,

@@ -34,7 +34,7 @@ void Star::set_component(char comp, Star* compA)
     }
     else orbit = nullptr;
 
-    origname = name;
+    if (!user_edited || user_added) origname = name;
     if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
@@ -158,7 +158,7 @@ void Star::rename_from_Bayer_Flamsteed()
         }
     }
 
-    origname = name;
+    if (!user_edited || user_added) origname = name;
     if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
@@ -335,7 +335,7 @@ void Star::gotta_be_named_something()
         }
     }
 
-    origname = name;
+    if (!user_edited || user_added) origname = name;
     if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 

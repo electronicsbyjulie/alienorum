@@ -440,7 +440,7 @@ void set_center_objects()
             }
         }
 
-        cels[i]->origname = cels[i]->name;
+        if (!cels[i]->user_edited || cels[i]->user_added) cels[i]->origname = cels[i]->name;
         if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
 

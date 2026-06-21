@@ -27,7 +27,7 @@
 using namespace std;
 
 extern SDL_Window* window;
-extern char lookfor[40], edit_name[40], looksat[40], lookast[40];
+extern char lookfor[name_max_len], edit_name[name_max_len], looksat[name_max_len], lookast[name_max_len];
 extern bool edtname_dirty;
 extern std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 extern std::filesystem::path p;
@@ -42,7 +42,7 @@ extern bool is_click;
 extern double frame_dur, best_frame_dur, scrollhold;
 extern bool splash, magnitude_test, redo_proper_motions, fdlg_shown;
 extern CelestialObject npdummy;
-extern char xplorfor[40];
+extern char xplorfor[name_max_len];
 extern CelestialObject *last_xplored_cen;
 
 #endif

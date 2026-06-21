@@ -13,6 +13,8 @@
 // #include "EasyBMP/EasyBMP.hpp"
 #include "noise.h"
 
+#define name_max_len 40
+
 using namespace alienorum;
 using json = nlohmann::json;
 

@@ -25,7 +25,7 @@ void draw_status_window(ImGuiIO& io)
 
     /////////////////////////////////////////////////////
 
-    if (ImGui::InputText("##find", lookfor, 40, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
+    if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
     ImGui::SameLine();
     if (ImGui::Button("Find")) lookfor_cb();
 
@@ -501,7 +501,7 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::Text("%s", "Name");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid*2);
-    if (ImGui::InputText("##edtname", edit_name, 40, 0))
+    if (ImGui::InputText("##edtname", edit_name, name_max_len, 0))
     {
         strcpy(cels[editidx]->name, edit_name);
         cel->user_edited = true;
@@ -1507,7 +1507,7 @@ void draw_system_explorer(ImGuiIO& io)
 
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
-    ImGui::InputText("##xplorsearch", xplorfor, 40, 0);         // Replace the ## string with a unique id and text_data with a char array.
+    ImGui::InputText("##xplorsearch", xplorfor, name_max_len, 0);
 
     int i, j, l, xplorlen = strlen(xplorfor);
     std::vector<int> list_item_celids;
@@ -1653,7 +1653,7 @@ void draw_ast_window(ImGuiIO & io)
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
-    if (ImGui::InputText("##lookast", lookast, 40, 0)) astlistlines.clear();
+    if (ImGui::InputText("##lookast", lookast, name_max_len, 0)) astlistlines.clear();
 
     int i, l, looklen = strlen(lookast);
     unsigned int n=0, nasts = astorb.size();
@@ -1804,7 +1804,7 @@ void draw_sat_window(ImGuiIO& io)
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
-    ImGui::InputText("##looksat", looksat, 40, 0);
+    ImGui::InputText("##looksat", looksat, name_max_len, 0);
 
     int nsats = sat_data.size(), i, l, looklen = strlen(looksat);
     int n=0;

@@ -77,8 +77,8 @@ int main (int argc, char** argv)
     by_cache = new int[MAX_CELOBJS];
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
 
-    memset(lookfor, 0, 40);
-    memset(looksat, 0, 40);
+    memset(lookfor, 0, name_max_len);
+    memset(looksat, 0, name_max_len);
 
     for (l=1; l<argc; l++)
     {

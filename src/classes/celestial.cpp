@@ -495,6 +495,7 @@ bool CelestialObject::from_json(json j)
     {
         std::string str;
         j.at("!name").get_to(str);
+        if (str.size() >= name_max_len) str = str.substr(0, name_max_len-1);
         strcpy(name, str.c_str());
     } catch (...) { ; }
     try { j.at("!origname").get_to(origname); } catch (...) { ; }

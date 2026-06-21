@@ -5,7 +5,7 @@ using namespace alienorum;
 
 // IMPORTANT: Any variables defined here must also be declared extern in globals.h.
 SDL_Window* window;
-char lookfor[40], edit_name[40], looksat[40], lookast[40];
+char lookfor[name_max_len], edit_name[name_max_len], looksat[name_max_len], lookast[name_max_len];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
@@ -20,5 +20,5 @@ bool is_click;
 double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
 bool splash = true, magnitude_test = false, redo_proper_motions = true, fdlg_shown = false;
 CelestialObject npdummy;
-char xplorfor[40];
+char xplorfor[name_max_len];
 CelestialObject *last_xplored_cen = nullptr;
