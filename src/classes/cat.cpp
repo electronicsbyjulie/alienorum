@@ -2517,7 +2517,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             int bs = trim(buffer).size();
             if (bs >= 180)
             {
-                for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
                 s = new Star();
                 s->distance_known = true;
                 append_cel(s);

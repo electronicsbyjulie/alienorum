@@ -366,7 +366,33 @@ void set_center_objects()
 
         // System center integrity
         while (cels[i]->cenobj->orbit && cels[i]->cenobj->orbit->center && cels[i]->cenobj->orbit->center->typeclass() != class_galaxy)
+        {
+            // Detect circular references.
+            if (cels[i]->cenobj->orbit->center == cels[i])
+            {
+                bool cels_i_is_true_center;
+                if (cels[i]->type < cels[i]->cenobj->type) cels_i_is_true_center = true;
+                else if (cels[i]->type > cels[i]->cenobj->type) cels_i_is_true_center = false;
+                else if (cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude) cels_i_is_true_center = true;
+                else if (cels[i]->absolute_magnitude > cels[i]->cenobj->absolute_magnitude) cels_i_is_true_center = false;
+
+                if (cels_i_is_true_center)
+                {
+                    cels[i]->cenobj = cels[i];
+                    delete cels[i]->orbit;
+                    cels[i]->orbit = nullptr;
+                }
+                else
+                {
+                    cels[i]->cenobj->cenobj = cels[i]->cenobj;
+                    delete cels[i]->cenobj->orbit;
+                    cels[i]->cenobj->orbit = nullptr;
+                }
+                break;
+            }
             cels[i]->cenobj = cels[i]->cenobj->orbit->center;
+        }
+
         if (cels[i]->type == star)
         {
             if (cels[i]->orbit && cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude)

@@ -812,7 +812,7 @@ bool draw_one_object(int i)
         }
         ImVec2 sz = ImGui::CalcTextSize(dispname);
         ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
-            rgba_apply_redlight(global_style.objlbl_color),
+            rgba_apply_redlight((i == selected) ? global_style.selected_color : global_style.objlbl_color),
             dispname);
     }
     return true;
@@ -965,7 +965,6 @@ void draw_objects()
         if (!cels[1]) return;
     }
 
-    // Labels
     if (!cels[1]) return;
 
     // Near objects
