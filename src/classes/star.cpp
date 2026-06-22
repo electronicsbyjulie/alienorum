@@ -17,6 +17,13 @@ char Star::get_component()
 void Star::set_component(char comp, Star* compA)
 {
     if (!compA) compA = this;
+    // int l = compA ? strlen(compA->name) : 0;
+    // if (l && compA->HD != 114376 && compA->name[l-1] == 'B' && compA->name[l-2] == ' ')
+    /*if (!strcmp(compA->name, "GJ 57.1 B"))
+    {
+        std::cout << std::flush;
+    }*/
+
     assert(!multisys || (compA->multisys == multisys));
     if (!compA->multisys) compA->multisys = new StarMulti();
     multisys = compA->multisys;
@@ -431,22 +438,21 @@ bool Star::from_json(json j)
     return true;
 }
 
-void Star::make_companion_of(Star *A, char comp)
+void Star::make_companion_of(Star *orbcen, char comp)
 {
-    right_ascension = A->right_ascension;
-    declination = A->declination;
-    parallax = A->parallax;
-    distance = A->distance;
-    location = A->location;
-    strcpy(name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, comp)).c_str());
-    CCDM = A->CCDM;
-    proper_motion_RA = A->proper_motion_RA;
-    proper_motion_decl = A->proper_motion_decl;
-    visible_area = A->visible_area;
+    right_ascension = orbcen->right_ascension;
+    declination = orbcen->declination;
+    parallax = orbcen->parallax;
+    distance = orbcen->distance;
+    location = orbcen->location;
+    strcpy(name, (std::string(lop_component(orbcen->name)) + std::string(" ") + std::string(1, comp)).c_str());
+    CCDM = orbcen->CCDM;
+    proper_motion_RA = orbcen->proper_motion_RA;
+    proper_motion_decl = orbcen->proper_motion_decl;
+    visible_area = orbcen->visible_area;
     type = star;
 
-    // A->set_component('A', A);
-    set_component(comp, A);
+    set_component(comp, orbcen);
 }
 
 double Star::estimate_mass()

@@ -176,7 +176,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     double deg, mnt, sec, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
-    // StarMulti *current_multi = nullptr;
+    StarMulti *current_multi = nullptr;
     float current_multi_gjno = 0;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
@@ -191,6 +191,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
     FILE* fp = fopen(path.c_str(), "rb");
 
+    char lastcomp = 0;
     while (fgets(buffer, 300, fp))
     {
         s = new Star();
@@ -221,6 +222,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             if (field[6] == '.')
                 build_name += std::string(&field[6]);
         }
+        strcpy(s->name, build_name.c_str());
 
         //   9- 10  A2     ---     Comp     Components (A,B,C,... )
         read_field_onebased(buffer, 9, 10, field);
@@ -228,17 +230,27 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         std::string comp = trim(field);
         if (comp.size())
         {
+            if (current_multi_gjno >= 3001 && current_multi_gjno <= 4999
+                && fabs(f - current_multi_gjno) < 1.05
+                && field[0] > lastcomp
+                )
+                current_multi_gjno = f;                     // I have the urge to slap Gliese and Jahreiss upside the heads.
+
             if (fabs(current_multi_gjno-f) >= 0.05)
             {
-                // current_multi = nullptr;
+                current_multi = nullptr;
                 A = nullptr;
+                lastcomp = 0;
             }
+            else lastcomp = field[0];
 
             build_name += (std::string)" " + comp;
+            strcpy(s->name, build_name.c_str());
             if (field[0] == '-') field[0] = 'D';            // GJ 1255 fix
             if (field[0] == 'A') A = s;
+            if (current_multi) s->multisys = current_multi;
             s->set_component(field[0], A);
-            // current_multi = s->multisys;
+            current_multi = s->multisys;
             current_multi_gjno = f;
 
             // Special case for Proxima since Gliese et al couldn't be bothered to group it with Alp Cen AB.
@@ -447,7 +459,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     bool HDfound;
     double f;
     char comp = 0;
-    // StarMulti *current_multi = nullptr;
+    StarMulti *current_multi = nullptr;
     double current_multi_ra, current_multi_decl;
     #define ra_dec_multi_limit (fiftyseventh / 60)
 
@@ -608,13 +620,14 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
                 && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
                 )
             {
-                // current_multi = nullptr;
+                current_multi = nullptr;
                 current_multi_ra = s->right_ascension;
                 current_multi_decl = s->declination;
                 A = nullptr;
             }
+            if (current_multi) s->multisys = current_multi;
             s->set_component(buffer[49], A);
-            // current_multi = s->multisys;
+            current_multi = s->multisys;
             if (buffer[49] == 'A') A = s;
         }
 
@@ -988,6 +1001,11 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (s->ccdm_compseq)
         {
             A = hipcache[HIP];
+            if (A->multisys)
+            {
+                Star *a1 = A->multisys->get_member('A');
+                if (a1) A = a1;
+            }
             if (A->seqno < 0 || cels[A->seqno] != A) A = hipcache[HIP] = nullptr;
             if (!A->multisys) A->set_component('A', A);
             s = A->multisys->get_member(buffer[40]);
@@ -1097,17 +1115,20 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
 int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
 {
-    std::string namespath = "catalogs/WD/names.dat";
+    std::string namespath = "catalogs/WD_names.dat";
     std::string catpath = "catalogs/WD/catalog.dat";
     char buffer[1024];
     char field[32];
     int i, num_read = 0;
     double deg, mnt, sec, pm, pmtheta, vmag, absmag;
     std::map<std::string, Star*> exist_stars, comp_of_exist;
+    std::map<std::string, std::string> apply_names;
     std::map<std::string, char> comp;
     Star *s, *A;
 
-    FILE* fp = fopen(catpath.c_str(), "rb");
+    FILE* fp;
+
+    fp = fopen(namespath.c_str(), "rb");
     if (!fp) return 0;
 
     while (fgets(buffer, 1020, fp))
@@ -1116,94 +1137,34 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 1, 14, field);
         std::string star_name = trim(field);
 
-        if (star_name.c_str()[1] >= 'A' && star_name.c_str()[1] <= 'Z')
-        {
-            if (strcmp(star_name.substr(0,2).c_str(), "HD")
-                && strcmp(star_name.substr(0,2).c_str(), "BD")
-                && strcmp(star_name.substr(0,2).c_str(), "CD")
-                && strcmp(star_name.substr(0,2).c_str(), "CP")
-                ) continue;
-        }
-
-        //  17- 26  A10    ---     WD       White Dwarf (WD) number
+        //  15- 26  A10    ---     WD       White Dwarf (WD) number
         read_field_onebased(buffer, 15, 26, field);
         std::string WD = trim(field);
 
-        if (exist_stars.find(WD) != exist_stars.end()) continue;
-        if (comp_of_exist.find(WD) != comp_of_exist.end()) continue;
+        apply_names[WD] = star_name;
 
-        char lcomp = 0;
-        int l = star_name.size();
-        const char* cstr = star_name.c_str();
-        char c = cstr[l-1], penult = cstr[l-2], ante = cstr[l-3];
-        std::string nameA = "", name0 = "";
+        if (strlen(buffer) < 32) continue;
 
-        if (c >= 'B' && c <= 'Z' && penult <= '9')
-        {
-            lcomp = c;
-            name0 = nameA = star_name.substr(0, l-2);
-        }
-        else if (c >= 'a' && c <= 'z' && penult >= 'A' && penult <= 'Z' && ante <= '9')
-        {
-            lcomp = c & 0x5f;
-            lcomp = c;
-            nameA = star_name.substr(0, l-1);
-            name0 = star_name.substr(0, l-3);
-        }
+        //  29- 36  A7     ---     ID       Identifier (HD, HIP, GJ)
+        read_field_onebased(buffer, 29, 36, field);
+        std::string ID = trim(field);
 
+        //  38      A1     ---     Comp     Component
+        const char lcomp = buffer[37];
         comp[WD] = lcomp;
 
-        i = find_object(star_name.c_str(), true, 9e29);
-        if (i < 0)
+        Star *s = nullptr;
+        if (ID.size())
         {
-            if (lcomp)
-            {
-                i = find_object(nameA.c_str(), true, 9e29);
-                if (i<0) i = find_object(name0.c_str(), true, 9e29);
-                if (i<0)
-                {
-                    // Example: WD2124+191/BD+18 4794B: host star absent, ignore
-                    comp_of_exist[WD] = nullptr;
-                }
-                else
-                {
-                    // Example: WD1253+261/HD112313 B: create new companion
-                    comp_of_exist[WD] = (Star*)cels[i];
-                }
-            }
-            else
-            {
-                // Example: WD0347+171/BD+16 0516: not already present; add new
-                continue;
-            }
+            const char* c = ID.c_str();
+            i = find_object(c, true, 9e29);
+            if (i > 0 && i < ncelobjs) s = (Star*)cels[i];
         }
-        else
+
+        if (s)
         {
-            //  73- 78  F6.3   mag     Vmag    [6.4/24.3]? V or other magnitude (see n_Vmag)
-            read_field_onebased(buffer, 73, 78, field);
-            vmag = atof(field);
-
-            // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
-            read_field_onebased(buffer, 146, 150, field);
-            absmag = atof(field);
-
-            if (fabs(vmag - ((Star*)cels[i])->apparent_magnitude) > 1.5
-                && fabs(absmag - ((Star*)cels[i])->absolute_magnitude) > 1.5
-                )
-            {
-                // Example: WD0114-027/HD7672 B: names entry is incorrect, verify vmag/absmag
-                // TODO: Find out if this happens just a few times and hard code (eww!) a workaround,
-                // or if it happens often and requires more code thingie.
-                std::cout << "ERROR: Magnitudes of " << cels[i]->name << " and " << star_name << "/" << WD << " do not match." << std::endl << std::flush;
-                comp_of_exist[WD] = nullptr;
-            }
-            else
-            {
-                // Example: WD0642-166/Sirius B: update existing star, including WD #
-                // Example: WD1121+216/GJ 427: update existing star, including WD #
-                exist_stars[WD] = (Star*)cels[i];
-                std::cout << "Found " << (Star*)cels[i]->name << std::endl << std::flush;
-            }
+            if (lcomp <= 'A') exist_stars[WD] = s;
+            else comp_of_exist[WD] = s;
         }
     }
     fclose(fp);
@@ -1211,36 +1172,45 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
     fp = fopen(catpath.c_str(), "rb");
     if (!fp) return 0;
 
-    std::string prev_name = "kwyjibo";
+    std::string prev_WD = "kwyjibo";
     while (fgets(buffer, 1020, fp))
     {
         //   2- 11  A10    ---     WD      White Dwarf (WD) number (1)
         read_field_onebased(buffer, 2, 11, field);
 
-        std::string star_name = std::string("WD") + trim(field);
-        if (star_name == prev_name) continue;
-        if (exist_stars.find(star_name) != exist_stars.end())
+        std::string WD = std::string("WD") + trim(field);
+        if (WD == prev_WD) continue;
+        if (exist_stars.find(WD) != exist_stars.end())
         {
-            s = exist_stars[star_name];
+            s = exist_stars[WD];
             A = nullptr;
         }
-        else if (comp_of_exist.find(star_name) != comp_of_exist.end())
+        else if (comp_of_exist.find(WD) != comp_of_exist.end())
         {
-            A = comp_of_exist[star_name];
+            A = comp_of_exist[WD];
+            if (A->multisys)
+            {
+                s = A->multisys->get_member(comp[WD]);
+                Star *a1 = A->multisys->get_member('A');
+                if (a1) A = a1;
+            }
             if (!A) continue;
-            s = new Star();
-            strcpy(s->name, field);
-            s->make_companion_of(A, comp[star_name]);
+            if (!A->multisys) A->set_component('A', A);
+            if (!s) s = new Star();
+            strcpy(s->name, WD.c_str());
+            s->make_companion_of(A, comp[WD]);
             append_cel(s);
         }
         else
         {
             s = new Star();
-            strcpy(s->name, field);
+            strcpy(s->name, WD.c_str());
             append_cel(s);
             A = nullptr;
         }
         s->WD = field;
+        if (apply_names.find(WD) != apply_names.end())
+            strcpy(s->name, apply_names[WD].c_str());
 
         double ra, dec, ra2000, dec2000;
 
@@ -1294,12 +1264,12 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
 
         //  73- 78  F6.3   mag     Vmag    [6.4/24.3]? V or other magnitude (see n_Vmag)
         read_field_onebased(buffer, 73, 78, field);
-        double f = atof(field);
-        if (f) s->apparent_magnitude = f;
+        vmag = atof(field);
+        if (vmag) s->apparent_magnitude = vmag;
 
         //  82- 87  F6.3   mag     B-V     [-0.7/2]? B-V color index in the UBV system
         read_field_onebased(buffer, 82, 87, field);
-        f = atof(field);
+        double f = atof(field);
         if (f) s->BV_color = f;
 
         //  92- 97  F6.3   mag     U-B     [-9.9/1.4]? U-B color index in the UBV system
@@ -1309,8 +1279,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
 
         // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
         read_field_onebased(buffer, 146, 150, field);
-        f = atof(field);
-        if (f) s->absolute_magnitude = f;
+        absmag = atof(field);
+        if (absmag) s->absolute_magnitude = absmag;
 
         // 153-155  I3     kK      Teff    [10/170]? Effective temperature
         read_field_onebased(buffer, 153, 155, field);
@@ -1349,6 +1319,11 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
             s->distance = A->distance;
             s->distance_known = true;
         }
+        else
+        {
+            s->distance = s->distance_from_magnitudes(s->apparent_magnitude, s->absolute_magnitude);
+            s->distance_known = true;
+        }
 
         if (!s->absolute_magnitude && s->distance_known)
         {
@@ -1356,7 +1331,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
             s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
         }
 
-        prev_name = star_name;
+        prev_WD = WD;
     }
 
 
@@ -1503,6 +1478,11 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         // Estimate the semimajor axis
         double sma = sin(rho) * A->distance;
+        if (!s->orbit)
+        {
+            s->orbit = new Orbit();
+            s->orbit->center = s->cenobj = A;
+        }
         s->orbit->semimajor_axis = sma;
 
         // Figure the absolute magnitude

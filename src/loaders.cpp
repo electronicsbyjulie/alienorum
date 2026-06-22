@@ -308,7 +308,7 @@ void load_catalogs()
         cout << "Read " << nHIP << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
-    if (0) // have_WD)
+    if (have_WD)
     {
         mtx.lock();
         loading_msg = std::string("Loading White Dwarfs Catalog...");
