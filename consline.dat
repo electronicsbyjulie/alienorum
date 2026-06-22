@@ -113,13 +113,20 @@ Gam Boo, Lam Boo
 Lam Boo, The Boo
 Gam Boo, Bet Boo
 Bet Boo, Del Boo
-Del Boo, Mu 1Boo
+Del Boo, Psi Boo
+Psi Boo, Ome Boo
 Del Boo, Eps Boo
-Eps Boo, Alp Boo
-Alp Boo, Zet Boo
+Eps Boo, Rho Boo
+Pi 1Boo, Omi Boo
+Omi Boo, Xi  Boo
+Xi  Boo, Eps Boo
 Alp Boo, Eta Boo
 Eta Boo, Tau Boo
 Tau Boo, Ups Boo
+The Boo, 44  Boo
+44  Boo, 39  Boo
+39  Boo, 38  Boo
+38  Boo, 44  Boo
 ~Cae, Caelum, Caeli
 Alp Cae, Bet Cae
 Bet Cae, Gam1Cae
@@ -264,8 +271,34 @@ Lam Col, Mu  Col
 Mu  Col, Alp Col
 Eps Col, Omi Col
 ~Com, Coma Berenices, Comae Berenices
-Alp Com, Bet Com
-Bet Com, Gam Com
+37  Com, 15  Com
+43  Com, 41  Com
+41  Com, 31  Com
+31  Com, 30  Com
+30  Com, 15  Com
+15  Com, 14  Com
+14  Com, 16  Com
+16  Com, 13  Com
+13  Com, 12  Com
+12  Com, 4   Com
+16  Com, 17  Com
+17  Com, 21  Com
+21  Com, 18  Com
+18  Com, 23  Com
+23  Com, 26  Com
+26  Com, 35  Com
+35  Com, 39  Com
+35  Com, 40  Com
+15  Com, 9   Com
+9   Com, 4   Com
+4   Com, 7   Com
+7   Com, 8   Com
+8   Com, 20  Com
+20  Com, 24  Com
+24  Com, 25  Com
+25  Com, 27  Com
+27  Com, 36  Com
+36  Com, 42  Com
 ~CrA, Corona Australis, Coronae Australis
 Eps CrA, Gam CrA
 Gam CrA, Alp CrA
@@ -552,8 +585,6 @@ Gam Lup, The Lup
 2   Lyn, 15  Lyn
 15  Lyn, 21  Lyn
 21  Lyn, 31  Lyn
-15  Lyn, 16  Lyn
-16  Lyn, 31  Lyn
 31  Lyn, HD76943
 HD76943, 38  Lyn
 38  Lyn, Alp Lyn

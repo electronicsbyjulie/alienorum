@@ -176,7 +176,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     double deg, mnt, sec, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
-    StarMulti *current_multi = nullptr;
+    // StarMulti *current_multi = nullptr;
     float current_multi_gjno = 0;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
@@ -230,16 +230,15 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         {
             if (fabs(current_multi_gjno-f) >= 0.05)
             {
-                current_multi = nullptr;
+                // current_multi = nullptr;
                 A = nullptr;
             }
 
             build_name += (std::string)" " + comp;
-            s->multisys = current_multi;
             if (field[0] == '-') field[0] = 'D';            // GJ 1255 fix
             if (field[0] == 'A') A = s;
             s->set_component(field[0], A);
-            current_multi = s->multisys;
+            // current_multi = s->multisys;
             current_multi_gjno = f;
 
             // Special case for Proxima since Gliese et al couldn't be bothered to group it with Alp Cen AB.
@@ -366,6 +365,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             }
             else
             {
+                if (s->multisys)
+                {
+                    s->multisys->unlink();
+                    delete s->multisys;
+                }
                 delete s;
                 continue;
             }
@@ -443,7 +447,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     bool HDfound;
     double f;
     char comp = 0;
-    StarMulti *current_multi = nullptr;
+    // StarMulti *current_multi = nullptr;
     double current_multi_ra, current_multi_decl;
     #define ra_dec_multi_limit (fiftyseventh / 60)
 
@@ -462,6 +466,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     Star *s, *A = nullptr;
     while (fgets(buffer, 65520, fp))
     {
+        bool is_new = false;
+
         //   50- 51  A2     ---     ADScomp  ADS number components
         comp = buffer[49];          // Correct for one-based field description.
         if (comp < 'A') comp = 0;
@@ -496,11 +502,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         {
             s = new Star();
             s->type = star;
-        }
-
-        if (HD)
-        {
-            if (comp <= 'A') hdcache[HD] = s;
+            is_new = true;
         }
 
         read_field_onebased(buffer, 1, 4, field);
@@ -593,7 +595,11 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         sec = atof(field);
 
         s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
-        if (!s->right_ascension && !s->declination) continue;
+        if (!s->right_ascension && !s->declination)
+        {
+            if (is_new) delete s;
+            continue;
+        }
         s->epoch = J2000;
 
         if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
@@ -602,14 +608,13 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
                 && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
                 )
             {
-                current_multi = nullptr;
+                // current_multi = nullptr;
                 current_multi_ra = s->right_ascension;
                 current_multi_decl = s->declination;
                 A = nullptr;
             }
-            s->multisys = current_multi;
             s->set_component(buffer[49], A);
-            current_multi = s->multisys;
+            // current_multi = s->multisys;
             if (buffer[49] == 'A') A = s;
         }
 
@@ -690,7 +695,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         #endif
 
-        if (!HDfound)
+        if (HD)
+        {
+            if (comp <= 'A') hdcache[HD] = s;
+        }
+
+        if (is_new)
         {
             append_cel(s);
             num_read++;
@@ -978,6 +988,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (s->ccdm_compseq)
         {
             A = hipcache[HIP];
+            if (A->seqno < 0 || cels[A->seqno] != A) A = hipcache[HIP] = nullptr;
             if (!A->multisys) A->set_component('A', A);
             s = A->multisys->get_member(buffer[40]);
             if (!s)
@@ -1023,15 +1034,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         Star* A = hipcache[HIP];
         if (!A) continue;
-        if (A->ccdm_compseq)
-        {
-            // If this error never shows up, delete this if block.
-            std::cerr << "HIP" << HIP
-                << " is present in both CCDM and hip_dm_o;"
-                << " adjust code accordingly."
-                << std::endl;
-            throw 0xbadc0de;
-        }
 
         A->set_component('A', A);
 
@@ -2271,7 +2273,16 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             {
                 if (!star_dist || (star_vmag > 1e28))
                 {
-                    if (s_is_new) delete s;
+                    if (s_is_new)
+                    {
+                        if (s->multisys)
+                        {
+                            s->multisys->unlink();
+                            delete s->multisys;
+                        }
+                        delete s;
+                    }
+                    if (p) delete p;
                     continue;
                 }
 

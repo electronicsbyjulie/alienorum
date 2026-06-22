@@ -680,8 +680,9 @@ int main (int argc, char** argv)
     {
         if (cels[i]->typeclass() == class_star && ((Star*)cels[i])->multisys)
         {
-            ((Star*)cels[i])->multisys->unlink();
-            delete ((Star*)cels[i])->multisys;
+            StarMulti *sm = ((Star*)cels[i])->multisys;
+            sm->unlink();
+            delete sm;
         }
     }
 

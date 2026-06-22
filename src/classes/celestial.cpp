@@ -79,6 +79,11 @@ double CelestialObject::distance_from_magnitudes(double apparent, double absolut
     return parsec * 10 * sqrt(ratio);
 }
 
+alienorum::Orbit::~Orbit()
+{
+    if (osculating) delete[] osculating;
+}
+
 bool alienorum::Orbit::read_osc_elements(std::string cel_name)
 {
     num_osc = 0;

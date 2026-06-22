@@ -364,6 +364,14 @@ void set_center_objects()
             cels[i]->orbit = nullptr;
         }
 
+        // Multiple star integrity
+        if (cels[i]->typeclass() == class_star)
+        {
+            Star *s = (Star*)cels[i];
+            if (s->multisys)
+                assert(s->multisys->is_member(s));
+        }
+
         // System center integrity
         while (cels[i]->cenobj->orbit && cels[i]->cenobj->orbit->center && cels[i]->cenobj->orbit->center->typeclass() != class_galaxy)
         {

@@ -81,6 +81,7 @@ namespace alienorum
         OsculatingElement *osculating = nullptr;
         uint64_t num_osc = 0;
 
+        ~Orbit();
         CelestialLocation compute_3d_location(double epoch);
         bool read_osc_elements(std::string cel_name);
         void interpolate_osculating_e(double for_epoch,
@@ -130,7 +131,7 @@ namespace alienorum
         cel_obj_class _class = class_unknown;
 
         public:
-        int seqno = 0;
+        int seqno = -1;
 
         double mass = 0;                            // grams
         double volumetric_mean_radius = 0;          // meters

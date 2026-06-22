@@ -17,7 +17,7 @@ char Star::get_component()
 void Star::set_component(char comp, Star* compA)
 {
     if (!compA) compA = this;
-    assert(!multisys || !compA->multisys || (compA->multisys == multisys));
+    assert(!multisys || (compA->multisys == multisys));
     if (!compA->multisys) compA->multisys = new StarMulti();
     multisys = compA->multisys;
     multisys->add_member(this, comp);
@@ -56,7 +56,7 @@ Star::~Star()
 
 StarMulti::~StarMulti()
 {
-    ;
+    if (members) delete[] members;
 }
 
 void Star::update_location(double tmnow)
