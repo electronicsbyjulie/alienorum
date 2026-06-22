@@ -529,6 +529,7 @@ bool CelestialObject::from_json(json j)
     try
     {
         json j1 = j.at("orbit");
+        if (orbit) delete orbit;
         orbit = new Orbit();
         orbit->from_json(j1);
     } catch (...) { ; }

@@ -26,13 +26,18 @@ void Star::set_component(char comp, Star* compA)
     {
         if (compA->orbit && compA->orbit->center == this)
         {
+            if (orbit) delete orbit;
             orbit = compA->orbit;
             compA->orbit = nullptr;
         }
         if (!orbit) orbit = new Orbit();
         orbit->center = compA;
     }
-    else orbit = nullptr;
+    else
+    {
+        if (orbit) delete orbit;
+        orbit = nullptr;
+    }
 
     if (!user_edited || user_added) origname = name;
     if (orbit && orbit->center) origcenname = orbit->center->name;

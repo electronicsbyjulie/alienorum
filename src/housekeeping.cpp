@@ -434,9 +434,7 @@ void set_center_objects()
 
             if (s->orbit && s->orbit->center && s->orbit->center->type > s->type)
             {
-                #ifdef DEBUG
-                assert(false);
-                #endif
+                delete s->orbit;
                 s->orbit = nullptr;
                 s->cenobj = s;
             }

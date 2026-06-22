@@ -763,8 +763,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         s = nullptr;
         bool is_new = false;
 
-        if (HD && hdcache[HD]) s = (Star*)hdcache[HD];
-        else if (HIP && hipcache[HIP]) s = (Star*)hipcache[HIP];
+        if (HD && hdcache && hdcache[HD]) s = (Star*)hdcache[HD];
+        else if (HIP && hipcache && hipcache[HIP]) s = (Star*)hipcache[HIP];
         if (!s)
         {
             // There are only a handful with no V magnitude; omit them.
@@ -878,7 +878,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         else
         {
             std::cout << "ERROR: HIP" << HIP << " has no RA/Decl" << std::endl;
-            throw 0xbadc0de;
+            throw 0xbadda7a;
             continue;
         }
 
@@ -1407,13 +1407,13 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         if (conccomp == 'A')
         {
             CCDM_A = CCDM;
-            if (HIP && hipcache[HIP]) A = hipcache[HIP];
-            else if (HD && hdcache[HD]) A = hdcache[HD];
+            if (HIP && hipcache && hipcache[HIP]) A = hipcache[HIP];
+            else if (HD && hdcache && hdcache[HD]) A = hdcache[HD];
         }
         else
         {
-            if (HIP && hipcache[HIP]) s = hipcache[HIP];
-            else if (HD && hdcache[HD]) s = hdcache[HD];
+            if (HIP && hipcache && hipcache[HIP]) s = hipcache[HIP];
+            else if (HD && hdcache && hdcache[HD]) s = hdcache[HD];
         }
 
         if (!A) continue;
@@ -1613,11 +1613,11 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         }
 
         found = -1;
-        if (HIP && hipcache[HIP])
+        if (HIP && hipcache && hipcache[HIP])
         {
             A = hipcache[HIP];
         }
-        else if (HD && hdcache[HD])
+        else if (HD && hdcache && hdcache[HD])
         {
             A = hdcache[HD];
         }
@@ -2148,7 +2148,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     if (!strcmp(star_name.substr(0,3).c_str(), "HIP")) HIP = atoi(star_name.substr(3).c_str());
 
                     if (HD && hdcache[HD]) s = hdcache[HD];
-                    else if (HIP && hipcache[HIP]) s = hipcache[HIP];
+                    else if (HIP && hipcache && hipcache[HIP]) s = hipcache[HIP];
                     else if (!HD && !HIP)
                     {
                         // In case of multi-planet system, scan the last several objects for an EXACT name match.
