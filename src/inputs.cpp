@@ -560,7 +560,7 @@ void process_keyboard_commands(ImGuiIO& io)
 
 void lookfor_cb()
 {
-    int i = find_object(lookfor);
+    int i = find_object(lookfor, false, 9e+29, 6);
     if (i>=0)
     {
         selected = i;

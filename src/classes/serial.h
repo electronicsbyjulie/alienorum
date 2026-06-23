@@ -20,5 +20,5 @@ namespace alienorum
 
 #endif
 
-int find_object(const char *search_term, bool only_stars = false, double mag_limit = 9e29);
+int find_object(const char *search_term, bool only_stars = false, double mag_limit = 9e29, int Levenshtein_requirement = 3);
 

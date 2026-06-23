@@ -24,7 +24,7 @@ HD10700                 (debris disk)                                       035
 HD22049                 (asteroid belt)                         358         033.7                   1e+13
 
 # https://en.wikipedia.org/wiki/Gliese_86
-HD13445                 WD 0208-510             3e+9            234.2       126.44      ?           3.55e12     .429
+HD13445                 Gliese 86 b             3e+9            234.2       126.44      ?           3.55e+12    .429                                            DQ6             +10.9           0.5425      0.012                    8180
 
 # https://en.wikipedia.org/wiki/Fomalhaut
 # https://upload.wikimedia.org/wikipedia/commons/8/84/Fomalhaut_Dusty_Debris_Disk_%28MIRI_Compass_Image%29.png
@@ -150,6 +150,18 @@ HD42581                 GJ 229 B                1.10e+10        168.3       047.
 GJ 229 B                GJ 229 Bb               1.04840e+6      210.4       031.4       003.2       6.34e+9     .2306       0                   2024.18636                                      0.0319      0.085       2.630         775
 HIP80346                GJ 623 B                1.1814e+8       098.3       152.5       245.4       2.833e+11   .629        0                   1984.3780                                       0.114       0.133       0.00103      2840
 HD182488                GJ 758 B                4.14267e+9      349.680     038.080     175.102     3.8011e+12  .365        0                   1917.165500                                     0.034722    0.09?       2.6?          741
+HD4113                  (system inclination)                    225.686     083.456
+HD5608                  (system inclination)                    141         147.5
+HD6114                  (system inclination)                    176.7       087.0
+HD7449                  (system inclination)                    326         068.4
+HD14214                 HD14214 B               8.06003e+6      281.0       105.1       103.87      2.105e+9    .5217       0                   2006.982033                                     0.53        0.4         0.04
+HD20104                 (system inclination)                    058         135
+HD24496                 (system inclination)                    038.7       117.11
+HD29573                 (system inclination)                    152.0       075.5
+HD31093                 (system inclination)                    020         107
+HD32450                 (system inclination)                    246.5       060.7
+HD33636                 (system inclination)                    109.9       007.07
+HD36584                 24 Dor B                2.51e+10        074.8       129.5       112.8       1.961e+13   .887        0                   1869.63027471                                   1.57        2.2         8.3          6604
 
 
 

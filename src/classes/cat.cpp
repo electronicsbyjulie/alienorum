@@ -2180,12 +2180,15 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                                 )
                             do_search = true;       // e.g. 55 Cnc B
 
+                        if (!strcmp(star_name.c_str(), "55 Cnc B")) star_name = "GJ 324 B";
+
                         if (!strcmp(star_name.substr(0, 5).c_str(), "2MASS")) do_search = false;
                         if (!strcmp(star_name.substr(0, 6).c_str(), "Kepler"))
                             do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "CoRoT")) do_search = false;
                         if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) do_search = false;
                         if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) do_search = false;
+                        if (!strcmp(star_name.substr(0, 4).c_str(), "Wolf")) do_search = false;
                         if (!strcmp(star_name.c_str(), "Teegarden's Star")) do_search = false;
 
                         if (!s && do_search)
@@ -2648,11 +2651,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
         try
         {
             pl.at("BODYNAME").get_to(bodyname);
-            j = find_object(bodyname.c_str(), false);
+            j = find_object(bodyname.c_str(), false, 9e+29, 0);
             cenname = "";
             try { pl.at("CENTER_OF_ORBIT").get_to(cenname); } catch (...) { ; }
             k = -1;
-            if (cenname.size()) k = find_object(cenname.c_str(), false);
+            if (cenname.size()) k = find_object(cenname.c_str(), false, 9e+29, 0);
 
             if (j < 0 || k >= 0)                // Name not taken or center of orbit,
             {                                   // create new.

@@ -4,8 +4,13 @@
 
 using namespace alienorum;
 
-int find_object(const char* search_term, bool os, double ml)
+int find_object(const char* search_term, bool os, double ml, int levreq)
 {
+    // TODO:
+    // 1.) Completely rewrite this fuction to be more efficient and make fewer mistakes;
+    // 2.) Print out the current version of this function pre-rewrite and BURN IT IN A FIRE;
+    // 3.) Permanently delete every digital copy of the legacy version.
+
     int i, m, n;
 
     uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
@@ -48,11 +53,16 @@ int find_object(const char* search_term, bool os, double ml)
         || ((search_term[0]&0x5f) == 'N' && (search_term[1]&0x5f) == 'N' && (search_term[2] <= '9') && (search_term[3] <= '9'))
         ) && contains_digits_or_dots(search_term);
 
-    if (n>4 && search_term[n-4] == ' ' && search_term[n-3] >= 'A' && search_term[n-3] <= 'Z'
-        && ((search_term[n-2] >= 'A' && search_term[n-2] <= 'Z') || (search_term[n-2] >= 'a' && search_term[n-2] <= 'z'))
-        && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z'))
+    if ((search_term[0]&0x5f) == 'W' && (search_term[1]&0x5f) == 'O' && (search_term[2]&0x5f) == 'L' && (search_term[3]&0x5f) == 'F')
+        is_gliese = false;                      // AND IT COULDN'T BE MORE FALSE. WOLF != WOLLEY, GOT IT DISMAL COMPUTER?
+
+    int co = n-3;
+    if (match_comp) co -= 2;
+    if (co>1 && search_term[co-1] == ' ' && search_term[co] >= 'A' && search_term[co] <= 'Z'
+        && ((search_term[co+1] >= 'A' && search_term[co+1] <= 'Z') || (search_term[co+1] >= 'a' && search_term[co+1] <= 'z'))
+        && ((search_term[co+2] >= 'A' && search_term[co+2] <= 'Z') || (search_term[co+2] >= 'a' && search_term[co+2] <= 'z'))
         )
-        match_cons = &search_term[n-3];
+    match_cons = &search_term[co];
 
     for (i=0; cels[i]; i++)
     {
@@ -62,21 +72,20 @@ int find_object(const char* search_term, bool os, double ml)
             result = i;
             break;
         }
-        if (match_cons && cels[i]->typeclass() == class_star && strcasecmp(((Star*)cels[i])->constellation, match_cons)) continue;
+        if (match_cons && cels[i]->typeclass() == class_star
+            && (    (((Star*)cels[i])->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
+                ||  (((Star*)cels[i])->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
+                ||  (((Star*)cels[i])->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
+                )) continue;
         if (match_comp)
         {
             m = strlen(cels[i]->name);
             if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
+            if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
         }
         if (cels[i]->typeclass() == class_star)
         {
             if (((Star*)cels[i])->apparent_magnitude > ml) continue;
-            /*if ((is_hd && is_hd == ((Star*)cels[i])->HD)
-                || (is_hip && is_hip == ((Star*)cels[i])->HIP))
-            {
-                result = i;
-                break;
-            }*/
             if (is_gliese && has_same_numbers(((Star*)cels[i])->Gliese, search_term))
             {
                 result = i;
@@ -92,21 +101,30 @@ int find_object(const char* search_term, bool os, double ml)
     char buffer[256];
     if (result < 0)
     {
-        int best_Levenshtein = 5;
         std::string lookstr = search_term;
         int looklen = strlen(search_term);
         for (i=0; cels[i]; i++)
         {
             if (os && (cels[i]->typeclass() != class_star)) continue;
-            if (match_cons && cels[i]->typeclass() == class_star && strcmp(((Star*)cels[i])->constellation, match_cons)) continue;
+            if (match_cons && cels[i]->typeclass() == class_star
+            && (    (((Star*)cels[i])->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
+                ||  (((Star*)cels[i])->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
+                ||  (((Star*)cels[i])->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
+                )) continue;
             if (match_comp)
             {
                 m = strlen(cels[i]->name);
                 if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
+                if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
             }
 
+            if (strlen(((Star*)cels[i])->Gliese)                    // HOW MANY TIMES DO I HAVE TO BEAT THIS INTO YOU, COMPUTER.
+                && (lookstr[0]&0x5f) == 'W' && (lookstr[1]&0x5f) == 'O' && (lookstr[2]&0x5f) == 'L' && (lookstr[3]&0x5f) == 'F'
+                && has_same_numbers(((Star*)cels[i])->Gliese, lookstr.c_str()))
+                continue;
+
             strcpy(buffer, cels[i]->name);
-            buffer[looklen] = 0;
+            if (looklen > 0.666 * strlen(buffer)) buffer[looklen] = 0;
             int lev = Damerau_Levenshtein(buffer, lookstr);
             if (cels[i]->type == star)
             {
@@ -118,14 +136,22 @@ int find_object(const char* search_term, bool os, double ml)
                 if (!has_same_numbers(((Star*)cels[i])->Flamsteed, lookstr.c_str())) lev1 = 1e9;
                 if (lev1 < lev) lev = lev1;
             }
-            if (lev < best_Levenshtein)
+            if (lev < levreq)
             {
-                best_Levenshtein = lev;
+                levreq = lev;
                 result = i;
                 if (!lev) break;
             }
         }
     }
+
+    #if 0
+    if (result >= 0)
+        std::cout << search_term << " = " << cels[result]->name << " with lev " << levreq << std::endl << std::flush;
+    else
+        std::cout << "This steaming pile of a search function has dismally failed yet again to identify " <<
+            search_term << " with a Damerau-Levenshtein requirement of " << levreq << "." << std::endl << std::flush;
+    #endif
 
     return result;
 }
