@@ -121,7 +121,7 @@ void load_textures(CelestialObject* cel)
     if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == hot_jupiter) && !cel->cloud_map)
     {
         cel->cloud_map = new Map();
-        cel->cloud_map->generate_gas_giant_map(cel->fictitious_map_height, cel->BV_color);
+        cel->cloud_map->generate_gas_giant_map(cel);
     }
     else if ((cel->type == rocky || cel->type == icy) && !cel->surf_map)
     {

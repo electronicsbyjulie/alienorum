@@ -1315,13 +1315,15 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 }
 
-void Map::generate_gas_giant_map(int lr, double BV)
+void Map::generate_gas_giant_map(CelestialObject *cel)
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     mtx.lock();
     __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
     ___ = __;
+    int lr = cel->fictitious_map_height;
+    double BV = cel->BV_color;
     image_height = lr;
     image_width = image_height * 2;
 
@@ -1337,6 +1339,10 @@ void Map::generate_gas_giant_map(int lr, double BV)
 
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
     RGB3Byte rgb = Color::rgb_from_color(col, -1);
+
+    Planet *p = (Planet*)cel;
+    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
+        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
     double variability = frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
@@ -1362,30 +1368,33 @@ void Map::generate_gas_giant_map(int lr, double BV)
         bands[i].b = rgb.b * bmult;
     }
 
-    double scale = 2.5;
+    double scale = 2.5, u, v, theta, phi, psi, nx, ny, nz, distortX, distortY, finalNoise, bandVal, t;
+    double zscale = tidal_locked_to_star ? scale : (scale * 8);
 
     for (unsigned int y = 0; y < image_height; ++y)
     {
-        double v = (double)y / image_height;
-        double theta = v * _pi;
+        v = (double)y / image_height;
+        theta = v * _pi;
 
         for (unsigned int x = 0; x < image_width; ++x)
         {
-            double u = (double)x / image_width;
-            double phi = u * 2.0 * _pi;
+            u = (double)x / image_width;
+            phi = u * 2.0 * _pi;
 
             // 3D Sphere projection
-            double nx = sin(theta) * cos(phi) * scale;
-            double ny = sin(theta) * sin(phi) * scale;
-            double nz = cos(theta) * scale * 8;
+            nx = sin(theta) * cos(phi) * scale;
+            ny = sin(theta) * sin(phi) * scale;
+            nz = cos(theta) * zscale;
+
+            if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
 
             // Domain Warping: Use noise to distort the coordinates horizontally
             // This creates the swirling, fluid look of gas clouds
-            double distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
-            double distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 0.1;
+            distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
+            distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 0.1;
 
             // Apply distortion primarily along the X/longitude axis to emulate wind bands
-            double finalNoise = fBm(nx + distortX * 4.0, ny + distortY, nz, 6, 2.0, 0.55);
+            finalNoise = fBm(nx + distortX * 4.0, ny + distortY, nz, 6, 2.0, 0.55);
 
             if (add_storm)
             {
@@ -1415,12 +1424,21 @@ void Map::generate_gas_giant_map(int lr, double BV)
             }
             else
             {
-                // Regular band calculation based on the warped noise
-                // Map finalNoise [0, 1] to the band array
-                double bandVal = fmod(fabs(v - 0.5) * 2 * num_bands + finalNoise * 1.3, num_bands);
+                if (tidal_locked_to_star)
+                {
+                    // Bands will occur in order of distance to the star, not by latitude as with solar system gas giants.
+                    bandVal = fmod(psi / _pi * num_bands + finalNoise * 1.3, num_bands);
+                }
+                else
+                {
+                    // Regular band calculation based on the warped noise
+                    // Map finalNoise [0, 1] to the band array
+                    bandVal = fmod(fabs(v - 0.5) * 2 * num_bands + finalNoise * 1.3, num_bands);
+                }
+
                 if (bandVal < 0) bandVal += num_bands;
                 int bandIdx = (int)floor(bandVal);
-                double t = bandVal - bandIdx; // fractional part for linear interpolation
+                t = bandVal - bandIdx; // fractional part for linear interpolation
 
                 int nextBandIdx = (bandIdx + 1) % num_bands;
 

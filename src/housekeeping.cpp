@@ -368,8 +368,8 @@ void set_center_objects()
         if (cels[i]->typeclass() == class_star)
         {
             Star *s = (Star*)cels[i];
-            if (s->multisys)
-                assert(s->multisys->is_member(s));
+            if (s->multisys && !s->multisys->is_member(s))
+                s->set_component(s->multisys->next_available(), s);
         }
 
         // System center integrity

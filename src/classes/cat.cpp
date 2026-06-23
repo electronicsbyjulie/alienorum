@@ -188,6 +188,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         hdcache = new Star*[MAX_HD+1];
         memset(hdcache, 0, sizeof(Star*)*(MAX_HD+1));
     }
+    if (!hipcache)
+    {
+        hipcache = new Star*[MAX_HIP+1];
+        memset(hipcache, 0, sizeof(Star*)*(MAX_HIP+1));
+    }
 
     FILE* fp = fopen(path.c_str(), "rb");
 
@@ -259,6 +264,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         strcpy(s->name, trim(build_name.c_str()).c_str());
         strcpy(s->Gliese, trim(build_name.c_str()).c_str());
         if (!strcmp(s->Gliese, "GJ 324 B")) strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
+        if (!strcmp(s->Gliese, "GJ 22 AC"))
+        {
+            s->HIP = 2552;
+            hipcache[2552] = s;
+        }
 
         double ra, dec, ra2000, dec2000;
 
@@ -2462,7 +2472,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         std::string cenname = trim(field);
         const char* censtr = cenname.c_str();
         A = nullptr;
-        int sioxt = find_object(censtr, false);
+        int sioxt = find_object(censtr, true);
         if (sioxt >= 0)
         {
             A = (Star*)cels[sioxt];
@@ -2582,11 +2592,16 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (A->HD == 20766)
         {
-            std::cerr << "BAD! 1061" << std::endl;
+            std::cerr << "BAD! 2585" << std::endl;
             throw 0xbadc0de;
         }
         if (!s->orbit) s->orbit = new Orbit();
         s->orbit->center = A;
+
+        char comp = 'B';
+        if (!A->multisys) A->set_component('A', A);
+        if (A->multisys) while (A->multisys->get_member(comp)) comp++;
+        s->make_companion_of(A, comp);
 
         read_field_onebased(buffer, 49, 63, field);
         f = atof(field);

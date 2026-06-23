@@ -17,7 +17,13 @@ char Star::get_component()
 void Star::set_component(char comp, Star* compA)
 {
     if (!compA) compA = this;
-    assert(!multisys || (compA->multisys == multisys));
+
+    // assert(!multisys || (compA->multisys == multisys));
+    if (multisys && compA->multisys && compA->multisys != multisys)
+    {
+        compA->multisys->merge(multisys);
+    }
+
     if (!compA->multisys) compA->multisys = new StarMulti();
     multisys = compA->multisys;
     multisys->add_member(this, comp);
@@ -605,6 +611,14 @@ char StarMulti::is_member(Star *s)
     return 0;
 }
 
+char alienorum::StarMulti::next_available()
+{
+    int i;
+    if (!allocated || !members) return 0;
+    for (i=0; i<allocated; i++) if (!members[i]) break;
+    return 'A' + i;
+}
+
 void StarMulti::unlink()
 {
     if (!allocated) return;
@@ -617,4 +631,50 @@ void StarMulti::unlink()
             members[i] = nullptr;
         }
     }
+}
+
+#define _debug_merge 0
+void alienorum::StarMulti::merge(StarMulti *other)
+{
+    int toalloc = std::max(2, allocated + other->allocated);
+    Star** new_members = new Star*[toalloc];
+    memset(new_members, 0, sizeof(Star*)*toalloc);
+
+    #if _debug_merge
+    std::cout << "Merge StarMulti objects: " << std::endl;
+    #endif
+    int i, j=0;
+    if (members)
+    {
+        for (i=0; i<allocated; i++) if (members[i])
+        {
+            #if _debug_merge
+            std::cout << "(1) -> " << members[i]->name << std::endl;
+            #endif
+            new_members[j++] = members[i];
+        }
+        delete[] members;
+    }
+    if (other->members)
+    {
+        for (i=0; i<other->allocated; i++) if (other->members[i])
+        {
+            #if _debug_merge
+            std::cout << "(2) -> " << other->members[i]->name << std::endl;
+            #endif
+            new_members[j++] = other->members[i];
+        }
+        delete[] other->members;
+        other->members = nullptr;
+    }
+    members = new_members;
+    allocated = toalloc;
+    for (i=0; i<allocated; i++)
+        if (members[i])
+            members[i]->multisys = this;
+
+    delete other;
+    #if _debug_merge
+    std::cout << std::endl << std::flush;
+    #endif
 }
