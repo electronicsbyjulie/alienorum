@@ -333,6 +333,12 @@ int main (int argc, char** argv)
     apply_default_style();
 
     ImU32 alien_color = global_style.ecliptic_color | IM_COL32(0,0,0,192);
+    #define aliend 0.0003
+    #define gravity 0.00000001
+    #define repulsion 0.0000000003
+    float alienb = 0.003921569 * ((alien_color & 0xff0000) >> 16), alieng = 0.003921569 * ((alien_color & 0xff00) >> 8),
+        alienr = 0.003921569 * ((alien_color & 0xff)),
+        aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
     // Main loop
     bool done = false;
@@ -368,6 +374,10 @@ int main (int argc, char** argv)
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
+        //////////////////////////////////////////////////
+        // End ImGui-specific setup code                //
+        //////////////////////////////////////////////////
+
         if (splash)
         {
             double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y/1.61803398875;
@@ -396,8 +406,10 @@ int main (int argc, char** argv)
                 {
                     RGB3Byte rgb = Color::rgb_from_color(col, 1);
                     if (rgb.r >= 16 || rgb.b >= 16)
+                    {
                         ImGui::GetBackgroundDrawList()->AddCircleFilled(splash_star_positions[i],
                             jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 64)), 0);
+                    }
                     if (rgb.r == 255 && rgb.b == 255) break;
 
                     col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
@@ -408,6 +420,16 @@ int main (int argc, char** argv)
             std::string wash_copilots_mouth_out_with_soap = loading_msg;
             mtx.unlock();
             const char* lloadmsg = wash_copilots_mouth_out_with_soap.c_str();
+
+            aliendr += gravity; aliendr += repulsion * sgn(alienr - alieng) + repulsion * sgn(alienr - alienb);
+            aliendg += gravity; aliendg += repulsion * sgn(alieng - alienr) + repulsion * sgn(alieng - alienb);
+            aliendb += gravity; aliendb += repulsion * sgn(alienb - alienr) + repulsion * sgn(alienb - alieng);
+
+            alienr += aliendr; if (alienr < 0) aliendr = fabs(aliendr); else if (alienr > 1) aliendr = -fabs(aliendr);
+            alieng += aliendg; if (alieng < 0) aliendg = fabs(aliendg); else if (alieng > 1) aliendg = -fabs(aliendg);
+            alienb += aliendb; if (alienb < 0) aliendb = fabs(aliendb); else if (alienb > 1) aliendb = -fabs(aliendb);
+
+            alien_color = IM_COL32(255*fmax(0, fmin(1, alienr)), 255*fmax(0, fmin(1, alieng)), 255*fmax(0, fmin(1, alienb)), 255);
 
             if (!lloadmsg || !strlen(lloadmsg) || *lloadmsg < ' ' || *lloadmsg > 'Z') lloadmsg = "Loading...";
 
@@ -424,10 +446,6 @@ int main (int argc, char** argv)
             }
             else std::cout << "ImGui::Begin() failed." << std::endl;
             ImGui::End();
-
-        //////////////////////////////////////////////////
-        // End ImGui-specific setup code                //
-        //////////////////////////////////////////////////
         }
         else
         {

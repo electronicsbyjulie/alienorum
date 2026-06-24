@@ -21,7 +21,7 @@ int ncelobjs = 0;
 int selected = -1, trackidx = -1;
 double azimuth = 0, altitude = 0;
 double spin = 0;
-double global_gamma = 1.3;
+double global_gamma = default_gamma, viewer_gamma = global_gamma;
 double zoom = 1, vm, vmfr;
 double viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon;
 bool save_viewer_latlon = true;

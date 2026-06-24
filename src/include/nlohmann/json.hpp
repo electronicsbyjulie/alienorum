@@ -3430,7 +3430,7 @@ using enable_if_t = typename std::enable_if<B, T>::type;
 //
 // Class template representing a compile-time integer sequence. An instantiation
 // of `integer_sequence<T, Ints...>` has a sequence of integers encoded in its
-// type through its template arguments (which is a common need when
+// type through its template arguments (which is a common want when
 // working with C++11 variadic templates). `absl::integer_sequence` is designed
 // to be a drop-in replacement for C++14's `std::integer_sequence`.
 //
@@ -6039,7 +6039,7 @@ namespace detail
 //////////////////
 
 /*
- * Note all external_constructor<>::construct functions need to call
+ * Note all external_constructor<>::construct functions must call
  * j.m_data.m_value.destroy(j.m_data.m_type) to avoid a memory leak in case j contains an
  * allocated value (e.g., a string). See bug issue
  * https://github.com/nlohmann/json/issues/2865 for more information.
@@ -7154,7 +7154,7 @@ class wide_string_input_adapter
 
     typename std::char_traits<char>::int_type get_character() noexcept
     {
-        // check if the buffer needs to be filled
+        // check if the buffer must be filled
         if (utf8_bytes_index == utf8_bytes_filled)
         {
             fill_buffer<sizeof(WideCharType)>();
@@ -7169,7 +7169,7 @@ class wide_string_input_adapter
         return utf8_bytes[utf8_bytes_index++];
     }
 
-    // parsing binary with wchar doesn't make sense, but since the parsing mode can be runtime, we need something here
+    // parsing binary with wchar doesn't make sense, but since the parsing mode can be runtime, we want something here
     template<class T>
     std::size_t get_elements(T* /*dest*/, std::size_t /*count*/ = 1)
     {
@@ -8364,7 +8364,7 @@ class lexer : public lexer_base<BasicJsonType>
         // changed if minus sign, decimal point, or exponent is read
         token_type number_type = token_type::value_unsigned;
 
-        // state (init): we just found out we need to scan a number
+        // state (init): we just found out we must scan a number
         switch (current)
         {
             case '-':
@@ -13009,9 +13009,9 @@ class binary_reader
 
     @return whether conversion completed
 
-    @note This function needs to respect the system's endianness, because
+    @note This function must respect the system's endianness, because
           bytes in CBOR, MessagePack, and UBJSON are stored in network order
-          (big endian) and therefore need reordering on little endian systems.
+          (big endian) and therefore want reordering on little endian systems.
           On the other hand, BSON and BJData use little endian and should reorder
           on big endian systems.
     */
@@ -13502,7 +13502,7 @@ class parser
                         // remember we are now inside an array
                         states.push_back(true);
 
-                        // parse values (no need to call get_token)
+                        // parse values (no must call get_token)
                         continue;
                     }
 
@@ -13651,7 +13651,7 @@ class parser
                     }
 
                     // We are done with this array. Before we can parse a
-                    // new value, we need to evaluate the new state first.
+                    // new value, we must evaluate the new state first.
                     // By setting skip_to_state_evaluation to false, we
                     // are effectively jumping to the beginning of this if.
                     JSON_ASSERT(!states.empty());
@@ -13712,7 +13712,7 @@ class parser
                 }
 
                 // We are done with this object. Before we can parse a
-                // new value, we need to evaluate the new state first.
+                // new value, we must evaluate the new state first.
                 // By setting skip_to_state_evaluation to false, we
                 // are effectively jumping to the beginning of this if.
                 JSON_ASSERT(!states.empty());
@@ -16920,7 +16920,7 @@ class binary_writer
     @param[in] j  JSON value to serialize
     @param[in] use_count   whether to use '#' prefixes (optimized format)
     @param[in] use_type    whether to use '$' prefixes (optimized format)
-    @param[in] add_prefix  whether prefixes need to be used for this value
+    @param[in] add_prefix  whether prefixes must be used for this value
     @param[in] use_bjdata  whether write in BJData format, default is false
     @param[in] bjdata_version  which BJData version to use, default is draft2
     */
@@ -17927,9 +17927,9 @@ class binary_writer
                                  required to be little endian
     @tparam NumberType the type of the number
 
-    @note This function needs to respect the system's endianness, because bytes
+    @note This function must respect the system's endianness, because bytes
           in CBOR, MessagePack, and UBJSON are stored in network order (big
-          endian) and therefore need reordering on little endian systems.
+          endian) and therefore want reordering on little endian systems.
           On the other hand, BSON and BJData use little endian and should reorder
           on big endian systems.
     */
@@ -18203,7 +18203,7 @@ struct diyfp // f * 2^e
         // p_lo = p0_lo + (Q << 32)
         //
         // But in this particular case here, the full p_lo is not required.
-        // Effectively, we only need to add the highest bit in p_lo to p_hi (and
+        // Effectively, we only must add the highest bit in p_lo to p_hi (and
         // Q_hi + 1 does not overflow).
 
         Q += std::uint64_t{1} << (64u - 32u - 1u); // round, ties up
@@ -18326,7 +18326,7 @@ boundaries compute_boundaries(FloatType value)
     return {diyfp::normalize(v), w_minus, w_plus};
 }
 
-// Given normalized diyfp w, Grisu needs to find a (normalized) cached
+// Given normalized diyfp w, Grisu must find a (normalized) cached
 // power-of-ten c, such that the exponent of the product c * w = f * 2^e lies
 // within a certain range [alpha, gamma] (Definition 3.2 from [1])
 //
@@ -18437,7 +18437,7 @@ inline cached_power get_cached_power_for_binary_exponent(int e)
     //         = 960
     //
     // This binary exponent range [-1137,960] results in a decimal exponent
-    // range [-307,324]. One does not need to store a cached power for each
+    // range [-307,324]. One does not must store a cached power for each
     // k in this range. For each such k it suffices to find a cached power
     // such that the exponent of the product lies in [alpha,gamma].
     // This implies that the difference of the decimal exponents of adjacent
@@ -18869,7 +18869,7 @@ inline void grisu2_digit_gen(char* buffer, int& length, int& decimal_exponent,
     decimal_exponent -= m;
 
     // 1 ulp in the decimal representation is now 10^-m.
-    // Since delta and dist are now scaled by 10^m, we need to do the
+    // Since delta and dist are now scaled by 10^m, we must do the
     // same with ulp in order to keep the units in sync.
     //
     //      10^m * 10^-m = 1 = 2^-e * 2^e = ten_m * 2^e
@@ -19166,7 +19166,7 @@ char* to_chars(char* first, const char* last, FloatType value)
     JSON_ASSERT(last - first >= std::numeric_limits<FloatType>::max_digits10);
 
     // Compute v = buffer * 10^decimal_exponent.
-    // The decimal digits are stored in the buffer, which needs to be interpreted
+    // The decimal digits are stored in the buffer, which must be interpreted
     // as an unsigned decimal integer.
     // len is the length of the buffer, i.e., the number of decimal digits.
     int len = 0;
@@ -20049,7 +20049,7 @@ class serializer
 
         o->write_characters(number_buffer.data(), static_cast<std::size_t>(len));
 
-        // determine if we need to append ".0"
+        // determine if we must append ".0"
         const bool value_is_int_like =
             std::none_of(number_buffer.begin(), number_buffer.begin() + len + 1,
                          [](char c)
@@ -20416,11 +20416,11 @@ template <class Key, class T, class IgnoredLess = std::less<Key>,
         const auto elements_affected = std::distance(first, last);
         const auto offset = std::distance(Container::begin(), first);
 
-        // This is the start situation. We need to delete elements_affected
-        // elements (3 in this example: e, f, g), and need to return an
+        // This is the start situation. We must delete elements_affected
+        // elements (3 in this example: e, f, g), and must return an
         // iterator past the last deleted element (h in this example).
         // Note that offset is the distance from the start of the vector
-        // to first. We will need this later.
+        // to first. We will want this later.
 
         // [ a, b, c, d, e, f, g, h, i, j ]
         //               ^        ^
@@ -21181,7 +21181,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     /*!
     @brief checks the class invariants
 
-    This function asserts the class invariants. It needs to be called at the
+    This function asserts the class invariants. It must be called at the
     end of every constructor to make sure that created objects respect the
     invariant. Furthermore, it has to be called each time the type of a JSON
     value is changed, because the invariant expresses a relationship between
@@ -21194,7 +21194,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     @param[in] check_parents  whether the parent relation should be checked.
                The value is true by default and should only be set to false
                during destruction of objects when the invariant does not
-               need to hold.
+               must hold.
     */
     void assert_invariant(bool check_parents = true) const noexcept
     {
@@ -22297,7 +22297,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     {
         // we cannot static_assert on ValueTypeCV being non-const, because
         // there is support for get<const basic_json_t>(), which is why we
-        // still need the uncvref
+        // still want the uncvref
         static_assert(!std::is_reference<ValueTypeCV>::value,
                       "get() cannot be used with reference types, you might want to use get_ref()");
         return get_impl<ValueType>(detail::priority_tag<4> {});
@@ -24289,7 +24289,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
 
 #if JSON_USE_LEGACY_DISCARDED_VALUE_COMPARISON
     // all operators that are computed as an odd number of inverses of others
-    // need to be overloaded to emulate the legacy comparison behavior
+    // must be overloaded to emulate the legacy comparison behavior
 
     /// @brief comparison: less than or equal
     /// @sa https://json.nlohmann.me/api/basic_json/operator_le/

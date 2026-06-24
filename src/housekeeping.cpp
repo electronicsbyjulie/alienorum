@@ -326,7 +326,7 @@ void compute_object_draw_coordinates()
             cels[i]->viewrel = rel;
 
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
-            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+            float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
             cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = dy;
 

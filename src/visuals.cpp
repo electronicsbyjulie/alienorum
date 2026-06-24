@@ -58,7 +58,7 @@ void draw_ra_dec_lines()
 
                 if (prev_valid)
                 {
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1);
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1.1);
                 }
             }
 
@@ -94,7 +94,7 @@ void draw_ra_dec_lines()
                     dy2 = dispcy + prev.y * dispcx;
 
                     if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), j?gc:gcb, 1);
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), j?gc:gcb, 1.1);
             }
 
             prev = zdes;
@@ -135,7 +135,7 @@ void draw_ra_dec_lines()
                     dy2 = dispcy + prev.y * dispcx;
 
                 if (prev_valid)
-                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1);
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1.1);
             }
 
             prev = zdes;
@@ -648,6 +648,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     return result;
 }
 
+double global_magshift;
 bool draw_one_object(int i)
 {
     int j;
@@ -656,6 +657,7 @@ bool draw_one_object(int i)
     bloomrad = fabs(bloomrad_cache[i]);
     flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
     bloomrad = fmin(max_bloomrad, bloomrad);
+    appmag = vmag_cache[i] - sky_mag_shift;
     if (cls == class_satellite)
     {
         if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
@@ -720,6 +722,16 @@ bool draw_one_object(int i)
         discinstead[i] = false;
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
+
+        // Adjust for mesopic and scotopic color perception, e.g. dim red stars tend to look grayish.
+        float effmag = vmag_cache[i] + global_magshift;
+        if (effmag > 2)
+        {
+            double effect = fmin(1, (effmag - 2) / 8), effect1 = 1.0 - effect;
+            col.red = effect*0.5*col.green + effect1*col.red;
+            col.blue = effect*col.green + effect1*col.blue;
+        }
+
         if (flare)
         {
             double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
@@ -754,9 +766,10 @@ bool draw_one_object(int i)
         for (jay=bloomrad; jay>=0; jay-=0.7)
         {
             RGB3Byte rgb = Color::rgb_from_color(col, 1);
-            if (rgb.r >= 16 || rgb.b >= 16)
+            if (rgb.r >= 8 || rgb.b >= 8)
             {
-                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, jay, Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
+                ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, fmax(0.9, jay),
+                    Color::black_to_transparent(IM_COL32(rgb.r, rgb.g, rgb.b, 255)), 0);
                 cels[i]->onscreen = true;
             }
             if (rgb.r == 255 && rgb.b == 255) break;
@@ -826,6 +839,7 @@ void draw_objects()
     double orbseg = 81;
     lmasslim = lbllsys_mass_lim*1000;
     std::vector<CelestialObject*> to_draw_layered;
+    global_magshift = -log(global_brightness) * invlogmagnbase;
 
     double mycensq = mycenobj->tmprel.squared_magnitude();
     double layer_cutoff = mycensq * 1.1 * zoom * zoom;

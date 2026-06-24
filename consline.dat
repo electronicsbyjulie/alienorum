@@ -117,7 +117,8 @@ Del Boo, Psi Boo
 Psi Boo, Ome Boo
 Del Boo, Eps Boo
 Eps Boo, Rho Boo
-Pi 1Boo, Omi Boo
+14  Boo, Zet Boo
+Zet Boo, Omi Boo
 Omi Boo, Xi  Boo
 Xi  Boo, Eps Boo
 Alp Boo, Eta Boo
@@ -150,7 +151,12 @@ Gam Cnc, Chi Cnc
 Chi Cnc, Psi Cnc
 Chi Cnc, Mu 2Cnc
 ~CVn, Canes Venatici, Canum Venaticorum
+25  CVn, HD118216
+HD118216, 20  CVn
+20  CVn, HD115004
+14  CVn, Alp2CVn
 Alp2CVn, Bet CVn
+Bet CVn, 6   CVn
 ~CMa, Canis Major, Canes Majoris
 Bet CMa, Alp CMa
 Alp CMa, Iot CMa
