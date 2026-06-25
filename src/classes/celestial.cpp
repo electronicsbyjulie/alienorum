@@ -87,7 +87,7 @@ alienorum::Orbit::~Orbit()
 bool alienorum::Orbit::read_osc_elements(std::string cel_name)
 {
     num_osc = 0;
-    std::string filename = std::string("ephemerides/") + cel_name + std::string(".txt");
+    std::string filename = std::string("ephemerides") + _FSSTR + cel_name + std::string(".txt");
     if (!file_exists(filename.c_str()))
     {
         std::string gzfilename = filename + std::string(".gz");
