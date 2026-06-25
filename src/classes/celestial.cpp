@@ -94,7 +94,7 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
         if (file_exists(gzfilename.c_str()))
         {
             #ifdef _WIN32
-            std::string cmd = (std::string)"7z e -y " + gzfilename + std::string(" -so ") + gzfilename.substr(0, gzfilename.size()-3);
+            std::string cmd = (std::string)"7z e -y " + gzfilename + std::string(" -so > ") + gzfilename.substr(0, gzfilename.size()-3);
             #else
             std::string cmd = (std::string)"gunzip -k " + gzfilename;
             #endif
