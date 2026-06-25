@@ -150,7 +150,11 @@ bool SatSource::update_sources_json()
 
 std::string SatSource::csv_fname()
 {
+    #ifdef _WIN32
+    return std::string("catalogs\\sat\\") + local_name + std::string(".csv");
+    #else
     return std::string("catalogs/sat/") + local_name + std::string(".csv");
+    #endif
 }
 
 int SatSource::data_age_hours()
@@ -174,6 +178,7 @@ int SatSource::data_age_hours()
 bool SatSource::download_data()
 {
     std::string outfname = csv_fname();
+    if (file_exists(outfname.c_str())) return;
     std::time_t age = data_age_hours() * 3600;
 
     // Under no circumstances should the code ever attempt to access the same remote file twice in two hours.
