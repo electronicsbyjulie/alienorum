@@ -153,7 +153,7 @@ void CatalogReader::download_catalogs()
                 {
                     #ifdef _WIN32
                     cmd = (std::string)"7z e -y " + destdir + _FSSTR + entry_name
-                        + std::string(" -so ") + destdir + _FSSTR + entry_name.substr(0, entry_name.size()-3);
+                        + std::string(" -so > ") + destdir + _FSSTR + entry_name.substr(0, entry_name.size()-3);
                     #else
                     cmd = (std::string)"gunzip " + destdir + _FSSTR + entry_name;
                     #endif
