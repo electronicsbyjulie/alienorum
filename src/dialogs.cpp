@@ -480,6 +480,11 @@ void draw_addcel_window(ImGuiIO& io)
 
 double rp, ra;
 int last_edit_idx = -1;
+static int cbo_edt_units = 0;
+const char* mass_units[3] = {"kg", "Sun", "Earth"};
+const double mass_units_conv[3] = {1000, solar_mass, earth_mass};
+const char* size_units[3] = {"km", "Sun", "Earth"};
+const double size_units_conv[3] = {1000, solar_radius, earth_radius};
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -531,27 +536,47 @@ void draw_objedit_window(ImGuiIO& io)
     {
         if (tc != class_satellite && ImGui::BeginTabItem("Bulk"))
         {
-            double edit_mass = cel->mass / 1000;
-            ImGui::Text("%s", "Mass, kg");
+            double edit_mass = cel->mass / mass_units_conv[cbo_edt_units];
+            ImGui::Text("%s", "Mass");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
             {
-                cel->mass = edit_mass * 1000;
+                cel->mass = edit_mass * mass_units_conv[cbo_edt_units];
                 if (cel->typeclass() == class_planet
                     || cel->typeclass() == class_moon               // See Kepler-1625b.
                     ) ((Planet*)cel)->classify();
                 cel->user_edited = true;
                 viewchanged = true;
             }
+
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(txtwid/3);
+            if (ImGui::BeginCombo("##cboedtunitsm", mass_units[cbo_edt_units], 0))
+            {
+                for (int n = 0; n < 3; n++)
+                {
+                    const bool is_selected = (cbo_edt_units == n);
+                    if (ImGui::Selectable(mass_units[n], is_selected))
+                    {
+                        cbo_edt_units = n;
+                    }
+
+                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
             ImGui::SameLine(col2);
-            double edit_radius = cel->volumetric_mean_radius / 1000;
-            ImGui::Text("%s", "Radius, km");
+            double edit_radius = cel->volumetric_mean_radius / size_units_conv[cbo_edt_units];
+            ImGui::Text("%s", "Radius");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
             {
-                cel->volumetric_mean_radius = edit_radius * 1000;
+                cel->volumetric_mean_radius = edit_radius * size_units_conv[cbo_edt_units];
                 assert(!isinf(cel->volumetric_mean_radius));
                 cel->user_edited = true;
                 viewchanged = true;
@@ -564,6 +589,25 @@ void draw_objedit_window(ImGuiIO& io)
                     m->update_location(simnow);
                 }
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(txtwid/3);
+            if (ImGui::BeginCombo("##cboedtunitsr", size_units[cbo_edt_units], 0))
+            {
+                for (int n = 0; n < 3; n++)
+                {
+                    const bool is_selected = (cbo_edt_units == n);
+                    if (ImGui::Selectable(size_units[n], is_selected))
+                    {
+                        cbo_edt_units = n;
+                    }
+
+                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
 
             stringstream massss;

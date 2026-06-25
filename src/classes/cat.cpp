@@ -152,7 +152,8 @@ void CatalogReader::download_catalogs()
                 else if (!strcmp(".gz", &entry_name.c_str()[j]))
                 {
                     #ifdef _WIN32
-                    cmd = (std::string)"7z e -y " + destdir + (std::string)"/" + entry_name;
+                    cmd = (std::string)"7z e -y " + destdir + (std::string)"/" + entry_name
+                        + std::string(" -so ") + destdir + (std::string)"/" + entry_name.substr(0, entry_name.size()-3);
                     #else
                     cmd = (std::string)"gunzip " + destdir + (std::string)"/" + entry_name;
                     #endif
