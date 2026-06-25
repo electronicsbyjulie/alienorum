@@ -90,7 +90,7 @@ bool SatSource::from_json(json j)
 
 bool SatSource::read_sources_json()
 {
-    std::fstream fs("catalogs/sat/sources.json", std::ios::in);
+    std::fstream fs("catalogs" _FILESLASH "sat" _FILESLASH "sources.json", std::ios::in);
     json j;
     fs >> j;
 
@@ -129,8 +129,8 @@ bool SatSource::update_sources_json()
         j[i] = j1;
     }
 
-    std::filesystem::path bak_name = "catalogs/sat/sources.bak.json";
-    std::filesystem::path real_name = "catalogs/sat/sources.json";
+    std::filesystem::path bak_name = "catalogs" _FILESLASH "sat" _FILESLASH "sources.bak.json";
+    std::filesystem::path real_name = "catalogs" _FILESLASH "sat" _FILESLASH "sources.json";
     std::error_code ec;
 
     std::filesystem::remove(bak_name);                          // don't care if doesn't succeed; failure = nothing to delete = expected
@@ -150,11 +150,7 @@ bool SatSource::update_sources_json()
 
 std::string SatSource::csv_fname()
 {
-    #ifdef _WIN32
-    return std::string("catalogs\\sat\\") + local_name + std::string(".csv");
-    #else
-    return std::string("catalogs/sat/") + local_name + std::string(".csv");
-    #endif
+    return std::string("catalogs" _FILESLASH "sat") + _FSSTR + local_name + std::string(".csv");
 }
 
 int SatSource::data_age_hours()
@@ -178,7 +174,7 @@ int SatSource::data_age_hours()
 bool SatSource::download_data()
 {
     std::string outfname = csv_fname();
-    if (file_exists(outfname.c_str())) return;
+    if (file_exists(outfname.c_str())) return true;
     std::time_t age = data_age_hours() * 3600;
 
     // Under no circumstances should the code ever attempt to access the same remote file twice in two hours.

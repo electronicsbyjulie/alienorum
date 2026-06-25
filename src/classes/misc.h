@@ -13,6 +13,13 @@
 // #include "EasyBMP/EasyBMP.hpp"
 #include "noise.h"
 
+#ifdef _WIN32
+#define _FILESLASH "\\"
+#else
+#define _FILESLASH "/"
+#endif
+#define _FSSTR std::string(_FILESLASH)
+
 #define name_max_len 40
 
 using namespace alienorum;

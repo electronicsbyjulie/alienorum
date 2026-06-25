@@ -229,7 +229,7 @@ int main (int argc, char** argv)
     }
 
     if (!look_for_catalogs()) return -1;
-    SDL_Surface* icon = IMG_Load("assets/icon48.png");
+    SDL_Surface* icon = IMG_Load("assets" _FILESLASH "icon48.png");
     if (icon)
     {
         SDL_SetWindowIcon(window, icon);
@@ -284,13 +284,9 @@ int main (int argc, char** argv)
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf");
     //IM_ASSERT(font != nullptr);
 
-    #ifdef _WIN32
-    global_font = io.Fonts->AddFontFromFileTTF("assets\\LiberationMono\\LiberationMono-Regular.ttf");
-    Greek_font = io.Fonts->AddFontFromFileTTF("assets\\LiberationSerif\\LiberationSerif-GreekSymbol.ttf");
-    #else
-    global_font = io.Fonts->AddFontFromFileTTF("assets/LiberationMono/LiberationMono-Regular.ttf");
-    Greek_font = io.Fonts->AddFontFromFileTTF("assets/LiberationSerif/LiberationSerif-GreekSymbol.ttf");                    // really craving a gyro right now
-    #endif
+    global_font = io.Fonts->AddFontFromFileTTF("assets" _FILESLASH "LiberationMono" _FILESLASH "LiberationMono-Regular.ttf");
+    Greek_font = io.Fonts->AddFontFromFileTTF("assets" _FILESLASH "LiberationSerif" _FILESLASH "LiberationSerif-GreekSymbol.ttf");                    // really craving a gyro right now
+
     IM_ASSERT(global_font != nullptr);
     IM_ASSERT(Greek_font != nullptr);
     ImGui::GetStyle().FontSizeBase = global_font_size;
@@ -305,7 +301,7 @@ int main (int argc, char** argv)
     int splash_image_width = 0;
     int splash_image_height = 0;
     GLuint splash_image_texture = 0;
-    bool ret = LoadTextureFromFile("assets/icon_full_seethru.png", &splash_image_texture, &splash_image_width, &splash_image_height);
+    bool ret = LoadTextureFromFile("assets" _FILESLASH "icon_full_seethru.png", &splash_image_texture, &splash_image_width, &splash_image_height);
     if(!ret)
     {
         printf("Failed to load icon texture\n");

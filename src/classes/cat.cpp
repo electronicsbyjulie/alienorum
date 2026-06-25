@@ -66,7 +66,7 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
                 std::find(known_catalog_names.begin(), known_catalog_names.end(), entry_name) != known_catalog_names.end()
                 )
             {
-                results.push_back(path + "/" + entry_name);
+                results.push_back(path + _FSSTR + entry_name);
             }
         }
     }
@@ -80,7 +80,7 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
 
 void CatalogReader::download_catalogs()
 {
-    std::string path = "catalogs/urls.dat";
+    std::string path = "catalogs" _FILESLASH "urls.dat";
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp)
     {
@@ -107,7 +107,7 @@ void CatalogReader::download_catalogs()
         buffer[l] = 0;
 
         // If the destination folder exists, assume we already have the catalog.
-        std::string destdir = (std::string)"catalogs/" + (std::string)catname;
+        std::string destdir = (std::string)"catalogs" + _FSSTR + (std::string)catname;
         fs::path p = destdir.c_str();
         if (!fs::exists(p))
         {
@@ -115,7 +115,7 @@ void CatalogReader::download_catalogs()
             fs::create_directories(destdir);
 
             // Download the gzipped tarball.
-            std::string destfname = destdir + "/download.tar.gz";
+            std::string destfname = destdir + _FSSTR + "download.tar.gz";
             p = destfname.c_str();
             if (!fs::exists(p))
             {
@@ -145,17 +145,17 @@ void CatalogReader::download_catalogs()
                 j = i - 3;
                 if (!strcmp(".tar.gz", &entry_name.c_str()[j]))
                 {
-                    cmd = (std::string)"tar -xvzf " + destdir + (std::string)"/" + entry_name;
+                    cmd = (std::string)"tar -xvzf " + destdir + _FSSTR + entry_name;
                     std::cout << cmd << std::endl;
                     std::system(cmd.c_str());
                 }
                 else if (!strcmp(".gz", &entry_name.c_str()[j]))
                 {
                     #ifdef _WIN32
-                    cmd = (std::string)"7z e -y " + destdir + (std::string)"/" + entry_name
-                        + std::string(" -so ") + destdir + (std::string)"/" + entry_name.substr(0, entry_name.size()-3);
+                    cmd = (std::string)"7z e -y " + destdir + _FSSTR + entry_name
+                        + std::string(" -so ") + destdir + _FSSTR + entry_name.substr(0, entry_name.size()-3);
                     #else
-                    cmd = (std::string)"gunzip " + destdir + (std::string)"/" + entry_name;
+                    cmd = (std::string)"gunzip " + destdir + _FSSTR + entry_name;
                     #endif
                     std::cout << cmd << std::endl;
                     std::system(cmd.c_str());
@@ -169,7 +169,7 @@ void CatalogReader::download_catalogs()
 // since Gliese contains the Sun.
 int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/Gliese/catalog.dat";
+    std::string path = "catalogs" _FILESLASH "Gliese" _FILESLASH "catalog.dat";
     char buffer[300];
     char field[32];
     int num_read = 0;
@@ -448,7 +448,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
 int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/BSC/catalog";
+    std::string path = "catalogs" _FILESLASH "BSC" _FILESLASH "catalog";
     char buffer[65536];
     char field[32];
     int num_read = 0;
@@ -728,7 +728,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
 int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/Hipparcos/hip_main.dat";
+    std::string path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_main.dat";
     char buffer[1024];
     char field[32];
     char Bonn[32], Cordoba[32], Cape[32];
@@ -982,7 +982,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     mtx.lock();
     loading_msg = "Building Hipparcos-CCDM Cross Reference...";
     mtx.unlock();
-    path = "catalogs/Hipparcos/h_dm_com.dat";
+    path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "h_dm_com.dat";
     fp = fopen(path.c_str(), "rb");
     while (fgets(buffer, 1020, fp))
     {
@@ -1035,7 +1035,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     mtx.lock();
     loading_msg = "Loading Hipparcos Binary Star Orbits...";
     mtx.unlock();
-    path = "catalogs/Hipparcos/hip_dm_o.dat";
+    path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_dm_o.dat";
     fp = fopen(path.c_str(), "rb");
     while (fgets(buffer, 1020, fp))
     {
@@ -1108,8 +1108,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
 int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
 {
-    std::string namespath = "catalogs/WD/names.dat";
-    std::string catpath = "catalogs/WD/catalog.dat";
+    std::string namespath = "catalogs" _FILESLASH "WD" _FILESLASH "names.dat";
+    std::string catpath = "catalogs" _FILESLASH "WD" _FILESLASH "catalog.dat";
     char buffer[1024];
     char field[32];
     int i, num_read = 0;
@@ -1376,7 +1376,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
 
 int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/CCDM/ccdm.dat";
+    std::string path = "catalogs" _FILESLASH "CCDM" _FILESLASH "ccdm.dat";
     char buffer[1024];
     char field[32];
     int num_read = 0;
@@ -1548,7 +1548,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
 int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/SB9/main.dat";
+    std::string path = "catalogs" _FILESLASH "SB9" _FILESLASH "main.dat";
     char buffer[1024];
     char field[32], Bonn, Bonn_sign, cen[5], comp[5];
     int num_read = 0;
@@ -1719,7 +1719,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     }
     fclose(fp);
 
-    path = "catalogs/SB9/orbits.dat";
+    path = "catalogs" _FILESLASH "SB9" _FILESLASH "orbits.dat";
     fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
     while (fgets(buffer, 1020, fp))
@@ -1799,7 +1799,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 
 bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
 {
-    std::string path = "catalogs/astorb/astorb.dat";
+    std::string path = "catalogs" _FILESLASH "astorb" _FILESLASH "astorb.dat";
     uint32_t asno;
     int _year, _month, _day;
     float absmagn;
@@ -1930,7 +1930,7 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
 
 int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
 {
-    std::string path = "catalogs/astorb/astorb.dat";
+    std::string path = "catalogs" _FILESLASH "astorb" _FILESLASH "astorb.dat";
     char buffer[1024];
     char field[32];
     int asno, num_read = 0, offset;
@@ -2029,7 +2029,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
-    std::string path = "catalogs/";
+    std::string path = "catalogs" + _FSSTR;
     std::string startswith = "PSCompPars_";
     std::string candidate = "";
     std::vector<std::string> results;
@@ -2452,7 +2452,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
 
 int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 {
-    std::string path = "catalogs/star_orbits.dat";
+    std::string path = "catalogs" _FILESLASH "star_orbits.dat";
     char buffer[1024];
     char field[32];
     int num_read = 0;
@@ -2646,7 +2646,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
 int CatalogReader::read_local_planets(CelestialObject **cels, int max)
 {
-    std::fstream fs(std::string("catalogs/planets.json"), std::ios::in);
+    std::fstream fs(std::string("catalogs" _FILESLASH "planets.json"), std::ios::in);
     if (!fs) throw 0xbadf12e;
     int result = 0, offset;
     json planets;

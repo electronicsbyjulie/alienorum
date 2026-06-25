@@ -328,7 +328,7 @@ RGB3Byte generate_vegetation_color()
 
 bool AlienStyle::load(std::string theme)
 {
-    std::string filename = "assets/themes.json";
+    std::string filename = "assets" _FILESLASH "themes.json";
     fstream fs(filename.c_str(), std::ios::in);
     if (!fs) return false;
 

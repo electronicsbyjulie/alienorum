@@ -12,7 +12,7 @@ void load_textures(CelestialObject* cel)
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.
     {
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.jpg";
+        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.jpg";
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
@@ -20,7 +20,7 @@ void load_textures(CelestialObject* cel)
         }
         else
         {
-            filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_clouds.png";
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.png";
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
@@ -28,7 +28,7 @@ void load_textures(CelestialObject* cel)
             }
         }
 
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.jpg";
+        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_surf.jpg";
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
@@ -36,7 +36,7 @@ void load_textures(CelestialObject* cel)
         }
         else
         {
-            filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_surf.png";
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_surf.png";
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
@@ -50,14 +50,14 @@ void load_textures(CelestialObject* cel)
             if (cls == class_planet || cls == class_moon)
             {
                 Planet *p = (Planet*)cel;
-                filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.jpg";
+                filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_bump.jpg";
                 if (file_exists(filename.c_str()))
                 {
                     cel->surf_map->load_from_jpeg(filename, true, p->estimate_bump_scale());
                 }
                 else
                 {
-                    filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_bump.png";
+                    filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_bump.png";
                     if (file_exists(filename.c_str()))
                     {
                         cel->surf_map->load_from_png(filename, true, p->estimate_bump_scale());
@@ -66,7 +66,7 @@ void load_textures(CelestialObject* cel)
             }
         }
 
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_night.jpg";
+        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_night.jpg";
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
@@ -74,7 +74,7 @@ void load_textures(CelestialObject* cel)
         }
         else
         {
-            filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_night.png";
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_night.png";
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
@@ -82,7 +82,7 @@ void load_textures(CelestialObject* cel)
             }
         }
 
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ring.jpg";
+        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.jpg";
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
@@ -90,7 +90,7 @@ void load_textures(CelestialObject* cel)
         }
         else
         {
-            filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ring.png";
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.png";
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
@@ -98,7 +98,7 @@ void load_textures(CelestialObject* cel)
             }
         }
 
-        filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ringx.jpg";
+        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.jpg";
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
@@ -106,7 +106,7 @@ void load_textures(CelestialObject* cel)
         }
         else
         {
-            filename = (std::string)"maps/" + (std::string)cel->name + (std::string)"_ringx.png";
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.png";
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
@@ -135,17 +135,17 @@ void save_textures(CelestialObject* cel)
     std::string mapfname;
     if (cel->surf_map)
     {
-        mapfname = std::string("maps/") + std::string(cel->name) + std::string("_surf.png");
+        mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_surf.png");
         cel->surf_map->save_to_png(mapfname);
     }
     if (cel->cloud_map)
     {
-        mapfname = std::string("maps/") + std::string(cel->name) + std::string("_clouds.png");
+        mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_clouds.png");
         cel->cloud_map->save_to_png(mapfname);
     }
     if (cel->night_map)
     {
-        mapfname = std::string("maps/") + std::string(cel->name) + std::string("_night.png");
+        mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_night.png");
         cel->cloud_map->save_to_png(mapfname);
     }
 }
@@ -213,7 +213,7 @@ bool load_universe(std::string universe_fname = "universe.json")
             refresh_star_visibilities();
 
             std::filesystem::file_time_type ftime_json = std::filesystem::last_write_time("universe.json");
-            std::filesystem::file_time_type ftime_cat = std::filesystem::last_write_time("catalogs/star_orbits.dat");
+            std::filesystem::file_time_type ftime_cat = std::filesystem::last_write_time("catalogs" _FILESLASH "star_orbits.dat");
             bool resave_json = false;
             if (ftime_cat > ftime_json)
             {
@@ -251,13 +251,13 @@ void load_catalogs()
     for (i=0; i<n; i++)
     {
         cout << "Found " << cats[i] << endl;
-        if (!strcmp(cats[i].c_str(), "catalogs/Gliese")) have_Gliese = true;
-        if (!strcmp(cats[i].c_str(), "catalogs/BSC")) have_BSC = true;
-        if (!strcmp(cats[i].c_str(), "catalogs/Hipparcos")) have_HIP = true;
-        if (!strcmp(cats[i].c_str(), "catalogs/WD")) have_WD = true;
-        if (!strcmp(cats[i].c_str(), "catalogs/CCDM")) have_CCDM = true;
-        if (!strcmp(cats[i].c_str(), "catalogs/SB9")) have_SB9 = true;
-        if (!strcmp(cats[i].c_str(), "catalogs/astorb")) have_astorb = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "Gliese")) have_Gliese = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "BSC")) have_BSC = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "Hipparcos")) have_HIP = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "WD")) have_WD = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "CCDM")) have_CCDM = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "SB9")) have_SB9 = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "astorb")) have_astorb = true;
     }
 
     if (have_Gliese)
