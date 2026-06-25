@@ -47,17 +47,9 @@ bool Satellite::from_json(json j)
 
 json SatSource::to_json()
 {
-    std::string iso_string;
-    std::ostringstream oss;
-
-    std::tm* tm_local = std::localtime(&last_accessed);
-    oss << std::put_time(tm_local, "%Y-%m-%d %H:%M:%S");
-    iso_string = oss.str();
-
     json j;
     j["URL"] = url;
     j["LocalName"] = local_name;
-    j["LastAccessed"] = iso_string;
     j["Type"] = is_supplemental ? "supplemental" : "master";
     return j;
 }
@@ -72,10 +64,6 @@ bool SatSource::from_json(json j)
         std::string type;
         j.at("Type").get_to(type);
         is_supplemental = (!strcmp(type.c_str(), "supplemental"));
-
-        std::string iso_string;
-        j.at("LastAccessed").get_to(iso_string);
-        last_accessed = from_iso_string(iso_string, "%Y-%m-%d %H:%M:%S");
     }
     catch (...)
     {
@@ -115,6 +103,7 @@ bool SatSource::read_sources_json()
     }
 
     fs.close();
+
     return true;
 }
 
@@ -162,13 +151,11 @@ int SatSource::data_age_hours()
         auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
             ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
         std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
-        if (last_accessed < mt) last_accessed = mt;
+        std::time_t now = std::time(nullptr);
+        std::time_t age = now - mt;
+        return age/3600;
     }
     else return 1e5;
-    std::time_t now = std::time(nullptr);
-    std::time_t age = now - last_accessed;
-
-    return age/3600;
 }
 
 bool SatSource::download_data()

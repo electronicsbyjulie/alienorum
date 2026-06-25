@@ -60,10 +60,10 @@ namespace alienorum
         public:
         std::string url = "";
         std::string local_name = "";
-        std::time_t last_accessed = 0;                      // seconds since 1970
         bool is_supplemental = false;
 
         json to_json();
+        json to_json_nv();
         bool from_json(json j);
 
         static bool read_sources_json();
