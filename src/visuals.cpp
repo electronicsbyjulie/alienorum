@@ -151,6 +151,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
 
+    double bs = 0;
+    if (cls == class_planet || cls == class_moon)
+    {
+        bs = (((Planet*)cel)->surf_map && ((Planet*)cel)->surf_map->has_bump_data())
+            ? ((Planet*)cel)->estimate_bump_scale() : 0;
+    }
+
     if ((d < cel->volumetric_mean_radius || (cls == class_satellite && d < 100)))
     {
         if (velocity.magnitude() && took_off_from != cel->seqno)
@@ -206,6 +213,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
+    std::vector<Point> tdland;
     std::vector<bool> tdvalid;
     ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
     ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
@@ -359,7 +367,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             lon360 = lonmin_crosses_zero ? (lonmin_rad - _pi*2) : lonmin_rad;
             if (filter_longitudes && (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat))) continue;
             n++;
-            elevation = map ? map->elevation_at(lat, lon) : 0;
+            elevation = (map && bs) ? (map->elevation_at(lat, lon)) : 0;
             land = Point::from_ra_dec(lon+_pi, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
             if (dwh)
@@ -379,6 +387,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             {
                 todraw.push_back(ImVec2(0,0));
                 tdvalid.push_back(false);
+                tdland.push_back(center);
                 l++;
                 prev_valid = false;
                 continue;
@@ -389,6 +398,7 @@ int draw_sphere(CelestialObject* cel, double arad)
             {
                 todraw.push_back(ImVec2(0,0));
                 tdvalid.push_back(false);
+                tdland.push_back(center);
                 l++;
                 prev_valid = false;
                 continue;
@@ -402,6 +412,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     todraw.push_back(ImVec2(-1e13, -2e13));
                     tdvalid.push_back(false);
+                    tdland.push_back(center);
                 }
                 else
                 {
@@ -427,9 +438,10 @@ int draw_sphere(CelestialObject* cel, double arad)
                         }
                     }
 
-                    // TODO: Also store 3D coordinates of each vertex.
                     todraw.push_back(v);
                     tdvalid.push_back(true);
+                    // Also store 3D coordinates of each vertex.
+                    tdland.push_back(land);
 
                     if (!wireframe && (lat>-half_pi) && !dragging && perline)
                     {
@@ -443,8 +455,11 @@ int draw_sphere(CelestialObject* cel, double arad)
                             }
                             else
                             {
-                                // TODO: Shade based on the normal of the 3D coordinates of the polygon vertices instead of angle to sun and cel center.
-                                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+                                // theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+
+                                // Shade based on the normal of the 3D coordinates of the polygon vertices instead of angle to sun and cel center.
+                                Point normal = compute_normal(land, tdland[l-1], tdland[m]) + compute_normal(tdland[l-1], tdland[m-1], tdland[m]);
+                                theta = fmod(find_3D_angle(cel->location.local_position - normal, lightcen->location.local_position, cel->location.local_position), _pi);
                                 if (fabs(theta) < half_pi)
                                 {
                                     cos_theta = cos(theta);

@@ -117,6 +117,7 @@ namespace alienorum
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool save_to_png(std::string filename);
+        inline bool has_bump_data() { return bump_data && image_height; }
 
         RGB3Byte color_at(double latitude, double longitude);
         double elevation_at(double latitude, double longitude);     // Returns meters.
@@ -163,8 +164,8 @@ namespace alienorum
         char name[name_max_len];
         std::string origname = "", origcenname = "";
 
-        Map *surf_map = nullptr, *bump_map = nullptr, *cloud_map = nullptr,
-            *night_map = nullptr, *ring_map = nullptr, *ringx_map = nullptr;
+        Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,
+            *ring_map = nullptr, *ringx_map = nullptr;
         float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;
         bool looked_for_maps = false, ignore_map_files = false;
         unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
