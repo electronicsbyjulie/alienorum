@@ -117,6 +117,8 @@ bool compute_object_location(CelestialObject* cel)
 
     CelestialLocation tmp = cel->location - here;
     cel->tmprel = Point(tmp);
+    double viewer_distance = cel->tmprel.magnitude();
+    double light_travel_time = viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
     mag_limit_adjusted = log(pow(magnbase, 6.5)*zoom) * invlogmagnbase;
     switch (cel->typeclass())
@@ -156,7 +158,7 @@ bool compute_object_location(CelestialObject* cel)
             }
         }
 
-        ((Star*)cel)->update_location(simnow);
+        ((Star*)cel)->update_location(simnow - light_travel_time);
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
         if (i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
@@ -188,7 +190,7 @@ bool compute_object_location(CelestialObject* cel)
                 }
             }
         }
-        ((Planet*)cel)->update_location(simnow);
+        ((Planet*)cel)->update_location(simnow - light_travel_time);
         break;
 
         case class_moon:
@@ -213,11 +215,11 @@ bool compute_object_location(CelestialObject* cel)
                 }
             }
         }
-        ((Moon*)cel)->update_location(simnow);
+        ((Moon*)cel)->update_location(simnow - light_travel_time);
         break;
 
         case class_satellite:
-        ((Satellite*)cel)->update_location(simnow);
+        ((Satellite*)cel)->update_location(simnow - light_travel_time);
 
         default:
         ;
