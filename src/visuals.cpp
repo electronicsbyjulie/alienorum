@@ -671,7 +671,7 @@ bool draw_one_object(int i)
     xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
     double brght = pow(magnbase, -vmag_cache[i] + sky_mag_shift);
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
-    flare = (bloomrad>max_bloomrad) ? fmin(max_flare, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
+    flare = (bloomrad>max_bloomrad) ? fmin(max_flare, fmax(0, 1.0+sqrt(bloomrad-1.5*max_bloomrad)*8)) : 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     appmag = vmag_cache[i] - sky_mag_shift;
     if (cls == class_satellite)
@@ -906,7 +906,12 @@ void draw_objects()
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         step = cels[i]->orbit->period / orbseg;
         CelestialLocation was = cels[i]->location;
-        bool is_moon = (cels[i]->typeclass() == class_moon), is_sat = (cels[i]->typeclass() == class_satellite);
+        bool is_star = (cels[i]->typeclass() == class_star),
+            is_moon = (cels[i]->typeclass() == class_moon),
+            is_sat = (cels[i]->typeclass() == class_satellite);
+
+        double viewer_distance = cels[i]->tmprel.magnitude();
+        double light_travel_time = viewer_distance / speed_of_light;
 
         Cartesian2D lastcart;
         try
@@ -919,12 +924,14 @@ void draw_objects()
         }
         for (j=-4; j<=orbseg; j++)
         {
-            if (is_moon)
-                ((Moon*)cels[i])->update_location(simnow + step*j);
+            if (is_star)
+                ((Star*)cels[i])->update_location(simnow + step*j - light_travel_time);
+            else if (is_moon)
+                ((Moon*)cels[i])->update_location(simnow + step*j - light_travel_time);
             else if (is_sat)
-                ((Satellite*)cels[i])->update_location(simnow + step*j);
+                ((Satellite*)cels[i])->update_location(simnow + step*j - light_travel_time);
             else
-                ((Planet*)cels[i])->update_location(simnow + step*j);
+                ((Planet*)cels[i])->update_location(simnow + step*j - light_travel_time);
 
             CelestialLocation orbrel = cels[i]->location - here;
 
@@ -978,7 +985,6 @@ void draw_objects()
             && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) )) continue;
 
         bloomrad = fabs(bloomrad_cache[i]);
-        flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
         bloomrad = fmin(max_bloomrad, bloomrad);
 
         // if (cls != class_satellite && angular_radius[i]*zoom > fiftyseventh)
