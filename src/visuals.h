@@ -5,6 +5,8 @@
 #include "globals.h"
 
 #define bloom_exponent 2.5
+#define bloom_softness 0.2
+#define max_flare 503
 #define antenna_height 5
 #define panel_width 6
 #define panel_tilt 2

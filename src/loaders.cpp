@@ -298,7 +298,7 @@ void load_catalogs()
         cout << "Read " << nBSC << " objects." << endl << flush;
     }
     Gliese_doubles_fix();
-    if (have_HIP)
+    if (have_HIP && !magnitude_test)
     {
         mtx.lock();
         loading_msg = std::string("Loading Hipparcos Catalog...");
@@ -325,56 +325,59 @@ void load_catalogs()
     rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
 
-    cout << "Reading exoplanets..." << endl << flush;
-    int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
-    num_planets += nexo;
-    cout << "Read " << nexo << " objects." << endl << flush;
-
-    #if _USE_CCDM
-    if (have_CCDM)
+    if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
-        mtx.lock();
-        loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
-        mtx.unlock();
-        cout << "Reading CCDM catalog..." << endl << flush;
-        int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
-        cout << "Read " << nCCDM << " objects." << endl << flush;
-    }
-    #endif
+        cout << "Reading exoplanets..." << endl << flush;
+        int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+        num_planets += nexo;
+        cout << "Read " << nexo << " objects." << endl << flush;
 
-    if (have_SB9)
-    {
-        mtx.lock();
-        loading_msg = std::string("Loading Stellar Binaries Catalog...");
-        mtx.unlock();
-        cout << "Reading SB9 catalog..." << endl << flush;
-        int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
-        cout << "Read " << nSB9 << " objects." << endl << flush;
-    }
-
-    for (i=0; cels[i]; i++)
-    {
-        if (cels[i]->type == star) num_stars++;
-        if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
-    }
-
-    mtx.lock();
-    loading_msg = std::string("Loading satellite data...");
-    mtx.unlock();
-    cout << loading_msg << endl << flush;
-    SatSource::read_sources_json();
-    n = sat_sources.size();
-    int j=0;
-    for (i=0; i<n; i++)
-    {
-        if (sat_sources[i].data_age_hours() > 24)
+        #if _USE_CCDM
+        if (have_CCDM)
         {
-            sat_sources[i].download_data();
-            j++;
+            mtx.lock();
+            loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
+            mtx.unlock();
+            cout << "Reading CCDM catalog..." << endl << flush;
+            int nCCDM = cr.read_CCDM_catalog(cels, MAX_CELOBJS);
+            cout << "Read " << nCCDM << " objects." << endl << flush;
         }
-        sat_sources[i].read_csv_data();
+        #endif
+
+        if (have_SB9)
+        {
+            mtx.lock();
+            loading_msg = std::string("Loading Stellar Binaries Catalog...");
+            mtx.unlock();
+            cout << "Reading SB9 catalog..." << endl << flush;
+            int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
+            cout << "Read " << nSB9 << " objects." << endl << flush;
+        }
+
+        for (i=0; cels[i]; i++)
+        {
+            if (cels[i]->type == star) num_stars++;
+            if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
+        }
+
+        mtx.lock();
+        loading_msg = std::string("Loading satellite data...");
+        mtx.unlock();
+        cout << loading_msg << endl << flush;
+        SatSource::read_sources_json();
+        n = sat_sources.size();
+        int j=0;
+        for (i=0; i<n; i++)
+        {
+            if (sat_sources[i].data_age_hours() > 24)
+            {
+                sat_sources[i].download_data();
+                j++;
+            }
+            sat_sources[i].read_csv_data();
+        }
+        if (j) SatSource::update_sources_json();
     }
-    if (j) SatSource::update_sources_json();
 
     mtx.lock();
     loading_msg = std::string("Naming stars...");
@@ -385,7 +388,8 @@ void load_catalogs()
     mtx.lock();
     loading_msg = std::string("Orbiting stars...");
     mtx.unlock();
-    cr.read_star_orbits_dat(cels);
+    if (!magnitude_test) cr.read_star_orbits_dat(cels);
+    else splash = false;
 
     if (magnitude_test)
     {

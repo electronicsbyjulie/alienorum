@@ -320,9 +320,6 @@ void compute_object_draw_coordinates()
                 if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
             }
 
-            brght = global_brightness * pow(magnbase, -vmag_cache[i] + sky_mag_shift);
-            bloomrad_cache[i] = fmax(1.414, sqrt(brght)*global_brightness);
-
             cels[i]->viewrel = rel;
 
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);

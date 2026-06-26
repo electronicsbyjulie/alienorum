@@ -91,7 +91,7 @@ using json = nlohmann::json;
 #define _USE_CCDM 1
 #define _ALLOW_CCDM_ADDITIONS 0
 #define default_brightness 1.0
-#define default_gamma 0.7
+#define default_gamma 1.0
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
 #define nlbltyp 10

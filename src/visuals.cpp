@@ -654,9 +654,10 @@ bool draw_one_object(int i)
     int j;
     cel_obj_class cls = cels[i]->typeclass();
     xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
-    bloomrad = fabs(bloomrad_cache[i]);
-    flare = (bloomrad>max_bloomrad) ? fmin(225, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
-    bloomrad = fmin(max_bloomrad, bloomrad);
+    double brght = pow(magnbase, -vmag_cache[i] + sky_mag_shift);
+    bloomrad = fabs(pow(brght, 0.5)*global_brightness);
+    flare = (bloomrad>max_bloomrad) ? fmin(max_flare, fmax(0, 1.0+sqrt(bloomrad-0.5*max_bloomrad)*8)) : 0;
+    bloomrad = fmin(max_bloomrad, bloomrad*10);
     appmag = vmag_cache[i] - sky_mag_shift;
     if (cls == class_satellite)
     {
@@ -753,19 +754,51 @@ bool draw_one_object(int i)
             }
         }
 
-        double mgrc = bloomrad_cache[i];
-        double divisor = (1.0 / (pow(bloom_exponent, mgrc-1)));
-
-        if (mgrc >= 2)
+        double brght = pow(magnbase, -vmag_cache[i]) * global_brightness * 50, circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
+        // if (i == 1075) std::cout << i << ":" << cels[i]->name << ": " << brght << std::endl;
+        bool first = true;
+        std::vector<double> circradii, circpixvals;
+        for (bloomrad = 0.5; brght > 0; bloomrad += 0.5)
         {
-            mgrc = 2.0 * sqrt(mgrc/2);
-            divisor = (2.9 / fmax(col.red, col.blue));
+            if (first)
+            {
+                double area = _pi * bloomrad * bloomrad;
+                lbrght = brght*softmod;
+                lpxval = lbrght/area;
+                tosub = fmin(area, lbrght);
+                circradii.push_back(bloomrad);
+                circpixvals.push_back(fmin(1, lpxval));
+                // if (i == 1075) std::cout << " area " << area << " so " << brght << " - " << tosub << " = ";
+                brght -= tosub;
+                // if (i == 1075) std::cout << brght << std::endl;
+                first = false;
+            }
+            else
+            {
+                circ = 2.0 * _pi * bloomrad;
+                lbrght = brght*softmod;
+                lpxval = lbrght/circ;
+                tosub = fmin(circ, lbrght);
+                circradii.push_back(bloomrad);
+                circpixvals.push_back(fmin(1, lpxval));
+                // if (i == 1075) std::cout << " circ " << circ << " so " << brght << " - " << tosub << " = ";
+                brght -= tosub;
+                // if (i == 1075) std::cout << brght << std::endl;
+            }
+            if (bloomrad >= max_bloomrad) break;
+            if (lpxval < 0.03) break;
         }
+        bloomrad_cache[i] = fmin(1.414, bloomrad);
 
+        double divisor = 1.0 / fmin(col.red, col.blue);
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
-        for (jay=bloomrad; jay>=0; jay-=0.7)
+        int n = circradii.size();
+        // if (i == 1075) std::cout << n << " radii:" << std::endl;
+        for (j=n-1; j>=0; j--)
         {
-            RGB3Byte rgb = Color::rgb_from_color(col, 1);
+            jay = circradii[j];
+            RGB3Byte rgb = Color::rgb_from_color(col, circpixvals[j]);
+            // if (i == 1075) std::cout << " draw radius " << jay << " pixel value * " << circpixvals[j] << std::endl;
             if (rgb.r >= 8 || rgb.b >= 8)
             {
                 ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, fmax(0.9, jay),
@@ -773,8 +806,6 @@ bool draw_one_object(int i)
                 cels[i]->onscreen = true;
             }
             if (rgb.r == 255 && rgb.b == 255) break;
-
-            col.red *= bloom_exponent; col.green *= bloom_exponent; col.blue *= bloom_exponent;
         }
     }
     if (selected == i && cels[1])
@@ -924,16 +955,6 @@ void draw_objects()
         {
             continue;
         }
-
-        /*cel_obj_class cls = cels[i]->typeclass();
-
-        if (cls == class_star
-            && i
-            && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
-            && !((Star*)cels[i])->tmp_vis_flag
-            && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
-            && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) ))
-            continue;*/
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i] - sky_mag_shift;

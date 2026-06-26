@@ -50,26 +50,20 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR)
     return c;
 }
 
-RGB3Byte Color::rgb_from_color(Color c, double bloom_radius)
+RGB3Byte Color::rgb_from_color(Color c, double mult)
 {
     RGB3Byte result;
     int red, green, blue;
-    double circ, invcirc;
 
-    if (bloom_radius < 0)
+    if (mult < 0)
     {
         // Normalize
-        invcirc = 1.0 / fmax(c.red, fmax(c.green, c.blue));
-    }
-    else
-    {
-        circ = 2.0 * _pi * bloom_radius;
-        invcirc = 1.0 / circ;
+        mult = 1.0 / fmax(c.red, fmax(c.green, c.blue));
     }
 
-    red   = 255 * fmin(1.0, pow(c.red   * invcirc, global_inverse_gamma));
-    green = 255 * fmin(1.0, pow(c.green * invcirc, global_inverse_gamma));
-    blue  = 255 * fmin(1.0, pow(c.blue  * invcirc, global_inverse_gamma));
+    red   = 255 * fmin(1.0, pow(c.red   * mult, global_inverse_gamma));
+    green = 255 * fmin(1.0, pow(c.green * mult, global_inverse_gamma));
+    blue  = 255 * fmin(1.0, pow(c.blue  * mult, global_inverse_gamma));
 
     if (redlight_mode)
     {
@@ -78,9 +72,9 @@ RGB3Byte Color::rgb_from_color(Color c, double bloom_radius)
         blue *= 0.333;
     }
 
-    result.r = red;
-    result.g = green;
-    result.b = blue;
+    result.r = std::min(255, red);
+    result.g = std::min(255, green);
+    result.b = std::min(255, blue);
     return result;
 }
 
