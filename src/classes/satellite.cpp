@@ -109,6 +109,7 @@ bool SatSource::read_sources_json()
 
 bool SatSource::update_sources_json()
 {
+    return true;            // TODO:
     json j;
     int i, n = sat_sources.size();
 

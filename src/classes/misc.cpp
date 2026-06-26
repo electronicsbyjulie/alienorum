@@ -6,7 +6,7 @@
 #include <math.h>
 #include <fstream>
 #include <ctime>
-
+#include <curl/curl.h>
 #include "misc.h"
 using namespace alienorum;
 
@@ -332,11 +332,30 @@ bool download_file(std::string URL, std::string save_path)
         std::string buffer;
         curlpp::Easy easy;
 
-        easy.setOpt(CURLOPT_URL, URL.c_str());
-        curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
-        easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
-        easy.setOpt(CURLOPT_WRITEDATA, &buffer);
-        easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
+        if (!strcmp(URL.substr(0, 6).c_str(), "ftp://"))
+        {
+            // Set target URL using the correct 2-argument signature
+            easy.setOpt(CURLOPT_URL, URL.c_str());
+
+            // Credentials and configuration flags
+            easy.setOpt(CURLOPT_USERNAME, "anonymous");
+            easy.setOpt(CURLOPT_PASSWORD, "[email protected]");
+
+            // Crucial: Re-enable passive mode to get past firewalls
+            curl_easy_setopt(easy.getHandle(), static_cast<CURLoption>(10085), 1L);           // CURLOPT_FTP_USE_PASV
+
+            // Write directly into your string buffer using basic functional callbacks
+            easy.setOpt(CURLOPT_WRITEDATA, &buffer);
+            easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
+        }
+        else
+        {
+            easy.setOpt(CURLOPT_URL, URL.c_str());
+            curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
+            easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
+            easy.setOpt(CURLOPT_WRITEDATA, &buffer);
+            easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
+        }
 
         easy.perform();
 

@@ -1,28 +1,31 @@
 # stars
-Gliese              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?V/70A
-BSC                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?V/50
-Hipparcos           https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?I/239
-GAIA                https://gaia.ari.uni-heidelberg.de/gaiasky/repository/catalog/dr3/014-best/v01_20250530/catalog-gaia-dr3-best.tar.gz
-GCVS                https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/gcvs
-CGO                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?III/274
-2MASS               https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?II/246
-WD                  https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/wd
+Gliese          catalog.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/V/70A/catalog.dat.gz
+BSC             catalog.gz                  ftp://cdsarc.cds.unistra.fr/cats/V/50/catalog.gz
+Hipparcos       hip_main.dat                ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_main.dat
+Hipparcos       h_dm_com.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/h_dm_com.dat.gz
+Hipparcos       hip_dm_o.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_dm_o.dat.gz
+#GAIA                https://gaia.ari.uni-heidelberg.de/gaiasky/repository/catalog/dr3/014-best/v01_20250530/catalog-gaia-dr3-best.tar.gz
+GCVS            gcvs_cat.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/gcvs_cat.dat.gz
+GCVS            crossid.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/crossid.dat
+GOSSS           main.dat                    ftp://cdsarc.cds.unistra.fr/cats/III/274/main.dat
+#WD                  https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/wd
 
 # multi star systems
-# CCDM                https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?I/274
-SB9                 https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?V/122
+CCDM            ccdm.dat.gz                 ftp://cdsarc.cds.unistra.fr/cats/I/274/ccdm.dat.gz
+SB9             main.dat                    ftp://cdsarc.cds.unistra.fr/cats/B/sb9/main.dat
+SB9             orbits.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/sb9/orbits.dat
 
 # galaxies
-# REGALADE            https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?J/A+A/706/A284
-GALEX               https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?J/ApJS/173/185
+#REGALADE        regalade.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/J/A+A/706/A284/regalade.dat.gz
+GALEX           table1.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table1.dat
+GALEX           table5.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table5.dat
 
-# REGALADE is not available for auto download because the gzipped tarball is too big,
-# however this may still be a good resource to use with the caveat that the user must
-# download the catalog manually.
+# The REGALADE catalog is very large - about 8 GB zipped - so if functionality is ever added to read this catalog,
+# the user will be invited to download the catalog manually.
 
 # solar system objects
-astorb              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/astorb
-comets              https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/comets
+astorb          astorb.dat.gz               ftp://cdsarc.cds.unistra.fr/cats/B/astorb/astorb.dat.gz
+comets          comets.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/comets/comets.dat
 
 # Complete list of auto-downloadable catalogs from VizieR:
 # https://vizier.cds.unistra.fr/vizier/cats/U.htx

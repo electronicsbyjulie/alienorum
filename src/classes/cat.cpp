@@ -80,7 +80,7 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
 
 void CatalogReader::download_catalogs()
 {
-    std::string path = "catalogs" _FILESLASH "urls.dat";
+    std::string path = "catalogs" _FILESLASH "urls.dat", cmd;
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp)
     {
@@ -89,77 +89,89 @@ void CatalogReader::download_catalogs()
     }
 
     char buffer[1024], *catname = nullptr, *url = nullptr;
+    std::string destfname = "";
     int i, j, l;
     bool frist = true;
     while (fgets(buffer, 1020, fp))
     {
         if (buffer[0] == '#') continue;
+
         for (i=0; buffer[i] && buffer[i] <= ' '; i++);
         catname = &buffer[i];
         if (!*catname) continue;
         if (catname[0] == '#') continue;
+
         for (j=i; buffer[j] && buffer[j] > ' '; j++);
         buffer[j] = 0;
+
+        std::string destdir = (std::string)"catalogs" + _FSSTR + (std::string)catname;
+
         for (j++; buffer[j] && buffer[j] <= ' '; j++);
-        url = &buffer[j];
-        if (!*url) continue;
+
         for (l=j; buffer[l] && buffer[l] > ' '; l++);
+        buffer[l] = 0;
+        destfname = destdir + _FSSTR + std::string(&buffer[j]);
+        if (!destfname.size()) continue;
+
+        for (l++; buffer[l] && buffer[l] <= ' '; l++);
+        url = &buffer[l];
+        if (!*url) continue;
+
+        for (; buffer[l] && buffer[l] > ' '; l++);
         buffer[l] = 0;
 
         // If the destination folder exists, assume we already have the catalog.
-        std::string destdir = (std::string)"catalogs" + _FSSTR + (std::string)catname;
         fs::path p = destdir.c_str();
         if (!fs::exists(p))
         {
             // Create the dest folder.
             fs::create_directories(destdir);
+        }
 
-            // Download the gzipped tarball.
-            std::string destfname = destdir + _FSSTR + "download.tar.gz";
-            p = destfname.c_str();
-            if (!fs::exists(p))
+        l = destfname.size();
+        std::string dest_unzipped = destfname;
+        if (!strcmp(dest_unzipped.substr(l-3).c_str(), ".gz")) dest_unzipped = dest_unzipped.substr(0, l-3);
+        if (!fs::exists(destfname) && !fs::exists(dest_unzipped.c_str()))
+        {
+            if (frist)
             {
-                if (frist)
-                {
-                    mtx.lock();
-                    loading_msg = "Downloading catalogs...";
-                    mtx.unlock();
-                    std::cout << loading_msg << std::endl;
-                }
-                download_file(url, destfname);
+                mtx.lock();
+                loading_msg = "Downloading catalogs...";
+                mtx.unlock();
+                std::cout << loading_msg << std::endl;
             }
 
-            // Extract the tarball.
-            std::string cmd = (std::string)"tar -xvzf " + destfname + (std::string)" -C " + destdir;
-            std::cout << cmd << std::endl;
-            std::system(cmd.c_str());
+            std::cout << "Download " << catname << " as " << destfname << " from " << url << " and unzip to " << dest_unzipped << std::endl;
+            // throw 0xbadc0de;
 
-            // Delete the tarball.
-            fs::remove(destfname);
+            // Download the (possibly gzipped) file.
+            download_file(url, destfname);
+        }
 
-            // Any .gz files in the destination folder, unzip them.
-            for (const auto& entry : fs::directory_iterator(destdir))
+        // Any .gz files in the destination folder, unzip them.
+        for (const auto& entry : fs::directory_iterator(destdir))
+        {
+            std::string entry_name = entry.path().filename().string();
+            // std::cout << entry_name << std::endl;
+
+            i = entry_name.size();
+            j = i - 3;
+            if (!strcmp(".tar.gz", &entry_name.c_str()[j]))
             {
-                std::string entry_name = entry.path().filename().string();
-                i = entry_name.size();
-                j = i - 3;
-                if (!strcmp(".tar.gz", &entry_name.c_str()[j]))
-                {
-                    cmd = (std::string)"tar -xvzf " + destdir + _FSSTR + entry_name;
-                    std::cout << cmd << std::endl;
-                    std::system(cmd.c_str());
-                }
-                else if (!strcmp(".gz", &entry_name.c_str()[j]))
-                {
-                    #ifdef _WIN32
-                    cmd = (std::string)"7z e -y " + destdir + _FSSTR + entry_name
-                        + std::string(" -so > ") + destdir + _FSSTR + entry_name.substr(0, entry_name.size()-3);
-                    #else
-                    cmd = (std::string)"gunzip " + destdir + _FSSTR + entry_name;
-                    #endif
-                    std::cout << cmd << std::endl;
-                    std::system(cmd.c_str());
-                }
+                cmd = (std::string)"tar -xvzf " + destdir + _FSSTR + entry_name;
+                std::cout << cmd << std::endl;
+                std::system(cmd.c_str());
+            }
+            else if (!strcmp(".gz", &entry_name.c_str()[j]))
+            {
+                #ifdef _WIN32
+                cmd = (std::string)"7z e -y " + destdir + _FSSTR + entry_name
+                    + std::string(" -so > ") + destdir + _FSSTR + entry_name.substr(0, entry_name.size()-3);
+                #else
+                cmd = (std::string)"gunzip " + destdir + _FSSTR + entry_name;
+                #endif
+                std::cout << cmd << std::endl;
+                std::system(cmd.c_str());
             }
         }
     }
