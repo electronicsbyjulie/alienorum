@@ -169,6 +169,8 @@ void draw_status_window(ImGuiIO& io)
         ImGui::TextColored(hzcolor, "In Habitable Zone");
     }
 
+    ImGui::Text("Mag limit: %.1f", ((view_mode == vm_horizon) ? normal_best_mag_limit : mag_limit_adjusted) + sky_mag_shift);
+
     ImGui::Separator();
 
     double vm = velocity.magnitude() * target_frame_rate;

@@ -120,7 +120,7 @@ bool compute_object_location(CelestialObject* cel)
     double viewer_distance = cel->tmprel.magnitude();
     double light_travel_time = viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
-    mag_limit_adjusted = log(pow(magnbase, 6.5)*zoom) * invlogmagnbase;
+    mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
     switch (cel->typeclass())
     {
         case class_star:

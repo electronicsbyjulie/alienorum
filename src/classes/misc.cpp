@@ -48,7 +48,7 @@ bool explorer = false;
 bool show_taucalc = false;
 bool hide_mouse = true;
 bool searched = false;
-double mag_limit_adjusted = 6.5;
+double mag_limit_adjusted = normal_best_mag_limit;
 const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Bayer", "Flamsteed",
     "Sunlike", "Has Planets", "Planet in HZ", "Binary Orbit", "Known Poles" };
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
@@ -69,7 +69,7 @@ double appmagn_lblcut = 2.5,
 char lblcut0[256], lblcut1[256], lblcut2[256];
 int planets_lblcut = 1;
 
-double intrinsic_cutoff = pow(magnbase, -6.5);
+double intrinsic_cutoff = pow(magnbase, -normal_best_mag_limit);
 PerlinNoise pn;
 
 const std::string WHITESPACE = " \n\r\t\f\v";

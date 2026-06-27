@@ -100,6 +100,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
+#define normal_best_mag_limit 6.5
 #define starlight 0.03
 #define gossamer_rings 0.08
 #define zero_isnt_really_zero 9e-298

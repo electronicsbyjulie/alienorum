@@ -5,7 +5,7 @@
 
 using namespace alienorum;
 
-double jay, appmag, bloomrad, flare, theta, lmasslim;
+double jay, appmag, bloomrad, flare, theta, lmasslim, hz_y;
 ImVec2 xycoord;
 ImFont *global_font = nullptr, *Greek_font = nullptr;
 const char *Greek_symbol_mapping = "abgdezhuiklmnqoprstyfxjv";
@@ -890,7 +890,7 @@ void draw_objects()
 
     double mycensq = mycenobj->tmprel.squared_magnitude();
     double layer_cutoff = mycensq * 1.1 * zoom * zoom;
-    mag_limit_adjusted = log(pow(magnbase, 6.5)*zoom) * invlogmagnbase;
+    mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -1032,10 +1032,16 @@ void draw_objects()
         if (!cels[1]) return;
     }
 
-    // Horizon
-    // TODO: Render according to bump map and generate a fictitious skyline.
+}
+
+bool draw_marker[16];
+double hz_dx[16], hz_dy[16];
+void find_horizon()
+{
+    hz_y = dispcy*29;
     if (view_mode == vm_horizon)
     {
+        int j;
         CelestialObject *cel = cels[whereami];
         if (!cel->looked_for_maps)
         {
@@ -1044,38 +1050,48 @@ void draw_objects()
             ttex.detach();
         }
 
-        double theta = 0, step = _pi/8, dx[16], dy[16], dy1 = dispcy*29;
-        bool draw_marker[16];
+        double theta = 0, step = _pi/8;
         for (j = 0; j < 16; j++)
         {
             draw_marker[j] = false;
             Point pt = rotate3D(zaxis, center, yaxis, theta);
             Cartesian2D horizon = Cartesian2D(pt, azimuth, altitude, zoom);
-            dx[j] = horizon.x * dispcx + dispcx;
-            dy[j] = horizon.y * dispcx + dispcy;
-            if (dy[j] < 0) dy[j] = 0;
-            else draw_marker[j] = (dx[j] >= 0 && dx[j] < dispcx*2);
-            if (draw_marker[j] && dy1 > dispcy*2) dy1 = dy[j];
+            hz_dx[j] = horizon.x * dispcx + dispcx;
+            hz_dy[j] = horizon.y * dispcx + dispcy;
+            if (hz_dy[j] < 0) hz_dy[j] = 0;
+            else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
+            if (draw_marker[j] && hz_y > dispcy*2) hz_y = hz_dy[j];
             theta += step;
         }
+    }
+}
+
+void draw_horizon()
+{
+    // Horizon
+    // TODO: Render according to bump map and generate a fictitious skyline.
+    if (view_mode == vm_horizon)
+    {
+        int j;
+        CelestialObject *cel = cels[whereami];
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
-        if (dy1 < dispcy*2)
+        if (hz_y < dispcy*2)
         {
             Map *map = cel->surf_map;
             RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
             rgb.r *= is_day;
             rgb.g *= is_day;
             rgb.b *= is_day;
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, dy1), ImVec2(dispcx*2, dispcy*2),
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_y), ImVec2(dispcx*2, dispcy*2),
                 rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
 
             double hzbrt = 0.29*rgb.r + 0.56*rgb.g * 0.15*rgb.b;
             ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
             for (j = 0; j < 16; j++) if (draw_marker[j])
             {
-                ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j], dy[j]), mkrcol, compass[j]);
-                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx[j]-1, dy[j]), mkrcol, compass[j]);
+                ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[j]);
+                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[j]);
             }
         }
     }
@@ -1088,14 +1104,21 @@ void draw_sky_gradient()
         Planet *p = (Planet*)cels[whereami];
         if (p->surface_pressure)
         {
+            float city_lights = 0;
+            if (cels[whereami]->night_map)
+            {
+                RGB3Byte rgb = cels[whereami]->night_map->color_at(viewer_lat, viewer_lon);
+                if (rgb.r > 0.7*rgb.b) city_lights = rgb.r;
+            }
+
             int x_extent = dispcx*2-1;
-            double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight);
+            double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
-            double r = fmin(1, 0.37 * skylight),
+            double  r = fmin(1, 0.37 * skylight),
                     g = fmin(1, 0.58 * skylight),
                     b = fmin(1, 0.81 * skylight),
                     a = fmin(1, pow(p->surface_pressure, 0.1) * skylight);
-            for (int y=dispcy*2-1; y>=0; y--)
+            for (int y=hz_y; y>=0; y--)
             {
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
                     rgba_apply_redlight(IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) ));
