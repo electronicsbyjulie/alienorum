@@ -330,7 +330,7 @@ void compute_object_draw_coordinates()
                     else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12)) * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
                     else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18)) * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
 
-                    double add_flux = brght * (fmax(0, sin(theta)) + twilight);
+                    double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
                     if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
                 }
             }

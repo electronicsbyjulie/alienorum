@@ -1118,15 +1118,15 @@ void draw_sky_gradient()
                     g = fmin(1, 0.58 * skylight),
                     b = fmin(1, 0.81 * skylight),
                     a = fmin(1, pow(p->surface_pressure, 0.1) * skylight);
-            for (int y=hz_y; y>=0; y--)
+            for (int y = fmin(hz_y, dispcy*2-1); y>=0; y--)
             {
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
                     rgba_apply_redlight(IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) ));
 
-                r *= 0.998;
-                g *= 0.9992;
-                b *= 0.9998;
-                a *= 0.99999;
+                r *= 0.999;
+                g *= 0.9995;
+                b *= 0.9999;
+                // a *= 0.99999;
             }
         }
     }
