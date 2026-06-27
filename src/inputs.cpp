@@ -117,7 +117,7 @@ void identify_object_under_cursor(ImGuiIO& io)
                     + (std::string)"\n";
         }
         if (!sat_low_orbit)
-            oss << "Mag:      " << std::setprecision(2) << lmag << std::endl;
+            oss << "Mag:      " << std::setprecision(4) << lmag << std::endl;
 
         objinfo += oss.str();
         oss.str("");
@@ -129,7 +129,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             if (s->distance_known)
             {
                 oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
-                oss << "AbsMag:   " << std::setprecision(2) << s->absolute_magnitude << "\n";
+                oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude << "\n";
             }
             objinfo += (std::string)"SpTyp:    " + s->spectral_type + (std::string)"\n";
         }

@@ -481,10 +481,11 @@ void draw_addcel_window(ImGuiIO& io)
 double rp, ra;
 int last_edit_idx = -1;
 static int cbo_edt_units = 0;
-const char* mass_units[3] = {"kg", "Sun", "Earth"};
-const double mass_units_conv[3] = {1000, solar_mass, earth_mass};
-const char* size_units[3] = {"km", "Sun", "Earth"};
-const double size_units_conv[3] = {1000, solar_radius, earth_radius};
+#define cbo_edt_num_units 4
+const char* mass_units[cbo_edt_num_units] = {"kg", "Sun", "Jup.", "Earth"};
+const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mass, earth_mass};
+const char* size_units[cbo_edt_num_units] = {"km", "Sun", "Jup.", "Earth"};
+const double size_units_conv[cbo_edt_num_units] = {1000, solar_radius, jupiter_radius, earth_radius};
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -499,7 +500,7 @@ void draw_objedit_window(ImGuiIO& io)
 
     ImGui::Begin("Edit Object", &objedtwnd, 0);
 
-    double col1 = 123, col2 = 359, col3 = 503, txtwid = 167;
+    double col1 = 123, col2 = 403, col3 = 517, txtwid = 167;
     cel_obj_class tc = cel->typeclass();
 
     strcpy(edit_name, cel->name);
@@ -540,7 +541,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", "Mass");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, "%.9e"))
+            if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, cbo_edt_units ? "%.9f" : "%.9e"))
             {
                 cel->mass = edit_mass * mass_units_conv[cbo_edt_units];
                 if (cel->typeclass() == class_planet
@@ -551,10 +552,10 @@ void draw_objedit_window(ImGuiIO& io)
             }
 
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(txtwid/3);
+            ImGui::SetNextItemWidth(txtwid/2.5);
             if (ImGui::BeginCombo("##cboedtunitsm", mass_units[cbo_edt_units], 0))
             {
-                for (int n = 0; n < 3; n++)
+                for (int n = 0; n < cbo_edt_num_units; n++)
                 {
                     const bool is_selected = (cbo_edt_units == n);
                     if (ImGui::Selectable(mass_units[n], is_selected))
@@ -592,10 +593,10 @@ void draw_objedit_window(ImGuiIO& io)
             }
 
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(txtwid/3);
+            ImGui::SetNextItemWidth(txtwid/2.5);
             if (ImGui::BeginCombo("##cboedtunitsr", size_units[cbo_edt_units], 0))
             {
-                for (int n = 0; n < 3; n++)
+                for (int n = 0; n < cbo_edt_num_units; n++)
                 {
                     const bool is_selected = (cbo_edt_units == n);
                     if (ImGui::Selectable(size_units[n], is_selected))
@@ -638,7 +639,7 @@ void draw_objedit_window(ImGuiIO& io)
                 double edit_albedo = p->albedo;
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtalbdo", &edit_albedo, 0, 0, "%.3f"))
+                if (ImGui::InputDouble("##edtalbdo", &edit_albedo, 0, 0, "%.6f"))
                 {
                     p->albedo = edit_albedo;
 
@@ -658,7 +659,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", "B-V color");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtbv", &edit_bvcol, 0, 0, "%.2f"))
+            if (ImGui::InputDouble("##edtbv", &edit_bvcol, 0, 0, "%.3f"))
             {
                 cel->BV_color = edit_bvcol;
                 cel->user_edited = true;
@@ -674,7 +675,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", "U-B color");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtub", &edit_ubcol, 0, 0, "%.2f"))
+            if (ImGui::InputDouble("##edtub", &edit_ubcol, 0, 0, "%.3f"))
             {
                 cel->UB_color = edit_ubcol;
                 cel->user_edited = true;
@@ -691,7 +692,7 @@ void draw_objedit_window(ImGuiIO& io)
             else ImGui::Text("%s", "Obliquity");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.9f"))
+            if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.3f"))
             {
                 cel->obliquity = edit_eqincl * fiftyseventh;
                 cel->lock_equatorial_plane = false;
@@ -709,7 +710,7 @@ void draw_objedit_window(ImGuiIO& io)
             else ImGui::Text("%s", "Equinox");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.9f"))
+            if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.3f"))
             {
                 cel->equinox = edit_equinox * fiftyseventh;
                 cel->lock_equatorial_plane = false;
@@ -721,13 +722,13 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
             }
 
-            double edit_prcseq = cel->precession / oneyear;
+            double edit_prcseq = cel->precession ? (_pi * 2 / cel->precession / oneyear) : 0;
             ImGui::Text("%s", "Precession");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtprcs", &edit_prcseq, 0, 0, "%.9e"))
+            if (ImGui::InputDouble("##edtprcs", &edit_prcseq, 0, 0, "%.3f"))
             {
-                cel->precession = edit_prcseq * oneyear;
+                cel->precession = edit_prcseq ? (_pi * 2 / (edit_prcseq * oneyear)) : 0;
                 cel->lock_equatorial_plane = false;
                 cel->user_edited = true;
                 viewchanged = true;
@@ -736,12 +737,14 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
+            ImGui::SameLine();
+            ImGui::Text("%s", "y");
 
             double edit_oblt = cel->oblateness;
             ImGui::Text("%s", "Oblateness");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtoblt", &edit_oblt, 0, 0, "%.9e"))
+            if (ImGui::InputDouble("##edtoblt", &edit_oblt, 0, 0, "%.5e"))
             {
                 cel->oblateness = edit_oblt;
                 cel->user_edited = true;
@@ -761,19 +764,19 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::Text("%s", "D/W/H, km");
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid/3);
-                if (ImGui::InputDouble("##edtdep", &m->depth, 0, 0, "%.2f"))
+                if (ImGui::InputDouble("##edtdep", &m->depth, 0, 0, "%.4f"))
                 {
                     cel->user_edited = true;
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(txtwid/3);
-                if (ImGui::InputDouble("##edtwid", &m->width, 0, 0, "%.2f"))
+                if (ImGui::InputDouble("##edtwid", &m->width, 0, 0, "%.4f"))
                 {
                     cel->user_edited = true;
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(txtwid/3);
-                if (ImGui::InputDouble("##edthei", &m->height, 0, 0, "%.2f"))
+                if (ImGui::InputDouble("##edthei", &m->height, 0, 0, "%.4f"))
                 {
                     cel->user_edited = true;
                 }
@@ -889,7 +892,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine(col2);
                 stringstream oss;
                 double star_appmag = orb->center->viewer_magnitude(cel->location);
-                oss << "Star apparent mag. " << (star_appmag > 0 ? "+" : "") << std::setprecision(2) << star_appmag;
+                oss << "Star apparent mag. " << (star_appmag > 0 ? "+" : "") << std::setprecision(5) << star_appmag;
                 ImGui::Text("%s", oss.str().c_str());
             }
 
