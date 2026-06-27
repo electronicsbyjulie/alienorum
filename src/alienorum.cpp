@@ -456,10 +456,9 @@ int main (int argc, char** argv)
             set_viewer_location_and_plane();
 
             compute_object_draw_coordinates();
+            if (view_mode == vm_horizon) draw_sky_gradient();           else sky_mag_shift = 0;
             if (show_grid) draw_ra_dec_lines();
             if (show_consln) draw_cons_lines();
-            if (view_mode == vm_horizon) draw_sky_gradient();
-            else sky_mag_shift = 0;
             draw_objects();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;

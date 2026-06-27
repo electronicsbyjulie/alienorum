@@ -669,11 +669,11 @@ bool draw_one_object(int i)
     int j;
     cel_obj_class cls = cels[i]->typeclass();
     xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
-    double brght = pow(magnbase, -vmag_cache[i] + sky_mag_shift);
+    appmag = vmag_cache[i] - sky_mag_shift;
+    double brght = pow(magnbase, -appmag);
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
     flare = (bloomrad>max_bloomrad) ? fmin(max_flare, fmax(0, 1.0+sqrt(bloomrad-1.5*max_bloomrad)*8)) : 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
-    appmag = vmag_cache[i] - sky_mag_shift;
     if (cls == class_satellite)
     {
         if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
@@ -769,7 +769,8 @@ bool draw_one_object(int i)
             }
         }
 
-        double brght = pow(magnbase, -vmag_cache[i]) * global_brightness * 50, circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
+        brght = pow(magnbase, -appmag) * global_brightness * 50;
+        double circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
         // if (i == 1075) std::cout << i << ":" << cels[i]->name << ": " << brght << std::endl;
         bool first = true;
         std::vector<double> circradii, circpixvals;
@@ -1058,7 +1059,7 @@ void draw_objects()
             theta += step;
         }
 
-        double is_day = fmin(1, luminous_flux/4e+10 + starlight);
+        double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
         if (dy1 < dispcy*2)
         {
             Map *map = cel->surf_map;
@@ -1088,7 +1089,7 @@ void draw_sky_gradient()
         if (p->surface_pressure)
         {
             int x_extent = dispcx*2-1;
-            double skylight = fmin(1, pow(luminous_flux/4e+10, 1.0/5.5) + starlight);
+            double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight);
             sky_mag_shift = skylight * -10;
             double r = fmin(1, 0.37 * skylight),
                     g = fmin(1, 0.58 * skylight),

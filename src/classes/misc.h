@@ -44,6 +44,7 @@ using json = nlohmann::json;
 #define Planck 6.62607015e-34
 #define water_freezing 273.15
 #define oneatm 101325
+#define inv_oneatm (1.0 / 101325)
 
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)
