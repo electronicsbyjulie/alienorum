@@ -636,6 +636,8 @@ int main (int argc, char** argv)
             fullscreen = !fullscreen;
         }
 
+        // std::cout << ImGui::GetBackgroundDrawList()->_VtxCurrentIdx << " _VtxCurrentIdx." << std::endl << std::flush;
+
         // More code copied from the ImGui example:
         // Rendering
         ImGui::Render();

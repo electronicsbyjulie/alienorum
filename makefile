@@ -99,28 +99,28 @@ alienorum: $(BIN)/alienorum
 %.o:$(IMGUI_DIR)/backends/%.cpp makefile
 	$(CPP) $(CPPFLAGS) -c -o $(OBJ)/$@ $<
 
-$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp makefile
+$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/imgui_demo.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_demo.o
 
-$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp makefile
+$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/imgui_draw.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_draw.o
 
-$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp makefile
+$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/imgui_tables.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_tables.o
 
-$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp makefile
+$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/imgui_widgets.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_widgets.o
 
-$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp makefile
+$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/imgui.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui.o
 
-$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp makefile
+$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_opengl3.o
 
-$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp makefile
+$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IGFD_DIR)/ImGuiFileDialog.cpp $(CPPFLAGS) -c -o $(OBJ)/ImGuiFileDialog.o
 
-$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp makefile
+$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp makefile $(IMGUI_DIR)/imconfig.h
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_sdl2.o
 
 $(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/misc.h makefile
