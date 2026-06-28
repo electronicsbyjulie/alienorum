@@ -336,6 +336,16 @@ int main (int argc, char** argv)
         alienr = 0.003921569 * ((alien_color & 0xff)),
         aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
+    SDL_Surface* surface = IMG_Load("assets/blank.png");
+    SDL_Cursor* empty_cursor = nullptr;
+    if (surface)
+    {
+        // 0, 0 is the top-left of the cursor (the click point)
+        empty_cursor = SDL_CreateColorCursor(surface, 0, 0); 
+        SDL_FreeSurface(surface);
+    }
+    SDL_Cursor* default_cursor = SDL_GetDefaultCursor();
+
     // Main loop
     bool done = false;
     viewchanged = true;
@@ -343,7 +353,12 @@ int main (int argc, char** argv)
     while (!done)
     {
         auto frame_began = std::chrono::high_resolution_clock::now();
-        if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
+        if (hide_mouse && !is_mouse_over_window && !splash)
+        {
+            // SDL_ShowCursor(SDL_DISABLE);
+            if (empty_cursor) SDL_SetCursor(empty_cursor);
+        }
+        else SDL_SetCursor(default_cursor);
 
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if imgui wants to use your inputs.
@@ -445,7 +460,7 @@ int main (int argc, char** argv)
         }
         else
         {
-            if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
+            // if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
             dispcx = (int)io.DisplaySize.x/2;
             dispcy = (int)io.DisplaySize.y / 2;
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
@@ -641,7 +656,7 @@ int main (int argc, char** argv)
         // More code copied from the ImGui example:
         // Rendering
         ImGui::Render();
-        if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
+        // if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -667,7 +682,7 @@ int main (int argc, char** argv)
 
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
 
-            hide_mouse = !splash && !fdlg_shown && (frame_dur < 0.1 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4) && cels[1];
+            hide_mouse = !splash && !fdlg_shown && (frame_dur < 0.2 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4) && cels[1];
 
             lmx = io.MousePos.x;
             lmy = io.MousePos.y;
