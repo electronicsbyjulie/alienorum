@@ -49,8 +49,8 @@ bool show_taucalc = false;
 bool hide_mouse = true;
 bool searched = false;
 double mag_limit_adjusted = normal_best_mag_limit;
-const char* lbltypes[nlbltyp] = { "Brightest", "Intrinsic", "Nearby", "Bayer", "Flamsteed",
-    "Sunlike", "Has Planets", "Planet in HZ", "Binary Orbit", "Known Poles" };
+const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+N)", "Bayer (Sh+F)", "Flamsteed (F)",
+    "Sunlike (Sh+C)", "Has Planets (Sh+P)", "Planet in HZ (Sh+L)", "Binary Orbit (2)", "Known Poles (Sh+X)" };
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false,

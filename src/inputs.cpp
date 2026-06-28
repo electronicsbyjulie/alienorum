@@ -243,6 +243,8 @@ void process_key_cmd_char(char c)
 
     switch (c)
     {
+        case 'a': cbolbls_selected_idx = 0; break;
+
         case 'A':
         if (whereami < 0) return;
         if (explorer && celidx_sel_in_sysxplor >= 0) addcenidx = celidx_sel_in_sysxplor;
@@ -259,6 +261,7 @@ void process_key_cmd_char(char c)
         case 'b': global_brightness *= 1.1; viewchanged = true; break;
         case 'B': global_brightness *= 0.9; viewchanged = true; break;
         case 'c': show_consln = !show_consln; break;
+        case 'C': cbolbls_selected_idx = 5; break;
         case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
 
@@ -270,6 +273,8 @@ void process_key_cmd_char(char c)
         else if (whereami >= 0) editidx = whereami;
         objedtwnd = (editidx >= 0);
         break;
+        case 'f': cbolbls_selected_idx = 4; break;
+        case 'F': cbolbls_selected_idx = 3; break;
 
         case 'g': show_grid = !show_grid; break;
         case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
@@ -277,9 +282,11 @@ void process_key_cmd_char(char c)
         case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'l': show_labels = !show_labels; break;
+        case 'L': cbolbls_selected_idx = 7; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'M': JDnow -= 30; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'n': objinfwnd = !objinfwnd; break;
+        case 'N': cbolbls_selected_idx = 2; break;
 
         case 'o':
         if (selected < 0 && trackidx >= 0) selected = trackidx;
@@ -299,6 +306,7 @@ void process_key_cmd_char(char c)
 
         case 'O': show_orbits = !show_orbits; break;
         case 'p': lbl_localsys = !lbl_localsys; break;
+        case 'P': cbolbls_selected_idx = 6; break;
         case 'q': sphere_quality *= 1.3; viewchanged=true; break;
         case 'Q': sphere_quality *= 0.7; viewchanged=true; break;
 
@@ -354,6 +362,13 @@ void process_key_cmd_char(char c)
         case 'T': trackidx = -1; break;
         case 'u': save_universe(); break;
 
+        case 'U':
+        save_viewer_latlon = true;
+        save_user_json();
+        break;
+
+        case 'v': cbolbls_selected_idx = 1; break;
+
         case 'w':
         if (velocity.magnitude())
         {
@@ -377,11 +392,20 @@ void process_key_cmd_char(char c)
         velocity = center;
         viewchanged = true;
         break;
+        case 'X': cbolbls_selected_idx = 9; break;
 
         case 'y': JDnow += (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
         case 'Y': JDnow -= (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
         case 'z': JDnow += (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
         case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+
+        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = true; break;
+        case '2': cbolbls_selected_idx = 8; break;
+
+        case '3':
+        themes_selected_idx++;
+        if (themes_selected_idx >= themes.size()) themes_selected_idx = 0;
+        break;
 
         case '+':
         vm = velocity.magnitude();
