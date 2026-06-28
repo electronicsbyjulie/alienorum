@@ -9,6 +9,10 @@ ImGuiFileDialog is Copyright (c) 2018-2025 Stephane Cuillerdier (aka Aiekick),
 used with modifications pursuant to the MIT License. https://opensource.org/licenses/MIT
 See the include/igfd/ folder for the IGFD license.
 
+Dirent, used by ImGuiFileDialog, is (C) 1998-2019 Toni Ronkko and used here under the 
+MIT license. https://opensource.org/licenses/MIT
+https://github.com/tronkko/dirent
+
 nlohmann/json is copyright (C) 2013-2026 Niels Lohmann,
 used here pursuant to the MIT License. https://opensource.org/licenses/MIT
 

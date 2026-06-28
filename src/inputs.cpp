@@ -286,6 +286,7 @@ void process_key_cmd_char(char c)
         if (selected >= 0)
         {
             whereami = selected;
+            if (whereami >= 0 && cels[whereami] == cels[whereami]->cenobj) cbolbls_selected_idx = 0;
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;

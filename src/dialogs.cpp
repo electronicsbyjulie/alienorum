@@ -42,6 +42,18 @@ void draw_status_window(ImGuiIO& io)
 
     ImGui::Separator();
 
+    flagstr = (std::string)"Redlgt (Sh+R): "
+        + std::string(redlight_mode ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
+    flagstr = (std::string)"Obj info (N): "
+        + std::string(objinfwnd ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
+    flagstr = (std::string)"Status (S): "
+        + std::string(statuswnd ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
     flagstr = (std::string)"RA/Decl (G): "
         + std::string(show_grid ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
@@ -50,29 +62,15 @@ void draw_status_window(ImGuiIO& io)
         + std::string(show_consln ? (draw_actual_conslines ? "ON" : "(hidden)") : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
-    flagstr = (std::string)"Labels (L): "
-        + std::string(show_labels ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
-    flagstr = (std::string)"Lbl planets (P): "
-        + std::string(lbl_localsys ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
-    if (lbl_localsys)
-    {
-        ImGui::Text("Mass limit:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(81);
-        ImGui::InputDouble("##lbllsysmasslim", &lbllsys_mass_lim, 0, 0, "%.2e");
-        ImGui::SameLine();
-        ImGui::Text("kg");
-    }
-
     flagstr = (std::string)"Orbits (Sh+O): "
         + std::string(show_orbits ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
     ImGui::Separator();
+
+    flagstr = (std::string)"Labels (L): "
+        + std::string(show_labels ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
 
     // Pass in the preview value visible before opening the combo (it could technically be different contents or not pulled from items[])
     ImGuiComboFlags cbolbls_flags = 0;
@@ -140,17 +138,19 @@ void draw_status_window(ImGuiIO& io)
             "%s", "Note: No exoplanets found.\nTo obtain the exoplanet\ncatalog, please follow the\ninstructions in README.md,\nthen restart Alienorum.");
     }
 
-    flagstr = (std::string)"Redlgt (Sh+R): "
-        + std::string(redlight_mode ? "ON" : "OFF");
+    flagstr = (std::string)"Lbl planets (P): "
+        + std::string(lbl_localsys ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
-    flagstr = (std::string)"Obj info (N): "
-        + std::string(objinfwnd ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
-    flagstr = (std::string)"Status (S): "
-        + std::string(statuswnd ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
+    if (lbl_localsys)
+    {
+        ImGui::Text("Mass limit:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputDouble("##lbllsysmasslim", &lbllsys_mass_lim, 0, 0, "%.2e");
+        ImGui::SameLine();
+        ImGui::Text("kg");
+    }
 
     ImGui::Separator();
 

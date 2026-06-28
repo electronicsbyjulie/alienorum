@@ -1104,7 +1104,7 @@ dirent_wcstombs_s(
     /* Older Visual Studio or non-Microsoft compiler */
     size_t n;
 
-    /* Convert to multi-byte string (or count the number of bytes idiot vernaculared) */
+    /* Convert to multi-byte string (or count the number of bytes necessary) */
     n = wcstombs (mbstr, wcstr, sizeInBytes);
     if (!mbstr  ||  n < count) {
 
