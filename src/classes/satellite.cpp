@@ -74,6 +74,8 @@ bool SatSource::from_json(json j)
         return false;
     }
 
+    try { j.at("AlwaysCheck").get_to(always_check); } catch (...) { ; }                     // Optional parameter.
+
     return true;
 }
 
@@ -108,6 +110,22 @@ bool SatSource::read_sources_json()
     return true;
 }
 
+bool alienorum::SatSource::check_satcat_and_latest()
+{
+    bool anything_updated = false;
+    int i, n = sat_sources.size();
+    for (i=0; i<n; i++)
+    {
+        if (sat_sources[i].always_check && sat_sources[i].data_age_hours() >= 24)
+        {
+            sat_sources[i].download_data();
+            sat_sources[i].read_csv_data();
+            anything_updated = true;
+        }
+    }
+    return anything_updated;
+}
+
 std::string SatSource::csv_fname()
 {
     return std::string("catalogs" _FILESLASH "sat") + _FSSTR + local_name + std::string(".csv");
@@ -124,7 +142,7 @@ int SatSource::data_age_hours()
         std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
         std::time_t now = std::time(nullptr);
         std::time_t age = now - mt;
-        return age/3600;
+        return (int)floor(age/3600);
     }
     else return 1e5;
 }
@@ -153,6 +171,7 @@ bool SatSource::read_csv_data()
     char buffer[16384];
     fgets(buffer, 16382, fp);
     std::vector<std::string> csv_header = parse_csv_row(buffer);
+    bool do_exist_checks = sat_data.size();                                 // Don't bog down the initial load with expensive std::find_if() calls.
 
     int i, j, n = sat_data.size();
     _nsatellites = 0;
@@ -235,26 +254,67 @@ bool SatSource::read_csv_data()
         }
         else
         {
-            SatRecord sr;
-            sr.OBJECT_NAME = row[i++];
-            sr.OBJECT_ID = row[i++];
-            sr.NORAD_CAT_ID = atoi(row[i++].c_str());
-            sr.OBJECT_TYPE = row[i++];
-            sr.OPS_STATUS_CODE = row[i++];
-            sr.OWNER = row[i++];
-            sr.LAUNCH_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
-            sr.LAUNCH_SITE = row[i++];
-            sr.DECAY_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
-            sr.PERIOD = atof(row[i++].c_str());
-            sr.INCLINATION = atof(row[i++].c_str());
-            sr.APOGEE = atof(row[i++].c_str());
-            sr.PERIGEE = atof(row[i++].c_str());
-            sr.RCS = atof(row[i++].c_str());
-            sr.DATA_STATUS_CODE = row[i++];
-            sr.ORBIT_CENTER = row[i++];
-            sr.ORBIT_TYPE = row[i++];
+            uint32_t norad_id = atoi(row[2].c_str());
+            int index = 0;
 
-            sat_data.push_back(sr);
+            bool exists = false;
+            if (do_exist_checks)
+            {
+                auto it = std::find_if(sat_data.begin(), sat_data.end(), [norad_id](const SatRecord& sr)
+                {
+                    return sr.NORAD_CAT_ID == norad_id;
+                });
+                exists = (it != sat_data.end());
+                if (exists)
+                {
+                    auto idx = std::distance(sat_data.begin(), it);
+                    index = idx;
+                }
+            }
+
+            if (!exists)
+            {
+                SatRecord sr;
+                sr.OBJECT_NAME = row[i++];
+                sr.OBJECT_ID = row[i++];
+                sr.NORAD_CAT_ID = atoi(row[i++].c_str());
+                sr.OBJECT_TYPE = row[i++];
+                sr.OPS_STATUS_CODE = row[i++];
+                sr.OWNER = row[i++];
+                sr.LAUNCH_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
+                sr.LAUNCH_SITE = row[i++];
+                sr.DECAY_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
+                sr.PERIOD = atof(row[i++].c_str());
+                sr.INCLINATION = atof(row[i++].c_str());
+                sr.APOGEE = atof(row[i++].c_str());
+                sr.PERIGEE = atof(row[i++].c_str());
+                sr.RCS = atof(row[i++].c_str());
+                sr.DATA_STATUS_CODE = row[i++];
+                sr.ORBIT_CENTER = row[i++];
+                sr.ORBIT_TYPE = row[i++];
+
+                sat_data.push_back(sr);
+            }
+            else
+            {
+                sat_data[index].OBJECT_NAME = row[i++];
+                sat_data[index].OBJECT_ID = row[i++];
+                sat_data[index].NORAD_CAT_ID = atoi(row[i++].c_str());
+                sat_data[index].OBJECT_TYPE = row[i++];
+                sat_data[index].OPS_STATUS_CODE = row[i++];
+                sat_data[index].OWNER = row[i++];
+                sat_data[index].LAUNCH_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
+                sat_data[index].LAUNCH_SITE = row[i++];
+                sat_data[index].DECAY_DATE = row[i].size() ? from_iso_string(row[i], "%Y-%m-%d") : 0; i++;
+                sat_data[index].PERIOD = atof(row[i++].c_str());
+                sat_data[index].INCLINATION = atof(row[i++].c_str());
+                sat_data[index].APOGEE = atof(row[i++].c_str());
+                sat_data[index].PERIGEE = atof(row[i++].c_str());
+                sat_data[index].RCS = atof(row[i++].c_str());
+                sat_data[index].DATA_STATUS_CODE = row[i++];
+                sat_data[index].ORBIT_CENTER = row[i++];
+                sat_data[index].ORBIT_TYPE = row[i++];
+            }
         }
     }
 
@@ -293,7 +353,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
         if (h < hours_threshold)
         {
             download_best = false;
-            std::cout << sat_sources[i].csv_fname() << " is " << h << " hours old; skipping update." << std::endl;
+            // std::cout << sat_sources[i].csv_fname() << " is " << h << " hours old; skipping update." << std::endl;
         }
     }
 
@@ -301,7 +361,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
     {
         SatSource *src = best_source[norad_id];
         int h = src->data_age_hours();
-        if (h > hours_threshold)
+        if (h >= hours_threshold)
         {
             std::cout << src->csv_fname() << " is " << h << " hours old; requesting update..." << std::endl;
             src->download_data();

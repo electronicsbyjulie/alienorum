@@ -2,6 +2,7 @@
     {
         "LocalName": "satcat",
         "Type": "master",
+        "AlwaysCheck": true,
         "URL": "https://celestrak.org/pub/satcat.csv"
     },
     {
@@ -12,6 +13,7 @@
     {
         "LocalName": "latest",
         "Type": "supplemental",
+        "AlwaysCheck": true,
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=csv"
     },
     {

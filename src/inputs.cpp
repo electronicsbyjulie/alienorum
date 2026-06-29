@@ -405,7 +405,7 @@ void process_key_cmd_char(char c)
 
         case '3':
         themes_selected_idx++;
-        if (themes_selected_idx >= themes.size()) themes_selected_idx = 0;
+        if (themes_selected_idx >= (unsigned)themes.size()) themes_selected_idx = 0;
         global_style.load(themes[themes_selected_idx]);
         break;
 
@@ -453,7 +453,7 @@ void process_key_cmd_char(char c)
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
         case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
-        case '^': satwnd = true; break;
+        case '^': satwnd = true; SatSource::check_satcat_and_latest(); break;
 
         case '-':
         vm = velocity.magnitude();

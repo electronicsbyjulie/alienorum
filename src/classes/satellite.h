@@ -61,12 +61,14 @@ namespace alienorum
         std::string url = "";
         std::string local_name = "";
         bool is_supplemental = false;
+        bool always_check = false;
 
         json to_json();
         json to_json_nv();
         bool from_json(json j);
 
         static bool read_sources_json();
+        static bool check_satcat_and_latest();
 
         std::string csv_fname();
         int data_age_hours();
