@@ -178,6 +178,8 @@ namespace alienorum
         Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
         CelestialObject *cenobj = nullptr;
         Point tmprel, viewrel;
+        double get_horizon_angle();
+        double get_horizon_distance();
 
         CelestialObject* get_light_center();
         double get_equatorial_radius();

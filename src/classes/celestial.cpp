@@ -28,6 +28,17 @@ CelestialObject::CelestialObject()
     memset(name, 0, 32*sizeof(char));
 }
 
+double alienorum::CelestialObject::get_horizon_angle()
+{
+    double d = tmprel.magnitude();
+    return acos(get_equatorial_radius() / fmax(d, 1e-29));
+}
+
+double alienorum::CelestialObject::get_horizon_distance()
+{
+    return tmprel.magnitude() - volumetric_mean_radius * cos(get_horizon_angle());
+}
+
 CelestialObject *CelestialObject::get_light_center()
 {
     if (!orbit || !orbit->center)

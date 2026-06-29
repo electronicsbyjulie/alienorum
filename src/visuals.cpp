@@ -247,7 +247,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
     else
-        equatorial_radius = cel->volumetric_mean_radius * pow(1.0 - cel->oblateness, 0.333);
+        equatorial_radius = cel->get_equatorial_radius();
 
     double lat, lon, z_cutoff = d + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
 
@@ -269,7 +269,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         ttex.detach();
     }
 
-    horizon_angle = acos(equatorial_radius / fmax(d, 1e-29));
+    horizon_angle = cel->get_horizon_angle();
 
     int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9, nstep = wireframe ? 10 : 5;
     for (i=0; i<=360; i+=nstep)
@@ -1002,10 +1002,10 @@ void draw_objects()
             else
             {
                 discinstead[i] = false;
-                double trm = cels[i]->tmprel.magnitude();
+                double trm = cels[i]->get_horizon_distance();
                 for (j=0; j<n; j++)
                 {
-                    if (to_draw_layered[j]->tmprel.magnitude() < trm)
+                    if (to_draw_layered[j]->get_horizon_distance() < trm)
                     {
                         to_draw_layered.insert(to_draw_layered.begin()+j, cels[i]);
                         discinstead[i] = true;
