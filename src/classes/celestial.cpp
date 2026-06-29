@@ -42,7 +42,7 @@ CelestialObject *CelestialObject::get_light_center()
     {
         cel_obj_class cls = light_center->typeclass();
         if (cls == class_star) break;
-        if (cls == class_planet || cls == class_moon)
+        if (cls == class_planet || cls == class_moon || cls == class_satellite)
         {
             light_center = light_center->orbit->center;
             if (!light_center)
