@@ -408,6 +408,12 @@ void process_key_cmd_char(char c)
         global_style.load(themes[themes_selected_idx]);
         break;
 
+        case '#':
+        themes_selected_idx--;
+        if (themes_selected_idx < 0) themes_selected_idx = themes.size()-1;
+        global_style.load(themes[themes_selected_idx]);
+        break;
+
         case '+':
         vm = velocity.magnitude();
         vmfr = vm * target_frame_rate;
