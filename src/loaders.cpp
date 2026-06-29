@@ -376,7 +376,7 @@ void load_catalogs()
     mtx.lock();
     loading_msg = std::string("Naming stars...");
     mtx.unlock();
-    rename_all_from_Bayer_Flamsteed();
+    // rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
 
     mtx.lock();

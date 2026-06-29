@@ -380,8 +380,18 @@ void set_center_objects()
         if (cels[i]->typeclass() == class_star)
         {
             Star *s = (Star*)cels[i];
-            if (s->multisys && !s->multisys->is_member(s))
-                s->set_component(s->multisys->next_available(), s);
+            if (s->multisys)
+            {
+                char comp = s->multisys->is_member(s);
+                if (comp)
+                {
+                    if (!s->has_custom_name) strcpy(s->name, (lop_component(s->name) + std::string(" ") + std::string(1, comp)).c_str());
+                }
+                else
+                {
+                    s->set_component(s->multisys->next_available(), s);
+                }
+            }
         }
 
         // System center integrity

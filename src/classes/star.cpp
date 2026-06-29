@@ -106,6 +106,7 @@ void Star::rename_from_Bayer_Flamsteed()
 {
     if (!strlen(constellation)) return;
     if (BayerGrkno < 0 && !FlamsteedNo) return;
+    if (has_custom_name) return;
     if (orbit && orbit->center && orbit->center->typeclass() == class_star
         && !BayerGrkno && !FlamsteedNo
         )
@@ -165,7 +166,8 @@ void Star::rename_from_Bayer_Flamsteed()
         Star* companion;
         for (char c = 'B'; (companion = multisys->get_member(c)); c++)
         {
-            strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
+            if (!companion->has_custom_name)
+                strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
 
@@ -341,7 +343,8 @@ void Star::gotta_be_named_something()
         {
             if(companion == nullptr)
                 break;
-            strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
+            if (!companion->has_custom_name)
+                strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
 
@@ -443,7 +446,7 @@ void Star::make_companion_of(Star *A, char comp)
     parallax = A->parallax;
     distance = A->distance;
     location = A->location;
-    strcpy(name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, comp)).c_str());
+    if (!has_custom_name) strcpy(name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, comp)).c_str());
     CCDM = A->CCDM;
     proper_motion_RA = A->proper_motion_RA;
     proper_motion_decl = A->proper_motion_decl;

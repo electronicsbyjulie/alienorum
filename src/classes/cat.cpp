@@ -1480,8 +1480,8 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             A = s;
             s = swap;
 
-            strcpy(A->name, lop_component(A->name).c_str());
-            strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
+            if (!A->has_custom_name) strcpy(A->name, lop_component(A->name).c_str());
+            if (!s->has_custom_name) strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
         }
 
         //  47- 49  A3     deg     theta    Position angle (degrees) (4)
@@ -2447,6 +2447,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
                 strcpy(s->name, trim(field).c_str());
+                s->has_custom_name = true;
                 num_read++;
 
                 if (s->multisys && s->multisys->get_member('A') == s)
@@ -2454,7 +2455,8 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
                     Star* companion;
                     for (char c = 'B'; (companion = s->multisys->get_member(c)); c++)
                     {
-                        strcpy(companion->name, (lop_component(s->name) + std::string(" ") + std::string(1, c)).c_str() );
+                        if (!companion->has_custom_name)
+                            strcpy(companion->name, (lop_component(s->name) + std::string(" ") + std::string(1, c)).c_str() );
                     }
                 }
 

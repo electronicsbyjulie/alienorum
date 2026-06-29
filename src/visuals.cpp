@@ -347,7 +347,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 imcol;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
-    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*2), fiftyseventh*0.2),
+    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2),
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline=0, dx1, dy1, dx2, dy2;
     l = 0;
@@ -663,6 +663,27 @@ int draw_sphere(CelestialObject* cel, double arad)
     return result;
 }
 
+void draw_flare(double flare, Color col)
+{
+    double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
+    RGB3Byte rgb;
+    rgb.r = (int)(col.red * divisor);
+    rgb.g = (int)(col.green* divisor);
+    rgb.b = (int)(col.blue * divisor);
+
+    #define jmax 3
+    for (int j=jmax; j>0; j--)
+    {
+        jay = 0.25 + 0.25 * j * flare;
+        double jay15 = jay+max_bloomrad;
+        ImVec2 radii(jay15, jay15*0.333);
+        ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
+        double thoff = _pi*0.1*j;
+        for (theta=0; theta<_pi*2; theta += _pi*0.2)
+            ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
+    }
+}
+
 double global_magshift;
 bool draw_one_object(int i)
 {
@@ -722,8 +743,14 @@ bool draw_one_object(int i)
             bloomrad_cache[i] = bloomrad = 1;
         }
     }
-    else if (angular_radius[i]*zoom > fiftyseventh)
+    else if (angular_radius[i]*zoom > sphere_rad_threshold)
     {
+        if (flare)
+        {
+            Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
+            draw_flare(flare, col);
+        }
+
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
         discinstead[i] = false;
@@ -749,26 +776,7 @@ bool draw_one_object(int i)
             col.blue = effect*col.green + effect1*col.blue;
         }
 
-        if (flare)
-        {
-            double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
-            RGB3Byte rgb;
-            rgb.r = (int)(col.red * divisor);
-            rgb.g = (int)(col.green* divisor);
-            rgb.b = (int)(col.blue * divisor);
-
-            #define jmax 3
-            for (j=jmax; j>0; j--)
-            {
-                jay = 0.25 + 0.25 * j * flare;
-                double jay15 = jay+max_bloomrad;
-                ImVec2 radii(jay15, jay15*0.333);
-                ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
-                double thoff = _pi*0.1*j;
-                for (theta=0; theta<_pi*2; theta += _pi*0.2)
-                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
-            }
-        }
+        if (flare) draw_flare(flare, col);
 
         brght = pow(magnbase, -appmag) * global_brightness * 50;
         double circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
@@ -966,7 +974,7 @@ void draw_objects()
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
 
-        if (angular_radius[i]*zoom < fiftyseventh)
+        if (angular_radius[i]*zoom < sphere_rad_threshold)
         {
             if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
             if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
@@ -975,7 +983,7 @@ void draw_objects()
         // Counterintuitive that we would process *more* objects during dragging and not *less*,
         // but since discs become transparent wireframes during drag, it only makes sense that the
         // ground should become transparent as well.
-        if (view_mode == vm_horizon && !dragging && cels[i]->viewrel.y < 0 && angular_radius[i] < fiftyseventh)
+        if (view_mode == vm_horizon && !dragging && cels[i]->viewrel.y < 0 && angular_radius[i] < sphere_rad_threshold)
         {
             continue;
         }
@@ -989,7 +997,7 @@ void draw_objects()
         bloomrad = fabs(bloomrad_cache[i]);
         bloomrad = fmin(max_bloomrad, bloomrad);
 
-        // if (cls != class_satellite && angular_radius[i]*zoom > fiftyseventh)
+        // if (cls != class_satellite && angular_radius[i]*zoom > sphere_rad_threshold)
         if (mycensq < light_year_sq
             && cels[i]->tmprel.squared_magnitude() < layer_cutoff)
         {
