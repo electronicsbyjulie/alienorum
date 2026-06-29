@@ -13,6 +13,7 @@ using namespace alienorum;
 
 std::vector<SatSource> sat_sources;
 std::vector<SatRecord> sat_data;
+std::map<uint32_t, SatSource*> best_source;
 
 Satellite::Satellite()
 {
@@ -107,37 +108,6 @@ bool SatSource::read_sources_json()
     return true;
 }
 
-bool SatSource::update_sources_json()
-{
-    return true;            // TODO:
-    json j;
-    int i, n = sat_sources.size();
-
-    for (i=0; i<n; i++)
-    {
-        json j1 = sat_sources[i].to_json();
-        j[i] = j1;
-    }
-
-    std::filesystem::path bak_name = "catalogs" _FILESLASH "sat" _FILESLASH "sources.bak.json";
-    std::filesystem::path real_name = "catalogs" _FILESLASH "sat" _FILESLASH "sources.json";
-    std::error_code ec;
-
-    std::filesystem::remove(bak_name);                          // don't care if doesn't succeed; failure = nothing to delete = expected
-    std::filesystem::rename(real_name, bak_name, ec);
-    if (ec)
-    {
-        std::cerr << "ERROR - failed to back up sources.json." << std::endl << std::flush;
-        return false;
-    }
-
-    std::fstream fs(real_name.c_str(), std::ios::out);
-    fs << j.dump(4);
-    fs.close();
-
-    return true;
-}
-
 std::string SatSource::csv_fname()
 {
     return std::string("catalogs" _FILESLASH "sat") + _FSSTR + local_name + std::string(".csv");
@@ -162,7 +132,6 @@ int SatSource::data_age_hours()
 bool SatSource::download_data()
 {
     std::string outfname = csv_fname();
-    if (file_exists(outfname.c_str())) return true;
     std::time_t age = data_age_hours() * 3600;
 
     // Under no circumstances should the code ever attempt to access the same remote file twice in two hours.
@@ -186,6 +155,10 @@ bool SatSource::read_csv_data()
     std::vector<std::string> csv_header = parse_csv_row(buffer);
 
     int i, j, n = sat_data.size();
+    _nsatellites = 0;
+    while (fgets(buffer, 16382, fp)) _nsatellites++;
+    fseek(fp, 0, SEEK_SET);
+
     while (fgets(buffer, 16382, fp))
     {
         std::vector<std::string> row = parse_csv_row(buffer);
@@ -221,6 +194,15 @@ bool SatSource::read_csv_data()
                     sat_data[j].MEAN_MOTION_DDOT = atof(row[i++].c_str());
                     found = true;
 
+                    if (best_source.find(norad_id) == best_source.end()
+                        || !best_source[norad_id]
+                        || _nsatellites < best_source[norad_id]->_nsatellites
+                        )
+                    {
+                        best_source[norad_id] = this;
+                        // if (norad_id == 20580) std::cout << "Best catalog for " << sat_data[j].OBJECT_NAME << " is " << local_name << " (" << _nsatellites << " sats)." << std::endl;
+                    }
+
                     break;
                 }
             }
@@ -247,6 +229,7 @@ bool SatSource::read_csv_data()
                 sr.MEAN_MOTION_DOT = atof(row[i++].c_str());
                 sr.MEAN_MOTION_DDOT = atof(row[i++].c_str());
                 sr.ORBIT_CENTER = "EA";
+                sat_data.push_back(sr);
             }
         }
         else
@@ -284,10 +267,23 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
     if (idx >= sat_data.size()) return false;
     if (sat->typeclass() != class_satellite) return false;
 
-    SatRecord sr = sat_data[idx];
+    SatRecord& sr = sat_data[idx];
     strcpy(sat->name, sr.OBJECT_NAME.c_str());
     if (!sat->orbit) sat->orbit = new Orbit;
     int cenidx;
+
+    uint32_t norad_id = sr.NORAD_CAT_ID;
+    if (best_source.find(norad_id) != best_source.end() && best_source[norad_id])
+    {
+        SatSource *src = best_source[norad_id];
+        int h = src->data_age_hours();
+        if (h > 6)
+        {
+            std::cout << src->csv_fname() << " is " << h << " hours old; requesting update..." << std::endl;
+            src->download_data();
+            src->read_csv_data();
+        }
+    }
 
     if (!strcmp(sr.ORBIT_CENTER.c_str(), "EA")) cenidx = find_object("Earth");
     else if (!strcmp(sr.ORBIT_CENTER.c_str(), "EM")) cenidx = find_object("Earth");

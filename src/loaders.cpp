@@ -366,17 +366,11 @@ void load_catalogs()
         cout << loading_msg << endl << flush;
         SatSource::read_sources_json();
         n = sat_sources.size();
-        int j=0;
         for (i=0; i<n; i++)
         {
-            if (sat_sources[i].data_age_hours() > 24)
-            {
-                sat_sources[i].download_data();
-                j++;
-            }
+            if (!file_exists(sat_sources[i].csv_fname().c_str())) sat_sources[i].download_data();
             sat_sources[i].read_csv_data();
         }
-        if (j) SatSource::update_sources_json();
     }
 
     mtx.lock();

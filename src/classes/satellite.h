@@ -67,17 +67,23 @@ namespace alienorum
         bool from_json(json j);
 
         static bool read_sources_json();
-        static bool update_sources_json();
 
         std::string csv_fname();
         int data_age_hours();
         bool download_data();
         bool read_csv_data();
         static bool populate(Satellite* sat, unsigned int idx);
+
+        protected:
+        int _nsatellites = 0;
+
+        public:
+        const int& num_sats = _nsatellites;
     };
 }
 
 extern std::vector<alienorum::SatSource> sat_sources;
 extern std::vector<alienorum::SatRecord> sat_data;
+extern std::map<uint32_t, SatSource*> best_source;
 
 #endif

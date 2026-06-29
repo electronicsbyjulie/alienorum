@@ -331,6 +331,7 @@ bool download_file(std::string URL, std::string save_path)
     {
         std::string buffer;
         curlpp::Easy easy;
+        curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
 
         if (!strcmp(URL.substr(0, 6).c_str(), "ftp://"))
         {
@@ -351,7 +352,6 @@ bool download_file(std::string URL, std::string save_path)
         else
         {
             easy.setOpt(CURLOPT_URL, URL.c_str());
-            curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
             easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
             easy.setOpt(CURLOPT_WRITEDATA, &buffer);
             easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
