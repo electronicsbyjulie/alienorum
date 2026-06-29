@@ -66,6 +66,13 @@ void draw_status_window(ImGuiIO& io)
         + std::string(show_orbits ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
+    if (nsatobjs)
+    {
+        flagstr = (std::string)"Satellites (J): "
+            + std::string(show_sats ? "ON" : "OFF");
+        ImGui::Text("%s", flagstr.c_str());
+    }
+
     ImGui::Separator();
 
     flagstr = (std::string)"Labels (L): "

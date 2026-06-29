@@ -697,6 +697,7 @@ bool draw_one_object(int i)
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     if (cls == class_satellite)
     {
+        if (!show_sats) return false;
         if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
         {
             cels[i]->drawnx = cels[i]->drawny = -1e9;

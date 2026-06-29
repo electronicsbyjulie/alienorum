@@ -281,6 +281,7 @@ void process_key_cmd_char(char c)
         case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'j': show_sats = !show_sats; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = 7; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
@@ -323,7 +324,7 @@ void process_key_cmd_char(char c)
         set_viewer_location_and_plane();
         global_brightness = default_brightness;
         global_gamma = viewer_gamma;
-        show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = true;
+        show_consln = show_grid = show_labels = lbl_localsys = show_sats = statuswnd = objinfwnd = true;
         show_orbits = false;
         cbolbls_selected_idx = 0;
         appmagn_lblcut = 2.5;

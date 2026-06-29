@@ -169,6 +169,7 @@ bool SatSource::read_csv_data()
         if (is_supplemental)
         {
             uint32_t norad_id = atoi(row[11].c_str());
+            norad_catids.push_back(norad_id);
             bool found = false;
             for (j=0; j<n; j++)
             {
@@ -261,11 +262,19 @@ bool SatSource::read_csv_data()
     return true;
 }
 
-bool SatSource::populate(Satellite *sat, unsigned int idx)
+bool alienorum::SatSource::contains_sat(uint32_t norad_cat_id)
+{
+    int i, n = norad_catids.size();
+    for (i=0; i<n; i++) if (norad_catids[i] == norad_cat_id) return true;
+    return false;
+}
+
+bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
 {
     if (!sat) return false;
     if (idx >= sat_data.size()) return false;
     if (sat->typeclass() != class_satellite) return false;
+    if (hours_threshold < 6) hours_threshold = 6;
 
     SatRecord& sr = sat_data[idx];
     strcpy(sat->name, sr.OBJECT_NAME.c_str());
@@ -273,11 +282,26 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
     int cenidx;
 
     uint32_t norad_id = sr.NORAD_CAT_ID;
-    if (best_source.find(norad_id) != best_source.end() && best_source[norad_id])
+
+    // If any source for the indicated sat is newer than the threshold, use it and don't bother to download best.
+    bool download_best = true;
+
+    int i, n = sat_sources.size();
+    for (i=0; download_best && i<n; i++) if (sat_sources[i].contains_sat(norad_id))
+    {
+        int h = sat_sources[i].data_age_hours();
+        if (h < hours_threshold)
+        {
+            download_best = false;
+            std::cout << sat_sources[i].csv_fname() << " is " << h << " hours old; skipping update." << std::endl;
+        }
+    }
+
+    if (download_best && best_source.find(norad_id) != best_source.end() && best_source[norad_id])
     {
         SatSource *src = best_source[norad_id];
         int h = src->data_age_hours();
-        if (h > 6)
+        if (h > hours_threshold)
         {
             std::cout << src->csv_fname() << " is " << h << " hours old; requesting update..." << std::endl;
             src->download_data();
@@ -338,5 +362,6 @@ bool SatSource::populate(Satellite *sat, unsigned int idx)
         sat->orbit->proc_argperi = 0.75 * common_term * (5.0 * cos_incl * cos_incl - 1);
     }
 
+    nsatobjs++;
     return true;
 }

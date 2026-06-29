@@ -72,10 +72,12 @@ namespace alienorum
         int data_age_hours();
         bool download_data();
         bool read_csv_data();
-        static bool populate(Satellite* sat, unsigned int idx);
+        bool contains_sat(uint32_t norad_cat_id);
+        static bool populate(Satellite* sat, unsigned int idx, int hours_threshold = 6);
 
         protected:
         int _nsatellites = 0;
+        std::vector<uint32_t> norad_catids;
 
         public:
         const int& num_sats = _nsatellites;

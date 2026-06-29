@@ -238,7 +238,7 @@ bool load_universe(std::string universe_fname = "universe.json")
 
 void load_catalogs()
 {
-    int i, n;
+    int i, j, m, n;
 
     // TODO: Read data from more star catalogs.
     CatalogReader cr;
@@ -366,9 +366,34 @@ void load_catalogs()
         cout << loading_msg << endl << flush;
         SatSource::read_sources_json();
         n = sat_sources.size();
+
+        std::vector<int> sources_sorted;
         for (i=0; i<n; i++)
         {
-            if (!file_exists(sat_sources[i].csv_fname().c_str())) sat_sources[i].download_data();
+            m = sources_sorted.size();
+            if (!m) sources_sorted.push_back(i);
+            else
+            {
+                bool inserted = false;
+                for (j=0; j<m; j++)
+                {
+                    if (!sat_sources[i].is_supplemental
+                        ||  (sat_sources[sources_sorted[j]].is_supplemental
+                            && sat_sources[sources_sorted[j]].data_age_hours() < sat_sources[i].data_age_hours()))
+                    {
+                        sources_sorted.insert(sources_sorted.begin()+j, i);
+                        inserted = true;
+                        break;
+                    }
+                }
+                if (!inserted) sources_sorted.push_back(i);
+            }
+        }
+
+        for (i=0; i<n; i++)
+        {
+            std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
+            if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
             sat_sources[i].read_csv_data();
         }
     }
@@ -576,7 +601,7 @@ void add_batch_satellites(std::vector<std::string> listlines)
         char *hashmarks = strstr(buffer, "##");
         i = atoi(&hashmarks[2]);
 
-        if (SatSource::populate(sat, i))
+        if (SatSource::populate(sat, i, 24))
         {
             sats_added++;
         }
