@@ -615,10 +615,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double N, I, W, A, e, m, P, PN, PW, EFFE;
     orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, e, m, P, PN, PW, EFFE);
 
-    // Calculate orbit radians per second and seconds since epoch
     double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
     double seconds_since_epoch = (tmnow_as_epoch - EFFE)*oneday;
-
     timeofday = fmod(rads_sec * seconds_since_epoch - lon_J2000_offset, _pi*2);
     if (orbit && fabs(orbit->period - sidereal_rotational_period) < 0.01 * orbit->period)
     {

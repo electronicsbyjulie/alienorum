@@ -191,13 +191,14 @@ Del Cap, 42  Cap
 ~Car, Carina, Carinae
 Alp Car, Bet Car
 Bet Car, Ups Car
+HD89388, Ups Car
 Bet Car, Ome Car
 Ome Car, The Car
 The Car, HD91465
 HD91465, HD89388
 HD89388, Iot Car
 Iot Car, Eps Car
-Eps Car, Chi Car
+Eps Car, Alp Car
 ~Cas, Cassiopeia, Cassiopeiae
 Bet Cas, Alp Cas
 Alp Cas, Gam Cas
@@ -787,15 +788,19 @@ Mu  PsA, Lam PsA
 Lam PsA, Eps PsA
 Eps PsA, Alp PsA
 ~Pup, Puppis, Puppis
+Tau Pup, Alp Car
+Zet Pup, Pi  Pup
 11  Pup, Xi  Pup
-Xi  Pup, HD61429
-HD61429, Pi  Pup
+Xi  Pup, HD61555
+HD61555, Pi  Pup
 Pi  Pup, Nu  Pup
 Nu  Pup, Tau Pup
 Tau Pup, HD56022
 HD56022, Sig Pup
 Sig Pup, Zet Pup
-Zet Pup, Rho Pup
+HD61555, HD62623
+HD62623, HD65456
+HD65456, Rho Pup
 Rho Pup, 11  Pup
 ~Pyx, Pyxis, Pyxidis
 Bet Pyx, Alp Pyx
@@ -959,16 +964,15 @@ Gam UMi, Eta UMi
 Eta UMi, Zet UMi
 ~Vel, Vela, Velorum
 Gam2Vel, Del Vel
+Del Vel, Lam Vel
 Del Vel, Kap Vel
 Kap Vel, Phi Vel
 Phi Vel, Mu  Vel
-Mu  Vel, HD92139
-HD92139, HD88955
-HD88955, Psi Vel
+Mu  Vel, Psi Vel
 Psi Vel, Lam Vel
-Lam Vel, HD74772
-HD74772, HD73634
-HD73634, Gam2Vel
+Lam Vel, Kap Vel
+Kap Vel, Iot Car
+Lam Vel, Gam2Vel
 ~Vir, Virgo, Virginis
 Omi Vir, Pi  Vir
 Pi  Vir, Nu  Vir

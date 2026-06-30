@@ -713,9 +713,10 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         s->estimate_mass();
 
         s->update_location(J2000_TIME_T);
-        // Assumed 90 degree inclination for all extrasolar systems unles sinclination known.
-        s->location.equatorial_plane = s->location.local_system_plane =
-            align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
+        // Assumed 90 degree inclination for all extrasolar systems unless inclination known.
+        if (!s->Gliese[0])
+            s->location.equatorial_plane = s->location.local_system_plane =
+                align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
 
         #if _debug_sbinaries_zetret
         if (s->HD == 20766) zet1ret = s;
@@ -2486,6 +2487,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     int num_read = 0;
     double f;
 
+    // Fix for Mirfak seen from Hamal
+    if (hdcache[12929])
+    {
+        hdcache[12929]->obliquity = half_pi;
+        hdcache[12929]->equinox = _pi;
+    }
+
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
@@ -2559,10 +2567,18 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
 
         s = nullptr;
-        sioxt = find_object(bdystr, true);
-        if (sioxt >= 0)
+        if (A->multisys)
         {
-            s = (Star*)cels[sioxt];
+            char comp = bdystr[strlen(bdystr)-1];
+            if (comp > 'A' && comp <= 'Z') s = A->multisys->get_member(comp);
+        }
+        if (!s)
+        {
+            sioxt = find_object(bdystr, true);
+            if (sioxt >= 0)
+            {
+                s = (Star*)cels[sioxt];
+            }
         }
 
         if (!s || s == A)

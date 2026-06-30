@@ -231,6 +231,28 @@ HD33636                 (system inclination)                    109.9       007.
 HD36584                 24 Dor B                2.51e+10        074.8       129.5       112.8       1.961e+13   .887        0                   1869.63027471                                   1.57        2.2         8.3          6604
 Vega                    (stellar rotation)                      057         006.2
 Altair                  (stellar rotation)                      301.1       050.7
+HD86320                 HD86320 B               2.004e+9        142.3       034.5       135.2       5.685e+12   .50         0                   2015.2326                                       1.6
+HD88522                 (system inclination)                    198.3       076.0
+HD100453                (system inclination)                    047         049
+HD106515                HD106515 B              1.5154e+11      092.06      164.45      250.50      5.16e+13    .420        0                   2376.4                                          0.861       0.865       0.55        5190
+HD115404                HD115404 B              2.430e+10       104.66      093.41      276.99      1.27e+13    .12         0                   1875.3                                          0.542       0.550       0.043       3709
+HD117440                (system inclination)                    146.5       145.2
+HD118889                (system inclination)                    034.58      043.50
+HD120987                (system inclination)                    112.3       074.2
+HD125040                HD125040 B              3.019e+10       014.1       134.3       072.2       1.830e+13   .53         0                   1683.9                                          0.86        0.81        0.42        5260
+HD127726                (system inclination)                    023.3       158.0
+HD131473                (system inclination)                    012.5       108.5
+HD140913                (system inclination)                    311.0       030.3
+HD142527                HD142527 B              7.416e+8        161.51      149.47      186.45      1.616e+12   .47         0                   2020.42                                         0.34        1.37        0.25        3500
+# https://doi.org/10.1038/s41550-024-02454-x
+HD142527                (protoplanetary disk)                   117         028
+HD155876                GJ 661 B                4.08700e+8      160.0       149.14      099.0       6.942e+11   .7430       0                   1991.032                                        0.369       0.37                    3422
+HD158614                (system inclination)                    151.769     099.177
+HD159062                GJ 4010 B               1.30e+10        133.4       063.0       260         9.26e+12    .102        0                   2151.832                                        0.6083                              4580
+HD162020                (system inclination)                    288.93      177.273
+HD163840                HD163840 B              7.61727e+7      175.32      072.83      135.46      3.249e+12   .4165       0                   2011.24155                                      0.7421                  0.648       4780
+
+
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

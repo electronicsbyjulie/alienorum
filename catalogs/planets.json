@@ -232,6 +232,7 @@
         "EqPrecession": 18.6,
         "Equinox": 127.04,
         "Incl": 5.1454,
+        "Lon_J2000_offset": 40,
         "Mass": 7.349E+22,
         "MeanAnom": 137.7254,
         "NodePrecession": 5.869e+8,

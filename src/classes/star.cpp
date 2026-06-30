@@ -80,6 +80,8 @@ void Star::update_location(double tmnow)
 
     // How many seconds since star's epoch
     double elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch);
+    double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
+    timeofday = fmod(rads_sec * elapsed - lon_J2000_offset, _pi*2);
 
     // Estimate RA and Decl using proper motion
     double l_RA = right_ascension + proper_motion_RA * elapsed;
@@ -153,6 +155,8 @@ void Star::rename_from_Bayer_Flamsteed()
             else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
         }
         else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
+
+        if (BayerGrkno == 5 && !strcmp(consabbrev[j].c_str(), "Ret")) has_custom_name = true;
     }
     else if (FlamsteedNo)
     {
