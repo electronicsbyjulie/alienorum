@@ -1,5 +1,6 @@
 # stars
 Gliese          catalog.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/V/70A/catalog.dat.gz
+CNS5            cns5.dat                    ftp://cdsarc.u-strasbg.fr/cats/J/A+A/670/A19/cns5.dat
 BSC             catalog.gz                  ftp://cdsarc.cds.unistra.fr/cats/V/50/catalog.gz
 Hipparcos       hip_main.dat                ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_main.dat
 Hipparcos       h_dm_com.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/h_dm_com.dat.gz

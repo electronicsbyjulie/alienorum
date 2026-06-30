@@ -596,8 +596,19 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, e, m, P, PN, PW, EFFE);
 
     // Calculate orbit radians per second and seconds since epoch
-    double rads_sec = (_pi * 2) / P;
+    double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
     double seconds_since_epoch = (tmnow_as_epoch - EFFE)*oneday;
+
+    timeofday = fmod(rads_sec * seconds_since_epoch - lon_J2000_offset, _pi*2);
+    if (orbit && fabs(orbit->period - sidereal_rotational_period) < 0.01 * orbit->period)
+    {
+        timeofday += orbit->ascending_node;
+        timeofday += orbit->arg_periapsis;
+        timeofday += orbit->mean_anomaly;
+        timeofday += half_pi;
+    }
+
+    rads_sec = (_pi * 2) / P;
 
     // Precess the ascending node and process the arg peri
     double node_adjustment = seconds_since_epoch * -PN;
@@ -1359,8 +1370,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     int num_bands = rand() % 9 + 7, i;
     auto bands = std::make_unique<RGB3Byte[]>(num_bands);
 
-    bool add_storm = frand(0, 1) < 0.2;
-    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29;
+    bool add_storm = !tidal_locked_to_star && (frand(0, 1) < 0.2);
+    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29, stormSize = frand(0.29, 0.71);
 
     stormlat = frand(0.3, 0.7);
     stormlon = frand(0, 1);
@@ -1379,8 +1390,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         bands[i].b = rgb.b * bmult;
     }
 
-    double scale = 2.5, u, v, theta, phi, psi, nx, ny, nz, distortX, distortY, finalNoise, bandVal, t;
-    double zscale = tidal_locked_to_star ? scale : (scale * 8);
+    double scale = 2.5, u, v, theta, phi, psi, sin_theta, nx, ny, nz, distortX, distortY, finalNoise, bandVal, t;
+    double zscale = tidal_locked_to_star ? scale : (scale * 1.5);
 
     for (unsigned int y = 0; y < image_height; ++y)
     {
@@ -1397,15 +1408,26 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             ny = sin(theta) * sin(phi) * scale;
             nz = cos(theta) * zscale;
 
-            if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
+            if (tidal_locked_to_star)
+            {
+                sin_theta = sin(theta);
+
+                phi -= 2.9e+5 / cel->sidereal_rotational_period 
+                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
+                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
+                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta;
+                nx = sin(theta) * cos(phi) * scale;
+                ny = sin(theta) * sin(phi) * scale;
+
+                psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
+            }
 
             // Domain Warping: Use noise to distort the coordinates horizontally
             // This creates the swirling, fluid look of gas clouds
             distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
-            distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 0.1;
-
+            distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 1.3;
             // Apply distortion primarily along the X/longitude axis to emulate wind bands
-            finalNoise = fBm(nx + distortX * 4.0, ny + distortY, nz, 6, 2.0, 0.55);
+            finalNoise = fBm(nx + distortX * 4.0, ny + distortY * 2.5, nz, 6, 2.0, 0.55);
 
             if (add_storm)
             {
@@ -1417,16 +1439,16 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
             int idx = y * image_width + x;
 
-            if (stormDist < 0.3)
+            if (stormDist < stormSize)
             {
                 // We are inside the storm; blend into dark colors
-                double stormBlend = (0.3 - stormDist) / 0.3; // 1 at center, 0 at edge
+                double stormBlend = (stormSize - stormDist) / stormSize; // 1 at center, 0 at edge
                 // Swirl the storm inside
                 double stormNoise = fBm(nx * 3.0, ny * 3.0, nz * 3.0, 3, 2.0, 0.5);
 
-                red_data[idx] = (unsigned char)(180 * stormNoise + 60);
-                green_data[idx] = (unsigned char)(40 * stormNoise + 10);
-                blue_data[idx] = (unsigned char)(30 * stormNoise + 10);
+                red_data[idx] = (unsigned char)(120 * stormNoise + 25);
+                green_data[idx] = (unsigned char)(90 * stormNoise + 15);
+                blue_data[idx] = (unsigned char)(60 * stormNoise + 10);
 
                 // Linear interpolation blending storm with background bands
                 red_data[idx] = (unsigned char)(red_data[idx] * stormBlend + bands[0].r * (1.0 - stormBlend));

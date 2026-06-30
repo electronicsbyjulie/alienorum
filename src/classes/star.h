@@ -87,6 +87,7 @@ namespace alienorum
         void add_member(Star* s, char comp);
         Star* get_member(char comp);
         char is_member(Star* s);
+        int num_members();
         char next_available();
         void unlink();                              // Call this before deleting object and before deleting any stars.
         char get_allocated();

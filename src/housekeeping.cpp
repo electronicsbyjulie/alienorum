@@ -57,13 +57,13 @@ void set_viewer_location_and_plane()
 
         double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
         double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-        double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
+        cel->timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
         if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
         {
-            timeofday += cel->orbit->ascending_node;
-            timeofday += cel->orbit->arg_periapsis;
-            timeofday += cel->orbit->mean_anomaly;
-            timeofday += half_pi;
+            cel->timeofday += cel->orbit->ascending_node;
+            cel->timeofday += cel->orbit->arg_periapsis;
+            cel->timeofday += cel->orbit->mean_anomaly;
+            cel->timeofday += half_pi;
         }
 
         bool dwh = false;
@@ -87,7 +87,7 @@ void set_viewer_location_and_plane()
             cursor.z *= ((Moon*)cel)->depth * 500;
         }
         else cursor.y *= obl;
-        cursor = rotate3D(cursor, center, yaxis, -timeofday);
+        cursor = rotate3D(cursor, center, yaxis, -cel->timeofday);
         cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 
         here.local_position = cel->location.local_position + cursor;
@@ -383,13 +383,16 @@ void set_center_objects()
             if (s->multisys)
             {
                 char comp = s->multisys->is_member(s);
-                if (comp)
+                if (comp > 'A' || s->multisys->num_members() > 1)
                 {
-                    if (!s->has_custom_name) strcpy(s->name, (lop_component(s->name) + std::string(" ") + std::string(1, comp)).c_str());
-                }
-                else
-                {
-                    s->set_component(s->multisys->next_available(), s);
+                    if (comp)
+                    {
+                        if (!s->has_custom_name) strcpy(s->name, (lop_component(s->name) + std::string(" ") + std::string(1, comp)).c_str());
+                    }
+                    else
+                    {
+                        s->set_component(s->multisys->next_available(), s);
+                    }
                 }
             }
         }

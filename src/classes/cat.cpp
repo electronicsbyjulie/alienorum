@@ -244,13 +244,28 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 build_name += std::string(&field[6]);
         }
 
+        if (j == 3785)                  // Alcor.
+        {
+            int i;
+            for (i = ncelobjs-1; atoi(&((Star*)cels[i])->Gliese[2]) != 3784; i--);
+            StarMulti *sm = ((Star*)cels[i])->multisys;
+            A = sm->get_member('A');
+            if (A) std::cout << "Mizar A = " << A->name << std::endl;
+            else std::cout << "Mizar A is null." << std::endl;
+            Star *B = sm->get_member('B');
+            if (B) std::cout << "Mizar B = " << B->name << std::endl;
+            else std::cout << "Mizar B is null." << std::endl;
+
+            sm->add_member(s, 'E');
+        }
+
         //   9- 10  A2     ---     Comp     Components (A,B,C,... )
         read_field_onebased(buffer, 9, 10, field);
         if (field[0] == '1') field[0] = ' ';                // SMH!!!
         std::string comp = trim(field);
         if (comp.size())
         {
-            if (fabs(current_multi_gjno-f) >= 0.05)
+            if (comp.c_str()[0] <= 'A') // fabs(current_multi_gjno-f) >= 0.05)
             {
                 // current_multi = nullptr;
                 A = nullptr;

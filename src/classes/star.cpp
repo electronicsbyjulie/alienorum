@@ -613,6 +613,13 @@ char StarMulti::is_member(Star *s)
     return 0;
 }
 
+int alienorum::StarMulti::num_members()
+{
+    int i, result = 0;
+    for (i=0; i<allocated; i++) if (members[i]) result++;
+    return result;
+}
+
 char alienorum::StarMulti::next_available()
 {
     int i;

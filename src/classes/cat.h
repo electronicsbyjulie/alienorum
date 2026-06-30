@@ -51,6 +51,10 @@ namespace alienorum
         int read_star_orbits_dat(CelestialObject** cels);
         int read_local_planets(CelestialObject** cels, int max);
 
+        // Condensed star catalog
+        int write_condensed_star_cat(CelestialObject** cels);
+        int read_condensed_star_cat(CelestialObject** cels, int max);
+
         protected:
         static void read_field_onebased(char* buffer, size_t start, int end, char* out);
     };

@@ -184,10 +184,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
                     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-                    double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ timeofday) - _pi;
+                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
                     save_viewer_latlon = false;
                     whereami = cel->seqno;
@@ -253,14 +252,6 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
     double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-    double timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
-    if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
-    {
-        timeofday += cel->orbit->ascending_node;
-        timeofday += cel->orbit->arg_periapsis;
-        timeofday += cel->orbit->mean_anomaly;
-        timeofday += half_pi;
-    }
 
     if (!wireframe && !cel->looked_for_maps)
     {
@@ -287,7 +278,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 cursor.z *= ((Moon*)cel)->depth * 500;
             }
             else cursor.y *= obl;
-            cursor = rotate3D(cursor, center, yaxis, -timeofday);
+            cursor = rotate3D(cursor, center, yaxis, -cel->timeofday);
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
@@ -378,7 +369,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
             }
             else land.y *= obl;
-            land = rotate3D(land, center, yaxis, -timeofday);
+            land = rotate3D(land, center, yaxis, -cel->timeofday);
 
             land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor = land + cel->tmprel;

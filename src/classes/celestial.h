@@ -19,10 +19,12 @@ namespace alienorum
         star = 0x200,
         gas_giant = 0x300,
         ice_giant = 0x301,
-        hot_jupiter = 0x302,
-        rocky = 0x400,
-        icy = 0x401,
-        artificial = 0x500
+        steam_giant = 0x303,
+        hot_jupiter = 0x310,
+        waterworld = 0x401,
+        rocky = 0x402,
+        icy = 0x403,
+        artificial = 0xf00
     };
 
     enum cel_obj_class
@@ -149,6 +151,7 @@ namespace alienorum
         bool known_poles = false;
         bool estimated_poles = false;
         double lon_J2000_offset = -half_pi;          // For moons.
+        double timeofday = 0;
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;
