@@ -22,8 +22,8 @@ namespace alienorum
         steam_giant = 0x303,
         hot_jupiter = 0x310,
         waterworld = 0x401,
-        rocky = 0x402,
-        icy = 0x403,
+        icy = 0x402,
+        rocky = 0x403,
         artificial = 0xf00
     };
 

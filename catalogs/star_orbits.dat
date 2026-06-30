@@ -162,7 +162,8 @@ HD31093                 (system inclination)                    020         107
 HD32450                 (system inclination)                    246.5       060.7
 HD33636                 (system inclination)                    109.9       007.07
 HD36584                 24 Dor B                2.51e+10        074.8       129.5       112.8       1.961e+13   .887        0                   1869.63027471                                   1.57        2.2         8.3          6604
-
+Vega                    (stellar rotation)                      057         006.2
+Altair                  (stellar rotation)                      301.1       050.7
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

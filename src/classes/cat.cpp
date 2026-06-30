@@ -193,8 +193,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     double deg, mnt, sec, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
-    // StarMulti *current_multi = nullptr;
-    float current_multi_gjno = 0;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -265,9 +263,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         std::string comp = trim(field);
         if (comp.size())
         {
-            if (comp.c_str()[0] <= 'A') // fabs(current_multi_gjno-f) >= 0.05)
+            if (comp.c_str()[0] <= 'A')
             {
-                // current_multi = nullptr;
                 A = nullptr;
             }
 
@@ -275,8 +272,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             if (field[0] == '-') field[0] = 'D';            // GJ 1255 fix
             if (field[0] == 'A') A = s;
             s->set_component(field[0], A);
-            // current_multi = s->multisys;
-            current_multi_gjno = f;
 
             // Special case for Proxima since Gliese et al couldn't be bothered to group it with Alp Cen AB.
             if ((fabs(f-559) < 0.05) && A && s->get_component() > 'A')

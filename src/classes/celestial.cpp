@@ -214,6 +214,16 @@ void Orbit::compute_period(double mm)
             center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
             break;
 
+            case steam_giant: case waterworld:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius / 1.7) * earth_mass * 6;             // LHS 1140 b
+            break;
+
+            case icy:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / 2631200.0644) * 1.4819e+23;                       // Ganymede
+            break;
+
             case rocky:
             if (!center->volumetric_mean_radius) return;
             center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
@@ -252,6 +262,16 @@ void Orbit::compute_semimajor_axis(double mm)
             case gas_giant: case ice_giant:
             if (!center->volumetric_mean_radius) return;
             center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
+            break;
+
+            case steam_giant: case waterworld:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius / 1.7) * earth_mass * 6;             // LHS 1140 b
+            break;
+
+            case icy:
+            if (!center->volumetric_mean_radius) return;
+            center->mass = sphere_volume(center->volumetric_mean_radius / 2631200.0644) * 1.4819e+23;                       // Ganymede
             break;
 
             case rocky:
@@ -648,8 +668,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     // Precess the equinox
     equinox_eff = equinox - precession * seconds_since_epoch;
     Point pole = yaxis;
-    pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -obliquity);
+    pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     if (!lock_equatorial_plane) location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
     if (_class == class_moon && !crp)
@@ -1134,10 +1154,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
+    if (cel->type == waterworld)
+    {
+        has_water = 1;
+    }
     if (randomize_txgen)
     {
-        has_water = veg_height = mtn_height = 0;
-        ice_amount = 0.03;
+        has_water = 0;
     }
 
     double T_surf = p->estimate_surface_temperature();
@@ -1146,7 +1169,25 @@ void Map::generate_rocky_map(CelestialObject *cel)
         && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
     {
         double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
-        if (!p->surface_pressure) p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
+        if (randomize_txgen && !p->surface_pressure)
+        {
+            p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
+            double CO2_fraction = frand(0, frand(0.001, 0.99));
+            p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
+                CO2_fraction,                           // CO2
+                frand(0, 0.01),                         // CH4
+                frand(0, 0.05 * has_water),             // H2O
+                frand(0, 0.0001),                       // N2O
+                0,                                      // O3
+                frand(0, 0.001),                        // SO2
+                frand(0, 0.001),                        // H2S
+                frand(0, 0.01*CO2_fraction),            // CO
+                frand(0, frand(0, frand(0, 0.1))),      // HCN
+                frand(0, 0.99),                         // H2
+                frand(0, frand(0, frand(0, fmin(0.1, fmax(0, cel->mass / earth_mass - 1)*0.05)))),      // NH3
+                0                                       // C2H5
+                                                );
+        }
         #ifdef DEBUG
             std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
@@ -1170,15 +1211,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
             if (T_surf < 0.9 * water_freezing)
             {
                 has_water = 1;
-                ice_amount = 1;
             }
             else if (T_surf < T_boil * 1.1)
             {
                 double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
                 has_water = frand(0, max_water);
-                ice_amount = fmin(1, fmax(0, pow((T_boil - T_surf) / (T_boil - water_freezing), 10)));
-                veg_height = (has_water > 0.1) ? (has_water + 0.03) : 0;
-                mtn_height = (veg_height ?: has_water) + has_water*0.29; // 1.0 - ((1.0 - has_water) * 0.8 * ice_amount);
             }
             else
             {
@@ -1186,11 +1223,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // TODO: Overcast Venusian-style cloud map.
             }
         }
-
-        std::cout << "Water level: " << has_water << "." << std::endl << std::flush;
-        std::cout << "Polar ice: " << ice_amount << "." << std::endl << std::flush;
-        std::cout << "Vegetation level: " << veg_height << "." << std::endl << std::flush;
-        std::cout << "Mountain level: " << mtn_height << "." << std::endl << std::flush;
     }
 
     int octaves = 5 + (rand() % 4);
@@ -1246,6 +1278,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
+    double Tswing = 256.0 / (p->surface_pressure * 3.5e-5), halfswing = Tswing*0.5;
+
     for (y = 0; y < image_height; ++y)
     {
         // Convert screen pixel coordinates to spherical angles
@@ -1277,8 +1311,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 r_weight = height_value;
 
                 T_base = tidal_locked_to_star
-                    ? (T_surf + 128.0 - 256.0 * cos(psi*0.5))
-                    : (T_surf - 40.0 + 70.0 * sin(theta));
+                    ? (T_surf + halfswing - Tswing * cos(psi*0.5))
+                    : (T_surf - halfswing + Tswing * sin(theta));
                 T_local = T_base - 62.5 * fmax(0, height_value - has_water);
                 if (T_local < water_freezing)
                 {
@@ -1289,7 +1323,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 // Biome allocation based on height thresholds
-                else if (height_value < has_water && (T_local < Tboil))
+                else if (cel->type == waterworld || (height_value < has_water && (T_local < Tboil)))
                 {   // Ocean
                     sh = height_value*inv_h2o_level;
                     sh *= (Tboil - T_base) / (Tboil - water_freezing);
@@ -1368,6 +1402,11 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
     double variability = frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
+    if (cel->type == steam_giant)
+    {
+        num_bands = std::max(2, num_bands/4);
+        variability /= 4;
+    }
     auto bands = std::make_unique<RGB3Byte[]>(num_bands);
 
     bool add_storm = !tidal_locked_to_star && (frand(0, 1) < 0.2);

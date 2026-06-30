@@ -118,12 +118,12 @@ void load_textures(CelestialObject* cel)
     cel->looked_for_maps = true;
     cel->ignore_map_files = false;          // one-time use.
 
-    if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == hot_jupiter) && !cel->cloud_map)
+    if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == steam_giant || cel->type == hot_jupiter) && !cel->cloud_map)
     {
         cel->cloud_map = new Map();
         cel->cloud_map->generate_gas_giant_map(cel);
     }
-    else if ((cel->type == rocky || cel->type == icy) && !cel->surf_map)
+    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld) && !cel->surf_map)
     {
         cel->surf_map = new Map();
         cel->surf_map->generate_rocky_map(cel);

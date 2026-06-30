@@ -405,7 +405,7 @@ void process_key_cmd_char(char c)
 
         case '3':
         themes_selected_idx++;
-        if (themes_selected_idx >= (unsigned)themes.size()) themes_selected_idx = 0;
+        if ((unsigned)themes_selected_idx >= themes.size()) themes_selected_idx = 0;
         global_style.load(themes[themes_selected_idx]);
         break;
 

@@ -182,8 +182,6 @@ int draw_sphere(CelestialObject* cel, double arad)
                 }
                 else
                 {
-                    double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
-                    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
                     viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday) - _pi;
@@ -249,9 +247,6 @@ int draw_sphere(CelestialObject* cel, double arad)
         equatorial_radius = cel->get_equatorial_radius();
 
     double lat, lon, z_cutoff = d + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
-
-    double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
-    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
 
     if (!wireframe && !cel->looked_for_maps)
     {

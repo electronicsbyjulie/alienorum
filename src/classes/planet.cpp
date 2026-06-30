@@ -17,22 +17,44 @@ void Planet::classify()
 
 void Planet::classify(bool HZ)
 {
+    double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff)
     {
         type = rocky;
         if (HZ) BV_color = 0.2;       // estimate same as Earth.
+    }
+    else if (mass < neptune_mass_cutoff)
+    {
+        if (T < icy_T_cutoff)
+        {
+            type = icy;
+            BV_color = 0.6;
+        }
+        else if (HZ)
+        {
+            type = waterworld;
+            BV_color = -0.3;
+        }
+        else
+        {
+            type = steam_giant;
+            BV_color = 0.4;
+        }
     }
     else if (orbit->period < oneday*10)
     {
         type = hot_jupiter;
         BV_color = -1;   // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
     }
-    else if (orbit->semimajor_axis > 2e+12 * sqrt(pow(magnbase,
-        cels[0]->absolute_magnitude - get_light_center()->absolute_magnitude))       // TODO: This is a really poor substitute for temperature.
-            )
+    else if (T < icy_T_cutoff)
     {
         type = ice_giant;
         BV_color = 0.49;     // average of Uranus and Neptune.
+    }
+    else if (HZ)
+    {
+        type = steam_giant;
+        BV_color = 0.4;
     }
     else
     {
@@ -59,18 +81,21 @@ void Planet::estimate_rotation()
 {
     if (!orbit || !orbit->period) return;
 
-    if (orbit->period < (40 * oneday)                // This is a TOTAL guess.
+    double tidal_lock_threshold_days = 100 / (1.0 + 4.0 * orbit->eccentricity);      // This is a TOTAL guess. Accounts for Mercury (58d, ecc .205630, 3:2 resonance) and Iapetus (79d, ecc .0284, tidal).
+
+    if (orbit->period < (tidal_lock_threshold_days * oneday)
         || type == hot_jupiter)
     {
         sidereal_rotational_period = orbit->period;
     }
-    else if (orbit->period < (80 * oneday))          // Another guess. Mercury at 58 days has a 3:2 spin-orbit resonance but Iapetus at 79 days is tidally locked.
+    else if (orbit->period < (250 * oneday))          // Another guess.
     {
         sidereal_rotational_period = 1.5 * orbit->period;
     }
-    else if (type == rocky    ) sidereal_rotational_period = 2.38e+6 / log(mass);
-    else if (type == ice_giant) sidereal_rotational_period = 1.74e+6 / log(mass);
-    else if (type == gas_giant) sidereal_rotational_period = 1.11e+6 / log(mass);
+    else if (type == rocky || type == icy               ) sidereal_rotational_period = 2.38e+6 / log(mass);
+    else if (type == waterworld                         ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
+    else if (type == ice_giant || type == steam_giant   ) sidereal_rotational_period = 1.74e+6 / log(mass);
+    else if (type == gas_giant                          ) sidereal_rotational_period = 1.11e+6 / log(mass);
 }
 
 double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double phase, double sourcemagn, double sourcedist)
@@ -121,7 +146,9 @@ void Planet::estimate_albedo_and_absmagn()
     double est_albedo = 0.3;
     if (type == gas_giant) est_albedo = 0.5;
     else if (type == hot_jupiter) est_albedo = 0.01;
-    else if (type == ice_giant) est_albedo = 0.3;
+    else if (type == ice_giant || type == steam_giant) est_albedo = 0.3;
+    else if (type == waterworld) est_albedo = 0.4;
+    else if (type == icy) est_albedo = 0.8;
     else if (type == rocky) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
     absolute_magnitude = fmax(-10, earth_absmag - log(p_rad_e*p_rad_e*est_albedo/earth_albedo) / log(magnbase));
     albedo = est_albedo;
