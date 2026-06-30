@@ -6,6 +6,73 @@ Sun                     (system inclination)                    000         023.
 Rigil Kentaurus         Toliman                 2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
 Rigil Kentaurus         Proxima Cen             1.73e+13        126         107.6       072.3       1.3e+15     .50         0                    283                                            0.1221      0.1542      0.00005      2992
 
+# https://doi.org/10.48550/arXiv.2501.09058
+GJ14                    (cometary disk)                         005         064
+HD105                   (cometary disk)                         014         049
+HD9672                  (cometary disk)                         107.4       079.1
+HD10638                 (cometary disk)                         010         060
+HD10647                 (cometary disk)                         056.8       077.2
+HD14055                 (cometary disk)                         163.3       081.1
+HD15115                 (cometary disk)                         098.5       088
+HD15257                 (cometary disk)                         060         040
+HD15745                 (cometary disk)                         029         070
+HD16743                 (cometary disk)                         168.4       080
+HD21997                 (cometary disk)                         027         034
+HD22049                 (cometary disk)                         178         030
+HD32297                 (cometary disk)                         047.8       087
+HD35841                 (cometary disk)                         167         084
+HD36546                 (cometary disk)                         257.3       080
+HD38206                 (cometary disk)                         084         084
+HD38858                 (cometary disk)                         060         040
+HD39060                 (cometary disk)                         030.0       086.6
+HD48682                 (cometary disk)                         110         060
+HD50571                 (cometary disk)                         121.9       080
+HD53143                 (cometary disk)                         157.5       056.1
+HD54341                 (cometary disk)                         060         050
+HD61005                 (cometary disk)                         070.33      085.7
+HD76582                 (cometary disk)                         103.7       072
+HD84870                 (cometary disk)                         010         050
+HD92945                 (cometary disk)                         100         066.8
+HD95086                 (cometary disk)                         093         029
+HD104860                (cometary disk)                         170         050
+HD105211                (cometary disk)                         028.2       066.4
+HD106906                (cometary disk)                         111         060
+HD107146                (cometary disk)                         149         022.2
+HD109085                (cometary disk)                         120         039
+HD109573                (cometary disk)                         026.7       076.5
+HD111520                (cometary disk)                         168         084
+HD112810                (cometary disk)                         097         060
+HD114082                (cometary disk)                         110         040
+HD117214                (cometary disk)                         010         040
+HD121191                (cometary disk)                         030         040
+HD121617                (cometary disk)                         060         037
+HD127821                (cometary disk)                         036         078
+HD129590                (cometary disk)                         116         070
+HD131488                (cometary disk)                         096.4       084
+HD131835                (cometary disk)                         059.6       073.7
+HD138813                (cometary disk)                         047         048
+HD139664                (cometary disk)                         076         080
+HD142315                (cometary disk)                         080         070
+HD142446                (cometary disk)                         100         040
+HD145560                (cometary disk)                         028         047
+HD146181                (cometary disk)                         054         050
+HD146897                (cometary disk)                         114         070
+HD158352                (cometary disk)                         114         081
+HD161868                (cometary disk)                         057         068
+HD164249                (cometary disk)                         110         050
+HD170773                (cometary disk)                         114         033
+HD181327                (cometary disk)                         098         029.9
+HD182681                (cometary disk)                         053.3       076
+HD191089                (cometary disk)                         073         060
+HD197481                (cometary disk)                         128.54      088.4
+HD202628                (cometary disk)                         129.9       057.9
+HD205674                (cometary disk)                         138         056
+HD207129                (cometary disk)                         118         060.7
+TYC93404371             (cometary disk)                         130         040
+HD216956                (cometary disk)                         156.61      066.87
+HD216956C               (cometary disk)                         116         044
+HD218396                (cometary disk)                         051         039
+
 # https://doi.org/10.1051/0004-6361/201322469
 HD20807                 HD20766                 5.36e+12?       296.2       065.5?      ?           5.610e+14?  ?                               2013.
 
@@ -167,7 +234,6 @@ Altair                  (stellar rotation)                      301.1       050.
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
-
 
 # Unresolved WD multiples
 WD2058+342              WD2058+342.1
