@@ -190,7 +190,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     char field[32];
     int num_read = 0;
     int offset, j;
-    double deg, mnt, sec, pm, pmtheta, absmagn;
+    double deg, mnt, sec, ra, dec, ep_y, ra2k, dec2k, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
 
@@ -278,6 +278,10 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             {
                 Star *C = (Star*) cels[find_object("GJ 551", true)];
                 A->multisys->add_member(C, 'C');
+
+                /*// Also prevent duplicate loading from Hipparcos.
+                s->HIP = 70890;
+                hipcache[70890] = s;*/
             }
 
             // Special case for Zeta Reticuli
@@ -288,8 +292,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             }
         }
 
-        strcpy(s->name, trim(build_name.c_str()).c_str());
-        strcpy(s->Gliese, trim(build_name.c_str()).c_str());
+        strcpy(s->Gliese, trim(build_name).c_str());
+        strcpy(s->name, s->Gliese);
         if (!strcmp(s->Gliese, "GJ 324 B")) strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
         if (!strcmp(s->Gliese, "GJ 22 AC"))
         {
@@ -469,6 +473,85 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+
+    ncelobjs = num_read;
+    path = "catalogs" _FILESLASH "CNS5" _FILESLASH "cns5.dat";
+    fp = fopen(path.c_str(), "rb");
+    if (!fp)
+    {
+        std::cerr << "ERROR: Missing CNS5 catalog." << std::endl;
+        return num_read;
+    }
+    while (fgets(buffer, 300, fp))
+    {
+        //   6- 11  A6    ---       GJ      Gliese-Jahreiss number (gj_id)
+        read_field_onebased(buffer, 6, 11, field);
+        float f = atof(field);
+        if (f > 9848.05) continue;              // 9848 is the highest number in the CNS3
+        std::string Gliese = trim(field);
+        if (!strcmp(Gliese.c_str(), "Sun")) continue;
+        Gliese = std::string("GJ ") + Gliese;
+
+        Star *s = nullptr;
+        for (j=0; !s && j<ncelobjs; j++) if (!strcmp(Gliese.c_str(), ((Star*)cels[j])->Gliese)) s = (Star*)cels[j];
+
+        // CNS5 could have been a wonderful update to the earlier CNS3 with thousands of
+        // new stars, but the team had to go and ruin it by removing data that were useful
+        // and critically important like spectral type and B-V color. They replaced the color
+        // indices with some bizarre format that would require complex temperature estimation
+        // to convert, and while it may be possible to estimate spectral types from temperature
+        // and absolute magnitude, there would undoubtedly be errors in the estimates.
+        // So unfortunately we cannot load any new stars from CNS5 not already in CNS3,
+        // and the new updated catalog is relegated to being mostly a cross reference with
+        // a few data like radial velocity that can be updated.
+        // What a sad waste of all the work they put into it to have so many of its rows end
+        // up completely unusable.
+        if (!s) continue;
+
+        //  48- 53  I6    ---       HIP     ?=- Hipparcos identifier (hip_id)
+        read_field_onebased(buffer, 48, 53, field);
+        s->HIP = atoi(field);
+        if (!hipcache[s->HIP]) hipcache[s->HIP] = s;
+
+        //  55- 74 F20.16 deg       RAdeg   ?=- Right ascension (J2000) at Ep=Epoch (ra)
+        read_field_onebased(buffer, 55, 74, field);
+        ra = atof(field) * fiftyseventh;
+        //  76- 98 F23.19 deg       DEdeg   ?=- Declination (J2000) at Ep=Epoch (dec)
+        read_field_onebased(buffer, 76, 98, field);
+        dec = atof(field) * fiftyseventh;
+        // 100-108  F9.4  yr        Epoch   [1991.25/2017.97]?=- Reference epoch for coordinates (epoch)
+        read_field_onebased(buffer, 100, 108, field);
+        ep_y = atof(field);
+        convert_to_J2000(ra, dec, ep_y, ra2k, dec2k, false);
+
+        s->right_ascension = ra2k;
+        s->declination = dec2k;
+        s->epoch = J2000;
+
+        // 130-148 F19.15 mas       plx     ?=- Absolute trigonometric parallax (parallax)
+        read_field_onebased(buffer, 130, 148, field);
+        s->parallax = atof(field) * 1e-3;
+        s->distance = parsec / s->parallax;
+        s->parallax *= 2.777777777777e-4 * fiftyseventh;
+        s->distance_known = true;
+        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+
+        // 184-206 F23.17 mas/yr    pmRA    ?=- Proper motion in right ascension (d(RAcosDE)/dt) (pmra)
+        read_field_onebased(buffer, 184, 206, field);
+        ra = atof(field) * 2.777777777777e-4 * fiftyseventh / oneyear;
+        s->proper_motion_RA = ra * cos(s->declination);
+
+        // 230-252 F23.17 mas/yr    pmDE    ?=- Proper motion in declination (pmdec)
+        read_field_onebased(buffer, 230, 252, field);
+        dec = atof(field) * 2.777777777777e-4 * fiftyseventh / oneyear;
+        s->proper_motion_decl = dec;
+
+        // 297-319 F23.18 km/s      RV      ?=- Spectroscopic radial velocity (rv)
+        read_field_onebased(buffer, 297, 319, field);
+        s->radial_velocity = atof(field) * 1000;
+    }
+
     return num_read;
 }
 
@@ -2839,8 +2922,12 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
                 p->location.equatorial_plane.a = p->obliquity;
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
 
-                ((Star*)p->get_light_center())->has_planets++;
-                if (p->is_in_con_HZ()) ((Star*)p->get_light_center())->has_hz_planets++;
+                Star* s = (Star*)p->get_light_center();
+                if (p->orbit->center == s)
+                {
+                    s->has_planets++;
+                    if (p->is_in_con_HZ()) s->has_hz_planets++;
+                }
             }
 
             if (p->orbit && p->orbit->center)

@@ -1717,8 +1717,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     double r, m;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    ImGui::Text("%s", " Name                                Mag.        Sp. Type        Distance");
-    if (ImGui::BeginListBox("##neighblist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
+    ImGui::Text("%s", " Name                                Mag.        Sp. Type        Planets     Distance");
+    if (ImGui::BeginListBox("##neighblist", ImVec2(768, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
         if (last_neighb_cen != mycenobj)
@@ -1782,9 +1782,13 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             l = line.str().size();
             if (l < 48) line << std::string(48-l, ' ');
 
-            line << ((Star*)cels[i])->spectral_type;
+            line << s->spectral_type;
             l = line.str().size();
             if (l < 64) line << std::string(64-l, ' ');
+
+            if (s->has_planets) line << s->has_planets;
+            l = line.str().size();
+            if (l < 76) line << std::string(76-l, ' ');
 
             if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
             else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
