@@ -2143,6 +2143,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     std::string startswith = "PSCompPars_";
     std::string candidate = "";
     std::vector<std::string> results;
+    std::map<int, std::vector<int>> planet_celids;
 
     try
     {
@@ -2446,8 +2447,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     }
                 }
 
-                // TODO:
-                s->obliquity = p_incl;
+                p->orbit->inclination = p_incl;             // For now.
             }
 
             if (s && p && p->orbit->period)
@@ -2481,6 +2481,11 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 append_cel(p);
                 offset++;
                 num_added++;
+
+                if (planet_celids.find(s->seqno) == planet_celids.end())
+                    planet_celids[s->seqno] = std::vector<int>();
+                planet_celids[s->seqno].push_back(p->seqno);
+
                 std::stringstream lmss1;
                 lmss1 << "Loaded " << num_added << " exoplanets from " << path << "...";
                 mtx.lock();
@@ -2499,6 +2504,82 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+
+    int j, l, m, n = planet_celids.size();
+    for (auto const& [idx, row] : planet_celids)
+    {
+        double exoincl = 0;
+        l = 0;
+
+        m = row.size();
+        for (j=0; j<m; j++)
+        {
+            Planet *p = (Planet*)cels[row[j]];
+            if (p->orbit && p->orbit->inclination)
+            {
+                exoincl += p->orbit->inclination;
+                l++;
+            }
+        }
+        exoincl = (l ? (exoincl/l) : 90) * fiftyseventh;
+
+        Star *s = (Star*)cels[idx];
+
+        if (s->has_disk)
+        {
+            // Plane of star's disk is considered the exact local system plane.
+            // This will have already been set by star_orbits.dat.
+            ;
+        }
+        else if (s->rot_axis_known)
+        {
+            // Set the local system plane according to the star's rotation axis.
+            s->location.local_system_plane = s->location.equatorial_plane;
+
+            // If the planets' average solar inclination is known, tilt the system plane to match.
+        }
+        else if (s->multisys)
+        {
+            // Set the local system plane to the companion's orbit, then adjust the solar inclination to match the planets' average inclination if known.
+            // s->location.local_system_plane will already have been set by star_orbits.dat.
+        }
+
+        if (s->has_disk || s->rot_axis_known || s->multisys)
+        {
+            // Find the solar inclination and the pole of s->location.local_system_plane
+            double sys_solincl;
+            Point sys_pole;
+
+            for (j=0; j<m; j++)
+            {
+                Planet *p = (Planet*)cels[row[j]];
+                // If l>0, adjust every planet's orbit relative to the local system plane. Test: 55 Cnc, bet Pic
+                if (l)
+                {
+                    // Subtract the solar inclination of the local system plane from the planetary inclination.
+
+                    // The planetary node will be 90 degrees west of the Sun.
+
+                    // If the resulting local inclination is negative, reverse its sign and move the node 180 degrees.
+                }
+                // If !l, set every planet's orbit inclination to zero.
+                else
+                {
+                    p->orbit->inclination = half_pi;
+                }
+            }
+
+            // If the star has a known axis of rotation, adjust it relative to the local system plane. Test: tau Cet.
+            // s->location.equatorial_plane will be the axis. Find its inclination and node relative to the new s->location.local_system_plane.
+
+            // If the star has a companion in a known orbit, adjust the companion's orbit relative to the local system plane. Test: HD106515 A
+            // Use companion->location.orbital_plane to compute the companion's local inclination and node, then set its system plane = that of s.
+        }
+        else
+        {
+            // Set the local system plane according to the average planetary inclination, or 90 degrees if unknown.
+        }
+    }
 
     return num_added;
 }
@@ -2641,6 +2722,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             }
             A->known_poles = true;
         }
+
+        if (!strcmp(bdystr, "(system inclination)")
+            || strstr(bdystr, " disk") || strstr(bdystr, " disc")
+            || strstr(bdystr, " belt"))
+            A->has_disk = A->known_poles;
+
+        if (!strcmp(bdystr, "(stellar rotation)")) A->rot_axis_known = A->known_poles;
 
         if (bdystr[0] == '(') continue;
 

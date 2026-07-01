@@ -47,6 +47,8 @@ namespace alienorum
         int has_planets = 0;
         int has_hz_planets = 0;
         bool tmp_vis_flag;                          // Used only for rendering.
+        bool has_disk = false;                      // E.g. dust, debris, cometary, asteroid belt, etc.
+        bool rot_axis_known = false;
 
         Star();
         ~Star();

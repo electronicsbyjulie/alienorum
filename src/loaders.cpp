@@ -327,11 +327,6 @@ void load_catalogs()
 
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
-        cout << "Reading exoplanets..." << endl << flush;
-        int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
-        num_planets += nexo;
-        cout << "Read " << nexo << " objects." << endl << flush;
-
         #if _USE_CCDM
         if (have_CCDM)
         {
@@ -404,11 +399,17 @@ void load_catalogs()
     // rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
 
+    // We will die unless we read star orbits before reading exoplanets.
     mtx.lock();
     loading_msg = std::string("Orbiting stars...");
     mtx.unlock();
     if (!magnitude_test) cr.read_star_orbits_dat(cels);
     else splash = false;
+
+    cout << "Reading exoplanets..." << endl << flush;
+    int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+    num_planets += nexo;
+    cout << "Read " << nexo << " objects." << endl << flush;
 
     if (magnitude_test)
     {
