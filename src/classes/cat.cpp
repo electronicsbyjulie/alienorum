@@ -2446,6 +2446,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     }
                 }
 
+                // TODO:
                 s->obliquity = p_incl;
             }
 
