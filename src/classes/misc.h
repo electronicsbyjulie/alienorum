@@ -184,8 +184,8 @@ extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, ob
 extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_gamma;
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, is_mouse_over_window, dragging, dragged, viewchanged,
-    objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, show_taucalc, randomize_txgen,
-    save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_WD, have_CCDM, have_SB9, have_astorb, have_exo;
+    objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood,
+    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_WD, have_CCDM, have_SB9, have_astorb, have_exo;
 extern std::string objname, objinfo;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

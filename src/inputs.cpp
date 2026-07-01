@@ -246,11 +246,11 @@ void process_key_cmd_char(char c)
         case 'a': cbolbls_selected_idx = 0; break;
 
         case 'A':
-        if (whereami < 0) return;
         if (explorer && celidx_sel_in_sysxplor >= 0) addcenidx = celidx_sel_in_sysxplor;
         else if (selected >= 0) addcenidx = selected;
         else if (trackidx >= 0) addcenidx = trackidx;
         else if (whereami >= 0) addcenidx = whereami;
+        if (addcenidx < 0) return;
         cboceltyp_selected_idx = 2;
         cls = cels[addcenidx]->typeclass();
         if (cls == class_planet) cboceltyp_selected_idx = 3;
@@ -400,6 +400,7 @@ void process_key_cmd_char(char c)
         case 'z': JDnow += (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
         case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
+        case '0': neighborhood = !neighborhood; break;
         case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = true; break;
         case '2': cbolbls_selected_idx = 8; break;
 

@@ -21,4 +21,4 @@ double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
 bool splash = true, magnitude_test = false, redo_proper_motions = true, fdlg_shown = false;
 CelestialObject npdummy;
 char xplorfor[name_max_len];
-CelestialObject *last_xplored_cen = nullptr;
+CelestialObject *last_xplored_cen = nullptr, *last_neighb_cen = nullptr;

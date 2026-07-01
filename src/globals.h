@@ -43,6 +43,6 @@ extern double frame_dur, best_frame_dur, scrollhold;
 extern bool splash, magnitude_test, redo_proper_motions, fdlg_shown;
 extern CelestialObject npdummy;
 extern char xplorfor[name_max_len];
-extern CelestialObject *last_xplored_cen;
+extern CelestialObject *last_xplored_cen, *last_neighb_cen;
 
 #endif

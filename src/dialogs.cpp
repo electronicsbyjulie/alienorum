@@ -1700,6 +1700,148 @@ void draw_system_explorer(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+bool onlysun = false, onlyplt = false;
+std::vector<int> neighb_celids;
+std::vector<double> neighb_celr;
+double neighb_rthresh = 25 * light_year;
+void draw_stellar_neighborhood(ImGuiIO &io)
+{
+    if (!cels[1]) return;
+    ImGui::Begin("Stellar Neighborhood", &neighborhood, 0);
+
+    ImGui::Checkbox("Only Sunlike##", &onlysun);
+    ImGui::SameLine();
+    ImGui::Checkbox("Must Have Planets##", &onlyplt);
+
+    int i, j, l, n;
+    double r, m;
+    static int item_selected_idx = 0;
+    int item_highlighted_idx = -1;
+    ImGui::Text("%s", " Name                                Mag.        Sp. Type        Distance");
+    if (ImGui::BeginListBox("##neighblist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        j = 0;
+        if (last_neighb_cen != mycenobj)
+        {
+            neighb_celids.clear();
+            neighb_celr.clear();
+            for (i=0; cels[i]; i++)
+            {
+                cel_obj_class cls = cels[i]->typeclass();
+                if (cls != class_star) continue;
+                r = cels[i]->tmprel.magnitude();
+                if (r > neighb_rthresh) continue;
+
+                l = neighb_celids.size();
+                if (!l)
+                {
+                    neighb_celids.push_back(i);
+                    neighb_celr.push_back(r);
+                }
+                else
+                {
+                    bool inserted = false;
+                    for (j=0; !inserted && j<l; j++)
+                    {
+                        if (neighb_celr[j] > r)
+                        {
+                            neighb_celids.insert(neighb_celids.begin()+j, i);
+                            neighb_celr.insert(neighb_celr.begin()+j, r);
+                            inserted = true;
+                        }
+                    }
+                    if (!inserted)
+                    {
+                        neighb_celids.push_back(i);
+                        neighb_celr.push_back(r);
+                    }
+                }
+            }
+        }
+
+        n = neighb_celids.size();
+        for (j=0; j<n; j++)
+        {
+            i = neighb_celids[j];
+            Star *s = (Star*)cels[i];
+            if (onlysun && !s->is_sunlike()) continue;
+            if (onlyplt && !s->has_planets) continue;
+
+            stringstream line;
+            line << cels[i]->name;
+            l = line.str().size();
+            if (l < 36) line << std::string(36-l, ' ');
+
+            r = cels[i]->tmprel.magnitude();
+            if (r)
+            {
+                m = cels[i]->viewer_magnitude(here);
+                line << setprecision(4) << ((m>=0) ? "+" : "") << m;
+            }
+            else line << "-";
+            l = line.str().size();
+            if (l < 48) line << std::string(48-l, ' ');
+
+            line << ((Star*)cels[i])->spectral_type;
+            l = line.str().size();
+            if (l < 64) line << std::string(64-l, ' ');
+
+            if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
+            else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
+            else line << setprecision(3) << (r / light_year) << " l.y.";
+
+            bool is_selected = (item_selected_idx == j);
+            ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+                item_selected_idx = j;
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndListBox();
+    }
+
+    l = neighb_celids.size();
+    if (l < 100) neighb_rthresh *= 1.1;
+    else if (l > 200 && (neighb_rthresh > 25 * light_year)) neighb_rthresh *= 0.9;
+    else last_neighb_cen = mycenobj;
+
+    if (ImGui::Button("Select##neighbors"))
+    {
+        selected = neighb_celids[item_selected_idx];
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Find##neighbors"))
+    {
+        selected = neighb_celids[item_selected_idx];
+        center_selected();
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Go##neighbors"))
+    {
+        if (neighb_celids[item_selected_idx] >= 0)
+        {
+            whereami = neighb_celids[item_selected_idx];
+            set_viewer_location_and_plane();
+            selected = trackidx = -1;
+            global_brightness = default_brightness;
+            zoom = 1;
+            viewchanged = true;
+        }
+    }
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+
 void draw_ast_window(ImGuiIO & io)
 {
     if (!cels[1]) return;

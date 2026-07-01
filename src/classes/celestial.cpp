@@ -1320,8 +1320,15 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     blue_data[idx] = 190 + 63 * r_weight;
                     // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
                 }
+                else if (cel->type == waterworld)
+                {
+                    // Deep ocean
+                    red_data[idx] = (12+16*height_value);
+                    green_data[idx] = (24+24*height_value);
+                    blue_data[idx] = (32+128*height_value);
+                }
                 // Biome allocation based on height thresholds
-                else if (cel->type == waterworld || (height_value < has_water && (T_local < Tboil)))
+                else if (height_value < has_water && (T_local < Tboil))
                 {   // Ocean
                     sh = height_value*inv_h2o_level;
                     sh *= (Tboil - T_base) / (Tboil - water_freezing);

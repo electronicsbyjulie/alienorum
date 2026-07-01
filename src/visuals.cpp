@@ -256,6 +256,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     }
 
     horizon_angle = cel->get_horizon_angle();
+    bool worth_using_map = (bloomrad_cache[cel->seqno] > 5);                // Only if the disc will be big enouh to see any details.
 
     int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9, nstep = wireframe ? 10 : 5;
     for (i=0; i<=360; i+=nstep)
@@ -459,22 +460,25 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[1] = todraw[l-1];
                             points[2] = todraw[m-1];
                             points[3] = todraw[m];
-                            if (map && is_day) rgb = map->color_at(lat, lon-_pi);
+                            if (map && is_day && worth_using_map) rgb = map->color_at(lat, lon-_pi);
 
                             RGB3Byte rgblit = rgb;
                             rgblit.r *= daylight.red;
                             rgblit.g *= daylight.green;
                             rgblit.b *= daylight.blue;
 
-                            if (nmap)
+                            if (nmap && worth_using_map)
                             {
                                 is_night = 1.0 - is_day;
-                                if (is_night) nrgb = nmap->color_at(lat, lon-_pi);
-                                imcol = rgba_apply_redlight(IM_COL32(
-                                    is_day*rgblit.r + is_night*nrgb.r,
-                                    is_day*rgblit.g + is_night*nrgb.g,
-                                    is_day*rgblit.b + is_night*nrgb.b,
-                                    255));
+                                if (is_night)
+                                {
+                                    nrgb = nmap->color_at(lat, lon-_pi);
+                                    imcol = rgba_apply_redlight(IM_COL32(
+                                        is_day*rgblit.r + is_night*nrgb.r,
+                                        is_day*rgblit.g + is_night*nrgb.g,
+                                        is_day*rgblit.b + is_night*nrgb.b,
+                                        255));
+                                }
                             }
                             else imcol = rgba_apply_redlight(IM_COL32(is_day*rgblit.r, is_day*rgblit.g, is_day*rgblit.b, 255));
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);

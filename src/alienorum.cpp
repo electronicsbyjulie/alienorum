@@ -502,6 +502,7 @@ int main (int argc, char** argv)
             if (addcelwnd) draw_addcel_window(io);
             if (astwnd) draw_ast_window(io);
             if (satwnd) draw_sat_window(io);
+            if (neighborhood) draw_stellar_neighborhood(io);
 
             is_click = io.MouseReleased[0];
             if (!is_mouse_over_window)

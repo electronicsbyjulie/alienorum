@@ -46,6 +46,7 @@ bool satwnd = false;
 bool astwnd = false;
 bool addcelwnd = false;
 bool explorer = false;
+bool neighborhood = false;
 bool show_taucalc = false;
 bool hide_mouse = true;
 bool searched = false;

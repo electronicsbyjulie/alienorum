@@ -23,7 +23,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z')))
         match_comp = search_term[n-1];
 
-    if (is_hd && hdcache && hdcache[is_hd])
+    if (is_hd && hdcache && hdcache[is_hd] && (os || (match_comp < 'a')))   // if comp is lower case and a star is not required, we might be looking for a planet.
     {
         Star *s = hdcache[is_hd];
         if (match_comp && s->multisys)
@@ -33,7 +33,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         }
         return s->seqno;
     }
-    if (is_hip && hipcache && hipcache[is_hip])
+    if (is_hip && hipcache && hipcache[is_hip] && (os || (match_comp < 'a')))
     {
         Star *s = hipcache[is_hip];
         if (match_comp && s->multisys)
@@ -43,7 +43,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         }
         return s->seqno;
     }
-    if (is_hd || is_hip) return -1;
+    if ((is_hd || is_hip) && os) return -1;
 
     bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L' && (search_term[2] <= '9'))
         || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L' && (search_term[2]&0x5f) == 'I' && (search_term[3]&0x5f) == 'E' && (search_term[4]&0x5f) == 'S' && (search_term[5]&0x5f) == 'E')
@@ -304,7 +304,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                     break;
                 }
             }
-            if (!cels[i]->orbit->center) std::cout << "FAILED to place " << cels[i]->name << " in orbit around " << cenname << std::endl;
+            if (!cels[i]->orbit->center)
+                std::cout << "FAILED to place " << cels[i]->name << " in orbit around " << cenname << std::endl;
 
             if (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
             {
