@@ -27,6 +27,7 @@ double zoom = 1, vm, vmfr;
 double viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon;
 bool save_viewer_latlon = true;
 bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true, show_orbits = false, show_sats = true, draw_actual_conslines;
+bool satview_upsidedown = false;
 int cursor_size = 8, circle_size = 2, xaorngsim = 0;
 int is_an_obj_under_cursor = -1;
 double obj_magn_under_cursor;

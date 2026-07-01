@@ -235,6 +235,10 @@ Shift+Q     Improve performance by decreasing texture rendering quality
 F11         Toggle fullscreen
 &           Sky atlas mode
 _           Horizon mode
+$           (UNIMPLEMENTED) this will be the shortcut for sun clock mode
+Shift+J     Toggle upside-down mode when viewing from satellites
+3           Cycle forward through themes
+Shift+#     Cycle backward through themes
 ```
 
 
@@ -254,11 +258,30 @@ Shift+T     Clear tracking
 C           Show/hide constellation lines (only within 10 l.y. of Sun)
 G           Show/hide RA/Dec lines
 L           Show/hide labels
+A           Label brightest stars
+V           Label intrinsically bright stars
+Shift+N     Label nearby stars
+F           Label Flamsteed stars
+Shift+F     Label Bayer stars
+Shift+C     Label Sunlike stars
+Shift+P     Label stars with planets
+Shift+L     Label stars with planets in habitable zone
+Shift+X     Label stars with known poles
+P           Label local system objects
 Shift+O     Show/hide orbits
+J           Show/hide satellites
+!           Hide all annotations (realism mode)
+1           Bring back default image elements
+,           Hide mouse cursor until next mouse move (e.g. for taking screenshots)
+```
+
+
+### Dialogs
+```
 N           Show/hide info panel
 S           Show/hide status panel
-!           Hide all annotations (realism mode)
-,           Hide mouse cursor until next mouse move (e.g. for taking screenshots)
+E           Show/hide system explorer
+0           Show/hide stellar neighborhood
 ```
 
 
@@ -303,6 +326,7 @@ Shift+A     Add new object in orbit around current object
 .           Add asteroid/minor planet from astorb
 Shift+E     Edit current object
 U           Export user-added and user-modified objects to universe.json
+Shift+U     Save current user settings (theme, home lat/lon)
 F4          Load user objects from an external JSON file
 
 IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the

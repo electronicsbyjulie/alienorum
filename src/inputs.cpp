@@ -282,6 +282,7 @@ void process_key_cmd_char(char c)
         case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'j': show_sats = !show_sats; break;
+        case 'J': satview_upsidedown = !satview_upsidedown; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = 7; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;

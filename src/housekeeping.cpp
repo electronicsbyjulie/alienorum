@@ -28,7 +28,7 @@ void set_viewer_location_and_plane()
         {
             here = cels[whereami]->location;
             Point me = cels[whereami]->location;
-            Point zenith = me - cels[whereami]->orbit->center->location;
+            Point zenith = satview_upsidedown ? (Point(cels[whereami]->orbit->center->location) - me) : (me - cels[whereami]->orbit->center->location);
             here.equatorial_plane = align_points_3d(zenith, yaxis, center);
             viewchanged = true;
             return;
