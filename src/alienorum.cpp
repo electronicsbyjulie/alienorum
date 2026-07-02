@@ -76,6 +76,7 @@ int main (int argc, char** argv)
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
+    bool argsfs = true;
 
     memset(lookfor, 0, name_max_len);
     memset(looksat, 0, name_max_len);
@@ -126,6 +127,11 @@ int main (int argc, char** argv)
         if (!strcmp(argv[l], "zoom"))
         {
             argszoom = argv[++l];
+        }
+
+        if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
+        {
+            argsfs = true;
         }
 
         if (!strcmp(argv[l], "jd"))
@@ -646,10 +652,11 @@ int main (int argc, char** argv)
                 fdlg_shown = false;
             }
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_F11))
+        if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
         {
             SDL_SetWindowFullscreen(window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
             fullscreen = !fullscreen;
+            argsfs = false;
         }
 
         // std::cout << ImGui::GetBackgroundDrawList()->_VtxCurrentIdx << " _VtxCurrentIdx." << std::endl << std::flush;

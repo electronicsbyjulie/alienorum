@@ -334,7 +334,12 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 imcol;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
-    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2),
+    double step = wireframe
+            ? (fiftyseventh*15)
+            : ( (cel->surf_map || cel->cloud_map)
+                ? fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2)
+                : fiftyseventh * 3
+              ),
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline=0, dx1, dy1, dx2, dy2;
     l = 0;

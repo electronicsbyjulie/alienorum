@@ -1604,20 +1604,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
         s->declination = A->declination + rho * cos(theta);
 
-        if (!A->known_poles && !A->estimated_poles)
-        {
-            // The inclination is unknown, but let's use a trick to put the companion in the local system plane.
-            // Subtract the local system center from [0,0,0] this will give the same as the Sun's coordinates relative to the local system.
-            // The normal would ideally put both the companion star and the Sun on the local ecliptic. This doesn't, though.
-            Point sundir = center - A->location.system_center;
-            sundir.scale(AU*29);
-            Point pole = compute_normal(A->location.local_position, s->location.local_position, sundir);
-
-            A->location.equatorial_plane = A->location.local_system_plane
-                = s->location.equatorial_plane = s->location.local_system_plane
-                = align_points_3d(pole, yaxis, center);
-            A->estimated_poles = s->estimated_poles = true;
-        }
         s->location = A->location;                      // Copies local system reference frame
         s->epoch = J2000;
         s->update_location(J2000_TIME_T);
@@ -2856,7 +2842,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (inclination || ascending_node)
         {
-            // s->location = A->location;
             s->location.equatorial_plane = s->location.orbital_plane = s->location.local_system_plane = new_orbital_plane;
             s->lock_system_plane = true;
             s->obliquity = 0;
