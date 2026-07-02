@@ -2505,7 +2505,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
     fclose(fp);
 
-    int j, l, m, n = planet_celids.size();
+    int j, l, m;
     for (auto const& [idx, row] : planet_celids)
     {
         double exoincl = 0;
@@ -2537,18 +2537,20 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             s->location.local_system_plane = s->location.equatorial_plane;
 
             // If the planets' average solar inclination is known, tilt the system plane to match.
+            if (l) s->location.local_system_plane = tilt_plane_to_heliocentric_inclination(s->location.system_center, s->location.local_system_plane, exoincl);
         }
         else if (s->multisys)
         {
             // Set the local system plane to the companion's orbit, then adjust the solar inclination to match the planets' average inclination if known.
             // s->location.local_system_plane will already have been set by star_orbits.dat.
+            if (l) s->location.local_system_plane = tilt_plane_to_heliocentric_inclination(s->location.system_center, s->location.local_system_plane, exoincl);
         }
 
         if (s->has_disk || s->rot_axis_known || s->multisys)
         {
-            // Find the solar inclination and the pole of s->location.local_system_plane
-            double sys_solincl;
-            Point sys_pole;
+            // Find the solar inclination of s->location.local_system_plane
+            double sys_solincl = half_pi - cels[0]->Decl_as_radians(s->location);
+            double sys_solnode = cels[0]->RA_as_radians(s->location, 0);
 
             for (j=0; j<m; j++)
             {
@@ -2557,15 +2559,23 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 if (l)
                 {
                     // Subtract the solar inclination of the local system plane from the planetary inclination.
+                    if (p->orbit && p->orbit->inclination) p->orbit->inclination -= sys_solincl;
+                    else p->orbit->inclination = 0;             // If unknown, assume system plane.
 
                     // The planetary node will be 90 degrees west of the Sun.
+                    p->orbit->ascending_node = sys_solnode - half_pi;
 
                     // If the resulting local inclination is negative, reverse its sign and move the node 180 degrees.
+                    if (p->orbit->inclination < 0)
+                    {
+                        p->orbit->inclination = -p->orbit->inclination;
+                        p->orbit->ascending_node += _pi;
+                    }
                 }
-                // If !l, set every planet's orbit inclination to zero.
+                // If !l, set every planet's orbit inclination to zero relative to local system plane.
                 else
                 {
-                    p->orbit->inclination = half_pi;
+                    p->orbit->inclination = 0;
                 }
             }
 
