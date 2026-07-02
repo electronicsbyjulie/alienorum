@@ -2499,16 +2499,19 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         l = 0;
 
         m = row.size();
+        double p_orig_i[m];
         for (j=0; j<m; j++)
         {
             Planet *p = (Planet*)cels[row[j]];
             if (p->orbit && p->orbit->inclination)
             {
+                p_orig_i[j] = p->orbit->inclination;
                 exoincl += p->orbit->inclination;
+                // if (s->HD == 106515) std::cout << p->name << " incl=" << p->orbit->inclination;
                 l++;
             }
         }
-        exoincl = (l ? (exoincl/l) : 90) * fiftyseventh;
+        exoincl = (l ? (exoincl/l) : half_pi);
 
         if (s->has_disk)
         {
@@ -2523,58 +2526,63 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
             // If the planets' average solar inclination is known, tilt the system plane to match.
             if (l) s->location.local_system_plane = tilt_plane_to_heliocentric_inclination(s->location.system_center, s->location.local_system_plane, exoincl);
+
+            // If the star has a known axis of rotation, adjust it relative to the local system plane. Test: tau Cet.
+            // s->location.equatorial_plane will be the axis. Find its inclination and node relative to the new s->location.local_system_plane.
+            elements_in_new_reference_plane(s->location.equatorial_plane, s->location.local_system_plane, s->obliquity, s->equinox);
+            s->equinox += s->right_ascension;
+            s->lock_equatorial_plane = false;
         }
         else if (s->multisys)
         {
             // Set the local system plane to the companion's orbit, then adjust the solar inclination to match the planets' average inclination if known.
             // s->location.local_system_plane will already have been set by star_orbits.dat.
-            if (l) s->location.local_system_plane = tilt_plane_to_heliocentric_inclination(s->location.system_center, s->location.local_system_plane, exoincl);
+            if (l)
+            {
+                s->location.local_system_plane = tilt_plane_to_heliocentric_inclination(s->location.system_center, s->location.local_system_plane, exoincl);
+                s->location.equatorial_plane = s->location.local_system_plane;
+            }
         }
 
         if (s->has_disk || s->rot_axis_known || s->multisys)
         {
-
-            // If the star has a known axis of rotation, adjust it relative to the local system plane. Test: tau Cet.
-            // s->location.equatorial_plane will be the axis. Find its inclination and node relative to the new s->location.local_system_plane.
-            if (s->rot_axis_known)
-            {
-                elements_in_new_reference_plane(s->location.equatorial_plane, s->location.local_system_plane, s->obliquity, s->equinox);
-                s->equinox += s->right_ascension;
-                s->lock_equatorial_plane = false;
-            }
-
             // Find the solar inclination of s->location.local_system_plane
             s->update_location(simnow);
             double sys_solincl = half_pi - cels[0]->Decl_as_radians(s->location);
             CelestialLocation loc = s->location;
             loc.equatorial_plane = loc.local_system_plane;
             double sys_solnode = cels[0]->RA_as_radians(loc, s->equinox);
-            // std::cout << s->seqno << ": " << s->name << " eq=" << s->equinox << " solnode=" << (sys_solnode*fiftyseven) << std::endl;
+            if (s->HD == 106515) std::cout << s->seqno << ": " << s->name << " exoincl=" << (exoincl*fiftyseven) << " solnode=" << (sys_solnode*fiftyseven) << std::endl;
 
+            Point planet_poles(0,0,0);
             for (j=0; j<m; j++)
             {
                 Planet *p = (Planet*)cels[row[j]];
                 // If l>0, adjust every planet's orbit relative to the local system plane. Test: 55 Cnc, bet Pic
                 if (l)
                 {
-                    // Subtract the solar inclination of the local system plane from the planetary inclination.
-                    if (p->orbit && p->orbit->inclination) p->orbit->inclination -= sys_solincl;
-                    else p->orbit->inclination = 0;             // If unknown, assume system plane.
-
-                    // The planetary node will be 90 degrees west of the Sun.
-                    p->orbit->ascending_node = sys_solnode - half_pi;
-
-                    // If the resulting local inclination is negative, reverse its sign and move the node 180 degrees.
-                    if (p->orbit->inclination < 0)
-                    {
-                        p->orbit->inclination = -p->orbit->inclination;
-                        p->orbit->ascending_node += _pi;
-                    }
+                    p->incline_exo_orbit(sys_solincl, sys_solnode);
+                    p->update_location(simnow);
+                    planet_poles += rotate3D(yaxis, center, p->location.orbital_plane.v, p->location.orbital_plane.a);
                 }
                 // If !l, set every planet's orbit inclination to zero relative to local system plane. Test: Barnard's Star, Teegarden's Star, Kapteyn's Star
                 else
                 {
                     p->orbit->inclination = 0;
+                }
+            }
+
+            if (l && !s->has_disk && !s->rot_axis_known)
+            {
+                s->location.equatorial_plane = s->location.local_system_plane
+                    = align_points_3d(yaxis, planet_poles, center);
+                sys_solincl = half_pi - cels[0]->Decl_as_radians(s->location);
+                sys_solnode = cels[0]->RA_as_radians(loc, s->equinox);
+                for (j=0; j<m; j++)
+                {
+                    Planet *p = (Planet*)cels[row[j]];
+                    p->orbit->inclination = p_orig_i[j];
+                    p->incline_exo_orbit(sys_solincl, sys_solnode);
                 }
             }
 
