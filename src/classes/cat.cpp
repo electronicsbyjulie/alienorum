@@ -2538,25 +2538,18 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             // s->location.equatorial_plane will be the axis. Find its inclination and node relative to the new s->location.local_system_plane.
             if (s->rot_axis_known)
             {
-                if (s->HD == 10700) std::cout << s->name
-                    << " l=" << l
-                    << " equator "
-                    << s->location.equatorial_plane.v << ":" << (s->location.equatorial_plane.a * fiftyseven)
-                    << " system "
-                    << s->location.local_system_plane.v << ":" << (s->location.local_system_plane.a * fiftyseven)
-                    << std::endl << std::flush;
                 elements_in_new_reference_plane(s->location.equatorial_plane, s->location.local_system_plane, s->obliquity, s->equinox);
                 s->equinox += s->right_ascension;
-                if (s->HD == 10700) std::cout << s->name << " obliquity " << (s->obliquity * fiftyseven) << std::endl << std::flush;
                 s->lock_equatorial_plane = false;
             }
 
             // Find the solar inclination of s->location.local_system_plane
+            s->update_location(simnow);
             double sys_solincl = half_pi - cels[0]->Decl_as_radians(s->location);
             CelestialLocation loc = s->location;
             loc.equatorial_plane = loc.local_system_plane;
             double sys_solnode = cels[0]->RA_as_radians(loc, s->equinox);
-            std::cout << s->name << " solnode=" << (sys_solnode*fiftyseven) << std::endl;
+            // std::cout << s->seqno << ": " << s->name << " eq=" << s->equinox << " solnode=" << (sys_solnode*fiftyseven) << std::endl;
 
             for (j=0; j<m; j++)
             {
@@ -2578,7 +2571,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         p->orbit->ascending_node += _pi;
                     }
                 }
-                // If !l, set every planet's orbit inclination to zero relative to local system plane.
+                // If !l, set every planet's orbit inclination to zero relative to local system plane. Test: Barnard's Star, Teegarden's Star, Kapteyn's Star
                 else
                 {
                     p->orbit->inclination = 0;
@@ -2592,6 +2585,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         {
             // Set the local system plane according to the average planetary inclination, or 90 degrees if unknown.
         }
+
+        s->equinox_eff = s->equinox;
     }
 
     return num_added;
