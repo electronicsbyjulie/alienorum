@@ -2502,7 +2502,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         for (j=0; j<m; j++)
         {
             Planet *p = (Planet*)cels[row[j]];
-            if (s->HD == 10700) std::cout << p->name << " " << (p->orbit->inclination*fiftyseven) << std::endl;
             if (p->orbit && p->orbit->inclination)
             {
                 exoincl += p->orbit->inclination;
@@ -2534,9 +2533,30 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
         if (s->has_disk || s->rot_axis_known || s->multisys)
         {
+
+            // If the star has a known axis of rotation, adjust it relative to the local system plane. Test: tau Cet.
+            // s->location.equatorial_plane will be the axis. Find its inclination and node relative to the new s->location.local_system_plane.
+            if (s->rot_axis_known)
+            {
+                if (s->HD == 10700) std::cout << s->name
+                    << " l=" << l
+                    << " equator "
+                    << s->location.equatorial_plane.v << ":" << (s->location.equatorial_plane.a * fiftyseven)
+                    << " system "
+                    << s->location.local_system_plane.v << ":" << (s->location.local_system_plane.a * fiftyseven)
+                    << std::endl << std::flush;
+                elements_in_new_reference_plane(s->location.equatorial_plane, s->location.local_system_plane, s->obliquity, s->equinox);
+                s->equinox += s->right_ascension;
+                if (s->HD == 10700) std::cout << s->name << " obliquity " << (s->obliquity * fiftyseven) << std::endl << std::flush;
+                s->lock_equatorial_plane = false;
+            }
+
             // Find the solar inclination of s->location.local_system_plane
             double sys_solincl = half_pi - cels[0]->Decl_as_radians(s->location);
-            double sys_solnode = cels[0]->RA_as_radians(s->location, 0);
+            CelestialLocation loc = s->location;
+            loc.equatorial_plane = loc.local_system_plane;
+            double sys_solnode = cels[0]->RA_as_radians(loc, s->equinox);
+            std::cout << s->name << " solnode=" << (sys_solnode*fiftyseven) << std::endl;
 
             for (j=0; j<m; j++)
             {
@@ -2563,23 +2583,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 {
                     p->orbit->inclination = 0;
                 }
-            }
-
-            // If the star has a known axis of rotation, adjust it relative to the local system plane. Test: tau Cet.
-            // s->location.equatorial_plane will be the axis. Find its inclination and node relative to the new s->location.local_system_plane.
-            if (s->rot_axis_known)
-            {
-                if (s->HD == 10700) std::cout << s->name
-                    << " l=" << l
-                    << " equator "
-                    << s->location.equatorial_plane.v << ":" << (s->location.equatorial_plane.a * fiftyseven)
-                    << " system "
-                    << s->location.local_system_plane.v << ":" << (s->location.local_system_plane.a * fiftyseven)
-                    << std::endl << std::flush;
-                elements_in_new_reference_plane(s->location.equatorial_plane, s->location.local_system_plane, s->obliquity, s->equinox);
-                s->equinox += s->right_ascension;
-                if (s->HD == 10700) std::cout << s->name << " obliquity " << (s->obliquity * fiftyseven) << std::endl << std::flush;
-                s->lock_equatorial_plane = false;
             }
 
             // If the star has a companion in a known orbit, adjust the companion's orbit relative to the local system plane. Test: HD106515 A

@@ -1208,6 +1208,38 @@ void draw_cons_lines()
                 consname[l].c_str());
         }
     }
+
+    Point axisdir[6] = {xaxis, yaxis, zaxis, center-xaxis, center-yaxis, center-zaxis};
+    for (i=0; i<6; i++)
+    {
+        axisdir[i].scale(1e303);
+
+        Point laxdir = to_viewer_plane(axisdir[i]);
+        Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
+        float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+
+        if (dx < 0 || dy < 0) continue;
+        ImVec2 sz(64,64);
+        dx -= sz.x/2;
+        dy -= sz.y/2;
+        if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
+        {
+            std::string axname = (i<3) ? "+" : "-";
+            ImU32 axcolor;
+
+            switch (i % 3)
+            {
+                case 0: axname += std::string("X"); axcolor = IM_COL32(255, 0, 0, 255); break;
+                case 1: axname += std::string("Y"); axcolor = IM_COL32(0, 255, 0, 255); break;
+                case 2: axname += std::string("Z"); axcolor = IM_COL32(0, 0, 255, 255); break;
+            }
+
+            ImGui::GetBackgroundDrawList()->AddText(global_font, 64,
+                ImVec2(dx, dy),
+                rgba_apply_redlight(axcolor),
+                axname.c_str());
+        }
+    }
 }
 
 void draw_mouse_cursor(ImGuiIO& io)
