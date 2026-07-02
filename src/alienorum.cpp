@@ -76,7 +76,7 @@ int main (int argc, char** argv)
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
-    bool argsfs = true;
+    bool argsfs = false;
 
     memset(lookfor, 0, name_max_len);
     memset(looksat, 0, name_max_len);

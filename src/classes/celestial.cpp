@@ -653,9 +653,9 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double cosi = std::cos(I);
     double sini = std::sin(I);
 
-    double x = (-sinO * cosw -  cosO * sinw * cosi) * x_plane + ( sinO * sinw -  cosO * cosw * cosi) * y_plane;
-    double y = (                       sinw * sini) * x_plane + (                       cosw * sini) * y_plane;
-    double z = ( cosO * cosw + -sinO * sinw * cosi) * x_plane + (-cosO * sinw + -sinO * cosw * cosi) * y_plane;
+    double x = (-sinO * cosw - cosO * sinw * cosi) * x_plane + ( sinO * sinw - cosO * cosw * cosi) * y_plane;
+    double y = (                      sinw * sini) * x_plane + (                      cosw * sini) * y_plane;
+    double z = ( cosO * cosw - sinO * sinw * cosi) * x_plane + (-cosO * sinw - sinO * cosw * cosi) * y_plane;
 
     Point orbit_pole = yaxis;
     orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), I);

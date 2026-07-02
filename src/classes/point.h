@@ -128,7 +128,7 @@ Point rotate3D(Point point, Point source, Point axis, double theta);
 Rotation system_plane_from_incl_and_node(double inclination, double node, Point system_center = Point(0,0,0));
 double distance(ImVec2 a, ImVec2 b);
 Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation original, double helioincl);
-void elements_in_new_reference_plane(Rotation original, double& out_new_inclination, double& out_new_node);
+void elements_in_new_reference_plane(Rotation original, Rotation reference, double& out_new_inclination, double& out_new_node);
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
 bool operator==(const Point&, const Point&);
