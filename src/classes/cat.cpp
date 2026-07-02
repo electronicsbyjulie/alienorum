@@ -2588,6 +2588,21 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
             // If the star has a companion in a known orbit, adjust the companion's orbit relative to the local system plane. Test: HD106515 A
             // Use companion->location.orbital_plane to compute the companion's local inclination and node, then set its system plane = that of s.
+            if (s->multisys && s->multisys->get_member('A') == s)
+            {
+                char comp;
+                for (comp = 'B'; comp <= 'Z'; comp++)
+                {
+                    Star *B = s->multisys->get_member(comp);
+                    if (B && B->orbit)
+                    {
+                        elements_in_new_reference_plane(B->location.orbital_plane, s->location.local_system_plane,
+                            B->orbit->inclination, B->orbit->ascending_node);
+                        B->lock_equatorial_plane = B->lock_system_plane = false;
+                        B->location.local_system_plane = s->location.local_system_plane;
+                    }
+                }
+            }
         }
         else
         {
