@@ -112,6 +112,7 @@ bool SatSource::read_sources_json()
 
 bool alienorum::SatSource::check_satcat_and_latest()
 {
+    updating_sats = true;
     bool anything_updated = false;
     int i, n = sat_sources.size();
     for (i=0; i<n; i++)
@@ -123,6 +124,7 @@ bool alienorum::SatSource::check_satcat_and_latest()
             anything_updated = true;
         }
     }
+    updating_sats = false;
     return anything_updated;
 }
 

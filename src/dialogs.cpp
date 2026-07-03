@@ -2013,10 +2013,15 @@ void draw_sat_window(ImGuiIO& io)
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     std::vector<std::string> listlines;
+    ImGuiSelectableFlags flags = 0;
     if (ImGui::BeginListBox("##satlist", ImVec2(821, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         i=0;
-        for (n=0; n<nsats; n++)
+        if (updating_sats)
+        {
+            ImGui::Selectable("Please wait...", false, flags);
+        }
+        else for (n=0; n<nsats; n++)
         {
             if (!sat_data[n].catalog.size()) continue;
             std::string line = std::string(sat_data[n].OBJECT_NAME);
@@ -2035,7 +2040,7 @@ void draw_sat_window(ImGuiIO& io)
 
             bool is_selected = (item_selected_idx == i);
 
-            ImGuiSelectableFlags flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
+            flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.c_str(), is_selected, flags))
                 item_selected_idx = i;
 
@@ -2050,106 +2055,109 @@ void draw_sat_window(ImGuiIO& io)
 
     static ImVec4 msg_color = ImVec4(255, 255, 255, 255);
 
-    if (ImGui::Button("Add Selected##satellite"))
+    if (!updating_sats)
     {
-        mesg = "";
-        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
-        Satellite *sat = new Satellite();
-        append_cel(sat);
-        n = item_selected_idx;
-
-        char buffer[256];
-        strcpy(buffer, listlines[n].c_str());
-        char *hashmarks = strstr(buffer, "##");
-        i = atoi(&hashmarks[2]);
-
-        if (SatSource::populate(sat, i))
+        if (ImGui::Button("Add Selected##satellite"))
         {
-            selected = ncelobjs-1;
-            compute_object_location(sat);
-            compute_object_draw_coordinates();
-            center_selected();
-            viewchanged = true;
-            satwnd = false;
-        }
-        else
-        {
-            ncelobjs--;
-            cels[ncelobjs] = 0;
-            mesg = "ERROR - Satellite failed to load.";
-            msg_color = ImVec4(255, 0, 0, 255);
-        }
-    }
+            mesg = "";
+            for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+            Satellite *sat = new Satellite();
+            append_cel(sat);
+            n = item_selected_idx;
 
-    ImGui::SameLine();
-    if (ImGui::Button("Add and Leave Open##satellite"))
-    {
-        mesg = "";
-        for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
-        Satellite *sat = new Satellite();
-        append_cel(sat);
-        n = item_selected_idx;
+            char buffer[256];
+            strcpy(buffer, listlines[n].c_str());
+            char *hashmarks = strstr(buffer, "##");
+            i = atoi(&hashmarks[2]);
 
-        char buffer[256];
-        strcpy(buffer, listlines[n].c_str());
-        char *hashmarks = strstr(buffer, "##");
-        i = atoi(&hashmarks[2]);
-
-        if (SatSource::populate(sat, i))
-        {
-            selected = ncelobjs-1;
-            compute_object_location(sat);
-            compute_object_draw_coordinates();
-            center_selected();
-            viewchanged = true;
-        }
-        else
-        {
-            ncelobjs--;
-            cels[ncelobjs] = 0;
-            mesg = "ERROR - Satellite failed to load.";
-            msg_color = ImVec4(255, 0, 0, 255);
-        }
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Add All Shown##satellites"))
-    {
-        mesg = "";
-
-        std::thread tsat(add_batch_satellites, listlines);
-        tsat.detach();
-
-        if (sats_added)
-        {
-            if (sat_errors)
+            if (SatSource::populate(sat, i))
             {
-                mesg = std::string("Added ") + std::to_string(sats_added)
-                    + std::string("; ") + std::to_string(sat_errors) + std::string(" failed.");
-                msg_color = ImVec4(255, 224, 0, 255);
+                selected = ncelobjs-1;
+                compute_object_location(sat);
+                compute_object_draw_coordinates();
+                center_selected();
+                viewchanged = true;
+                satwnd = false;
             }
             else
             {
-                mesg = std::string("Added ") + std::to_string(sats_added) + std::string(" satellites.");
-                msg_color = ImVec4(0, 255, 0, 255);
-            }
-        }
-        else
-        {
-            if (sat_errors)
-            {
-                mesg = std::string("ERROR");
+                ncelobjs--;
+                cels[ncelobjs] = 0;
+                mesg = "ERROR - Satellite failed to load.";
                 msg_color = ImVec4(255, 0, 0, 255);
             }
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Add and Leave Open##satellite"))
+        {
+            mesg = "";
+            for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+            Satellite *sat = new Satellite();
+            append_cel(sat);
+            n = item_selected_idx;
+
+            char buffer[256];
+            strcpy(buffer, listlines[n].c_str());
+            char *hashmarks = strstr(buffer, "##");
+            i = atoi(&hashmarks[2]);
+
+            if (SatSource::populate(sat, i))
+            {
+                selected = ncelobjs-1;
+                compute_object_location(sat);
+                compute_object_draw_coordinates();
+                center_selected();
+                viewchanged = true;
+            }
             else
             {
-                mesg = "";
+                ncelobjs--;
+                cels[ncelobjs] = 0;
+                mesg = "ERROR - Satellite failed to load.";
+                msg_color = ImVec4(255, 0, 0, 255);
             }
         }
-    }
 
-    ImGui::SameLine();
-    ImGui::TextColored(redlight_mode ? ImVec4(255, 24, 0, 255) : msg_color, "%s", mesg.c_str());
+        ImGui::SameLine();
+        if (ImGui::Button("Add All Shown##satellites"))
+        {
+            mesg = "";
+
+            std::thread tsat(add_batch_satellites, listlines);
+            tsat.detach();
+
+            if (sats_added)
+            {
+                if (sat_errors)
+                {
+                    mesg = std::string("Added ") + std::to_string(sats_added)
+                        + std::string("; ") + std::to_string(sat_errors) + std::string(" failed.");
+                    msg_color = ImVec4(255, 224, 0, 255);
+                }
+                else
+                {
+                    mesg = std::string("Added ") + std::to_string(sats_added) + std::string(" satellites.");
+                    msg_color = ImVec4(0, 255, 0, 255);
+                }
+            }
+            else
+            {
+                if (sat_errors)
+                {
+                    mesg = std::string("ERROR");
+                    msg_color = ImVec4(255, 0, 0, 255);
+                }
+                else
+                {
+                    mesg = "";
+                }
+            }
+        }
+
+        ImGui::SameLine();
+        ImGui::TextColored(redlight_mode ? ImVec4(255, 24, 0, 255) : msg_color, "%s", mesg.c_str());
+    }
 
     ImGui::SetWindowSize(ImVec2(0, 0));
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
