@@ -2320,7 +2320,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     if (!s)
                     {
                         s = new Star();
-                        strcpy(s->name, star_name.c_str());
+                        if (!s->has_custom_name) strcpy(s->name, star_name.c_str());
                         s->cenobj = s;
                         s_is_new = true;
                     }
@@ -2398,7 +2398,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 }
 
                 s->type = star;
-                strcpy(s->name, star_name.c_str());
+                if (!s->has_custom_name) strcpy(s->name, star_name.c_str());
                 p->orbit->center = p->cenobj = s;
 
                 s->right_ascension = star_ra;
@@ -2552,7 +2552,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             CelestialLocation loc = s->location;
             loc.equatorial_plane = loc.local_system_plane;
             double sys_solnode = cels[0]->RA_as_radians(loc, s->equinox);
-            if (s->HD == 106515) std::cout << s->seqno << ": " << s->name << " exoincl=" << (exoincl*fiftyseven) << " solnode=" << (sys_solnode*fiftyseven) << std::endl;
 
             Point planet_poles(0,0,0);
             for (j=0; j<m; j++)
