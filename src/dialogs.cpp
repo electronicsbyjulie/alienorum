@@ -712,6 +712,11 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
             }
+            ImGui::SameLine();
+            if (ImGui::Button("rnd##obliquity"))
+            {
+                cel->obliquity = frand(0, _pi);
+            }
             ImGui::SameLine(col2);
             edit_equinox = cel->equinox * fiftyseven;
             if (tc == class_star && !cel->orbit)
@@ -729,6 +734,11 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("rnd##equinox"))
+            {
+                cel->equinox = frand(0, _pi);
             }
 
             double edit_prcseq = cel->precession ? (_pi * 2 / cel->precession / oneyear) : 0;
@@ -804,6 +814,11 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("tidal##edit_rotation"))
+            {
+                cel->sidereal_rotational_period = cel->orbit->period;
             }
             ImGui::SameLine(col2);
             double edit_lonoff = cel->lon_J2000_offset * fiftyseven;
@@ -980,6 +995,18 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             ImGui::Text("%s", "AU");
             edit_period = cel->orbit->period / oneday;
+            if (cel->orbit->center->typeclass() == class_star)
+            {
+                ImGui::SameLine();
+                if (ImGui::Button("HZ"))
+                {
+                    // TODO: The following is a very very poor approximation.
+                    double s_eff_lum = pow(magnbase, cels[0]->absolute_magnitude-cel->orbit->center->absolute_magnitude);
+                    double sma_au = cel->orbit->semimajor_axis / AU;
+                    double instellation = s_eff_lum / (sma_au*sma_au);
+                    cel->orbit->semimajor_axis *= sqrt(instellation);
+                }
+            }
             ImGui::SameLine(col2);
             ImGui::Text("%s", "Period");
             ImGui::SameLine(col3);
@@ -1007,6 +1034,11 @@ void draw_objedit_window(ImGuiIO& io)
             }
             ImGui::SameLine();
             ImGui::Text("%s", "days");
+            ImGui::SameLine();
+            if (ImGui::Button("tidal##edit_period"))
+            {
+                cel->sidereal_rotational_period = cel->orbit->period;
+            }
 
             if (((!rp && !ra) || (ra >= rp)) && orb->eccentricity >= 0 && orb->eccentricity < 1)
             {
@@ -1098,6 +1130,13 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
+            ImGui::SameLine();
+            if (ImGui::Button("rnd##node&argperi&manom"))
+            {
+                cel->orbit->ascending_node = frand(0, _pi*2);
+                cel->orbit->arg_periapsis = frand(0, _pi*2);
+                cel->orbit->mean_anomaly = frand(0, _pi*2);
+            }
 
             edit_eccn = cel->orbit->eccentricity;
             ImGui::Text("%s", "Eccentricity");
@@ -1135,13 +1174,18 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->epoch = edit_epoch;
+                cel->orbit->epoch = edit_epoch;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("J2000"))
+            {
+                cel->orbit->epoch = J2000;
             }
             ImGui::SameLine(col2);
             edit_manom = cel->orbit->mean_anomaly * fiftyseven;
@@ -1150,7 +1194,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtmanom", &edit_manom, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->mean_anomaly = edit_manom * fiftyseventh;
+                cel->orbit->mean_anomaly = edit_manom * fiftyseventh;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
