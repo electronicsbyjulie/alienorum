@@ -2507,7 +2507,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             {
                 p_orig_i[j] = p->orbit->inclination;
                 exoincl += p->orbit->inclination;
-                // if (s->HD == 106515) std::cout << p->name << " incl=" << p->orbit->inclination;
                 l++;
             }
         }
@@ -2748,8 +2747,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 if (!A->lock_equatorial_plane && !A->rot_axis_known)
                 {
                     A->location.equatorial_plane = A->location.local_system_plane;
-                    A->obliquity = 0; // inclination;
-                    // A->equinox = ascending_node;
+                    A->obliquity = 0;
                 }
             }
             A->known_poles = true;
