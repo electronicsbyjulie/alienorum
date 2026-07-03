@@ -76,6 +76,7 @@ int main (int argc, char** argv)
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
+    bool argsfs = false;
 
     memset(lookfor, 0, name_max_len);
     memset(looksat, 0, name_max_len);
@@ -102,55 +103,49 @@ int main (int argc, char** argv)
                 xaorngsim = l;
             }
         }
-
-        if (!strcmp(argv[l], "load"))
+        else if (!strcmp(argv[l], "load"))
         {
             load_univ = argv[++l];
         }
-
-        if (!strcmp(argv[l], "find"))
+        else if (!strcmp(argv[l], "find"))
         {
             argsfind = argv[++l];
         }
-
-        if (!strcmp(argv[l], "track"))
+        else if (!strcmp(argv[l], "track"))
         {
             argstrack = argv[++l];
         }
-
-        if (!strcmp(argv[l], "go"))
+        else if (!strcmp(argv[l], "go"))
         {
             argsgo = argv[++l];
         }
-
-        if (!strcmp(argv[l], "zoom"))
+        else if (!strcmp(argv[l], "zoom"))
         {
             argszoom = argv[++l];
         }
-
-        if (!strcmp(argv[l], "jd"))
+        else if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
+        {
+            argsfs = true;
+        }
+        else if (!strcmp(argv[l], "jd"))
         {
             setjd = argv[++l];
         }
-
-        if (!strcmp(argv[l], "hz") || !strcmp(argv[l], "horizon"))
+        else if (!strcmp(argv[l], "hz") || !strcmp(argv[l], "horizon"))
         {
             argsmode = "hz";
         }
-
-        if (!strcmp(argv[l], "sun") || !strcmp(argv[l], "sunclock"))
+        else if (!strcmp(argv[l], "sun") || !strcmp(argv[l], "sunclock"))
         {
             argsmode = "sun";
         }
-
-        if (!strcmp(argv[l], "theme"))
+        else if (!strcmp(argv[l], "theme"))
         {
             std::string theme = argv[++l];
             global_style.load(theme);
         }
-
-        if (!strcmp(argv[l], "magtest")) magnitude_test = true;
-        if (!strcmp(argv[l], "sizeof"))
+        else if (!strcmp(argv[l], "magtest")) magnitude_test = true;
+        else if (!strcmp(argv[l], "sizeof"))
         {
             std::cout << "Size of CelestialObject: " << sizeof(CelestialObject) << std::endl;
             std::cout << "Size of Galaxy: " << sizeof(Galaxy) << std::endl;
@@ -350,6 +345,7 @@ int main (int argc, char** argv)
     bool done = false;
     viewchanged = true;
     ImVec2 PrevDispSize;
+    view_mode = vm_skyatlas;
     while (!done)
     {
         auto frame_began = std::chrono::high_resolution_clock::now();
@@ -646,10 +642,11 @@ int main (int argc, char** argv)
                 fdlg_shown = false;
             }
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_F11))
+        if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
         {
             SDL_SetWindowFullscreen(window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
             fullscreen = !fullscreen;
+            argsfs = false;
         }
 
         // std::cout << ImGui::GetBackgroundDrawList()->_VtxCurrentIdx << " _VtxCurrentIdx." << std::endl << std::flush;

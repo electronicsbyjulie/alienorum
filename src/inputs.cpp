@@ -104,7 +104,7 @@ void identify_object_under_cursor(ImGuiIO& io)
         if (view_mode == vm_skyatlas)
         {
             objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
-                    + (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+                    +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
         }
         else
         {
@@ -112,9 +112,9 @@ void identify_object_under_cursor(ImGuiIO& io)
             double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
             if (objaz < 0) objaz += _pi*2;
             objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
-                    + (std::string)"Azimuth:  " 
-                    + std::to_string(objaz*fiftyseven)
-                    + (std::string)"\n";
+                    +  (std::string)"Azimuth:  "
+                    +  std::to_string(objaz*fiftyseven)
+                    +  (std::string)"\n";
         }
         if (!sat_low_orbit)
             oss << "Mag:      " << std::setprecision(4) << lmag << std::endl;
@@ -451,6 +451,7 @@ void process_key_cmd_char(char c)
 
         case '.': astwnd = !astwnd; break;
         case ',': frames_without_mousemove = 1000; break;
+        case '|': show_axes = !show_axes; break;
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
         case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;

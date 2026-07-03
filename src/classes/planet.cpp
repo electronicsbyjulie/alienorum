@@ -131,6 +131,23 @@ double Planet::estimate_bump_scale()
     return 0.001 * volumetric_mean_radius * (surface_pressure ? log(surface_pressure) : 1) / log(20);
 }
 
+void alienorum::Planet::incline_exo_orbit(double sys_solincl, double sys_solnode)
+{
+    // Subtract the solar inclination of the local system plane from the planetary inclination.
+    if (orbit && orbit->inclination) orbit->inclination -= sys_solincl;
+    else orbit->inclination = 0;             // If unknown, assume system plane.
+
+    // The planetary node will be 90 degrees west of the Sun.
+    orbit->ascending_node = sys_solnode - half_pi;
+
+    // If the resulting local inclination is negative, reverse its sign and move the node 180 degrees.
+    if (orbit->inclination < 0)
+    {
+        orbit->inclination = -orbit->inclination;
+        orbit->ascending_node += _pi;
+    }
+}
+
 void Planet::estimate_albedo()
 {
     double rearths = volumetric_mean_radius / earth_radius;

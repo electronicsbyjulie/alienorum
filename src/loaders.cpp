@@ -327,11 +327,6 @@ void load_catalogs()
 
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
-        cout << "Reading exoplanets..." << endl << flush;
-        int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
-        num_planets += nexo;
-        cout << "Read " << nexo << " objects." << endl << flush;
-
         #if _USE_CCDM
         if (have_CCDM)
         {
@@ -359,7 +354,46 @@ void load_catalogs()
             if (cels[i]->type == star) num_stars++;
             if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
         }
+    }
 
+    mtx.lock();
+    loading_msg = std::string("Naming stars...");
+    mtx.unlock();
+    // rename_all_from_Bayer_Flamsteed();
+    cr.read_starname_dat(cels);
+
+    // We will die unless we read star orbits before reading exoplanets.
+    mtx.lock();
+    loading_msg = std::string("Orbiting stars...");
+    mtx.unlock();
+    if (!magnitude_test) cr.read_star_orbits_dat(cels);
+    else splash = false;
+
+    cout << "Reading exoplanets..." << endl << flush;
+    int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+    num_planets += nexo;
+    cout << "Read " << nexo << " objects." << endl << flush;
+
+    if (magnitude_test)
+    {
+        for (i=0; i<290; i++)
+        {
+            double magnitude = -1.0 + 0.1 * i;
+            Star* s = new Star();
+            strcpy(s->name, ((std::string)"Test "+std::to_string(magnitude)).c_str());
+            s->right_ascension = fiftyseventh * i;
+            s->declination = -2.59 * fiftyseventh;
+            s->apparent_magnitude = s->absolute_magnitude = magnitude;
+            s->distance = parsec*10;
+            s->proper_motion_decl = s->proper_motion_RA = s->radial_velocity = 0;
+            s->BV_color = 0.5;
+            s->epoch = J2000;
+            s->update_location(simnow);
+            append_cel(s);
+        }
+    }
+    else
+    {
         mtx.lock();
         loading_msg = std::string("Loading satellite data...");
         mtx.unlock();
@@ -395,37 +429,6 @@ void load_catalogs()
             std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
             if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
             sat_sources[i].read_csv_data();
-        }
-    }
-
-    mtx.lock();
-    loading_msg = std::string("Naming stars...");
-    mtx.unlock();
-    // rename_all_from_Bayer_Flamsteed();
-    cr.read_starname_dat(cels);
-
-    mtx.lock();
-    loading_msg = std::string("Orbiting stars...");
-    mtx.unlock();
-    if (!magnitude_test) cr.read_star_orbits_dat(cels);
-    else splash = false;
-
-    if (magnitude_test)
-    {
-        for (i=0; i<290; i++)
-        {
-            double magnitude = -1.0 + 0.1 * i;
-            Star* s = new Star();
-            strcpy(s->name, ((std::string)"Test "+std::to_string(magnitude)).c_str());
-            s->right_ascension = fiftyseventh * i;
-            s->declination = -2.59 * fiftyseventh;
-            s->apparent_magnitude = s->absolute_magnitude = magnitude;
-            s->distance = parsec*10;
-            s->proper_motion_decl = s->proper_motion_RA = s->radial_velocity = 0;
-            s->BV_color = 0.5;
-            s->epoch = J2000;
-            s->update_location(simnow);
-            append_cel(s);
         }
     }
 

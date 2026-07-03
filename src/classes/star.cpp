@@ -100,7 +100,15 @@ void Star::update_location(double tmnow)
     {
         if (!lock_system_plane) location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (_pi/2), equinox,
             Point::from_ra_dec(right_ascension, declination, distance));
-        if (!lock_equatorial_plane) location.orbital_plane = location.equatorial_plane = location.local_system_plane;
+        if ((mycenobj == this) && !lock_equatorial_plane)
+        {
+            location.orbital_plane = location.local_system_plane;
+
+            Point eqaxis(sin(equinox), 0, cos(equinox));
+            Point my_eq_pole = rotate3D(yaxis, center, eqaxis, obliquity);
+            my_eq_pole = rotate3D(my_eq_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+            location.equatorial_plane = align_points_3d(my_eq_pole, yaxis, center);
+        }
     }
 }
 

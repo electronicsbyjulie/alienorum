@@ -334,6 +334,29 @@ double distance(ImVec2 a, ImVec2 b)
     return sqrt(dx*dx+dy*dy);
 }
 
+Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation original, double helioincl)
+{
+    // Find the pole of the original plane.
+    Point pole = rotate3D(yaxis, center, original.v, original.a);
+    pole.scale(light_year);
+
+    // Get how far in what direction to rotate that pole for a zero heliocentric inclination.
+    Rotation tmp = align_points_3d(system_center + pole, center, system_center);
+
+    // Rotate the pole for the desired inclination and return its plane.
+    pole = rotate3D(pole, center, tmp.v, tmp.a - helioincl);
+    return align_points_3d(yaxis, pole, center);
+}
+
+void elements_in_new_reference_plane(Rotation original, Rotation reference, double &out_new_inclination, double &out_new_node)
+{
+    Point pole = rotate3D(yaxis, center, original.v, original.a);
+    Point refpole = rotate3D(yaxis, center, reference.v, reference.a);
+    Rotation tmp = align_points_3d(pole, refpole, center);
+    out_new_inclination = tmp.a;
+    out_new_node = find_angle_along_vector(zaxis, tmp.v, center, yaxis);
+}
+
 Rotation align_points_3d(Point point, Point align, Point center)
 {
     Point n = compute_normal(point, align, center);

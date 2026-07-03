@@ -101,16 +101,16 @@ HD216956                (debris disks)                          202         066.
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
 
 # https://en.wikipedia.org
-HD61421                 (system inclination)                    100.683     031.408
-HD201092                (system inclination)                    355.73      052.99
-HD209100                (system inclination)                    147.959     077.082
-Gliese 866 AB           (system inclination)                    162.1       112.4
-HD1326                  (system inclination)                    254.77      036.7
-Gliese 273              (system inclination)                    ?           072
-HD239960                (system inclination)                    152.6       165.41
-Gliese 234 A            (system inclination)                    210.385     052.918
-Gliese 473 A            (system inclination)                    143.2       102.8
-HD8890                  (system inclination)                    201.28      127.57
+HD61421                 (companion orbit)                       100.683     031.408
+HD201092                (companion orbit)                       355.73      052.99
+HD209100                (companion orbit)                       147.959     077.082
+Gliese 866 AB           (companion orbit)                       162.1       112.4
+HD1326                  (companion orbit)                       254.77      036.7
+Gliese 273              (companion orbit)                       ?           072
+HD239960                (companion orbit)                       152.6       165.41
+Gliese 234 A            (companion orbit)                       210.385     052.918
+Gliese 473 A            (companion orbit)                       143.2       102.8
+HD8890                  (companion orbit)                       201.28      127.57
 HD39801                 (stellar rotation)                      145         020
 HD10307                 (companion orbit)                       032.25      100.36
 HD12447                 HD12446                 89050000        003.09      113.01      150         5.37e+13    .4650       0                   2188.6          kA2hF2mF2 (IV)                  1.668       1.76                     8000
@@ -121,67 +121,67 @@ HD198571                HD198571 B              6.333e+9        174.31      064.
 HD184759                HD184760                1.44e+8         029.3       114.6       045.5       7.8e+11     .82         0                   1985.56                                         2.7         3.5                      9247
 HD64096                 HD64096 B               7.16374e+8      102.9       080.4       073.1       1.42e+12    .741        0                   1985.92                                         0.900       0.87        0.67         5620
 HD12558                 HD12558 B               1.03e+10        020.5       051         165         9.68e+12    .59         0                   1932.0
-HD107966                (system inclination)                    164.0       032.3       275.1
-HD188260                (system inclination)                    068.1       085.9       169.7
-HD20610                 (system inclination)                    271.6       066.6       333.5
-HD50522                 (system inclination)                    043.4       078.0       098.0
+HD107966                (companion orbit)                       164.0       032.3       275.1
+HD188260                (companion orbit)                       068.1       085.9       169.7
+HD20610                 (companion orbit)                       271.6       066.6       333.5
+HD50522                 (companion orbit)                       043.4       078.0       098.0
 HD190406                HD190406 B              2.012e+9        330.88      097.73      266.23      2.525e+12   .4683       0                   2015.12832                                      0.07194     0.08        6.46e-5      1544
-HD190004                (system inclination)                    084.5       079.0       276.5
-HD115271                (system inclination)                    022.2       044.5       273.3
-HD17904                 (system inclination)                    026.62      120.48      265.54
-HD13872                 (system inclination)                    236.44      104.52      084.16
-HD109485                (system inclination)                    024.3       109.7       214.5
-HD118623                (system inclination)                    087         147         159
-HD37269                 (system inclination)                    127.08      124.22      309.07
-HD56014                 (system inclination)                    131.3       080.2       085.0
-HD224533                (system inclination)                    081.1       081.0       109.6
-HD191610                (system inclination)                    146.0       118.7       090
-HD16234                 (system inclination)                    145.0       112.7       003.7
+HD190004                (companion orbit)                       084.5       079.0       276.5
+HD115271                (companion orbit)                       022.2       044.5       273.3
+HD17904                 (companion orbit)                       026.62      120.48      265.54
+HD13872                 (companion orbit)                       236.44      104.52      084.16
+HD109485                (companion orbit)                       024.3       109.7       214.5
+HD118623                (companion orbit)                       087         147         159
+HD37269                 (companion orbit)                       127.08      124.22      309.07
+HD56014                 (companion orbit)                       131.3       080.2       085.0
+HD224533                (companion orbit)                       081.1       081.0       109.6
+HD191610                (companion orbit)                       146.0       118.7       090
+HD16234                 (companion orbit)                       145.0       112.7       003.7
 HD129002                HD129002 B              8.08e+8         122.5       098         176         1.66e+12    .87         0                   2032.46476                                      .057        .1704       5.3e-4       2700
-HD5286                  (system inclination)                    173.60      044.80
+HD5286                  (companion orbit)                       173.60      044.80
 HD141851                HD141851 B              9.271e+7                                                        .7
 HD141851                HD141851 C              1.60e+9         074.00      098.08      072.84      2.84e+12    .8323       0                   2002.78                                         1.27        1.26                     6255
 HD170073                HD170073 B              1.2e+8          179.9       107.7       128.0       5.7e+13     .553        0                   5671.40                                         1.18        1.15        1.85         6271
-HD156266                (system inclination)                    220.5       065.1
-HD26722                 (system inclination)                    052.9       128.6
-HD212404                (system inclination)                    113.5       161.4
+HD156266                (companion orbit)                       220.5       065.1
+HD26722                 (companion orbit)                       052.9       128.6
+HD212404                (companion orbit)                       113.5       161.4
 HD116656                HD116657                                106?        060?        ?           ?                                                                                           1.85        1.8         13.7         8280
 HD116656                HD116656 B              1.77454e+6      106.0       060.5       105.27      3.57e+10    .5415       0                   2008.19316716                                   2.2381      2.4         33.3         9000
 HD116657                HD116657 B              1.5125e+7       106?        060?        353.1       ?                                                                                           0.25        ?            ?              ?
 HD94601                 HD94602                                                                     7.97e+13
 HD212698                HD212697                1.1e+11         294.55      044.13      151.40      4.301e+13   .90         0                   2023.42345905                                   0.99                                 5811
 HD47152                 53 Aurigae B            1.228e+9        113.5       119.5       343.3       2.67e+12    .557        0                   1977.15                                                                              7250
-HD29503                 (system inclination)                    171.25      059.8
-HD50037                 (system inclination)                    156.4       058.4
+HD29503                 (companion orbit)                       171.25      059.8
+HD50037                 (companion orbit)                       156.4       058.4
 HD201091                HD201092                2.231e+10       355.73      052.99      150.61      1.298e+13   .4424       0                   2396.8641                                       0.6289      0.594       0.097        4174
-HD164284                (system inclination)                    338.87      075.90
-HD27820                 (system inclination)                    239.8       034.2
-HD164577                (system inclination)                    160.2       069.5
+HD164284                (companion orbit)                       338.87      075.90
+HD27820                 (companion orbit)                       239.8       034.2
+HD164577                (companion orbit)                       160.2       069.5
 HD165341                70 Oph B                3.1557e+9       121.666     121.144     193.154     3.4755e+12  .50015      0                   2072.1716                                       0.7492      0.670       0.15         4465
 HD18520                 HD18519                 2.22196e+10     025.6       084.2       162.1       3.437e+13   .317
 HD36861                 HD36862                                                                     2.55e+14
 HD71151                 HD71150                                                                     7.746e+13
 HD147933                HD147934                7.567e+10       077.5       135.3       226.1       8.40e+13    .675        0                   2327                                            4.507       6.78        8046        11568
 HD221673                HD221673 B              1.5535e+10      056.2       021.7       293         1.37e+13    .322        0                   2046.046                                        2                       221.6        4379
-HD97907                 (system inclination)                    283.410     058.03
-HD205835                (system inclination)                    018.92      102.1
-HD222842                (system inclination)                    172.55      060.64
-HD113139                (system inclination)                    088.0       046.9
-HD218060                (system inclination)                    204.87      048.01
+HD97907                 (companion orbit)                       283.410     058.03
+HD205835                (companion orbit)                       018.92      102.1
+HD222842                (companion orbit)                       172.55      060.64
+HD113139                (companion orbit)                       088.0       046.9
+HD218060                (companion orbit)                       204.87      048.01
 HD99491                 HD99492                                                                     7.70e+13
 HD218640                HD218641                6.34e+9                                             1e+13
-HD19994                 (system inclination)                    191.496     108.323
+HD19994                 (companion orbit)                       191.496     108.323
 HD164669                HD164668                3.5e+11                                             1.3e+14
-HD183912                (system inclination)                                156
-HD220278                (system inclination)                    276.3       077.6
+HD183912                (companion orbit)                                   156
+HD220278                (companion orbit)                       276.3       077.6
 HD165908                HD165908 B              178e+9          041         039         116         2.37e+12    .766        0                   1997.62                                         0.46        0.67        0.19         4449
-HD48189                 (system inclination)                    091.6       093.9
-HD152404                (system inclination)                    048         115
+HD48189                 (companion orbit)                       091.6       093.9
+HD152404                (companion orbit)                       048         115
 HD114378                HD114379                8.16365e+8      012.2272    090.0501    100.563     1.7087e+12  .510        0                   2015.09229                                      1.087                   1.75         6378
-HD196867                (system inclination)                    120.62      161.01
+HD196867                (companion orbit)                       120.62      161.01
 HD29305                 Alp Dor B               3.81e+10        140         031         193         1.3e+12     .80         0                   1986.4
 HD159561                Alp Oph B               2.71272e+8      236.86      130.679     170.21      8.723e+11   .939        0                   2012.27596                                      0.824       0.74        0.25         4750
-HD78045                 (system inclination)                    105.3       101.9
+HD78045                 (companion orbit)                       105.3       101.9
 HD196982                AT Mic B                4.4618e+9       082.6       148.4       054.6       4.010e+12   .607        0                   2035.10                                         0.25        0.590       0.0308       3150
 HD137909                Bet CrB B               3.156e+8        148.2       111.1       181.3       1.01e+12    .524        0                   1980.929                                        1.40        1.56        4.5          6750
 HD196524                Bet Del B               8.4131e+8       177         061         349         1.95e+12    .36         0                   1989.50                                         1.75                    24           6587
@@ -189,10 +189,10 @@ HD90537                 Bet LMi B               1.2066e+9                   081.
 HD110879                Bet Mus B               6.1309e+9       349.4       037.1       209.0       1.44e+13    .598        0                   1857.50                                         6.40        3.5         1200        18500
 HD6595                  Bet Phe B               5.387e+9        126.4       144.0       293.5       7.54e+12    .718        0                   2003.41                                         2.7         14          100          4950
 HD170153                Chi Dra Ab              2.423761e+7     230.30      074.42      119.3       1.480e+11   .428        0                   1984.8324                                       0.748       0.73        0.29         4940
-HD96202                 (system inclination)                    224.00      096.50
-HD39587                 (system inclination)                    306.51      092.69
-HD26612                 (system inclination)                    193.0       110.6
-HD208450                (system inclination)                    090.8       076.3
+HD96202                 (companion orbit)                       224.00      096.50
+HD39587                 (companion orbit)                       306.51      092.69
+HD26612                 (companion orbit)                       193.0       110.6
+HD208450                (companion orbit)                       090.8       076.3
 HD143275                Del Sco B               3.41105e+8      174.0       036         357.7       2.119e+12   .936        0                   2011.504                                        8.2                                 20000
 HD283654                DF Tauri B              1.67e+9         036.7       040.4       286.6       2.647e+12   .172        0                   2024.0                                          0.42        1.6                      3433
 HD4614                  Achird B                1.490e+10       098.31      034.938     088.34      1.055e+13   .494        0                   1889.6                                          0.5487      0.57        0.082        4011
@@ -201,55 +201,55 @@ HIP116132               EQ Peg B                7.228624e+9     255.0919    130.
 HD200499                Eta Cap B               8.789e+8        171.1       162.6       238.2       2.27e+12    .410        0                   2002.46                         +3.72           1.21
 HD93308                 (stellar rotation)                      049         049
 HD155125                Eta Oph B               2.770e+9        039.241     096.305     275.90      4.645e+12   .93077      0                   2024.526                                        2.03        2.0         21           8700
-HD9270                  (system inclination)                    032.8       058.5
+HD9270                  (companion orbit)                       032.8       058.5
 HD110304                Gam Cen B               2.637e+9        002.6       113.7       187.9       4.95e+12    .793        0                   1931.25                                         2.8         3.8         95           9300
 HD222404                Gam Cep B               2.109e+9        018.32      120.18      340.49      2.796e+12   .4144       0                   1991.581        M4V                             0.328       0.32?       0.01?        3210?
 HD177474                HD177475                3.8424e+9       050.3       149.6       349.0       4.684e+12   .320        0                   2000.64                                         1.14        1.42                     6100
 HD197964                HD197963                1.025e+11       088.06      148.78      331.16      5.139e+13   .88         0                   2305            K1IV            +1.81           1.99        8.43        33.1         4798
 HD89484                 HD89485                 1.75e+10        346.7       049.2                   1.76e+13    .901        0                   1751                                            1.55        10.55       63.1         4969
-HD85558                 (system inclination)                    198.5       143.2
+HD85558                 (companion orbit)                       198.5       143.2
 HD110379                HD110380                5.3457e+9       214.76      150.148     074.50      6.0313e+12  .88131      0                   2005.5192                                       1.429       1.45        4.63         6871
-HD94878                 (system inclination)                                060
-HIP1242                 (system inclination)                    062.8       143.93
+HD94878                 (companion orbit)                                   060
+HIP1242                 (companion orbit)                       062.8       143.93
 HIP2552                 GJ 22 B                 7.047e+9        174.9       047.3       146.3       4.772e+12   .293        0                   2000.8622                                       0.382       0.394       0.011        3339
 GJ 65 A                 GJ 65 B                 8.325e+8        325.9       128.0       103.2       7.9068e+11  .6172       0                   1972.0466                                       0.116       0.159       0.00125      2728
 #HD42581                 GJ 229 B                1.10e+10        168.3       047.7       358.285     6.42e+12    .736        0                   2042.075                                        0.0360      0.081       3.890         900
 #GJ 229 B                GJ 229 Bb               1.04840e+6      210.4       031.4       003.2       6.34e+9     .2306       0                   2024.18636                                      0.0319      0.085       2.630         775
 HIP80346                GJ 623 B                1.1814e+8       098.3       152.5       245.4       2.833e+11   .629        0                   1984.3780                                       0.114       0.133       0.00103      2840
 HD182488                GJ 758 B                4.14267e+9      349.680     038.080     175.102     3.8011e+12  .365        0                   1917.165500                                     0.034722    0.09?       2.6?          741
-HD4113                  (system inclination)                    225.686     083.456
-HD5608                  (system inclination)                    141         147.5
-HD6114                  (system inclination)                    176.7       087.0
-HD7449                  (system inclination)                    326         068.4
+HD4113                  (companion orbit)                       225.686     083.456
+HD5608                  (companion orbit)                       141         147.5
+HD6114                  (companion orbit)                       176.7       087.0
+HD7449                  (companion orbit)                       326         068.4
 HD14214                 HD14214 B               8.06003e+6      281.0       105.1       103.87      2.105e+9    .5217       0                   2006.982033                                     0.53        0.4         0.04
-HD20104                 (system inclination)                    058         135
-HD24496                 (system inclination)                    038.7       117.11
-HD29573                 (system inclination)                    152.0       075.5
-HD31093                 (system inclination)                    020         107
-HD32450                 (system inclination)                    246.5       060.7
-HD33636                 (system inclination)                    109.9       007.07
+HD20104                 (companion orbit)                       058         135
+HD24496                 (companion orbit)                       038.7       117.11
+HD29573                 (companion orbit)                       152.0       075.5
+HD31093                 (companion orbit)                       020         107
+HD32450                 (companion orbit)                       246.5       060.7
+HD33636                 (companion orbit)                       109.9       007.07
 HD36584                 24 Dor B                2.51e+10        074.8       129.5       112.8       1.961e+13   .887        0                   1869.63027471                                   1.57        2.2         8.3          6604
 Vega                    (stellar rotation)                      057         006.2
 Altair                  (stellar rotation)                      301.1       050.7
 HD86320                 HD86320 B               2.004e+9        142.3       034.5       135.2       5.685e+12   .50         0                   2015.2326                                       1.6
-HD88522                 (system inclination)                    198.3       076.0
-HD100453                (system inclination)                    047         049
+HD88522                 (companion orbit)                       198.3       076.0
+HD100453                (companion orbit)                       047         049
 HD106515                HD106515 B              1.5154e+11      092.06      164.45      250.50      5.16e+13    .420        0                   2376.4                                          0.861       0.865       0.55        5190
 HD115404                HD115404 B              2.430e+10       104.66      093.41      276.99      1.27e+13    .12         0                   1875.3                                          0.542       0.550       0.043       3709
-HD117440                (system inclination)                    146.5       145.2
-HD118889                (system inclination)                    034.58      043.50
-HD120987                (system inclination)                    112.3       074.2
+HD117440                (companion orbit)                       146.5       145.2
+HD118889                (companion orbit)                       034.58      043.50
+HD120987                (companion orbit)                       112.3       074.2
 HD125040                HD125040 B              3.019e+10       014.1       134.3       072.2       1.830e+13   .53         0                   1683.9                                          0.86        0.81        0.42        5260
-HD127726                (system inclination)                    023.3       158.0
-HD131473                (system inclination)                    012.5       108.5
-HD140913                (system inclination)                    311.0       030.3
+HD127726                (companion orbit)                       023.3       158.0
+HD131473                (companion orbit)                       012.5       108.5
+HD140913                (companion orbit)                       311.0       030.3
 HD142527                HD142527 B              7.416e+8        161.51      149.47      186.45      1.616e+12   .47         0                   2020.42                                         0.34        1.37        0.25        3500
 # https://doi.org/10.1038/s41550-024-02454-x
 HD142527                (protoplanetary disk)                   117         028
 HD155876                GJ 661 B                4.08700e+8      160.0       149.14      099.0       6.942e+11   .7430       0                   1991.032                                        0.369       0.37                    3422
-HD158614                (system inclination)                    151.769     099.177
+HD158614                (companion orbit)                       151.769     099.177
 HD159062                GJ 4010 B               1.30e+10        133.4       063.0       260         9.26e+12    .102        0                   2151.832                                        0.6083                              4580
-HD162020                (system inclination)                    288.93      177.273
+HD162020                (companion orbit)                       288.93      177.273
 HD163840                HD163840 B              7.61727e+7      175.32      072.83      135.46      3.249e+12   .4165       0                   2011.24155                                      0.7421                  0.648       4780
 
 

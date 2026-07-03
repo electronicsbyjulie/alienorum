@@ -334,7 +334,12 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 imcol;
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
-    double step = wireframe ? (fiftyseventh*15) : fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2),
+    double step = wireframe
+            ? (fiftyseventh*15)
+            : ( (cel->surf_map || cel->cloud_map)
+                ? fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2)
+                : fiftyseventh * 3
+              ),
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline=0, dx1, dy1, dx2, dy2;
     l = 0;
@@ -1201,6 +1206,41 @@ void draw_cons_lines()
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
                 rgba_apply_redlight((l<nconsln) ? global_style.conslbl_color : IM_COL32(255, 64, 0, 128)),
                 consname[l].c_str());
+        }
+    }
+
+    if (show_axes)
+    {
+        Point axisdir[6] = {xaxis, yaxis, zaxis, center-xaxis, center-yaxis, center-zaxis};
+        for (i=0; i<6; i++)
+        {
+            axisdir[i].scale(1e303);
+
+            Point laxdir = to_viewer_plane(axisdir[i]);
+            Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
+            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+
+            if (dx < 0 || dy < 0) continue;
+            ImVec2 sz(64,64);
+            dx -= sz.x/2;
+            dy -= sz.y/2;
+            if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
+            {
+                std::string axname = (i<3) ? "+" : "-";
+                ImU32 axcolor;
+
+                switch (i % 3)
+                {
+                    case 0: axname += std::string("X"); axcolor = IM_COL32(255, 0, 0, 255); break;
+                    case 1: axname += std::string("Y"); axcolor = IM_COL32(0, 255, 0, 255); break;
+                    case 2: axname += std::string("Z"); axcolor = IM_COL32(0, 0, 255, 255); break;
+                }
+
+                ImGui::GetBackgroundDrawList()->AddText(global_font, 64,
+                    ImVec2(dx, dy),
+                    rgba_apply_redlight(axcolor),
+                    axname.c_str());
+            }
         }
     }
 }
