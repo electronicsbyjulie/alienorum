@@ -56,7 +56,7 @@ namespace alienorum
         int read_condensed_star_cat(CelestialObject** cels, int max);
 
         protected:
-        static void read_field_onebased(char* buffer, size_t start, int end, char* out);
+        static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
     };
 }
 

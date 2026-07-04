@@ -20,8 +20,15 @@ void Planet::classify(bool HZ)
     double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff)
     {
-        type = rocky;
-        if (HZ) BV_color = 0.2;       // estimate same as Earth.
+        if (T > lava_T_cutoff)
+        {
+            type = lavaworld;
+        }
+        else
+        {
+            type = rocky;
+            if (HZ) BV_color = 0.2;       // estimate same as Earth.
+        }
     }
     else if (mass < neptune_mass_cutoff)
     {
@@ -92,7 +99,8 @@ void Planet::estimate_rotation()
     {
         sidereal_rotational_period = 1.5 * orbit->period;
     }
-    else if (type == rocky || type == icy               ) sidereal_rotational_period = 2.38e+6 / log(mass);
+    else if (type == rocky || type == icy
+        || type == lavaworld                            ) sidereal_rotational_period = 2.38e+6 / log(mass);
     else if (type == waterworld                         ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
     else if (type == ice_giant || type == steam_giant   ) sidereal_rotational_period = 1.74e+6 / log(mass);
     else if (type == gas_giant                          ) sidereal_rotational_period = 1.11e+6 / log(mass);
@@ -166,7 +174,7 @@ void Planet::estimate_albedo_and_absmagn()
     else if (type == ice_giant || type == steam_giant) est_albedo = 0.3;
     else if (type == waterworld) est_albedo = 0.4;
     else if (type == icy) est_albedo = 0.8;
-    else if (type == rocky) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
+    else if (type == rocky || type == lavaworld) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
     absolute_magnitude = fmax(-10, earth_absmag - log(p_rad_e*p_rad_e*est_albedo/earth_albedo) / log(magnbase));
     albedo = est_albedo;
 }

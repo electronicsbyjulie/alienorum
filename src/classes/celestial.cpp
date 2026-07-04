@@ -225,6 +225,7 @@ void Orbit::compute_period(double mm)
             break;
 
             case rocky:
+            case lavaworld:
             if (!center->volumetric_mean_radius) return;
             center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
             break;
@@ -275,6 +276,7 @@ void Orbit::compute_semimajor_axis(double mm)
             break;
 
             case rocky:
+            case lavaworld:
             if (!center->volumetric_mean_radius) return;
             center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
             break;
@@ -1361,7 +1363,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 // Lifeless planet or moon
                 r_weight = height_value;
-                red_data[idx] = (unsigned char)(fmin(255, rgb.r * r_weight + radd));
+                red_data[idx] = (cel->type == lavaworld)
+                    ? ((unsigned char)(128 + fmin(127, rgb.r * r_weight + radd)))
+                    : ((unsigned char)(fmin(255, rgb.r * r_weight + radd)));
                 green_data[idx] = (unsigned char)(fmin(255, rgb.g * r_weight + gadd));
                 blue_data[idx] = (unsigned char)(fmin(255, rgb.b * r_weight + badd));
             }

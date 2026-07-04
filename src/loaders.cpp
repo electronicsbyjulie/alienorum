@@ -123,7 +123,7 @@ void load_textures(CelestialObject* cel)
         cel->cloud_map = new Map();
         cel->cloud_map->generate_gas_giant_map(cel);
     }
-    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld) && !cel->surf_map)
+    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld || cel->type == lavaworld) && !cel->surf_map)
     {
         cel->surf_map = new Map();
         cel->surf_map->generate_rocky_map(cel);

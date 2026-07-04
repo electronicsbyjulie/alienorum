@@ -24,6 +24,7 @@ namespace alienorum
         waterworld = 0x401,
         icy = 0x402,
         rocky = 0x403,
+        lavaworld = 0x404,
         artificial = 0xf00
     };
 

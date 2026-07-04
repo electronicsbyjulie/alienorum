@@ -53,6 +53,7 @@ using json = nlohmann::json;
 // WAG
 #define neptune_mass_cutoff (10 * earth_mass)
 #define icy_T_cutoff 200
+#define lava_T_cutoff 1300
 
 #define lunar_mass 7.349E+22
 #define earth_mass 5.972e+27

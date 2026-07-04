@@ -2130,6 +2130,73 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     std::string candidate = "";
     std::vector<std::string> results;
     std::map<int, std::vector<int>> planet_celids;
+    std::map<std::string, std::string> planet_names;
+    std::map<std::string, std::string> planet_types;
+    std::map<std::string, double> planet_temps;
+    std::map<std::string, double> planet_incls;
+    std::map<std::string, double> planet_nodes;
+    std::map<std::string, double> planet_istars;
+    std::map<std::string, double> planet_bvcols;
+    std::map<std::string, double> planet_albedines;
+
+    FILE *fp;
+    char buffer[2048], wasfirst = 0;
+    fp = fopen("exoname.dat", "r");
+    if (fp)
+    {
+        char field[256];
+        while (fgets(buffer, 2046, fp))
+        {
+            if (buffer[0] == '#') continue;
+            if (strlen(buffer) < 40) continue;
+
+            read_field_onebased(buffer, 1, 39, field);
+            std::string designation = trim(field);
+
+            read_field_onebased(buffer, 41, 63, field);
+            std::string friendly = trim(field);
+
+            planet_names[designation] = friendly;
+            std::cout << designation << " is a.k.a. " << friendly << std::endl;
+
+            if (strlen(buffer) < 65) continue;
+            read_field_onebased(buffer, 65, 87, field);
+            std::string ptype = trim(field);
+            if (ptype.size()) planet_types[designation] = ptype;
+
+            if (strlen(buffer) < 89) continue;
+            read_field_onebased(buffer, 89, 103, field);
+            double T = atof(field);
+            if (T) planet_temps[designation] = T;
+
+            if (strlen(buffer) < 105) continue;
+            read_field_onebased(buffer, 105, 115, field);
+            double i = atof(field);
+            if (i) planet_incls[designation] = i;
+
+            if (strlen(buffer) < 117) continue;
+            read_field_onebased(buffer, 117, 128, field);
+            double n = atof(field);
+            if (n) planet_nodes[designation] = n;
+
+            if (strlen(buffer) < 129) continue;
+            read_field_onebased(buffer, 129, 143, field);
+            double l = atof(field);
+            if (l) planet_istars[designation] = l;
+
+            if (strlen(buffer) < 145) continue;
+            read_field_onebased(buffer, 145, 155, field);
+            double bv = atof(field);
+            if (bv) planet_bvcols[designation] = bv;
+
+            if (strlen(buffer) < 157) continue;
+            read_field_onebased(buffer, 157, 177, field);
+            double alb = atof(field);
+            if (alb) planet_albedines[designation] = alb;
+        }
+
+        fclose(fp);
+    }
 
     try
     {
@@ -2160,8 +2227,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     mtx.lock();
     loading_msg = lmss.str();
     mtx.unlock();
-    FILE *fp;
-    char buffer[2048], wasfirst = 0;
 
     fp = fopen(path.c_str(), "r");
     int i=0;
@@ -2240,7 +2305,14 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 if (i == col_plnm)
                 {
                     planet_name = field;
-                    if (p) strcpy(p->name, planet_name.c_str());
+                    if (p)
+                    {
+                        if (planet_names.find(planet_name) != planet_names.end())
+                        {
+                            strcpy(p->name, planet_names[planet_name].c_str());
+                        }
+                        else strcpy(p->name, planet_name.c_str());
+                    }
                 }
                 else if (i == col_stnm)
                 {
@@ -2325,8 +2397,15 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         s_is_new = true;
                     }
 
-                    if (!p) p = new Planet();
-                    if (planet_name.size()) strcpy(p->name, planet_name.c_str());
+                    if (!p)
+                    {
+                        p = new Planet();
+                        if (planet_names.find(planet_name) != planet_names.end())
+                        {
+                            strcpy(p->name, planet_names[planet_name].c_str());
+                        }
+                        else if (planet_name.size()) strcpy(p->name, planet_name.c_str());
+                    }
                     if (!p->orbit) p->orbit = new Orbit();
                     p->orbit->center = p->cenobj = s;
                     p->orbit->ascending_node = 0;           // unknown for exoplanets :(
@@ -2357,7 +2436,12 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         else if (i == col_mass_e) p->mass = atof(field) * earth_mass;
                         else if (i == col_mass_j) p->mass = atof(field) * jupiter_mass;
                         else if (i == col_eccn) p->orbit->eccentricity = atof(field);
-                        else if (i == col_incl) p_incl = atof(field) * fiftyseventh;
+                        else if (i == col_incl)
+                        {
+                            if (!p_incl && planet_incls.find(planet_name) != planet_incls.end())
+                                p_incl = planet_incls[planet_name];
+                            else p_incl = atof(field) * fiftyseventh;
+                        }
                         else if (i == col_periepo)
                         {
                             p->orbit->epoch = atof(field);
@@ -2436,6 +2520,15 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 p->orbit->inclination = p_incl;             // For now.
             }
 
+            if (p)
+            {
+                if (planet_bvcols.find(planet_name) != planet_bvcols.end())
+                    p->BV_color = planet_bvcols[planet_name];
+
+                if (planet_albedines.find(planet_name) != planet_albedines.end())
+                    p->albedo = planet_albedines[planet_name];
+            }
+
             if (s && p && p->orbit->period)
             {
                 p->cenobj = s;
@@ -2511,6 +2604,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             }
         }
         exoincl = (l ? (exoincl/l) : half_pi);
+
+        // TODO: planet_nodes, planet_istars
 
         if (s->has_disk)
         {
@@ -3068,7 +3163,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
     return result;
 }
 
-void CatalogReader::read_field_onebased(char *buffer, size_t start, int end, char *out)
+void CatalogReader::read_field_onebased(const char *buffer, size_t start, int end, char *out)
 {
     if (start > strlen(buffer))
     {
