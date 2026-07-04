@@ -815,10 +815,13 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
-            ImGui::SameLine();
-            if (ImGui::Button("tidal##edit_rotation"))
+            if (cel->typeclass() != class_satellite)
             {
-                cel->sidereal_rotational_period = cel->orbit->period;
+                ImGui::SameLine();
+                if (ImGui::Button("tidal##edit_rotation"))
+                {
+                    cel->sidereal_rotational_period = cel->orbit->period;
+                }
             }
             ImGui::SameLine(col2);
             double edit_lonoff = cel->lon_J2000_offset * fiftyseven;
@@ -1034,10 +1037,13 @@ void draw_objedit_window(ImGuiIO& io)
             }
             ImGui::SameLine();
             ImGui::Text("%s", "days");
-            ImGui::SameLine();
-            if (ImGui::Button("tidal##edit_period"))
+            if (cel->typeclass() != class_satellite)
             {
-                cel->sidereal_rotational_period = cel->orbit->period;
+                ImGui::SameLine();
+                if (ImGui::Button("tidal##edit_period"))
+                {
+                    cel->sidereal_rotational_period = cel->orbit->period;
+                }
             }
 
             if (((!rp && !ra) || (ra >= rp)) && orb->eccentricity >= 0 && orb->eccentricity < 1)

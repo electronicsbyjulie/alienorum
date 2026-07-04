@@ -319,16 +319,16 @@ void compute_object_draw_coordinates()
                 brght = global_brightness * pow(magnbase, -vmag_cache[i]);
                 float theta = cels[i]->Decl_as_radians(here);
 
-                if ((cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
-                    && ((Planet*)cels[whereami])->surface_pressure)
+                if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
                 {
                     // Interpolated twilight values.
                     float theta_deg = theta * fiftyseven, twilight;
-                    if (theta_deg >= 6) twilight = 6.0 * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
-                    else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg) * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
-                    else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6)) * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
-                    else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12)) * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
-                    else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18)) * inv_oneatm * ((Planet*)cels[whereami])->surface_pressure;
+                    if (theta_deg >= 6) twilight = 6.0;
+                    else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg);
+                    else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6));
+                    else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12));
+                    else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18));
+                    else twilight = 0;
 
                     double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
                     if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
