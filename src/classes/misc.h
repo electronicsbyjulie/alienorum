@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <queue>
 #include <ctime>
 #include <thread>
 #include <mutex>

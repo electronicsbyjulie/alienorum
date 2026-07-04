@@ -109,16 +109,21 @@ namespace alienorum
         unsigned int image_width = 0;                               // Number of columns in image
         unsigned int allocated = 0;
         double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
+        CelestialObject *mcel = nullptr;
 
         unsigned int idx_of(double latitude, double longitude);
 
         __uint128_t ___ = 0;
 
         public:
+        Map() { ; }
+        Map(CelestialObject* joined_cel) { mcel = joined_cel; }
+
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool save_to_png(std::string filename);
+        void correct_colors(double rtot, double gtot, double btot);
         inline bool has_bump_data() { return bump_data && image_height; }
 
         RGB3Byte color_at(double latitude, double longitude);

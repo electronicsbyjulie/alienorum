@@ -806,6 +806,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
             ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
     unsigned int i, j;
+    double rtot = 0, gtot = 0, btot = 0;
     while (cinfo.output_scanline < cinfo.output_height)
     {
         j = cinfo.output_scanline * image_width;
@@ -829,6 +830,9 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
                 red_data[j] = jpeg_image_buffer[0][i];
                 green_data[j] = jpeg_image_buffer[0][i+1];
                 blue_data[j] = jpeg_image_buffer[0][i+2];
+                rtot += red_data[j];
+                gtot += green_data[j];
+                btot += blue_data[j];
             }
             j++;
         }
@@ -913,6 +917,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
     png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
 
+    double rtot = 0, gtot = 0, btot = 0;
     if (bytes_per_pixel == 3)
     {
         // RGB3Byte
@@ -937,7 +942,11 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
                 {
                     red_data[i] = pixel[0];
                     green_data[i] = pixel[1];
-                    blue_data[i++] = pixel[2];
+                    blue_data[i] = pixel[2];
+                    rtot += red_data[i];
+                    gtot += green_data[i];
+                    btot += blue_data[i];
+                    i++;
                 }
             }
         }
@@ -962,6 +971,9 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
                 else
                 {
                     red_data[i] = green_data[i] = blue_data[i] = pixel[0];
+                    rtot += red_data[i];
+                    gtot += green_data[i];
+                    btot += blue_data[i];
                 }
                 i++;
             }

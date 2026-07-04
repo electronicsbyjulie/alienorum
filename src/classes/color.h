@@ -36,14 +36,32 @@ namespace alienorum
         double luminance();
         static Color color_from_magnitude_indices(double Vmag, double BV);
         static Color color_from_magnitude_indices(double Vmag, double BV, double VR);
+
         static RGB3Byte rgb_from_color(Color c, double multiplier = 1);
         static RGB3Byte disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
         json to_json();
         bool from_json(json j);
+
         Color() {}
         Color(double r, double g, double b) { red=r; green=g; blue=b; }
+
+        void normalize(double level);
+        void saturate(double saturation);
+    };
+
+    class ColorCorrection
+    {
+        protected:
+        double _rgoal_over_mean=0, _ggoal_over_mean=0, _bgoal_over_mean=0;
+
+        public:
+        Color mean = Color(1,1,1);
+        Color goal = Color(1,1,1);
+        double saturation = 1;
+
+        Color correct(Color input, double saturation = 1);
     };
 
     class AlienStyle

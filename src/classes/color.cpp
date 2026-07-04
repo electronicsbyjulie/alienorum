@@ -112,6 +112,24 @@ bool Color::from_json(json j)
     return true;
 }
 
+void alienorum::Color::normalize(double level)
+{
+    double m = fmax(fmax(red, green), blue);
+    double invm = 1.0 / m;
+    double mult = invm * level;
+    red   *= mult;
+    green *= mult;
+    blue  *= mult;
+}
+
+void alienorum::Color::saturate(double saturation)
+{
+    double lum = luminance();
+    red   = lum + saturation * (red   - lum);
+    green = lum + saturation * (green - lum);
+    blue  = lum + saturation * (blue  - lum);
+}
+
 void set_gamma(double new_gamma)
 {
     global_inverse_gamma = 1.0 / new_gamma;

@@ -15,7 +15,7 @@ void load_textures(CelestialObject* cel)
         filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.jpg";
         if (file_exists(filename.c_str()))
         {
-            Map *map = new Map();
+            Map *map = new Map(cel);
             if (map->load_from_jpeg(filename)) cel->cloud_map = map;
         }
         else
@@ -23,7 +23,7 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.png";
             if (file_exists(filename.c_str()))
             {
-                Map *map = new Map();
+                Map *map = new Map(cel);
                 if (map->load_from_png(filename)) cel->cloud_map = map;
             }
         }
@@ -31,7 +31,7 @@ void load_textures(CelestialObject* cel)
         filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_surf.jpg";
         if (file_exists(filename.c_str()))
         {
-            Map *map = new Map();
+            Map *map = new Map(cel);
             if (map->load_from_jpeg(filename)) cel->surf_map = map;
         }
         else
@@ -39,7 +39,7 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_surf.png";
             if (file_exists(filename.c_str()))
             {
-                Map *map = new Map();
+                Map *map = new Map(cel);
                 if (map->load_from_png(filename)) cel->surf_map = map;
             }
         }
@@ -120,12 +120,12 @@ void load_textures(CelestialObject* cel)
 
     if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == steam_giant || cel->type == hot_jupiter) && !cel->cloud_map)
     {
-        cel->cloud_map = new Map();
+        cel->cloud_map = new Map(cel);
         cel->cloud_map->generate_gas_giant_map(cel);
     }
     else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld) && !cel->surf_map)
     {
-        cel->surf_map = new Map();
+        cel->surf_map = new Map(cel);
         cel->surf_map->generate_rocky_map(cel);
     }
 }

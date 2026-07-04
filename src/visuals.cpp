@@ -1161,6 +1161,8 @@ void draw_cons_lines()
     for (i=0; i<n; i++)
     {
         if (consaidx[i] < 0 || consbidx[i] < 0) continue;
+        if (cels[consaidx[i]] == mycenobj) continue;
+        if (cels[consbidx[i]] == mycenobj) continue;
 
         int dx1, dx2, dy1, dy2;
         if (i >= nconsln) considx[i] = consname.size()-1;
