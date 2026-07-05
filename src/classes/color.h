@@ -132,7 +132,12 @@ namespace alienorum
         double core_dist;                   // Elevation of cloud plus distance from surface to planet center.
         double width;                       // Meters.
         double height;                      // Meters.
+        double distance;                    // Modified by code; do not edit.
         RGB3Byte color;
+        unsigned int seed;
+
+        ImVec2 find_draw_coordinates(double planet_radius);
+        void draw(double planet_radius);
     };
 }
 

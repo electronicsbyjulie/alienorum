@@ -22,7 +22,6 @@ void draw_sky_gradient();
 void draw_cons_lines();
 void draw_mouse_cursor(ImGuiIO &io);
 
-void draw_cloud(ImVec2 center, RGB3Byte rgb, float width, float height);
 void draw_cloudy_sky();
 
 #define max_bloomrad 10

@@ -1305,112 +1305,7 @@ void draw_mouse_cursor(ImGuiIO& io)
     }
 }
 
-void draw_cloud(ImVec2 center, RGB3Byte rgb, float width, float height)
-{
-    ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-    if (!draw_list) return;
-
-    // Seed pseudo-randomness based on position so the cloud shape is stable across frames
-    unsigned int seed = (unsigned int)(center.x * 1000 + center.y);
-    srand(seed);
-
-    std::vector<CloudParticle> base_layer;
-    std::vector<CloudParticle> core_layer;
-    std::vector<CloudParticle> highlight_layer;
-
-    // 1. Generate the Darker, Flatter Base Layer (Ground Perspective)
-    int base_count = 15;
-    for (int i = 0; i < base_count; ++i)
-    {
-        float t = (float)i / (float)(base_count - 1);
-        // Distribute horizontally across the cloud width
-        float off_x = (t - 0.5f) * width * 0.8f;
-        // Keep the base mostly flat along the bottom
-        float off_y = (height * 0.25f) + ((rand() % 100) / 100.0f - 0.5f) * (height * 0.1f);
-
-        float rad_x = (width * 0.25f) + ((rand() % 100) / 100.0f) * (width * 0.15f);
-        float rad_y = (height * 0.2f) + ((rand() % 100) / 100.0f) * (height * 0.1f);
-
-        // Base color: Darker grey-blue shadow with low opacity (alpha 40-70)
-        int alpha = 40 + (rand() % 30);
-        ImU32 col = IM_COL32((int)(0.55*rgb.r), (int)(0.61*rgb.g), (int)(0.69*rgb.b), alpha);
-
-        base_layer.push_back({{off_x, off_y}, {rad_x, rad_y}, col, 0.0f});
-    }
-
-    // 2. Generate the Dense Core Layer (Builds volume upwards)
-    int core_count = 35;
-    for (int i = 0; i < core_count; ++i)
-    {
-        // Concentrated toward the center and bulging upward
-        float off_x = ((rand() % 100) / 100.0f - 0.5f) * width * 0.7f;
-        float off_y = ((rand() % 100) / 100.0f - 0.6f) * height * 0.4f; // higher up than base
-
-        float rad_x = (width * 0.2f) + ((rand() % 100) / 100.0f) * (width * 0.15f);
-        float rad_y = (height * 0.25f) + ((rand() % 100) / 100.0f) * (height * 0.15f);
-
-        // Core color: Soft greyish-white (alpha 50-90)
-        int alpha = 25 + (rand() % 40);
-        ImU32 col = IM_COL32((int)(0.84*rgb.r), (int)(0.87*rgb.g), (int)(0.90*rgb.b), alpha);
-
-        core_layer.push_back({{off_x, off_y}, {rad_x, rad_y}, col, 0.0f});
-    }
-
-    // 3. Generate the Top Highlights (Sunlit edges)
-    int highlight_count = 25;
-    for (int i = 0; i < highlight_count; ++i)
-    {
-        // Biased toward the top peaks of the cloud
-        float off_x = ((rand() % 100) / 100.0f - 0.5f) * width * 0.6f;
-        float off_y = -height * 0.3f - ((rand() % 100) / 100.0f) * height * 0.3f; 
-
-        // Smaller, rounder puffs for the "silver lining" effect
-        float rad_x = (width * 0.12f) + ((rand() % 100) / 100.0f) * (width * 0.1f);
-        float rad_y = (height * 0.12f) + ((rand() % 100) / 100.0f) * (height * 0.1f);
-
-        // Highlight color: Warm bright white/cream, slightly more opaque (alpha 80-130)
-        int alpha = 40 + (rand() % 50);
-        ImU32 col = IM_COL32((int)(0.98*rgb.r), (int)(0.98*rgb.g), (int)(0.96*rgb.b), alpha);
-
-        highlight_layer.push_back({{off_x, off_y}, {rad_x, rad_y}, col, 0.0f});
-    }
-
-    // --- DRAWING PROGRESSION ---
-    // Render back-to-front to allow alpha blending to create depth
-
-    // Draw Bases
-    for (const auto& p : base_layer)
-    {
-        draw_list->AddEllipseFilled(ImVec2(center.x + p.offset.x, center.y + p.offset.y), p.radius, p.color, p.rotation, 24);
-    }
-
-    // Draw Core Volume
-    for (const auto& p : core_layer)
-    {
-        draw_list->AddEllipseFilled(ImVec2(center.x + p.offset.x, center.y + p.offset.y), p.radius, p.color, p.rotation, 24);
-    }
-
-    // Draw Sunlit Top Caps
-    for (const auto& p : highlight_layer)
-    {
-        draw_list->AddEllipseFilled(ImVec2(center.x + p.offset.x, center.y + p.offset.y), p.radius, p.color, p.rotation, 24);
-    }
-
-    // 4. Soften the Ground Base Line
-    // Adding a few thin, faint horizontal lines near the bottom blends the cloud into the atmospheric haze
-    int haze_lines = 4;
-    for (int i = 0; i < haze_lines; ++i)
-    {
-        float y_pos = center.y + (height * 0.25f) + (i * 3.0f);
-        ImVec2 p1(center.x - (width * 0.45f), y_pos);
-        ImVec2 p2(center.x + (width * 0.45f), y_pos);
-
-        // Very faint, matching the sky/base shadow mix
-        ImU32 haze_col = IM_COL32(150, 165, 185, 15 - (i * 3)); 
-        draw_list->AddLine(p1, p2, haze_col, 4.0f);
-    }
-}
-
+std::vector<Cloud> skyclouds;
 void draw_cloudy_sky()
 {
     if (view_mode != vm_horizon) return;
@@ -1425,5 +1320,21 @@ void draw_cloudy_sky()
     RGB3Byte rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
     double cloudiness = sqrt(rgb.luminance()/255);
 
-    // TODO:
+    if (!skyclouds.size())
+    {
+        // TODO:
+
+        Cloud c;
+        c.color = rgb;
+        c.core_dist = cel->volumetric_mean_radius + 1500;
+        c.height = 200;
+        c.width = 500;
+        c.latitude = viewer_lat;
+        c.longitude = viewer_lon;
+
+        skyclouds.push_back(c);
+    }
+
+    int i, n = skyclouds.size();
+    for (i=0; i<n; i++) skyclouds[i].draw(cel->volumetric_mean_radius);
 }
