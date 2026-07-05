@@ -205,7 +205,14 @@ bool Star::is_sunlike()
     // Number might contain a decimal point and more digits.
     i++;
     while (sptyp[i] && (sptyp[i] == '.' || (sptyp[i] >= '0' && sptyp[i] <= '9'))) i++;
-    if (!sptyp[i]) return false;
+    if (!sptyp[i])
+    {
+        // For stars that don't have a Roman numeral,
+        // but are within the temperature and luminosity limits,
+        // let's go ahead and consider them sunlike.
+        if (absolute_magnitude >= 4.12 && absolute_magnitude <= 5.93) return true;
+        return false;
+    }
 
     // There might be a space between.
     while (sptyp[i] == ' ') i++;

@@ -1753,7 +1753,6 @@ void draw_system_explorer(ImGuiIO& io)
 bool onlysun = false, onlyplt = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
-double neighb_rthresh = 25 * light_year;
 void draw_stellar_neighborhood(ImGuiIO &io)
 {
     if (!cels[1]) return;

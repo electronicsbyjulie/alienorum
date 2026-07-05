@@ -331,6 +331,7 @@ void process_key_cmd_char(char c)
         set_viewer_location_and_plane();
         global_brightness = default_brightness;
         global_gamma = viewer_gamma;
+        neighb_rthresh = 25 * light_year;
         show_consln = show_grid = show_labels = lbl_localsys = show_sats = statuswnd = objinfwnd = true;
         show_orbits = false;
         cbolbls_selected_idx = 0;
