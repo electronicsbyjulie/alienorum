@@ -24,7 +24,7 @@ int *bx_cache = nullptr, *by_cache = nullptr;
 
 double Color::luminance()
 {
-    return 0.29 * red + 0.57 * green + 0.14 * blue;
+    return _lum_r_comp * red + _lum_g_comp * green + _lum_b_comp * blue;
 }
 
 Color Color::color_from_magnitude_indices(double Vmag, double BV)

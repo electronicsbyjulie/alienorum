@@ -2,9 +2,15 @@
 #ifndef _Color
 #define _Color
 
+#include <cmath>
+#include <vector>
+#include <cstdlib>
 #include "imgui/imgui.h"
 
 #define drawn_cache_split 25
+#define _lum_r_comp 0.29
+#define _lum_g_comp 0.56
+#define _lum_b_comp 0.15
 
 namespace alienorum
 {
@@ -24,6 +30,8 @@ namespace alienorum
 
         RGB3Byte() { r=g=b=0; }
         RGB3Byte(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
+
+        inline double luminance() { return _lum_r_comp*r + _lum_g_comp*g + _lum_b_comp*b; }
     };
 
     class Color
@@ -107,6 +115,24 @@ namespace alienorum
         ImVec4 text_cursor_color = ImVec4(0.90f, 0.05f, 0.08f, 1.00f);
 
         bool load(std::string theme_name);
+    };
+
+    struct CloudParticle
+    {
+        ImVec2 offset;
+        ImVec2 radius;
+        ImU32 color;
+        float rotation;
+    };
+
+    struct Cloud
+    {
+        double latitude;
+        double longitude;
+        double core_dist;                   // Elevation of cloud plus distance from surface to planet center.
+        double width;                       // Meters.
+        double height;                      // Meters.
+        RGB3Byte color;
     };
 }
 
