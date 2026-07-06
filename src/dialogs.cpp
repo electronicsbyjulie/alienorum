@@ -624,6 +624,12 @@ void draw_objedit_window(ImGuiIO& io)
             massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-6) << " g/cm^3";
             std::string dens = massss.str();
             ImGui::Text("%s", dens.c_str());
+            ImGui::SameLine(col2);
+            stringstream sssurfgrav;
+            sssurfgrav << "Surface gravity " << std::setprecision(3)
+                << (cel->mass / earth_mass) / pow(cel->volumetric_mean_radius / earth_radius, 2)
+                << " g";
+            ImGui::Text("%s", sssurfgrav.str().c_str());
 
             double edit_absmag = cel->absolute_magnitude;
             ImGui::Text("%s", "Abs. Magn.");
