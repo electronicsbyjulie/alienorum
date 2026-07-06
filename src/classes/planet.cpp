@@ -66,7 +66,9 @@ void Planet::classify(bool HZ)
 void Planet::estimate_radius()
 {
     // https://doi.org/10.1051/0004-6361/202348690
-    if (mass < rocky_mass_cutoff) volumetric_mean_radius = 1.02 * earth_radius * pow(mass/earth_mass, 0.27);
+    if ((mass < rocky_mass_cutoff)
+        || type == rocky || type == waterworld || type == icy)
+        volumetric_mean_radius = 1.02 * earth_radius * pow(mass/earth_mass, 0.27);
     else if (mass < giant_mass_cutoff) volumetric_mean_radius = 0.56 * earth_radius * pow(mass/earth_mass, 0.67);
     else if (type == hot_jupiter)
     {
