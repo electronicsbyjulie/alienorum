@@ -80,6 +80,9 @@ namespace alienorum
         double epoch = J2000;                       // JD
         double period = 0;                          // seconds
 
+        double heliocentric_inclination = 0;
+        double heliocentric_node = 0;
+
         Rotation laplace;
         OsculatingElement *osculating = nullptr;
         uint64_t num_osc = 0;

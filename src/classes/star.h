@@ -49,6 +49,7 @@ namespace alienorum
         bool tmp_vis_flag;                          // Used only for rendering.
         bool has_disk = false;                      // E.g. dust, debris, cometary, asteroid belt, etc.
         bool rot_axis_known = false;
+        double disk_heliocen_inclination = 0, disk_heliocen_node = 0;
 
         Star();
         ~Star();

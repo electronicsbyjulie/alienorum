@@ -357,6 +357,16 @@ void elements_in_new_reference_plane(Rotation original, Rotation reference, doub
     out_new_node = find_angle_along_vector(zaxis, tmp.v, center, yaxis);
 }
 
+void incl_node_from_plane(Rotation plane, Point hloc, double &i, double &n)
+{
+    Point pole = rotate3D(yaxis, center, plane.v, plane.a);
+    Point projected = hloc + pole;
+    i = find_3D_angle(center, projected, hloc);
+    Rotation rot = align_points_3d(hloc, zaxis, center);
+    Point npole = rotate3D(pole, center, rot.v, rot.a);
+    n = find_angle_along_vector(npole, xaxis, center, zaxis) + _pi;
+}
+
 Rotation align_points_3d(Point point, Point align, Point center)
 {
     Point n = compute_normal(point, align, center);

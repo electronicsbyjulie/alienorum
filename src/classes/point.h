@@ -129,6 +129,7 @@ Rotation system_plane_from_incl_and_node(double inclination, double node, Point 
 double distance(ImVec2 a, ImVec2 b);
 Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation original, double helioincl);
 void elements_in_new_reference_plane(Rotation original, Rotation reference, double& out_new_inclination, double& out_new_node);
+void incl_node_from_plane(Rotation plane, Point heliocentric_location, double& out_incl, double& out_node);
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
 bool operator==(const Point&, const Point&);

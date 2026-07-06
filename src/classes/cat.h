@@ -58,6 +58,7 @@ namespace alienorum
 
         protected:
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
+        void apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids);
     };
 }
 
