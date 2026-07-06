@@ -140,6 +140,7 @@ bool contains_digits_or_dots(const char*);
 bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
 bool file_exists(const char* fname);
+std::time_t file_age(const char* fname);                                    // seconds
 
 bool download_file(std::string URL, std::string save_path);
 std::vector<std::string> parse_csv_row(const char* data);

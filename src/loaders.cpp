@@ -370,7 +370,8 @@ void load_catalogs()
     else splash = false;
 
     cout << "Reading exoplanets..." << endl << flush;
-    int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+    int nexo = cr.load_exoplanets_from_tap();
+    if (!nexo) nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
     num_planets += nexo;
     cout << "Read " << nexo << " objects." << endl << flush;
 

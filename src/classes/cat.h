@@ -44,7 +44,8 @@ namespace alienorum
         // Planets, Minor Planets, Comets
         static bool load_asteroid(AstorbRow *r, char *buffer = nullptr);        // If buffer is null, open astorb.dat and search for the astroid matching the row object.
         int read_astorb_catalog(CelestialObject** cels, int max);
-        int read_exoplanets_catalog(CelestialObject** cels, int max);
+        unsigned int load_exoplanets_from_tap();
+        int read_exoplanets_catalog(CelestialObject** cels, int max);           // Old method requiring manual download
 
         // Internal Catalogs
         int read_starname_dat(CelestialObject** cels);                          // No max because we are not adding stars, only setting names.

@@ -327,6 +327,16 @@ bool file_exists(const char *fname)
     return false;
 }
 
+std::time_t file_age(const char *fname)
+{
+    std::filesystem::file_time_type ft = std::filesystem::last_write_time(fname);
+    auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+        ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+    std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
+    std::time_t now = std::time(nullptr);
+    return now - mt;
+}
+
 bool download_file(std::string URL, std::string save_path)
 {
     curlpp::init();

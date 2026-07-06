@@ -297,14 +297,19 @@ void compute_object_draw_coordinates()
             if (isnan(cels[i]->tmprel.x)) continue;
             if (i == whereami) continue;
 
-            if (cels[i]->typeclass() == class_star
-                && i
-                && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
-                && !((Star*)cels[i])->tmp_vis_flag
-                && !((Star*)cels[i])->is_universally_visible())
+            Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
+
+            if (cels_i_star
+                && cels_i_star->seqno
+                && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
+                && !cels_i_star->tmp_vis_flag
+                && !cels_i_star->is_universally_visible())
                 continue;
 
             Point rel = cels[i]->tmprel;
+
+            if (cels[i]->orbit && rel.squared_magnitude() > 1e6 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
+                continue;
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 

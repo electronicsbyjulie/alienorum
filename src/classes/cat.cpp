@@ -2345,8 +2345,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
                         bool do_search = false;      // Full search is expensive. Only search if good chance of finding it (Gliese, named stars).
 
-                        // if (!strcmp(star_name.c_str(), "Barnard's star")) star_name = "GJ 699";
-
                         if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) do_search = true;
                         else if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
                                 || (star_name.c_str()[0] >= 'a' && star_name.c_str()[0] <= 'z')
@@ -2358,7 +2356,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         else if ((star_name.c_str()[0] >= '1' && star_name.c_str()[0] <= '9')
                                 && (star_name.c_str()[l-1] >= 'A' && star_name.c_str()[l-1] <= 'z')
                                 )
-                            do_search = true;       // e.g. 55 Cnc B
+                            do_search = true;
 
                         if (!strcmp(star_name.c_str(), "55 Cnc B")) star_name = "GJ 324 B";
 
@@ -2724,6 +2722,8 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
 
     while (fgets(buffer, 1020, fp))
     {
+        if (buffer[0] == '#') continue;
+
         read_field_onebased(buffer, 26, 32, field);
         HD = atoi(field);
 
@@ -3176,4 +3176,296 @@ void CatalogReader::read_field_onebased(const char *buffer, size_t start, int en
     int i;
     for (i=0; i<len; i++) if (!(out[i] = buffer[i+start])) break;
     out[i] = 0;
+}
+
+// libcurl write callback to append chunk data to an allocated std::string buffer
+static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
+{
+    size_t totalSize = size * nmemb;
+    static_cast<std::string*>(userp)->append(static_cast<char*>(contents), totalSize);
+    return totalSize;
+}
+
+unsigned int CatalogReader::load_exoplanets_from_tap()
+{
+    unsigned int result = 0;
+    CURL* curl = curl_easy_init();
+    if (!curl)
+    {
+        std::cerr << "Failed to initialize libcurl." << std::endl;
+        return false;
+    }
+
+    std::string readBuffer;
+    json planets_array;
+    bool do_download = true;
+
+    const char* exocache = "catalogs/exoplanets.json";
+    std::stringstream lmss;
+    lmss << "Loading exoplanets from NASA via TAP...";
+    mtx.lock();
+    loading_msg = lmss.str();
+    mtx.unlock();
+
+    if (file_exists(exocache)) // && file_age(exocache) < 7*86400)
+    {
+        do_download = false;
+        std::cout << "File age: " << file_age(exocache) << " seconds." << std::endl;
+        std::fstream fs(exocache, std::ios::in);
+        if (!fs) return 0;
+        fs >> planets_array;
+        fs.close();
+    }
+
+    if (do_download)
+    {
+        // Constructing the synchronous TAP ADQL query targeting the pscomppars table
+        // Selects core planetary and fallback/stellar fields
+        std::string url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query="
+                        "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,"
+                        "pl_bmasse,pl_massj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
+                        "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
+                        "from+pscomppars+order+by+pl_name+asc"
+                        "&format=json";
+
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L); // Generous timeout for large dataset
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK)
+        {
+            std::cerr << "TAP Query failed via curl: " << curl_easy_strerror(res) << std::endl;
+            return 0;
+        }
+        planets_array = json::parse(readBuffer);
+    }
+
+    try
+    {
+        if (!planets_array.is_array())
+        {
+            std::cerr << "Unexpected JSON structural response format." << std::endl << std::endl << readBuffer << std::endl;
+            return 0;
+        }
+
+        if (do_download)
+        {
+            std::fstream fs(exocache, std::ios::out);
+            if (fs)
+            {
+                fs << planets_array.dump(4);
+                fs.close();
+            }
+        }
+
+        for (const auto& row : planets_array)
+        {
+            // Guard against overflowing the global registry tracking array
+            if (ncelobjs >= MAX_CELOBJS)
+            {
+                std::cerr << "Warning: Maximum sequential object allocation threshold reached (" << MAX_CELOBJS << ")." << std::endl;
+                break;
+            }
+
+            // Ensure baseline primary keys exist
+            if (!row.contains("pl_name") || row["pl_name"].is_null() ||
+                !row.contains("hostname") || row["hostname"].is_null())
+            {
+                continue;
+            }
+
+            std::string pl_name = row["pl_name"].get<std::string>();
+            std::string hostname = row["hostname"].get<std::string>();
+
+            std::string hd_name, hip_name;
+
+            try { hd_name  = row.contains("hd_name" ) ? row["hd_name" ].get<std::string>() : ""; } catch (...) { ; }
+            try { hip_name = row.contains("hip_name") ? row["hip_name"].get<std::string>() : ""; } catch (...) { ; }
+
+            // 1. Resolve host star context: check if it already exists in global array
+            Star* host_star = nullptr;
+            if (!host_star && hd_name.size() > 2)
+            {
+                int HD = atoi(&(hd_name.c_str()[2]));
+                if (hdcache[HD]) host_star = hdcache[HD];
+            }
+            if (!host_star && hip_name.size() > 3)
+            {
+                int HIP = atoi(&(hip_name.c_str()[2]));
+                if (hipcache[HIP]) host_star = hipcache[HIP];
+            }
+            if (!host_star) for (int i = 0; i < ncelobjs; ++i)
+            {
+                if (cels[i] && cels[i]->type == star && std::string(cels[i]->name) == hostname)
+                {
+                    host_star = (Star*)cels[i];
+                    break;
+                }
+            }
+
+            // If the star doesn't exist, instantiate it
+            if (!host_star)
+            {
+                if (ncelobjs >= MAX_CELOBJS) continue;
+
+                host_star = new Star();
+                host_star->type = star;
+                snprintf(host_star->name, sizeof(host_star->name), "%s", hostname.c_str());
+
+                double sy_dist = 0, ra = 0, dec = 0;
+                if (row.contains("sy_dist") && !row["sy_dist"].is_null()) sy_dist = row["sy_dist"].get<double>() * parsec;
+                if (row.contains("ra" ) && !row["ra" ].is_null()) ra  = row["ra" ].get<double>() * fiftyseventh;
+                if (row.contains("dec") && !row["dec"].is_null()) dec = row["dec"].get<double>() * fiftyseventh;
+
+                if (sy_dist && (ra || dec))
+                {
+                    host_star->distance = sy_dist;
+                    host_star->right_ascension = ra;
+                    host_star->declination = dec;
+                    host_star->update_location(simnow);
+                    host_star->distance_known = true;
+                }
+                else
+                {
+                    std::cerr << "WARNING: Missing ra/dec or distance for " << hostname << std::endl;
+                    delete host_star;
+                    continue;
+                }
+
+                if (row.contains("st_lum") && !row["st_lum"].is_null())
+                {
+                    double lum = pow(10, row["st_lum"].get<double>());
+                    if (lum) host_star->absolute_magnitude = 4.85 - log(lum) / log(magnbase);
+                }
+                if (row.contains("st_teff") && !row["st_teff"].is_null())
+                {
+                    host_star->estimate_BV(row["st_teff"].get<double>());
+                }
+                if (row.contains("sy_vmag") && !row["sy_vmag"].is_null())
+                {
+                    host_star->apparent_magnitude = row["sy_vmag"].get<double>();
+                }
+                else host_star->apparent_magnitude = 10;
+
+                if (isinf(host_star->absolute_magnitude))
+                {
+                    double intrinsic_brightness = pow(magnbase, -host_star->apparent_magnitude) * pow(fmax(AU, host_star->distance) / parsec / 10, 2);
+                    host_star->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+                }
+
+                append_cel(host_star);
+            }
+
+            if (row.contains("st_mass") && !row["st_mass"].is_null())
+            {
+                host_star->mass = row["st_mass"].get<double>() * solar_mass;
+            }
+            if (row.contains("st_rad") && !row["st_rad"].is_null())
+            {
+                host_star->volumetric_mean_radius = row["st_rad"].get<double>() * solar_radius;
+            }
+            if (row.contains("st_spectype") && !row["st_spectype"].is_null())
+            {
+                strcpy(host_star->spectral_type, row["st_spectype"].get<std::string>().c_str());
+            }
+            if (row.contains("st_rotp") && !row["st_rotp"].is_null())
+            {
+                host_star->sidereal_rotational_period = row["st_rotp"].get<double>() * oneday;
+            }
+
+            // 2. Instantiate and fill target Planet properties
+            Planet* new_planet = new Planet();
+            snprintf(new_planet->name, sizeof(new_planet->name), "%s", pl_name.c_str());
+            new_planet->cenobj = host_star;
+
+            double inclination = half_pi;
+            if (row.contains("pl_orbincl") && !row["pl_orbincl"].is_null())
+            {
+                inclination = row["pl_orbincl"].get<double>() * fiftyseventh;
+            }
+
+            if (row.contains("pl_massj") && !row["pl_massj"].is_null())
+            {
+                new_planet->mass = row["pl_massj"].get<double>() * jupiter_mass;
+            }
+            else if (row.contains("pl_bmasse") && !row["pl_bmasse"].is_null())
+            {
+                new_planet->mass = row["pl_bmasse"].get<double>() * earth_mass;
+            }
+            else if (row.contains("pl_msinij") && !row["pl_msinij"].is_null())
+            {
+                new_planet->mass = row["pl_msinij"].get<double>() * jupiter_mass / sin(inclination);
+            }
+            else if (row.contains("pl_msinie") && !row["pl_msinie"].is_null())
+            {
+                new_planet->mass = row["pl_msinie"].get<double>() * earth_mass / sin(inclination);
+            }
+
+            if (row.contains("pl_radj") && !row["pl_radj"].is_null())
+            {
+                new_planet->volumetric_mean_radius = row["pl_radj"].get<double>() * jupiter_radius;
+            }
+            else if (row.contains("pl_rade") && !row["pl_rade"].is_null())
+            {
+                new_planet->volumetric_mean_radius = row["pl_rade"].get<double>() * earth_radius;
+            }
+
+            if (row.contains("pl_trueobliq") && !row["pl_trueobliq"].is_null())
+            {
+                new_planet->obliquity = row["pl_trueobliq"].get<double>() * fiftyseventh;
+            }
+
+            // 3. Allocate and map the planetary Orbit data structure
+            Orbit* orb = new Orbit();
+            orb->center = host_star;
+            orb->center_name = host_star->name;
+
+            if (row.contains("pl_orbper") && !row["pl_orbper"].is_null())
+            {
+                orb->period = row["pl_orbper"].get<double>() * oneday;
+            }
+            if (row.contains("pl_orbsmax") && !row["pl_orbsmax"].is_null())
+            {
+                orb->semimajor_axis = row["pl_orbsmax"].get<double>() * AU;
+            }
+            if (row.contains("pl_orbeccen") && !row["pl_orbeccen"].is_null())
+            {
+                orb->eccentricity = row["pl_orbeccen"].get<double>();
+            }
+            if (row.contains("pl_orblper") && !row["pl_orblper"].is_null())
+            {
+                orb->arg_periapsis = row["pl_orblper"].get<double>() * fiftyseventh;
+            }
+
+            new_planet->orbit = orb;
+            new_planet->update_location(simnow);
+
+            // 4. Run automated estimation/classification fallbacks provided in class declarations
+            new_planet->classify();
+            if (new_planet->mass > 0 && new_planet->volumetric_mean_radius == 0)
+            {
+                new_planet->estimate_radius();
+            }
+            new_planet->estimate_albedo_and_absmagn();
+            new_planet->estimate_rotation();
+
+            // Append planet object to global array
+            append_cel(new_planet);
+            result++;
+            host_star->has_planets++;
+            if (new_planet->is_in_con_HZ()) host_star->has_hz_planets++;
+        }
+    }
+    catch (const json::parse_error& e)
+    {
+        std::cerr << "JSON Parsing Exception encountered: " << e.what() << std::endl;
+        return 0;
+    }
+
+    return result;
 }
