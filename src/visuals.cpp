@@ -1333,7 +1333,7 @@ void draw_cloudy_sky()
     rgb.b *= is_day;
 
     ImU32 imc = IM_COL32(rgb.r, rgb.g, rgb.b, (dragging ? 128 : 255)*cloudiness);
-    if (hz_y > 0 && hz_y < dispcy*28) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
+    if (hz_y > 0 && (hz_y < dispcy*28 || altitude > 1.57)) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
 
     #if 0
     if (!skyclouds.size())
