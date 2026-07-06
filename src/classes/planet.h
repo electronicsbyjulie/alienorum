@@ -16,6 +16,7 @@ namespace alienorum
         double albedo;
         double surface_pressure = 0;                        // For gas giants, pressure at the top of the cloud deck if known.
         double atmospheric_tau  = 0;                        // Earth value. How well the atmosphere absorbs thermal infrared. Thickness dependent.
+        double atmospheric_particulates = 0;                // Colorimetric. How much of the sky color repeats the surface color vs. Rayleigh scattering.
         double opposition_surge = 0;                        // TODO: A full moon is 13 times as bright, or 2.7 magnitudes brighter, compared to a quarter moon.
         double amt_lit = 0;
         double J2 = 0;

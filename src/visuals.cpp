@@ -1093,7 +1093,7 @@ void draw_horizon()
 
             double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
             ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
-            for (j = 0; j < 16; j++) if (draw_marker[j])
+            if (show_grid) for (j = 0; j < 16; j++) if (draw_marker[j])
             {
                 ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[j]);
                 if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[j]);
@@ -1109,6 +1109,10 @@ void draw_sky_gradient()
         Planet *p = (Planet*)cels[whereami];
         if (p->surface_pressure)
         {
+            double Rayleigh = 1.0 - p->atmospheric_particulates;
+            Color pcol = Color::color_from_magnitude_indices(0, p->BV_color);
+            pcol.normalize(1);
+
             float city_lights = 0;
             if (cels[whereami]->night_map)
             {
@@ -1119,9 +1123,9 @@ void draw_sky_gradient()
             int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
-            double  r = fmin(1, 0.37 * skylight),
-                    g = fmin(1, 0.58 * skylight),
-                    b = fmin(1, 0.81 * skylight),
+            double  r = fmin(1, (Rayleigh * 0.37 + p->atmospheric_particulates * pcol.red  ) * skylight),
+                    g = fmin(1, (Rayleigh * 0.58 + p->atmospheric_particulates * pcol.green) * skylight),
+                    b = fmin(1, (Rayleigh * 0.81 + p->atmospheric_particulates * pcol.blue ) * skylight),
                     a = fmin(1, pow(p->surface_pressure, 0.1) * skylight);
             for (int y = fmin(hz_y, dispcy*2-1); y>=0; y--)
             {
@@ -1318,8 +1322,17 @@ void draw_cloudy_sky()
     if (!cel->cloud_map) return;
 
     RGB3Byte rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
-    double cloudiness = sqrt(rgb.luminance()/255);
+    double cloudiness = sqrt(fmin(1,rgb.luminance()/192));
+    double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
+    rgb.r *= is_day;
+    rgb.g *= is_day;
+    rgb.b *= is_day;
+
+    ImU32 imc = IM_COL32(rgb.r, rgb.g, rgb.b, (dragging ? 128 : 255)*cloudiness);
+    if (hz_y > 0) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
+
+    #if 0
     if (!skyclouds.size())
     {
         // TODO:
@@ -1337,4 +1350,5 @@ void draw_cloudy_sky()
 
     int i, n = skyclouds.size();
     for (i=0; i<n; i++) skyclouds[i].draw(cel->volumetric_mean_radius);
+    #endif
 }

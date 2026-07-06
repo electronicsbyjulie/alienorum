@@ -462,11 +462,11 @@ ImVec2 alienorum::Cloud::find_draw_coordinates(double planet_radius)
     Point viewer_location = Point::from_ra_dec(viewer_lon, viewer_lat, planet_radius);
     Point cloud_location = Point::from_ra_dec(longitude, latitude, core_dist);
     Point rel = cloud_location - viewer_location;
-    Rotation viewer_plane = align_points_3d(yaxis, viewer_location, center);
-    rel = rotate3D(rel, center, viewer_plane.v, viewer_plane.a);
+    Rotation viewer_plane = align_points_3d(viewer_location, yaxis, center);
+    Point relrot = rotate3D(rel, center, viewer_plane.v, viewer_plane.a);
     distance = rel.magnitude();
 
-    Cartesian2D cart(rel, azimuth, altitude, zoom);
+    Cartesian2D cart(relrot, azimuth, altitude, zoom);
 
     ImGuiIO& io = ImGui::GetIO();
     double dispcx = io.DisplaySize.x * 0.5, dispcy = io.DisplaySize.y * 0.5;
@@ -476,12 +476,14 @@ ImVec2 alienorum::Cloud::find_draw_coordinates(double planet_radius)
 
 void alienorum::Cloud::draw(double planet_radius)
 {
-    double dw = width / distance * zoom, dh = height / distance * zoom;
     ImVec2 drawcen = find_draw_coordinates(planet_radius);
     if (drawcen.x < -1000 || drawcen.y < -500) return;
 
     ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
     if (!draw_list) return;
+
+    ImGuiIO& io = ImGui::GetIO();
+    double dw = width / distance * io.DisplaySize.x * zoom, dh = height / distance * io.DisplaySize.x * zoom;
 
     // Seed pseudo-randomness based on position so the cloud shape is stable across frames
     srand(seed);
@@ -533,7 +535,7 @@ void alienorum::Cloud::draw(double planet_radius)
     for (int i = 0; i < highlight_count; ++i)
     {
         // Biased toward the top peaks of the cloud
-        float off_x = ((rand() % 100) / 100.0f - 0.5f) * width * 0.6f;
+        float off_x = ((rand() % 100) / 100.0f - 0.5f) * dw * 0.6f;
         float off_y = -dh * 0.3f - ((rand() % 100) / 100.0f) * dh * 0.3f; 
 
         // Smaller, rounder puffs for the "silver lining" effect

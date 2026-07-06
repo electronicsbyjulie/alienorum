@@ -1277,6 +1277,19 @@ void draw_objedit_window(ImGuiIO& io)
                 show_taucalc = !show_taucalc;
             }
 
+            double edit_particulates = p->atmospheric_particulates;
+            ImGui::Text("%s", "Particulates");
+            ImGui::SameLine(col1);
+            ImGui::SetNextItemWidth(txtwid);
+            if (ImGui::InputDouble("##edtpartic", &edit_particulates, 0, 0, "%.6f"))
+            {
+                p->atmospheric_particulates = edit_particulates;
+                viewchanged = true;
+                cel->user_edited = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", "How much the sky color resembles the ground color.");
+
             if (show_taucalc)
             {
                 double col15 = col2 - 0.8*txtwid;
