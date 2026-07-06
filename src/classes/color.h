@@ -2,9 +2,15 @@
 #ifndef _Color
 #define _Color
 
+#include <cmath>
+#include <vector>
+#include <cstdlib>
 #include "imgui/imgui.h"
 
 #define drawn_cache_split 25
+#define _lum_r_comp 0.29
+#define _lum_g_comp 0.56
+#define _lum_b_comp 0.15
 
 namespace alienorum
 {
@@ -24,6 +30,8 @@ namespace alienorum
 
         RGB3Byte() { r=g=b=0; }
         RGB3Byte(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
+
+        inline double luminance() { return _lum_r_comp*r + _lum_g_comp*g + _lum_b_comp*b; }
     };
 
     class Color
@@ -36,14 +44,32 @@ namespace alienorum
         double luminance();
         static Color color_from_magnitude_indices(double Vmag, double BV);
         static Color color_from_magnitude_indices(double Vmag, double BV, double VR);
+
         static RGB3Byte rgb_from_color(Color c, double multiplier = 1);
         static RGB3Byte disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
         json to_json();
         bool from_json(json j);
+
         Color() {}
         Color(double r, double g, double b) { red=r; green=g; blue=b; }
+
+        void normalize(double level);
+        void saturate(double saturation);
+    };
+
+    class ColorCorrection
+    {
+        protected:
+        double _rgoal_over_mean=0, _ggoal_over_mean=0, _bgoal_over_mean=0;
+
+        public:
+        Color mean = Color(1,1,1);
+        Color goal = Color(1,1,1);
+        double saturation = 1;
+
+        Color correct(Color input, double saturation = 1);
     };
 
     class AlienStyle
@@ -89,6 +115,29 @@ namespace alienorum
         ImVec4 text_cursor_color = ImVec4(0.90f, 0.05f, 0.08f, 1.00f);
 
         bool load(std::string theme_name);
+    };
+
+    struct CloudParticle
+    {
+        ImVec2 offset;
+        ImVec2 radius;
+        ImU32 color;
+        float rotation;
+    };
+
+    struct Cloud
+    {
+        double latitude;
+        double longitude;
+        double core_dist;                   // Elevation of cloud plus distance from surface to planet center.
+        double width;                       // Meters.
+        double height;                      // Meters.
+        double distance;                    // Modified by code; do not edit.
+        RGB3Byte color;
+        unsigned int seed;
+
+        ImVec2 find_draw_coordinates(double planet_radius);
+        void draw(double planet_radius);
     };
 }
 

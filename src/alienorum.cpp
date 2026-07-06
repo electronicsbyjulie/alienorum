@@ -1,6 +1,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_IMPLEMENTATION
+#include <queue>
 #include "include/stb/stb_image.h"
 #include "globals.h"
 #include "loaders.h"
@@ -331,12 +332,19 @@ int main (int argc, char** argv)
         alienr = 0.003921569 * ((alien_color & 0xff)),
         aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
+    std::time_t now = std::time(nullptr);
+    struct tm *loc_time = std::localtime(&now);
+    bool nlo = (loc_time->tm_mon == 3 && loc_time->tm_mday == 1);
+    ImVec2 ovni(2061, 123), nlorad(54, 29);
+    double dxovni = -1.3, dyovni = -0.0029;
+    std::deque<ImVec2> trail;
+
     SDL_Surface* surface = IMG_Load("assets/blank.png");
     SDL_Cursor* empty_cursor = nullptr;
     if (surface)
     {
         // 0, 0 is the top-left of the cursor (the click point)
-        empty_cursor = SDL_CreateColorCursor(surface, 0, 0); 
+        empty_cursor = SDL_CreateColorCursor(surface, 0, 0);
         SDL_FreeSurface(surface);
     }
     SDL_Cursor* default_cursor = SDL_GetDefaultCursor();
@@ -478,6 +486,7 @@ int main (int argc, char** argv)
             if (show_consln) draw_cons_lines();
             draw_objects();
             draw_horizon();
+            draw_cloudy_sky();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
@@ -649,6 +658,30 @@ int main (int argc, char** argv)
             argsfs = false;
         }
 
+            if (nlo)
+            {
+                n = trail.size();
+                if (n > 54) trail.pop_front();
+                for (i=0; i<n; i++)
+                {
+                    if (trail[i].x && trail[i].y)
+                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(trail[i], nlorad, IM_COL32(0, 255, 0, i*0.2+1), 85);
+                }
+
+                ImGui::GetBackgroundDrawList()->AddEllipseFilled(ovni, nlorad, IM_COL32(0, 255, 0, 255), 85);
+                ImVec2 vec2 = ovni;
+                vec2.x += frand (-5, 5);
+                vec2.y += frand (-5, 5);
+                trail.push_back(vec2);
+                ovni.x += dxovni;
+                ovni.y += dyovni;
+
+                dxovni += frand (-0.01, 0.01);
+                dyovni += frand (-0.01, 0.01);
+
+                if (ovni.x < -200) nlo = false;
+            }
+
         // std::cout << ImGui::GetBackgroundDrawList()->_VtxCurrentIdx << " _VtxCurrentIdx." << std::endl << std::flush;
 
         // More code copied from the ImGui example:
@@ -666,7 +699,7 @@ int main (int argc, char** argv)
             if (io.MousePos.x != lmx || io.MousePos.y != lmy) frames_without_mousemove = 0;
             else frames_without_mousemove++;
 
-            if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude() || is_mouse_over_window)
+            if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude() || is_mouse_over_window || nlo)
                 && frame_dur > (1.0/target_frame_rate))
             {
                 timeout_ms *= 0.333;

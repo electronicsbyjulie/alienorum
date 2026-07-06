@@ -22,6 +22,8 @@ void draw_sky_gradient();
 void draw_cons_lines();
 void draw_mouse_cursor(ImGuiIO &io);
 
+void draw_cloudy_sky();
+
 #define max_bloomrad 10
 #define global_font_size (8.647 * 1.776)
 

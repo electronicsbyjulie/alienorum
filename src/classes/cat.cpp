@@ -3094,6 +3094,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max)
             try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
             try { pl.at("Obliquity").get_to(p->obliquity); p->obliquity *= fiftyseventh; } catch (...) { ; }
             try { pl.at("OrbitPeriod").get_to(p->orbit->period); } catch (...) { ; }
+            try { pl.at("Particulates").get_to(p->atmospheric_particulates); } catch (...) { ; }
             try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
             try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
             try { pl.at("SurfacePressure").get_to(p->surface_pressure); } catch (...) { ; }
