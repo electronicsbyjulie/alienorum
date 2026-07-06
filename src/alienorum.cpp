@@ -486,6 +486,7 @@ int main (int argc, char** argv)
             if (show_consln) draw_cons_lines();
             draw_objects();
             draw_horizon();
+            draw_cloudy_sky();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
