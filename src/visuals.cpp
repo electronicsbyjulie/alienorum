@@ -1081,16 +1081,19 @@ void draw_horizon()
         CelestialObject *cel = cels[whereami];
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
+
+        Map *map = cel->surf_map;
+        RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
+        rgb.r *= is_day;
+        rgb.g *= is_day;
+        rgb.b *= is_day;
+
+        double hz_draw_y = (hz_y > dispcy*28 && altitude < 0) ? 0 : hz_y;
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_draw_y), ImVec2(dispcx*2, dispcy*2),
+            rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
+
         if (hz_y < dispcy*2)
         {
-            Map *map = cel->surf_map;
-            RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
-            rgb.r *= is_day;
-            rgb.g *= is_day;
-            rgb.b *= is_day;
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_y), ImVec2(dispcx*2, dispcy*2),
-                rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
-
             double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
             ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
             if (show_grid) for (j = 0; j < 16; j++) if (draw_marker[j])
@@ -1330,7 +1333,7 @@ void draw_cloudy_sky()
     rgb.b *= is_day;
 
     ImU32 imc = IM_COL32(rgb.r, rgb.g, rgb.b, (dragging ? 128 : 255)*cloudiness);
-    if (hz_y > 0) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
+    if (hz_y > 0 && hz_y < dispcy*28) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
 
     #if 0
     if (!skyclouds.size())
