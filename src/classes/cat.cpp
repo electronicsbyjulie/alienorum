@@ -2280,13 +2280,21 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
             if (pnodes[i])
             {
-                pmeannode = (m ? (pmeannode * (double)m/(m+1)) : pmeannode) + pnodes[i] * sini / (m+sini);
-                m+=sini;
+                double node = pnodes[i];
+                double mnew = m+sini;
+                if (m)
+                {
+                    if (node > _pi && pmeannode < _pi) node -= _pi*2;
+                    else if (node < _pi && pmeannode > _pi) node += _pi*2;
+                }
+                pmeannode = (m ? (pmeannode * (double)m/mnew) : pmeannode) + node * sini / mnew;
+                m = mnew;
             }
             std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
         }
 
         if (l) pmeanincl /= l;
+        if (pmeannode < 0) pmeannode += _pi*2;
 
         n = cincls.size();
         double cmeanincl=0, cmeannode=0;
@@ -2302,8 +2310,15 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
             if (cnodes[i])
             {
-                cmeannode = (m ? (cmeannode * (double)m/(m+1)) : cmeannode) + cnodes[i] * sini / (m+sini);
-                m+=sini;
+                double node = cnodes[i];
+                double mnew = m+sini;
+                if (m)
+                {
+                    if (node > _pi && cmeannode < _pi) node -= _pi*2;
+                    else if (node < _pi && cmeannode > _pi) node += _pi*2;
+                }
+                cmeannode = (m ? (cmeannode * (double)m/mnew) : cmeannode) + node * sini / mnew;
+                m = mnew;
             }
             std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
         }
