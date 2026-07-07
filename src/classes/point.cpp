@@ -372,7 +372,7 @@ void incl_and_node_from_system_plane(Rotation plane, double& out_inclination, do
     out_ascending_node = std::atan2(dot_binormal, dot_normal);
 
     // If zero inclination, set zero node. Otherwise normalize node to 0-360 degrees.
-    if (!out_inclination) out_ascending_node = 0;
+    if (fabs(sin(out_inclination)) < 1e-3) out_ascending_node = 0;
     else if (out_ascending_node < 0.0)
     {
         out_ascending_node += 2.0 * _pi;
@@ -405,16 +405,6 @@ void elements_in_new_reference_plane(Rotation original, Rotation reference, doub
     Rotation tmp = align_points_3d(pole, refpole, center);
     out_new_inclination = tmp.a;
     out_new_node = find_angle_along_vector(zaxis, tmp.v, center, yaxis);
-}
-
-void incl_node_from_plane(Rotation plane, Point hloc, double &i, double &n)
-{
-    Point pole = rotate3D(yaxis, center, plane.v, plane.a);
-    Point projected = hloc + pole;
-    i = find_3D_angle(center, projected, hloc);
-    Rotation rot = align_points_3d(hloc, zaxis, center);
-    Point npole = rotate3D(pole, center, rot.v, rot.a);
-    n = find_angle_along_vector(npole, xaxis, center, zaxis) + _pi;
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)

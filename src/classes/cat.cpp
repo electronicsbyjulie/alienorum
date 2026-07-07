@@ -294,7 +294,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         strcpy(s->Gliese, trim(build_name).c_str());
         strcpy(s->name, s->Gliese);
-        if (!strcmp(s->Gliese, "GJ 324 B")) strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
+        if (!strcmp(s->Gliese, "GJ 324 B"))
+        {
+            strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
+            s->has_custom_name = true;
+        }
         if (!strcmp(s->Gliese, "GJ 22 AC"))
         {
             s->HIP = 2552;
@@ -2117,6 +2121,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+#define _debug_exoplanet_inclinations 1
 void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids)
 {
     std::map<std::string, std::string> planet_names;
@@ -2246,10 +2251,10 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
 
         if (s->multisys)
         {
-            for (char c = 'B'; c <= 'Z'; c++)
+            for (char c = 'A'; c <= 'Z'; c++)
             {
                 Star *comp = s->multisys->get_member(c);
-                if (comp && comp->orbit)
+                if (comp && comp->orbit && comp->orbit->center == s)
                 {
                     cincls.push_back(comp->orbit->heliocentric_inclination);
                     cnodes.push_back(comp->orbit->heliocentric_node);
@@ -2257,12 +2262,14 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
         }
 
+        #if _debug_exoplanet_inclinations
         std::cout << s->name;
         if (s->HD) std::cout << " HD " << s->HD;
         std::cout << std::endl;
 
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
         std::cout << "Star:   " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
+        #endif
 
         n = pincls.size();
         int l=0;
@@ -2291,7 +2298,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 pmeannode = (m ? (pmeannode * (double)m/mnew) : pmeannode) + node * sini / mnew;
                 m = mnew;
             }
+            #if _debug_exoplanet_inclinations
             std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
+            #endif
         }
 
         if (l) pmeanincl /= l;
@@ -2321,7 +2330,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 cmeannode = (m ? (cmeannode * (double)m/mnew) : cmeannode) + node * sini / mnew;
                 m = mnew;
             }
+            #if _debug_exoplanet_inclinations
             std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
+            #endif
         }
 
         if (l) cmeanincl /= l;
@@ -2353,6 +2364,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             for (i=0; i<n; i++) if (!cnodes[i]) cnodes[i] = sysnode;
         }
 
+        #if _debug_exoplanet_inclinations
         std::cout << "Filled in:" << std::endl;
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
         std::cout << "Star:   " << (stincl*fiftyseven ) << "," << (stnode*fiftyseven ) << std::endl;
@@ -2370,9 +2382,38 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         std::cout << "Double check: " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
 
         std::cout << std::endl << std::endl;
+        #endif
 
         // TODO:
     }
+}
+
+bool CatalogReader::worth_searching(std::string star_name)
+{
+    if (!strcmp(star_name.substr(0, 5).c_str(), "2MASS")) return false;
+    if (!strcmp(star_name.substr(0, 6).c_str(), "Kepler"))
+        return false;
+    if (!strcmp(star_name.substr(0, 5).c_str(), "CoRoT")) return false;
+    if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) return false;
+    if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) return false;
+    if (!strcmp(star_name.substr(0, 4).c_str(), "Wolf")) return false;
+    if (!strcmp(star_name.c_str(), "Teegarden's Star")) return false;
+
+    if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) return true;
+    if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
+            || (star_name.c_str()[0] >= 'a' && star_name.c_str()[0] <= 'z')
+            )
+            && star_name.c_str()[1] >= 'a' && star_name.c_str()[1] <= 'z'
+            && star_name.c_str()[2] >= 'a' && star_name.c_str()[2] <= 'z'
+            )
+        return true;
+    int l = star_name.size();
+    if ((star_name.c_str()[0] >= '1' && star_name.c_str()[0] <= '9')
+            && (star_name.c_str()[l-1] >= 'A' && star_name.c_str()[l-1] <= 'z')
+            )
+        return true;
+
+    return false;
 }
 
 int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
@@ -2483,7 +2524,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         }
         else if (buffer[0] != '#')
         {
-            int j=-1, l, HD, HIP;
+            int j=-1, HD, HIP;
             Star *s = nullptr;
             bool s_is_new = false;
             searched = false;
@@ -2506,7 +2547,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 else if (i == col_stnm)
                 {
                     star_name = field;
-                    l = star_name.size();
                 }
                 else if (i == col_hd)
                 {
@@ -2532,31 +2572,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                             }
                         }
 
-                        bool do_search = false;      // Full search is expensive. Only search if good chance of finding it (Gliese, named stars).
-
-                        if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) do_search = true;
-                        else if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
-                                || (star_name.c_str()[0] >= 'a' && star_name.c_str()[0] <= 'z')
-                                )
-                                && star_name.c_str()[1] >= 'a' && star_name.c_str()[1] <= 'z'
-                                && star_name.c_str()[2] >= 'a' && star_name.c_str()[2] <= 'z'
-                                )
-                            do_search = true;
-                        else if ((star_name.c_str()[0] >= '1' && star_name.c_str()[0] <= '9')
-                                && (star_name.c_str()[l-1] >= 'A' && star_name.c_str()[l-1] <= 'z')
-                                )
-                            do_search = true;
-
                         if (!strcmp(star_name.c_str(), "55 Cnc B")) star_name = "GJ 324 B";
-
-                        if (!strcmp(star_name.substr(0, 5).c_str(), "2MASS")) do_search = false;
-                        if (!strcmp(star_name.substr(0, 6).c_str(), "Kepler"))
-                            do_search = false;
-                        if (!strcmp(star_name.substr(0, 5).c_str(), "CoRoT")) do_search = false;
-                        if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) do_search = false;
-                        if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) do_search = false;
-                        if (!strcmp(star_name.substr(0, 4).c_str(), "Wolf")) do_search = false;
-                        if (!strcmp(star_name.c_str(), "Teegarden's Star")) do_search = false;
+                        bool do_search = worth_searching(star_name);
 
                         if (!s && do_search)
                         {
@@ -3362,13 +3379,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
                 int HIP = atoi(&(hip_name.c_str()[2]));
                 if (hipcache[HIP]) host_star = hipcache[HIP];
             }
-            if (!host_star) for (int i = 0; i < ncelobjs; ++i)
+            if (!host_star && worth_searching(hostname))
             {
-                if (cels[i] && cels[i]->type == star && std::string(cels[i]->name) == hostname)
-                {
-                    host_star = (Star*)cels[i];
-                    break;
-                }
+                if (!strcmp(hostname.c_str(), "55 Cnc B")) hostname = "GJ 324 B";
+                int i = find_object(hostname.c_str(), true);
+                if (i>0) host_star = (Star*)cels[i];
             }
 
             // If the star doesn't exist, instantiate it
