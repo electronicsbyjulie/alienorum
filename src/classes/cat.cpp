@@ -2212,24 +2212,27 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         {
             Planet *p = (Planet*)cels[row[i]];
             std::string designation = p->name;
+
             if (planet_incls.find(designation) != planet_incls.end())
-                pincls.push_back(planet_incls[designation]);
+                pincls.push_back(planet_incls[designation] * fiftyseventh);
             else if (p->orbit) pincls.push_back(p->orbit->inclination);
+
             if (planet_nodes.find(designation) != planet_nodes.end())
-                pnodes.push_back(planet_nodes[designation]);
+                pnodes.push_back(planet_nodes[designation] * fiftyseventh);
+            else pnodes.push_back(0);
 
             if (planet_names.find(designation) != planet_names.end()) strcpy(p->name, planet_names[designation].c_str());
             if (planet_types.find(designation) != planet_types.end())
             {
-                const char* gaslighting_asshole = planet_types[designation].c_str();
-                if (!strcmp(gaslighting_asshole, "gas_giant")) p->type = gas_giant;
-                else if (!strcmp(gaslighting_asshole, "hot_jupiter")) p->type = hot_jupiter;
-                else if (!strcmp(gaslighting_asshole, "steam_giant")) p->type = steam_giant;
-                else if (!strcmp(gaslighting_asshole, "rocky")) p->type = rocky;
-                else if (!strcmp(gaslighting_asshole, "lavaworld")) p->type = lavaworld;
-                else if (!strcmp(gaslighting_asshole, "ice_giant")) p->type = ice_giant;
-                else if (!strcmp(gaslighting_asshole, "icy")) p->type = icy;
-                else if (!strcmp(gaslighting_asshole, "waterworld")) p->type = waterworld;
+                const char* ihavetomove = planet_types[designation].c_str();
+                if (!strcmp(ihavetomove, "gas_giant")) p->type = gas_giant;
+                else if (!strcmp(ihavetomove, "hot_jupiter")) p->type = hot_jupiter;
+                else if (!strcmp(ihavetomove, "steam_giant")) p->type = steam_giant;
+                else if (!strcmp(ihavetomove, "rocky")) p->type = rocky;
+                else if (!strcmp(ihavetomove, "lavaworld")) p->type = lavaworld;
+                else if (!strcmp(ihavetomove, "ice_giant")) p->type = ice_giant;
+                else if (!strcmp(ihavetomove, "icy")) p->type = icy;
+                else if (!strcmp(ihavetomove, "waterworld")) p->type = waterworld;
             }
             // TODO: if (planet_temps.find(designation) != planet_temps.end())
             if (planet_bvcols.find(designation) != planet_bvcols.end()) p->BV_color = planet_bvcols[designation];
@@ -2253,6 +2256,93 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 }
             }
         }
+
+        std::cout << s->name;
+        if (s->HD) std::cout << " HD" << s->HD;
+        std::cout << std::endl;
+
+        std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
+        std::cout << "Star: " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
+
+        n = pincls.size();
+        int l=0, m=0;
+        double pmeanincl=0, pmeannode=0;
+        for (i=0; i<n; i++)
+        {
+            // TODO: account for retrograde inclinations e.g. 30deg is coplanar with 150deg, and nodes near 0 and 360 deg.
+            if (pincls[i])
+            {
+                pmeanincl += pincls[i];
+                l++;
+            }
+            if (pnodes[i])
+            {
+                pmeannode += pnodes[i];
+                m++;
+            }
+            std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
+        }
+
+        if (l) pmeanincl /= l;
+        if (m) pmeannode /= m;
+
+        n = cincls.size();
+        double cmeanincl=0, cmeannode=0;
+        l=m=0;
+        for (i=0; i<n; i++)
+        {
+            if (cincls[i])
+            {
+                cmeanincl += cincls[i];
+                l++;
+            }
+            if (cnodes[i])
+            {
+                cmeannode += cnodes[i];
+                m++;
+            }
+            std::cout << "Comp: " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
+        }
+
+        if (l) cmeanincl /= l;
+        if (m) cmeannode /= m;
+
+        std::cout << std::endl;
+
+        // planets > system > star > comps
+        if (pmeanincl && !sysincl) sysincl = pmeanincl;
+        if (!sysincl && stincl) sysincl = stincl;
+        if (cmeanincl && !sysincl) sysincl = cmeanincl;
+        if (sysincl)
+        {
+            if (!stincl) stincl = sysincl;
+            n = pincls.size();
+            for (i=0; i<n; i++) if (!pincls[i] || fabs(pincls[i] - half_pi) < 0.0000001) pincls[i] = sysincl;
+            n = cincls.size();
+            for (i=0; i<n; i++) if (!cincls[i]) cincls[i] = sysincl;
+        }
+
+        if (pmeannode && !sysnode) sysnode = pmeannode;
+        if (!sysnode && stnode) sysnode = stnode;
+        if (cmeannode && !sysnode) sysnode = cmeannode;
+        if (sysnode)
+        {
+            if (!stnode) stnode = sysnode;
+            n = pnodes.size();
+            for (i=0; i<n; i++) if (!pnodes[i]) pnodes[i] = sysnode;
+            n = cnodes.size();
+            for (i=0; i<n; i++) if (!cnodes[i]) cnodes[i] = sysnode;
+        }
+
+        std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
+        std::cout << "Star: " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
+
+        n = pincls.size();
+        for (i=0; i<n; i++) std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
+        n = cincls.size();
+        for (i=0; i<n; i++) std::cout << "Comp: " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
+
+        std::cout << std::endl << std::endl;
 
         // TODO:
     }
@@ -2581,7 +2671,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     }
                 }
 
-                p->orbit->inclination = p_incl;             // For now.
+                p->orbit->inclination = p_incl * fiftyseventh;             // For now.
             }
 
             if (s && p && p->orbit->period)
