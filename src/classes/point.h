@@ -126,6 +126,7 @@ double interpolate_angles(double theta1, double theta2, double coeff1);
 Rotation align_points_3d(Point point, Point align, Point center);
 Point rotate3D(Point point, Point source, Point axis, double theta);
 Rotation system_plane_from_incl_and_node(double inclination, double node, Point system_center = Point(0,0,0));
+void incl_and_node_from_system_plane(Rotation plane, double &out_inclination, double &out_ascending_node, Point system_center);
 double distance(ImVec2 a, ImVec2 b);
 Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation original, double helioincl);
 void elements_in_new_reference_plane(Rotation original, Rotation reference, double& out_new_inclination, double& out_new_node);

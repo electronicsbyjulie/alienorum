@@ -2271,7 +2271,6 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         for (i=0; i<n; i++)
         {
             double sini = 1;
-            // TODO: account for retrograde nodes e.g. 30deg is coplanar with 210deg, and account for nodes near 0 and 360 deg.
             if (pincls[i])
             {
                 sini = sin(pincls[i]);
@@ -2280,10 +2279,12 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
             if (pnodes[i])
             {
+                // TODO: Account for retrograde nodes e.g. 30deg is coplanar with 210deg.
                 double node = pnodes[i];
                 double mnew = m+sini;
                 if (m)
                 {
+                    // Account for nodes near 0 and 360 deg.
                     if (node > _pi && pmeannode < _pi) node -= _pi*2;
                     else if (node < _pi && pmeannode > _pi) node += _pi*2;
                 }
@@ -2352,6 +2353,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             for (i=0; i<n; i++) if (!cnodes[i]) cnodes[i] = sysnode;
         }
 
+        std::cout << "Filled in:" << std::endl;
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
         std::cout << "Star:   " << (stincl*fiftyseven ) << "," << (stnode*fiftyseven ) << std::endl;
 
@@ -2359,6 +2361,13 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         for (i=0; i<n; i++) std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
         n = cincls.size();
         for (i=0; i<n; i++) std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
+
+        std::cout << std::endl;
+
+        Rotation rot = system_plane_from_incl_and_node(sysincl, sysnode, s->location.system_center);
+        double czincl, cznode;
+        incl_and_node_from_system_plane(rot, czincl, cznode, s->location.system_center);
+        std::cout << "Double check: " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
 
         std::cout << std::endl << std::endl;
 

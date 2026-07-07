@@ -44,7 +44,7 @@ Point &Point::operator+=(Point other)
     return *this;
 }
 
-Point Point::operator-(Point other)
+Point Point::operator-(const Point other)
 {
     return Point(x-other.x, y-other.y, z-other.z);
 }
@@ -320,6 +320,7 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
 
     // Incline
     Point pole = axis * -cos(inclination) + normal * sin(inclination);
+    pole.scale(1);
 
     // Then orient
     pole = rotate3D(pole, center, axis, ascending_node);
@@ -328,6 +329,55 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
     return align_points_3d(pole, yaxis, center);
 }
 
+void incl_and_node_from_system_plane(Rotation plane, double& out_inclination, double& out_ascending_node, Point system_center)
+{
+    Point pole = rotate3D(yaxis, center, plane.v, -plane.a);
+    pole.scale(1);
+
+    // Get the normal and the axis
+    Point normal, axis;
+    if (system_center.magnitude())
+    {
+        normal = compute_normal(center, system_center, yaxis);
+        axis = system_center - center;
+    }
+    else
+    {
+        normal = xaxis;
+        axis = center - yaxis;
+    }
+    normal.scale(1);
+    axis.scale(1);
+
+    // 1. Recover the inclination
+    double dot_axis = (pole.x * axis.x) + (pole.y * axis.y) + (pole.z * axis.z);
+
+    // FIX 3: Clamp to [-1, 1] to prevent floating-point precision 'nan'
+    if (dot_axis > 1.0)  dot_axis = 1.0;
+    if (dot_axis < -1.0) dot_axis = -1.0;
+
+    out_inclination = std::acos(-dot_axis);
+
+    // 2. Recover the ascending node
+    double dot_normal = (pole.x * normal.x) + (pole.y * normal.y) + (pole.z * normal.z);
+
+    // Create a binormal vector (axis x normal)
+    Point binormal;
+    binormal.x = (axis.y * normal.z) - (axis.z * normal.y);
+    binormal.y = (axis.z * normal.x) - (axis.x * normal.z);
+    binormal.z = (axis.x * normal.y) - (axis.y * normal.x);
+
+    double dot_binormal = (pole.x * binormal.x) + (pole.y * binormal.y) + (pole.z * binormal.z);
+
+    out_ascending_node = std::atan2(dot_binormal, dot_normal);
+
+    // If zero inclination, set zero node. Otherwise normalize node to 0-360 degrees.
+    if (!out_inclination) out_ascending_node = 0;
+    else if (out_ascending_node < 0.0)
+    {
+        out_ascending_node += 2.0 * _pi;
+    }
+}
 double distance(ImVec2 a, ImVec2 b)
 {
     double dx = a.x - b.x, dy = a.y - b.y;
