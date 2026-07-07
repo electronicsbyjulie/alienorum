@@ -2265,47 +2265,50 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         std::cout << "Star:   " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
 
         n = pincls.size();
-        int l=0, m=0;
+        int l=0;
+        double m=0;
         double pmeanincl=0, pmeannode=0;
         for (i=0; i<n; i++)
         {
+            double sini = 1;
             // TODO: account for retrograde nodes e.g. 30deg is coplanar with 210deg, and account for nodes near 0 and 360 deg.
             if (pincls[i])
             {
+                sini = sin(pincls[i]);
                 pmeanincl += pincls[i];
                 l++;
             }
             if (pnodes[i])
             {
-                pmeannode = (m ? (pmeannode * (double)m/(m+1)) : pmeannode) + pnodes[i] / (m+1);
-                m++;
+                pmeannode = (m ? (pmeannode * (double)m/(m+1)) : pmeannode) + pnodes[i] * sini / (m+sini);
+                m+=sini;
             }
             std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
         }
 
         if (l) pmeanincl /= l;
-        // if (m) pmeannode /= m;
 
         n = cincls.size();
         double cmeanincl=0, cmeannode=0;
         l=m=0;
         for (i=0; i<n; i++)
         {
+            double sini = 1;
             if (cincls[i])
             {
+                sini = sin(cincls[i]);
                 cmeanincl += cincls[i];
                 l++;
             }
             if (cnodes[i])
             {
-                cmeannode = (m ? (cmeannode * (double)m/(m+1)) : cmeannode) + cnodes[i] / (m+1);
-                m++;
+                cmeannode = (m ? (cmeannode * (double)m/(m+1)) : cmeannode) + cnodes[i] * sini / (m+sini);
+                m+=sini;
             }
             std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
         }
 
         if (l) cmeanincl /= l;
-        if (m) cmeannode /= m;
 
         std::cout << std::endl;
 
