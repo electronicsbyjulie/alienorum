@@ -244,8 +244,8 @@ void draw_status_window(ImGuiIO& io)
     std::string JDdisp = std::string("JD") + std::to_string(JDnow);
     ImGui::Text("%s", JDdisp.c_str());
 
-    std::string frame_rate = std::to_string(1.0 / frame_dur) + std::string(" frames/s");
-    ImGui::Text("%s", frame_rate.c_str());
+    float frame_rate = 1.0 / frame_dur;
+    ImGui::Text("%.1f frames/s", frame_rate);
 
     ImGui::Separator();
 
