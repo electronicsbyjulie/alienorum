@@ -2258,18 +2258,18 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         }
 
         std::cout << s->name;
-        if (s->HD) std::cout << " HD" << s->HD;
+        if (s->HD) std::cout << " HD " << s->HD;
         std::cout << std::endl;
 
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
-        std::cout << "Star: " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
+        std::cout << "Star:   " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
 
         n = pincls.size();
         int l=0, m=0;
         double pmeanincl=0, pmeannode=0;
         for (i=0; i<n; i++)
         {
-            // TODO: account for retrograde inclinations e.g. 30deg is coplanar with 150deg, and nodes near 0 and 360 deg.
+            // TODO: account for retrograde nodes e.g. 30deg is coplanar with 210deg, and account for nodes near 0 and 360 deg.
             if (pincls[i])
             {
                 pmeanincl += pincls[i];
@@ -2277,14 +2277,14 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
             if (pnodes[i])
             {
-                pmeannode += pnodes[i];
+                pmeannode = (m ? (pmeannode * (double)m/(m+1)) : pmeannode) + pnodes[i] / (m+1);
                 m++;
             }
             std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
         }
 
         if (l) pmeanincl /= l;
-        if (m) pmeannode /= m;
+        // if (m) pmeannode /= m;
 
         n = cincls.size();
         double cmeanincl=0, cmeannode=0;
@@ -2298,10 +2298,10 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
             if (cnodes[i])
             {
-                cmeannode += cnodes[i];
+                cmeannode = (m ? (cmeannode * (double)m/(m+1)) : cmeannode) + cnodes[i] / (m+1);
                 m++;
             }
-            std::cout << "Comp: " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
+            std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
         }
 
         if (l) cmeanincl /= l;
@@ -2335,12 +2335,12 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         }
 
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
-        std::cout << "Star: " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
+        std::cout << "Star:   " << (stincl*fiftyseven ) << "," << (stnode*fiftyseven ) << std::endl;
 
         n = pincls.size();
         for (i=0; i<n; i++) std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
         n = cincls.size();
-        for (i=0; i<n; i++) std::cout << "Comp: " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
+        for (i=0; i<n; i++) std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
 
         std::cout << std::endl << std::endl;
 
