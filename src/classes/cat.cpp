@@ -2217,14 +2217,16 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         {
             Planet *p = (Planet*)cels[row[i]];
             std::string designation = p->name;
+            p->origname = designation;
 
             if (planet_incls.find(designation) != planet_incls.end())
                 pincls.push_back(planet_incls[designation] * fiftyseventh);
             else if (p->orbit) pincls.push_back(p->orbit->inclination);
 
+            double p_node = 0;
             if (planet_nodes.find(designation) != planet_nodes.end())
-                pnodes.push_back(planet_nodes[designation] * fiftyseventh);
-            else pnodes.push_back(0);
+                p_node = planet_nodes[designation] * fiftyseventh;
+            pnodes.push_back(p_node);
 
             if (planet_names.find(designation) != planet_names.end()) strcpy(p->name, planet_names[designation].c_str());
             if (planet_types.find(designation) != planet_types.end())
@@ -2239,7 +2241,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 else if (!strcmp(ihavetomove, "icy")) p->type = icy;
                 else if (!strcmp(ihavetomove, "waterworld")) p->type = waterworld;
             }
+
             // TODO: if (planet_temps.find(designation) != planet_temps.end())
+
             if (planet_bvcols.find(designation) != planet_bvcols.end()) p->BV_color = planet_bvcols[designation];
             if (planet_albedines.find(designation) != planet_albedines.end())
             {
@@ -2361,7 +2365,10 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         {
             if (!stnode) stnode = sysnode;
             n = pnodes.size();
-            for (i=0; i<n; i++) if (!pnodes[i]) pnodes[i] = sysnode;
+            for (i=0; i<n; i++)
+            {
+                if (!pnodes[i]) pnodes[i] = sysnode;
+            }
             n = cnodes.size();
             for (i=0; i<n; i++) if (!cnodes[i]) cnodes[i] = sysnode;
         }
@@ -2392,13 +2399,20 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         for (i=0; i<n; i++)
         {
             Planet *p = (Planet*)cels[row[i]];
-            std::string designation = p->name;
+            if (planet_istars.find(p->origname) != planet_istars.end())
+            {
+                stnode = pnodes[i] - planet_istars[p->origname]*fiftyseventh;
+                #if _debug_exoplanet_inclinations
+                std::cout << "Star:   " << (stincl*fiftyseven ) << "," << (stnode*fiftyseven ) << std::endl;
+                #endif
+            }
 
             elements_in_new_reference_plane(system_plane_from_incl_and_node(pincls[i], pnodes[i], s->location.system_center),
                 s->location.local_system_plane,
                 p->orbit->inclination, p->orbit->ascending_node);
 
             p->location.local_system_plane = s->location.local_system_plane;
+            p->lock_equatorial_plane = false;
 
             #if _debug_exoplanet_inclinations
             p->update_location(simnow);
@@ -2406,7 +2420,13 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
             std::cout << "Double check " << p->name << ": " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
             #endif
+
+            p->origname = p->name;
         }
+
+        elements_in_new_reference_plane(system_plane_from_incl_and_node(stincl, stnode, s->location.system_center),
+            s->location.local_system_plane,
+            s->obliquity, s->equinox);
 
         if (s->multisys)
         {
@@ -3411,7 +3431,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
             std::string pl_name = row["pl_name"].get<std::string>();
             std::string hostname = row["hostname"].get<std::string>();
 
-            std::string hd_name, hip_name;
+            std::string hd_name = "", hip_name = "";
 
             try { hd_name  = row.contains("hd_name" ) ? row["hd_name" ].get<std::string>() : ""; } catch (...) { ; }
             try { hip_name = row.contains("hip_name") ? row["hip_name"].get<std::string>() : ""; } catch (...) { ; }
@@ -3425,7 +3445,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
             }
             if (!host_star && hip_name.size() > 3)
             {
-                int HIP = atoi(&(hip_name.c_str()[2]));
+                int HIP = atoi(&(hip_name.c_str()[3]));
                 if (hipcache[HIP]) host_star = hipcache[HIP];
             }
             if (!host_star && worth_searching(hostname))
