@@ -151,6 +151,8 @@ int draw_sphere(CelestialObject* cel, double arad)
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
 
+    if (d > light_year*zoom) return 0;
+
     double bs = 0;
     if (cls == class_planet || cls == class_moon)
     {

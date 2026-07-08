@@ -2151,7 +2151,6 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             std::string friendly = trim(field);
 
             planet_names[designation] = friendly;
-            std::cout << designation << " is a.k.a. " << friendly << std::endl;
 
             if (strlen(buffer) < 65) continue;
             read_field_onebased(buffer, 65, 87, field);
@@ -3448,11 +3447,24 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
                 int HIP = atoi(&(hip_name.c_str()[3]));
                 if (hipcache[HIP]) host_star = hipcache[HIP];
             }
-            if (!host_star && worth_searching(hostname))
+            if (!host_star)
             {
-                if (!strcmp(hostname.c_str(), "55 Cnc B")) hostname = "GJ 324 B";
-                int i = find_object(hostname.c_str(), true);
-                if (i>0) host_star = (Star*)cels[i];
+                if (worth_searching(hostname))
+                {
+                    if (!strcmp(hostname.c_str(), "55 Cnc B")) hostname = "GJ 324 B";
+                    int i = find_object(hostname.c_str(), true);
+                    if (i>0) host_star = (Star*)cels[i];
+                }
+                else
+                {
+                    for (int i=1; !host_star && (i<=10); i++)
+                    {
+                        int j = ncelobjs-i;
+                        if (j<0) continue;
+                        if (cels[j]->type == star && !strcmp(cels[j]->name, hostname.c_str()))
+                            host_star = (Star*)cels[j];
+                    }
+                }
             }
 
             // If the star doesn't exist, instantiate it
