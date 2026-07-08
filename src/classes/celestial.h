@@ -148,6 +148,7 @@ namespace alienorum
         double mass = 0;                            // grams
         double volumetric_mean_radius = 0;          // meters
         double oblateness = 0;
+        double temperature = 0;                     // Kelvins
         double sidereal_rotational_period = 0;      // seconds
         double right_ascension = 0;                 // RADIANS!
         double declination = 0;                     // RADIANS!

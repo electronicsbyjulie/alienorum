@@ -991,6 +991,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtsma", &edit_sma, 0, 0, "%.9f"))
             {
                 orb->semimajor_axis = fmax(edit_sma * AU, sma_limit);
+                cel->temperature = 0;
                 if (cel->user_added) orb->compute_period(cel->mass);
                 cel->user_edited = true;
                 viewchanged = true;
@@ -1015,6 +1016,7 @@ void draw_objedit_window(ImGuiIO& io)
                     double instellation = s_eff_lum / (sma_au*sma_au);
                     orb->semimajor_axis *= sqrt(instellation);
                     orb->compute_period(cel->mass);
+                    cel->temperature = 0;
                 }
             }
             ImGui::SameLine(col2);
@@ -1032,6 +1034,7 @@ void draw_objedit_window(ImGuiIO& io)
                         orb->semimajor_axis = sma_limit;
                         orb->compute_period(cel->mass);
                     }
+                    cel->temperature = 0;
                     rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
                     ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
                     cel->user_edited = true;
@@ -1265,6 +1268,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtpresh", &edit_surf_presh, 0, 0, "%.3f"))
             {
                 p->surface_pressure = edit_surf_presh * oneatm;
+                p->temperature = 0;
                 update_taucalc = true;
                 cel->user_edited = true;
             }
@@ -1276,6 +1280,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edttau", &edit_atm_tau, 0, 0, "%.5f"))
             {
                 p->atmospheric_tau = edit_atm_tau;
+                p->temperature = 0;
                 cel->user_edited = true;
             }
             ImGui::SameLine();
@@ -1486,8 +1491,11 @@ void draw_objedit_window(ImGuiIO& io)
                 }
 
                 if (update_taucalc)
+                {
+                    p->temperature = 0;
                     p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
                         o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                }
                 if (ImGui::Button("Clear##atmosph_comp"))
                 {
                     co2_percent=ch4_percent=h2o_percent=n2o_percent=o3_percent=so2_percent=h2s_percent=co_percent=hcn_percent=h2_percent=nh3_percent=c2h6_percent=0;

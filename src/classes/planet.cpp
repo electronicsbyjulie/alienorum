@@ -207,6 +207,7 @@ double Planet::est_bolometric_flux(double t_eff)
 
 double Planet::estimate_surface_temperature()
 {
+    if (temperature) return temperature;
     double absorbed_flux = (est_bolometric_flux() * (1.0 - albedo)) / 4.0;
     double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN_NORM, 0.25);
 
@@ -217,7 +218,7 @@ double Planet::estimate_surface_temperature()
     // 5. Calculate final surface temperature
     double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
 
-    return t_surface;
+    return temperature = t_surface;
 }
 
 bool Planet::is_in_con_HZ()

@@ -2243,8 +2243,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 p->set_color_from_type(p->is_in_con_HZ());
             }
 
-            // TODO: if (planet_temps.find(designation) != planet_temps.end())
-
+            if (planet_temps.find(designation) != planet_temps.end()) p->temperature = planet_temps[designation];
             if (planet_bvcols.find(designation) != planet_bvcols.end()) p->BV_color = planet_bvcols[designation];
             if (planet_albedines.find(designation) != planet_albedines.end())
             {

@@ -252,12 +252,13 @@ void Star::make_universally_visible()
 
 double Star::estimate_temperature()
 {
+    if (temperature) return temperature;
     if (!strlen(spectral_type)) return 5800;
     double subtype = atof(&spectral_type[1]) / 10;
 
     // https://en.wikipedia.org/wiki/Stellar_classification#Harvard_spectral_classification
     // https://en.wikipedia.org/wiki/O-type_star
-    #define O_hitemp 52000.0
+    #define O_hitemp  52000.0
     #define O_lowtemp 33000.0
     #define B_lowtemp 10000.0
     #define A_lowtemp  7300.0
@@ -266,14 +267,15 @@ double Star::estimate_temperature()
     #define K_lowtemp  3900.0
     #define M_lowtemp  2300.0
 
-    if (spectral_type[0] == 'O') return O_lowtemp + (1.0-subtype) * (O_hitemp -O_lowtemp);
-    if (spectral_type[0] == 'B') return B_lowtemp + (1.0-subtype) * (O_lowtemp-B_lowtemp);
-    if (spectral_type[0] == 'A') return A_lowtemp + (1.0-subtype) * (B_lowtemp-A_lowtemp);
-    if (spectral_type[0] == 'F') return F_lowtemp + (1.0-subtype) * (A_lowtemp-F_lowtemp);
-    if (spectral_type[0] == 'G') return G_lowtemp + (1.0-subtype) * (F_lowtemp-G_lowtemp);
-    if (spectral_type[0] == 'K') return K_lowtemp + (1.0-subtype) * (G_lowtemp-K_lowtemp);
-    if (spectral_type[0] == 'M') return M_lowtemp + (1.0-subtype) * (K_lowtemp-M_lowtemp);
-    return 2000;
+    if      (spectral_type[0] == 'O') temperature = O_lowtemp + (1.0-subtype) * (O_hitemp -O_lowtemp);
+    else if (spectral_type[0] == 'B') temperature = B_lowtemp + (1.0-subtype) * (O_lowtemp-B_lowtemp);
+    else if (spectral_type[0] == 'A') temperature = A_lowtemp + (1.0-subtype) * (B_lowtemp-A_lowtemp);
+    else if (spectral_type[0] == 'F') temperature = F_lowtemp + (1.0-subtype) * (A_lowtemp-F_lowtemp);
+    else if (spectral_type[0] == 'G') temperature = G_lowtemp + (1.0-subtype) * (F_lowtemp-G_lowtemp);
+    else if (spectral_type[0] == 'K') temperature = K_lowtemp + (1.0-subtype) * (G_lowtemp-K_lowtemp);
+    else if (spectral_type[0] == 'M') temperature = M_lowtemp + (1.0-subtype) * (K_lowtemp-M_lowtemp);
+    else temperature = 2000;
+    return temperature;
 }
 
 double Star::estimate_luminosity(double tempK)
