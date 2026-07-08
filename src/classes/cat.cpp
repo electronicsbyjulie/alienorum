@@ -2337,7 +2337,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
 
         if (l) cmeanincl /= l;
 
+        #if _debug_exoplanet_inclinations
         std::cout << std::endl;
+        #endif
 
         // planets > system > star > comps
         if (pmeanincl && !sysincl) sysincl = pmeanincl;

@@ -721,7 +721,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##obliquity"))
             {
-                cel->obliquity = frand(0, _pi);
+                cel->obliquity = frand(0, frand(0, frand(0, _pi)));
             }
             ImGui::SameLine(col2);
             edit_equinox = cel->equinox * fiftyseven;
@@ -1013,7 +1013,8 @@ void draw_objedit_window(ImGuiIO& io)
                     double s_eff_lum = pow(magnbase, cels[0]->absolute_magnitude-cel->orbit->center->absolute_magnitude);
                     double sma_au = cel->orbit->semimajor_axis / AU;
                     double instellation = s_eff_lum / (sma_au*sma_au);
-                    cel->orbit->semimajor_axis *= sqrt(instellation);
+                    orb->semimajor_axis *= sqrt(instellation);
+                    orb->compute_period(cel->mass);
                 }
             }
             ImGui::SameLine(col2);
