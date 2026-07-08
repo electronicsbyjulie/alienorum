@@ -15,59 +15,42 @@ void Planet::classify()
     classify(is_in_con_HZ());
 }
 
+void Planet::set_color_from_type(bool HZ)
+{
+    if (type == gas_giant) BV_color = 0.98;         // average of Jupiter and Saturn.
+    else if (type == rocky)
+    {
+        if (HZ) BV_color = 0.2;                     // estimate same as Earth.
+        else BV_color = 1;
+    }
+    else if (type == hot_jupiter) BV_color = -1;    // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
+    else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
+    else if (type == icy) BV_color = 0.6;
+    else if (type == steam_giant) BV_color = 0.4;
+    else if (type == lavaworld) BV_color = 1.3;
+    else if (type == waterworld) BV_color = -0.3;
+}
+
 void Planet::classify(bool HZ)
 {
     double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff)
     {
-        if (T > lava_T_cutoff)
-        {
-            type = lavaworld;
-        }
-        else
-        {
-            type = rocky;
-            if (HZ) BV_color = 0.2;       // estimate same as Earth.
-        }
+        if (T > lava_T_cutoff) type = lavaworld;
+        else type = rocky;
     }
     else if (mass < neptune_mass_cutoff)
     {
-        if (T < icy_T_cutoff)
-        {
-            type = icy;
-            BV_color = 0.6;
-        }
-        else if (HZ)
-        {
-            type = waterworld;
-            BV_color = -0.3;
-        }
-        else
-        {
-            type = steam_giant;
-            BV_color = 0.4;
-        }
+        if (T < icy_T_cutoff) type = icy;
+        else if (HZ) type = waterworld;
+        else type = steam_giant;
     }
-    else if (orbit->period < oneday*10)
-    {
-        type = hot_jupiter;
-        BV_color = -1;   // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
-    }
-    else if (T < icy_T_cutoff)
-    {
-        type = ice_giant;
-        BV_color = 0.49;     // average of Uranus and Neptune.
-    }
-    else if (HZ)
-    {
-        type = steam_giant;
-        BV_color = 0.4;
-    }
-    else
-    {
-        type = gas_giant;
-        BV_color = 0.98;     // average of Jupiter and Saturn.
-    }
+    else if (orbit->period < oneday*10) type = hot_jupiter;
+    else if (T < icy_T_cutoff) type = ice_giant;
+    else if (HZ) type = steam_giant;
+    else type = gas_giant;
+
+    set_color_from_type(HZ);
 }
 
 void Planet::estimate_radius()

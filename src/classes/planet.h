@@ -24,6 +24,7 @@ namespace alienorum
         int asteroid_no = 0;                                // Zero if major planet or moon.
 
         void classify();
+        void set_color_from_type(bool HZ);
         void classify(bool HZ);                             // set the type, e.g. for exoplanets
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets

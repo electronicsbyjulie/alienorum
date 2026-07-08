@@ -2240,6 +2240,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 else if (!strcmp(ihavetomove, "ice_giant")) p->type = ice_giant;
                 else if (!strcmp(ihavetomove, "icy")) p->type = icy;
                 else if (!strcmp(ihavetomove, "waterworld")) p->type = waterworld;
+                p->set_color_from_type(p->is_in_con_HZ());
             }
 
             // TODO: if (planet_temps.find(designation) != planet_temps.end())
