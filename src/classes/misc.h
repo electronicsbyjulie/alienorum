@@ -54,6 +54,7 @@ using json = nlohmann::json;
 // WAG
 #define neptune_mass_cutoff (10 * earth_mass)
 #define icy_T_cutoff 200
+#define lava_T_cutoff 1300
 
 #define lunar_mass 7.349E+22
 #define earth_mass 5.972e+27
@@ -139,6 +140,7 @@ bool contains_digits_or_dots(const char*);
 bool has_same_numbers(const char*, const char*);
 std::string lop_component(const char* name);
 bool file_exists(const char* fname);
+std::time_t file_age(const char* fname);                                    // seconds
 
 bool download_file(std::string URL, std::string save_path);
 std::vector<std::string> parse_csv_row(const char* data);

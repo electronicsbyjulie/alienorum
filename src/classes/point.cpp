@@ -44,7 +44,7 @@ Point &Point::operator+=(Point other)
     return *this;
 }
 
-Point Point::operator-(Point other)
+Point Point::operator-(const Point other)
 {
     return Point(x-other.x, y-other.y, z-other.z);
 }
@@ -320,6 +320,7 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
 
     // Incline
     Point pole = axis * -cos(inclination) + normal * sin(inclination);
+    pole.scale(1);
 
     // Then orient
     pole = rotate3D(pole, center, axis, ascending_node);
@@ -328,6 +329,55 @@ Rotation system_plane_from_incl_and_node(double inclination, double ascending_no
     return align_points_3d(pole, yaxis, center);
 }
 
+void incl_and_node_from_system_plane(Rotation plane, double& out_inclination, double& out_ascending_node, Point system_center)
+{
+    Point pole = rotate3D(yaxis, center, plane.v, -plane.a);
+    pole.scale(1);
+
+    // Get the normal and the axis
+    Point normal, axis;
+    if (system_center.magnitude())
+    {
+        normal = compute_normal(center, system_center, yaxis);
+        axis = system_center - center;
+    }
+    else
+    {
+        normal = xaxis;
+        axis = center - yaxis;
+    }
+    normal.scale(1);
+    axis.scale(1);
+
+    // 1. Recover the inclination
+    double dot_axis = (pole.x * axis.x) + (pole.y * axis.y) + (pole.z * axis.z);
+
+    // FIX 3: Clamp to [-1, 1] to prevent floating-point precision 'nan'
+    if (dot_axis > 1.0)  dot_axis = 1.0;
+    if (dot_axis < -1.0) dot_axis = -1.0;
+
+    out_inclination = std::acos(-dot_axis);
+
+    // 2. Recover the ascending node
+    double dot_normal = (pole.x * normal.x) + (pole.y * normal.y) + (pole.z * normal.z);
+
+    // Create a binormal vector (axis x normal)
+    Point binormal;
+    binormal.x = (axis.y * normal.z) - (axis.z * normal.y);
+    binormal.y = (axis.z * normal.x) - (axis.x * normal.z);
+    binormal.z = (axis.x * normal.y) - (axis.y * normal.x);
+
+    double dot_binormal = (pole.x * binormal.x) + (pole.y * binormal.y) + (pole.z * binormal.z);
+
+    out_ascending_node = std::atan2(dot_binormal, dot_normal);
+
+    // If zero inclination, set zero node. Otherwise normalize node to 0-360 degrees.
+    if (fabs(sin(out_inclination)) < 1e-3) out_ascending_node = 0;
+    else if (out_ascending_node < 0.0)
+    {
+        out_ascending_node += 2.0 * _pi;
+    }
+}
 double distance(ImVec2 a, ImVec2 b)
 {
     double dx = a.x - b.x, dy = a.y - b.y;
@@ -350,11 +400,51 @@ Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation or
 
 void elements_in_new_reference_plane(Rotation original, Rotation reference, double &out_new_inclination, double &out_new_node)
 {
+    #if 0
     Point pole = rotate3D(yaxis, center, original.v, original.a);
+    pole.scale(1);
     Point refpole = rotate3D(yaxis, center, reference.v, reference.a);
+    refpole.scale(1);
     Rotation tmp = align_points_3d(pole, refpole, center);
     out_new_inclination = tmp.a;
-    out_new_node = find_angle_along_vector(zaxis, tmp.v, center, yaxis);
+    out_new_node = find_angle_along_vector(zaxis, tmp.v, center, refpole);
+    #else
+    // 1. Get the planet's universal pole vector
+    Point pole = rotate3D(yaxis, center, original.v, original.a);
+    pole.scale(1);
+    
+    // 2. Un-rotate the planet's pole by the reference plane's rotation.
+    // This shifts us into a local frame where the reference plane is perfectly flat.
+    Point local_pole = rotate3D(pole, center, reference.v, -reference.a);
+    
+    // Defensive guard: Scale to 1 to strip out any 1e37 amplification from rotate3D
+    local_pole.scale(1);
+
+    // 3. Recover the local inclination
+    // In this frame, the reference pole is the universal yaxis. 
+    // The local inclination is just the angle between local_pole and yaxis.
+    double cos_i = local_pole.y; 
+    if (cos_i > 1.0)  cos_i = 1.0;
+    if (cos_i < -1.0) cos_i = -1.0;
+    out_new_inclination = std::acos(cos_i);
+
+    // 4. Recover the local ascending node
+    // The local node is the angle of the pole's projection in the local X-Z plane,
+    // measuring from the local x-axis (xaxis) toward the local z-axis (zaxis).
+    out_new_node = std::atan2(local_pole.z, local_pole.x) + _pi;
+
+    // Normalize the node to [0, 2*pi)
+    if (out_new_node < 0.0)
+    {
+        out_new_node += 2.0 * _pi;
+    }
+
+    // 5. Handle Gimbal Lock for perfectly face-on orbits
+    if (out_new_inclination < 1e-7 || out_new_inclination > (_pi - 1e-7))
+    {
+        out_new_node = 0.0;
+    }
+    #endif
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)

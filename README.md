@@ -126,32 +126,6 @@ target. Otherwise it's very easy to overshoot and zip right past it. If your spe
 by the target and watch it seem to roll across the background stars.
 
 
-## Exoplanets
-
-Note to include exoplanets, the catalog must be downloaded manually:
-
-- First, open https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=PSCompPars in a web browser;
-- Then manually select to include the following columns:
-    - HD ID
-    - Inclination
-    - Epoch of Periastron
-    - Argument of Periastron
-    - True Obliquity
-    - RA[deg]
-    - Dec[deg]
-    - Distance[pc]
-    - V Magnitude
-- Then click Update.
-- Then click the download (save icon) button, choose CSV format, and click the green Download Table arrow.
-- Save the resulting file in the alienorum/catalogs/ folder.
-
-After completing these steps, every time you run Alienorum it will load the exoplanets file.
-
-Exoplanets will not automatically update; if you wish to loop at a new planet discovered since your last download,
-please follow the above steps to obtain a new exoplanet catalog. The filenames are timestamped and Alienorum will
-only use the file with the most recent datetime.
-
-
 ## Satellites
 
 To add a satellite, press ^ (Shift+6 on US keyboards). A searchable list will appear; you can search by satellite

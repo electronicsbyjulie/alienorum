@@ -294,17 +294,30 @@ void compute_object_draw_coordinates()
         luminous_flux = cels[1] ? 0 : 1e10;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
+                = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
             if (i == whereami) continue;
 
-            if (cels[i]->typeclass() == class_star
-                && i
-                && i!=selected && i!=trackidx && i!=whereami && cels[i]->cenobj!=mycenobj
-                && !((Star*)cels[i])->tmp_vis_flag
-                && !((Star*)cels[i])->is_universally_visible())
+            Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
+
+            if (cels_i_star
+                && cels_i_star->seqno
+                && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
+                && !cels_i_star->tmp_vis_flag
+                && !cels_i_star->is_universally_visible())
+            {
+                cels[i]->drawnx = cels[i]->drawny = -1e9;
                 continue;
+            }
 
             Point rel = cels[i]->tmprel;
+
+            if (cels[i]->orbit && rel.squared_magnitude() > 1e6 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
+            {
+                cels[i]->drawnx = cels[i]->drawny = -1e9;
+                continue;
+            }
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 

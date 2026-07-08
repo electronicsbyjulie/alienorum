@@ -123,7 +123,7 @@ void load_textures(CelestialObject* cel)
         cel->cloud_map = new Map(cel);
         cel->cloud_map->generate_gas_giant_map(cel);
     }
-    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld) && !cel->surf_map)
+    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld || cel->type == lavaworld) && !cel->surf_map)
     {
         cel->surf_map = new Map(cel);
         cel->surf_map->generate_rocky_map(cel);
@@ -370,7 +370,9 @@ void load_catalogs()
     else splash = false;
 
     cout << "Reading exoplanets..." << endl << flush;
-    int nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+    int nexo = cr.load_exoplanets_from_tap();
+    if (!nexo) nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+    if (nexo) have_exo = true;
     num_planets += nexo;
     cout << "Read " << nexo << " objects." << endl << flush;
 

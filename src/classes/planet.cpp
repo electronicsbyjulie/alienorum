@@ -15,52 +15,42 @@ void Planet::classify()
     classify(is_in_con_HZ());
 }
 
+void Planet::set_color_from_type(bool HZ)
+{
+    if (type == gas_giant) BV_color = 0.98;         // average of Jupiter and Saturn.
+    else if (type == rocky)
+    {
+        if (HZ) BV_color = 0.2;                     // estimate same as Earth.
+        else BV_color = 1;
+    }
+    else if (type == hot_jupiter) BV_color = -1;    // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
+    else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
+    else if (type == icy) BV_color = 0.6;
+    else if (type == steam_giant) BV_color = 0.4;
+    else if (type == lavaworld) BV_color = 1.3;
+    else if (type == waterworld) BV_color = -0.3;
+}
+
 void Planet::classify(bool HZ)
 {
     double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff)
     {
-        type = rocky;
-        if (HZ) BV_color = 0.2;       // estimate same as Earth.
+        if (T > lava_T_cutoff) type = lavaworld;
+        else type = rocky;
     }
     else if (mass < neptune_mass_cutoff)
     {
-        if (T < icy_T_cutoff)
-        {
-            type = icy;
-            BV_color = 0.6;
-        }
-        else if (HZ)
-        {
-            type = waterworld;
-            BV_color = -0.3;
-        }
-        else
-        {
-            type = steam_giant;
-            BV_color = 0.4;
-        }
+        if (T < icy_T_cutoff) type = icy;
+        else if (HZ) type = waterworld;
+        else type = steam_giant;
     }
-    else if (orbit->period < oneday*10)
-    {
-        type = hot_jupiter;
-        BV_color = -1;   // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
-    }
-    else if (T < icy_T_cutoff)
-    {
-        type = ice_giant;
-        BV_color = 0.49;     // average of Uranus and Neptune.
-    }
-    else if (HZ)
-    {
-        type = steam_giant;
-        BV_color = 0.4;
-    }
-    else
-    {
-        type = gas_giant;
-        BV_color = 0.98;     // average of Jupiter and Saturn.
-    }
+    else if (orbit->period < oneday*10) type = hot_jupiter;
+    else if (T < icy_T_cutoff) type = ice_giant;
+    else if (HZ) type = steam_giant;
+    else type = gas_giant;
+
+    set_color_from_type(HZ);
 }
 
 void Planet::estimate_radius()
@@ -94,7 +84,8 @@ void Planet::estimate_rotation()
     {
         sidereal_rotational_period = 1.5 * orbit->period;
     }
-    else if (type == rocky || type == icy               ) sidereal_rotational_period = 2.38e+6 / log(mass);
+    else if (type == rocky || type == icy
+        || type == lavaworld                            ) sidereal_rotational_period = 2.38e+6 / log(mass);
     else if (type == waterworld                         ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
     else if (type == ice_giant || type == steam_giant   ) sidereal_rotational_period = 1.74e+6 / log(mass);
     else if (type == gas_giant                          ) sidereal_rotational_period = 1.11e+6 / log(mass);
@@ -168,7 +159,7 @@ void Planet::estimate_albedo_and_absmagn()
     else if (type == ice_giant || type == steam_giant) est_albedo = 0.3;
     else if (type == waterworld) est_albedo = 0.4;
     else if (type == icy) est_albedo = 0.8;
-    else if (type == rocky) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
+    else if (type == rocky || type == lavaworld) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
     absolute_magnitude = fmax(-10, earth_absmag - log(p_rad_e*p_rad_e*est_albedo/earth_albedo) / log(magnbase));
     albedo = est_albedo;
 }
@@ -216,6 +207,7 @@ double Planet::est_bolometric_flux(double t_eff)
 
 double Planet::estimate_surface_temperature()
 {
+    if (temperature) return temperature;
     double absorbed_flux = (est_bolometric_flux() * (1.0 - albedo)) / 4.0;
     double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN_NORM, 0.25);
 
@@ -226,7 +218,7 @@ double Planet::estimate_surface_temperature()
     // 5. Calculate final surface temperature
     double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
 
-    return t_surface;
+    return temperature = t_surface;
 }
 
 bool Planet::is_in_con_HZ()

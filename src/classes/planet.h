@@ -13,7 +13,7 @@ namespace alienorum
     class Planet : public CelestialObject
     {
         public:
-        double albedo;
+        double albedo = 0;
         double surface_pressure = 0;                        // For gas giants, pressure at the top of the cloud deck if known.
         double atmospheric_tau  = 0;                        // Earth value. How well the atmosphere absorbs thermal infrared. Thickness dependent.
         double atmospheric_particulates = 0;                // Colorimetric. How much of the sky color repeats the surface color vs. Rayleigh scattering.
@@ -24,6 +24,7 @@ namespace alienorum
         int asteroid_no = 0;                                // Zero if major planet or moon.
 
         void classify();
+        void set_color_from_type(bool HZ);
         void classify(bool HZ);                             // set the type, e.g. for exoplanets
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets

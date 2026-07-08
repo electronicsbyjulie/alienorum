@@ -24,6 +24,7 @@ namespace alienorum
         waterworld = 0x401,
         icy = 0x402,
         rocky = 0x403,
+        lavaworld = 0x404,
         artificial = 0xf00
     };
 
@@ -78,6 +79,9 @@ namespace alienorum
         double mean_anomaly = 0;                    // RADIANS!
         double epoch = J2000;                       // JD
         double period = 0;                          // seconds
+
+        double heliocentric_inclination = 0;
+        double heliocentric_node = 0;
 
         Rotation laplace;
         OsculatingElement *osculating = nullptr;
@@ -144,6 +148,7 @@ namespace alienorum
         double mass = 0;                            // grams
         double volumetric_mean_radius = 0;          // meters
         double oblateness = 0;
+        double temperature = 0;                     // Kelvins
         double sidereal_rotational_period = 0;      // seconds
         double right_ascension = 0;                 // RADIANS!
         double declination = 0;                     // RADIANS!

@@ -32,6 +32,8 @@ comets          comets.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/c
 # https://vizier.cds.unistra.fr/vizier/cats/U.htx
 
 # exoplanets
+# It is no longer necessary to manually download exoplanets from the internet, as the data are now retrieved automatically.
+# However, when the manual download was required, this is how it was done:
 # https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=PSCompPars
 # open the above link in a browser, manually select to include the columns:
 # HD ID, Inclination, Epoch of Periastron, Argument of Periastron, True Obliquity, RA[deg], Dec[deg], Distance[pc], V Magnitude.

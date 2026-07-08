@@ -461,6 +461,11 @@ int main (int argc, char** argv)
             }
             else std::cout << "ImGui::Begin() failed." << std::endl;
             ImGui::End();
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            {
+                cels = nullptr;                 // generate a segfault in the loading thread and kill the app.
+            }
         }
         else
         {
