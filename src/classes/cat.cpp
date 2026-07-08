@@ -3406,7 +3406,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
         // Constructing the synchronous TAP ADQL query targeting the pscomppars table
         // Selects core planetary and fallback/stellar fields
         std::string url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query="
-                        "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,"
+                        "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,"
                         "pl_bmasse,pl_massj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
                         "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
                         "from+pscomppars+order+by+pl_name+asc"
@@ -3622,6 +3622,12 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
             orb->center = host_star;
             orb->center_name = host_star->name;
 
+            if (row.contains("pl_orbtper") && !row["pl_orbtper"].is_null())
+            {
+                double ep = row["pl_orbtper"].get<double>();
+                orb->epoch = ep;
+                orb->mean_anomaly = 0;
+            }
             if (row.contains("pl_orbper") && !row["pl_orbper"].is_null())
             {
                 orb->period = row["pl_orbper"].get<double>() * oneday;
