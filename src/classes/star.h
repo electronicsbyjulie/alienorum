@@ -57,6 +57,7 @@ namespace alienorum
 
         void update_location(double tmnow);         // Apply proper motion and re-derive 3D coordinates from the result.
         void rename_from_Bayer_Flamsteed();
+        bool matches_constellation(const char* search_cons);
         bool is_sunlike();
         bool is_in_visible_box(Point seen_from);
         bool is_really_truly_in_visible_box(Point seen_from);

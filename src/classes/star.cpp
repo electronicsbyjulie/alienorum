@@ -193,6 +193,13 @@ void Star::rename_from_Bayer_Flamsteed()
     if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
+bool alienorum::Star::matches_constellation(const char *match_cons)
+{
+    return (constellation[0] & 0x5f) == (match_cons[0] & 0x5f)
+        && (constellation[1] & 0x5f) == (match_cons[1] & 0x5f)
+        && (constellation[2] & 0x5f) == (match_cons[2] & 0x5f);
+}
+
 bool Star::is_sunlike()
 {
     const char* sptyp = spectral_type;

@@ -11,7 +11,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     // 2.) Print out the current version of this function pre-rewrite and BURN IT IN A FIRE;
     // 3.) Permanently delete every digital copy of the legacy version.
 
-    int i, m, n;
+    int i, m, n, termi = atoi(search_term);
+    Star *s;
 
     uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
@@ -25,7 +26,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     if (is_hd && hdcache && hdcache[is_hd] && (os || (match_comp < 'a')))   // if comp is lower case and a star is not required, we might be looking for a planet.
     {
-        Star *s = hdcache[is_hd];
+        s = hdcache[is_hd];
         if (match_comp && s->multisys)
         {
             Star *b = s->multisys->get_member(match_comp);
@@ -35,7 +36,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     }
     if (is_hip && hipcache && hipcache[is_hip] && (os || (match_comp < 'a')))
     {
-        Star *s = hipcache[is_hip];
+        s = hipcache[is_hip];
         if (match_comp && s->multisys)
         {
             Star *b = s->multisys->get_member(match_comp);
@@ -58,11 +59,11 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     int co = n-3;
     if (match_comp) co -= 2;
-    if (co>1 && search_term[co-1] == ' ' && search_term[co] >= 'A' && search_term[co] <= 'Z'
+    if (co>1 && search_term[co-1] <= '9' && ((search_term[co] >= 'A' && search_term[co] <= 'Z') || (search_term[co] >= 'a' && search_term[co] <= 'z'))
         && ((search_term[co+1] >= 'A' && search_term[co+1] <= 'Z') || (search_term[co+1] >= 'a' && search_term[co+1] <= 'z'))
         && ((search_term[co+2] >= 'A' && search_term[co+2] <= 'Z') || (search_term[co+2] >= 'a' && search_term[co+2] <= 'z'))
         )
-    match_cons = &search_term[co];
+        match_cons = &search_term[co];
 
     for (i=0; cels[i]; i++)
     {
@@ -98,6 +99,45 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         return result;
     }
 
+    if (match_cons && termi)
+    {
+        // TODO: put Bayer search in here too.
+        if (result < 0) for (i=0; cels[i]; i++)
+        {
+            s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
+            if (!s) continue;
+            if (!s->matches_constellation(match_cons)) continue;
+            if (termi == s->FlamsteedNo)
+            {
+                if (match_comp)
+                {
+                    m = strlen(cels[i]->name);
+                    if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
+                    if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
+                }
+                result = i;
+            }
+        }
+        if (result < 0) for (i=0; cels[i]; i++)
+        {
+            s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
+            if (!s) continue;
+            if (!s->matches_constellation(match_cons)) continue;
+            if (termi == s->GouldNo)
+            {
+                if (match_comp)
+                {
+                    m = strlen(cels[i]->name);
+                    if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
+                    if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
+                }
+                result = i;
+            }
+        }
+
+        if (os) return result;
+    }
+
     char buffer[256];
     if (result < 0)
     {
@@ -105,12 +145,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         int looklen = strlen(search_term);
         for (i=0; cels[i]; i++)
         {
-            if (os && (cels[i]->typeclass() != class_star)) continue;
-            if (match_cons && cels[i]->typeclass() == class_star
-            && (    (((Star*)cels[i])->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
-                ||  (((Star*)cels[i])->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
-                ||  (((Star*)cels[i])->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
-                )) continue;
+            s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
+            if (os && !s) continue;
             if (match_comp)
             {
                 m = strlen(cels[i]->name);
@@ -118,9 +154,9 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
             }
 
-            if (strlen(((Star*)cels[i])->Gliese)                    // HOW MANY TIMES DO I HAVE TO BEAT THIS INTO YOU, COMPUTER.
+            if (s && strlen(s->Gliese)                    // HOW MANY TIMES DO I HAVE TO BEAT THIS INTO YOU, COMPUTER.
                 && (lookstr[0]&0x5f) == 'W' && (lookstr[1]&0x5f) == 'O' && (lookstr[2]&0x5f) == 'L' && (lookstr[3]&0x5f) == 'F'
-                && has_same_numbers(((Star*)cels[i])->Gliese, lookstr.c_str()))
+                && has_same_numbers(s->Gliese, lookstr.c_str()))
                 continue;
 
             strcpy(buffer, cels[i]->name);
@@ -129,12 +165,15 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
             if (cels[i]->type == star)
             {
                 if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
-                int lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Bayer, lookstr);
-                if (!has_same_numbers(((Star*)cels[i])->Bayer, lookstr.c_str())) lev1 = 1e9;
-                if (lev1 < lev) lev = lev1;
-                lev1 = Damerau_Levenshtein( ((Star*)cels[i])->Flamsteed, lookstr);
-                if (!has_same_numbers(((Star*)cels[i])->Flamsteed, lookstr.c_str())) lev1 = 1e9;
-                if (lev1 < lev) lev = lev1;
+                if (s)
+                {
+                    int lev1 = Damerau_Levenshtein( s->Bayer, lookstr);
+                    if (!has_same_numbers(s->Bayer, lookstr.c_str())) lev1 = 1e9;
+                    if (lev1 < lev) lev = lev1;
+                    lev1 = Damerau_Levenshtein( s->Flamsteed, lookstr);
+                    if (!has_same_numbers(s->Flamsteed, lookstr.c_str())) lev1 = 1e9;
+                    if (lev1 < lev) lev = lev1;
+                }
             }
             if (lev < levreq)
             {
