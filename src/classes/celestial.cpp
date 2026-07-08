@@ -514,7 +514,7 @@ json CelestialObject::to_json()
 
     towrite["oblateness"] = oblateness;
     if (orbit) towrite["orbit"] = orbit->to_json();
-    towrite["precession"] = precession * oneyear;
+    towrite["precession"] = _pi * 2 / precession / oneyear;
     towrite["RI_color"] = RI_color;
     towrite["right_ascension"] = right_ascension * fiftyseven;
     towrite["sidereal_rotational_period"] = sidereal_rotational_period / oneday;
@@ -566,7 +566,7 @@ bool CelestialObject::from_json(json j)
         orbit = new Orbit();
         orbit->from_json(j1);
     } catch (...) { ; }
-    try { j.at("precession").get_to(precession); } catch (...) { ; }
+    try { j.at("precession").get_to(precession); precession = _pi * 2 / (precession * oneyear); } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
     try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
