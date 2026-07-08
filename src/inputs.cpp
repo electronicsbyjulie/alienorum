@@ -344,6 +344,7 @@ void process_key_cmd_char(char c)
         [[fallthrough]];
         case '@':
         viewchanged = true;
+        sphere_quality = 1;
         simnow = std::time(nullptr);
         JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
         refresh_star_visibilities();
