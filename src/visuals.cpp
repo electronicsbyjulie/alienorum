@@ -338,7 +338,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe
             ? (fiftyseventh*15)
-            : ( (cel->surf_map || cel->cloud_map)
+            : ( (worth_using_map && (cel->surf_map || cel->cloud_map))
                 ? fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2)
                 : fiftyseventh * 3
               ),
@@ -647,7 +647,11 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         if (sphere_elapsed.count() >= (1.3e5*sphere_quality))
         {
-            if (sphresolution < 0.2/sphere_quality) sphresolution *= 1.3;
+            if (sphresolution < 0.2/sphere_quality)
+            {
+                sphresolution *= 1.3;
+                if (sphere_elapsed.count() >= (3e5*sphere_quality)) sphresolution *= 2;
+            }
             else if (!bugged)
             {
                 std::cout << "System too slow! Texture rendering may be terrible." << std::endl;
