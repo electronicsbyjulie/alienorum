@@ -19,7 +19,6 @@ namespace alienorum
         star = 0x200,
         gas_giant = 0x300,
         ice_giant = 0x301,
-        steam_giant = 0x303,
         hot_jupiter = 0x310,
         waterworld = 0x401,
         icy = 0x402,

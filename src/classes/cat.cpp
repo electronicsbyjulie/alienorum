@@ -2270,7 +2270,6 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 const char* ihavetomove = planet_types[designation].c_str();
                 if (!strcmp(ihavetomove, "gas_giant")) p->type = gas_giant;
                 else if (!strcmp(ihavetomove, "hot_jupiter")) p->type = hot_jupiter;
-                else if (!strcmp(ihavetomove, "steam_giant")) p->type = steam_giant;
                 else if (!strcmp(ihavetomove, "rocky")) p->type = rocky;
                 else if (!strcmp(ihavetomove, "lavaworld")) p->type = lavaworld;
                 else if (!strcmp(ihavetomove, "ice_giant")) p->type = ice_giant;

@@ -214,7 +214,7 @@ void Orbit::compute_period(double mm)
             center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
             break;
 
-            case steam_giant: case waterworld:
+            case waterworld:
             if (!center->volumetric_mean_radius) return;
             center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius / 1.7) * earth_mass * 6;             // LHS 1140 b
             break;
@@ -265,7 +265,7 @@ void Orbit::compute_semimajor_axis(double mm)
             center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
             break;
 
-            case steam_giant: case waterworld:
+            case waterworld:
             if (!center->volumetric_mean_radius) return;
             center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius / 1.7) * earth_mass * 6;             // LHS 1140 b
             break;
@@ -1423,7 +1423,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
     double variability = frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
-    if (cel->type == steam_giant)
+    if (cel->type == ice_giant)
     {
         num_bands = std::max(2, num_bands/4);
         variability /= 4;

@@ -26,7 +26,6 @@ void Planet::set_color_from_type(bool HZ)
     else if (type == hot_jupiter) BV_color = -1;    // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
     else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
     else if (type == icy) BV_color = 0.6;
-    else if (type == steam_giant) BV_color = 0.4;
     else if (type == lavaworld) BV_color = 1.3;
     else if (type == waterworld) BV_color = -0.3;
 }
@@ -43,11 +42,11 @@ void Planet::classify(bool HZ)
     {
         if (T < icy_T_cutoff) type = icy;
         else if (HZ) type = waterworld;
-        else type = steam_giant;
+        else type = ice_giant;
     }
     else if (orbit->period < oneday*10) type = hot_jupiter;
     else if (T < icy_T_cutoff) type = ice_giant;
-    else if (HZ) type = steam_giant;
+    else if (HZ) type = ice_giant;
     else type = gas_giant;
 
     set_color_from_type(HZ);
@@ -85,10 +84,10 @@ void Planet::estimate_rotation()
         sidereal_rotational_period = 1.5 * orbit->period;
     }
     else if (type == rocky || type == icy
-        || type == lavaworld                            ) sidereal_rotational_period = 2.38e+6 / log(mass);
-    else if (type == waterworld                         ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
-    else if (type == ice_giant || type == steam_giant   ) sidereal_rotational_period = 1.74e+6 / log(mass);
-    else if (type == gas_giant                          ) sidereal_rotational_period = 1.11e+6 / log(mass);
+        || type == lavaworld    ) sidereal_rotational_period = 2.38e+6 / log(mass);
+    else if (type == waterworld ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
+    else if (type == ice_giant  ) sidereal_rotational_period = 1.74e+6 / log(mass);
+    else if (type == gas_giant  ) sidereal_rotational_period = 1.11e+6 / log(mass);
 }
 
 double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double phase, double sourcemagn, double sourcedist)
@@ -154,12 +153,13 @@ void Planet::estimate_albedo_and_absmagn()
 {
     double p_rad_e = fmax(0.01, volumetric_mean_radius / earth_radius);
     double est_albedo = 0.3;
-    if (type == gas_giant) est_albedo = 0.5;
+    if (type == gas_giant       ) est_albedo = 0.5;
     else if (type == hot_jupiter) est_albedo = 0.01;
-    else if (type == ice_giant || type == steam_giant) est_albedo = 0.3;
-    else if (type == waterworld) est_albedo = 0.4;
-    else if (type == icy) est_albedo = 0.8;
-    else if (type == rocky || type == lavaworld) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
+    else if (type == ice_giant  ) est_albedo = 0.3;
+    else if (type == waterworld ) est_albedo = 0.4;
+    else if (type == icy        ) est_albedo = 0.8;
+    else if (type == rocky
+        || type == lavaworld    ) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;
     absolute_magnitude = fmax(-10, earth_absmag - log(p_rad_e*p_rad_e*est_albedo/earth_albedo) / log(magnbase));
     albedo = est_albedo;
 }

@@ -142,24 +142,24 @@ HD 17156 b                              Mulchatna                               
 HD 63454 b                              Ibirapitá
 HD 85390 b                              Madalitso
 HAT-P-21 b                              Bambaruush                                      1283                                    25
-GJ 436 b                                Awohali                 steam_giant              712            086.858                 103.2
+GJ 436 b                                Awohali                 ice_giant                712            086.858                 103.2
 GJ 486 b                                Su                      rocky                    865            089.39
 GJ 1214 b                               Enaiposha               super_venus              553            088.980
-GJ 3470 b                               Phailinsiam             steam_giant
+GJ 3470 b                               Phailinsiam             ice_giant
 HAT-P-12 b                              Puli                    hot_jupiter                             089.0
-HAT-P-26 b                              Guataubá                steam_giant              563            088.6
+HAT-P-26 b                              Guataubá                ice_giant                563            088.6
 HATS-72 b                               Zembretta
 HD 95086 b                              Levantes                                                        144                                     red
 HIP 65426 b                             Najsakopajk             gas_giant               1283            100
 L 168-9 b                               Qingluan                rocky                    998            084.27
 LHS 3844 b                              Kua'kua                 rocky                   1000            088.90                                              0.14
-LTT 9779 b                              Cuancoá                 steam_giant             2260            076.55                                              0.73
+LTT 9779 b                              Cuancoá                 ice_giant               2260            076.55                                              0.73
 WASP-19 b                               Banksia                 hot_jupiter             2240            079.4                   -15                         0.16
 WASP-43 b                               Astrolábos              hot_jupiter             1479            082.33                                              0.06
 WASP-63 b                               Regoč                   hot_jupiter
 WASP-69 b                               Makombé
 WASP-121 b                              Tylos                   hot_jupiter             2602            088.49
-WASP-166 b                              Catalineta              steam_giant                             088.0                   0
+WASP-166 b                              Catalineta              ice_giant                               088.0                   0
 WD 0806-661 b                           Ahra                    gas_giant                357
 
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
