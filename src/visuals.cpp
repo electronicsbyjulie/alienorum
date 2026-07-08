@@ -838,15 +838,16 @@ bool draw_one_object(int i)
 
     if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
-            || (cbolbls_selected_idx == 1 && cels[i]->absolute_magnitude <= absmagn_lblcut)
-            || (cbolbls_selected_idx == 2 && here.distance_to(cels[i]->location) <= distance_lblcut)
-            || (cbolbls_selected_idx == 3 && strlen(((Star*)cels[i])->Bayer))
-            || (cbolbls_selected_idx == 4 && strlen(((Star*)cels[i])->Flamsteed))
-            || (cbolbls_selected_idx == 5 && ((Star*)cels[i])->is_sunlike())
-            || (cbolbls_selected_idx == 6 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-            || (cbolbls_selected_idx == 7 && (((Star*)cels[i])->has_hz_planets) )
-            || (cbolbls_selected_idx == 8 && (cels[i]->orbit || ((Star*)cels[i])->is_orbit_multiple))
-            || (cbolbls_selected_idx == 9 && cels[i]->known_poles)
+            || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
+            || (cbolbls_selected_idx == lbltype_nearby && here.distance_to(cels[i]->location) <= distance_lblcut)
+            || (cbolbls_selected_idx == lbltype_Bayer && strlen(((Star*)cels[i])->Bayer))
+            || (cbolbls_selected_idx == lbltype_Flamsteed && strlen(((Star*)cels[i])->Flamsteed))
+            || (cbolbls_selected_idx == lbltype_Gould && (((Star*)cels[i])->GouldNo > 0))
+            || (cbolbls_selected_idx == lbltype_sunlike && ((Star*)cels[i])->is_sunlike())
+            || (cbolbls_selected_idx == lbltype_planets && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+            || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cels[i])->has_hz_planets) )
+            || (cbolbls_selected_idx == lbltype_binary && (((Star*)cels[i])->multisys))
+            || (cbolbls_selected_idx == lbltype_knpole && cels[i]->known_poles)
             ))
         || ((cels[i]->cenobj == mycenobj) && lbl_localsys
             && ((cels[i]->mass >= lmasslim)
@@ -861,7 +862,7 @@ bool draw_one_object(int i)
         std::string str;
         cel_obj_class cls = cels[i]->typeclass();
         double lfontsz = global_font_size;
-        if (cbolbls_selected_idx == 3 && cls == class_star)
+        if (cbolbls_selected_idx == lbltype_Bayer && cls == class_star)
         {
             // str = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
             // dispname = str.c_str();
@@ -872,9 +873,14 @@ bool draw_one_object(int i)
             font = Greek_font;
             lfontsz *= 1.312;           // for better visibility
         }
-        else if (cbolbls_selected_idx == 4 && cls == class_star)
+        else if (cbolbls_selected_idx == lbltype_Flamsteed && cls == class_star)
         {
             str = trim(std::string(((Star*)cels[i])->Flamsteed).substr(0, strlen(((Star*)cels[i])->Flamsteed)-3));
+            dispname = str.c_str();
+        }
+        else if (cbolbls_selected_idx == lbltype_Gould && cls == class_star)
+        {
+            str = std::to_string(((Star*)cels[i])->GouldNo);
             dispname = str.c_str();
         }
         ImVec2 sz = ImGui::CalcTextSize(dispname);

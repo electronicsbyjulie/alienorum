@@ -87,6 +87,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             }
             else if (strlen(s->Flamsteed)) objinfo += (std::string)s->Flamsteed + (std::string)"\n";
             else if (strlen(s->Bayer)) objinfo += (std::string)s->Bayer + (std::string)"\n";
+            if (s->GouldNo > 0) objinfo += std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->constellation) + (std::string)"\n";
 
             if (strlen(s->Gliese)) objinfo += (std::string)s->Gliese + (std::string)"\n";
             if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
@@ -249,7 +250,7 @@ void process_key_cmd_char(char c)
 
     switch (c)
     {
-        case 'a': cbolbls_selected_idx = 0; break;
+        case 'a': cbolbls_selected_idx = lbltype_brightest; break;
 
         case 'A':
         if (explorer && celidx_sel_in_sysxplor >= 0) addcenidx = celidx_sel_in_sysxplor;
@@ -267,7 +268,7 @@ void process_key_cmd_char(char c)
         case 'b': global_brightness *= 1.1; viewchanged = true; break;
         case 'B': global_brightness *= 0.9; viewchanged = true; break;
         case 'c': show_consln = !show_consln; break;
-        case 'C': cbolbls_selected_idx = 5; break;
+        case 'C': cbolbls_selected_idx = lbltype_sunlike; break;
         case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
 
@@ -279,10 +280,11 @@ void process_key_cmd_char(char c)
         else if (whereami >= 0) editidx = whereami;
         objedtwnd = (editidx >= 0);
         break;
-        case 'f': cbolbls_selected_idx = 4; break;
-        case 'F': cbolbls_selected_idx = 3; break;
+        case 'f': cbolbls_selected_idx = lbltype_Flamsteed; break;
+        case 'F': cbolbls_selected_idx = lbltype_Bayer; break;
 
         case 'g': show_grid = !show_grid; break;
+        case 'G': cbolbls_selected_idx = lbltype_Gould; break;
         case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
@@ -290,18 +292,18 @@ void process_key_cmd_char(char c)
         case 'j': show_sats = !show_sats; break;
         case 'J': satview_upsidedown = !satview_upsidedown; break;
         case 'l': show_labels = !show_labels; break;
-        case 'L': cbolbls_selected_idx = 7; break;
+        case 'L': cbolbls_selected_idx = lbltype_planethz; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'M': JDnow -= 30; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'n': objinfwnd = !objinfwnd; break;
-        case 'N': cbolbls_selected_idx = 2; break;
+        case 'N': cbolbls_selected_idx = lbltype_nearby; break;
 
         case 'o':
         if (selected < 0 && trackidx >= 0) selected = trackidx;
         if (selected >= 0)
         {
             whereami = selected;
-            if (whereami >= 0 && cels[whereami] == cels[whereami]->cenobj) cbolbls_selected_idx = 0;
+            if (whereami >= 0 && cels[whereami] == cels[whereami]->cenobj) cbolbls_selected_idx = lbltype_brightest;
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
@@ -314,7 +316,7 @@ void process_key_cmd_char(char c)
 
         case 'O': show_orbits = !show_orbits; break;
         case 'p': lbl_localsys = !lbl_localsys; break;
-        case 'P': cbolbls_selected_idx = 6; break;
+        case 'P': cbolbls_selected_idx = lbltype_planets; break;
         case 'q': sphere_quality *= 1.3; viewchanged=true; break;
         case 'Q': sphere_quality *= 0.7; viewchanged=true; break;
 
@@ -334,7 +336,7 @@ void process_key_cmd_char(char c)
         neighb_rthresh = 25 * light_year;
         show_consln = show_grid = show_labels = lbl_localsys = show_sats = statuswnd = objinfwnd = true;
         show_orbits = false;
-        cbolbls_selected_idx = 0;
+        cbolbls_selected_idx = lbltype_brightest;
         appmagn_lblcut = 2.5;
         absmagn_lblcut = -3.5;
         distance_lblcut = 25*light_year;
@@ -376,7 +378,7 @@ void process_key_cmd_char(char c)
         save_user_json();
         break;
 
-        case 'v': cbolbls_selected_idx = 1; break;
+        case 'v': cbolbls_selected_idx = lbltype_intrinsic; break;
 
         case 'w':
         if (velocity.magnitude())
@@ -401,7 +403,7 @@ void process_key_cmd_char(char c)
         velocity = center;
         viewchanged = true;
         break;
-        case 'X': cbolbls_selected_idx = 9; break;
+        case 'X': cbolbls_selected_idx = lbltype_knpole; break;
 
         case 'y': JDnow += (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
         case 'Y': JDnow -= (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
@@ -410,7 +412,7 @@ void process_key_cmd_char(char c)
 
         case '0': neighborhood = !neighborhood; break;
         case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = true; break;
-        case '2': cbolbls_selected_idx = 8; break;
+        case '2': cbolbls_selected_idx = lbltype_binary; break;
 
         case '3':
         themes_selected_idx++;

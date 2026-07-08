@@ -30,6 +30,7 @@ std::vector<std::string> known_catalog_names =
     "Gliese", "GJ", "Gliese-Jahreiss",
     "HD", "HenryDraper",
     "Hipparcos",
+    "Uranometria",
     "USNO", "SAO",
     "BSC", "BrightStarCatalog", "BrightStarCatalogue",
     "WD",
@@ -1217,6 +1218,42 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     }
 
     fclose(fp);
+    return num_read;
+}
+
+int alienorum::CatalogReader::read_Uranometria_catalog(CelestialObject **cels, int max)
+{
+    std::string catpath = "catalogs" _FILESLASH "Uranometria" _FILESLASH "catalog.dat";
+    char buffer[1024];
+    char field[32];
+    int HD, Gould, num_read = 0;
+    Star *s;
+
+    FILE* fp = fopen(catpath.c_str(), "rb");
+    if (!fp) return 0;
+
+    while (fgets(buffer, 1020, fp))
+    {
+        //  66- 71  I6   ---     HD      ? Star number in the Henry Draper (HD) catalogue
+        read_field_onebased(buffer, 66, 71, field);
+        HD = atoi(field);
+
+        if (!hdcache[HD]) continue;
+        s = hdcache[HD];
+        if (s == cels[0]) continue;
+
+        //   3-  5  I3   ---     G       [1/393]? Number in printed Uranometria Argentina (blank if not in Gould Uranometria)
+        read_field_onebased(buffer, 3, 5, field);
+        Gould = atoi(field);
+        if (!Gould) continue;
+
+        s->GouldNo = Gould;
+
+        //   7-  9  A3   ---     cst     Three letter abbreviation of the constellation name under which the star appears in the
+        read_field_onebased(buffer, 7, 9, field);
+        if (!strlen(s->constellation) && strlen(trim(field).c_str())) strcpy(s->constellation, field);
+    }
+
     return num_read;
 }
 

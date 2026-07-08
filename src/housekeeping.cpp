@@ -126,8 +126,8 @@ bool compute_object_location(CelestialObject* cel)
         case class_star:
         if ((star_in_box = (i
             ? (((Star*)cel)->is_in_visible_box(Point(here))
-                || (cbolbls_selected_idx == 6 && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-                || (cbolbls_selected_idx == 7 && (((Star*)cels[i])->has_hz_planets) )
+                || (cbolbls_selected_idx == lbltype_planets && (((Star*)cels[i])->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cels[i])->has_hz_planets) )
                 )
             : true))) num_stars_in_box++;              // ANC
         if (i > 0)

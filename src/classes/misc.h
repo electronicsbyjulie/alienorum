@@ -101,7 +101,18 @@ using json = nlohmann::json;
 #define default_gamma 1.0
 #define target_frame_rate 30
 const std::time_t J2000_TIME_T = 946684800;
-#define nlbltyp 10
+#define nlbltyp 11
+#define lbltype_brightest 0
+#define lbltype_intrinsic 1
+#define lbltype_nearby 2
+#define lbltype_Bayer 3
+#define lbltype_Flamsteed 4
+#define lbltype_Gould 5
+#define lbltype_sunlike 6
+#define lbltype_planets 7
+#define lbltype_planethz 8
+#define lbltype_binary 9
+#define lbltype_knpole 10
 #define nceltyp 5
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
@@ -189,7 +200,7 @@ extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, v
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown,
     is_mouse_over_window, dragging, dragged, viewchanged, updating_sats,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood,
-    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_WD, have_CCDM, have_SB9, have_astorb, have_exo;
+    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo;
 extern std::string objname, objinfo;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

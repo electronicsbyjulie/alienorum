@@ -55,7 +55,7 @@ Star::Star()
     memset(spectral_type, 0, 32*sizeof(char));
     memset(Bayer, 0, 32*sizeof(char));
     memset(Flamsteed, 0, 32*sizeof(char));
-    memset(constellation, 0, 32*sizeof(char));
+    memset(constellation, 0, 4*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
     sidereal_rotational_period = 25 * oneday;            // Sun
 }
@@ -115,10 +115,9 @@ void Star::update_location(double tmnow)
 void Star::rename_from_Bayer_Flamsteed()
 {
     if (!strlen(constellation)) return;
-    if (BayerGrkno < 0 && !FlamsteedNo) return;
     if (has_custom_name) return;
     if (orbit && orbit->center && orbit->center->typeclass() == class_star
-        && !BayerGrkno && !FlamsteedNo
+        && !BayerGrkno && !FlamsteedNo && GouldNo < 1
         )
     {
         std::string buildname = lop_component(orbit->center->name);
@@ -126,6 +125,7 @@ void Star::rename_from_Bayer_Flamsteed()
         strcpy(name, buildname.c_str());
         return;
     }
+    if (BayerGrkno < 0 && !FlamsteedNo && (GouldNo < 1)) return;
 
     if (!consabbrev.size() || !consgen.size())
     {
@@ -166,11 +166,17 @@ void Star::rename_from_Bayer_Flamsteed()
 
         if (BayerGrkno == 5 && !strcmp(consabbrev[j].c_str(), "Ret")) has_custom_name = true;
     }
-    else if (FlamsteedNo)
+    else if (FlamsteedNo > 0)
     {
         if (!strcmp(consabbrev[j].c_str(), "UMa") && FlamsteedNo == 53)
             strcpy(name, Gliese);
         else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
+    }
+    else if (GouldNo > 0)
+    {
+        if (GouldNo == 82 && !strcmp(consabbrev[j].c_str(), "Eri"))
+            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + consgen[j]).c_str());
+        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + consgen[j]).c_str());
     }
 
     if (multisys && multisys->get_member('A') == this)

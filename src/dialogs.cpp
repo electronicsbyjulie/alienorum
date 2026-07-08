@@ -102,7 +102,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::EndCombo();
     }
 
-    if (cbolbls_selected_idx == 0)
+    if (cbolbls_selected_idx == lbltype_brightest)
     {
         snprintf(lblcut0, sizeof(lblcut0), "%.2f", appmagn_lblcut);
         ImGui::Text("%s", "Mag limit:");
@@ -111,7 +111,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::InputText("##appmaglim", lblcut0, 255);
         appmagn_lblcut = atof(lblcut0);
     }
-    else if (cbolbls_selected_idx == 1)
+    else if (cbolbls_selected_idx == lbltype_intrinsic)
     {
         snprintf(lblcut1, sizeof(lblcut1), "%.2f", absmagn_lblcut);
         ImGui::Text("%s", "Mag limit:");
@@ -120,7 +120,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::InputText("##absmaglim", lblcut1, 255);
         absmagn_lblcut = atof(lblcut1);
     }
-    else if (cbolbls_selected_idx == 2)
+    else if (cbolbls_selected_idx == lbltype_nearby)
     {
         snprintf(lblcut2, sizeof(lblcut2), "%.2f", distance_lblcut/light_year);
         ImGui::Text("%s", "Dist. l.y.:");
@@ -129,20 +129,13 @@ void draw_status_window(ImGuiIO& io)
         ImGui::InputText("##distlim", lblcut2, 255);
         distance_lblcut = atof(lblcut2)*light_year;
     }
-    else if (cbolbls_selected_idx == 6)
+    else if (cbolbls_selected_idx == lbltype_planets)
     {
         ImGui::Text("%s", "# Planets:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
         ImGui::InputInt("##npltlim", &planets_lblcut, 1, 0);
         if (planets_lblcut < 1) planets_lblcut = 1;
-    }
-
-    if (!have_exo && (cbolbls_selected_idx == 6 || cbolbls_selected_idx == 7))
-    {
-        ImVec4 warncol = rgba_apply_redlight(ImVec4(1, 0.9, 0, 1));
-        ImGui::TextColored(warncol,
-            "%s", "Note: No exoplanets found.\nTo obtain the exoplanet\ncatalog, please follow the\ninstructions in README.md,\nthen restart Alienorum.");
     }
 
     flagstr = (std::string)"Lbl planets (P): "

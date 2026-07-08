@@ -254,6 +254,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "Gliese")) have_Gliese = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "BSC")) have_BSC = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "Hipparcos")) have_HIP = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "Uranometria")) have_Uranio = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "WD")) have_WD = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "CCDM")) have_CCDM = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "SB9")) have_SB9 = true;
@@ -307,6 +308,15 @@ void load_catalogs()
         int nHIP = cr.read_Hipparcos_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nHIP << " objects." << endl << flush;
         Gliese_doubles_fix();
+    }
+    if (have_Uranio)
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading Uranometria Catalog...");
+        mtx.unlock();
+        cout << "Reading Uranometria catalog..." << endl << flush;
+        int nUra = cr.read_Uranometria_catalog(cels, MAX_CELOBJS);
+        cout << "Read " << nUra << " objects." << endl << flush;
     }
     if (0) // have_WD)
     {

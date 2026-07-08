@@ -25,7 +25,8 @@ namespace alienorum
         char Gliese[16];
         int BayerGrkno = -1;
         int FlamsteedNo = -1;
-        char constellation[32];
+        int GouldNo = -1;
+        char constellation[4] = {0,0,0,0};
         std::string CCDM, WD;
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;
