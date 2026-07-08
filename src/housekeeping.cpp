@@ -294,8 +294,8 @@ void compute_object_draw_coordinates()
         luminous_flux = cels[1] ? 0 : 1e10;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
-            cels[i]->drawnx = cels[i]->drawny = -1e9;
-            cels[i]->onscreen = false;
+            cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
+                = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
             if (i == whereami) continue;
 
