@@ -2121,7 +2121,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
-#define _debug_exoplanet_inclinations 1
+#define _debug_exoplanet_inclinations 0
 void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids)
 {
     std::map<std::string, std::string> planet_names;
@@ -2375,16 +2375,63 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         for (i=0; i<n; i++) std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
 
         std::cout << std::endl;
-
-        Rotation rot = system_plane_from_incl_and_node(sysincl, sysnode, s->location.system_center);
-        double czincl, cznode;
-        incl_and_node_from_system_plane(rot, czincl, cznode, s->location.system_center);
-        std::cout << "Double check: " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
-
-        std::cout << std::endl << std::endl;
         #endif
 
-        // TODO:
+        s->location.local_system_plane = system_plane_from_incl_and_node(sysincl, sysnode, s->location.system_center);
+        s->lock_system_plane = true;
+
+        #if _debug_exoplanet_inclinations
+        double czincl, cznode;
+        incl_and_node_from_system_plane(s->location.local_system_plane, czincl, cznode, s->location.system_center);
+        std::cout << "Double check: " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
+        #endif
+
+        n = row.size();
+        for (i=0; i<n; i++)
+        {
+            Planet *p = (Planet*)cels[row[i]];
+            std::string designation = p->name;
+
+            elements_in_new_reference_plane(system_plane_from_incl_and_node(pincls[i], pnodes[i], s->location.system_center),
+                s->location.local_system_plane,
+                p->orbit->inclination, p->orbit->ascending_node);
+
+            p->location.local_system_plane = s->location.local_system_plane;
+
+            #if _debug_exoplanet_inclinations
+            p->update_location(simnow);
+            double czincl, cznode;
+            incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+            std::cout << "Double check " << p->name << ": " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
+            #endif
+        }
+
+        if (s->multisys)
+        {
+            for (char c = 'A'; c <= 'Z'; c++)
+            {
+                Star *comp = s->multisys->get_member(c);
+                if (comp && comp->orbit && comp->orbit->center == s)
+                {
+                    elements_in_new_reference_plane(system_plane_from_incl_and_node(cincls[i], cnodes[i], s->location.system_center),
+                        s->location.local_system_plane,
+                        comp->orbit->inclination, comp->orbit->ascending_node);
+
+                    comp->location.local_system_plane = s->location.local_system_plane;
+
+                    #if _debug_exoplanet_inclinations
+                    comp->update_location(simnow);
+                    double czincl, cznode;
+                    incl_and_node_from_system_plane(comp->location.orbital_plane, czincl, cznode, comp->location.system_center);
+                    std::cout << "Double check " << comp->name << ": " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
+                    #endif
+                }
+            }
+        }
+
+        #if _debug_exoplanet_inclinations
+        std::cout << std::endl << std::endl;
+        #endif
     }
 }
 

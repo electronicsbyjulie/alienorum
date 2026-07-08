@@ -304,12 +304,18 @@ void compute_object_draw_coordinates()
                 && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
                 && !cels_i_star->tmp_vis_flag
                 && !cels_i_star->is_universally_visible())
+            {
+                cels[i]->drawnx = cels[i]->drawny = -1e9;
                 continue;
+            }
 
             Point rel = cels[i]->tmprel;
 
             if (cels[i]->orbit && rel.squared_magnitude() > 1e6 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
+            {
+                cels[i]->drawnx = cels[i]->drawny = -1e9;
                 continue;
+            }
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 

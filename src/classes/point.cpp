@@ -400,11 +400,51 @@ Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation or
 
 void elements_in_new_reference_plane(Rotation original, Rotation reference, double &out_new_inclination, double &out_new_node)
 {
+    #if 0
     Point pole = rotate3D(yaxis, center, original.v, original.a);
+    pole.scale(1);
     Point refpole = rotate3D(yaxis, center, reference.v, reference.a);
+    refpole.scale(1);
     Rotation tmp = align_points_3d(pole, refpole, center);
     out_new_inclination = tmp.a;
-    out_new_node = find_angle_along_vector(zaxis, tmp.v, center, yaxis);
+    out_new_node = find_angle_along_vector(zaxis, tmp.v, center, refpole);
+    #else
+    // 1. Get the planet's universal pole vector
+    Point pole = rotate3D(yaxis, center, original.v, original.a);
+    pole.scale(1);
+    
+    // 2. Un-rotate the planet's pole by the reference plane's rotation.
+    // This shifts us into a local frame where the reference plane is perfectly flat.
+    Point local_pole = rotate3D(pole, center, reference.v, -reference.a);
+    
+    // Defensive guard: Scale to 1 to strip out any 1e37 amplification from rotate3D
+    local_pole.scale(1);
+
+    // 3. Recover the local inclination
+    // In this frame, the reference pole is the universal yaxis. 
+    // The local inclination is just the angle between local_pole and yaxis.
+    double cos_i = local_pole.y; 
+    if (cos_i > 1.0)  cos_i = 1.0;
+    if (cos_i < -1.0) cos_i = -1.0;
+    out_new_inclination = std::acos(cos_i);
+
+    // 4. Recover the local ascending node
+    // The local node is the angle of the pole's projection in the local X-Z plane,
+    // measuring from the local x-axis (xaxis) toward the local z-axis (zaxis).
+    out_new_node = std::atan2(local_pole.z, local_pole.x) + _pi;
+
+    // Normalize the node to [0, 2*pi)
+    if (out_new_node < 0.0)
+    {
+        out_new_node += 2.0 * _pi;
+    }
+
+    // 5. Handle Gimbal Lock for perfectly face-on orbits
+    if (out_new_inclination < 1e-7 || out_new_inclination > (_pi - 1e-7))
+    {
+        out_new_node = 0.0;
+    }
+    #endif
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)
