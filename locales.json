@@ -1,0 +1,2312 @@
+{
+    "Mercury": [
+        {
+            "name": "Antoniadi Dorsum",
+            "latitude": 27.2,
+            "longitude": 29.65
+        },
+        {
+            "name": "Borobudur Fossae",
+            "latitude": -32.77,
+            "longitude": 271.5
+        },
+        {
+            "name": "Caloris Montes",
+            "latitude": 31.46,
+            "longitude": 174.15
+        },
+        {
+            "name": "Schiaparelli Dorsum",
+            "latitude": 23.26,
+            "longitude": 164.3
+        },
+        {
+            "name": "Pantheon Fossae",
+            "latitude": 30.19,
+            "longitude": 197.17
+        },
+        {
+            "name": "Angkor Vallis",
+            "latitude": 57.28,
+            "longitude": 245.96
+        },
+        {
+            "name": "Cahokia Vallis",
+            "latitude": 65.55,
+            "longitude": 233.06
+        },
+        {
+            "name": "Caral Vallis",
+            "latitude": 62.66,
+            "longitude": 230.71
+        },
+        {
+            "name": "Paestum Vallis",
+            "latitude": 60.28,
+            "longitude": 233.96
+        },
+        {
+            "name": "Timgad Vallis",
+            "latitude": 60.88,
+            "longitude": 243.56
+        },
+        {
+            "name": "Ap\u0101rangi Planitia",
+            "latitude": 6.7,
+            "longitude": 289.38
+        },
+        {
+            "name": "Borealis Planitia",
+            "latitude": 67.3,
+            "longitude": 327.4
+        },
+        {
+            "name": "Budh Planitia",
+            "latitude": 19.52,
+            "longitude": 150.46
+        },
+        {
+            "name": "Caloris Planitia",
+            "latitude": 31.65,
+            "longitude": 198.02
+        },
+        {
+            "name": "Lugus Planitia",
+            "latitude": -6.24,
+            "longitude": 98.66
+        },
+        {
+            "name": "Mearcair Planitia",
+            "latitude": 31.4,
+            "longitude": 227.9
+        },
+        {
+            "name": "Odin Planitia",
+            "latitude": 23.6,
+            "longitude": 169.86
+        },
+        {
+            "name": "Otaared Planitia",
+            "latitude": 18.26,
+            "longitude": 337.61
+        },
+        {
+            "name": "Papsukkal Planitia",
+            "latitude": -16.25,
+            "longitude": 271.63
+        },
+        {
+            "name": "Sihtu Planitia",
+            "latitude": -2.82,
+            "longitude": 55.57
+        },
+        {
+            "name": "Sobkou Planitia",
+            "latitude": 39.0,
+            "longitude": 128.02
+        },
+        {
+            "name": "Stilbon Planitia",
+            "latitude": 57.54,
+            "longitude": 209.61
+        },
+        {
+            "name": "Suisei Planitia",
+            "latitude": 60.88,
+            "longitude": 147.81
+        },
+        {
+            "name": "Tir Planitia",
+            "latitude": -1.04,
+            "longitude": 176.69
+        },
+        {
+            "name": "Turms Planitia",
+            "latitude": -31.05,
+            "longitude": 350.81
+        },
+        {
+            "name": "Utaridi Planitia",
+            "latitude": -65.5,
+            "longitude": 270.17
+        },
+        {
+            "name": "Acadia Rupes",
+            "latitude": 8.17,
+            "longitude": 329.0
+        },
+        {
+            "name": "Adventure Rupes",
+            "latitude": -65.48,
+            "longitude": 65.3
+        },
+        {
+            "name": "Alpha Crucis Rupes",
+            "latitude": -12.48,
+            "longitude": 228.31
+        },
+        {
+            "name": "Altair Rupes",
+            "latitude": -70.48,
+            "longitude": 186.49
+        },
+        {
+            "name": "Alvin Rupes",
+            "latitude": 8.3,
+            "longitude": 208.72
+        },
+        {
+            "name": "Antares Rupes",
+            "latitude": 18.06,
+            "longitude": 229.42
+        },
+        {
+            "name": "Arquipelago Rupes",
+            "latitude": 7.36,
+            "longitude": 229.31
+        },
+        {
+            "name": "Astrolabe Rupes",
+            "latitude": -42.55,
+            "longitude": 70.9
+        },
+        {
+            "name": "Beagle Rupes",
+            "latitude": -3.22,
+            "longitude": 259.24
+        },
+        {
+            "name": "Belgica Rupes",
+            "latitude": -50.45,
+            "longitude": 296.24
+        },
+        {
+            "name": "Blossom Rupes",
+            "latitude": -3.04,
+            "longitude": 270.15
+        },
+        {
+            "name": "Calypso Rupes",
+            "latitude": 19.53,
+            "longitude": 316.48
+        },
+        {
+            "name": "Carnegie Rupes",
+            "latitude": 58.52,
+            "longitude": 53.25
+        },
+        {
+            "name": "Carrasco Rupes",
+            "latitude": -9.66,
+            "longitude": 218.97
+        },
+        {
+            "name": "Challenger Rupes",
+            "latitude": -12.58,
+            "longitude": 109.92
+        },
+        {
+            "name": "Chikyu Rupes",
+            "latitude": -53.82,
+            "longitude": 259.62
+        },
+        {
+            "name": "Darshak Rupes",
+            "latitude": -14.5,
+            "longitude": 47.42
+        },
+        {
+            "name": "Discovery Rupes",
+            "latitude": -54.7,
+            "longitude": 37.24
+        },
+        {
+            "name": "Duyfken Rupes",
+            "latitude": -20.88,
+            "longitude": 131.93
+        },
+        {
+            "name": "Eltanin Rupes",
+            "latitude": -74.99,
+            "longitude": 269.4
+        },
+        {
+            "name": "Endeavour Rupes",
+            "latitude": 38.36,
+            "longitude": 31.38
+        },
+        {
+            "name": "Endurance Rupes",
+            "latitude": 21.6,
+            "longitude": 217.81
+        },
+        {
+            "name": "Enterprise Rupes",
+            "latitude": -36.54,
+            "longitude": 283.46
+        },
+        {
+            "name": "Fram Rupes",
+            "latitude": -57.68,
+            "longitude": 93.2
+        },
+        {
+            "name": "Gj\u00f6a Rupes",
+            "latitude": -66.89,
+            "longitude": 158.5
+        },
+        {
+            "name": "Heemskerck Rupes",
+            "latitude": 27.3,
+            "longitude": 124.31
+        },
+        {
+            "name": "Hero Rupes",
+            "latitude": -58.72,
+            "longitude": 171.7
+        },
+        {
+            "name": "Hesperides Rupes",
+            "latitude": -2.98,
+            "longitude": 189.55
+        },
+        {
+            "name": "Investigator Rupes",
+            "latitude": -25.39,
+            "longitude": 223.96
+        },
+        {
+            "name": "Kainan Rupes",
+            "latitude": -29.8,
+            "longitude": 330.8
+        },
+        {
+            "name": "La Duaphine Rupes",
+            "latitude": 66.3,
+            "longitude": 26.62
+        },
+        {
+            "name": "Meteor Rupes",
+            "latitude": -47.7,
+            "longitude": 345.7
+        },
+        {
+            "name": "Mirni Rupes",
+            "latitude": -38.54,
+            "longitude": 39.01
+        },
+        {
+            "name": "Nautilus Rupes",
+            "latitude": -28.23,
+            "longitude": 293.33
+        },
+        {
+            "name": "Palmer Rupes",
+            "latitude": -26.07,
+            "longitude": 106.28
+        },
+        {
+            "name": "Paramour Rupes",
+            "latitude": -0.08,
+            "longitude": 212.54
+        },
+        {
+            "name": "Pelagia Rupes",
+            "latitude": 15.33,
+            "longitude": 218.59
+        },
+        {
+            "name": "Pourquoi-Pas Rupes",
+            "latitude": -58.54,
+            "longitude": 156.17
+        },
+        {
+            "name": "Protea Rupes",
+            "latitude": -9.36,
+            "longitude": 203.01
+        },
+        {
+            "name": "Resolution Rupes",
+            "latitude": -63.25,
+            "longitude": 50.66
+        },
+        {
+            "name": "Santa Mar\u00eda Rupes",
+            "latitude": 5.81,
+            "longitude": 20.0
+        },
+        {
+            "name": "Selen Rupes",
+            "latitude": -8.11,
+            "longitude": 178.92
+        },
+        {
+            "name": "Soya Rupes",
+            "latitude": -6.47,
+            "longitude": 293.37
+        },
+        {
+            "name": "Tangaroa Rupes",
+            "latitude": 1.04,
+            "longitude": 173.27
+        },
+        {
+            "name": "Terror Rupes",
+            "latitude": -72.06,
+            "longitude": 275.69
+        },
+        {
+            "name": "Unity Rupes",
+            "latitude": 27.16,
+            "longitude": 275.2
+        },
+        {
+            "name": "Vejas Rupes",
+            "latitude": 35.71,
+            "longitude": 162.25
+        },
+        {
+            "name": "Victoria Rupes",
+            "latitude": 52.71,
+            "longitude": 34.16
+        },
+        {
+            "name": "Volasiga Rupes",
+            "latitude": -36.22,
+            "longitude": 146.0
+        },
+        {
+            "name": "Vostok Rupes",
+            "latitude": -37.88,
+            "longitude": 19.6
+        },
+        {
+            "name": "Xuelong Rupes",
+            "latitude": 57.27,
+            "longitude": 182.87
+        },
+        {
+            "name": "Yelcho Rupes",
+            "latitude": 23.54,
+            "longitude": 224.11
+        },
+        {
+            "name": "Zapiola Rupes",
+            "latitude": 72.36,
+            "longitude": 44.02
+        },
+        {
+            "name": "Zarya Rupes",
+            "latitude": -42.73,
+            "longitude": 20.42
+        },
+        {
+            "name": "Zeehaen Rupes",
+            "latitude": 49.64,
+            "longitude": 158.15
+        },
+        {
+            "name": "Arecibo Catena",
+            "latitude": -27.58,
+            "longitude": 28.29
+        },
+        {
+            "name": "Goldstone Catena",
+            "latitude": -15.62,
+            "longitude": 32.02
+        },
+        {
+            "name": "Haystack Catena",
+            "latitude": 4.42,
+            "longitude": 46.48
+        },
+        {
+            "name": "Abeeso Facula",
+            "latitude": 21.7,
+            "longitude": 214.6
+        },
+        {
+            "name": "Agwo Facula",
+            "latitude": 22.4,
+            "longitude": 213.7
+        },
+        {
+            "name": "Ahas Facula",
+            "latitude": -21.37,
+            "longitude": 89.4
+        },
+        {
+            "name": "Amaru Facula",
+            "latitude": -49.8,
+            "longitude": 349.5
+        },
+        {
+            "name": "Bibilava Faculae",
+            "latitude": 16.4,
+            "longitude": 202.8
+        },
+        {
+            "name": "Bitin Facula",
+            "latitude": -51.55,
+            "longitude": 28.45
+        },
+        {
+            "name": "Coatl Facula",
+            "latitude": -29.75,
+            "longitude": 216.55
+        },
+        {
+            "name": "Ejo Faculae",
+            "latitude": 14.5,
+            "longitude": 200.5
+        },
+        {
+            "name": "Gata Facula",
+            "latitude": -52.9,
+            "longitude": 321.4
+        },
+        {
+            "name": "Havu Facula",
+            "latitude": -52.22,
+            "longitude": 28.45
+        },
+        {
+            "name": "Ibab Facula",
+            "latitude": 14.5,
+            "longitude": 199.2
+        },
+        {
+            "name": "Inyoka Faculae",
+            "latitude": 14.0,
+            "longitude": 197.7
+        },
+        {
+            "name": "Maciji Facula",
+            "latitude": 14.9,
+            "longitude": 196.0
+        },
+        {
+            "name": "Madu Facula",
+            "latitude": -21.24,
+            "longitude": 74.87
+        },
+        {
+            "name": "N\u0101kahi Facula",
+            "latitude": -52.7,
+            "longitude": 342.2
+        },
+        {
+            "name": "Nathair Facula",
+            "latitude": 36.0,
+            "longitude": 295.5
+        },
+        {
+            "name": "Neidr Facula",
+            "latitude": 35.9,
+            "longitude": 302.7
+        },
+        {
+            "name": "Ngu Facula",
+            "latitude": -22.77,
+            "longitude": 90.85
+        },
+        {
+            "name": "Nzoka Facula",
+            "latitude": 15.4,
+            "longitude": 194.7
+        },
+        {
+            "name": "Orm Faculae",
+            "latitude": 26.58,
+            "longitude": 59.68
+        },
+        {
+            "name": "Pampu Facula",
+            "latitude": -57.76,
+            "longitude": 31.79
+        },
+        {
+            "name": "Sarpa Facula",
+            "latitude": -53.07,
+            "longitude": 30.87
+        },
+        {
+            "name": "Serp Facula",
+            "latitude": 3.9,
+            "longitude": 309.06
+        },
+        {
+            "name": "Slang Faculae",
+            "latitude": 24.5,
+            "longitude": 179.3
+        },
+        {
+            "name": "Suge Facula",
+            "latitude": 26.1,
+            "longitude": 300.4
+        },
+        {
+            "name": "Thueban Facula",
+            "latitude": 48.7,
+            "longitude": 200.5
+        },
+        {
+            "name": "Ular Facula",
+            "latitude": -55.1,
+            "longitude": 29.95
+        },
+        {
+            "name": "Yinshe Facula",
+            "latitude": -46.32,
+            "longitude": 191.22
+        },
+        {
+            "name": "Zmija Facula",
+            "latitude": -37.35,
+            "longitude": 267.75
+        }
+    ],
+    "Venus": [
+        {
+            "name": "Akna Montes",
+            "latitude": 73,
+            "longitude": -42
+        },
+        {
+            "name": "Alpha Regio",
+            "latitude": -29,
+            "longitude": 3
+        },
+        {
+            "name": "Aphrodite Terra",
+            "latitude": -15,
+            "longitude": 150
+        },
+        {
+            "name": "Asteria Regio",
+            "latitude": 23,
+            "longitude": 269
+        },
+        {
+            "name": "Atlanta Planitia",
+            "latitude": 63,
+            "longitude": 164
+        },
+        {
+            "name": "Colette",
+            "latitude": 66,
+            "longitude": -37
+        },
+        {
+            "name": "Freyia Montes",
+            "latitude": 74,
+            "longitude": -28
+        },
+        {
+            "name": "Hathor Mons",
+            "latitude": -39,
+            "longitude": 319
+        },
+        {
+            "name": "Helen Planitia",
+            "latitude": -57,
+            "longitude": 260
+        },
+        {
+            "name": "Ishtar Terra",
+            "latitude": 70,
+            "longitude": 11
+        },
+        {
+            "name": "Lakshmi Planum",
+            "latitude": 66,
+            "longitude": 330
+        },
+        {
+            "name": "Lavinia Planitia",
+            "latitude": -50,
+            "longitude": 345
+        },
+        {
+            "name": "Leda Planitia",
+            "latitude": 47,
+            "longitude": 54
+        },
+        {
+            "name": "Lise Meitner",
+            "latitude": -56,
+            "longitude": 322
+        },
+        {
+            "name": "Maxwell Montes",
+            "latitude": 65,
+            "longitude": 3
+        },
+        {
+            "name": "Metis Regio",
+            "latitude": 72,
+            "longitude": 255
+        },
+        {
+            "name": "Phoebe Regio",
+            "latitude": -12,
+            "longitude": 283
+        },
+        {
+            "name": "Rhea Mons",
+            "latitude": 33,
+            "longitude": 285
+        },
+        {
+            "name": "Sacajawea",
+            "latitude": 64,
+            "longitude": -24
+        },
+        {
+            "name": "Sappho",
+            "latitude": 14,
+            "longitude": 16
+        },
+        {
+            "name": "Tellus Regio",
+            "latitude": 36,
+            "longitude": 82
+        },
+        {
+            "name": "Theia Mons",
+            "latitude": 19,
+            "longitude": 284
+        },
+        {
+            "name": "Themis Regio",
+            "latitude": -42,
+            "longitude": 281
+        },
+        {
+            "name": "Vesta Rupes",
+            "latitude": 59,
+            "longitude": 322
+        }
+    ],
+    "Earth": [
+        {
+            "name": "Akron, OH",
+            "latitude": 41.081,
+            "longitude": -81.519,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Albany, NY",
+            "latitude": 42.653,
+            "longitude": -73.757,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Albuquerque, NM",
+            "latitude": 35.084,
+            "longitude": -106.651,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Amarillo, TX",
+            "latitude": 35.222,
+            "longitude": -101.831,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Anchorage, AK",
+            "latitude": 61.218,
+            "longitude": -149.9,
+            "timezone": "UTC-10:00D"
+        },
+        {
+            "name": "Apache Junction, AZ",
+            "latitude": 33.415,
+            "longitude": -111.549,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Arecibo",
+            "latitude": 18.474,
+            "longitude": -66.716,
+            "timezone": "UTC-04:00"
+        },
+        {
+            "name": "Atlanta, GA",
+            "latitude": 33.749,
+            "longitude": -84.388,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Augusta, ME",
+            "latitude": 44.311,
+            "longitude": -69.78,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Baltimore, MD",
+            "latitude": 39.29,
+            "longitude": -76.613,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Barstow, CA",
+            "latitude": 34.899,
+            "longitude": -117.022,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Baton Rouge, LA",
+            "latitude": 30.451,
+            "longitude": -91.154,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Billings, MT",
+            "latitude": 45.783,
+            "longitude": -108.5,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Birmingham, AL",
+            "latitude": 33.521,
+            "longitude": -86.803,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Bismarck, ND",
+            "latitude": 46.808,
+            "longitude": -100.783,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Boise, ID",
+            "latitude": 43.614,
+            "longitude": -116.203,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Boston, MA",
+            "latitude": 42.358,
+            "longitude": -71.06,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Buffalo, NY",
+            "latitude": 42.886,
+            "longitude": -78.879,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Burlington, VT",
+            "latitude": 44.476,
+            "longitude": -73.213,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Butte, MT",
+            "latitude": 46.004,
+            "longitude": -112.534,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Calgary",
+            "latitude": 51.083,
+            "longitude": -114.083,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Carson City, NV",
+            "latitude": 39.164,
+            "longitude": -119.766,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Charleston, WV",
+            "latitude": 38.35,
+            "longitude": -81.633,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Charlotte, NC",
+            "latitude": 35.227,
+            "longitude": -80.843,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Chattanooga, TN",
+            "latitude": 35.046,
+            "longitude": -85.31,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Cheyenne, WY",
+            "latitude": 41.14,
+            "longitude": -104.82,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Chicago, IL",
+            "latitude": 41.85,
+            "longitude": -87.65,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Cincinnati, OH",
+            "latitude": 39.162,
+            "longitude": -84.457,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Cleveland, OH",
+            "latitude": 41.499,
+            "longitude": -81.696,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Columbia, SC",
+            "latitude": 34.001,
+            "longitude": -81.035,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Columbus, OH",
+            "latitude": 39.961,
+            "longitude": -82.999,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Concord, NH",
+            "latitude": 43.208,
+            "longitude": -71.538,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Corpus Christi, TX",
+            "latitude": 27.8,
+            "longitude": -97.396,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Crescent City, CA",
+            "latitude": 41.756,
+            "longitude": -124.201,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Dallas, TX",
+            "latitude": 32.783,
+            "longitude": -96.8,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Dayton, OH",
+            "latitude": 39.759,
+            "longitude": -84.192,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Denver, CO",
+            "latitude": 39.739,
+            "longitude": -104.984,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Des Moines, IA",
+            "latitude": 41.601,
+            "longitude": -93.609,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Detroit, MI",
+            "latitude": 42.331,
+            "longitude": -83.046,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Edmonton",
+            "latitude": 53.55,
+            "longitude": -113.5,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "El Paso, TX",
+            "latitude": 31.759,
+            "longitude": -106.486,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Eugene, OR",
+            "latitude": 44.052,
+            "longitude": -123.086,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Eureka, CA",
+            "latitude": 40.802,
+            "longitude": -124.163,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Fairbanks, AK",
+            "latitude": 64.838,
+            "longitude": -147.716,
+            "timezone": "UTC-10:00D"
+        },
+        {
+            "name": "Flagstaff, AZ",
+            "latitude": 35.198,
+            "longitude": -111.651,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Frankfort, KY",
+            "latitude": 38.201,
+            "longitude": -84.873,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Fresno, CA",
+            "latitude": 36.748,
+            "longitude": -119.771,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Ft. Worth, TX",
+            "latitude": 32.725,
+            "longitude": -97.321,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Glendale, AZ",
+            "latitude": 33.539,
+            "longitude": -112.185,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Grand Rapids, MI",
+            "latitude": 42.963,
+            "longitude": -85.668,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Grants Pass, OR",
+            "latitude": 42.439,
+            "longitude": -123.327,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Great Falls, MT",
+            "latitude": 47.5,
+            "longitude": -111.3,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Harrisburg, PA",
+            "latitude": 40.274,
+            "longitude": -76.885,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Hartford, CT",
+            "latitude": 41.764,
+            "longitude": -72.686,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Havana",
+            "latitude": 23.132,
+            "longitude": -82.364,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Helena, MT",
+            "latitude": 46.593,
+            "longitude": -112.035,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Honolulu, HI",
+            "latitude": 21.307,
+            "longitude": -157.858,
+            "timezone": "UTC-10:00"
+        },
+        {
+            "name": "Hopkinsville, KY",
+            "latitude": 36.866,
+            "longitude": -87.489,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Indianapolis, IN",
+            "latitude": 39.768,
+            "longitude": -86.158,
+            "timezone": "UTC-05:00"
+        },
+        {
+            "name": "Jackson, MS",
+            "latitude": 32.299,
+            "longitude": -90.185,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Juneau, AK",
+            "latitude": 58.302,
+            "longitude": -134.42,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Kansas City, KS",
+            "latitude": 39.114,
+            "longitude": -94.627,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Kansas City, MO",
+            "latitude": 39.1,
+            "longitude": -94.578,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Knoxville, TN",
+            "latitude": 35.961,
+            "longitude": -83.921,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Lansing, MI",
+            "latitude": 42.733,
+            "longitude": -84.556,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Las Vegas, NV",
+            "latitude": 36.175,
+            "longitude": -115.136,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Lincoln, NE",
+            "latitude": 40.8,
+            "longitude": -96.667,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Little Rock, AR",
+            "latitude": 34.746,
+            "longitude": -92.289,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Los Angeles, CA",
+            "latitude": 34.052,
+            "longitude": -118.243,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Louisville, KY",
+            "latitude": 38.254,
+            "longitude": -85.759,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Macon, GA",
+            "latitude": 32.841,
+            "longitude": -83.633,
+            "timezone": "UTC-04:00D"
+        },
+        {
+            "name": "Madison, WI",
+            "latitude": 43.073,
+            "longitude": -89.401,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "McMinnville, OR",
+            "latitude": 45.21,
+            "longitude": -123.198,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Medford, OR",
+            "latitude": 42.327,
+            "longitude": -122.874,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Memphis, TN",
+            "latitude": 35.149,
+            "longitude": -90.049,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Mexico City",
+            "latitude": 19.4,
+            "longitude": -99.15,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Miami, FL",
+            "latitude": 25.774,
+            "longitude": -80.194,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Milwaukee, WI",
+            "latitude": 43.039,
+            "longitude": -87.906,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Minneapolis, MN",
+            "latitude": 44.98,
+            "longitude": -93.264,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Mobile, AL",
+            "latitude": 30.694,
+            "longitude": -88.043,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Montgomery, AL",
+            "latitude": 32.367,
+            "longitude": -86.3,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Montpelier, VT",
+            "latitude": 44.26,
+            "longitude": -72.576,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Montreal",
+            "latitude": 45.5,
+            "longitude": -73.583,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Nashville, TN",
+            "latitude": 36.166,
+            "longitude": -86.784,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "New Orleans, LA",
+            "latitude": 29.954,
+            "longitude": -90.075,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "New York, NY",
+            "latitude": 40.714,
+            "longitude": -74.006,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Nome, AK",
+            "latitude": 64.501,
+            "longitude": -165.406,
+            "timezone": "UTC-11:00D"
+        },
+        {
+            "name": "Oklahoma City, OK",
+            "latitude": 35.468,
+            "longitude": -97.516,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Omaha, NE",
+            "latitude": 41.259,
+            "longitude": -95.938,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Orlando, FL",
+            "latitude": 28.538,
+            "longitude": -81.379,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Pascagoula, MS",
+            "latitude": 30.366,
+            "longitude": -88.556,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Pawcatuck, CT",
+            "latitude": 41.377,
+            "longitude": -71.834,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Peoria, IL",
+            "latitude": 40.694,
+            "longitude": -89.589,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Philadelphia, PA",
+            "latitude": 39.952,
+            "longitude": -75.164,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Phoenix, AZ",
+            "latitude": 33.448,
+            "longitude": -112.073,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Pierre, SD",
+            "latitude": 44.368,
+            "longitude": -100.351,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Pittsburgh, PA",
+            "latitude": 40.441,
+            "longitude": -79.996,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Portland, ME",
+            "latitude": 43.661,
+            "longitude": -70.256,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Portland, OR",
+            "latitude": 45.524,
+            "longitude": -122.675,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Providence, RI",
+            "latitude": 41.824,
+            "longitude": -71.413,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Quebec",
+            "latitude": 46.8,
+            "longitude": -71.25,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Regina",
+            "latitude": 50.45,
+            "longitude": -104.617,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Reno, NV",
+            "latitude": 39.53,
+            "longitude": -119.813,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Richmond, VA",
+            "latitude": 37.554,
+            "longitude": -77.461,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Rio Rico, AZ",
+            "latitude": 31.471,
+            "longitude": -110.976,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Riverside, CA",
+            "latitude": 33.953,
+            "longitude": -117.395,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Roswell, NM",
+            "latitude": 33.394,
+            "longitude": -104.523,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Sacramento, CA",
+            "latitude": 38.582,
+            "longitude": -121.493,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Salem, OR",
+            "latitude": 44.943,
+            "longitude": -123.034,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Salt Lake City, UT",
+            "latitude": 40.761,
+            "longitude": -111.89,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "San Antonio, TX",
+            "latitude": 29.424,
+            "longitude": -98.493,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "San Diego, CA",
+            "latitude": 32.715,
+            "longitude": -117.156,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "San Francisco, CA",
+            "latitude": 37.775,
+            "longitude": -122.418,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "San Juan",
+            "latitude": 18.468,
+            "longitude": -66.106,
+            "timezone": "UTC-04:00"
+        },
+        {
+            "name": "Santa Fe, NM",
+            "latitude": 35.687,
+            "longitude": -105.937,
+            "timezone": "UTC-07:00D"
+        },
+        {
+            "name": "Santo Domingo",
+            "latitude": 18.467,
+            "longitude": -69.9,
+            "timezone": "UTC-04:00"
+        },
+        {
+            "name": "Saskatoon",
+            "latitude": 52.133,
+            "longitude": -106.667,
+            "timezone": "UTC-06:00"
+        },
+        {
+            "name": "Savannah, GA",
+            "latitude": 32.083,
+            "longitude": -81.1,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Scranton, PA",
+            "latitude": 41.409,
+            "longitude": -75.663,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Seattle, WA",
+            "latitude": 47.606,
+            "longitude": -122.331,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Shreveport, LA",
+            "latitude": 32.525,
+            "longitude": -93.75,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Spokane, WA",
+            "latitude": 47.659,
+            "longitude": -117.425,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Springfield, MO",
+            "latitude": 37.215,
+            "longitude": -93.298,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "St. Louis, MO",
+            "latitude": 38.627,
+            "longitude": -90.198,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "St. Paul, MN",
+            "latitude": 44.944,
+            "longitude": -93.093,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Tampa, FL",
+            "latitude": 27.947,
+            "longitude": -82.459,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Toledo, OH",
+            "latitude": 41.664,
+            "longitude": -83.555,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Topeka, KS",
+            "latitude": 39.048,
+            "longitude": -95.678,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Toronto",
+            "latitude": 43.667,
+            "longitude": -79.417,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Trenton, NJ",
+            "latitude": 40.217,
+            "longitude": -74.743,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Tucson, AZ",
+            "latitude": 32.222,
+            "longitude": -110.926,
+            "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Tulsa, OK",
+            "latitude": 36.154,
+            "longitude": -95.993,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Vancouver, BC",
+            "latitude": 49,
+            "longitude": -123,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Washington, DC",
+            "latitude": 38.895,
+            "longitude": -77.037,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Wichita, KS",
+            "latitude": 37.692,
+            "longitude": -97.337,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Wilsonville, OR",
+            "latitude": 45.3,
+            "longitude": -122.773,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Winnipeg",
+            "latitude": 49.883,
+            "longitude": -97.167,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Bogota",
+            "latitude": 4.6,
+            "longitude": -74.083,
+            "timezone": "UTC-05:00"
+        },
+        {
+            "name": "Buenos Aires",
+            "latitude": -34.613,
+            "longitude": -58.47,
+            "timezone": "UTC-03:00"
+        },
+        {
+            "name": "Caracas",
+            "latitude": 10.5,
+            "longitude": -66.917,
+            "timezone": "UTC-04:00"
+        },
+        {
+            "name": "Cordoba",
+            "latitude": -31.4,
+            "longitude": -64.183,
+            "timezone": "UTC-03:00"
+        },
+        {
+            "name": "Montevideo",
+            "latitude": -34.883,
+            "longitude": -56.183,
+            "timezone": "UTC-03:00"
+        },
+        {
+            "name": "Panama",
+            "latitude": 8.967,
+            "longitude": -79.533,
+            "timezone": "UTC-05:00"
+        },
+        {
+            "name": "Punta Arenas",
+            "latitude": -53.15,
+            "longitude": -70.917,
+            "timezone": "UTC-04:00"
+        },
+        {
+            "name": "Quito",
+            "latitude": -0.217,
+            "longitude": -78.5,
+            "timezone": "UTC-05:00"
+        },
+        {
+            "name": "Rio de Janeiro",
+            "latitude": -22.9,
+            "longitude": -43.233,
+            "timezone": "UTC-03:00"
+        },
+        {
+            "name": "San Salvador",
+            "latitude": -13.7,
+            "longitude": -89.2,
+            "timezone": "UTC-06:00"
+        },
+        {
+            "name": "Santiago",
+            "latitude": -33.45,
+            "longitude": -70.667,
+            "timezone": "UTC-04:00"
+        },
+        {
+            "name": "Sao Paulo",
+            "latitude": -23.533,
+            "longitude": -46.617,
+            "timezone": "UTC-03:00"
+        },
+        {
+            "name": "Ushuaia",
+            "latitude": -54.8,
+            "longitude": -68.3,
+            "timezone": "UTC-03:00"
+        },
+        {
+            "name": "Amsterdam",
+            "latitude": 52.35,
+            "longitude": 4.917
+        },
+        {
+            "name": "Ankara",
+            "latitude": 39.933,
+            "longitude": 32.867
+        },
+        {
+            "name": "Athens",
+            "latitude": 37.983,
+            "longitude": 23.733
+        },
+        {
+            "name": "Baghdad",
+            "latitude": 33.339,
+            "longitude": 44.394
+        },
+        {
+            "name": "Beirut",
+            "latitude": 33.872,
+            "longitude": 35.51
+        },
+        {
+            "name": "Belgrade",
+            "latitude": 44.833,
+            "longitude": 20.5
+        },
+        {
+            "name": "Berlin",
+            "latitude": 52.517,
+            "longitude": 13.4
+        },
+        {
+            "name": "Bern",
+            "latitude": 46.917,
+            "longitude": 7.467
+        },
+        {
+            "name": "Bonn",
+            "latitude": 50.733,
+            "longitude": 7.1
+        },
+        {
+            "name": "Brussels",
+            "latitude": 50.833,
+            "longitude": 4.333
+        },
+        {
+            "name": "Bucharest",
+            "latitude": 44.433,
+            "longitude": 26.1
+        },
+        {
+            "name": "Budapest",
+            "latitude": 47.5,
+            "longitude": 19.083
+        },
+        {
+            "name": "Copenhagen",
+            "latitude": 55.667,
+            "longitude": 12.583
+        },
+        {
+            "name": "Damascus",
+            "latitude": 33.5,
+            "longitude": 36.3
+        },
+        {
+            "name": "Dublin",
+            "latitude": 53.333,
+            "longitude": -6.25
+        },
+        {
+            "name": "Glasgow",
+            "latitude": 55.862,
+            "longitude": -4.245
+        },
+        {
+            "name": "Hague",
+            "latitude": 52.083,
+            "longitude": 4.3
+        },
+        {
+            "name": "Helsinki",
+            "latitude": 60.176,
+            "longitude": 24.934
+        },
+        {
+            "name": "Istanbul",
+            "latitude": 41.017,
+            "longitude": 28.967
+        },
+        {
+            "name": "Jerusalem",
+            "latitude": 31.767,
+            "longitude": 35.233
+        },
+        {
+            "name": "Lisbon",
+            "latitude": 38.717,
+            "longitude": -9.133
+        },
+        {
+            "name": "London",
+            "latitude": 51.517,
+            "longitude": -0.105
+        },
+        {
+            "name": "Madrid",
+            "latitude": 40.4,
+            "longitude": -3.683
+        },
+        {
+            "name": "Moscow",
+            "latitude": 55.75,
+            "longitude": 37.583
+        },
+        {
+            "name": "Oslo",
+            "latitude": 59.917,
+            "longitude": 10.75
+        },
+        {
+            "name": "Paris",
+            "latitude": 48.867,
+            "longitude": 2.333
+        },
+        {
+            "name": "Prague",
+            "latitude": 50.083,
+            "longitude": 14.467
+        },
+        {
+            "name": "Riyadh",
+            "latitude": 24.672,
+            "longitude": 46.713
+        },
+        {
+            "name": "Rome",
+            "latitude": 41.9,
+            "longitude": 12.483
+        },
+        {
+            "name": "Sofia",
+            "latitude": 42.683,
+            "longitude": 23.317
+        },
+        {
+            "name": "Stockholm",
+            "latitude": 59.333,
+            "longitude": 18.05
+        },
+        {
+            "name": "Vienna",
+            "latitude": 48.2,
+            "longitude": 16.367
+        },
+        {
+            "name": "Warsaw",
+            "latitude": 52.25,
+            "longitude": 21.0
+        },
+        {
+            "name": "Adelaide",
+            "latitude": -34.933,
+            "longitude": 138.6
+        },
+        {
+            "name": "Auckland",
+            "latitude": -36.867,
+            "longitude": 174.767
+        },
+        {
+            "name": "Bangkok",
+            "latitude": 13.75,
+            "longitude": 100.517
+        },
+        {
+            "name": "Bombay",
+            "latitude": 18.967,
+            "longitude": 72.833
+        },
+        {
+            "name": "Calcutta",
+            "latitude": 22.533,
+            "longitude": 88.367
+        },
+        {
+            "name": "Canberra",
+            "latitude": -35.283,
+            "longitude": 149.217
+        },
+        {
+            "name": "Canton",
+            "latitude": 23.117,
+            "longitude": 113.25
+        },
+        {
+            "name": "Christchurch",
+            "latitude": -43.533,
+            "longitude": 172.633
+        },
+        {
+            "name": "Hanoi",
+            "latitude": 21.033,
+            "longitude": 105.85
+        },
+        {
+            "name": "Islamabad",
+            "latitude": 33.7,
+            "longitude": 73.167
+        },
+        {
+            "name": "Kabul",
+            "latitude": 34.517,
+            "longitude": 69.183
+        },
+        {
+            "name": "Manila",
+            "latitude": 14.583,
+            "longitude": 121.0
+        },
+        {
+            "name": "Melbourne",
+            "latitude": -37.817,
+            "longitude": 144.967
+        },
+        {
+            "name": "New Delhi",
+            "latitude": 28.6,
+            "longitude": 77.2
+        },
+        {
+            "name": "Peking",
+            "latitude": 39.9,
+            "longitude": 116.413
+        },
+        {
+            "name": "Perth",
+            "latitude": -31.933,
+            "longitude": 115.833
+        },
+        {
+            "name": "Phnom Penh",
+            "latitude": 11.55,
+            "longitude": 104.917
+        },
+        {
+            "name": "P'yongyang",
+            "latitude": 39.019,
+            "longitude": 125.755
+        },
+        {
+            "name": "Rangoon",
+            "latitude": 16.783,
+            "longitude": 96.167
+        },
+        {
+            "name": "Saigon",
+            "latitude": 10.75,
+            "longitude": 106.667
+        },
+        {
+            "name": "Seoul",
+            "latitude": 37.567,
+            "longitude": 127.0
+        },
+        {
+            "name": "Shanghai",
+            "latitude": 31.222,
+            "longitude": 121.458
+        },
+        {
+            "name": "Singapore",
+            "latitude": 1.293,
+            "longitude": 103.856
+        },
+        {
+            "name": "Sydney",
+            "latitude": -33.883,
+            "longitude": 151.217
+        },
+        {
+            "name": "Tokyo",
+            "latitude": 36,
+            "longitude": 140
+        },
+        {
+            "name": "Wellington",
+            "latitude": -41.3,
+            "longitude": 174.783
+        },
+        {
+            "name": "Addis Ababa",
+            "latitude": 9.033,
+            "longitude": 38.7
+        },
+        {
+            "name": "Algiers",
+            "latitude": 36.763,
+            "longitude": 3.051
+        },
+        {
+            "name": "Cairo",
+            "latitude": 30.05,
+            "longitude": 31.25
+        },
+        {
+            "name": "Cape Town",
+            "latitude": -33.917,
+            "longitude": 18.417
+        },
+        {
+            "name": "Casablanca",
+            "latitude": 33.593,
+            "longitude": -7.616
+        },
+        {
+            "name": "Djibouti",
+            "latitude": 11.594,
+            "longitude": 43.148
+        },
+        {
+            "name": "Johannesburg",
+            "latitude": -26.2,
+            "longitude": 28.083
+        },
+        {
+            "name": "Khartoum",
+            "latitude": 15.588,
+            "longitude": 32.534
+        },
+        {
+            "name": "Lagos",
+            "latitude": 6.453,
+            "longitude": 3.396
+        },
+        {
+            "name": "Nairobi",
+            "latitude": -1.283,
+            "longitude": 36.817
+        },
+        {
+            "name": "Salisbury",
+            "latitude": -17.833,
+            "longitude": 31.05
+        },
+        {
+            "name": "Tripoli",
+            "latitude": 32.893,
+            "longitude": 13.18
+        }
+    ],
+    "Moon": [
+        {
+            "name": "Apollo 11 site",
+            "latitude": 2,
+            "longitude": 24
+        },
+        {
+            "name": "Apollo 12 site",
+            "latitude": -2,
+            "longitude": -25
+        },
+        {
+            "name": "Apollo 14 site",
+            "latitude": -2,
+            "longitude": -16
+        },
+        {
+            "name": "Apollo 15 site",
+            "latitude": 26,
+            "longitude": 5
+        },
+        {
+            "name": "Apollo 16 site",
+            "latitude": -13,
+            "longitude": 15
+        },
+        {
+            "name": "Apollo 17 site",
+            "latitude": 25,
+            "longitude": 33
+        },
+        {
+            "name": "Lacus Mortis",
+            "latitude": 46,
+            "longitude": 31
+        },
+        {
+            "name": "Lacus Somniorum",
+            "latitude": 38,
+            "longitude": 29
+        },
+        {
+            "name": "Mare Crisium",
+            "latitude": 17,
+            "longitude": 61
+        },
+        {
+            "name": "Mare Fecunditatis",
+            "latitude": -4,
+            "longitude": 51
+        },
+        {
+            "name": "Mare Frigoris",
+            "latitude": 55,
+            "longitude": 10
+        },
+        {
+            "name": "Mare Humorum",
+            "latitude": -23,
+            "longitude": -39
+        },
+        {
+            "name": "Mare Imbrium",
+            "latitude": 32,
+            "longitude": -24
+        },
+        {
+            "name": "Mare Nubium",
+            "latitude": -23,
+            "longitude": -13
+        },
+        {
+            "name": "Mare Nectaris",
+            "latitude": -15,
+            "longitude": 35
+        },
+        {
+            "name": "Mare Serenitatis",
+            "latitude": 26,
+            "longitude": 18
+        },
+        {
+            "name": "Mare Tranquillitatis",
+            "latitude": 7,
+            "longitude": -29
+        },
+        {
+            "name": "Mare Vaporum",
+            "latitude": 14,
+            "longitude": 4
+        },
+        {
+            "name": "Oceanus Procellarum",
+            "latitude": 6,
+            "longitude": -47
+        },
+        {
+            "name": "Palus Nebularum",
+            "latitude": 38,
+            "longitude": 2
+        },
+        {
+            "name": "Palus Putredinis",
+            "latitude": 30,
+            "longitude": 3
+        },
+        {
+            "name": "Sinus Aestum",
+            "latitude": 12,
+            "longitude": -7
+        },
+        {
+            "name": "Sinus Medii",
+            "latitude": 2,
+            "longitude": -1
+        }
+    ],
+    "Mars": [
+        {
+            "name": "Acidalia Planitia",
+            "latitude": 45,
+            "longitude": -25
+        },
+        {
+            "name": "Albor Tholus",
+            "latitude": 19,
+            "longitude": 151
+        },
+        {
+            "name": "Amazonis Planitia",
+            "latitude": 30,
+            "longitude": -160
+        },
+        {
+            "name": "Aonia Terra",
+            "latitude": -60,
+            "longitude": -95
+        },
+        {
+            "name": "Appoloneris Patera",
+            "latitude": -9,
+            "longitude": 174
+        },
+        {
+            "name": "Arabia Terra",
+            "latitude": 15,
+            "longitude": 35
+        },
+        {
+            "name": "Arcadia Planitia",
+            "latitude": 50,
+            "longitude": -165
+        },
+        {
+            "name": "Argyre Planitia",
+            "latitude": -50,
+            "longitude": -45
+        },
+        {
+            "name": "Arsia Mons",
+            "latitude": -9,
+            "longitude": -120
+        },
+        {
+            "name": "Ascraeus Mons",
+            "latitude": 12,
+            "longitude": -105
+        },
+        {
+            "name": "Ceraunius Tholus",
+            "latitude": 24,
+            "longitude": -98
+        },
+        {
+            "name": "Chryse Planitia",
+            "latitude": 20,
+            "longitude": -45
+        },
+        {
+            "name": "Daedalia Planum",
+            "latitude": -20,
+            "longitude": -130
+        },
+        {
+            "name": "Elysium Mons",
+            "latitude": 26,
+            "longitude": 147
+        },
+        {
+            "name": "Elysium Planitia",
+            "latitude": 30,
+            "longitude": 140
+        },
+        {
+            "name": "Hecates Tholus",
+            "latitude": 33,
+            "longitude": 150
+        },
+        {
+            "name": "Hellas Planitia",
+            "latitude": -40,
+            "longitude": 70
+        },
+        {
+            "name": "Hesperia Planum",
+            "latitude": -20,
+            "longitude": 105
+        },
+        {
+            "name": "Korolev",
+            "latitude": 73,
+            "longitude": 164
+        },
+        {
+            "name": "Lunae Planum",
+            "latitude": 10,
+            "longitude": -65
+        },
+        {
+            "name": "Lyot",
+            "latitude": 50,
+            "longitude": 29
+        },
+        {
+            "name": "Malea Planum",
+            "latitude": -65,
+            "longitude": 65
+        },
+        {
+            "name": "Mie",
+            "latitude": 48,
+            "longitude": 140
+        },
+        {
+            "name": "Milancovic",
+            "latitude": 55,
+            "longitude": -147
+        },
+        {
+            "name": "Noachis Terra",
+            "latitude": -35,
+            "longitude": 15
+        },
+        {
+            "name": "Olympus Mons",
+            "latitude": 18,
+            "longitude": -134
+        },
+        {
+            "name": "Opportunity Rover Landing Site",
+            "latitude": -3,
+            "longitude": -6
+        },
+        {
+            "name": "Orcus Patera",
+            "latitude": 5,
+            "longitude": 175
+        },
+        {
+            "name": "Pathfinder Landing Site",
+            "latitude": 19,
+            "longitude": -34
+        },
+        {
+            "name": "Pavonis Mons",
+            "latitude": 1,
+            "longitude": -113
+        },
+        {
+            "name": "Pityusa Patera",
+            "latitude": -66,
+            "longitude": 36
+        },
+        {
+            "name": "Polar Lander Crash Site",
+            "latitude": -76,
+            "longitude": 165
+        },
+        {
+            "name": "Promethei Terra",
+            "latitude": -50,
+            "longitude": 105
+        },
+        {
+            "name": "Schiaparelli",
+            "latitude": -2,
+            "longitude": 16
+        },
+        {
+            "name": "Sinai Planum",
+            "latitude": -15,
+            "longitude": -80
+        },
+        {
+            "name": "Solis Planum",
+            "latitude": -25,
+            "longitude": -90
+        },
+        {
+            "name": "Spirit Rover Landing Site",
+            "latitude": -14,
+            "longitude": 175
+        },
+        {
+            "name": "Syria Planum",
+            "latitude": -15,
+            "longitude": -105
+        },
+        {
+            "name": "Syrtis Major Planum",
+            "latitude": 10,
+            "longitude": 70
+        },
+        {
+            "name": "Tempe Terra",
+            "latitude": 40,
+            "longitude": -65
+        },
+        {
+            "name": "Terra Cimmeria",
+            "latitude": -50,
+            "longitude": 160
+        },
+        {
+            "name": "Terra Sabaea",
+            "latitude": -10,
+            "longitude": 30
+        },
+        {
+            "name": "Terra Sirenium",
+            "latitude": -45,
+            "longitude": -140
+        },
+        {
+            "name": "Tharsis Tholus",
+            "latitude": 13.6,
+            "longitude": -92
+        },
+        {
+            "name": "Tyndall",
+            "latitude": 40,
+            "longitude": 170
+        },
+        {
+            "name": "Tyrrhena Terra",
+            "latitude": -15,
+            "longitude": 90
+        },
+        {
+            "name": "Utopia Planitia",
+            "latitude": 42,
+            "longitude": 110
+        },
+        {
+            "name": "Viking 1 Landing Site",
+            "latitude": 22,
+            "longitude": -48
+        },
+        {
+            "name": "Viking 2 Landing Site",
+            "latitude": 48,
+            "longitude": 134
+        }
+    ]
+}
