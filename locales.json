@@ -1770,9 +1770,9 @@
             "longitude": 100.517
         },
         {
-            "name": "Bombay",
-            "latitude": 18.967,
-            "longitude": 72.833
+            "name": "Beijing",
+            "latitude": 39.9,
+            "longitude": 116.413
         },
         {
             "name": "Calcutta",
@@ -1820,14 +1820,14 @@
             "longitude": 144.967
         },
         {
+            "name": "Mumbai",
+            "latitude": 18.967,
+            "longitude": 72.833
+        },
+        {
             "name": "New Delhi",
             "latitude": 28.6,
             "longitude": 77.2
-        },
-        {
-            "name": "Peking",
-            "latitude": 39.9,
-            "longitude": 116.413
         },
         {
             "name": "Perth",

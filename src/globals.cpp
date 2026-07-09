@@ -5,7 +5,7 @@ using namespace alienorum;
 
 // IMPORTANT: Any variables defined here must also be declared extern in globals.h.
 SDL_Window* window;
-char lookfor[name_max_len], edit_name[name_max_len], looksat[name_max_len], lookast[name_max_len];
+char lookfor[name_max_len], edit_name[name_max_len], looksat[name_max_len], lookast[name_max_len], lookloc[name_max_len];
 bool edtname_dirty=false;
 std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";

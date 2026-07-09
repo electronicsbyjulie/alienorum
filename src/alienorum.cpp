@@ -80,7 +80,10 @@ int main (int argc, char** argv)
     bool argsfs = false;
 
     memset(lookfor, 0, name_max_len);
+    memset(edit_name, 0, name_max_len);
     memset(looksat, 0, name_max_len);
+    memset(lookast, 0, name_max_len);
+    memset(lookloc, 0, name_max_len);
 
     for (l=1; l<argc; l++)
     {
@@ -513,6 +516,7 @@ int main (int argc, char** argv)
             if (astwnd) draw_ast_window(io);
             if (satwnd) draw_sat_window(io);
             if (neighborhood) draw_stellar_neighborhood(io);
+            if (locwnd) draw_loc_window(io);
 
             is_click = io.MouseReleased[0];
             if (!is_mouse_over_window)

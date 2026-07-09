@@ -273,7 +273,7 @@ void draw_status_window(ImGuiIO& io)
             if (save_viewer_latlon)
             {
                 double vlat_edit = viewer_lat * fiftyseven;
-                ImGui::Text("%s", "Latitude:");
+                ImGui::Text("%s", "Lat:");
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(123);
                 if (ImGui::InputDouble("##vlat", &vlat_edit, 0.1, 1, "%.3f"))
@@ -282,9 +282,14 @@ void draw_status_window(ImGuiIO& io)
                     set_viewer_location_and_plane();
                     viewchanged = true;
                 }
+                ImGui::SameLine();
+                if (ImGui::Button("...##locwnd"))
+                {
+                    locwnd = true;
+                }
 
                 double vlon_edit = viewer_lon * fiftyseven;
-                ImGui::Text("%s", "Longitude:");
+                ImGui::Text("%s", "Lon:");
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(123);
                 if (ImGui::InputDouble("##vlon", &vlon_edit, 0.1, 1, "%.3f"))
@@ -1907,6 +1912,106 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             zoom = 1;
             viewchanged = true;
         }
+    }
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+
+void draw_loc_window(ImGuiIO & io)
+{
+    if (!locales.size())
+    {
+        std::fstream fs("locales.json", std::ios::in);
+        if (fs)
+        {
+            fs >> locales;
+            fs.close();
+        }
+    }
+
+    if (whereami < 0) return;
+    if (view_mode != vm_horizon) return;
+
+    int i, j, l, looklen = strlen(lookloc);
+    unsigned int n=0;
+    static unsigned int item_selected_idx = 0;
+    int item_highlighted_idx = -1;
+    double sellat = viewer_lat, sellon = viewer_lon;
+    ImGui::Begin("Locales", &locwnd, 0);
+
+    ImGui::Text("%s", "Search:");
+    ImGui::SameLine();
+    ImGui::InputText("##lookloc", lookloc, name_max_len, 0);
+
+    ImGui::Text(" Locale                                  Lat.    Lon.");
+    if (ImGui::BeginListBox("##loclist", ImVec2(503, 11 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        j=0;
+        for (auto& [planet, plocs] : locales.items())
+        {
+            if (!strcmp(planet.c_str(), cels[whereami]->name))
+            {
+                // TODO:
+                n = plocs.size();
+                std::string name;
+                double lat, lon;
+                for (i=0; i<n; i++)
+                {
+                    plocs[i]["name"].get_to(name);
+                    if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
+
+                    plocs[i]["latitude"].get_to(lat);
+                    plocs[i]["longitude"].get_to(lon);
+                    stringstream line;
+
+                    line << plocs[i]["name"];
+
+                    l = line.str().size();
+                    if (l < 40) line << std::string(40-l, ' ');
+
+                    line << setprecision(3) << lat;
+
+                    l = line.str().size();
+                    if (l < 48) line << std::string(48-l, ' ');
+
+                    line << setprecision(3) << lon;
+
+                    bool is_selected = (item_selected_idx == j);
+
+                    ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)j) ? ImGuiSelectableFlags_Highlight : 0;
+                    if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+                    {
+                        item_selected_idx = j;
+                    }
+
+                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                    if (is_selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+
+                        sellat = lat * fiftyseventh;
+                        sellon = lon * fiftyseventh;
+                    }
+
+                    j++;
+                }
+
+                break;
+            }
+        }
+        ImGui::EndListBox();
+    }
+
+    if (ImGui::Button("Go"))
+    {
+        viewer_lat = sellat;
+        viewer_lon = sellon;
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
