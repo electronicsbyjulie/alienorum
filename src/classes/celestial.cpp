@@ -1121,6 +1121,109 @@ unsigned int Map::idx_of(double lat, double lon)
     return y0idx+x0;
 }
 
+void alienorum::Map::resample_bump_data(unsigned int new_resolution)
+{
+    if (!has_bump_data()) return;
+    double scale = (double)image_height / new_resolution;
+    double *bump_data_old = bump_data;
+    long old_height = image_height, old_width = image_width;
+    image_height = new_resolution;
+    image_width = image_height * 2;
+    long toalloc = image_height * image_width;
+    bump_data = new double[toalloc];
+    allocated = toalloc;
+
+    int octaves = 5;
+    double lacunarity = 2.9, gain = 0.9, noise_scale = 2.9;
+
+
+    long x, y, iy, iy1, iynew, xo, yo, xo1, yo1;
+    double oldx, oldy, iox, iox1, ioy, ioy1, b;
+    double bump_scale = mcel
+        ? ( (mcel->typeclass() == class_planet || mcel->typeclass() == class_moon)
+            ? ((Planet*)mcel)->estimate_bump_scale()
+            : 1)
+        : 1;
+
+    double u, v, theta, phi, nx, ny, nz;
+    for (y = 0; y < image_height; y++)
+    {
+        oldy = scale * y;
+        yo = floor(oldy);
+        yo1 = ceil(oldy);
+        ioy1 = oldy - floor(oldy);
+        ioy = 1.0 - ioy1;
+
+        if (yo1 >= old_height) yo1 = old_height - 1;            // clamp at pole
+
+        iy = yo * old_width;
+        iy1 = yo1 * old_width;
+        iynew = y * image_width;
+
+        // Convert screen pixel coordinates to spherical angles
+        v = (double)y / image_height;
+        theta = v * _pi; // Latitude angle from 0 to PI
+
+        for (x = 0; x < image_width; x++)
+        {
+            oldx = scale * x;
+            xo = floor(oldx);
+            xo1 = ceil(oldx);
+            iox1 = oldx - floor(oldx);
+            iox = 1.0 - iox1;
+
+            if (xo1 >= old_width) xo1 -= old_width;             // wraparound
+
+            u = (double)x / image_width;
+            phi = u * 2.0 * _pi; // Longitude angle from 0 to 2PI
+
+            // Map 2D texture coordinates to a 3D Sphere surface to avoid seam/polar stretching
+            nx = sin(theta) * cos(phi);
+            ny = sin(theta) * sin(phi);
+            nz = cos(theta);
+
+            b   = iox * ioy * bump_data_old[iy + xo]
+                + iox1 * ioy * bump_data_old[iy + xo1]
+                + iox * ioy1 * bump_data_old[iy1 + xo]
+                + iox1 * ioy1 * bump_data_old[iy1 + xo1]
+                + bump_scale * 0.1 * fBm(nx * noise_scale, ny * noise_scale, nz * noise_scale, octaves, lacunarity, gain);
+            bump_data[iynew + x] = b;
+        }
+    }
+
+    #if 0
+    // Smooth out the noise
+    long xm1, xp1, ym1, yp1, iym1, iyp1, i;
+    for (y = 0; y < image_height; y++)
+    {
+        iy = y * image_width;
+        ym1 = y-1; if (ym1 < 0) ym1 = 0;
+        yp1 = y+1; if (yp1 >= image_height) yp1 = image_height - 1;
+        iym1 = ym1 * image_width;
+        iyp1 = yp1 * image_width;
+        for (x = 0; x < image_width; x++)
+        {
+            xm1 = x - 1; if (xm1 < 0) xm1 += image_width;
+            xp1 = x + 1; if (xp1 >= image_width) xp1 -= image_width;
+
+            b = ( bump_data[iy + x]
+                + 0.5  * bump_data[iym1 + x]
+                + 0.5  * bump_data[iyp1 + x]
+                + 0.5  * bump_data[iy + xm1]
+                + 0.5  * bump_data[iy + xp1]
+                + 0.25 * bump_data[iym1 + xm1]
+                + 0.25 * bump_data[iyp1 + xm1]
+                + 0.25 * bump_data[iym1 + xp1]
+                + 0.25 * bump_data[iyp1 + xp1]
+                ) * 0.25;
+            bump_data[iy + x] = b;
+        }
+    }
+    #endif
+
+    delete[] bump_data_old;
+}
+
 RGB3Byte Map::color_at(double lat, double lon)
 {
     RGB3Byte result;
@@ -1546,15 +1649,28 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
 }
 
+void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
+{
+    if (red_data) delete[] red_data;
+    if (green_data) delete[] green_data;
+    if (blue_data) delete[] blue_data;
+    red_data = green_data = blue_data = nullptr;
+    resample_bump_data(cel->fictitious_map_height);
+    generate_rocky_map(cel);
+}
+
+void _resample_bump_regen_rocky(Map *map, CelestialObject *cel)
+{
+    map->_map_resample_bump_regen_rocky(cel);
+}
+
 void alienorum::Map::mark_for_map_regen(CelestialObject *cel)
 {
     if (bump_data && cel->type == rocky)
     {
-        if (red_data) delete[] red_data;
-        if (green_data) delete[] green_data;
-        if (blue_data) delete[] blue_data;
-        red_data = green_data = blue_data = nullptr;
-        generate_rocky_map(cel);
+        mcel = cel;
+        std::thread tregen(_resample_bump_regen_rocky, this, cel);
+        tregen.detach();
     }
     else
     {

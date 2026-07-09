@@ -1571,7 +1571,9 @@ void draw_objedit_window(ImGuiIO& io)
 
                     if (map)
                     {
-                        if (ImGui::BeginTabItem(maptabs[i]))
+                        if (!map->has_rgb_data())
+                            ImGui::Text("Please wait, this may take a few minutes...");
+                        else if (ImGui::BeginTabItem(maptabs[i]))
                         {
                             ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // ImDrawList API uses screen coordinates.
                             // canvas_p0.x += col2;

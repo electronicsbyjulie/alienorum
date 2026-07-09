@@ -108,9 +108,9 @@ namespace alienorum
 
         unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
         double *bump_data = nullptr;
-        unsigned int image_height = 0;                              // Number of rows in image
-        unsigned int image_width = 0;                               // Number of columns in image
-        unsigned int allocated = 0;
+        unsigned long image_height = 0;                             // Number of rows in image
+        unsigned long image_width = 0;                              // Number of columns in image
+        unsigned long allocated = 0;
         double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
         CelestialObject *mcel = nullptr;
 
@@ -128,6 +128,9 @@ namespace alienorum
         bool save_to_png(std::string filename);
         void correct_colors(double rtot, double gtot, double btot);
         inline bool has_bump_data() { return bump_data && image_height; }
+        inline bool has_rgb_data() { return red_data && green_data && blue_data && image_height; }
+        void resample_bump_data(unsigned int new_resolution);
+        void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3Byte color_at(double latitude, double longitude);
         double elevation_at(double latitude, double longitude);     // Returns meters.
