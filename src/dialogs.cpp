@@ -4,6 +4,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include <cstdint>
+#include <algorithm>
 
 #ifdef __MINGW32__
 #include <shlwapi.h>
@@ -157,7 +158,8 @@ void draw_status_window(ImGuiIO& io)
     std::string vfstr;
     if (whereami >= 0)
     {
-        vfstr = std::string("View from ") + cels[whereami]->name;
+        if (viewer_locale.size()) vfstr = std::string("View from ") + viewer_locale;
+        else vfstr = std::string("View from ") + cels[whereami]->name;
     }
     else vfstr = std::string("View from space");
     ImGui::Text("%s", vfstr.c_str());
@@ -301,8 +303,8 @@ void draw_status_window(ImGuiIO& io)
             }
             else
             {
-                ImGui::Text("%s %s%.6f", "Latitude: ", (viewer_lat >= 0) ? "+" : "", viewer_lat*fiftyseven );
-                ImGui::Text("%s %s%.6f", "Longitude:", (viewer_lon >= 0) ? "+" : "", viewer_lon*fiftyseven );
+                ImGui::Text("%s %s%.6f", "Lat: ", (viewer_lat >= 0) ? "+" : "", viewer_lat*fiftyseven );
+                ImGui::Text("%s %s%.6f", "Lon:", (viewer_lon >= 0) ? "+" : "", viewer_lon*fiftyseven );
             }
         }
     }
@@ -1943,6 +1945,7 @@ void draw_loc_window(ImGuiIO & io)
     static unsigned int item_selected_idx = 0;
     int item_highlighted_idx = -1;
     double sellat = viewer_lat, sellon = viewer_lon;
+    std::string selloc = viewer_locale;
     ImGui::Begin("Locales", &locwnd, 0);
 
     ImGui::Text("%s", "Search:");
@@ -1957,7 +1960,11 @@ void draw_loc_window(ImGuiIO & io)
         {
             if (!strcmp(planet.c_str(), cels[whereami]->name))
             {
-                // TODO:
+                std::sort(plocs.begin(), plocs.end(), [](const json& a, const json& b)
+                {
+                    return a["name"] < b["name"];
+                });
+
                 n = plocs.size();
                 std::string name;
                 double lat, lon;
@@ -1965,22 +1972,23 @@ void draw_loc_window(ImGuiIO & io)
                 {
                     plocs[i]["name"].get_to(name);
                     if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
+                    // name.erase(std::remove(name.begin(), name.end(), '\"'), name.end());
 
                     plocs[i]["latitude"].get_to(lat);
                     plocs[i]["longitude"].get_to(lon);
                     stringstream line;
 
-                    line << plocs[i]["name"];
+                    line << name;
 
                     l = line.str().size();
                     if (l < 40) line << std::string(40-l, ' ');
 
-                    line << setprecision(3) << lat;
+                    line << setprecision(5) << lat;
 
                     l = line.str().size();
                     if (l < 48) line << std::string(48-l, ' ');
 
-                    line << setprecision(3) << lon;
+                    line << setprecision(6) << lon;
 
                     bool is_selected = (item_selected_idx == j);
 
@@ -1997,6 +2005,7 @@ void draw_loc_window(ImGuiIO & io)
 
                         sellat = lat * fiftyseventh;
                         sellon = lon * fiftyseventh;
+                        selloc = name;
                     }
 
                     j++;
@@ -2012,6 +2021,7 @@ void draw_loc_window(ImGuiIO & io)
     {
         viewer_lat = sellat;
         viewer_lon = sellon;
+        viewer_locale = selloc;
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.

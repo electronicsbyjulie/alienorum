@@ -329,6 +329,7 @@ void process_key_cmd_char(char c)
         view_mode = vm_skyatlas;
         viewer_lat = viewer_home_lat;
         viewer_lon = viewer_home_lon;
+        viewer_locale = "";
         save_viewer_latlon = true;
         set_viewer_location_and_plane();
         global_brightness = default_brightness;

@@ -32,7 +32,7 @@ bool satview_upsidedown = false;
 int cursor_size = 8, circle_size = 2, xaorngsim = 0;
 int is_an_obj_under_cursor = -1;
 double obj_magn_under_cursor;
-std::string objname, objinfo;
+std::string objname, objinfo, viewer_locale;
 bool is_mouse_over_window;
 int objinfwnd_hei = 0;
 int timeout_ms = 5;

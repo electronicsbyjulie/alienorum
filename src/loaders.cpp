@@ -635,6 +635,7 @@ void load_stuff()
     fstream fs("user.json", std::ios::in);
     if (fs)
     {
+        viewer_locale = "";
         json j;
         fs >> j;
         double dbl;

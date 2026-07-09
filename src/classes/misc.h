@@ -201,7 +201,7 @@ extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_lo
     is_mouse_over_window, dragging, dragged, viewchanged, updating_sats,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood, locwnd,
     show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo;
-extern std::string objname, objinfo;
+extern std::string objname, objinfo, viewer_locale;
 extern json locales;
 extern double simnow, npaz, luminous_flux;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

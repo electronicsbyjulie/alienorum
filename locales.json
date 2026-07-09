@@ -822,6 +822,12 @@
             "timezone": "UTC-08:00D"
         },
         {
+            "name": "Catalina Island, CA",
+            "latitude": 33.383,
+            "longitude": -118.417,
+            "timezone": "UTC-08:00D"
+        },
+        {
             "name": "Charleston, WV",
             "latitude": 38.35,
             "longitude": -81.633,
@@ -930,6 +936,12 @@
             "timezone": "UTC-07:00D"
         },
         {
+            "name": "Eglin AFB",
+            "latitude": 30.489,
+            "longitude": -86.542,
+            "timezone": "UTC-05:00D"
+        },
+        {
             "name": "El Paso, TX",
             "latitude": 31.759,
             "longitude": -106.486,
@@ -958,6 +970,12 @@
             "latitude": 35.198,
             "longitude": -111.651,
             "timezone": "UTC-07:00"
+        },
+        {
+            "name": "Flatwoods, WV",
+            "latitude": 38.721,
+            "longitude": -80.653,
+            "timezone": "UTC-05:00D"
         },
         {
             "name": "Frankfort, KY",
@@ -1002,6 +1020,12 @@
             "timezone": "UTC-07:00D"
         },
         {
+            "name": "Groom Lake (Area 51)",
+            "latitude": 37.233,
+            "longitude": -115.808,
+            "timezone": "UTC-08:00D"
+        },
+        {
             "name": "Harrisburg, PA",
             "latitude": 40.274,
             "longitude": -76.885,
@@ -1018,6 +1042,12 @@
             "latitude": 23.132,
             "longitude": -82.364,
             "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Heber-Overgaard, AZ",
+            "latitude": 34.413,
+            "longitude": -110.564,
+            "timezone": "UTC-07:00"
         },
         {
             "name": "Helena, MT",
@@ -1068,9 +1098,27 @@
             "timezone": "UTC-06:00D"
         },
         {
+            "name": "Keck Observatory",
+            "latitude": 19.826,
+            "longitude": -155.474,
+            "timezone": "UTC-10:00"
+        },
+        {
+            "name": "Kitt Peak",
+            "latitude": 31.964919,
+            "longitude": -111.599279,
+            "timezone": "UTC-07:00"
+        },
+        {
             "name": "Knoxville, TN",
             "latitude": 35.961,
             "longitude": -83.921,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Lancaster, NH",
+            "latitude": 44.489,
+            "longitude": -71.569,
             "timezone": "UTC-05:00D"
         },
         {
@@ -1080,9 +1128,21 @@
             "timezone": "UTC-05:00D"
         },
         {
+            "name": "La Silla Observatory",
+            "latitude": -29.2575,
+            "longitude": -70.7375,
+            "timezone": "UTC-04:00D"
+        },
+        {
             "name": "Las Vegas, NV",
             "latitude": 36.175,
             "longitude": -115.136,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Lick Observatory",
+            "latitude": 37.3411,
+            "longitude": -121.6431,
             "timezone": "UTC-08:00D"
         },
         {
@@ -1110,6 +1170,12 @@
             "timezone": "UTC-05:00D"
         },
         {
+            "name": "Lowell Observatory",
+            "latitude": 35.203,
+            "longitude": -111.664,
+            "timezone": "UTC-07:00"
+        },
+        {
             "name": "Macon, GA",
             "latitude": 32.841,
             "longitude": -83.633,
@@ -1119,6 +1185,30 @@
             "name": "Madison, WI",
             "latitude": 43.073,
             "longitude": -89.401,
+            "timezone": "UTC-06:00D"
+        },
+        {
+            "name": "Mauna Loa",
+            "latitude": 19.479,
+            "longitude": -155.603,
+            "timezone": "UTC-10:00"
+        },
+        {
+            "name": "Mauna Kea",
+            "latitude": 19.821,
+            "longitude": -155.468,
+            "timezone": "UTC-10:00"
+        },
+        {
+            "name": "Maury Island, WA",
+            "latitude": 47.377,
+            "longitude": -122.430,
+            "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "McDonald Observatory",
+            "latitude": 30.671,
+            "longitude": -104.022,
             "timezone": "UTC-06:00D"
         },
         {
@@ -1188,6 +1278,12 @@
             "timezone": "UTC-05:00D"
         },
         {
+            "name": "Mount Pemigewasset, NH",
+            "latitude": 44.098,
+            "longitude": -71.699,
+            "timezone": "UTC-05:00D"
+        },
+        {
             "name": "Nashville, TN",
             "latitude": 36.166,
             "longitude": -86.784,
@@ -1212,6 +1308,12 @@
             "timezone": "UTC-11:00D"
         },
         {
+            "name": "Oakland, CA",
+            "latitude": 37.804,
+            "longitude": -122.271,
+            "timezone": "UTC-08:00D"
+        },
+        {
             "name": "Oklahoma City, OK",
             "latitude": 35.468,
             "longitude": -97.516,
@@ -1228,6 +1330,12 @@
             "latitude": 28.538,
             "longitude": -81.379,
             "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Palomar Observatory",
+            "latitude": 33.356,
+            "longitude": -116.865,
+            "timezone": "UTC-08:00D"
         },
         {
             "name": "Pascagoula, MS",
@@ -1266,9 +1374,21 @@
             "timezone": "UTC-06:00D"
         },
         {
+            "name": "Pine Bluff Observatory",
+            "latitude": 43.078,
+            "longitude": -89.672,
+            "timezone": "UTC-06:00D"
+        },
+        {
             "name": "Pittsburgh, PA",
             "latitude": 40.441,
             "longitude": -79.996,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Point Pleasant, WV",
+            "latitude": 38.858,
+            "longitude": -82.129,
             "timezone": "UTC-05:00D"
         },
         {
@@ -1282,6 +1402,12 @@
             "latitude": 45.524,
             "longitude": -122.675,
             "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Portsmouth, NH",
+            "latitude": 43.058,
+            "longitude": -70.783,
+            "timezone": "UTC-05:00D"
         },
         {
             "name": "Providence, RI",
@@ -1416,6 +1542,18 @@
             "timezone": "UTC-06:00D"
         },
         {
+            "name": "Smithsonian Astrophysical Observatory",
+            "latitude": 42.381,
+            "longitude": -71.128,
+            "timezone": "UTC-05:00D"
+        },
+        {
+            "name": "Socorro, NM",
+            "latitude": 34.051,
+            "longitude": -106.888,
+            "timezone": "UTC-07:00D"
+        },
+        {
             "name": "Spokane, WA",
             "latitude": 47.659,
             "longitude": -117.425,
@@ -1486,6 +1624,12 @@
             "latitude": 49,
             "longitude": -123,
             "timezone": "UTC-08:00D"
+        },
+        {
+            "name": "Very Large Array",
+            "latitude": 34.079,
+            "longitude": -107.618,
+            "timezone": "UTC-07:00D"
         },
         {
             "name": "Washington, DC",
@@ -1670,6 +1814,11 @@
             "longitude": -4.245
         },
         {
+            "name": "Gweedore",
+            "latitude": 55.052,
+            "longitude": -8.233
+        },
+        {
             "name": "Hague",
             "latitude": 52.083,
             "longitude": 4.3
@@ -1725,6 +1874,16 @@
             "longitude": 14.467
         },
         {
+            "name": "Rendlesham Forest",
+            "latitude": 52.084,
+            "longitude": 1.433
+        },
+        {
+            "name": "Royal Observatory, Greenwich",
+            "latitude": 51.477,
+            "longitude": 0
+        },
+        {
             "name": "Riyadh",
             "latitude": 24.672,
             "longitude": 46.713
@@ -1743,6 +1902,11 @@
             "name": "Stockholm",
             "latitude": 59.333,
             "longitude": 18.05
+        },
+        {
+            "name": "Tehran",
+            "latitude": 35.689,
+            "longitude": 51.390
         },
         {
             "name": "Vienna",
@@ -1788,6 +1952,11 @@
             "name": "Canton",
             "latitude": 23.117,
             "longitude": 113.25
+        },
+        {
+            "name": "Chonburi",
+            "latitude": 13.361,
+            "longitude": 100.985
         },
         {
             "name": "Christchurch",
