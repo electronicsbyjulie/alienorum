@@ -2465,11 +2465,14 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
 
         if (s->multisys)
         {
+            i = 0;
+            n = cincls.size();
             for (char c = 'A'; c <= 'Z'; c++)
             {
                 Star *comp = s->multisys->get_member(c);
                 if (comp && comp->orbit && comp->orbit->center == s)
                 {
+                    assert(i<n);
                     elements_in_new_reference_plane(system_plane_from_incl_and_node(cincls[i], cnodes[i], s->location.system_center),
                         s->location.local_system_plane,
                         comp->orbit->inclination, comp->orbit->ascending_node);
@@ -2482,6 +2485,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                     incl_and_node_from_system_plane(comp->location.orbital_plane, czincl, cznode, comp->location.system_center);
                     std::cout << "Double check " << comp->name << ": " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
                     #endif
+                    i++;
                 }
             }
         }
