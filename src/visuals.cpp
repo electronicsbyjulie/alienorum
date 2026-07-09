@@ -213,6 +213,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
     std::vector<Point> tdland;
+    std::vector<double> tdlat, tdlon;
     std::vector<bool> tdvalid;
     ImU32 gc = rgba_apply_redlight(IM_COL32(176, 170, 164, 255));
     ImU32 gm = rgba_apply_redlight(IM_COL32(  0, 255,   0, 255));
@@ -366,9 +367,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             if (dwh)
             {
-                land.x *= ((Moon*)cel)->width * 500;
+                land.x *= ((Moon*)cel)->width  * 500;
                 land.y *= ((Moon*)cel)->height * 500;
-                land.z *= ((Moon*)cel)->depth * 500;
+                land.z *= ((Moon*)cel)->depth  * 500;
                 if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
             }
             else land.y *= obl;
@@ -382,6 +383,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                 todraw.push_back(ImVec2(0,0));
                 tdvalid.push_back(false);
                 tdland.push_back(center);
+                tdlat.push_back(lat);
+                tdlon.push_back(lon);
                 l++;
                 prev_valid = false;
                 continue;
@@ -393,6 +396,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                 todraw.push_back(ImVec2(0,0));
                 tdvalid.push_back(false);
                 tdland.push_back(center);
+                tdlat.push_back(lat);
+                tdlon.push_back(lon);
                 l++;
                 prev_valid = false;
                 continue;
@@ -407,6 +412,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                     todraw.push_back(ImVec2(-1e13, -2e13));
                     tdvalid.push_back(false);
                     tdland.push_back(center);
+                    tdlat.push_back(lat);
+                    tdlon.push_back(lon);
                 }
                 else
                 {
@@ -436,6 +443,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                     tdvalid.push_back(true);
                     // Also store 3D coordinates of each vertex.
                     tdland.push_back(land);
+                    tdlat.push_back(lat);
+                    tdlon.push_back(lon);
 
                     if (!wireframe && (lat>-half_pi) && !dragging && perline)
                     {
@@ -467,7 +476,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[1] = todraw[l-1];
                             points[2] = todraw[m-1];
                             points[3] = todraw[m];
-                            if (map && is_day && worth_using_map) rgb = map->color_at(lat, lon-_pi);
+                            double maplat = 0.25 * (lat + tdlat[l-1] + tdlat[m-1] + tdlat[m]);
+                            double maplon = 0.25 * (lon + tdlon[l-1] + tdlon[m-1] + tdlon[m]);
+                            if (map && is_day && worth_using_map) rgb = map->color_at(maplat, maplon-_pi);
 
                             RGB3Byte rgblit = rgb;
                             rgblit.r *= daylight.red;
@@ -479,7 +490,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 is_night = 1.0 - is_day;
                                 if (is_night)
                                 {
-                                    nrgb = nmap->color_at(lat, lon-_pi);
+                                    nrgb = nmap->color_at(maplat, maplon-_pi);
                                     imcol = rgba_apply_redlight(IM_COL32(
                                         is_day*rgblit.r + is_night*nrgb.r,
                                         is_day*rgblit.g + is_night*nrgb.g,

@@ -389,8 +389,16 @@ void set_center_objects()
             cels[i]->orbit = nullptr;
         }
 
+        cel_obj_class cls = cels[i]->typeclass();
+
+        if (cls == class_moon && cels[i]->volumetric_mean_radius < 0.1*((Moon*)cels[i])->height)
+        {
+            Moon *m = (Moon*)cels[i];
+            m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333);
+        }
+
         // Multiple star integrity
-        if (cels[i]->typeclass() == class_star)
+        if (cls == class_star)
         {
             Star *s = (Star*)cels[i];
             if (s->multisys)
