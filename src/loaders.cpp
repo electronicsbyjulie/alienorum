@@ -270,21 +270,27 @@ void load_catalogs()
         int nGliese = cr.read_Gliese_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nGliese << " objects." << endl << flush;
     }
-    if (have_astorb)
-    {
-        mtx.lock();
-        loading_msg = std::string("Loading asteroid catalog...");
-        mtx.unlock();
-        cout << "Reading astorb catalog..." << endl << flush;
-        int nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
-        cout << "Read " << nastorb << " objects." << endl << flush;
-    }
 
     mtx.lock();
     loading_msg = std::string("Loading solar system...");
     mtx.unlock();
+
     cout << "Reading local planets..." << endl << flush;
-    int npl = cr.read_local_planets(cels, MAX_CELOBJS);                   // Read solar system planets now, before painting the sky with stars
+    int npl = cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
+    num_planets += npl;
+    for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
+    cout << "Read " << npl << " objects." << endl << flush;
+
+    int nastorb = 0;
+    if (have_astorb)
+    {
+        cout << "Reading astorb catalog..." << endl << flush;
+        nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
+        cout << "Read " << nastorb << " objects." << endl << flush;
+    }
+
+    cout << "Reading local moons..." << endl << flush;
+    npl = cr.read_local_planets(cels, MAX_CELOBJS, nullptr, cels[0]);
     num_planets += npl;
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;

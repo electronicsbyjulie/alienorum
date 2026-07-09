@@ -51,7 +51,7 @@ namespace alienorum
         // Internal Catalogs
         int read_starname_dat(CelestialObject** cels);                          // No max because we are not adding stars, only setting names.
         int read_star_orbits_dat(CelestialObject** cels);
-        int read_local_planets(CelestialObject** cels, int max);
+        int read_local_planets(CelestialObject** cels, int max, CelestialObject* must_orbit = nullptr, CelestialObject* mustnt_orbit = nullptr);
 
         // Condensed star catalog
         int write_condensed_star_cat(CelestialObject** cels);
