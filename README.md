@@ -237,6 +237,7 @@ V           Label intrinsically bright stars
 Shift+N     Label nearby stars
 F           Label Flamsteed stars
 Shift+F     Label Bayer stars
+Shift+G     Label Gould (Uranometria) stars
 Shift+C     Label Sunlike stars
 Shift+P     Label stars with planets
 Shift+L     Label stars with planets in habitable zone
