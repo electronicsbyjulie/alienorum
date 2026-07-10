@@ -1058,8 +1058,16 @@ void draw_objedit_window(ImGuiIO& io)
 
             if (((!rp && !ra) || (ra >= rp)) && orb->eccentricity >= 0 && orb->eccentricity < 1)
             {
-                rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
-                ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
+                if (tc == class_satellite && orb && orb->center)
+                {
+                    rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
+                    ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
+                }
+                else
+                {
+                    rp = orb->semimajor_axis * (1.0 - orb->eccentricity);
+                    ra = orb->semimajor_axis * (1.0 + orb->eccentricity);
+                }
             }
 
             if (tc == class_satellite && orb && orb->center)
@@ -1113,6 +1121,18 @@ void draw_objedit_window(ImGuiIO& io)
                     sat->update_location(simnow);
                 }
                 edit_node = cel->orbit->ascending_node * fiftyseven;
+            }
+            else
+            {
+                ImGui::Text("%s", "Periapsis");
+                ImGui::SameLine(col1);
+                ImGui::SetNextItemWidth(txtwid);
+                ImGui::Text("%.5f AU", rp / AU);
+                ImGui::SameLine(col2);
+                ImGui::Text("%s", "Apoapsis");
+                ImGui::SameLine(col3);
+                ImGui::SetNextItemWidth(txtwid);
+                ImGui::Text("%.5f AU", ra / AU);
             }
 
             edit_incl = cel->orbit->inclination * fiftyseven;
@@ -1968,7 +1988,7 @@ void draw_loc_window(ImGuiIO & io)
                 n = plocs.size();
                 std::string name;
                 double lat, lon;
-                for (i=0; i<n; i++)
+                for (i=0; (unsigned)i<n; i++)
                 {
                     plocs[i]["name"].get_to(name);
                     if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
@@ -1990,7 +2010,7 @@ void draw_loc_window(ImGuiIO & io)
 
                     line << setprecision(6) << lon;
 
-                    bool is_selected = (item_selected_idx == j);
+                    bool is_selected = (item_selected_idx == (unsigned)j);
 
                     ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)j) ? ImGuiSelectableFlags_Highlight : 0;
                     if (ImGui::Selectable(line.str().c_str(), is_selected, flags))

@@ -2421,7 +2421,8 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         std::cout << std::endl;
         #endif
 
-        s->location.local_system_plane = system_plane_from_incl_and_node(sysincl, sysnode, s->location.system_center);
+        s->location.local_system_plane = system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? sysincl : half_pi,
+            sysnode, s->location.system_center);
         s->lock_system_plane = true;
 
         #if _debug_exoplanet_inclinations
@@ -2442,7 +2443,8 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 #endif
             }
 
-            elements_in_new_reference_plane(system_plane_from_incl_and_node(pincls[i], pnodes[i], s->location.system_center),
+            elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi,
+                pnodes[i], s->location.system_center),
                 s->location.local_system_plane,
                 p->orbit->inclination, p->orbit->ascending_node);
 
@@ -2459,7 +2461,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             p->origname = p->name;
         }
 
-        elements_in_new_reference_plane(system_plane_from_incl_and_node(stincl, stnode, s->location.system_center),
+        elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? stincl : half_pi,
+            stnode,
+            s->location.system_center),
             s->location.local_system_plane,
             s->obliquity, s->equinox);
 
@@ -2473,7 +2477,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 if (comp && comp->orbit && comp->orbit->center == s)
                 {
                     assert(i<n);
-                    elements_in_new_reference_plane(system_plane_from_incl_and_node(cincls[i], cnodes[i], s->location.system_center),
+                    elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? cincls[i] : half_pi,
+                        cnodes[i],
+                        s->location.system_center),
                         s->location.local_system_plane,
                         comp->orbit->inclination, comp->orbit->ascending_node);
 
@@ -3108,9 +3114,9 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 {
                     read_field_onebased(buffer, 229, 238, field);
                     tempK = atof(field);
-                    if (!lum && s->volumetric_mean_radius && tempK)
+                    if (s->volumetric_mean_radius && tempK)
                     {
-                        s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
+                        if (!lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
                         s->estimate_BV(tempK);
                         s->estimate_UB(tempK);
                     }

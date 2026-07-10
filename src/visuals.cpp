@@ -930,7 +930,7 @@ void draw_objects()
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
-        Color col = Color::color_from_magnitude_indices(5, cels[i]->BV_color);
+        Color col = Color::color_from_magnitude_indices(vmag_cache[i] + 5, cels[i]->BV_color);
         RGB3Byte rgb = Color::rgb_from_color(col, 1);
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         step = cels[i]->orbit->period / orbseg;
