@@ -378,7 +378,11 @@ void load_catalogs()
     // rename_all_from_Bayer_Flamsteed();
     cr.read_starname_dat(cels);
 
-    // We will die unless we read star orbits before reading exoplanets.
+    // Because of system inclinations, we will die unless we read star orbits before reading exoplanets.
+    // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
+    // What to do, oh what to do...
+    cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
+
     mtx.lock();
     loading_msg = std::string("Orbiting stars...");
     mtx.unlock();

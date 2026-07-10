@@ -3375,7 +3375,7 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
     return totalSize;
 }
 
-unsigned int CatalogReader::load_exoplanets_from_tap()
+unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 {
     unsigned int result = 0;
     CURL* curl = curl_easy_init();
@@ -3389,6 +3389,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
     json planets_array;
     bool do_download = true;
     std::map<int, std::vector<int>> planet_celids;
+    static bool loaded_starsonly = false;
 
     const char* exocache = "catalogs/exoplanets.json";
     std::stringstream lmss;
@@ -3491,7 +3492,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
             }
             if (!host_star)
             {
-                if (worth_searching(hostname))
+                if (loaded_starsonly || worth_searching(hostname))
                 {
                     if (!strcmp(hostname.c_str(), "55 Cnc B")) hostname = "GJ 324 B";
                     int i = find_object(hostname.c_str(), true);
@@ -3580,6 +3581,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
             {
                 host_star->sidereal_rotational_period = row["st_rotp"].get<double>() * oneday;
             }
+
+            if (stars_only) continue;
 
             // 2. Instantiate and fill target Planet properties
             Planet* new_planet = new Planet();
@@ -3676,6 +3679,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap()
         }
 
         apply_exoplanet_names(planet_celids);
+        if (stars_only) loaded_starsonly = true;
     }
     catch (const json::parse_error& e)
     {
