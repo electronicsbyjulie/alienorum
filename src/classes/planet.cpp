@@ -45,8 +45,6 @@ void Planet::classify(bool HZ)
         else type = ice_giant;
     }
     else if (orbit->period < oneday*10) type = hot_jupiter;
-    else if (T < icy_T_cutoff) type = ice_giant;
-    else if (HZ) type = ice_giant;
     else type = gas_giant;
 
     set_color_from_type(HZ);

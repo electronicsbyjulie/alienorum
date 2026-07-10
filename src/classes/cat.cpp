@@ -3077,6 +3077,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 s->distance_known = true;
                 append_cel(s);
                 strcpy(s->name, bdyname.c_str());
+                s->has_custom_name = true;
                 read_field_onebased(buffer, 161, 175, field);
                 strcpy(s->spectral_type, trim(field).c_str());
                 read_field_onebased(buffer, 177, 191, field);
