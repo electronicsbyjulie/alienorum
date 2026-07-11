@@ -246,7 +246,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day, is_night;
     if (dwh)
-        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
+        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
         equatorial_radius = cel->get_equatorial_radius();
 
@@ -273,9 +273,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             if (dwh)
             {
-                cursor.x *= ((Moon*)cel)->width * 500;
-                cursor.y *= ((Moon*)cel)->height * 500;
-                cursor.z *= ((Moon*)cel)->depth * 500;
+                cursor.x *= ((Moon*)cel)->width * .5;
+                cursor.y *= ((Moon*)cel)->height * .5;
+                cursor.z *= ((Moon*)cel)->depth * .5;
             }
             else cursor.y *= obl;
             cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
@@ -368,9 +368,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
             if (dwh)
             {
-                land.x *= ((Moon*)cel)->width  * 500;
-                land.y *= ((Moon*)cel)->height * 500;
-                land.z *= ((Moon*)cel)->depth  * 500;
+                land.x *= ((Moon*)cel)->width  * .5;
+                land.y *= ((Moon*)cel)->height * .5;
+                land.z *= ((Moon*)cel)->depth  * .5;
                 if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
             }
             else land.y *= obl;

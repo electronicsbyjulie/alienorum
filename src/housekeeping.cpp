@@ -32,7 +32,7 @@ void set_viewer_surface_location(bool also_set_plane)
 
     double obl = 1.0 - cel->oblateness, equatorial_radius;
     if (dwh)
-        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
+        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
         equatorial_radius = cel->get_equatorial_radius();
 
@@ -40,9 +40,9 @@ void set_viewer_surface_location(bool also_set_plane)
 
     if (dwh)
     {
-        cursor.x *= ((Moon*)cel)->width * 500;
-        cursor.y *= ((Moon*)cel)->height * 500;
-        cursor.z *= ((Moon*)cel)->depth * 500;
+        cursor.x *= ((Moon*)cel)->width * .5;
+        cursor.y *= ((Moon*)cel)->height * .5;
+        cursor.z *= ((Moon*)cel)->depth * .5;
     }
     else cursor.y *= obl;
     cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
@@ -391,7 +391,7 @@ void set_center_objects()
         if (cls == class_moon && cels[i]->volumetric_mean_radius < 0.1*((Moon*)cels[i])->height)
         {
             Moon *m = (Moon*)cels[i];
-            m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333);
+            m->volumetric_mean_radius = 0.5 * pow(m->depth * m->width * m->height, 0.333);
         }
 
         // Multiple star integrity

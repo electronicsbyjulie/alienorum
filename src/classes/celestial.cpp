@@ -933,9 +933,9 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
     png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
 
-    if (bytes_per_pixel == 3)
+    if (bytes_per_pixel == 3 || bytes_per_pixel == 4)
     {
-        // RGB3Byte
+        // RGB or RGBA
         unsigned int x, y, i=0;
         for (y=0; y<image_height; y++)
         {

@@ -781,28 +781,32 @@ void draw_objedit_window(ImGuiIO& io)
             }
             if (cel->typeclass() == class_moon)
             {
+                Moon *m = (Moon*)cel;
+                double edt_dep = m->depth * 1e-3, edt_wid = m->width * 1e-3, edt_hei = m->height * 1e-3;
                 ImGui::SameLine();
                 ImGui::Text("%s", ", OR:");
 
-                Moon *m = (Moon*)cel;
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "D/W/H, km");
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid/3);
-                if (ImGui::InputDouble("##edtdep", &m->depth, 0, 0, "%.4f"))
+                if (ImGui::InputDouble("##edtdep", &edt_dep, 0, 0, "%.4f"))
                 {
+                    m->depth = edt_dep * 1e3;
                     cel->user_edited = true;
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(txtwid/3);
-                if (ImGui::InputDouble("##edtwid", &m->width, 0, 0, "%.4f"))
+                if (ImGui::InputDouble("##edtwid", &edt_wid, 0, 0, "%.4f"))
                 {
+                    m->width = edt_wid * 1e3;
                     cel->user_edited = true;
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(txtwid/3);
-                if (ImGui::InputDouble("##edthei", &m->height, 0, 0, "%.4f"))
+                if (ImGui::InputDouble("##edthei", &edt_hei, 0, 0, "%.4f"))
                 {
+                    m->height = edt_hei * 1e3;
                     cel->user_edited = true;
                 }
             }
