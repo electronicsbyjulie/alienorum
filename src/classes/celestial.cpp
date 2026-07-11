@@ -42,7 +42,7 @@ double alienorum::CelestialObject::get_horizon_distance()
 double alienorum::CelestialObject::timeofday()
 {
     double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
-    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - (orbit ? orbit->epoch : epoch))*oneday);
+    double seconds_since_epoch = (simnow - J2000_TIME_T); // + (((double)J2000 - epoch)*oneday);
     double result = rads_sec * seconds_since_epoch - lon_J2000_offset;
 
     if (orbit)

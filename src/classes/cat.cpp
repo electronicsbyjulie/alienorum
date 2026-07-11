@@ -3517,16 +3517,30 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             // If the star doesn't exist, instantiate it
             if (!host_star)
             {
-                if (ncelobjs >= MAX_CELOBJS) continue;
+                if (loaded_starsonly) continue;
+                if (ncelobjs >= MAX_CELOBJS) return result;
 
                 host_star = new Star();
                 host_star->type = star;
                 snprintf(host_star->name, sizeof(host_star->name), "%s", hostname.c_str());
 
-                double sy_dist = 0, ra = 0, dec = 0;
+                double sy_dist = 0, st_lum = 0, sy_vmag = 1e290, ra = 0, dec = 0;
                 if (row.contains("sy_dist") && !row["sy_dist"].is_null()) sy_dist = row["sy_dist"].get<double>() * parsec;
                 if (row.contains("ra" ) && !row["ra" ].is_null()) ra  = row["ra" ].get<double>() * fiftyseventh;
                 if (row.contains("dec") && !row["dec"].is_null()) dec = row["dec"].get<double>() * fiftyseventh;
+
+                if (row.contains("st_lum") && !row["st_lum"].is_null())
+                {
+                    st_lum = row["st_lum"].get<double>();
+                    double lum = pow(10, st_lum);
+                    if (lum) host_star->absolute_magnitude = 4.85 - log(lum) / log(magnbase);
+                }
+                else host_star->absolute_magnitude = 10;
+                if (row.contains("sy_vmag") && !row["sy_vmag"].is_null())
+                {
+                    sy_vmag = row["sy_vmag"].get<double>();
+                    host_star->apparent_magnitude = sy_vmag;
+                }
 
                 if (sy_dist && (ra || dec))
                 {
@@ -3536,6 +3550,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     host_star->update_location(simnow);
                     host_star->distance_known = true;
                 }
+                else if (ra && dec && st_lum && sy_vmag)
+                {
+                    host_star->distance = host_star->distance_from_magnitudes(host_star->apparent_magnitude, host_star->absolute_magnitude);
+                    host_star->right_ascension = ra;
+                    host_star->declination = dec;
+                    host_star->update_location(simnow);
+                }
                 else
                 {
                     std::cerr << "WARNING: Missing ra/dec or distance for " << hostname << std::endl;
@@ -3543,20 +3564,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     continue;
                 }
 
-                if (row.contains("st_lum") && !row["st_lum"].is_null())
-                {
-                    double lum = pow(10, row["st_lum"].get<double>());
-                    if (lum) host_star->absolute_magnitude = 4.85 - log(lum) / log(magnbase);
-                }
-                else host_star->absolute_magnitude = 10;
-
                 if (row.contains("st_teff") && !row["st_teff"].is_null())
                 {
                     host_star->estimate_BV(row["st_teff"].get<double>());
-                }
-                if (row.contains("sy_vmag") && !row["sy_vmag"].is_null())
-                {
-                    host_star->apparent_magnitude = row["sy_vmag"].get<double>();
                 }
                 else host_star->apparent_magnitude = 10;
 
