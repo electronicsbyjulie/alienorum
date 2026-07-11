@@ -195,6 +195,7 @@ namespace alienorum
         double get_horizon_angle();
         double get_horizon_distance();
         double timeofday();
+        inline bool is_tidal_locked() { return orbit ? (fabs((sidereal_rotational_period / orbit->period) - 1) < 0.01) : false; }
 
         CelestialObject* get_light_center();
         double get_equatorial_radius();
@@ -209,14 +210,17 @@ namespace alienorum
         double RA_as_radians(CelestialLocation seen_from, double seen_equinox);
         double Decl_as_radians(CelestialLocation seen_from);
         std::string scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat = false);
+        void randomize();
         json to_json();
         bool from_json(json j);
 
         protected:
         void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
+        double _currM = 0;
 
         public:
         inline cel_obj_class typeclass() const { return  _class; };
+        const double& curr_mean_anom = _currM;
     };
 }
 

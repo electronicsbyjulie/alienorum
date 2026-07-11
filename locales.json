@@ -828,6 +828,12 @@
             "timezone": "UTC-08:00D"
         },
         {
+            "name": "Cedar Rapids, IA",
+            "latitude": 41.964,
+            "longitude": -91.679,
+            "timezone": "UTC-06:00D"
+        },
+        {
             "name": "Charleston, WV",
             "latitude": 38.35,
             "longitude": -81.633,

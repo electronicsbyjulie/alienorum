@@ -88,9 +88,9 @@ HD10700                 (stellar rotation)      4e+6                        007
 HD10700                 (debris disk)                                       035
 
 # https://doi.org/10.48550/arXiv.2303.13584
-# The paper assumes a node of -1.1 degrees based on the position angle of the belt, with no way to be certain which part of the belt lies
-# closer to the observer. However, an ascending node of 186 deg is given for the planet by https://en.wikipedia.org/wiki/Epsilon_Eridani_b,
-# meaning a node of ~180 deg is more likely for the belt vs. a ~0 deg node.
+# The paper assumes a node of -1.1 degrees based on the position angle of the belt, without any observation of the direction of rotation nor
+# which part of the belt lies closer to the observer. However, an ascending node of 186 deg is given for the planet by
+# https://en.wikipedia.org/wiki/Epsilon_Eridani_b, meaning a node of ~180 deg is far more likely for the belt vs. a ~0 deg node.
 HD22049                 (asteroid belt)                         178.9       033.7                   1e+13
 
 # https://en.wikipedia.org/wiki/Gliese_86

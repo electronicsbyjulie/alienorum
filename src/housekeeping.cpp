@@ -10,6 +10,59 @@ void refresh_star_visibilities()
     for (i=0; cels[i]; i++) if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(here);
 }
 
+void set_viewer_surface_location(bool also_set_plane)
+{
+    CelestialObject *cel = cels[whereami];
+    if (cel->typeclass() == class_star)
+    {
+        view_mode = vm_skyatlas;
+        here = cels[whereami]->location;
+        azimuth_correction = 0;
+        npaz = 0;
+        return;
+    }
+    here = cel->location;
+    assert(cel->sidereal_rotational_period != 0);
+
+    bool dwh = false;
+    if (cel->typeclass() == class_moon)
+        dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
+            && ((Moon*)cel)->width > zero_isnt_really_zero
+            && ((Moon*)cel)->height > zero_isnt_really_zero);
+
+    double obl = 1.0 - cel->oblateness, equatorial_radius;
+    if (dwh)
+        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
+    else
+        equatorial_radius = cel->get_equatorial_radius();
+
+    Point cursor = Point::from_ra_dec(viewer_lon, viewer_lat, dwh ? 1 : equatorial_radius, 0);
+
+    if (dwh)
+    {
+        cursor.x *= ((Moon*)cel)->width * 500;
+        cursor.y *= ((Moon*)cel)->height * 500;
+        cursor.z *= ((Moon*)cel)->depth * 500;
+    }
+    else cursor.y *= obl;
+    cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
+    cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    here.local_position = cel->location.local_position + cursor;
+    if (also_set_plane)
+    {
+        here.equatorial_plane = align_points_3d(cursor, yaxis, center);
+
+        Point north_pole = rotate3D(yaxis, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+        npdummy.location = cel->location;
+        npdummy.location.local_position = north_pole;
+        azimuth_correction = 0;
+        npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
+        azimuth_correction = -npaz;
+    }
+
+    viewchanged = true;
+}
 
 void set_viewer_location_and_plane()
 {
@@ -43,52 +96,7 @@ void set_viewer_location_and_plane()
     }
     else if (view_mode == vm_horizon)
     {
-        CelestialObject *cel = cels[whereami];
-        if (cel->typeclass() == class_star)
-        {
-            view_mode = vm_skyatlas;
-            here = cels[whereami]->location;
-            azimuth_correction = 0;
-            npaz = 0;
-            return;
-        }
-        here = cel->location;
-        assert(cel->sidereal_rotational_period != 0);
-
-        bool dwh = false;
-        if (cel->typeclass() == class_moon)
-            dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
-                && ((Moon*)cel)->width > zero_isnt_really_zero
-                && ((Moon*)cel)->height > zero_isnt_really_zero);
-
-        double obl = 1.0 - cel->oblateness, equatorial_radius;
-        if (dwh)
-            equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * 500;
-        else
-            equatorial_radius = cel->get_equatorial_radius();
-
-        Point cursor = Point::from_ra_dec(viewer_lon, viewer_lat, dwh ? 1 : equatorial_radius, 0);
-
-        if (dwh)
-        {
-            cursor.x *= ((Moon*)cel)->width * 500;
-            cursor.y *= ((Moon*)cel)->height * 500;
-            cursor.z *= ((Moon*)cel)->depth * 500;
-        }
-        else cursor.y *= obl;
-        cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
-        cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-
-        here.local_position = cel->location.local_position + cursor;
-        here.equatorial_plane = align_points_3d(cursor, yaxis, center);
-
-        Point north_pole = rotate3D(yaxis, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-        npdummy.location = cel->location;
-        npdummy.location.local_position = north_pole;
-        azimuth_correction = 0;
-        npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
-        azimuth_correction = -npaz;
-        viewchanged = true;
+        set_viewer_surface_location(true);
     }
     else if (view_mode == vm_sunclock)
     {

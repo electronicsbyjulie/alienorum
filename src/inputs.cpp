@@ -433,7 +433,8 @@ void process_key_cmd_char(char c)
         vmfr = vm * target_frame_rate;
         if (vmfr > 1e100)
         {
-            // In Trek, the fastest possible warp is warp 10. But that doesn't make for impressive spaceflights.
+            // In Trek, the fastest possible warp is warp 10.
+            // But that doesn't make for impressive spaceflights.
             // How about we set the limit to warp 1 googol?
             // Besides, go much faster than that and the app crashes.
             velocity.scale(speed_of_light * 1e100 / target_frame_rate);
@@ -452,6 +453,12 @@ void process_key_cmd_char(char c)
             velocity = to_viewer_plane(velocity, -1);
             if (whereami >= 0)
             {
+                if (view_mode == vm_skyatlas)
+                {
+                    Point fromsurf = velocity;
+                    fromsurf.scale(velocity.magnitude() + cels[whereami]->get_equatorial_radius());
+                    here.local_position += fromsurf;
+                }
                 took_off_from = whereami;
                 tookoff_countdown = 5;
             }

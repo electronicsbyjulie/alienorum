@@ -42,7 +42,7 @@ double alienorum::CelestialObject::get_horizon_distance()
 double alienorum::CelestialObject::timeofday()
 {
     double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
-    double seconds_since_epoch = (simnow - J2000_TIME_T); // + (((double)J2000 - epoch)*oneday);
+    double seconds_since_epoch = (simnow - J2000_TIME_T) + (((double)J2000 - epoch)*oneday);
     double result = rads_sec * seconds_since_epoch - lon_J2000_offset;
 
     if (orbit)
@@ -50,7 +50,7 @@ double alienorum::CelestialObject::timeofday()
         result += orbit->ascending_node;
         result += orbit->arg_periapsis;
         result += orbit->mean_anomaly;
-        if (fabs(orbit->period - sidereal_rotational_period) < 0.01 * orbit->period) result += _pi;
+        if (is_tidal_locked()) result += _pi;
     }
 
     return fmod(result, _pi*2);
@@ -508,6 +508,15 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
     return oss.str();
 }
 
+void alienorum::CelestialObject::randomize()
+{
+    long long hash = 0xb0ad1cea * log(mass) + 0xf1206b95 * log(volumetric_mean_radius);
+    if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * log(orbit->arg_periapsis);
+    unsigned int seed = 0xffffffff & hash;
+    // std::cout << name << " seed=" << std::hex << seed << std::dec << std::endl;
+    std::srand(seed);
+}
+
 json CelestialObject::to_json()
 {
     json towrite = json::object();
@@ -646,11 +655,11 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double argperi = W + peri_adjustment;
 
     // Calculate current Mean Anomaly
-    double M = m + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
-    M = std::fmod(M, 2.0 * _pi);
+    _currM = m + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
+    _currM = std::fmod(_currM, 2.0 * _pi);
 
     // Solve for Eccentric Anomaly
-    double E = solve_Kepler(M, e);
+    double E = solve_Kepler(_currM, e);
 
     // Calculate position in orbital plane (x', y')
     double x_plane = A * (std::cos(E) - e);
@@ -1276,6 +1285,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         has_water = 0;
     }
 
+    cel->randomize();
     double T_surf = p->estimate_surface_temperature();
     const double Tboil = water_freezing + 100;
     if (p->is_in_con_HZ()
@@ -1389,7 +1399,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     inv_h2o_level = 1.0 / has_water;
 
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
-        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
+        && p->is_tidal_locked();
 
     double Tswing = 256.0 / (p->surface_pressure * 3.5e-5), halfswing = Tswing*0.5;
 
@@ -1522,6 +1532,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
+    cel->randomize();
     double variability = frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
     if (cel->type == ice_giant)

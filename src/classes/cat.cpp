@@ -3402,10 +3402,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     loading_msg = lmss.str();
     mtx.unlock();
 
-    if (file_exists(exocache)) // && file_age(exocache) < 7*86400)
+    if (file_exists(exocache) && file_age(exocache) < 7*86400)
     {
         do_download = false;
-        std::cout << "File age: " << file_age(exocache) << " seconds." << std::endl;
+        // std::cout << "Exoplanets file age: " << file_age(exocache) << " seconds." << std::endl;
         std::fstream fs(exocache, std::ios::in);
         if (!fs) return 0;
         fs >> planets_array;
@@ -3550,7 +3550,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     host_star->update_location(simnow);
                     host_star->distance_known = true;
                 }
-                else if (ra && dec && st_lum && sy_vmag)
+                else if (ra && dec && st_lum && sy_vmag < 1e203)
                 {
                     host_star->distance = host_star->distance_from_magnitudes(host_star->apparent_magnitude, host_star->absolute_magnitude);
                     host_star->right_ascension = ra;
@@ -3648,7 +3648,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             if (row.contains("pl_orbtper") && !row["pl_orbtper"].is_null())
             {
                 double ep = row["pl_orbtper"].get<double>();
-                orb->epoch = ep;
+                orb->epoch = new_planet->epoch = ep;
                 orb->mean_anomaly = 0;
             }
             if (row.contains("pl_orbper") && !row["pl_orbper"].is_null())
