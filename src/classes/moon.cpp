@@ -57,7 +57,6 @@ void Moon::update_orbit_location(double tmnow)
 Moon::Moon()
 {
     _class = class_moon;
-     lon_J2000_offset = -half_pi;
 }
 
 void Moon::update_location(double tmnow)

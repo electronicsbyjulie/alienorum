@@ -73,7 +73,7 @@
         "Equinox": 0.00000,
         "Incl": 0.00005,
         "J2": 0.00108263,
-        "Lon_J2000_offset": -98.92,
+        "Lon_J2000_offset": -0.58,
         "Mass": 5.97217e+24,
         "MeanAnom": 355.51783,
         "NightMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_01deg.jpg",
@@ -237,7 +237,6 @@
         "EqPrecession": 18.6,
         "Equinox": 127.04,
         "Incl": 5.1454,
-        "Lon_J2000_offset": 40,
         "Mass": 7.349E+22,
         "MeanAnom": 137.7254,
         "NodePrecession": 5.869e+8,
@@ -443,7 +442,7 @@
         "OrbitPeriod": 1441931.1552,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 1882700000,
-        "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Map_of_Ganymede_by_Bj%C3%B6rn_J%C3%B3nsson.jpg/960px-Map_of_Ganymede_by_Bj%C3%B6rn_J%C3%B3nsson.jpg",
+        "SurfMap": "https://bjj.mmedia.is/data/callisto/callisto.jpg",
         "VolMeanRad": 2410300.2927
     },
     {

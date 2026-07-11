@@ -39,6 +39,23 @@ double alienorum::CelestialObject::get_horizon_distance()
     return tmprel.magnitude() - volumetric_mean_radius * cos(get_horizon_angle());
 }
 
+double alienorum::CelestialObject::timeofday()
+{
+    double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
+    double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - (orbit ? orbit->epoch : epoch))*oneday);
+    double result = rads_sec * seconds_since_epoch - lon_J2000_offset;
+
+    if (orbit)
+    {
+        result += orbit->ascending_node;
+        result += orbit->arg_periapsis;
+        result += orbit->mean_anomaly;
+        if (fabs(orbit->period - sidereal_rotational_period) < 0.01 * orbit->period) result += _pi;
+    }
+
+    return fmod(result, _pi*2);
+}
+
 CelestialObject *CelestialObject::get_light_center()
 {
     if (!orbit || !orbit->center)
@@ -619,14 +636,6 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
     double seconds_since_epoch = (tmnow_as_epoch - EFFE)*oneday;
-    timeofday = fmod(rads_sec * seconds_since_epoch - lon_J2000_offset, _pi*2);
-    if (orbit && fabs(orbit->period - sidereal_rotational_period) < 0.01 * orbit->period)
-    {
-        timeofday += orbit->ascending_node;
-        timeofday += orbit->arg_periapsis;
-        timeofday += orbit->mean_anomaly;
-        timeofday += half_pi;
-    }
 
     rads_sec = (_pi * 2) / P;
 

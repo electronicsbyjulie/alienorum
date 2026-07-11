@@ -55,17 +55,6 @@ void set_viewer_location_and_plane()
         here = cel->location;
         assert(cel->sidereal_rotational_period != 0);
 
-        double rads_sec = cel->sidereal_rotational_period ? ((_pi * 2) / cel->sidereal_rotational_period) : 0;
-        double seconds_since_epoch = (simnow - J2000_TIME_T) + ((J2000 - cel->epoch)*oneday);
-        cel->timeofday = fmod(rads_sec * seconds_since_epoch - cel->lon_J2000_offset, _pi*2);
-        if (cel->orbit && fabs(cel->orbit->period - cel->sidereal_rotational_period) < 0.01 * cel->orbit->period)
-        {
-            cel->timeofday += cel->orbit->ascending_node;
-            cel->timeofday += cel->orbit->arg_periapsis;
-            cel->timeofday += cel->orbit->mean_anomaly;
-            cel->timeofday += half_pi;
-        }
-
         bool dwh = false;
         if (cel->typeclass() == class_moon)
             dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
@@ -87,7 +76,7 @@ void set_viewer_location_and_plane()
             cursor.z *= ((Moon*)cel)->depth * 500;
         }
         else cursor.y *= obl;
-        cursor = rotate3D(cursor, center, yaxis, -cel->timeofday);
+        cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
         cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 
         here.local_position = cel->location.local_position + cursor;

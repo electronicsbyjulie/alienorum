@@ -148,6 +148,7 @@ double sphresolution = 0.1;
 bool bugged = false;
 int draw_sphere(CelestialObject* cel, double arad)
 {
+    if (cel->seqno == whereami) return 0;
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
 
@@ -186,7 +187,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday) - _pi;
+                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday()) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
                     save_viewer_latlon = false;
                     whereami = cel->seqno;
@@ -277,7 +278,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 cursor.z *= ((Moon*)cel)->depth * 500;
             }
             else cursor.y *= obl;
-            cursor = rotate3D(cursor, center, yaxis, -cel->timeofday);
+            cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
 
             cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor += cel->tmprel;
@@ -373,7 +374,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
             }
             else land.y *= obl;
-            land = rotate3D(land, center, yaxis, -cel->timeofday);
+            land = rotate3D(land, center, yaxis, -cel->timeofday());
 
             land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
             cursor = land + cel->tmprel;

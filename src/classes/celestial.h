@@ -162,8 +162,7 @@ namespace alienorum
         bool distance_known = false;
         bool known_poles = false;
         bool estimated_poles = false;
-        double lon_J2000_offset = -half_pi;          // For moons.
-        double timeofday = 0;
+        double lon_J2000_offset = 0;
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;
@@ -195,6 +194,7 @@ namespace alienorum
         Point tmprel, viewrel;
         double get_horizon_angle();
         double get_horizon_distance();
+        double timeofday();
 
         CelestialObject* get_light_center();
         double get_equatorial_radius();
