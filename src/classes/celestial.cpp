@@ -41,12 +41,21 @@ double alienorum::CelestialObject::get_horizon_distance()
 
 double alienorum::CelestialObject::timeofday()
 {
-    if (!orbit)
+    if (!orbit || !is_tidal_locked())
     {
         double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
         double seconds_since_epoch = (simnow - J2000_TIME_T) + (((double)J2000 - epoch)*oneday);
         double result = rads_sec * seconds_since_epoch - lon_J2000_offset;
         _currTOD = fmod(result, _pi*2);
+
+        if (orbit)
+        {
+            _currTOD += orbit->ascending_node;
+            _currTOD += orbit->arg_periapsis;
+            _currTOD += orbit->mean_anomaly;
+        }
+        _currTOD = fmod(_currTOD, _pi*2);
+        if (_currTOD < 0) _currTOD += _pi*2;
     }
 
     return _currTOD;
@@ -645,12 +654,12 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     _currTOD = rads_sec * seconds_since_epoch - lon_J2000_offset;
 
-    if (orbit)
+    if (orbit && is_tidal_locked())
     {
         _currTOD += orbit->ascending_node;
         _currTOD += orbit->arg_periapsis;
         _currTOD += orbit->mean_anomaly;
-        if (is_tidal_locked()) _currTOD += _pi;
+        _currTOD += _pi;
     }
     _currTOD = fmod(_currTOD, _pi*2);
     if (_currTOD < 0) _currTOD += _pi*2;
