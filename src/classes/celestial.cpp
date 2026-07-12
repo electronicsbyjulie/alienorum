@@ -41,19 +41,15 @@ double alienorum::CelestialObject::get_horizon_distance()
 
 double alienorum::CelestialObject::timeofday()
 {
-    double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
-    double seconds_since_epoch = (simnow - J2000_TIME_T) + (((double)J2000 - epoch)*oneday);
-    double result = rads_sec * seconds_since_epoch - lon_J2000_offset;
-
-    if (orbit)
+    if (!orbit)
     {
-        result += orbit->ascending_node;
-        result += orbit->arg_periapsis;
-        result += orbit->mean_anomaly;
-        if (is_tidal_locked()) result += _pi;
+        double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
+        double seconds_since_epoch = (simnow - J2000_TIME_T) + (((double)J2000 - epoch)*oneday);
+        double result = rads_sec * seconds_since_epoch - lon_J2000_offset;
+        _currTOD = fmod(result, _pi*2);
     }
 
-    return fmod(result, _pi*2);
+    return _currTOD;
 }
 
 CelestialObject *CelestialObject::get_light_center()
@@ -643,8 +639,21 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double N, I, W, A, e, m, P, PN, PW, EFFE;
     orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, e, m, P, PN, PW, EFFE);
 
+
     double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
     double seconds_since_epoch = (tmnow_as_epoch - EFFE)*oneday;
+
+    _currTOD = rads_sec * seconds_since_epoch - lon_J2000_offset;
+
+    if (orbit)
+    {
+        _currTOD += orbit->ascending_node;
+        _currTOD += orbit->arg_periapsis;
+        _currTOD += orbit->mean_anomaly;
+        if (is_tidal_locked()) _currTOD += _pi;
+    }
+    _currTOD = fmod(_currTOD, _pi*2);
+    if (_currTOD < 0) _currTOD += _pi*2;
 
     rads_sec = (_pi * 2) / P;
 
@@ -767,6 +776,7 @@ alienorum_jpeg_error_exit (j_common_ptr cinfo)
 
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
+    std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
     mtx.lock();
     struct jpeg_decompress_struct cinfo;
     struct my_jpeg_error_mgr jerr;
@@ -863,6 +873,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
+    std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
     mtx.lock();
     png_structp png_ptr;
     png_infop info_ptr;

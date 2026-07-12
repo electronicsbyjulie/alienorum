@@ -1602,7 +1602,7 @@ void draw_objedit_window(ImGuiIO& io)
 
                     if (map)
                     {
-                        if (!map->has_rgb_data())
+                        if (map->has_bump_data() && !map->has_rgb_data())
                             ImGui::Text("Please wait, this may take a few minutes...");
                         else if (ImGui::BeginTabItem(maptabs[i]))
                         {

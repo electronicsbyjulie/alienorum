@@ -907,6 +907,7 @@
         "Equinox": 337.237,
         "Height": 1424,
         "Incl": 7.57,
+        "Lon_J2000_offset": 180,
         "Mass": 1.59E+21,
         "MeanAnom": 350.876,
         "Obliquity": 7.57,

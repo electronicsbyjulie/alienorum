@@ -217,6 +217,7 @@ namespace alienorum
         protected:
         void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
         double _currM = 0;
+        double _currTOD = 0;
 
         public:
         inline cel_obj_class typeclass() const { return  _class; };
