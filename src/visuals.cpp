@@ -56,9 +56,15 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
+                if (dx1 < -33554432 || dy1 < -33554432 || dx2 < -33554432 || dy2 < -33554432) continue;
+
+                ImVec2 destart(dx1, dy1), deend(dx2, dy2);
+
+                // if (distance(destart, deend) > 500) std::cout << "Dec gridline from " << dx1 << "," << dy1 << " to " << dx2 << "," << dy2 << std::endl;
+
                 if (prev_valid)
                 {
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), gc, 1.1);
+                    ImGui::GetBackgroundDrawList()->AddLine(destart, deend, gc, 1.1);
                 }
             }
 
@@ -93,8 +99,16 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                    if (prev_valid)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), j?gc:gcb, 1.1);
+                if (dx1 < -33554432 || dy1 < -33554432 || dx2 < -33554432 || dy2 < -33554432) continue;
+
+                ImVec2 rastart(dx1, dy1), raend(dx2, dy2);
+
+                // if (distance(rastart, raend) > 500) std::cout << "RA gridline from " << dx1 << "," << dy1 << " to " << dx2 << "," << dy2 << std::endl;
+
+                if (prev_valid)
+                {
+                    ImGui::GetBackgroundDrawList()->AddLine(rastart, raend, gc, 1.1);
+                }
             }
 
             prev = zdes;
