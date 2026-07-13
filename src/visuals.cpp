@@ -478,7 +478,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                             points[2] = todraw[m-1];
                             points[3] = todraw[m];
                             double maplat = 0.25 * (lat + tdlat[l-1] + tdlat[m-1] + tdlat[m]);
-                            double maplon = 0.25 * (lon + tdlon[l-1] + tdlon[m-1] + tdlon[m]);
+                            double maplon = interpolate_angles(
+                                interpolate_angles(lon, tdlon[l-1]),
+                                interpolate_angles(tdlon[m-1], tdlon[m]));
                             if (map && is_day && worth_using_map) rgb = map->color_at(maplat, maplon-_pi);
 
                             RGB3Byte rgblit = rgb;
