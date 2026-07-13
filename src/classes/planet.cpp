@@ -32,6 +32,11 @@ void Planet::set_color_from_type(bool HZ)
 
 void Planet::classify(bool HZ)
 {
+    Star *s = nullptr;
+
+    if (orbit && orbit->center && orbit->center->typeclass() == class_star)
+        s = (Star*) orbit->center;
+
     double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff)
     {
@@ -40,11 +45,20 @@ void Planet::classify(bool HZ)
     }
     else if (mass < neptune_mass_cutoff)
     {
-        if (T < icy_T_cutoff) type = icy;
-        else if (HZ) type = waterworld;
+        if (HZ)
+        {
+            // If system has a hot Jupiter, estimate a waterworld.
+            // https://doi.org/10.48550/arXiv.astro-ph/0701048
+            if (s && s->has_hot_jupiter) type = waterworld;
+            else type = ice_giant;
+        }
         else type = ice_giant;
     }
-    else if (orbit->period < oneday*10) type = hot_jupiter;
+    else if (orbit->period < oneday*10)
+    {
+        type = hot_jupiter;
+        if (s) s->has_hot_jupiter = true;
+    }
     else type = gas_giant;
 
     set_color_from_type(HZ);

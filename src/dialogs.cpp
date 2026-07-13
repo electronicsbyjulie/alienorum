@@ -1673,7 +1673,7 @@ void draw_system_explorer(ImGuiIO& io)
     std::vector<int> list_item_celids;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, kg         HZ?");
+    ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, e          HZ?");
     if (ImGui::BeginListBox("##syslist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
@@ -1709,8 +1709,9 @@ void draw_system_explorer(ImGuiIO& io)
 
             if (cels[i]->mass)
             {
+                double f = cels[i]->mass / earth_mass;
                 stringstream mss;
-                mss << scientific << setprecision(5) << (cels[i]->mass*1e-3);
+                mss << (f >= 0.1 ? std::fixed : std::scientific) << setprecision(3) << f;
                 line += mss.str();
             }
             else line += std::string("?");
