@@ -272,6 +272,11 @@ void draw_status_window(ImGuiIO& io)
 
         if (view_mode == vm_horizon)
         {
+            stringstream sssg;
+            double f = cels[whereami]->estimate_surface_gravity();
+            sssg << "Est. gravity: " << (f >= 0.01 ? std::fixed : std::scientific) << std::setprecision(3) << f << " g";
+            ImGui::Text("%s", sssg.str().c_str());
+
             if (save_viewer_latlon)
             {
                 double vlat_edit = viewer_lat * fiftyseven;
@@ -627,7 +632,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine(col2);
             stringstream sssurfgrav;
             sssurfgrav << "Surface gravity " << std::setprecision(3)
-                << (cel->mass / earth_mass) / pow(cel->volumetric_mean_radius / earth_radius, 2)
+                << cel->estimate_surface_gravity()
                 << " g";
             ImGui::Text("%s", sssurfgrav.str().c_str());
 

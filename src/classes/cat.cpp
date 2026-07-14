@@ -3690,6 +3690,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             if (planet_celids.find(host_star->seqno) == planet_celids.end())
                 planet_celids[host_star->seqno] = std::vector<int>();
             planet_celids[host_star->seqno].push_back(new_planet->seqno);
+
+            if (frand(0,1) < 0.01)
+            {
+                lmss.str("");
+                lmss << "Loaded " << result << " exoplanets from NASA via TAP...";
+                mtx.lock();
+                loading_msg = lmss.str();
+                mtx.unlock();
+            }
         }
 
         apply_exoplanet_names(planet_celids);

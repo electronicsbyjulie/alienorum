@@ -199,7 +199,11 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
             m = 0; // interpolate_angles(osculating[j].mean_anomaly, osculating[j+1].mean_anomaly, coeff1);
             p = coeff0 * osculating[j].period           + coeff1 * osculating[j+1].period;
             precn = procarg = 0;
-            effe = osculating[j].T_periapsis;
+            double pdays = p / oneday;
+            double T_peri_j1 = osculating[j+1].T_periapsis, T_peri_j1mp = T_peri_j1 - pdays, T_peri_j1pp = T_peri_j1 + pdays;
+            if (     fabs(osculating[j].T_periapsis - T_peri_j1mp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1mp;
+            else if (fabs(osculating[j].T_periapsis - T_peri_j1pp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1pp;
+            effe = coeff0 * osculating[j].T_periapsis + coeff1 * T_peri_j1;
             return;
         }
     }
@@ -656,9 +660,9 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     if (orbit && is_tidal_locked())
     {
-        _currTOD += orbit->ascending_node;
-        _currTOD += orbit->arg_periapsis;
-        _currTOD += orbit->mean_anomaly;
+        _currTOD += N;
+        _currTOD += W;
+        _currTOD += m;
         _currTOD += _pi;
     }
     _currTOD = fmod(_currTOD, _pi*2);
@@ -1280,6 +1284,11 @@ double Map::elevation_at(double lat, double lon)
         return (isnan(bump_data[idx]) || isinf(bump_data[idx])) ? 0 : bump_data[idx];
     }
     else return 0.0;
+}
+
+double CelestialObject::estimate_surface_gravity()
+{
+    return (mass / earth_mass) / pow(volumetric_mean_radius / earth_radius, 2);
 }
 
 // TODO: Make this also work with Moon class width/depth somehow.

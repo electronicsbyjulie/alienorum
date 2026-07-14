@@ -198,6 +198,7 @@ namespace alienorum
         inline bool is_tidal_locked() { return orbit ? (fabs((sidereal_rotational_period / orbit->period) - 1) < 0.01) : false; }
 
         CelestialObject* get_light_center();
+        double estimate_surface_gravity();
         double get_equatorial_radius();
         double viewer_magnitude(CelestialLocation seen_from);
         static double distance_from_magnitudes(double apparent, double absolute);

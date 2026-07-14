@@ -255,17 +255,17 @@ double find_angle_along_vector(Point pt1, Point pt2, Point source, Point v)
     return a2 - a1;
 }
 
-double interpolate_angles(double theta1, double theta2, double coeff1)
+double interpolate_angles(double theta0, double theta1, double coeff1)
 {
     double coeff0 = 1.0 - coeff1;
-    double delta = fabs(theta1 - theta2);
-    if (theta1 < theta2)
+    double delta = fabs(theta0 - theta1);
+    if (theta0 < theta1)
     {
-        if (fabs(theta1 + _pi + _pi - theta2) < delta) theta1 += _pi+_pi;
+        if (fabs(theta0 + _pi + _pi - theta1) < delta) theta0 += _pi+_pi;
     }
-    else if (fabs(theta1 - _pi - _pi - theta2) < delta) theta1 -= _pi+_pi;
+    else if (fabs(theta0 - _pi - _pi - theta1) < delta) theta0 -= _pi+_pi;
 
-    return coeff0 * theta1 + coeff1 * theta2;
+    return coeff0 * theta0 + coeff1 * theta1;
 }
 
 Point rotate3D(Point point, Point source, Point axis, double theta)
