@@ -102,7 +102,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             }
         }
 
-        if (view_mode == vm_skyatlas)
+        if (view_mode == vm_skyatlas || view_mode == vm_skymap)
         {
             objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
                     +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
@@ -190,12 +190,18 @@ void identify_object_under_cursor(ImGuiIO& io)
 
 void pan_with_crosshairs(ImGuiIO& io)
 {
+    double limit = half_pi;
+    if (view_mode == vm_skymap)
+    {
+        limit = fmax(0, half_pi * (1.0 - 1.0 * zoom));
+    }
+
     if (ImGui::IsMouseDown(2))
     {
         azimuth -= 0.01 * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.01 * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  _pi/2) altitude =  _pi/2;
-        if (altitude < -_pi/2) altitude = -_pi/2;
+        if (altitude >  limit) altitude =  limit;
+        if (altitude < -limit) altitude = -limit;
         spin = 0;
         viewchanged = true;
 
@@ -208,8 +214,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.03 * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.03 * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  _pi/2) altitude =  _pi/2;
-        if (altitude < -_pi/2) altitude = -_pi/2;
+        if (altitude >  limit) altitude =  limit;
+        if (altitude < -limit) altitude = -limit;
         spin = 0;
         viewchanged = true;
 
@@ -222,8 +228,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.1 * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.1 * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  _pi/2) altitude =  _pi/2;
-        if (altitude < -_pi/2) altitude = -_pi/2;
+        if (altitude >  limit) altitude =  limit;
+        if (altitude < -limit) altitude = -limit;
         spin = 0;
         viewchanged = true;
 
@@ -453,7 +459,7 @@ void process_key_cmd_char(char c)
             velocity = to_viewer_plane(velocity, -1);
             if (whereami >= 0)
             {
-                if (view_mode == vm_skyatlas)
+                if (view_mode == vm_skyatlas || view_mode == vm_skymap)
                 {
                     Point fromsurf = velocity;
                     fromsurf.scale(velocity.magnitude() + cels[whereami]->get_equatorial_radius());
@@ -491,6 +497,8 @@ void process_key_cmd_char(char c)
         case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
         case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
+        case '\\': view_mode = vm_skymap; break;                 // not yet implemented but want to keep the placeholder
+        case ';': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
         default:
         ;

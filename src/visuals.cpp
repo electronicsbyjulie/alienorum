@@ -107,7 +107,7 @@ void draw_ra_dec_lines()
 
                 if (prev_valid)
                 {
-                    ImGui::GetBackgroundDrawList()->AddLine(rastart, raend, gc, 1.1);
+                    ImGui::GetBackgroundDrawList()->AddLine(rastart, raend, j ? gc : gcb, 1.1);
                 }
             }
 
@@ -328,6 +328,14 @@ int draw_sphere(CelestialObject* cel, double arad)
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
+                if (view_mode == vm_skymap)
+                {
+                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
+                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
+                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+                }
+
                 if (prev_valid)
                 {
                     ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
@@ -437,6 +445,14 @@ int draw_sphere(CelestialObject* cel, double arad)
                     dx2 = dispcx + prev.x * dispcx;
                     dy2 = dispcy + prev.y * dispcx;
 
+                    if (view_mode == vm_skymap)
+                    {
+                        if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
+                        if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
+                        if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+                        if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+                    }
+
                     double yd = (dy1 - cel->drawny);
                     if (yd > result) result = yd;
 
@@ -496,6 +512,19 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 interpolate_angles(lon, tdlon[l-1]),
                                 interpolate_angles(tdlon[m-1], tdlon[m]));
                             if (map && is_day && worth_using_map) rgb = map->color_at(maplat, maplon-_pi);
+
+                            if (view_mode == vm_skymap)
+                            {
+                                if (points[1].x > points[0].x + 1.9 * dispcx) points[0].x += dispcx*2;
+                                if (points[2].x > points[0].x + 1.9 * dispcx) points[0].x += dispcx*2;
+                                if (points[3].x > points[0].x + 1.9 * dispcx) points[0].x += dispcx*2;
+                                if (points[0].x > points[1].x + 1.9 * dispcx) points[1].x += dispcx*2;
+                                if (points[0].x > points[2].x + 1.9 * dispcx) points[2].x += dispcx*2;
+                                if (points[0].x > points[3].x + 1.9 * dispcx) points[3].x += dispcx*2;
+
+                                if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+                                if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+                            }
 
                             RGB3Byte rgblit = rgb;
                             rgblit.r *= daylight.red;
@@ -620,6 +649,14 @@ int draw_sphere(CelestialObject* cel, double arad)
                 dy1 = dispcy + zdes.y * dispcx;
                 dx2 = dispcx + prev.x * dispcx;
                 dy2 = dispcy + prev.y * dispcx;
+
+                if (view_mode == vm_skymap)
+                {
+                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
+                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
+                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+                }
 
                 ImVec2 v = ImVec2(dx1, dy1);
                 if (lon)
@@ -988,8 +1025,19 @@ void draw_objects()
             {
                 cart = Cartesian2D(rel, azimuth+azimuth_correction, altitude, zoom);
                 cart.x = dispcx + cart.x * dispcx; cart.y = dispcy + cart.y * dispcx;
+
+                double dx1 = cart.x, dy1 = cart.y, dx2 = lastcart.x, dy2 = lastcart.y;
+
+                if (view_mode == vm_skymap)
+                {
+                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
+                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
+                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+                }
+
                 if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(lastcart.x, lastcart.y), ImVec2(cart.x, cart.y), imcol);
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol);
             }
             catch (...)
             {
@@ -1229,6 +1277,14 @@ void draw_cons_lines()
         if (dx2 < -1e3) continue;
         if (dy2 < -1e3) continue;
 
+        if (view_mode == vm_skymap)
+        {
+            if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
+            if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
+            if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+            if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+        }
+
         if (draw_actual_conslines || i >= nconsln)
             ImGui::GetBackgroundDrawList()->AddLine(
                 ImVec2(dx1, dy1), ImVec2(dx2, dy2),
@@ -1240,8 +1296,7 @@ void draw_cons_lines()
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<=n; l++)
     {
         if (!lnpercons[l]) continue;
-        if (initcons) consdir[l].scale(1e303);
-
+        // if (initcons) consdir[l].scale(1e303);
         Point lconsdir = to_viewer_plane(consdir[l]);
         Cartesian2D cart(lconsdir, azimuth+azimuth_correction, altitude, zoom);
         float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -1263,8 +1318,6 @@ void draw_cons_lines()
         Point axisdir[6] = {xaxis, yaxis, zaxis, center-xaxis, center-yaxis, center-zaxis};
         for (i=0; i<6; i++)
         {
-            axisdir[i].scale(1e303);
-
             Point laxdir = to_viewer_plane(axisdir[i]);
             Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);

@@ -78,16 +78,29 @@ double Point::distance_to(Point other) const
 
 Cartesian2D::Cartesian2D(Point pt, double az, double alt, double m)
 {
-    if (az) pt = rotate3D(pt, center, yaxis, -az);
-    if (alt) pt = rotate3D(pt, center, xaxis, alt);
-    if (pt.z < 0)
+    if (view_mode == vm_skymap)
     {
-        x = y = -1e29;
+        // Don't know yet if we're going to die without scene esquilax and hazard mouth connection.
+        double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi /* - seen_equinox + azimuth_correction */ + az, _pi*2);
+        if (ra < 0) ra += _pi*2;
+        double decl = std::fmod(find_angle(sqrt(pt.x*pt.x+pt.z*pt.z), pt.y) - alt, _pi*2);
+        if (decl > _pi/2) decl -= _pi*2;
+        x = (1.0 - ra/_pi) * zoom;
+        y = -decl/_pi * zoom;
     }
     else
     {
-        x = pt.x / pt.z * m;
-        y = -pt.y / pt.z * m;
+        if (az) pt = rotate3D(pt, center, yaxis, -az);
+        if (alt) pt = rotate3D(pt, center, xaxis, alt);
+        if (pt.z < 0)
+        {
+            x = y = -1e29;
+        }
+        else
+        {
+            x = pt.x / pt.z * m;
+            y = -pt.y / pt.z * m;
+        }
     }
 }
 

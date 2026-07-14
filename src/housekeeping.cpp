@@ -88,7 +88,7 @@ void set_viewer_location_and_plane()
         }
     }
 
-    if (view_mode == vm_skyatlas)
+    if (view_mode == vm_skyatlas || view_mode == vm_skymap)
     {
         here = cels[whereami]->location;
         azimuth_correction = 0;

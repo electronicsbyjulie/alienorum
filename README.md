@@ -210,6 +210,7 @@ F11         Toggle fullscreen
 &           Sky atlas mode
 _           Horizon mode
 $           (UNIMPLEMENTED) this will be the shortcut for sun clock mode
+\           Sky map mode
 Shift+J     Toggle upside-down mode when viewing from satellites
 3           Cycle forward through themes
 Shift+#     Cycle backward through themes

@@ -128,7 +128,9 @@ enum ViewMode
 {
     vm_skyatlas = 0,
     vm_horizon = 1,
-    vm_sunclock = 2
+    vm_sunclock = 2,
+    vm_skymap = 3,
+    vm_model = 4
 };
 
 extern double magnbase, invlogmagnbase;
