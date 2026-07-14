@@ -15,6 +15,15 @@ The Ant, Eta Ant
 Alp Aps, Del1Aps
 Del1Aps, Gam Aps
 Gam Aps, Bet Aps
+Bet Aps, Kap2Aps
+Kap2Aps, Kap1Aps
+Kap2Aps, HD138867
+HD138867, Del1Aps
+Bet Aps, HD164712
+HD164712, HD156513
+HD156513, Bet Aps
+Alp Aps, Eps Aps
+Eps Aps, Eta Aps
 ~Aqr, Aquarius, Aquarii
 Eps Aqr, Bet Aqr
 Bet Aqr, Alp Aqr
@@ -129,7 +138,9 @@ The Boo, 44  Boo
 39  Boo, 38  Boo
 38  Boo, 44  Boo
 ~Cae, Caelum, Caeli
-Alp Cae, Bet Cae
+Alp Cae, Del Cae
+Del Cae, Bet Cae
+Alp Cae, Gam1Cae
 Bet Cae, Gam1Cae
 ~Cam, Camelopardalis, Camelopardalis
 7   Cam, Bet Cam
@@ -439,6 +450,10 @@ Chi Eri, Alp Eri
 ~For, Fornax, Fornacis
 Alp For, Bet For
 Bet For, Nu  For
+Alp For, Ome For
+Ome For, Nu  For
+Alp For, Del For
+Nu  For, Phi For
 ~Gru, Grus, Gruis
 Zet Gru, Eps Gru
 Eps Gru, Bet Gru
@@ -623,6 +638,15 @@ Eta Men, Bet Men
 Alp Mic, Gam Mic
 Gam Mic, Eps Mic
 Eps Mic, The1Mic
+Nu  Mic, Iot Mic
+Iot Mic, Eta Mic
+Eta Mic, Zet Mic
+Zet Mic, HD197630
+HD197630, Nu  Mic
+HD197630, Alp Mic
+Alp Mic, HD196737
+The2Mic, Eta Mic
+Zet Mic, Gam Mic
 ~Mon, Monoceros, Monocerotis
 27  Mon, Alp Mon
 27  Mon, Del Mon
@@ -640,8 +664,10 @@ Alp Mus, Del Mus
 Bet Mus, Alp Mus
 Alp Mus, Gam Mus
 ~Nor, Norma, Normae
-Eps Nor, Gam1Nor
-Gam1Nor, Eta Nor
+Mu  Nor, Eps Nor
+Eps Nor, Gam2Nor
+Gam2Nor, Eta Nor
+Kap Nor, Iot1Nor
 ~Oct, Octans, Octantis
 Bet Oct, Del Oct
 Del Oct, Nu  Oct
@@ -873,8 +899,10 @@ Kap Sco, Lam Sco
 HD161892, Iot1Sco
 ~Scl, Sculptor, Sculptoris
 Alp Scl, Del Scl
-Del Scl, Gam Scl
-Gam Scl, Bet Scl
+Del Scl, Bet Scl
+Gam Scl, Mu  Scl
+Bet Scl, Xi  Scl
+Xi  Scl, Alp Scl
 ~Sct, Scutum, Scuti
 Alp Sct, Bet Sct
 Alp Sct, Gam Sct
@@ -915,7 +943,15 @@ Lam Tau, 5   Tau
 Xi  Tau, Omi Tau
 ~Tel, Telescopium, Telescopii
 Eps Tel, Alp Tel
-Alp Tel, Zet Tel
+HD171819, Zet Tel
+Eps Tel, HD166006
+HD166006, HD170069
+HD170069, HD174387
+HD174387, HD179886
+HD179886, Alp Tel
+HD170069, HD171819
+HD171819, HD174387
+HD171819, HD177406
 ~Tri, Triangulum, Trianguli
 Alp Tri, Bet Tri
 Bet Tri, Gam Tri
