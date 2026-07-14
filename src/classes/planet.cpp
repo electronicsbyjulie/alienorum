@@ -84,14 +84,14 @@ void Planet::estimate_rotation()
 {
     if (!orbit || !orbit->period) return;
 
-    double tidal_lock_threshold_days = 100 / (1.0 + 4.0 * orbit->eccentricity);      // This is a TOTAL guess. Accounts for Mercury (58d, ecc .205630, 3:2 resonance) and Iapetus (79d, ecc .0284, tidal).
+    double tidal_lock_threshold_days = 100 / (1.0 + 4.0 * orbit->eccentricity);         // This is a TOTAL guess. Accounts for Mercury (58d, ecc .205630, 3:2 resonance) and Iapetus (79d, ecc .0284, tidal).
 
     if (orbit->period < (tidal_lock_threshold_days * oneday)
         || type == hot_jupiter)
     {
         sidereal_rotational_period = orbit->period;
     }
-    else if (orbit->period < (250 * oneday))          // Another guess.
+    else if (orbit->period < (250 * oneday) && orbit->eccentricity > 0.15)              // Mercury.
     {
         sidereal_rotational_period = 1.5 * orbit->period;
     }
