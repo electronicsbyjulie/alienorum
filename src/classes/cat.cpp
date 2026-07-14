@@ -3163,7 +3163,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         read_field_onebased(buffer, 145, 155, field);
         f = atof(field) * fiftyseventh;
-        if (f) s->orbit->mean_anomaly = f;
+        if (f) s->orbit->epoch = (f-2000) * 365.2422 + J2000;
 
         if (inclination || ascending_node)
         {

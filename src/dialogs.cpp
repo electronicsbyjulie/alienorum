@@ -1214,7 +1214,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtepoch", &edit_epoch, 0, 0, "%.9f"))
             {
-                cel->orbit->epoch = cel->epoch = edit_epoch;
+                cel->orbit->epoch = edit_epoch;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
