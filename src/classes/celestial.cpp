@@ -519,10 +519,20 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
 
 void alienorum::CelestialObject::randomize()
 {
-    long long hash = 0xb0ad1cea * log(mass) + 0xf1206b95 * log(volumetric_mean_radius);
-    if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * log(orbit->arg_periapsis);
-    unsigned int seed = 0xffffffff & hash;
-    // std::cout << name << " seed=" << std::hex << seed << std::dec << std::endl;
+    union
+    {
+        unsigned long long hash;
+        unsigned int seed;
+    };
+
+    hash = 0xb0ad * log(mass) + 0x1cea * log(volumetric_mean_radius);
+    if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
+    /*std::cout << name
+        << " log mass=" << log(mass)
+        << " log radius=" << log(volumetric_mean_radius)
+        << " log sma=" << log(orbit->semimajor_axis)
+        << " omega=" << orbit->arg_periapsis
+        << " hash=" << std::hex << hash << " seed=" << seed << std::dec << std::endl;*/
     std::srand(seed);
 }
 

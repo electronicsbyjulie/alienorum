@@ -237,7 +237,6 @@ RGB3Byte generate_vegetation_color()
 {
     // Don't assume alien vegetation is green!
     // Don't seed random value here; we do that in the Map class.
-    // std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     // Define a longpass wavelength somewhere in the UV or blue
     double lp = frand(300, 490);
