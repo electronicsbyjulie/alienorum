@@ -510,6 +510,7 @@ int main (int argc, char** argv)
             viewchanged = searched || (trackidx>=0) || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
 
             // Dialogs
+            editing = false;
             if (objedtwnd) draw_objedit_window(io);
             if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);
@@ -634,7 +635,8 @@ int main (int argc, char** argv)
             }
 
             // Keyboard commands
-            process_keyboard_commands(io);
+            if (ImGui::IsAnyItemActive()) editing = true;
+            if (!editing) process_keyboard_commands(io);
 
             if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
             {
@@ -667,29 +669,29 @@ int main (int argc, char** argv)
             argsfs = false;
         }
 
-            if (nlo)
+        if (nlo)
+        {
+            n = trail.size();
+            if (n > 54) trail.pop_front();
+            for (i=0; i<n; i++)
             {
-                n = trail.size();
-                if (n > 54) trail.pop_front();
-                for (i=0; i<n; i++)
-                {
-                    if (trail[i].x && trail[i].y)
-                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(trail[i], nlorad, IM_COL32(0, 255, 0, i*0.2+1), 85);
-                }
-
-                ImGui::GetBackgroundDrawList()->AddEllipseFilled(ovni, nlorad, IM_COL32(0, 255, 0, 255), 85);
-                ImVec2 vec2 = ovni;
-                vec2.x += frand (-5, 5);
-                vec2.y += frand (-5, 5);
-                trail.push_back(vec2);
-                ovni.x += dxovni;
-                ovni.y += dyovni;
-
-                dxovni += frand (-0.01, 0.01);
-                dyovni += frand (-0.01, 0.01);
-
-                if (ovni.x < -200) nlo = false;
+                if (trail[i].x && trail[i].y)
+                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(trail[i], nlorad, IM_COL32(0, 255, 0, i*0.2+1), 85);
             }
+
+            ImGui::GetBackgroundDrawList()->AddEllipseFilled(ovni, nlorad, IM_COL32(0, 255, 0, 255), 85);
+            ImVec2 vec2 = ovni;
+            vec2.x += frand (-5, 5);
+            vec2.y += frand (-5, 5);
+            trail.push_back(vec2);
+            ovni.x += dxovni;
+            ovni.y += dyovni;
+
+            dxovni += frand (-0.01, 0.01);
+            dyovni += frand (-0.01, 0.01);
+
+            if (ovni.x < -200) nlo = false;
+        }
 
         // std::cout << ImGui::GetBackgroundDrawList()->_VtxCurrentIdx << " _VtxCurrentIdx." << std::endl << std::flush;
 
