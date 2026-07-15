@@ -106,8 +106,12 @@ HD216956                (debris disks)                          202         066.
 # https://en.wikipedia.org
 HD3651                  (stellar rotation)                                  083
 #                                                                           Based on 0.6 km/s rot v:
-HD43834                 (stellar rotation)                                  159?
-HD43834                 Alp Men B              5.9e+9?                                              4.5e+12                                                     M3.5-6.5V                       0.169       0.19                     3054
+HD43834                 (stellar rotation)                                  021
+
+# https://doi.org/10.3847/1538-4357/ac1269
+HD43834                 Alp Men B              5.9e+9?          250.87?     021?                    4.5e+12                                                     M3.5-6.5V       +12.415         0.169       0.19                     3054
+
+# https://en.wikipedia.org
 HD61421                 (companion orbit)                       100.683     031.408
 HD201092                (companion orbit)                       355.73      052.99
 HD209100                Eps Ind Ba             2.0e+12?         148?        102?                    2.2e+14                                                                                     0.06386     0.081       2.04e-5      1312
