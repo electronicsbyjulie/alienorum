@@ -190,16 +190,19 @@ void identify_object_under_cursor(ImGuiIO& io)
 
 void pan_with_crosshairs(ImGuiIO& io)
 {
+    double amount = 1;
     double limit = half_pi;
     if (view_mode == vm_skymap)
     {
+        amount = 3;
         limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
     }
 
+
     if (ImGui::IsMouseDown(2))
     {
-        azimuth -= 0.01 * fiftyseventh * io.MouseDelta.x / zoom;
-        altitude += 0.01 * fiftyseventh * io.MouseDelta.y / zoom;
+        azimuth -= 0.01 * amount * fiftyseventh * io.MouseDelta.x / zoom;
+        altitude += 0.01 * amount * fiftyseventh * io.MouseDelta.y / zoom;
         if (altitude >  limit) altitude =  limit;
         if (altitude < -limit) altitude = -limit;
         spin = 0;
@@ -212,8 +215,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     }
     else if (ImGui::IsMouseDown(1))
     {
-        azimuth -= 0.03 * fiftyseventh * io.MouseDelta.x / zoom;
-        altitude += 0.03 * fiftyseventh * io.MouseDelta.y / zoom;
+        azimuth -= 0.03 * amount * fiftyseventh * io.MouseDelta.x / zoom;
+        altitude += 0.03 * amount * fiftyseventh * io.MouseDelta.y / zoom;
         if (altitude >  limit) altitude =  limit;
         if (altitude < -limit) altitude = -limit;
         spin = 0;
@@ -226,8 +229,8 @@ void pan_with_crosshairs(ImGuiIO& io)
     }
     else if (ImGui::IsMouseDown(0))
     {
-        azimuth -= 0.1 * fiftyseventh * io.MouseDelta.x / zoom;
-        altitude += 0.1 * fiftyseventh * io.MouseDelta.y / zoom;
+        azimuth -= 0.1 * amount * fiftyseventh * io.MouseDelta.x / zoom;
+        altitude += 0.1 * amount * fiftyseventh * io.MouseDelta.y / zoom;
         if (altitude >  limit) altitude =  limit;
         if (altitude < -limit) altitude = -limit;
         spin = 0;
@@ -504,7 +507,7 @@ void process_key_cmd_char(char c)
         case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
         case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
-        case '\\': view_mode = vm_skymap; break;                 // not yet implemented but want to keep the placeholder
+        case '\\': view_mode = vm_skymap; altitude = 0; break;
         case ';': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
         default:
