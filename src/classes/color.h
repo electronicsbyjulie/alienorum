@@ -146,6 +146,7 @@ extern bool redlight_mode;
 extern double drawblxscalex, drawblxscaley;
 extern int *bx_cache, *by_cache;
 extern AlienStyle global_style;
+extern std::map<int, RGB3Byte> sky_grad;
 
 void set_gamma(double new_gamma);
 double get_gamma();

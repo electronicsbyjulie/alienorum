@@ -376,6 +376,7 @@ int draw_sphere(CelestialObject* cel, double arad)
               ),
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline=0, dx1, dy1, dx2, dy2;
+    double polyr, polyg, polyb, lum, lum1;
     l = 0;
 
     bool lonmin_crosses_zero = (lonmin <= 0 && lonmax < 180), filter_longitudes = ((lonmax - lonmin) <= 180);
@@ -545,14 +546,33 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 if (is_night)
                                 {
                                     nrgb = nmap->color_at(maplat, maplon-_pi);
-                                    imcol = rgba_apply_redlight(IM_COL32(
-                                        is_day*rgblit.r + is_night*nrgb.r,
-                                        is_day*rgblit.g + is_night*nrgb.g,
-                                        is_day*rgblit.b + is_night*nrgb.b,
-                                        255));
+
+                                    polyr = is_day*rgblit.r + is_night*nrgb.r;
+                                    polyg = is_day*rgblit.g + is_night*nrgb.g;
+                                    polyb = is_day*rgblit.b + is_night*nrgb.b;
                                 }
                             }
-                            else imcol = rgba_apply_redlight(IM_COL32(is_day*rgblit.r, is_day*rgblit.g, is_day*rgblit.b, 255));
+                            else
+                            {
+                                polyr = is_day*rgblit.r;
+                                polyg = is_day*rgblit.g;
+                                polyb = is_day*rgblit.b;
+                            }
+
+                            if (view_mode == vm_horizon)
+                            {
+                                if (sky_grad.find(dy1) != sky_grad.end())
+                                {
+                                    lum = sky_grad[dy1].luminance() * 0.003921569;
+                                    lum1 = 1.0 - lum;
+                                    polyr = fmin(255, lum1 * polyr + sky_grad[dy1].r);
+                                    polyg = fmin(255, lum1 * polyg + sky_grad[dy1].g);
+                                    polyb = fmin(255, lum1 * polyb + sky_grad[dy1].b);
+                                }
+                            }
+
+                            imcol = rgba_apply_redlight(IM_COL32(polyr, polyg, polyb, 255));
+
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
                             if (m > lastm+1 && tdvalid[m-2])
                             {
@@ -1203,6 +1223,7 @@ void draw_horizon()
 
 void draw_sky_gradient()
 {
+    sky_grad.clear();
     if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
     {
         Planet *p = (Planet*)cels[whereami];
@@ -1226,15 +1247,19 @@ void draw_sky_gradient()
                     g = fmin(1, (Rayleigh * 0.58 + p->atmospheric_particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + p->atmospheric_particulates * pcol.blue ) * skylight),
                     a = fmin(1, pow(p->surface_pressure, 0.1) * skylight);
+            unsigned char r255, g255, b255;
             for (int y = fmin(hz_y, dispcy*2-1); y>=0; y--)
             {
+                r255 = r*255; g255 = g*255; b255 = b*255;
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
-                    rgba_apply_redlight(IM_COL32( (int)(r*255), (int)(g*255), (int)(b*255), (int)(a*255) ) ));
+                    rgba_apply_redlight(IM_COL32( (int)(r255), (int)(g255), (int)(b255), (int)(a*255) ) ));
 
                 r *= 0.999;
                 g *= 0.9995;
                 b *= 0.9999;
                 // a *= 0.99999;
+
+                sky_grad[y] = RGB3Byte(r255, g255, b255);
             }
         }
     }

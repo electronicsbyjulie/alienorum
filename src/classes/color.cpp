@@ -18,6 +18,7 @@ double global_brightness = default_brightness, sky_mag_shift = 0;
 double global_inverse_gamma = 1.0 / default_gamma;
 AlienStyle global_style;
 bool redlight_mode = false;
+std::map<int, RGB3Byte> sky_grad;
 
 double drawblxscalex, drawblxscaley;
 int *bx_cache = nullptr, *by_cache = nullptr;
