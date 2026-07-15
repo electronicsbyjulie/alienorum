@@ -315,6 +315,7 @@ void process_key_cmd_char(char c)
             global_brightness = default_brightness;
             zoom = 1;
         }
+        if (view_mode == vm_skymap) altitude = 0;
         velocity = center;
         viewchanged = true;
         refresh_star_visibilities();
@@ -477,7 +478,13 @@ void process_key_cmd_char(char c)
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
-        case '%': zoom = 1; global_brightness = 1; viewchanged = true; break;
+        case '%':
+        zoom = 1;
+        global_brightness = 1;
+        viewchanged = true;
+        sphere_quality = 1;
+        if (view_mode == vm_skymap) altitude = 0;
+        break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
         case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
         case '^':
