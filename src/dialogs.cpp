@@ -1535,13 +1535,13 @@ void draw_objedit_window(ImGuiIO& io)
 
             ImGui::Text("%s", "Texture");
             ImGui::SameLine();
-            if (ImGui::Button("Save"))
+            if (!generating_fic_texture && ImGui::Button("Save"))
             {
                 std::thread save_tex(save_textures, cel);
                 save_tex.detach();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Refresh"))
+            if (!generating_fic_texture && ImGui::Button("Refresh"))
             {
                 if (cel->surf_map)
                 {
@@ -1561,7 +1561,7 @@ void draw_objedit_window(ImGuiIO& io)
                 cel->looked_for_maps = false;
             }
             ImGui::SameLine();
-            if (ImGui::Button("Regenerate"))
+            if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
                 cel->fictitious_map_height = 5000;          // World-building resolution.
                 cel->looked_for_maps = false;

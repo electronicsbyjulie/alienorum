@@ -193,7 +193,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     double limit = half_pi;
     if (view_mode == vm_skymap)
     {
-        limit = fmax(0, half_pi * (1.0 - 1.0 * zoom));
+        limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
     }
 
     if (ImGui::IsMouseDown(2))

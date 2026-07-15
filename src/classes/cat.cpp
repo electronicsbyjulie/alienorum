@@ -3208,8 +3208,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("CENTER_OF_ORBIT").get_to(cenname); } catch (...) { ; }
             k = -1;
             if (cenname.size()) k = find_object(cenname.c_str(), false, 9e+29, 0);
-            if (must_orbit && must_orbit != cels[k]) continue;
-            if (mustnt_orbit == cels[k]) continue;
+            if (must_orbit && (k<0 || must_orbit != cels[k])) continue;
+            if (k>=0 && mustnt_orbit == cels[k]) continue;
 
             if (j < 0 || k >= 0)                // Name not taken or center of orbit,
             {                                   // create new.

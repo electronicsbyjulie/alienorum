@@ -148,6 +148,14 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
+                if (view_mode == vm_skymap)
+                {
+                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
+                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
+                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
+                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
+                }
+
                 if (prev_valid)
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1.1);
             }

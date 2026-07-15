@@ -1168,6 +1168,7 @@ unsigned int Map::idx_of(double lat, double lon)
 void alienorum::Map::resample_bump_data(unsigned int new_resolution)
 {
     if (!has_bump_data()) return;
+    generating_fic_texture = true;
     double scale = (double)image_height / new_resolution;
     double *bump_data_old = bump_data;
     long old_height = image_height, old_width = image_width;
@@ -1175,7 +1176,7 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
     image_width = image_height * 2;
     long toalloc = image_height * image_width;
     bump_data = new double[toalloc];
-    allocated = toalloc;
+    // std::cout << "Resample bump data from " << allocated << " to " << toalloc << std::endl;
 
     int octaves = 5;
     double lacunarity = 2.9, gain = 0.9, noise_scale = 2.9;
@@ -1265,7 +1266,9 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
     }
     #endif
 
+    allocated = toalloc;
     delete[] bump_data_old;
+    generating_fic_texture = false;
 }
 
 RGB3Byte Map::color_at(double lat, double lon)
@@ -1314,6 +1317,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
     __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
     ___ = __;
+    generating_fic_texture = true;
 
     Planet *p = (Planet*)cel;
     int lr = cel->fictitious_map_height;
@@ -1464,6 +1468,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
 
             idx = y * image_width + x;
+            if (idx >= allocated) return;
 
             // Get noise value for this point on the sphere
             height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
@@ -1543,6 +1548,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
     }
+
+    generating_fic_texture = false;
 }
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
@@ -1552,6 +1559,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     mtx.lock();
     __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
     ___ = __;
+    generating_fic_texture = true;
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
     image_height = lr;
@@ -1698,6 +1706,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             if (___ != __) return;
         }
     }
+    generating_fic_texture = false;
 }
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
