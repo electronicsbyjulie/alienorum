@@ -1190,16 +1190,20 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
         read_field_onebased(buffer, 54, 59, field);
-        A->obliquity = atof(field) * fiftyseventh;
-        s->orbit->inclination = 0;
+        double inclination = atof(field) * fiftyseventh;
+        s->orbit->inclination = A->obliquity = 0;
 
         //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
         read_field_onebased(buffer, 61, 66, field);
-        A->equinox = atof(field) * fiftyseventh;
-        s->orbit->ascending_node = 0;
+        double node = atof(field) * fiftyseventh;
+        s->orbit->ascending_node = A->obliquity = 0;
 
-        A->update_location(J2000_TIME_T);
+        A->location.local_system_plane = system_plane_from_incl_and_node(inclination, node, A->location.system_center);
+        A->lock_system_plane = true;
+
+        // A->update_location(J2000_TIME_T);
         s->location = A->location;
+        s->distance_known = true;
         A->known_poles = true;
         s->known_poles = true;
 

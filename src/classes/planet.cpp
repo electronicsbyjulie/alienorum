@@ -23,7 +23,22 @@ void Planet::set_color_from_type(bool HZ)
         if (HZ) BV_color = 0.2;                     // estimate same as Earth.
         else BV_color = 1;
     }
-    else if (type == hot_jupiter) BV_color = -1;    // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
+    else if (type == hot_jupiter)
+    {
+        // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
+        double bluest = -0.1;
+
+        // https://iopscience.iop.org/article/10.3847/1538-4357/aadd9e
+        // https://experts.arizona.edu/en/publications/absorption-spectra-of-the-prototype-hot-jupiters-determination-of
+        // https://www.cambridge.org/core/journals/proceedings-of-the-international-astronomical-union/article/absorption-spectra-of-the-prototype-hotjupiters-determination-of-atmospheric-constituents-and-structure/654C6A452CD94ABC335C2281F8108FD0
+        // https://academic.oup.com/mnras/article/437/1/46/992656
+        // https://arxiv.org/html/2603.02409
+        // https://www.aanda.org/articles/aa/full_html/2019/07/aa35089-19/aa35089-19.html
+        // https://academic.oup.com/mnras/article/426/3/2483/989230
+        // https://repository.arizona.edu/handle/10150/628273
+        double T = estimate_surface_temperature();
+        BV_color = 0.98 + (bluest-0.98) / (1.0 + 0.002 * fabs(T-1200));
+    }
     else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
     else if (type == icy) BV_color = 0.6;
     else if (type == lavaworld) BV_color = 1.3;
