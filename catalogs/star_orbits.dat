@@ -73,6 +73,8 @@ HD216956                (cometary disk)                         156.61      066.
 HD216956C               (cometary disk)                         116         044
 HD218396                (cometary disk)                         051         039
 
+#Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
+
 # https://doi.org/10.1051/0004-6361/201322469
 HD20807                 HD20766                 5.36e+12?       296.2       065.5?      ?           5.610e+14?  ?                               2013.
 
@@ -84,8 +86,9 @@ Algol                   Algol C                 5.87665e+7      132.66      083.
 HD20794                 (dust disk)                             004.        050.                    3.7e+12
 
 # https://doi.org/10.1086%2F174210
+# https://doi.org/10.1093/mnras/stu1641
 HD10700                 (stellar rotation)      4e+6                        007
-HD10700                 (debris disk)                                       035
+HD10700                 (debris disk)                           105         035
 
 # https://doi.org/10.48550/arXiv.2303.13584
 # The paper assumes a node of -1.1 degrees based on the position angle of the belt, without any observation of the direction of rotation nor

@@ -1274,16 +1274,16 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
 RGB3Byte Map::color_at(double lat, double lon)
 {
     RGB3Byte result;
-    if (blue_data)
+    if (generating_fic_texture)
     {
-        unsigned int idx = idx_of(lat, lon);
-        result.r = red_data[idx];
-        result.g = green_data[idx];
-        result.b = blue_data[idx];
+        result.r = result.g = result.b = 255;
     }
     else
     {
-        result.r = result.g = result.b = 255;
+        unsigned int idx = idx_of(lat, lon);
+        result.r = red_data   ? red_data[idx]   : 255;
+        result.g = green_data ? green_data[idx] : 255;
+        result.b = blue_data  ? blue_data[idx]  : 255;
     }
     return result;
 }
@@ -1711,10 +1711,11 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 {
-    if (red_data) delete[] red_data;
-    if (green_data) delete[] green_data;
-    if (blue_data) delete[] blue_data;
+    unsigned char *lred = red_data, *lgreen = green_data, *lblue = blue_data;
     red_data = green_data = blue_data = nullptr;
+    if (lred  ) delete[] lred;
+    if (lgreen) delete[] lgreen;
+    if (lblue ) delete[] lblue;
     resample_bump_data(cel->fictitious_map_height);
     generate_rocky_map(cel);
 }

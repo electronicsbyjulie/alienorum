@@ -3199,7 +3199,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     int i, j, k, n = planets.size();
     bool createnew;
     Planet *p;
-    Moon *m;
+    Moon *m = nullptr;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -3209,6 +3209,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     {
         json pl = planets[i];
         std::string bodyname, cenname, mapurl;
+        m = nullptr;                            // MERCURY ISN'T A FUCKING MOON, IMBECILE.
         try
         {
             pl.at("BODYNAME").get_to(bodyname);
@@ -3309,7 +3310,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 try { pl.at("Depth" ).get_to(m->depth ); m->depth  *= 1000; } catch (...) { ; }
                 try { pl.at("Width" ).get_to(m->width ); m->width  *= 1000; } catch (...) { ; }
                 try { pl.at("Height").get_to(m->height); m->height *= 1000; } catch (...) { ; }
-                if (!m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
+                if (!m->orbit) std::cout << "WARNING: " << m->name << " has no orbit." << std::endl << std::flush;
+                if (m->orbit && !m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
                 if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
                     m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333333333) * 0.5;
                 assert(!isinf(m->volumetric_mean_radius));
