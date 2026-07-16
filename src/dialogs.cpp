@@ -749,7 +749,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##equinox"))
             {
-                cel->equinox = frand(0, _pi);
+                cel->equinox = frand(0, _pi*2);
             }
 
             double edit_prcseq = cel->precession ? (_pi * 2 / cel->precession / oneyear) : 0;
