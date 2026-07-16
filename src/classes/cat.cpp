@@ -1178,7 +1178,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
         read_field_onebased(buffer, 31, 38, field);
-        s->orbit->semimajor_axis = (atof(field)/3600000) * fiftyseventh * s->distance;
+        s->orbit->semimajor_axis = (atof(field)/206264806) * s->distance;
+        if (HIP == 100345) std::cout << "hip_dm_o: " << s->name << " sma=" << (s->orbit->semimajor_axis*invAU) << std::endl;
 
         //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
         read_field_onebased(buffer, 40, 45, field);
@@ -1649,6 +1650,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         // Estimate the semimajor axis
         double sma = sin(rho) * A->distance;
         s->orbit->semimajor_axis = sma;
+        if (HIP == 100345) std::cout << "CCDM: " << s->name << " sma=" << (s->orbit->semimajor_axis*invAU) << std::endl;
 
         // Figure the absolute magnitude
         if (s->distance_known)
@@ -1913,6 +1915,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
             * f
             * B->orbit->period;
+        if (((Star*)B->orbit->center)->HIP == 100345) std::cout << "SB9: " << B->name << " sma=" << (B->orbit->semimajor_axis*invAU) << std::endl;
 
         num_read++;
         if (offset >= (max-1))
