@@ -192,12 +192,11 @@ void pan_with_crosshairs(ImGuiIO& io)
 {
     double amount = 1;
     double limit = half_pi;
-    if (view_mode == vm_skymap)
+    if (view_mode == vm_skymap || view_mode == vm_sunclock)
     {
         amount = 3;
         limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
     }
-
 
     if (ImGui::IsMouseDown(2))
     {
@@ -318,7 +317,7 @@ void process_key_cmd_char(char c)
             global_brightness = default_brightness;
             zoom = 1;
         }
-        if (view_mode == vm_skymap) altitude = 0;
+        if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         velocity = center;
         viewchanged = true;
         refresh_star_visibilities();
@@ -506,7 +505,7 @@ void process_key_cmd_char(char c)
 
         case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
-        case '$': view_mode = vm_sunclock; break;                 // not yet implemented but want to keep the placeholder
+        case '$': view_mode = vm_sunclock; viewchanged = true; altitude = 0; break;
         case '\\': view_mode = vm_skymap; altitude = 0; break;
         case ';': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
@@ -586,7 +585,7 @@ void process_keyboard_commands(ImGuiIO& io)
             double coslat = cos(viewer_lat);
             viewer_lat += walk_speed * inv_circ * cos(azimuth);
             if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
+            // save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
@@ -612,7 +611,7 @@ void process_keyboard_commands(ImGuiIO& io)
             double coslat = cos(viewer_lat);
             viewer_lat -= walk_speed * inv_circ * cos(azimuth);
             if (coslat) viewer_lon -= walk_speed * inv_circ * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
+            // save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {

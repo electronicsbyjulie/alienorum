@@ -126,6 +126,32 @@ target. Otherwise it's very easy to overshoot and zip right past it. If your spe
 by the target and watch it seem to roll across the background stars.
 
 
+## View Modes
+
+### Horizon
+
+Horizon mode allows seeing the sky and horizon from the surface of any planet, moon, or asteroid. This mode can be
+accessed by selecting it from the dropdown in the status window, pressing `_` (underscore), or "crashing" into an
+object during spaceflight. (Crashing into a star will not have the same effect.)
+
+While in horizon mode, there are controls to edit the current latitude and longitude. These will be saved to your
+`user.json` file if you change the theme in the themes dropdown. Next to the latitude button is an `...` button
+that produces a list of locales if any locales are known for your current location. On Earth this includes cities
+and a handful of observatories.
+
+You can also navigate the surface by holding down `End` (to go forward) or `Home` (to
+go backward) at a brisk walking speed. If you desire to go faster, simultaneously holding down `Shift` increases
+your speed tenfold and `Ctrl` one hundredfold. Both `Shift` keys and both `Ctrl` keys may be combined to produce
+a total of one million times the default walking speed.
+
+
+### Sun Clock
+
+Sun clock mode shows the entire surface of the planet or moon as a cylindrical projection lit up in areas that are
+in daylight. It is pannable and zoomable. Resolution is limited for performance reasons, but you can zoom in much
+closer than the resolution of most texture maps.
+
+
 ## Satellites
 
 To add a satellite, press ^ (Shift+6 on US keyboards). A searchable list will appear; you can search by satellite
@@ -209,7 +235,7 @@ Shift+Q     Improve performance by decreasing texture rendering quality
 F11         Toggle fullscreen
 &           Sky atlas mode
 _           Horizon mode
-$           (UNIMPLEMENTED) this will be the shortcut for sun clock mode
+$           Sun clock mode
 \           Sky map mode
 Shift+J     Toggle upside-down mode when viewing from satellites
 3           Cycle forward through themes

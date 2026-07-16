@@ -211,7 +211,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     here.equatorial_plane = cel->location.equatorial_plane;
                     viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday()) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
-                    save_viewer_latlon = false;
+                    // save_viewer_latlon = false;
                     whereami = cel->seqno;
                     velocity = Point(0,0,0);
                     view_mode = vm_horizon;
@@ -1159,6 +1159,9 @@ void draw_sunclock()
 {
     if (whereami < 0) return;
     CelestialObject *cel = cels[whereami];
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+    cel_obj_class cls = cel->typeclass();
 
     if (!cel->looked_for_maps)
     {
@@ -1169,23 +1172,82 @@ void draw_sunclock()
 
     Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
     Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
-    RGB3Byte rgb = Color::rgb_from_color(c, -1);
+    RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
 
-    double lat, lon, scale = _pi / dispcx;
-    int x, y, dy, step=2, size = dispcx/2, wid = dispcx*2;
+    int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2, wid = halfwid*2;
+    double lat, lon, scale = half_pi / size / zoom, obl = 1.0 - cel->oblateness, elevation;
     Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
+    Map *nmap = cel->night_map ? cel->night_map : nullptr;
+    Point land;
+    bool dwh = false;
 
-    for (y= size; y>=-size; y-=step)
+    if (cls == class_moon)
+        dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
+            && ((Moon*)cel)->width > zero_isnt_really_zero
+            && ((Moon*)cel)->height > zero_isnt_really_zero);
+
+    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day, is_night;
+    if (dwh)
+        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
+    else
+        equatorial_radius = cel->get_equatorial_radius();
+
+
+    for (y= dispcy; y>=-dispcy; y-=step)
     {
         dy = dispcy - y;
-        lat = scale * y;
+        lat = scale * y + altitude;
+        if (fabs(lat) > half_pi) continue;
 
-        for (x=0; x<wid; x+=step)
+        for (x=-halfwid; x<halfwid; x+=step)
         {
-            lon = fmod( scale * x + _pi + azimuth, _pi*2);
-            if (map) rgb = map->color_at(lat, lon);
+            dx = halfwid + x;
+            lon = fmod( scale * x + azimuth, _pi*2);
+            elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
+            land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(x, dy), ImVec2(x+step, dy+step),
+            if (dwh)
+            {
+                land.x *= ((Moon*)cel)->width  * .5;
+                land.y *= ((Moon*)cel)->height * .5;
+                land.z *= ((Moon*)cel)->depth  * .5;
+                if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
+            }
+            else land.y *= obl;
+            land = rotate3D(land, center, yaxis, -cel->timeofday());
+            land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+            land += cel->location.local_position;
+            if (self_luminous) is_day = 1;
+            else
+            {
+                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+                if (fabs(theta) < half_pi)
+                {
+                    cos_theta = cos(theta);
+                    is_day = fmin(1, pow(cos_theta, 0.333));
+                }
+                else is_day = 0;
+            }
+            is_night = 1.0 - is_day;
+
+            if (map) rgb = map->color_at(lat, lon);
+            else rgb = prgb;
+
+            if (nmap) nrgb = nmap->color_at(lat, lon);
+
+            rgb.r *= is_day;
+            rgb.g *= is_day;
+            rgb.b *= is_day;
+
+            if (is_night)
+            {
+                rgb.r += nrgb.r * is_night;
+                rgb.g += nrgb.g * is_night;
+                rgb.b += nrgb.b * is_night;
+            }
+
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
                 rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
         }
     }
