@@ -22,11 +22,6 @@
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=csv"
     },
     {
-        "LocalName": "active",
-        "Type": "supplemental",
-        "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=csv"
-    },
-    {
         "LocalName": "analyst",
         "Type": "supplemental",
         "URL": "https://celestrak.org/NORAD/elements/gp.php?GROUP=analyst&FORMAT=csv"

@@ -156,6 +156,8 @@ bool SatSource::download_data()
         return true;
     }
 
+    // std::cout << "DOWNLOAD FILE " << url << std::endl << std::flush;
+
     return download_file(url, outfname);
 }
 
@@ -180,6 +182,7 @@ bool SatSource::read_csv_data()
         i = 0;
 
         if (!strcmp(row[0].c_str(), "OBJECT_NAME")) continue;               // Ignore headers.
+        // std::cout << buffer << std::flush;
 
         if (is_supplemental)
         {

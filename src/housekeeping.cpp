@@ -371,6 +371,10 @@ void compute_object_draw_coordinates()
 
 void set_center_objects()
 {
+    mtx.lock();
+    loading_msg = std::string("Checking data integrity...");
+    mtx.unlock();
+
     int i;
     first_letter_index.clear();
     for (i=0; i<36; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
@@ -442,6 +446,7 @@ void set_center_objects()
                 break;
             }
             cels[i]->cenobj = cels[i]->cenobj->orbit->center;
+            if (cels[i]->cenobj->orbit && cels[i]->cenobj->orbit->center == cels[i]->cenobj) cels[i]->cenobj->orbit = nullptr;
         }
 
         if (cels[i]->type == star)
