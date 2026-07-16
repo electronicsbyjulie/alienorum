@@ -494,11 +494,15 @@ int main (int argc, char** argv)
                 sky_mag_shift = 0;
             }
 
-            if (show_grid) draw_ra_dec_lines();
-            if (show_consln) draw_cons_lines();
-            draw_objects();
-            draw_horizon();
-            draw_cloudy_sky();
+            if (view_mode == vm_sunclock) draw_sunclock();
+            else
+            {
+                if (show_grid) draw_ra_dec_lines();
+                if (show_consln) draw_cons_lines();
+                draw_objects();
+                draw_horizon();
+                draw_cloudy_sky();
+            }
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();

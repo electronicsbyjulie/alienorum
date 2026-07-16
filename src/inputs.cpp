@@ -506,7 +506,7 @@ void process_key_cmd_char(char c)
 
         case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
-        case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
+        case '$': view_mode = vm_sunclock; break;                 // not yet implemented but want to keep the placeholder
         case '\\': view_mode = vm_skymap; altitude = 0; break;
         case ';': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 

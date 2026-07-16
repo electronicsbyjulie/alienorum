@@ -1155,6 +1155,42 @@ void draw_objects()
 
 }
 
+void draw_sunclock()
+{
+    if (whereami < 0) return;
+    CelestialObject *cel = cels[whereami];
+
+    if (!cel->looked_for_maps)
+    {
+        cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+        std::thread ttex(load_textures, cel);
+        ttex.detach();
+    }
+
+    Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
+    Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
+    RGB3Byte rgb = Color::rgb_from_color(c, -1);
+
+    double lat, lon, scale = _pi / dispcx;
+    int x, y, dy, step=2, size = dispcx/2, wid = dispcx*2;
+    Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
+
+    for (y= size; y>=-size; y-=step)
+    {
+        dy = dispcy - y;
+        lat = scale * y;
+
+        for (x=0; x<wid; x+=step)
+        {
+            lon = fmod( scale * x + _pi + azimuth, _pi*2);
+            if (map) rgb = map->color_at(lat, lon);
+
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(x, dy), ImVec2(x+step, dy+step),
+                rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
+        }
+    }
+}
+
 bool draw_marker[16];
 double hz_dx[16], hz_dy[16];
 void find_horizon()
@@ -1195,6 +1231,13 @@ void draw_horizon()
     {
         int j;
         CelestialObject *cel = cels[whereami];
+
+        if (!cel->looked_for_maps)
+        {
+            cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+            std::thread ttex(load_textures, cel);
+            ttex.detach();
+        }
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 

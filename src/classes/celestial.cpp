@@ -1168,6 +1168,7 @@ unsigned int Map::idx_of(double lat, double lon)
 void alienorum::Map::resample_bump_data(unsigned int new_resolution)
 {
     if (!has_bump_data()) return;
+    if (image_height == new_resolution) return;
     generating_fic_texture = true;
     double scale = (double)image_height / new_resolution;
     double *bump_data_old = bump_data;
