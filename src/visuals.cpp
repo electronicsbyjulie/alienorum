@@ -830,9 +830,12 @@ bool draw_one_object(int i)
         double line_of_sight = cels[i]->orbit->center->location.local_position.get_distance_to_line(
             cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
 
-        ImU32 satcol = (line_of_sight < cels[i]->orbit->center->volumetric_mean_radius)
-            ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
-            : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+        ImU32 satcol = (i == selected)
+            ? rgba_apply_redlight(global_style.selected_color)
+            : ((line_of_sight < cels[i]->volumetric_mean_radius)
+                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
+
         if (show_labels || lbl_localsys || show_consln || show_grid)
         {
             bloomrad_cache[i] = bloomrad = draw_satellite_icon(xycoord, satcol);
@@ -1160,9 +1163,17 @@ void draw_objects()
 
 }
 
+ViewMode last_vmode = vm_skyatlas;
 void draw_sunclock()
 {
     if (whereami < 0) return;
+
+    int i;
+    if (last_vmode != view_mode) for (i=0; cels[i]; i++)
+    {
+        cels[i]->drawnx = cels[i]->drawny = -1e9;
+    }
+
     CelestialObject *cel = cels[whereami];
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
@@ -1180,7 +1191,7 @@ void draw_sunclock()
     RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
 
     int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2, wid = halfwid*2;
-    double lat, lon, scale = half_pi / size / zoom, obl = 1.0 - cel->oblateness, elevation;
+    double lat, lon, scale = half_pi / size / zoom, obl = 1.0 - cel->oblateness, elevation, line_of_sight;
     Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
     Map *nmap = cel->night_map ? cel->night_map : nullptr;
     Point land;
@@ -1263,8 +1274,8 @@ void draw_sunclock()
         }
     }
 
-    int i;
     Point satat;
+    ImU32 satcol;
     if (show_sats && first_sat >= 0) for (i=first_sat; i<ncelobjs; i++)
     {
         if (cels[i] && cels[i]->typeclass() == class_satellite && cels[i]->orbit && cels[i]->orbit->center == cel)
@@ -1283,14 +1294,80 @@ void draw_sunclock()
             dx = dispcx + lon/scale;
             dy = dispcy - lat/scale;
 
-            double line_of_sight = cel->location.local_position.get_distance_to_line(
+            line_of_sight = cel->location.local_position.get_distance_to_line(
                 cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
 
-            ImU32 satcol = (line_of_sight < cel->volumetric_mean_radius)
-                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
-                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+            satcol = (i == selected)
+                ? rgba_apply_redlight(global_style.selected_color)
+                : ((line_of_sight < cel->volumetric_mean_radius)
+                    ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+                    : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
 
-            draw_satellite_icon(ImVec2(dx, dy), satcol);
+            bloomrad = draw_satellite_icon(ImVec2(dx, dy), satcol);
+            cels[i]->drawnx = dx;
+            cels[i]->drawny = dy;
+
+            if (show_labels)
+            {
+                const char *dispname = cels[i]->name;
+                ImFont *font = global_font;
+                std::string str;
+                cel_obj_class cls = cels[i]->typeclass();
+                double lfontsz = global_font_size;
+                ImVec2 sz = ImGui::CalcTextSize(dispname);
+                ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
+                    rgba_apply_redlight((i == selected) ? global_style.selected_color : global_style.objlbl_color),
+                    dispname);
+            }
+
+            if (show_orbits && cels[i]->orbit)
+            {
+                int dx1 = -1e9, dy1 = -1e9, dx2, dx2a, dy2;
+                double sincewhen, hasta_la_pasta = simnow + 0.5*cels[i]->orbit->period, stepf = cels[i]->orbit->period / 29;
+                bool satsunlit;
+
+                for (sincewhen = simnow - 0.5*cels[i]->orbit->period; sincewhen <= hasta_la_pasta; sincewhen += stepf)
+                {
+                    ((Satellite*)cels[i])->update_location(sincewhen);
+
+                    satat = cels[i]->location.local_position - cel->location.local_position;
+                    satat = rotate3D(satat, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+                    satat = rotate3D(satat, center, yaxis, cel->timeofday());
+
+                    lon = fmod(find_angle(satat.z, -satat.x) - azimuth, _pi*2);
+                    if (lon >  _pi) lon -= _pi*2;
+                    if (lon < -_pi) lon += _pi*2;
+                    lat = fmod(find_angle(sqrt(satat.x*satat.x+satat.z*satat.z), satat.y) - altitude, _pi*2);
+                    if (lat < -half_pi) lat += _pi*2;
+                    if (lat >  half_pi) lat -= _pi*2;
+
+                    dx2 = dispcx + lon/scale;
+                    dy2 = dispcy - lat/scale;
+
+                    line_of_sight = cel->location.local_position.get_distance_to_line(
+                        cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
+
+                    satsunlit = (line_of_sight < cel->volumetric_mean_radius);
+
+                    if (dx1 >= -1000 && dy1 >= 0)
+                    {
+                        satcol = (i == selected)
+                            ? rgba_apply_redlight(global_style.selected_color)
+                            : (satsunlit
+                                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 128))
+                                : rgba_apply_redlight(IM_COL32(255, 255, 255, 128)));
+
+                        dx2a = dx2;
+                        if (dx2a < dx1) dx2a += dispcx*2;
+
+                        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1,dy1), ImVec2(dx2a,dy2), satcol);
+                    }
+
+                    dx1 = dx2;
+                    dy1 = dy2;
+                }
+                ((Satellite*)cels[i])->update_location(simnow);
+            }
         }
     }
 }
