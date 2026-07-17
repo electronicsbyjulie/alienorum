@@ -1179,6 +1179,8 @@ void draw_sunclock()
     bool self_luminous = (lightcen == cel);
     cel_obj_class cls = cel->typeclass();
 
+    if (!cel->nlocales) cel->read_locales("locales.json");
+
     if (!cel->looked_for_maps)
     {
         cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.

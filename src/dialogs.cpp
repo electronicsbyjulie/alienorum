@@ -1957,18 +1957,12 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
 void draw_loc_window(ImGuiIO & io)
 {
-    if (!locales.size())
-    {
-        std::fstream fs("locales.json", std::ios::in);
-        if (fs)
-        {
-            fs >> locales;
-            fs.close();
-        }
-    }
-
     if (whereami < 0) return;
     if (view_mode != vm_horizon) return;
+
+    CelestialObject *cel = cels[whereami];
+
+    if (!cel->nlocales) cel->read_locales("locales.json");
 
     int i, j, l, looklen = strlen(lookloc);
     unsigned int n=0;
@@ -1986,64 +1980,53 @@ void draw_loc_window(ImGuiIO & io)
     if (ImGui::BeginListBox("##loclist", ImVec2(503, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j=0;
-        for (auto& [planet, plocs] : locales.items())
+
+        n = cel->nlocales;
+        std::string name;
+        double lat, lon;
+        for (i=0; (unsigned)i<n; i++)
         {
-            if (!strcmp(planet.c_str(), cels[whereami]->name))
+            name = cel->locales[i].name;
+            if (!name.size()) continue;
+            if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
+
+            lat = cel->locales[i].lat;
+            lon = cel->locales[i].lon;
+            stringstream line;
+
+            line << name;
+
+            l = line.str().size();
+            if (l < 40) line << std::string(40-l, ' ');
+
+            line << setprecision(5) << lat;
+
+            l = line.str().size();
+            if (l < 48) line << std::string(48-l, ' ');
+
+            line << setprecision(6) << lon;
+
+            bool is_selected = (item_selected_idx == (unsigned)j);
+
+            ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)j) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
             {
-                std::sort(plocs.begin(), plocs.end(), [](const json& a, const json& b)
-                {
-                    return a["name"] < b["name"];
-                });
-
-                n = plocs.size();
-                std::string name;
-                double lat, lon;
-                for (i=0; (unsigned)i<n; i++)
-                {
-                    plocs[i]["name"].get_to(name);
-                    if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
-                    // name.erase(std::remove(name.begin(), name.end(), '\"'), name.end());
-
-                    plocs[i]["latitude"].get_to(lat);
-                    plocs[i]["longitude"].get_to(lon);
-                    stringstream line;
-
-                    line << name;
-
-                    l = line.str().size();
-                    if (l < 40) line << std::string(40-l, ' ');
-
-                    line << setprecision(5) << lat;
-
-                    l = line.str().size();
-                    if (l < 48) line << std::string(48-l, ' ');
-
-                    line << setprecision(6) << lon;
-
-                    bool is_selected = (item_selected_idx == (unsigned)j);
-
-                    ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)j) ? ImGuiSelectableFlags_Highlight : 0;
-                    if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
-                    {
-                        item_selected_idx = j;
-                    }
-
-                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                    if (is_selected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-
-                        sellat = lat * fiftyseventh;
-                        sellon = lon * fiftyseventh;
-                        selloc = name;
-                    }
-
-                    j++;
-                }
-
-                break;
+                item_selected_idx = j;
             }
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+            {
+                ImGui::SetItemDefaultFocus();
+
+                sellat = lat * fiftyseventh;
+                sellon = lon * fiftyseventh;
+                selloc = name;
+            }
+
+            j++;
         }
+
         ImGui::EndListBox();
     }
 
