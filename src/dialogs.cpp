@@ -374,6 +374,139 @@ void draw_objinf_window(ImGuiIO& io)
         ImGui::TextColored(ImVec4(1, 0, 0, 1), "TRACKING");
     }
 
+    if (is_an_obj_under_cursor >= 0)
+    {
+        int i = is_an_obj_under_cursor;
+        double lmag = vmag_cache[i];
+        bool am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
+        bool sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
+
+        std::stringstream oss;
+
+        // TODO: Refactor this as multi-line ImGui::Text() and move it to the show_objinfo_window ftn
+        // in dialogs.cpp make the objinfo window look more like the status window. That way it can also
+        // turn the "habitable zone" text green (don't forget the redlight mode correction).
+        objname = cels[i]->name;
+        objinfo = "";
+        if (cels[i]->type == star)
+        {
+            Star* s = (Star*)cels[i];
+            if (strlen(s->Bayer) && strlen(s->Flamsteed))
+            {
+                int Fl = atoi(s->Flamsteed);
+                objinfo += std::to_string(Fl) + (std::string)s->Bayer + (std::string)"\n";
+            }
+            else if (strlen(s->Flamsteed)) objinfo += (std::string)s->Flamsteed + (std::string)"\n";
+            else if (strlen(s->Bayer)) objinfo += (std::string)s->Bayer + (std::string)"\n";
+            if (s->GouldNo > 0) objinfo += std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->constellation) + (std::string)"\n";
+
+            if (strlen(s->Gliese)) objinfo += (std::string)s->Gliese + (std::string)"\n";
+            if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
+            if (s->HR) objinfo += (std::string)"HR" + std::to_string(s->HR) + (std::string)"\n";
+            if (s->HIP) objinfo += (std::string)"HIP" + std::to_string(s->HIP) + (std::string)"\n";
+            if (s->WD.size()) objinfo += std::string(s->WD) + (std::string)"\n";
+            if (s->Bonn_survey[0])
+            {
+                char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
+                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
+                    + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential) + std::string("\n");
+            }
+        }
+
+        if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+        {
+            double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+            objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
+                    +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+        }
+        else
+        {
+            npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
+            double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
+            if (objaz < 0) objaz += _pi*2;
+            objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
+                    +  (std::string)"Azimuth:  "
+                    +  std::to_string(objaz*fiftyseven)
+                    +  (std::string)"\n";
+        }
+        if (!sat_low_orbit)
+            oss << "Mag:      " << std::setprecision(4) << lmag << std::endl;
+
+        objinfo += oss.str();
+        oss.str("");
+        oss.clear();
+
+        if (cels[i]->type == star)
+        {
+            Star* s = (Star*)cels[i];
+            if (s->distance_known)
+            {
+                oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
+                oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude << "\n";
+            }
+            objinfo += (std::string)"SpTyp:    " + s->spectral_type + (std::string)"\n";
+        }
+        else if (cels[i]->type == galaxy)
+        {
+            // TODO:
+        }
+        else if (cels[i]->type == artificial)
+        {
+            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+        }
+        else
+        {
+            oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
+            if (!sat_low_orbit)
+                oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
+            if (((Planet*)cels[i])->is_in_con_HZ()) oss << "          Habitable Zone" << std::endl;
+        }
+
+        cel_obj_class cls = cels[i]->typeclass();
+        if (cels[i]->mass)
+        {
+            if (cls == class_star) 
+                ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
+            else if (cls == class_planet || cls == class_moon)
+            {
+                oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
+                oss << "Mass:     " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
+            }
+        }
+        if (cels[i]->volumetric_mean_radius)
+        {
+            if (cls == class_star)
+                ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
+            else if (cls == class_planet || cls == class_moon)
+            {
+                oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
+                    << " R(earth)" << std::endl;
+                oss << "Radius:   " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km" << std::endl;
+            }
+        }
+
+        #ifdef DEBUG
+        oss << "index:    " << is_an_obj_under_cursor << std::endl;
+        #endif
+
+        objinfo += oss.str();
+        oss.clear();
+    }
+    else if (is_a_locale_under_cursor)
+    {
+        objname = is_a_locale_under_cursor->name;
+        std::stringstream sslocale;
+        sslocale << "Lat.: " << (is_a_locale_under_cursor->lat < 0 ? "" : "+") << std::fixed << std::setprecision(3) << is_a_locale_under_cursor->lat << std::endl;
+        sslocale << "Lon.: " << (is_a_locale_under_cursor->lon < 0 ? "" : "+") << std::fixed << std::setprecision(3) << is_a_locale_under_cursor->lon << std::endl;
+        objinfo = sslocale.str();
+    }
+    else
+    {
+        objname = "Press N to toggle\nthis window.";
+        objinfo = "\n\n";
+        if (is_click && !dragged) selected = -1;
+    }
+
     ImGui::Text("%s", objname.c_str());
     ImGui::Text("%s", objinfo.c_str());
 

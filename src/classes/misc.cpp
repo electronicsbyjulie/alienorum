@@ -63,7 +63,7 @@ bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, h
     have_astorb = false, have_exo = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = -0.62;
-double sphere_quality = 1, npaz = 0, luminous_flux = 0;
+double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true;
 double lbllsys_mass_lim = 2.5e+23;
 float has_water, veg_min_temp = 278, veg_max_temp = 310;
@@ -157,6 +157,16 @@ double solve_Kepler(double M, double e)
         E = E - delta / (1.0 - e * std::cos(E));
     } while (std::abs(delta) > 1e-10);
     return E;
+}
+
+double lon_from_x(double x)
+{
+    return fmod(sclk_scale * x + azimuth, _pi*2);
+}
+
+double lat_from_y(double y)
+{
+    return altitude - sclk_scale * y;
 }
 
 // TODO: Consider storing the gases in a JSON file.

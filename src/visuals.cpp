@@ -1193,7 +1193,8 @@ void draw_sunclock()
     RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
 
     int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2, wid = halfwid*2;
-    double lat, lon, scale = half_pi / size / zoom, obl = 1.0 - cel->oblateness, elevation, line_of_sight;
+    sclk_scale = half_pi / size / zoom;
+    double lat, lon, obl = 1.0 - cel->oblateness, elevation, line_of_sight;
     Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
     Map *nmap = cel->night_map ? cel->night_map : nullptr;
     Point land;
@@ -1211,16 +1212,16 @@ void draw_sunclock()
         equatorial_radius = cel->get_equatorial_radius();
 
 
-    for (y= dispcy; y>=-dispcy; y-=step)
+    for (y=dispcy; y>=-dispcy; y-=step)
     {
-        dy = dispcy - y;
-        lat = scale * y + altitude;
+        dy = dispcy + y;
+        lat = lat_from_y(y);
         if (fabs(lat) > half_pi) continue;
 
         for (x=-halfwid; x<halfwid; x+=step)
         {
-            dx = halfwid + x;
-            lon = fmod( scale * x + azimuth, _pi*2);
+            dx = dispcx + x;
+            lon = lon_from_x(x);
             elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
             land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
@@ -1276,6 +1277,24 @@ void draw_sunclock()
         }
     }
 
+    if (selected_locale)
+    {
+        dx = dispcx + fmod(selected_locale->lon * fiftyseventh - azimuth , _pi*2) / sclk_scale;
+        dy = dispcy - fmod(selected_locale->lat * fiftyseventh - altitude, _pi*2) / sclk_scale;
+        while (dx < 0) dx += dispcx*2;
+        while (dx >= dispcx*2) dx -= dispcx*2;
+        while (dy < 0) dy += dispcy*2;
+        while (dy >= dispcy*2) dy -= dispcy*2;
+
+        float circ_sz = 7, ln_spc = 10;
+
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc,dy), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,dy+ln_spc), ImVec2(dx,dispcy*2), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx+ln_spc,dy), ImVec2(dispcx*2,dy), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(dx,dy), circ_sz, rgba_apply_redlight(global_style.selected_color), 0, 2);
+    }
+
     Point satat;
     ImU32 satcol;
     if (show_sats && first_sat >= 0) for (i=first_sat; i<ncelobjs; i++)
@@ -1293,8 +1312,8 @@ void draw_sunclock()
             if (lat < -half_pi) lat += _pi*2;
             if (lat >  half_pi) lat -= _pi*2;
 
-            dx = dispcx + lon/scale;
-            dy = dispcy - lat/scale;
+            dx = dispcx + lon/sclk_scale;
+            dy = dispcy - lat/sclk_scale;
 
             line_of_sight = cel->location.local_position.get_distance_to_line(
                 cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
@@ -1343,8 +1362,8 @@ void draw_sunclock()
                     if (lat < -half_pi) lat += _pi*2;
                     if (lat >  half_pi) lat -= _pi*2;
 
-                    dx2 = dispcx + lon/scale;
-                    dy2 = dispcy - lat/scale;
+                    dx2 = dispcx + lon/sclk_scale;
+                    dy2 = dispcy - lat/sclk_scale;
 
                     line_of_sight = cel->location.local_position.get_distance_to_line(
                         cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);

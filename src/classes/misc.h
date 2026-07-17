@@ -168,6 +168,12 @@ double compute_time_dilation(double velocity);
 // For orbits.
 double solve_Kepler(double M, double e);
 
+// Sun clock conversions
+// Subtract dispcx or dispcy first.
+// Both functions return RADIANS!
+double lon_from_x(double x);
+double lat_from_y(double y);
+
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,
     double ch4_fraction,
@@ -204,7 +210,7 @@ extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_lo
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood, locwnd,
     show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo;
 extern std::string objname, objinfo, viewer_locale;
-extern double simnow, npaz, luminous_flux;
+extern double simnow, npaz, luminous_flux, sclk_scale;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern float has_water, veg_min_temp, veg_max_temp;
 extern int vegetation_r, vegetation_g, vegetation_b;
