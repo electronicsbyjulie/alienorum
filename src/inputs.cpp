@@ -34,6 +34,8 @@ void identify_object_under_cursor(ImGuiIO& io)
     is_a_locale_under_cursor = nullptr;
     obj_magn_under_cursor = 1e9;
     int threshold = circle_size*1.3;
+    bool selected_this_turn = false;
+
     if (trackidx >= 0)
     {
         is_an_obj_under_cursor = trackidx;
@@ -58,7 +60,12 @@ void identify_object_under_cursor(ImGuiIO& io)
                 obj_magn_under_cursor = lmag;
 
                 if (i == selected) break;
-                if (is_click && !dragged) selected = i;
+                if (is_click && !dragged)
+                {
+                    selected = i;
+                    selected_this_turn = true;
+                    selected_locale = nullptr;
+                }
             }
         }
     }
@@ -86,7 +93,11 @@ void identify_object_under_cursor(ImGuiIO& io)
             }
         }
 
-        if (is_click && !dragged) selected_locale = is_a_locale_under_cursor;
+        if (is_click && !dragged)
+        {
+            selected_locale = is_a_locale_under_cursor;
+            if (!selected_this_turn) selected = -1;
+        }
     }
 }
 
