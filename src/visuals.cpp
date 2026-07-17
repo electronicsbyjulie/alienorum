@@ -778,6 +778,35 @@ void draw_flare(double flare, Color col)
     }
 }
 
+int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
+{
+    // Satellite icons.
+    ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
+    ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
+    ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                   );
+    ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+    ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
+    ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+    ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
+    ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+    ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
+    ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+    ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
+
+    ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
+
+    return antenna_height + panel_tilt + panel_width;
+}
+
 double global_magshift;
 bool draw_one_object(int i)
 {
@@ -806,31 +835,7 @@ bool draw_one_object(int i)
             : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
         if (show_labels || lbl_localsys || show_consln || show_grid)
         {
-            // Satellite icons.
-            ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
-            ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
-            ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                    );
-            ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
-            ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
-            ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
-            ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
-            ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
-            ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
-            ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
-            ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
-
-            ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
-
-            bloomrad_cache[i] = bloomrad = antenna_height + panel_tilt + panel_width;
+            bloomrad_cache[i] = bloomrad = draw_satellite_icon(xycoord, satcol);
         }
         else
         {
@@ -1226,10 +1231,16 @@ void draw_sunclock()
                 {
                     cos_theta = cos(theta);
                     is_day = fmin(1, pow(cos_theta, 0.333));
+                    is_night = 0;
                 }
-                else is_day = 0;
+                // TODO: Twilight
+                else
+                {
+                    is_day = 0;
+                    is_night = 1;
+                }
             }
-            is_night = 1.0 - is_day;
+            // is_night = 1.0 - is_day;
 
             if (map) rgb = map->color_at(lat, lon);
             else rgb = prgb;
@@ -1249,6 +1260,37 @@ void draw_sunclock()
 
             ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
                 rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
+        }
+    }
+
+    int i;
+    Point satat;
+    if (show_sats && first_sat >= 0) for (i=first_sat; i<ncelobjs; i++)
+    {
+        if (cels[i] && cels[i]->typeclass() == class_satellite && cels[i]->orbit && cels[i]->orbit->center == cel)
+        {
+            satat = cels[i]->location.local_position - cel->location.local_position;
+            satat = rotate3D(satat, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+            satat = rotate3D(satat, center, yaxis, cel->timeofday());
+
+            lon = fmod(find_angle(satat.z, -satat.x) - azimuth, _pi*2);
+            if (lon >  _pi) lon -= _pi*2;
+            if (lon < -_pi) lon += _pi*2;
+            lat = fmod(find_angle(sqrt(satat.x*satat.x+satat.z*satat.z), satat.y) - altitude, _pi*2);
+            if (lat < -half_pi) lat += _pi*2;
+            if (lat >  half_pi) lat -= _pi*2;
+
+            dx = dispcx + lon/scale;
+            dy = dispcy - lat/scale;
+
+            double line_of_sight = cel->location.local_position.get_distance_to_line(
+                cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
+
+            ImU32 satcol = (line_of_sight < cel->volumetric_mean_radius)
+                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+
+            draw_satellite_icon(ImVec2(dx, dy), satcol);
         }
     }
 }

@@ -513,7 +513,7 @@ int main (int argc, char** argv)
             if (statuswnd) draw_status_window(io);
 
             // Object under cursor info
-            if (objinfwnd) draw_objinf_window(io);
+            if (objinfwnd && view_mode != vm_sunclock) draw_objinf_window(io);
 
             viewchanged = searched || (trackidx>=0) || spin || velocity.magnitude() || (PrevDispSize.x != io.DisplaySize.x) || (PrevDispSize.y != io.DisplaySize.y);
 

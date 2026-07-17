@@ -62,7 +62,7 @@ const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
     have_astorb = false, have_exo = false;
 json locales;
-int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0;
+int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = -0.62;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0;
 bool lbl_localsys = true;

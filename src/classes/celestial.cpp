@@ -1767,6 +1767,8 @@ void append_cel(CelestialObject *cel)
     cel->origname = cel->name;
     if (cel->orbit && cel->orbit->center) cel->origcenname = cel->orbit->center->name;
 
+    if (first_sat < 0 && cel->typeclass() == class_satellite) first_sat = ncelobjs;
+
     cels[ncelobjs] = cel;
     cel->seqno = ncelobjs;
     ncelobjs++;
