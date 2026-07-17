@@ -413,11 +413,18 @@ void draw_objinf_window(ImGuiIO& io)
             }
         }
 
+        double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
         if (view_mode == vm_skyatlas || view_mode == vm_skymap)
         {
-            double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
             objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
                     +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+        }
+        else if (view_mode == vm_sunclock)
+        {
+            double lat = cels[i]->Decl_as_radians(here), lon = cels[i]->RA_as_radians(here, cels[whereami]->timeofday());
+            if (lon > _pi) lon -= _pi*2;
+            objinfo += (std::string)"Lat:      " + std::to_string(lat * fiftyseven) + (std::string)"\n"
+                    +  (std::string)"Lon:      " + std::to_string(lon * fiftyseven) + (std::string)"\n";
         }
         else
         {
@@ -429,7 +436,7 @@ void draw_objinf_window(ImGuiIO& io)
                     +  std::to_string(objaz*fiftyseven)
                     +  (std::string)"\n";
         }
-        if (!sat_low_orbit)
+        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite)
             oss << "Mag:      " << std::setprecision(4) << lmag << std::endl;
 
         objinfo += oss.str();
@@ -452,7 +459,13 @@ void draw_objinf_window(ImGuiIO& io)
         }
         else if (cels[i]->type == artificial)
         {
-            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+            if (view_mode == vm_sunclock && whereami >= 0)
+                oss << "Alt:      "
+                    << std::fixed << std::setprecision(3)
+                    << ((cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000)  // TODO: Compensate for oblateness.
+                    << " km"
+                    << std::endl;
+            else oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
         }
         else
         {
