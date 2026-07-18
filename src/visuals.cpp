@@ -1331,7 +1331,7 @@ void draw_sunclock()
 
             if (i == selected || i == trackidx)
             {
-                ImU32 col = (i == trackidx) ? IM_COL32(255, 0, 0, 255) : rgba_apply_redlight(global_style.selected_color);
+                ImU32 col = rgba_apply_redlight((i == trackidx) ? IM_COL32(255, 255, 255, 64) : global_style.selected_color);
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), col);
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc-circ_sz,dy), col);
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,dy+ln_spc), ImVec2(dx,dispcy*2), col);
