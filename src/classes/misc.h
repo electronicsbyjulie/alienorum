@@ -175,18 +175,18 @@ double lon_from_x(double x);
 double lat_from_y(double y);
 
 double atmospheric_tau(double normalized_pressure,
-    double co2_fraction,
-    double ch4_fraction,
-    double h2o_fraction,
-    double n2o_fraction = 0, // Nitrous Oxide
-    double o3_fraction  = 0, // Ozone
-    double so2_fraction = 0, // Sulfur Dioxide
-    double h2s_fraction = 0, // Hydrogen Sulfide
-    double co_fraction  = 0, // Carbon Monoxide
-    double hcn_fraction = 0, // Hydrogen Cyanide
-    double h2_fraction = 0,
-    double nh3_fraction = 0,
-    double c2h6_fraction = 0
+    double co2_fraction,        // Carbon dioxide
+    double ch4_fraction,        // Methane
+    double h2o_fraction,        // Water vapor
+    double n2o_fraction = 0,    // Nitrous Oxide
+    double o3_fraction  = 0,    // Ozone
+    double so2_fraction = 0,    // Sulfur Dioxide
+    double h2s_fraction = 0,    // Hydrogen Sulfide
+    double co_fraction  = 0,    // Carbon Monoxide
+    double hcn_fraction = 0,    // Hydrogen Cyanide
+    double h2_fraction = 0,     // Hydrogen
+    double nh3_fraction = 0,    // Ammonia
+    double c2h6_fraction = 0    // Ethane
     );
 
 extern const char *lbltypes[nlbltyp], *celtypes[nceltyp];

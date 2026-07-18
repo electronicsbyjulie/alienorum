@@ -497,6 +497,8 @@ int main (int argc, char** argv)
             if (view_mode == vm_sunclock) draw_sunclock();
             else
             {
+                is_a_locale_under_cursor = nullptr;
+                selected_locale = nullptr;
                 if (show_grid) draw_ra_dec_lines();
                 if (show_consln) draw_cons_lines();
                 draw_objects();
@@ -527,9 +529,9 @@ int main (int argc, char** argv)
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
 
-            is_click = io.MouseReleased[0];
             if (!is_mouse_over_window)
             {
+                is_click = io.MouseReleased[0];
                 if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
                 identify_object_under_cursor(io);
             }
