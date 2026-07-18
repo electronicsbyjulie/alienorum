@@ -1191,8 +1191,11 @@ void draw_sunclock()
     Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
     Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
     RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
+    daylight.normalize(1);
 
-    int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2, wid = halfwid*2;
+    float circ_sz = 7, ln_spc = 10;
+
+    int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2;
     sclk_scale = half_pi / size / zoom;
     double lat, lon, obl = 1.0 - cel->oblateness, elevation, line_of_sight;
     Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
@@ -1205,7 +1208,7 @@ void draw_sunclock()
             && ((Moon*)cel)->width > zero_isnt_really_zero
             && ((Moon*)cel)->height > zero_isnt_really_zero);
 
-    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day, is_night;
+    double equatorial_radius, theta, cos_theta, is_day, is_night;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -1261,9 +1264,9 @@ void draw_sunclock()
 
             if (nmap) nrgb = nmap->color_at(lat, lon);
 
-            rgb.r *= is_day;
-            rgb.g *= is_day;
-            rgb.b *= is_day;
+            rgb.r *= is_day * daylight.red;
+            rgb.g *= is_day * daylight.green;
+            rgb.b *= is_day * daylight.blue;
 
             if (is_night)
             {
@@ -1285,8 +1288,6 @@ void draw_sunclock()
         while (dx >= dispcx*2) dx -= dispcx*2;
         while (dy < 0) dy += dispcy*2;
         while (dy >= dispcy*2) dy -= dispcy*2;
-
-        float circ_sz = 7, ln_spc = 10;
 
         ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), rgba_apply_redlight(global_style.selected_color));
         ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc,dy), rgba_apply_redlight(global_style.selected_color));
@@ -1328,12 +1329,20 @@ void draw_sunclock()
             cels[i]->drawnx = dx;
             cels[i]->drawny = dy;
 
+            if (i == selected || i == trackidx)
+            {
+                ImU32 col = (i == trackidx) ? IM_COL32(255, 0, 0, 255) : rgba_apply_redlight(global_style.selected_color);
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), col);
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc-circ_sz,dy), col);
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,dy+ln_spc), ImVec2(dx,dispcy*2), col);
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx+ln_spc+circ_sz,dy), ImVec2(dispcx*2,dy), col);
+            }
+
             if (show_labels)
             {
                 const char *dispname = cels[i]->name;
                 ImFont *font = global_font;
                 std::string str;
-                cel_obj_class cls = cels[i]->typeclass();
                 double lfontsz = global_font_size;
                 ImVec2 sz = ImGui::CalcTextSize(dispname);
                 ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
