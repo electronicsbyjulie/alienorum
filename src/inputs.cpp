@@ -10,9 +10,10 @@ void center_selected()
 {
     if (selected >= 0)
     {
-        azimuth = -cels[selected]->RA_as_radians(here, 0);
+        azimuth = -cels[selected]->RA_as_radians(here, (view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0);
         altitude = cels[selected]->Decl_as_radians(here);
     }
+    enforce_y_pan_limit();
     viewchanged = true;
 }
 
@@ -20,9 +21,10 @@ void center_tracked()
 {
     if (trackidx >= 0)
     {
-        azimuth = -cels[trackidx]->RA_as_radians(here, 0);
+        azimuth = -cels[trackidx]->RA_as_radians(here, (view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0);
         altitude = cels[trackidx]->Decl_as_radians(here);
     }
+    enforce_y_pan_limit();
     viewchanged = true;
 }
 
@@ -104,19 +106,14 @@ void identify_object_under_cursor(ImGuiIO& io)
 void pan_with_crosshairs(ImGuiIO& io)
 {
     double amount = 1;
-    double limit = half_pi;
-    if (view_mode == vm_skymap || view_mode == vm_sunclock)
-    {
-        amount = 3;
-        limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
-    }
+    if (view_mode == vm_skymap) amount = 3;
+    else if (view_mode == vm_sunclock) amount = 5;
 
     if (ImGui::IsMouseDown(2))
     {
         azimuth -= 0.01 * amount * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.01 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  limit) altitude =  limit;
-        if (altitude < -limit) altitude = -limit;
+        enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
@@ -129,8 +126,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.03 * amount * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.03 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  limit) altitude =  limit;
-        if (altitude < -limit) altitude = -limit;
+        enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
@@ -143,8 +139,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.1 * amount * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.1 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  limit) altitude =  limit;
-        if (altitude < -limit) altitude = -limit;
+        enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
@@ -479,6 +474,7 @@ void process_keyboard_commands(ImGuiIO& io)
         velocity = rotate3D(velocity, center, pitch, -steering_rate);
         if (trackidx<0) altitude += steering_rate;
         if (altitude > half_pi) altitude = half_pi;
+        enforce_y_pan_limit();
     }
     if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
     {
@@ -491,6 +487,7 @@ void process_keyboard_commands(ImGuiIO& io)
         velocity = rotate3D(velocity, center, pitch,  steering_rate);
         if (trackidx<0) altitude -= steering_rate;
         if (altitude < -half_pi) altitude = -half_pi;
+        enforce_y_pan_limit();
     }
     if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
     {

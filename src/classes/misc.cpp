@@ -169,6 +169,17 @@ double lat_from_y(double y)
     return altitude - sclk_scale * y;
 }
 
+void enforce_y_pan_limit()
+{
+    double limit = half_pi;
+    if (view_mode == vm_skymap || view_mode == vm_sunclock)
+    {
+        limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
+    }
+    if (altitude >  limit) altitude =  limit;
+    if (altitude < -limit) altitude = -limit;
+}
+
 // TODO: Consider storing the gases in a JSON file.
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,

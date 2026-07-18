@@ -173,6 +173,7 @@ double solve_Kepler(double M, double e);
 // Both functions return RADIANS!
 double lon_from_x(double x);
 double lat_from_y(double y);
+void enforce_y_pan_limit();
 
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide
