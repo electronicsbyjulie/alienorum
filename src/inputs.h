@@ -8,6 +8,7 @@ void identify_object_under_cursor(ImGuiIO &io);
 void pan_with_crosshairs(ImGuiIO &io);
 void process_key_cmd_char(char c);
 void process_keyboard_commands(ImGuiIO &io);
-void lookfor_cb();
+void do_find();
+int lookfor_cb(ImGuiInputTextCallbackData* data);
 
 #endif

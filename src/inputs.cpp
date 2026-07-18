@@ -1,5 +1,6 @@
 
 #include "globals.h"
+#include "misc.h"
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
@@ -554,14 +555,24 @@ void process_keyboard_commands(ImGuiIO& io)
     }
 }
 
-void lookfor_cb()
+void do_find()
 {
     int i = find_object(lookfor, false, 9e+29, 6);
     if (i>=0)
     {
+        if (view_mode == vm_sunclock) view_mode = vm_skyatlas;
         selected = i;
         trackidx = -1;
         center_selected();
         searched = true;
+        lookfor_notfound = false;
     }
+    else lookfor_notfound = true;
+}
+
+int lookfor_cb(ImGuiInputTextCallbackData* data)
+{
+    lookfor_notfound = false;
+    if (data->EventChar == '\n') do_find();
+    return 0;
 }

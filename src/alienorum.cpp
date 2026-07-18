@@ -148,6 +148,14 @@ int main (int argc, char** argv)
             std::string theme = argv[++l];
             global_style.load(theme);
         }
+        else if (!strcmp(argv[l], "noexo"))
+        {
+            noexo = true;
+        }
+        else if (!strcmp(argv[l], "nosats") || !strcmp(argv[l], "nosat"))
+        {
+            nosats = true;
+        }
         else if (!strcmp(argv[l], "magtest")) magnitude_test = true;
         else if (!strcmp(argv[l], "sizeof"))
         {

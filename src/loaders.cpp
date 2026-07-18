@@ -381,7 +381,7 @@ void load_catalogs()
     // Because of system inclinations, we will die unless we read star orbits before reading exoplanets.
     // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
     // What to do, oh what to do...
-    cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
+    if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
     mtx.lock();
     loading_msg = std::string("Orbiting stars...");
@@ -389,12 +389,15 @@ void load_catalogs()
     if (!magnitude_test) cr.read_star_orbits_dat(cels);
     else splash = false;
 
-    cout << "Reading exoplanets..." << endl << flush;
-    int nexo = cr.load_exoplanets_from_tap();
-    if (!nexo) nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
-    if (nexo) have_exo = true;
-    num_planets += nexo;
-    cout << "Read " << nexo << " objects." << endl << flush;
+    if (!noexo)
+    {
+        cout << "Reading exoplanets..." << endl << flush;
+        int nexo = cr.load_exoplanets_from_tap();
+        if (!nexo) nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+        if (nexo) have_exo = true;
+        num_planets += nexo;
+        cout << "Read " << nexo << " objects." << endl << flush;
+    }
 
     if (magnitude_test)
     {
@@ -414,7 +417,7 @@ void load_catalogs()
             append_cel(s);
         }
     }
-    else
+    else if (!nosats)
     {
         mtx.lock();
         loading_msg = std::string("Loading satellite data...");

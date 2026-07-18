@@ -26,9 +26,16 @@ void draw_status_window(ImGuiIO& io)
 
     /////////////////////////////////////////////////////
 
-    if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
+    int styles_to_pop = 0;
+    if (lookfor_notfound)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
+        styles_to_pop++;
+    }
+    ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_CallbackEdit, lookfor_cb);
+    if (styles_to_pop) ImGui::PopStyleColor(styles_to_pop);
     ImGui::SameLine();
-    if (ImGui::Button("Find")) lookfor_cb();
+    if (ImGui::Button("Find")) do_find();
 
     std::string flagstr;
 
