@@ -209,9 +209,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday()) - _pi;
+                    viewer_lon = cel->RA_as_radians(here, cel->timeofday()) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
-                    // save_viewer_latlon = false;
                     whereami = cel->seqno;
                     velocity = Point(0,0,0);
                     view_mode = vm_horizon;
@@ -1418,7 +1417,6 @@ void draw_sunclock()
                     is_night = 1;
                 }
             }
-            // is_night = 1.0 - is_day;
 
             if (map) rgb = map->color_at(lat, lon);
             else rgb = prgb;
