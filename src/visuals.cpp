@@ -1227,10 +1227,10 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         int x, y;
         RGB3Byte rgb;
         double theta, phi;
-        for (y = -10; y <= 10; y++)
+        for (y = -ico_sz; y <= ico_sz; y++)
         {
-            theta = half_pi * pow(fabs(y) / 11, 1) * sgn(y);
-            int xsz = sqrt(10*10 - y*y);
+            theta = half_pi * pow(fabs(y) / (ico_sz+1), 1) * sgn(y);
+            int xsz = sqrt(ico_sz*ico_sz - y*y);
 
             for (x = -xsz; x <= xsz; x++)
             {

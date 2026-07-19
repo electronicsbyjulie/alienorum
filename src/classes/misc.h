@@ -124,6 +124,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define zero_isnt_really_zero 9e-298
 
 // For sun clock
+#define ico_sz 13
 #define circ_sz 7
 #define ln_spc 10
 
