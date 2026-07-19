@@ -1387,6 +1387,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
         if (randomize_txgen && !p->surface_pressure)
         {
+            // TODO: Cosmic Shoreline
             p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
             double CO2_fraction = frand(0, frand(0.001, 0.99));
             p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,

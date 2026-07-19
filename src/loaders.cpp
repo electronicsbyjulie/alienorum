@@ -239,6 +239,7 @@ bool load_universe(std::string universe_fname = "universe.json")
 void load_catalogs()
 {
     int i, j, m, n;
+    time_t began = time(NULL);
 
     // TODO: Read data from more star catalogs.
     CatalogReader cr;
@@ -467,6 +468,10 @@ void load_catalogs()
 
     set_center_objects();
     refresh_star_visibilities();
+
+    time_t finished = time(NULL);
+    std::string elapsed = elapsed_time(began, finished);
+    std::cout << "Loaded data in " << elapsed << std::endl;
 }
 
 void read_cons_lines()

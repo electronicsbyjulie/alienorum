@@ -10,11 +10,6 @@ using namespace alienorum;
 
 std::vector<AstorbRow> astorb;
 
-void Planet::classify()
-{
-    classify(is_in_con_HZ());
-}
-
 void Planet::set_color_from_type(bool HZ)
 {
     if (type == gas_giant) BV_color = 0.98;         // average of Jupiter and Saturn.
@@ -45,20 +40,29 @@ void Planet::set_color_from_type(bool HZ)
     else if (type == waterworld) BV_color = -0.3;
 }
 
-void Planet::classify(bool HZ)
+void Planet::classify()
+{
+    classify(is_in_con_HZ());
+}
+
+void Planet::classify(bool HZ, bool mnrk)
 {
     Star *s = nullptr;
+    double density = mnrk ? (mass / earth_mass / pow(volumetric_mean_radius/earth_radius, 2)) : 0;
 
     if (orbit && orbit->center && orbit->center->typeclass() == class_star)
         s = (Star*) orbit->center;
 
     double T = estimate_surface_temperature();
-    if (mass < rocky_mass_cutoff)
+    if (mass < rocky_mass_cutoff                    // Mass cutoff between rocky planets and ice giants
+        || (mnrk && density > rocky_density_cutoff)
+        )
     {
-        if (T > lava_T_cutoff) type = lavaworld;
+        if (mnrk && T < water_freezing && density < rocky_density_cutoff) type = icy;
+        else if (T > lava_T_cutoff) type = lavaworld;
         else type = rocky;
     }
-    else if (mass < neptune_mass_cutoff)
+    else if (mass < neptune_mass_cutoff)            // Mass cutoff between ice giants and gas giants
     {
         if (HZ)
         {

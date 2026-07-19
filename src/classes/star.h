@@ -52,6 +52,7 @@ namespace alienorum
         bool rot_axis_known = false;
         bool has_hot_jupiter = false;
         double disk_heliocen_inclination = 0, disk_heliocen_node = 0;
+        double rot_heliocen_incl = 0, rot_heliocen_node = 0;
 
         Star();
         ~Star();

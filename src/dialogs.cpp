@@ -628,7 +628,7 @@ void draw_addcel_window(ImGuiIO& io)
                 {
                     Planet* pl = (Planet*)cel;
                     pl->mass = (cel->typeclass() == class_moon) ? lunar_mass : earth_mass;
-                    pl->classify();
+                    pl->classify(pl->is_in_con_HZ(), true);
                     pl->estimate_radius();
                     pl->estimate_albedo_and_absmagn();
                     pl->estimate_rotation();
@@ -717,7 +717,7 @@ void draw_objedit_window(ImGuiIO& io)
                 cel->mass = edit_mass * mass_units_conv[cbo_edt_units];
                 if (cel->typeclass() == class_planet
                     || cel->typeclass() == class_moon               // See Kepler-1625b.
-                    ) ((Planet*)cel)->classify();
+                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 cel->user_edited = true;
                 viewchanged = true;
             }

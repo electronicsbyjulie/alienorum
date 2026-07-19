@@ -3048,9 +3048,10 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (!strcmp(bdystr, "(stellar rotation)"))
         {
-            A->rot_axis_known = A->known_poles;
             read_field_onebased(buffer, 49, 63, field);
             A->sidereal_rotational_period = atof(field);
+            A->rot_heliocen_incl = inclination;
+            A->rot_heliocen_node = ascending_node;
         }
 
         if (bdystr[0] == '(') continue;
@@ -3394,12 +3395,6 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
 unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 {
     unsigned int result = 0;
-    CURL* curl = curl_easy_init();
-    if (!curl)
-    {
-        std::cerr << "Failed to initialize libcurl." << std::endl;
-        return false;
-    }
 
     std::string readBuffer;
     json planets_array;
@@ -3426,6 +3421,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     if (do_download)
     {
+        CURL* curl = curl_easy_init();
+        if (!curl)
+        {
+            std::cerr << "Failed to initialize libcurl." << std::endl;
+            return false;
+        }
+
         // Constructing the synchronous TAP ADQL query targeting the pscomppars table
         // Selects core planetary and fallback/stellar fields
         std::string url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query="
@@ -3621,30 +3623,45 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 inclination = row["pl_orbincl"].get<double>() * fiftyseventh;
             }
 
-            if (row.contains("pl_massj") && !row["pl_massj"].is_null())
+            double pl_mass = 0, pl_msini = 0;
+            bool pl_massknown = false, pl_msini_known = false, pl_radknown = false;
+            if (row.contains("pl_bmassj") && !row["pl_massj"].is_null())
             {
-                new_planet->mass = row["pl_massj"].get<double>() * jupiter_mass;
+                new_planet->mass = row["pl_bmassj"].get<double>() * jupiter_mass;
+                pl_massknown = true;
+                pl_mass = new_planet->mass;
             }
             else if (row.contains("pl_bmasse") && !row["pl_bmasse"].is_null())
             {
                 new_planet->mass = row["pl_bmasse"].get<double>() * earth_mass;
+                pl_massknown = true;
+                pl_mass = new_planet->mass;
             }
             else if (row.contains("pl_msinij") && !row["pl_msinij"].is_null())
             {
-                new_planet->mass = row["pl_msinij"].get<double>() * jupiter_mass / (inclination ? sin(inclination) : 1);
+                new_planet->mass = row["pl_msinij"].get<double>() * jupiter_mass;
+                pl_msini_known = true;
+                pl_msini = new_planet->mass;
             }
             else if (row.contains("pl_msinie") && !row["pl_msinie"].is_null())
             {
-                new_planet->mass = row["pl_msinie"].get<double>() * earth_mass / (inclination ? sin(inclination) : 1);
+                new_planet->mass = row["pl_msinie"].get<double>() * earth_mass;
+                pl_msini_known = true;
+                pl_msini = new_planet->mass;
             }
+
+            // TODO: If mass and msini are both given and are different, bit inclination is 90, recalculate inclination.
+            // See 82 Eri b, d for an example.
 
             if (row.contains("pl_radj") && !row["pl_radj"].is_null())
             {
                 new_planet->volumetric_mean_radius = row["pl_radj"].get<double>() * jupiter_radius;
+                pl_radknown = true;
             }
             else if (row.contains("pl_rade") && !row["pl_rade"].is_null())
             {
                 new_planet->volumetric_mean_radius = row["pl_rade"].get<double>() * earth_radius;
+                pl_radknown = true;
             }
 
             if (row.contains("pl_trueobliq") && !row["pl_trueobliq"].is_null())
@@ -3685,7 +3702,22 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             new_planet->update_location(simnow);
 
             // 4. Run automated estimation/classification fallbacks provided in class declarations
-            new_planet->classify();
+            if ((pl_msini_known && !pl_massknown) || !inclination || (pl_msini == pl_mass))
+            {
+                double st_incl = 0;
+                if (host_star->disk_heliocen_inclination) st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
+                else if (host_star->rot_heliocen_incl) st_incl = host_star->rot_heliocen_incl;                      // e.g. Alp Men
+
+                if (st_incl)
+                {
+                    new_planet->mass /= sin(st_incl);
+                    std::cout << "Mass of " << new_planet->name << " computed at " << (new_planet->mass / earth_mass)
+                        << " based on system inclination " << (st_incl * fiftyseven) << std::endl;
+                    pl_massknown = true;
+                }
+            }
+            new_planet->classify(new_planet->is_in_con_HZ(), pl_massknown && pl_radknown);
+
             if (new_planet->mass > 0 && new_planet->volumetric_mean_radius == 0)
             {
                 new_planet->estimate_radius();

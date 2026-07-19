@@ -50,6 +50,8 @@ using json = nlohmann::json;
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)
 #define giant_mass_cutoff (127.0 * earth_mass)
+#define rocky_density_cutoff 3.0
+#define giant_density_cutoff 1.8
 
 // WAG
 #define neptune_mass_cutoff (10 * earth_mass)
@@ -179,6 +181,8 @@ double solve_Kepler(double M, double e);
 double lon_from_x(double x);
 double lat_from_y(double y);
 void enforce_y_pan_limit();
+
+std::string elapsed_time(time_t start, time_t end);
 
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide
