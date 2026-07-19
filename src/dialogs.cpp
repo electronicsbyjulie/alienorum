@@ -390,8 +390,7 @@ void draw_objinf_window(ImGuiIO& io)
 
         std::stringstream oss;
 
-        // TODO: Refactor this as multi-line ImGui::Text() and move it to the show_objinfo_window ftn
-        // in dialogs.cpp make the objinfo window look more like the status window. That way it can also
+        // TODO: Refactor this as multi-line ImGui::Text() to make the objinfo window look more like the status window. That way it can also
         // turn the "habitable zone" text green (don't forget the redlight mode correction).
         objname = cels[i]->name;
         objinfo = "";
