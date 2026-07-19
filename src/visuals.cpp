@@ -1193,6 +1193,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     ImVec2 objdxy = sc_drawcoords(obj, cel);
     cel_obj_class cls = obj->typeclass();
 
+    int dx, dy;
     if (cls == class_star)
     {
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
@@ -1214,7 +1215,38 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     }
     else if (cls == class_planet || cls == class_moon)
     {
-        //
+        if (!obj->looked_for_maps)
+        {
+            obj->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+            std::thread ttex(load_textures, obj);
+            ttex.detach();
+        }
+
+        Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
+        objcol.normalize(255);
+        int x, y;
+        RGB3Byte rgb;
+        double theta, phi;
+        for (y = -10; y <= 10; y++)
+        {
+            theta = half_pi * pow(fabs(y) / 11, 1) * sgn(y);
+            int xsz = sqrt(10*10 - y*y);
+
+            for (x = -xsz; x <= xsz; x++)
+            {
+                phi = half_pi / xsz * x;
+                if (obj->cloud_map) rgb = obj->cloud_map->color_at(theta, phi);
+                else if (obj->surf_map) rgb = obj->surf_map->color_at(theta, phi);
+                else rgb = RGB3Byte(objcol.red, objcol.green, objcol.blue);
+
+                dx = objdxy.x + x;
+                dy = objdxy.y - y;
+
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx,dy), ImVec2(dx+1,dy+1),
+                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255))
+                    );
+            }
+        }
     }
     else if (cls == class_satellite)
     {
@@ -1232,8 +1264,8 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
 
         if (i == selected || i == trackidx)
         {
-            int dx = objdxy.x;
-            int dy = objdxy.y;
+            dx = objdxy.x;
+            dy = objdxy.y;
             ImU32 col = rgba_apply_redlight((i == trackidx) ? IM_COL32(255, 255, 255, 64) : global_style.selected_color);
             ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), col);
             ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc-circ_sz,dy), col);
@@ -1449,10 +1481,27 @@ void draw_sunclock()
         sc_draw_object(sun, cel);
     }
 
+    // Substellar point of host star, if different from light center
     CelestialObject *host = cel->cenobj;
     if (host && host != sun)
     {
         sc_draw_object(host, cel);
+    }
+
+    if (cel->type != star) for (i=cel->seqno+1; cels[i]; i++)
+    {
+        if (!cels[i]->orbit) continue;
+        if (cels[i]->type == star) continue;
+        if (cels[i]->type == artificial) continue;
+        if (cels[i]->orbit->center != cel) continue;
+        sc_draw_object(cels[i], cel);
+    }
+
+    // Subplanetary point if on a moon
+    CelestialObject *planet = cel->orbit ? cel->orbit->center : nullptr;
+    if (planet && planet != sun)
+    {
+        sc_draw_object(planet, cel);
     }
 }
 
