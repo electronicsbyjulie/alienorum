@@ -1163,6 +1163,28 @@ void draw_objects()
 
 }
 
+ImVec2 sc_drawcoords(CelestialObject *obj, CelestialObject *cel)
+{
+    Point relloc = obj->location.local_position - cel->location.local_position;
+    relloc = rotate3D(relloc, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+    relloc = rotate3D(relloc, center, yaxis, cel->timeofday());
+
+    double lon = fmod(find_angle(relloc.z, -relloc.x) - azimuth, _pi*2);
+    if (lon >  _pi) lon -= _pi*2;
+    if (lon < -_pi) lon += _pi*2;
+    double lat = fmod(find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y) - altitude, _pi*2);
+    if (lat < -half_pi) lat += _pi*2;
+    if (lat >  half_pi) lat -= _pi*2;
+ 
+    int dx = dispcx + lon/sclk_scale;
+    int dy = dispcy - lat/sclk_scale;
+
+    obj->drawnx = dx;
+    obj->drawny = dy;
+
+    return ImVec2(dx,dy);
+} 
+
 ViewMode last_vmode = vm_skyatlas;
 void draw_sunclock()
 {
@@ -1311,22 +1333,7 @@ void draw_sunclock()
     {
         if (cels[i] && cels[i]->typeclass() == class_satellite && cels[i]->orbit && cels[i]->orbit->center == cel)
         {
-            satat = cels[i]->location.local_position - cel->location.local_position;
-            satat = rotate3D(satat, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
-            satat = rotate3D(satat, center, yaxis, cel->timeofday());
-
-            lon = fmod(find_angle(satat.z, -satat.x) - azimuth, _pi*2);
-            if (lon >  _pi) lon -= _pi*2;
-            if (lon < -_pi) lon += _pi*2;
-            lat = fmod(find_angle(sqrt(satat.x*satat.x+satat.z*satat.z), satat.y) - altitude, _pi*2);
-            if (lat < -half_pi) lat += _pi*2;
-            if (lat >  half_pi) lat -= _pi*2;
-
-            dx = dispcx + lon/sclk_scale;
-            dy = dispcy - lat/sclk_scale;
-
-            line_of_sight = cel->location.local_position.get_distance_to_line(
-                cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
+            ImVec2 satdxy = sc_drawcoords(cels[i], cel);
 
             satcol = (i == selected)
                 ? rgba_apply_redlight(global_style.selected_color)
@@ -1334,12 +1341,12 @@ void draw_sunclock()
                     ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
                     : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
 
-            bloomrad = draw_satellite_icon(ImVec2(dx, dy), satcol);
-            cels[i]->drawnx = dx;
-            cels[i]->drawny = dy;
+            bloomrad = bloomrad = draw_satellite_icon(satdxy, satcol);
 
             if (i == selected || i == trackidx)
             {
+                dx = satdxy.x;
+                dy = satdxy.y;
                 ImU32 col = rgba_apply_redlight((i == trackidx) ? IM_COL32(255, 255, 255, 64) : global_style.selected_color);
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), col);
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc-circ_sz,dy), col);
@@ -1407,6 +1414,29 @@ void draw_sunclock()
                 }
                 ((Satellite*)cels[i])->update_location(simnow);
             }
+        }
+    }
+
+    // Subsolar point
+    CelestialObject *sun = cel->get_light_center();
+    if (sun && sun != cel)
+    {
+        ImVec2 sundxy = sc_drawcoords(sun, cel);
+        Color suncol = Color::color_from_magnitude_indices(0, sun->BV_color);
+        suncol.normalize(255);
+        ImU32 sun32 = rgba_apply_redlight(IM_COL32((int)suncol.red, (int)suncol.green, (int)suncol.blue, 255));
+        ImGui::GetBackgroundDrawList()->AddCircle(sundxy, 10, sun32, 0, 2);
+        double lstep = _pi / 8;
+        double r = 20;
+        int dx1 = sundxy.x, dx2, dy1 = sundxy.y - r, dy2;
+        for (theta = 0; theta <= _pi*2+0.001; theta += lstep)
+        {
+            dx2 = dx1;
+            dy2 = dy1;
+            r = 33 - r;
+            dx1 = sundxy.x + r * sin(theta);
+            dy1 = sundxy.y - r * cos(theta);
+            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1,dy1), ImVec2(dx2,dy2), sun32);
         }
     }
 }

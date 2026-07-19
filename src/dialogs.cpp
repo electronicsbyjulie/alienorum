@@ -32,7 +32,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
         styles_to_pop++;
     }
-    ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_CallbackEdit, lookfor_cb);
+    if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_CallbackEdit | ImGuiInputTextFlags_EnterReturnsTrue, lookfor_cb)) do_find();
     if (styles_to_pop) ImGui::PopStyleColor(styles_to_pop);
     ImGui::SameLine();
     if (ImGui::Button("Find")) do_find();
