@@ -3432,7 +3432,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         // Selects core planetary and fallback/stellar fields
         std::string url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query="
                         "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,"
-                        "pl_bmasse,pl_massj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
+                        "pl_bmasse,pl_bmassj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
                         "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
                         "from+pscomppars+order+by+pl_name+asc"
                         "&format=json";
@@ -3625,19 +3625,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             double pl_mass = 0, pl_msini = 0;
             bool pl_massknown = false, pl_msini_known = false, pl_radknown = false;
-            if (row.contains("pl_bmassj") && !row["pl_massj"].is_null())
-            {
-                new_planet->mass = row["pl_bmassj"].get<double>() * jupiter_mass;
-                pl_massknown = true;
-                pl_mass = new_planet->mass;
-            }
-            else if (row.contains("pl_bmasse") && !row["pl_bmasse"].is_null())
-            {
-                new_planet->mass = row["pl_bmasse"].get<double>() * earth_mass;
-                pl_massknown = true;
-                pl_mass = new_planet->mass;
-            }
-            else if (row.contains("pl_msinij") && !row["pl_msinij"].is_null())
+            if (row.contains("pl_msinij") && !row["pl_msinij"].is_null())
             {
                 new_planet->mass = row["pl_msinij"].get<double>() * jupiter_mass;
                 pl_msini_known = true;
@@ -3650,8 +3638,18 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 pl_msini = new_planet->mass;
             }
 
-            // TODO: If mass and msini are both given and are different, bit inclination is 90, recalculate inclination.
-            // See 82 Eri b, d for an example.
+            if (row.contains("pl_bmassj") && !row["pl_bmassj"].is_null())
+            {
+                new_planet->mass = row["pl_bmassj"].get<double>() * jupiter_mass;
+                pl_massknown = true;
+                pl_mass = new_planet->mass;
+            }
+            else if (row.contains("pl_bmasse") && !row["pl_bmasse"].is_null())
+            {
+                new_planet->mass = row["pl_bmasse"].get<double>() * earth_mass;
+                pl_massknown = true;
+                pl_mass = new_planet->mass;
+            }
 
             if (row.contains("pl_radj") && !row["pl_radj"].is_null())
             {

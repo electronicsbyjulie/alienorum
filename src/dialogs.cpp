@@ -750,6 +750,9 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cel->volumetric_mean_radius = edit_radius * size_units_conv[cbo_edt_units];
                 assert(!isinf(cel->volumetric_mean_radius));
+                if (cel->typeclass() == class_planet
+                    || cel->typeclass() == class_moon               // See Kepler-1625b.
+                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -1163,6 +1166,9 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->user_added) orb->compute_period(cel->mass);
                 cel->user_edited = true;
                 viewchanged = true;
+                if (cel->typeclass() == class_planet
+                    || cel->typeclass() == class_moon               // See Kepler-1625b.
+                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
                 ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -1185,6 +1191,9 @@ void draw_objedit_window(ImGuiIO& io)
                     orb->semimajor_axis *= sqrt(instellation);
                     orb->compute_period(cel->mass);
                     cel->temperature = 0;
+                    if (cel->typeclass() == class_planet
+                        || cel->typeclass() == class_moon               // See Kepler-1625b.
+                        ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 }
             }
             ImGui::SameLine(col2);
@@ -1203,6 +1212,9 @@ void draw_objedit_window(ImGuiIO& io)
                         orb->compute_period(cel->mass);
                     }
                     cel->temperature = 0;
+                    if (cel->typeclass() == class_planet
+                        || cel->typeclass() == class_moon               // See Kepler-1625b.
+                        ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                     rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
                     ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
                     cel->user_edited = true;
@@ -1460,6 +1472,9 @@ void draw_objedit_window(ImGuiIO& io)
                 p->temperature = 0;
                 update_taucalc = true;
                 cel->user_edited = true;
+                if (cel->typeclass() == class_planet
+                    || cel->typeclass() == class_moon               // See Kepler-1625b.
+                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
             }
             ImGui::SameLine(col2);
             ImGui::Text("%s", "Total tau");
@@ -1471,6 +1486,9 @@ void draw_objedit_window(ImGuiIO& io)
                 p->atmospheric_tau = edit_atm_tau;
                 p->temperature = 0;
                 cel->user_edited = true;
+                if (cel->typeclass() == class_planet
+                    || cel->typeclass() == class_moon               // See Kepler-1625b.
+                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
             }
             ImGui::SameLine();
             if (ImGui::Button("...##tau_calculator"))
