@@ -76,7 +76,7 @@ HD218396                (cometary disk)                         051         039
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
 
 # https://doi.org/10.1051/0004-6361/201322469
-HD20807                 HD20766                 5.36e+12?       296.2       065.5?      ?           5.610e+14?  ?                               2013.
+HD20807                 HD20766                 5.36e+12?       281         065.5       ?           5.610e+14?  ?                               2013.
 
 # https://en.wikipedia.org/wiki/Algol
 Algol                   Algol B                 247737.1        043.43      098.70      000.00      3.337e+12   .0          316.57              2025.00274      K0IV            +2.9            0.70        3.48         6.92        4500
@@ -109,7 +109,7 @@ HD216956                (debris disks)                          202         066.
 # https://en.wikipedia.org
 HD3651                  (stellar rotation)                                  083
 #                                                                           Based on 0.6 km/s rot v:
-HD43834                 (stellar rotation)                                  021
+HD43834                 (stellar rotation)                      250.87?     021
 
 # https://doi.org/10.3847/1538-4357/ac1269
 HD43834                 Alp Men B              5.9e+9?          250.87?     021?                    4.5e+12                                                     M3.5-6.5V       +12.415         0.169       0.19                     3054
@@ -267,7 +267,7 @@ HD159062                GJ 4010 B               1.30e+10        133.4       063.
 HD162020                (companion orbit)                       288.93      177.273
 HD163840                HD163840 B              7.61727e+7      175.32      072.83      135.46      3.249e+12   .4165       0                   2011.24155                                      0.7421                  0.648       4780
 Kepler-47               Kepler-47 B             643538.72                   089.613     226.3       1.218e+10   .0288                                                                           0.342       0.338       0.014       3357
-
+HD115383                (planetary system)                      153.0       141
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

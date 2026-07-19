@@ -1,5 +1,6 @@
 
 #include "globals.h"
+#include "misc.h"
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
@@ -10,9 +11,12 @@ void center_selected()
 {
     if (selected >= 0)
     {
-        azimuth = -cels[selected]->RA_as_radians(here, 0);
+        azimuth = cels[selected]->RA_as_radians(here,
+            (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
+            * ((view_mode == vm_sunclock) ? 1 : -1);
         altitude = cels[selected]->Decl_as_radians(here);
     }
+    enforce_y_pan_limit();
     viewchanged = true;
 }
 
@@ -20,20 +24,25 @@ void center_tracked()
 {
     if (trackidx >= 0)
     {
-        azimuth = -cels[trackidx]->RA_as_radians(here, 0);
+        azimuth = cels[trackidx]->RA_as_radians(here,
+            (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
+            * ((view_mode == vm_sunclock) ? 1 : -1);
         altitude = cels[trackidx]->Decl_as_radians(here);
     }
+    enforce_y_pan_limit();
     viewchanged = true;
 }
 
 void identify_object_under_cursor(ImGuiIO& io)
 {
     int i;
-    double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
 
     is_an_obj_under_cursor = -1;
+    is_a_locale_under_cursor = nullptr;
     obj_magn_under_cursor = 1e9;
     int threshold = circle_size*1.3;
+    bool selected_this_turn = false;
+
     if (trackidx >= 0)
     {
         is_an_obj_under_cursor = trackidx;
@@ -58,153 +67,58 @@ void identify_object_under_cursor(ImGuiIO& io)
                 obj_magn_under_cursor = lmag;
 
                 if (i == selected) break;
-                if (is_click && !dragged) selected = i;
+                if (is_click && !dragged)
+                {
+                    selected = i;
+                    selected_this_turn = true;
+                    selected_locale = nullptr;
+                }
             }
         }
     }
 
-    if (is_an_obj_under_cursor >= 0)
+    if (view_mode == vm_sunclock && is_an_obj_under_cursor < 0)
     {
-        i = is_an_obj_under_cursor;
-        double lmag = vmag_cache[i];
-        bool am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
-        bool sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
+        double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
 
-        std::stringstream oss;
+        if (mlon >  180) mlon -= 360;
+        if (mlon < -180) mlon += 360;
 
-        // TODO: Refactor this as multi-line ImGui::Text() and move it to the show_objinfo_window ftn
-        // in dialogs.cpp make the objinfo window look more like the status window. That way it can also
-        // turn the "habitable zone" text green (don't forget the redlight mode correction).
-        objname = cels[i]->name;
-        objinfo = "";
-        if (cels[i]->type == star)
+        CelestialObject *cel = cels[whereami];
+        if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
         {
-            Star* s = (Star*)cels[i];
-            if (strlen(s->Bayer) && strlen(s->Flamsteed))
+            dlat = fabs(cel->locales[i].lat - mlat);
+            dlon = fabs(cel->locales[i].lon - mlon);
+            if (dlon < 3 && dlat < 3)
             {
-                int Fl = atoi(s->Flamsteed);
-                objinfo += std::to_string(Fl) + (std::string)s->Bayer + (std::string)"\n";
-            }
-            else if (strlen(s->Flamsteed)) objinfo += (std::string)s->Flamsteed + (std::string)"\n";
-            else if (strlen(s->Bayer)) objinfo += (std::string)s->Bayer + (std::string)"\n";
-            if (s->GouldNo > 0) objinfo += std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->constellation) + (std::string)"\n";
-
-            if (strlen(s->Gliese)) objinfo += (std::string)s->Gliese + (std::string)"\n";
-            if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
-            if (s->HR) objinfo += (std::string)"HR" + std::to_string(s->HR) + (std::string)"\n";
-            if (s->HIP) objinfo += (std::string)"HIP" + std::to_string(s->HIP) + (std::string)"\n";
-            if (s->WD.size()) objinfo += std::string(s->WD) + (std::string)"\n";
-            if (s->Bonn_survey[0])
-            {
-                char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
-                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
-                    + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential) + std::string("\n");
+                r = sqrt(dlat*dlat + dlon*dlon);
+                if (r < br)
+                {
+                    is_a_locale_under_cursor = &cel->locales[i];
+                    br = r;
+                }
             }
         }
 
-        if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+        if (is_click && !dragged)
         {
-            objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
-                    +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+            selected_locale = is_a_locale_under_cursor;
+            if (!selected_this_turn) selected = -1;
         }
-        else
-        {
-            npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
-            double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
-            if (objaz < 0) objaz += _pi*2;
-            objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
-                    +  (std::string)"Azimuth:  "
-                    +  std::to_string(objaz*fiftyseven)
-                    +  (std::string)"\n";
-        }
-        if (!sat_low_orbit)
-            oss << "Mag:      " << std::setprecision(4) << lmag << std::endl;
-
-        objinfo += oss.str();
-        oss.str("");
-        oss.clear();
-
-        if (cels[i]->type == star)
-        {
-            Star* s = (Star*)cels[i];
-            if (s->distance_known)
-            {
-                oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
-                oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude << "\n";
-            }
-            objinfo += (std::string)"SpTyp:    " + s->spectral_type + (std::string)"\n";
-        }
-        else if (cels[i]->type == galaxy)
-        {
-            // TODO:
-        }
-        else if (cels[i]->type == artificial)
-        {
-            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
-        }
-        else
-        {
-            oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
-            if (!sat_low_orbit)
-                oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
-            if (((Planet*)cels[i])->is_in_con_HZ()) oss << "          Habitable Zone" << std::endl;
-        }
-
-        cel_obj_class cls = cels[i]->typeclass();
-        if (cels[i]->mass)
-        {
-            if (cls == class_star) 
-                ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
-            else if (cls == class_planet || cls == class_moon)
-            {
-                oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
-                oss << "Mass:     " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
-            }
-        }
-        if (cels[i]->volumetric_mean_radius)
-        {
-            if (cls == class_star)
-                ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
-            else if (cls == class_planet || cls == class_moon)
-            {
-                oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
-                    << " R(earth)" << std::endl;
-                oss << "Radius:   " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km" << std::endl;
-            }
-        }
-
-        #ifdef DEBUG
-        oss << "index:    " << is_an_obj_under_cursor << std::endl;
-        #endif
-
-        objinfo += oss.str();
-        oss.clear();
-    }
-    else
-    {
-        objname = "Press N to toggle\nthis window.";
-        objinfo = "\n\n";
-        if (is_click && !dragged) selected = -1;
     }
 }
 
 void pan_with_crosshairs(ImGuiIO& io)
 {
     double amount = 1;
-    double limit = half_pi;
-    if (view_mode == vm_skymap)
-    {
-        amount = 3;
-        limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
-    }
-
+    if (view_mode == vm_skymap) amount = 3;
+    else if (view_mode == vm_sunclock) amount = 5;
 
     if (ImGui::IsMouseDown(2))
     {
         azimuth -= 0.01 * amount * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.01 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  limit) altitude =  limit;
-        if (altitude < -limit) altitude = -limit;
+        enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
@@ -217,8 +131,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.03 * amount * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.03 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  limit) altitude =  limit;
-        if (altitude < -limit) altitude = -limit;
+        enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
@@ -231,8 +144,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     {
         azimuth -= 0.1 * amount * fiftyseventh * io.MouseDelta.x / zoom;
         altitude += 0.1 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        if (altitude >  limit) altitude =  limit;
-        if (altitude < -limit) altitude = -limit;
+        enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
@@ -318,7 +230,14 @@ void process_key_cmd_char(char c)
             global_brightness = default_brightness;
             zoom = 1;
         }
-        if (view_mode == vm_skymap) altitude = 0;
+        else if (selected_locale)
+        {
+            viewer_lat = selected_locale->lat * fiftyseventh;
+            viewer_lon = selected_locale->lon * fiftyseventh;
+            viewer_locale = selected_locale->name;
+            view_mode = vm_horizon;
+        }
+        if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         velocity = center;
         viewchanged = true;
         refresh_star_visibilities();
@@ -486,7 +405,7 @@ void process_key_cmd_char(char c)
         global_brightness = 1;
         viewchanged = true;
         sphere_quality = 1;
-        if (view_mode == vm_skymap) altitude = 0;
+        if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
         case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
@@ -506,7 +425,7 @@ void process_key_cmd_char(char c)
 
         case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
-        case '$': /* view_mode = vm_sunclock; */ break;                 // not yet implemented but want to keep the placeholder
+        case '$': view_mode = vm_sunclock; viewchanged = true; altitude = 0; break;
         case '\\': view_mode = vm_skymap; altitude = 0; break;
         case ';': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
@@ -560,6 +479,7 @@ void process_keyboard_commands(ImGuiIO& io)
         velocity = rotate3D(velocity, center, pitch, -steering_rate);
         if (trackidx<0) altitude += steering_rate;
         if (altitude > half_pi) altitude = half_pi;
+        enforce_y_pan_limit();
     }
     if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
     {
@@ -572,6 +492,7 @@ void process_keyboard_commands(ImGuiIO& io)
         velocity = rotate3D(velocity, center, pitch,  steering_rate);
         if (trackidx<0) altitude -= steering_rate;
         if (altitude < -half_pi) altitude = -half_pi;
+        enforce_y_pan_limit();
     }
     if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
     {
@@ -586,7 +507,7 @@ void process_keyboard_commands(ImGuiIO& io)
             double coslat = cos(viewer_lat);
             viewer_lat += walk_speed * inv_circ * cos(azimuth);
             if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
+            // save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
@@ -612,7 +533,7 @@ void process_keyboard_commands(ImGuiIO& io)
             double coslat = cos(viewer_lat);
             viewer_lat -= walk_speed * inv_circ * cos(azimuth);
             if (coslat) viewer_lon -= walk_speed * inv_circ * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
+            // save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
@@ -634,14 +555,24 @@ void process_keyboard_commands(ImGuiIO& io)
     }
 }
 
-void lookfor_cb()
+void do_find()
 {
     int i = find_object(lookfor, false, 9e+29, 6);
     if (i>=0)
     {
+        if (view_mode == vm_sunclock) view_mode = vm_skyatlas;
         selected = i;
         trackidx = -1;
         center_selected();
         searched = true;
+        lookfor_notfound = false;
     }
+    else lookfor_notfound = true;
+}
+
+int lookfor_cb(ImGuiInputTextCallbackData* data)
+{
+    lookfor_notfound = false;
+    if (data->EventChar == '\n') do_find();
+    return 0;
 }

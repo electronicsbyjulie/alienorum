@@ -26,9 +26,16 @@ void draw_status_window(ImGuiIO& io)
 
     /////////////////////////////////////////////////////
 
-    if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_EnterReturnsTrue)) lookfor_cb();
+    int styles_to_pop = 0;
+    if (lookfor_notfound)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0, 0, 1));
+        styles_to_pop++;
+    }
+    if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_CallbackEdit | ImGuiInputTextFlags_EnterReturnsTrue, lookfor_cb)) do_find();
+    if (styles_to_pop) ImGui::PopStyleColor(styles_to_pop);
     ImGui::SameLine();
-    if (ImGui::Button("Find")) lookfor_cb();
+    if (ImGui::Button("Find")) do_find();
 
     std::string flagstr;
 
@@ -372,6 +379,151 @@ void draw_objinf_window(ImGuiIO& io)
     if (trackidx >= 0)
     {
         ImGui::TextColored(ImVec4(1, 0, 0, 1), "TRACKING");
+    }
+
+    if (is_an_obj_under_cursor >= 0)
+    {
+        int i = is_an_obj_under_cursor;
+        double lmag = vmag_cache[i];
+        bool am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
+        bool sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
+
+        std::stringstream oss;
+
+        // TODO: Refactor this as multi-line ImGui::Text() to make the objinfo window look more like the status window. That way it can also
+        // turn the "habitable zone" text green (don't forget the redlight mode correction).
+        objname = cels[i]->name;
+        objinfo = "";
+        if (cels[i]->type == star)
+        {
+            Star* s = (Star*)cels[i];
+            if (strlen(s->Bayer) && strlen(s->Flamsteed))
+            {
+                int Fl = atoi(s->Flamsteed);
+                objinfo += std::to_string(Fl) + (std::string)s->Bayer + (std::string)"\n";
+            }
+            else if (strlen(s->Flamsteed)) objinfo += (std::string)s->Flamsteed + (std::string)"\n";
+            else if (strlen(s->Bayer)) objinfo += (std::string)s->Bayer + (std::string)"\n";
+            if (s->GouldNo > 0) objinfo += std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->constellation) + (std::string)"\n";
+
+            if (strlen(s->Gliese)) objinfo += (std::string)s->Gliese + (std::string)"\n";
+            if (s->HD) objinfo += (std::string)"HD" + std::to_string(s->HD) + (std::string)"\n";
+            if (s->HR) objinfo += (std::string)"HR" + std::to_string(s->HR) + (std::string)"\n";
+            if (s->HIP) objinfo += (std::string)"HIP" + std::to_string(s->HIP) + (std::string)"\n";
+            if (s->WD.size()) objinfo += std::string(s->WD) + (std::string)"\n";
+            if (s->Bonn_survey[0])
+            {
+                char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
+                objinfo += std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
+                    + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential) + std::string("\n");
+            }
+        }
+
+        double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+        if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+        {
+            objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
+                    +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";
+        }
+        else if (view_mode == vm_sunclock)
+        {
+            double lat = cels[i]->Decl_as_radians(here), lon = cels[i]->RA_as_radians(here, cels[whereami]->timeofday());
+            if (lon > _pi) lon -= _pi*2;
+            objinfo += (std::string)"Lat:      " + std::to_string(lat * fiftyseven) + (std::string)"\n"
+                    +  (std::string)"Lon:      " + std::to_string(lon * fiftyseven) + (std::string)"\n";
+        }
+        else
+        {
+            npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
+            double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
+            if (objaz < 0) objaz += _pi*2;
+            objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
+                    +  (std::string)"Azimuth:  "
+                    +  std::to_string(objaz*fiftyseven)
+                    +  (std::string)"\n";
+        }
+        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite)
+            oss << "Mag:      " << std::setprecision(4) << lmag << std::endl;
+
+        objinfo += oss.str();
+        oss.str("");
+        oss.clear();
+
+        if (cels[i]->type == star)
+        {
+            Star* s = (Star*)cels[i];
+            if (s->distance_known)
+            {
+                oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
+                oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude << "\n";
+            }
+            objinfo += (std::string)"SpTyp:    " + s->spectral_type + (std::string)"\n";
+        }
+        else if (cels[i]->type == galaxy)
+        {
+            // TODO:
+        }
+        else if (cels[i]->type == artificial)
+        {
+            if (view_mode == vm_sunclock && whereami >= 0)
+                oss << "Alt:      "
+                    << std::fixed << std::setprecision(3)
+                    << ((cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000)  // TODO: Compensate for oblateness.
+                    << " km"
+                    << std::endl;
+            else oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+        }
+        else
+        {
+            oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
+            if (!sat_low_orbit)
+                oss << "Lit %:    " << std::setprecision(1) << ((int)(((Planet*)cels[i])->amt_lit*100)) << std::endl;
+            if (((Planet*)cels[i])->is_in_con_HZ()) oss << "          Habitable Zone" << std::endl;
+        }
+
+        cel_obj_class cls = cels[i]->typeclass();
+        if (cels[i]->mass)
+        {
+            if (cls == class_star) 
+                ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
+            else if (cls == class_planet || cls == class_moon)
+            {
+                oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
+                oss << "Mass:     " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg" << std::endl;
+            }
+        }
+        if (cels[i]->volumetric_mean_radius)
+        {
+            if (cls == class_star)
+                ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
+            else if (cls == class_planet || cls == class_moon)
+            {
+                oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
+                    << " R(earth)" << std::endl;
+                oss << "Radius:   " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km" << std::endl;
+            }
+        }
+
+        #ifdef DEBUG
+        oss << "index:    " << is_an_obj_under_cursor << std::endl;
+        #endif
+
+        objinfo += oss.str();
+        oss.clear();
+    }
+    else if (is_a_locale_under_cursor)
+    {
+        objname = is_a_locale_under_cursor->name;
+        std::stringstream sslocale;
+        sslocale << "Lat.: " << (is_a_locale_under_cursor->lat < 0 ? "" : "+") << std::fixed << std::setprecision(3) << is_a_locale_under_cursor->lat << std::endl;
+        sslocale << "Lon.: " << (is_a_locale_under_cursor->lon < 0 ? "" : "+") << std::fixed << std::setprecision(3) << is_a_locale_under_cursor->lon << std::endl;
+        objinfo = sslocale.str();
+    }
+    else
+    {
+        objname = "Press N to toggle\nthis window.";
+        objinfo = "\n\n";
+        if (is_click && !dragged) selected = -1;
     }
 
     ImGui::Text("%s", objname.c_str());
@@ -1957,18 +2109,12 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
 void draw_loc_window(ImGuiIO & io)
 {
-    if (!locales.size())
-    {
-        std::fstream fs("locales.json", std::ios::in);
-        if (fs)
-        {
-            fs >> locales;
-            fs.close();
-        }
-    }
-
     if (whereami < 0) return;
     if (view_mode != vm_horizon) return;
+
+    CelestialObject *cel = cels[whereami];
+
+    if (!cel->nlocales) cel->read_locales("locales.json");
 
     int i, j, l, looklen = strlen(lookloc);
     unsigned int n=0;
@@ -1986,64 +2132,53 @@ void draw_loc_window(ImGuiIO & io)
     if (ImGui::BeginListBox("##loclist", ImVec2(503, 11 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j=0;
-        for (auto& [planet, plocs] : locales.items())
+
+        n = cel->nlocales;
+        std::string name;
+        double lat, lon;
+        for (i=0; (unsigned)i<n; i++)
         {
-            if (!strcmp(planet.c_str(), cels[whereami]->name))
+            name = cel->locales[i].name;
+            if (!name.size()) continue;
+            if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
+
+            lat = cel->locales[i].lat;
+            lon = cel->locales[i].lon;
+            stringstream line;
+
+            line << name;
+
+            l = line.str().size();
+            if (l < 40) line << std::string(40-l, ' ');
+
+            line << setprecision(5) << lat;
+
+            l = line.str().size();
+            if (l < 48) line << std::string(48-l, ' ');
+
+            line << setprecision(6) << lon;
+
+            bool is_selected = (item_selected_idx == (unsigned)j);
+
+            ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)j) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
             {
-                std::sort(plocs.begin(), plocs.end(), [](const json& a, const json& b)
-                {
-                    return a["name"] < b["name"];
-                });
-
-                n = plocs.size();
-                std::string name;
-                double lat, lon;
-                for (i=0; (unsigned)i<n; i++)
-                {
-                    plocs[i]["name"].get_to(name);
-                    if (looklen && !strcasestr(name.c_str(), lookloc)) continue;
-                    // name.erase(std::remove(name.begin(), name.end(), '\"'), name.end());
-
-                    plocs[i]["latitude"].get_to(lat);
-                    plocs[i]["longitude"].get_to(lon);
-                    stringstream line;
-
-                    line << name;
-
-                    l = line.str().size();
-                    if (l < 40) line << std::string(40-l, ' ');
-
-                    line << setprecision(5) << lat;
-
-                    l = line.str().size();
-                    if (l < 48) line << std::string(48-l, ' ');
-
-                    line << setprecision(6) << lon;
-
-                    bool is_selected = (item_selected_idx == (unsigned)j);
-
-                    ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)j) ? ImGuiSelectableFlags_Highlight : 0;
-                    if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
-                    {
-                        item_selected_idx = j;
-                    }
-
-                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                    if (is_selected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-
-                        sellat = lat * fiftyseventh;
-                        sellon = lon * fiftyseventh;
-                        selloc = name;
-                    }
-
-                    j++;
-                }
-
-                break;
+                item_selected_idx = j;
             }
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+            {
+                ImGui::SetItemDefaultFocus();
+
+                sellat = lat * fiftyseventh;
+                sellon = lon * fiftyseventh;
+                selloc = name;
+            }
+
+            j++;
         }
+
         ImGui::EndListBox();
     }
 

@@ -24,7 +24,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z')))
         match_comp = search_term[n-1];
 
-    if (is_hd && hdcache && hdcache[is_hd] && (os || (match_comp < 'a')))   // if comp is lower case and a star is not required, we might be looking for a planet.
+    if (is_hd && is_hd < MAX_HD && hdcache && hdcache[is_hd] && (os || (match_comp < 'a')))   // if comp is lower case and a star is not required, we might be looking for a planet.
     {
         s = hdcache[is_hd];
         if (match_comp && s->multisys)

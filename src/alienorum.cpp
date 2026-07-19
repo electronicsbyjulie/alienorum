@@ -148,6 +148,14 @@ int main (int argc, char** argv)
             std::string theme = argv[++l];
             global_style.load(theme);
         }
+        else if (!strcmp(argv[l], "noexo"))
+        {
+            noexo = true;
+        }
+        else if (!strcmp(argv[l], "nosats") || !strcmp(argv[l], "nosat"))
+        {
+            nosats = true;
+        }
         else if (!strcmp(argv[l], "magtest")) magnitude_test = true;
         else if (!strcmp(argv[l], "sizeof"))
         {
@@ -494,11 +502,17 @@ int main (int argc, char** argv)
                 sky_mag_shift = 0;
             }
 
-            if (show_grid) draw_ra_dec_lines();
-            if (show_consln) draw_cons_lines();
-            draw_objects();
-            draw_horizon();
-            draw_cloudy_sky();
+            if (view_mode == vm_sunclock) draw_sunclock();
+            else
+            {
+                is_a_locale_under_cursor = nullptr;
+                selected_locale = nullptr;
+                if (show_grid) draw_ra_dec_lines();
+                if (show_consln) draw_cons_lines();
+                draw_objects();
+                draw_horizon();
+                draw_cloudy_sky();
+            }
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
@@ -523,9 +537,9 @@ int main (int argc, char** argv)
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
 
-            is_click = io.MouseReleased[0];
             if (!is_mouse_over_window)
             {
+                is_click = io.MouseReleased[0];
                 if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
                 identify_object_under_cursor(io);
             }

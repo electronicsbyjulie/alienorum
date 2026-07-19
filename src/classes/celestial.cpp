@@ -6,6 +6,7 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <algorithm>
 #include "celestial.h"
 #include "star.h"
@@ -22,6 +23,7 @@ double *vmag_cache, *bloomrad_cache, *angular_radius;
 CelestialLocation here;
 double azimuth_correction = 0;
 typedef struct my_jpeg_error_mgr * my_error_ptr;
+Locale *is_a_locale_under_cursor = nullptr, *selected_locale = nullptr;
 
 CelestialObject::CelestialObject()
 {
@@ -59,6 +61,50 @@ double alienorum::CelestialObject::timeofday()
     }
 
     return _currTOD;
+}
+
+int alienorum::CelestialObject::read_locales(std::string fn)
+{
+    std::fstream fs(fn, std::ios::in);
+    if (fs)
+    {
+        json llocales;
+        fs >> llocales;
+        fs.close();
+
+        for (auto& [planet, plocs] : llocales.items())
+        {
+            if (!strcmp(planet.c_str(), name))
+            {
+                return read_locales_json(plocs);
+            }
+        }
+    }
+    return 0;
+}
+
+int alienorum::CelestialObject::read_locales_json(json fj)
+{
+    if (locales) delete[] locales;
+    int i, j=0, n = fj.size();
+    locales = new Locale[n];
+    nlocales = n;
+    for (i=0; i<n; i++)
+    {
+        try
+        {
+            Locale l(fj[i]);
+            locales[i] = l;
+            j++;
+        }
+        catch (...)
+        {
+            std::cerr << "ERROR loading locale: " << fj.dump(4) << std::endl;
+            locales[i].name = "";
+            locales[i].lat = locales[i].lon = 0;
+        }
+    }
+    return j;
 }
 
 CelestialObject *CelestialObject::get_light_center()
@@ -1168,6 +1214,7 @@ unsigned int Map::idx_of(double lat, double lon)
 void alienorum::Map::resample_bump_data(unsigned int new_resolution)
 {
     if (!has_bump_data()) return;
+    if (image_height == new_resolution) return;
     generating_fic_texture = true;
     double scale = (double)image_height / new_resolution;
     double *bump_data_old = bump_data;
@@ -1766,6 +1813,8 @@ void append_cel(CelestialObject *cel)
     cel->origname = cel->name;
     if (cel->orbit && cel->orbit->center) cel->origcenname = cel->orbit->center->name;
 
+    if (first_sat < 0 && cel->typeclass() == class_satellite) first_sat = ncelobjs;
+
     cels[ncelobjs] = cel;
     cel->seqno = ncelobjs;
     ncelobjs++;
@@ -1824,4 +1873,12 @@ OsculatingElement *alienorum::OsculatingElement::read_from_file(std::string file
 
     if (elements_read) *elements_read = i;
     return result;
+}
+
+alienorum::Locale::Locale(json fj)
+{
+    // Not using a try block because if the JSON is not valid, we want to prevent object creation.
+    fj["name"].get_to(name);
+    fj["latitude"].get_to(lat);
+    fj["longitude"].get_to(lon);
 }

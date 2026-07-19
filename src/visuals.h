@@ -14,8 +14,10 @@
 void draw_ra_dec_lines();
 
 int draw_sphere(CelestialObject *cel, double arad);
-bool draw_one_object(int i);                            // return false if not drawn for any reason
+int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol);
+bool draw_one_object(int i); // return false if not drawn for any reason
 void draw_objects();
+void draw_sunclock();
 void find_horizon();
 void draw_horizon();
 void draw_sky_gradient();

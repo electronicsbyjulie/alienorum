@@ -3310,6 +3310,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 try { pl.at("Depth" ).get_to(m->depth ); m->depth  *= 1000; } catch (...) { ; }
                 try { pl.at("Width" ).get_to(m->width ); m->width  *= 1000; } catch (...) { ; }
                 try { pl.at("Height").get_to(m->height); m->height *= 1000; } catch (...) { ; }
+                try { pl.at("Major" ).get_to(m->major_moon); } catch (...) { ; }
                 if (!m->orbit) std::cout << "WARNING: " << m->name << " has no orbit." << std::endl << std::flush;
                 if (m->orbit && !m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
                 if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)

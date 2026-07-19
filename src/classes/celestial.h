@@ -139,6 +139,24 @@ namespace alienorum
         void mark_for_map_regen(CelestialObject *cel);
     };
 
+    class Locale
+    {
+        public:
+        std::string name;
+        double lat, lon;
+        bool user_added = false;
+        bool user_modified = false;
+
+        Locale() {}
+        Locale(json from_json);
+
+        ~Locale() = default;
+        Locale(const Locale& other) = default;
+        Locale& operator=(const Locale& other) = default;
+        Locale(Locale&& other) noexcept = default;
+        Locale& operator=(Locale&& other) noexcept = default;
+    };
+
     class CelestialObject
     {
         protected:
@@ -180,6 +198,8 @@ namespace alienorum
 
         Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,
             *ring_map = nullptr, *ringx_map = nullptr;
+        Locale *locales = nullptr;
+        int nlocales = 0;
         float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;
         bool looked_for_maps = false, ignore_map_files = false;
         unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
@@ -195,6 +215,7 @@ namespace alienorum
         double get_horizon_angle();
         double get_horizon_distance();
         double timeofday();
+        int read_locales(std::string json_fname);
         inline bool is_tidal_locked() { return orbit ? (fabs((sidereal_rotational_period / orbit->period) - 1) < 0.01) : false; }
 
         CelestialObject* get_light_center();
@@ -216,6 +237,7 @@ namespace alienorum
         bool from_json(json j);
 
         protected:
+        int read_locales_json(json from_json);
         void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
         double _currM = 0;
         double _currTOD = 0;
@@ -237,5 +259,6 @@ extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;
 extern double azimuth_correction;
+extern Locale *is_a_locale_under_cursor, *selected_locale;
 
 #endif

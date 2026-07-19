@@ -209,9 +209,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = cel->RA_as_radians(here, /*cel->equinox +*/ cel->timeofday()) - _pi;
+                    viewer_lon = cel->RA_as_radians(here, cel->timeofday()) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
-                    save_viewer_latlon = false;
                     whereami = cel->seqno;
                     velocity = Point(0,0,0);
                     view_mode = vm_horizon;
@@ -778,6 +777,35 @@ void draw_flare(double flare, Color col)
     }
 }
 
+int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
+{
+    // Satellite icons.
+    ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
+    ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
+    ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                   );
+    ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+    ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
+    ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+    ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
+    ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
+    ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
+    ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
+    ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
+
+    ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
+    ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
+
+    return antenna_height + panel_tilt + panel_width;
+}
+
 double global_magshift;
 bool draw_one_object(int i)
 {
@@ -801,36 +829,15 @@ bool draw_one_object(int i)
         double line_of_sight = cels[i]->orbit->center->location.local_position.get_distance_to_line(
             cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
 
-        ImU32 satcol = (line_of_sight < cels[i]->orbit->center->volumetric_mean_radius)
-            ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
-            : rgba_apply_redlight(IM_COL32(255, 255, 255, 255));
+        ImU32 satcol = (i == selected)
+            ? rgba_apply_redlight(global_style.selected_color)
+            : ((line_of_sight < cels[i]->volumetric_mean_radius)
+                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
+
         if (show_labels || lbl_localsys || show_consln || show_grid)
         {
-            // Satellite icons.
-            ImVec2 antenna_top              = ImVec2(xycoord.x,                                             xycoord.y - antenna_height  );
-            ImVec2 panel_left_stem          = ImVec2(xycoord.x - antenna_height,                            xycoord.y                   );
-            ImVec2 panel_right_stem         = ImVec2(xycoord.x + antenna_height,                            xycoord.y                    );
-            ImVec2 panel_left_topprox       = ImVec2(xycoord.x - antenna_height + panel_tilt,               xycoord.y - antenna_height  );
-            ImVec2 panel_left_topdist       = ImVec2(xycoord.x - antenna_height + panel_tilt - panel_width, xycoord.y - antenna_height  );
-            ImVec2 panel_left_botprox       = ImVec2(xycoord.x - antenna_height - panel_tilt,               xycoord.y + antenna_height  );
-            ImVec2 panel_left_botdist       = ImVec2(xycoord.x - antenna_height - panel_tilt - panel_width, xycoord.y + antenna_height  );
-            ImVec2 panel_right_topprox      = ImVec2(xycoord.x + antenna_height + panel_tilt,               xycoord.y - antenna_height  );
-            ImVec2 panel_right_topdist      = ImVec2(xycoord.x + antenna_height + panel_tilt + panel_width, xycoord.y - antenna_height  );
-            ImVec2 panel_right_botprox      = ImVec2(xycoord.x + antenna_height - panel_tilt,               xycoord.y + antenna_height  );
-            ImVec2 panel_right_botdist      = ImVec2(xycoord.x + antenna_height - panel_tilt + panel_width, xycoord.y + antenna_height  );
-
-            ImGui::GetBackgroundDrawList()->AddLine(xycoord, antenna_top, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_stem, panel_right_stem, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_botdist, panel_left_botprox, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_left_topprox, panel_left_botprox, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_topdist, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_botdist, panel_right_botprox, satcol, 1);
-            ImGui::GetBackgroundDrawList()->AddLine(panel_right_topprox, panel_right_botprox, satcol, 1);
-
-            bloomrad_cache[i] = bloomrad = antenna_height + panel_tilt + panel_width;
+            bloomrad_cache[i] = bloomrad = draw_satellite_icon(xycoord, satcol);
         }
         else
         {
@@ -1155,6 +1162,348 @@ void draw_objects()
 
 }
 
+ImVec2 sc_drawcoords(CelestialObject *obj, CelestialObject *cel, bool update_drawnxy = true)
+{
+    Point relloc = obj->location.local_position - cel->location.local_position;
+    relloc = rotate3D(relloc, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+    relloc = rotate3D(relloc, center, yaxis, cel->timeofday());
+
+    double lon = fmod(find_angle(relloc.z, -relloc.x) - azimuth, _pi*2);
+    if (lon >  _pi) lon -= _pi*2;
+    if (lon < -_pi) lon += _pi*2;
+    double lat = fmod(find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y) - altitude, _pi*2);
+    if (lat < -half_pi) lat += _pi*2;
+    if (lat >  half_pi) lat -= _pi*2;
+ 
+    int dx = dispcx + lon/sclk_scale;
+    int dy = dispcy - lat/sclk_scale;
+
+    if (update_drawnxy)
+    {
+        obj->drawnx = dx;
+        obj->drawny = dy;
+    }
+
+    return ImVec2(dx,dy);
+}
+
+void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
+{
+    ImVec2 objdxy = sc_drawcoords(obj, cel);
+    cel_obj_class cls = obj->typeclass();
+
+    int dx, dy;
+    if (cls == class_star)
+    {
+        Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
+        objcol.normalize(255);
+        ImU32 obj32 = rgba_apply_redlight(IM_COL32((int)objcol.red, (int)objcol.green, (int)objcol.blue, 255));
+        ImGui::GetBackgroundDrawList()->AddCircleFilled(objdxy, 10, obj32);
+        double lstep = _pi / 8;
+        double r = 20;
+        int dx1 = objdxy.x, dx2, dy1 = objdxy.y - r, dy2;
+        for (theta = lstep; theta <= _pi*2+0.001; theta += lstep)
+        {
+            dx2 = dx1;
+            dy2 = dy1;
+            r = 33 - r;
+            dx1 = objdxy.x + r * sin(theta);
+            dy1 = objdxy.y - r * cos(theta);
+            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1,dy1), ImVec2(dx2,dy2), obj32);
+        }
+    }
+    else if (cls == class_planet || cls == class_moon)
+    {
+        if (!obj->looked_for_maps)
+        {
+            obj->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+            std::thread ttex(load_textures, obj);
+            ttex.detach();
+        }
+
+        Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
+        objcol.normalize(255);
+        int x, y;
+        RGB3Byte rgb;
+        double theta, phi;
+        for (y = -ico_sz; y <= ico_sz; y++)
+        {
+            theta = half_pi * pow(fabs(y) / (ico_sz+1), 1) * sgn(y);
+            int xsz = sqrt(ico_sz*ico_sz - y*y);
+
+            for (x = -xsz; x <= xsz; x++)
+            {
+                phi = half_pi / xsz * x;
+                if (obj->cloud_map) rgb = obj->cloud_map->color_at(theta, phi);
+                else if (obj->surf_map) rgb = obj->surf_map->color_at(theta, phi);
+                else rgb = RGB3Byte(objcol.red, objcol.green, objcol.blue);
+
+                dx = objdxy.x + x;
+                dy = objdxy.y - y;
+
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx,dy), ImVec2(dx+1,dy+1),
+                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255))
+                    );
+            }
+        }
+    }
+    else if (cls == class_satellite)
+    {
+        double line_of_sight = cel->location.local_position.get_distance_to_line(
+            obj->location.local_position, obj->get_light_center()->location.local_position);
+        int i = obj->seqno;
+
+        ImU32 satcol = (i == selected)
+            ? rgba_apply_redlight(global_style.selected_color)
+            : ((line_of_sight < cel->volumetric_mean_radius)
+                ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
+                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
+
+        bloomrad = draw_satellite_icon(objdxy, satcol);
+
+        if (i == selected || i == trackidx)
+        {
+            dx = objdxy.x;
+            dy = objdxy.y;
+            ImU32 col = rgba_apply_redlight((i == trackidx) ? IM_COL32(255, 255, 255, 64) : global_style.selected_color);
+            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), col);
+            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc-circ_sz,dy), col);
+            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,dy+ln_spc), ImVec2(dx,dispcy*2), col);
+            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx+ln_spc+circ_sz,dy), ImVec2(dispcx*2,dy), col);
+        }
+
+        if (show_labels)
+        {
+            const char *dispname = obj->name;
+            ImFont *font = global_font;
+            std::string str;
+            double lfontsz = global_font_size;
+            ImVec2 sz = ImGui::CalcTextSize(dispname);
+            ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(obj->drawnx - sz.x/2, obj->drawny+bloomrad+1),
+                rgba_apply_redlight((i == selected) ? global_style.selected_color : global_style.objlbl_color),
+                dispname);
+        }
+
+        if (show_orbits && obj->orbit)
+        {
+            int dx1 = -1e9, dy1 = -1e9, dx2, dx2a, dy2;
+            double sincewhen, hasta_la_pasta = simnow + 0.5*obj->orbit->period, stepf = obj->orbit->period / 29;
+            bool satsunlit;
+
+            for (sincewhen = simnow - 0.5*obj->orbit->period; sincewhen <= hasta_la_pasta; sincewhen += stepf)
+            {
+                ((Satellite*)obj)->update_location(sincewhen);
+                objdxy = sc_drawcoords(obj, cel, false);
+                dx2 = objdxy.x;
+                dy2 = objdxy.y;
+
+                line_of_sight = cel->location.local_position.get_distance_to_line(
+                    obj->location.local_position, obj->get_light_center()->location.local_position);
+
+                satsunlit = (line_of_sight < cel->volumetric_mean_radius);
+
+                if (dx1 >= -1000 && dy1 >= 0)
+                {
+                    satcol = (i == selected)
+                        ? rgba_apply_redlight(global_style.selected_color)
+                        : (satsunlit
+                            ? rgba_apply_redlight(IM_COL32(128,  96,  64, 128))
+                            : rgba_apply_redlight(IM_COL32(255, 255, 255, 128)));
+
+                    dx2a = dx2;
+                    if (dx2a < (dx1-dispcx)) dx2a += dispcx*2;
+                    else if (dx2a > (dx1+dispcx)) dx2a -= dispcx*2;
+
+                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1,dy1), ImVec2(dx2a,dy2), satcol);
+                }
+
+                dx1 = dx2;
+                dy1 = dy2;
+            }
+            ((Satellite*)obj)->update_location(simnow);
+        }
+    }
+}
+
+ViewMode last_vmode = vm_skyatlas;
+void draw_sunclock()
+{
+    if (whereami < 0) return;
+
+    int i;
+    if (last_vmode != view_mode) for (i=0; cels[i]; i++)
+    {
+        cels[i]->drawnx = cels[i]->drawny = -1e9;
+    }
+
+    CelestialObject *cel = cels[whereami];
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+    cel_obj_class cls = cel->typeclass();
+
+    if (!cel->nlocales) cel->read_locales("locales.json");
+
+    if (!cel->looked_for_maps)
+    {
+        cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+        std::thread ttex(load_textures, cel);
+        ttex.detach();
+    }
+
+    Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
+    Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
+    RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
+    daylight.normalize(1);
+
+    int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2;
+    sclk_scale = half_pi / size / zoom;
+    double lat, lon, obl = 1.0 - cel->oblateness, elevation;
+    Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
+    Map *nmap = cel->night_map ? cel->night_map : nullptr;
+    Point land;
+    bool dwh = false;
+
+    if (cls == class_moon)
+        dwh = (((Moon*)cel)->depth > zero_isnt_really_zero
+            && ((Moon*)cel)->width > zero_isnt_really_zero
+            && ((Moon*)cel)->height > zero_isnt_really_zero);
+
+    double equatorial_radius, theta, cos_theta, is_day, is_night;
+    if (dwh)
+        equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
+    else
+        equatorial_radius = cel->get_equatorial_radius();
+
+
+    for (y=dispcy; y>=-dispcy; y-=step)
+    {
+        dy = dispcy + y;
+        lat = lat_from_y(y);
+        if (fabs(lat) > half_pi) continue;
+
+        for (x=-halfwid; x<halfwid; x+=step)
+        {
+            dx = dispcx + x;
+            lon = lon_from_x(x);
+            elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
+            land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
+
+            if (dwh)
+            {
+                land.x *= ((Moon*)cel)->width  * .5;
+                land.y *= ((Moon*)cel)->height * .5;
+                land.z *= ((Moon*)cel)->depth  * .5;
+                if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
+            }
+            else land.y *= obl;
+            land = rotate3D(land, center, yaxis, -cel->timeofday());
+            land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+            land += cel->location.local_position;
+            if (self_luminous) is_day = 1;
+            else
+            {
+                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+                if (fabs(theta) < half_pi)
+                {
+                    cos_theta = cos(theta);
+                    is_day = fmin(1, pow(cos_theta, 0.333));
+                    is_night = 0;
+                }
+                // TODO: Twilight
+                else
+                {
+                    is_day = 0;
+                    is_night = 1;
+                }
+            }
+
+            if (map) rgb = map->color_at(lat, lon);
+            else rgb = prgb;
+
+            if (nmap) nrgb = nmap->color_at(lat, lon);
+
+            if (self_luminous)
+            {
+                rgb.r *= is_day;
+                rgb.g *= is_day;
+                rgb.b *= is_day;
+            }
+            else
+            {
+                rgb.r *= is_day * daylight.red;
+                rgb.g *= is_day * daylight.green;
+                rgb.b *= is_day * daylight.blue;
+            }
+
+            if (is_night)
+            {
+                rgb.r += nrgb.r * is_night;
+                rgb.g += nrgb.g * is_night;
+                rgb.b += nrgb.b * is_night;
+            }
+
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
+                rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
+        }
+    }
+
+    if (selected_locale)
+    {
+        dx = dispcx + fmod(selected_locale->lon * fiftyseventh - azimuth , _pi*2) / sclk_scale;
+        dy = dispcy - fmod(selected_locale->lat * fiftyseventh - altitude, _pi*2) / sclk_scale;
+        while (dx < 0) dx += dispcx*2;
+        while (dx >= dispcx*2) dx -= dispcx*2;
+        while (dy < 0) dy += dispcy*2;
+        while (dy >= dispcy*2) dy -= dispcy*2;
+
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,0), ImVec2(dx,dy-ln_spc), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0,dy), ImVec2(dx-ln_spc,dy), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx,dy+ln_spc), ImVec2(dx,dispcy*2), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx+ln_spc,dy), ImVec2(dispcx*2,dy), rgba_apply_redlight(global_style.selected_color));
+        ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(dx,dy), circ_sz, rgba_apply_redlight(global_style.selected_color), 0, 2);
+    }
+
+    if (show_sats && first_sat >= 0) for (i=first_sat; i<ncelobjs; i++)
+    {
+        if (cels[i] && cels[i]->typeclass() == class_satellite && cels[i]->orbit && cels[i]->orbit->center == cel)
+        {
+            sc_draw_object(cels[i], cel);
+        }
+    }
+
+    // Subsolar point
+    CelestialObject *sun = cel->get_light_center();
+    if (sun && sun != cel)
+    {
+        sc_draw_object(sun, cel);
+    }
+
+    // Substellar point of host star, if different from light center
+    CelestialObject *host = cel->cenobj;
+    if (host && host != sun)
+    {
+        sc_draw_object(host, cel);
+    }
+
+    if (cel->type != star) for (i=cel->seqno+1; cels[i]; i++)
+    {
+        if (!cels[i]->orbit) continue;
+        if (cels[i]->type == star) continue;
+        if (cels[i]->type == artificial) continue;
+        if (cels[i]->orbit->center != cel) continue;
+        if (cels[i]->typeclass() == class_moon && !((Moon*)cels[i])->major_moon) continue;
+        sc_draw_object(cels[i], cel);
+    }
+
+    // Subplanetary point if on a moon
+    CelestialObject *planet = cel->orbit ? cel->orbit->center : nullptr;
+    if (planet && planet != sun)
+    {
+        sc_draw_object(planet, cel);
+    }
+}
+
 bool draw_marker[16];
 double hz_dx[16], hz_dy[16];
 void find_horizon()
@@ -1195,6 +1544,13 @@ void draw_horizon()
     {
         int j;
         CelestialObject *cel = cels[whereami];
+
+        if (!cel->looked_for_maps)
+        {
+            cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
+            std::thread ttex(load_textures, cel);
+            ttex.detach();
+        }
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
