@@ -24,6 +24,7 @@ namespace alienorum
 
         public:
         double height, width, depth;        // Height = pole-pole distance; width = diameter along direction of orbit; depth = dia. toward/away from planet.
+        bool major_moon = false;
 
         Moon();
         void update_location(double tmnow);

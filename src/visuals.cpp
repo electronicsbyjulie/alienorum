@@ -1494,6 +1494,7 @@ void draw_sunclock()
         if (cels[i]->type == star) continue;
         if (cels[i]->type == artificial) continue;
         if (cels[i]->orbit->center != cel) continue;
+        if (cels[i]->typeclass() == class_moon && !((Moon*)cels[i])->major_moon) continue;
         sc_draw_object(cels[i], cel);
     }
 
