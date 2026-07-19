@@ -568,6 +568,10 @@ void process_keyboard_commands(ImGuiIO& io)
             velocity -= forward;
         }
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_F3))
+    {
+        focus_findbox = true;
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_F4))
     {
         IGFD::FileDialogConfig config;

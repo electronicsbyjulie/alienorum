@@ -329,6 +329,7 @@ Shift+A     Add new object in orbit around current object
 Shift+E     Edit current object
 U           Export user-added and user-modified objects to universe.json
 Shift+U     Save current user settings (theme, home lat/lon)
+F3          Search
 F4          Load user objects from an external JSON file
 
 IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the
