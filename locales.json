@@ -1745,6 +1745,11 @@
             "longitude": 4.917
         },
         {
+            "name": "Abu Dhabi",
+            "latitude": 24.467,
+            "longitude": 54.367
+        },
+        {
             "name": "Ankara",
             "latitude": 39.933,
             "longitude": 32.867

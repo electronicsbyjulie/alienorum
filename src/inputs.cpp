@@ -153,6 +153,28 @@ void pan_with_crosshairs(ImGuiIO& io)
         ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
         ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
     }
+
+    if (io.MouseDelta.x < 0 && io.MousePos.x < -3*io.MouseDelta.x)
+    {
+        io.MousePos = ImVec2(dispcx*2, io.MousePos.y);
+        io.WantSetMousePos = true;
+    }
+    else if (io.MouseDelta.x > 0 && io.MousePos.x > dispcx*2 - 3*io.MouseDelta.x)
+    {
+        io.MousePos = ImVec2(0, io.MousePos.y);
+        io.WantSetMousePos = true;
+    }
+
+    if (io.MouseDelta.y < 0 && io.MousePos.y < -3*io.MouseDelta.y)
+    {
+        io.MousePos = ImVec2(io.MousePos.x, dispcy*2);
+        io.WantSetMousePos = true;
+    }
+    else if (io.MouseDelta.y > 0 && io.MousePos.y > dispcy*2 - 3*io.MouseDelta.y)
+    {
+        io.MousePos = ImVec2(io.MousePos.x, 0);
+        io.WantSetMousePos = true;
+    }
 }
 
 void thread_check_sats()
