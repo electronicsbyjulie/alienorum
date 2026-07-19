@@ -1356,6 +1356,12 @@
             "timezone": "UTC-05:00D"
         },
         {
+            "name": "Peoria, AZ",
+            "latitude": 33.583,
+            "longitude": -112.239,
+            "timezone": "UTC-07:00"
+        },
+        {
             "name": "Peoria, IL",
             "latitude": 40.694,
             "longitude": -89.589,
@@ -2093,6 +2099,16 @@
             "name": "Djibouti",
             "latitude": 11.594,
             "longitude": 43.148
+        },
+        {
+            "name": "Durban",
+            "latitude": -29.883333,
+            "longitude": 31.05
+        },
+        {
+            "name": "Gqeberha",
+            "latitude": -33.958056,
+            "longitude": 25.6
         },
         {
             "name": "Johannesburg",

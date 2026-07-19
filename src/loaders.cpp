@@ -719,6 +719,14 @@ void reload_stuff()
     mtx.unlock();
     cr.read_star_orbits_dat(cels);
 
+    int i;
+    for (i=0; cels[i]; i++)
+    {
+        delete[] cels[i]->locales;
+        cels[i]->locales = nullptr;
+        cels[i]->nlocales = 0;
+    }
+
     mtx.lock();
     loading_msg = "Done!";
     splash = false;
