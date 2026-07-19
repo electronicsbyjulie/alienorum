@@ -331,6 +331,7 @@ U           Export user-added and user-modified objects to universe.json
 Shift+U     Save current user settings (theme, home lat/lon)
 F3          Search
 F4          Load user objects from an external JSON file
+F5          Reload constellation lines
 
 IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the
 external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file

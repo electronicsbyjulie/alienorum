@@ -688,6 +688,38 @@ void load_stuff()
     mtx.unlock();
 }
 
+void reload_stuff()
+{
+    CatalogReader cr;
+    consname.clear();
+    consabbrev.clear();
+    consgen.clear();
+    constellation_index.clear();
+    lnpercons.clear();
+    consline_a.clear();
+    consline_b.clear();
+    considx.clear();
+    nconsln = 0;
+
+    mtx.lock();
+    loading_msg = "Refreshing constellations...";
+    mtx.unlock();
+    read_cons_lines();
+    mtx.lock();
+    loading_msg = "Assigning stars to constellations...";
+    mtx.unlock();
+    cache_cons_lines();
+    mtx.lock();
+    loading_msg = "Refreshing star orbits...";
+    mtx.unlock();
+    cr.read_star_orbits_dat(cels);
+
+    mtx.lock();
+    loading_msg = "Done!";
+    splash = false;
+    mtx.unlock();
+}
+
 bool save_user_json()
 {
     try

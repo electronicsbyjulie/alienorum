@@ -571,6 +571,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F3))
     {
         focus_findbox = true;
+        statuswnd = true;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F4))
     {
@@ -578,6 +579,12 @@ void process_keyboard_commands(ImGuiIO& io)
         config.path = ".";
         ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
         fdlg_shown = true;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F5))
+    {
+        splash = true;
+        std::thread t1(reload_stuff);
+        t1.detach();
     }
 }
 

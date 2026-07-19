@@ -883,6 +883,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##obliquity"))
             {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 cel->obliquity = frand(0, frand(0, frand(0, _pi)));
             }
             ImGui::SameLine(col2);
@@ -906,6 +907,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##equinox"))
             {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 cel->equinox = frand(0, _pi*2);
             }
 
@@ -1335,6 +1337,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##node&argperi&manom"))
             {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 cel->orbit->ascending_node = frand(0, _pi*2);
                 cel->orbit->arg_periapsis = frand(0, _pi*2);
                 cel->orbit->mean_anomaly = frand(0, _pi*2);

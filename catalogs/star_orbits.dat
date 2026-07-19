@@ -268,6 +268,9 @@ HD162020                (companion orbit)                       288.93      177.
 HD163840                HD163840 B              7.61727e+7      175.32      072.83      135.46      3.249e+12   .4165       0                   2011.24155                                      0.7421                  0.648       4780
 Kepler-47               Kepler-47 B             643538.72                   089.613     226.3       1.218e+10   .0288                                                                           0.342       0.338       0.014       3357
 HD115383                (planetary system)                      153.0       141
+HD164427                HD164427 B              9.3777307e+6    337.69      009.340     356.813     7.67e+10    .54944      0                   2015.945195                                     0.339
+HD164509                HD164509 B              5.7e+9                                              5.46e+12    .87
+HD165189                HD165190                1.91e+10        084.2       104         282         2.91e+13    .896        0                   1854.7
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

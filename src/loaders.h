@@ -14,6 +14,7 @@ void read_cons_lines();
 void cache_cons_lines();
 void add_batch_satellites(std::vector<std::string> listlines);
 void load_stuff();
+void reload_stuff();
 bool save_user_json();
 
 extern int sats_added, sat_errors;

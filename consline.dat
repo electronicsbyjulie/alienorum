@@ -530,9 +530,15 @@ Eps Hyi, Del Hyi
 Del Hyi, Eta2Hyi
 Eta2Hyi, Alp Hyi
 ~Ind, Indus, Indi
-Alp Ind, The Ind
-The Ind, Bet Ind
+Alp Ind, Zet Ind
+Zet Ind, Iot Ind
+Iot Ind, The Ind
+The Ind, Mu  Ind
+Mu  Ind, Eta Ind
+Eta Ind, Alp Ind
+Mu  Ind, Bet Ind
 The Ind, Del Ind
+Del Ind, Eps Ind
 ~Lac, Lacerta, Lacertae
 Alp Lac, Bet Lac
 Bet Lac, 4   Lac
@@ -635,18 +641,20 @@ Alp Men, Gam Men
 Gam Men, Eta Men
 Eta Men, Bet Men
 ~Mic, Microscopium, Microscopii
-Alp Mic, Gam Mic
-Gam Mic, Eps Mic
-Eps Mic, The1Mic
-Nu  Mic, Iot Mic
-Iot Mic, Eta Mic
-Eta Mic, Zet Mic
-Zet Mic, HD197630
-HD197630, Nu  Mic
-HD197630, Alp Mic
+Iot Mic, Nu  Mic
+Nu  Mic, HD197630
+HD197630, HD198357
+HD198357, Zet Mic
+Zet Mic, HD198716
+HD198716, HD197630
+HD198716, Iot Mic
+Zet Mic, HD201772
+HD201772, The1Mic
+Zet Mic, Eps Mic
+Eps Mic, Gam Mic
+Gam Mic, Alp Mic
+Alp Mic, HD198357
 Alp Mic, HD196737
-The2Mic, Eta Mic
-Zet Mic, Gam Mic
 ~Mon, Monoceros, Monocerotis
 27  Mon, Alp Mon
 27  Mon, Del Mon
@@ -943,6 +951,9 @@ Lam Tau, 5   Tau
 Xi  Tau, Omi Tau
 ~Tel, Telescopium, Telescopii
 Eps Tel, Alp Tel
+Alp Tel, Del1Tel
+Del1Tel, Del2Tel
+Del2Tel, Alp Tel
 HD171819, Zet Tel
 Eps Tel, HD166006
 HD166006, HD170069
