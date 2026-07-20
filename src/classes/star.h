@@ -74,6 +74,9 @@ namespace alienorum
         void estimate_BV(double tempK);             // Blackbody value from known temperature
         void estimate_UB(double tempK);             // Blackbody value from known temperature
 
+        static void load_main_seq_dat();
+
+        static double get_mseqidx_from_sptyp(const char* sptyp);
         double get_mseqidx_from_mass(double mass);
         double get_mseqidx_from_rad(double rad);
         double get_mseqidx_from_lum(double lum);

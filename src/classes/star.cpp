@@ -266,7 +266,10 @@ double Star::estimate_temperature()
 {
     if (temperature) return temperature;
     if (!strlen(spectral_type)) return 5800;
-    double subtype = atof(&spectral_type[1]) / 10;
+    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_temp(msqi);
+
+    /*double subtype = atof(&spectral_type[1]) / 10;
 
     int offset = 0;
     if (!strchr("OBAFGKMCTD", spectral_type[offset])) offset++;
@@ -290,19 +293,27 @@ double Star::estimate_temperature()
     else if (spectral_type[offset] == 'G') temperature = G_lowtemp + (1.0-subtype) * (F_lowtemp-G_lowtemp);
     else if (spectral_type[offset] == 'K') temperature = K_lowtemp + (1.0-subtype) * (G_lowtemp-K_lowtemp);
     else if (spectral_type[offset] == 'M') temperature = M_lowtemp + (1.0-subtype) * (K_lowtemp-M_lowtemp);
-    else temperature = 2000;
+    else*/ temperature = 2000;
     return temperature;
 }
 
 double Star::estimate_luminosity(double tempK)
 {
+    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_lum(msqi);
+
     return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
 }
 
 void Star::estimate_BV()
 {
-    double T = estimate_temperature();
-    estimate_BV(T);
+    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    if (msqi >= mseqmin && msqi <= mseqmax) BV_color = interpolate_mseq_BV(msqi);
+    else
+    {
+        double T = estimate_temperature();
+        estimate_BV(T);
+    }
 }
 
 void Star::estimate_UB()
@@ -319,6 +330,49 @@ void Star::estimate_BV(double T)
 void Star::estimate_UB(double T)
 {
     UB_color = log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
+}
+
+void alienorum::Star::load_main_seq_dat()
+{
+    FILE *fp = fopen("catalogs/mainseq.dat", "rb");
+    if (fp)
+    {
+        char buffer[1024];
+        int i = mseqmin;
+        while (fgets(buffer, 1022, fp))
+        {
+            if (buffer[0] == '#') continue;
+            //           1111111111222222222233333333334444444444
+            // 01234567890123456789012345678901234567890123456789
+            // O3V     59      13.43   660693  45900   −0.330
+            buffer[15] = buffer[23] = buffer[31] = buffer[39] = 0;
+            msq_mass[i] = atof(&buffer[8]);
+            msq_rad[i] = atof(&buffer[16]);
+            msq_lum[i] = atof(&buffer[24]);
+            msq_temp[i] = atof(&buffer[32]);
+            msq_BV[i] = atof(&buffer[40]);
+            i++;
+            if (i>=mseqmax) break;
+        }
+        fclose(fp);
+    }
+}
+
+double alienorum::Star::get_mseqidx_from_sptyp(const char *sptyp)
+{
+    int offset = 0;
+    if (sptyp[offset] >= 'a' && sptyp[offset] <= 'z') offset++;
+    double result = -1;
+    if (sptyp[offset] == 'M') result = 60;
+    if (sptyp[offset] == 'K') result = 50;
+    if (sptyp[offset] == 'G') result = 40;
+    if (sptyp[offset] == 'F') result = 30;
+    if (sptyp[offset] == 'A') result = 20;
+    if (sptyp[offset] == 'B') result = 10;
+    if (sptyp[offset] == 'O') result =  0;
+    if (result < 0) return result;
+    result += atof(&sptyp[offset+1]);
+    return result;
 }
 
 double alienorum::Star::get_mseqidx_from_mass(double m)
@@ -411,8 +465,61 @@ double alienorum::Star::get_mseqidx_from_BV(double BV)
     return mseqmax-1;
 }
 
+double alienorum::Star::interpolate_mseq_mass(double mseqidx)
+{
+    if (mseqidx < mseqmin) mseqidx = mseqmin;
+    if (mseqidx > mseqmax) mseqidx = mseqmax;
+    int i = floor(mseqidx);
+    if (i == mseqmax-1) return msq_mass[i];
+    double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
+    return coeff0 * msq_mass[i] + coeff1 * msq_mass[i+1];
+}
+
+double alienorum::Star::interpolate_mseq_rad(double mseqidx)
+{
+    if (mseqidx < mseqmin) mseqidx = mseqmin;
+    if (mseqidx > mseqmax) mseqidx = mseqmax;
+    int i = floor(mseqidx);
+    if (i == mseqmax-1) return msq_rad[i];
+    double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
+    return coeff0 * msq_rad[i] + coeff1 * msq_rad[i+1];
+}
+
+double alienorum::Star::interpolate_mseq_lum(double mseqidx)
+{
+    if (mseqidx < mseqmin) mseqidx = mseqmin;
+    if (mseqidx > mseqmax) mseqidx = mseqmax;
+    int i = floor(mseqidx);
+    if (i == mseqmax-1) return msq_lum[i];
+    double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
+    return coeff0 * msq_lum[i] + coeff1 * msq_lum[i+1];
+}
+
+double alienorum::Star::interpolate_mseq_temp(double mseqidx)
+{
+    if (mseqidx < mseqmin) mseqidx = mseqmin;
+    if (mseqidx > mseqmax) mseqidx = mseqmax;
+    int i = floor(mseqidx);
+    if (i == mseqmax-1) return msq_temp[i];
+    double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
+    return coeff0 * msq_temp[i] + coeff1 * msq_temp[i+1];
+}
+
+double alienorum::Star::interpolate_mseq_BV(double mseqidx)
+{
+    if (mseqidx < mseqmin) mseqidx = mseqmin;
+    if (mseqidx > mseqmax) mseqidx = mseqmax;
+    int i = floor(mseqidx);
+    if (i == mseqmax-1) return msq_BV[i];
+    double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
+    return coeff0 * msq_BV[i] + coeff1 * msq_BV[i+1];
+}
+
 double Star::estimate_radius()
 {
+    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi);
+
     if (!cels[0])
     {
         std::cerr << "Called Star::estimate_radius() before loading Sun." << std::endl;
@@ -587,6 +694,9 @@ void Star::make_companion_of(Star *A, char comp)
 
 double Star::estimate_mass()
 {
+    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    if (msqi >= mseqmin && msqi <= mseqmax) return mass = interpolate_mseq_mass(msqi);
+
     if (!cels[0])
     {
         std::cerr << "Called Star::estimate_mass() before loading Sun." << std::endl;
@@ -626,8 +736,8 @@ double Star::estimate_mass()
     // Convert log10(g) back to raw gravity value in cgs (cm/s^2)
     double gravity = std::pow(10.0, est_log_G);
 
-    // Calculate Mass via g = GM / R^2 
-    // Expressed cleanly using solar constants: 
+    // Calculate Mass via g = GM / R^2
+    // Expressed cleanly using solar constants:
     // (g / g_sun) * (R / R_sun)^2 = M / M_sun
     double solargravity = 27400.0; // Sun's surface gravity is ~27,400 cm/s^2
     mass = (gravity / solargravity) * std::pow(radius, 2.0) * Msun;
