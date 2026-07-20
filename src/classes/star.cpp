@@ -6,6 +6,7 @@
 
 using namespace alienorum;
 
+double msq_mass[70], msq_rad[70], msq_lum[70], msq_temp[70], msq_BV[70];
 Star **hdcache = nullptr, **hipcache = nullptr;
 
 char Star::get_component()
@@ -318,6 +319,96 @@ void Star::estimate_BV(double T)
 void Star::estimate_UB(double T)
 {
     UB_color = log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
+}
+
+double alienorum::Star::get_mseqidx_from_mass(double m)
+{
+    int i;
+    double delta, d, coeff;
+    for (i=mseqmin; i<mseqmax; i++)
+    {
+        if (msq_mass[i] <= m)
+        {
+            if (i == mseqmin) return i;
+            delta = msq_mass[i-1] - msq_mass[i];
+            d = m - msq_mass[i];
+            coeff = d/delta;
+            return (double)i - coeff;
+        }
+    }
+    return mseqmax-1;
+}
+
+double alienorum::Star::get_mseqidx_from_rad(double rad)
+{
+    int i;
+    double delta, d, coeff;
+    for (i=mseqmin; i<mseqmax; i++)
+    {
+        if (msq_rad[i] <= rad)
+        {
+            if (i == mseqmin) return i;
+            delta = msq_rad[i-1] - msq_rad[i];
+            d = rad - msq_rad[i];
+            coeff = d/delta;
+            return (double)i - coeff;
+        }
+    }
+    return mseqmax-1;
+}
+
+double alienorum::Star::get_mseqidx_from_lum(double lum)
+{
+    int i;
+    double delta, d, coeff;
+    for (i=mseqmin; i<mseqmax; i++)
+    {
+        if (msq_lum[i] <= lum)
+        {
+            if (i == mseqmin) return i;
+            delta = msq_lum[i-1] - msq_lum[i];
+            d = lum - msq_lum[i];
+            coeff = d/delta;
+            return (double)i - coeff;
+        }
+    }
+    return mseqmax-1;
+}
+
+double alienorum::Star::get_mseqidx_from_temp(double T)
+{
+    int i;
+    double delta, d, coeff;
+    for (i=mseqmin; i<mseqmax; i++)
+    {
+        if (msq_temp[i] <= T)
+        {
+            if (i == mseqmin) return i;
+            delta = msq_temp[i-1] - msq_temp[i];
+            d = T - msq_temp[i];
+            coeff = d/delta;
+            return (double)i - coeff;
+        }
+    }
+    return mseqmax-1;
+}
+
+double alienorum::Star::get_mseqidx_from_BV(double BV)
+{
+    int i;
+    double delta, d, coeff;
+    for (i=mseqmin; i<mseqmax; i++)
+    {
+        if (msq_BV[i] <= BV)
+        {
+            if (i == mseqmin) return i;
+            delta = msq_BV[i-1] - msq_BV[i];
+            d = BV - msq_BV[i];
+            coeff = d/delta;
+            return (double)i - coeff;
+        }
+    }
+    return mseqmax-1;
 }
 
 double Star::estimate_radius()

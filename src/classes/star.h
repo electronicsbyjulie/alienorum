@@ -74,6 +74,18 @@ namespace alienorum
         void estimate_BV(double tempK);             // Blackbody value from known temperature
         void estimate_UB(double tempK);             // Blackbody value from known temperature
 
+        double get_mseqidx_from_mass(double mass);
+        double get_mseqidx_from_rad(double rad);
+        double get_mseqidx_from_lum(double lum);
+        double get_mseqidx_from_temp(double tempK);
+        double get_mseqidx_from_BV(double BV);
+
+        double interpolate_mseq_mass(double mseqidx);
+        double interpolate_mseq_rad(double mseqidx);
+        double interpolate_mseq_lum(double mseqidx);
+        double interpolate_mseq_temp(double mseqidx);
+        double interpolate_mseq_BV(double mseqidx);
+
         double estimate_radius();
         void gotta_be_named_something();
         json to_json();
@@ -109,6 +121,9 @@ namespace alienorum
 void rename_all_from_Bayer_Flamsteed();
 void Gliese_doubles_fix();
 
+#define mseqmin  3
+#define mseqmax 70
+extern double msq_mass[mseqmax], msq_rad[mseqmax], msq_lum[mseqmax], msq_temp[mseqmax], msq_BV[mseqmax];
 extern alienorum::Star **hdcache, **hipcache;
 
 #endif
