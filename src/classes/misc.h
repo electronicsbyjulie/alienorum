@@ -52,9 +52,6 @@ using json = nlohmann::json;
 #define giant_mass_cutoff (127.0 * earth_mass)
 #define rocky_density_cutoff 3.0
 #define giant_density_cutoff 1.8
-
-// WAG
-#define neptune_mass_cutoff (10 * earth_mass)
 #define icy_T_cutoff 200
 #define lava_T_cutoff 1300
 

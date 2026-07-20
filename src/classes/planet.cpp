@@ -48,7 +48,7 @@ void Planet::classify()
 void Planet::classify(bool HZ, bool mnrk)
 {
     Star *s = nullptr;
-    double density = mnrk ? (mass / earth_mass / pow(volumetric_mean_radius/earth_radius, 2)) : 0;
+    double density = mnrk ? (mass / sphere_volume(volumetric_mean_radius) * 1e-6) : 0;
 
     if (orbit && orbit->center && orbit->center->typeclass() == class_star)
         s = (Star*) orbit->center;
@@ -62,7 +62,8 @@ void Planet::classify(bool HZ, bool mnrk)
         else if (T > lava_T_cutoff) type = lavaworld;
         else type = rocky;
     }
-    else if (mass < neptune_mass_cutoff)            // Mass cutoff between ice giants and gas giants
+    else if (mass < giant_mass_cutoff               // Mass cutoff between ice giants and gas giants
+        && (!mnrk || mnrk > giant_density_cutoff))
     {
         if (HZ)
         {

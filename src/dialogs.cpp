@@ -1721,6 +1721,8 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Refresh"))
             {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                cel->rnd_seed = std::rand();
                 if (cel->surf_map)
                 {
                     delete cel->surf_map;

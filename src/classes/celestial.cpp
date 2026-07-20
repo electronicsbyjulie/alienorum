@@ -571,15 +571,19 @@ void alienorum::CelestialObject::randomize()
         unsigned int seed;
     };
 
-    hash = 0xb0ad * log(mass) + 0x1cea * log(volumetric_mean_radius);
-    if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
-    /*std::cout << name
-        << " log mass=" << log(mass)
-        << " log radius=" << log(volumetric_mean_radius)
-        << " log sma=" << log(orbit->semimajor_axis)
-        << " omega=" << orbit->arg_periapsis
-        << " hash=" << std::hex << hash << " seed=" << seed << std::dec << std::endl;*/
-    std::srand(seed);
+    if (rnd_seed) seed = rnd_seed;
+    else
+    {
+        hash = 0xb0ad * log(mass) + 0x1cea * log(volumetric_mean_radius);
+        if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
+        /*std::cout << name
+            << " log mass=" << log(mass)
+            << " log radius=" << log(volumetric_mean_radius)
+            << " log sma=" << log(orbit->semimajor_axis)
+            << " omega=" << orbit->arg_periapsis
+            << " hash=" << std::hex << hash << " seed=" << seed << std::dec << std::endl;*/
+        std::srand(seed);
+    }
 }
 
 json CelestialObject::to_json()

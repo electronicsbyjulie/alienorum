@@ -181,6 +181,7 @@ namespace alienorum
         bool known_poles = false;
         bool estimated_poles = false;
         double lon_J2000_offset = 0;
+        int rnd_seed = 0;
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;
