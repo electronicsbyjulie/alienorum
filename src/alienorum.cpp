@@ -365,10 +365,11 @@ int main (int argc, char** argv)
     viewchanged = true;
     ImVec2 PrevDispSize;
     view_mode = vm_skyatlas;
+    bool is_mouse_down = false, was_mouse_down = false;
     while (!done)
     {
         auto frame_began = std::chrono::high_resolution_clock::now();
-        if (hide_mouse && !is_mouse_over_window && !splash)
+        if (hide_mouse && (!is_mouse_over_window || dragging) && !splash)
         {
             // SDL_ShowCursor(SDL_DISABLE);
             if (empty_cursor) SDL_SetCursor(empty_cursor);
@@ -480,7 +481,6 @@ int main (int argc, char** argv)
         }
         else
         {
-            // if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
             dispcx = (int)io.DisplaySize.x/2;
             dispcy = (int)io.DisplaySize.y / 2;
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
@@ -560,11 +560,12 @@ int main (int argc, char** argv)
             }
 
             // Clicking and dragging
-            bool is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
+            is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
             if (trackidx >= 0) dragging = false;
-            if (is_mouse_down && !is_mouse_over_window && dragging) pan_with_crosshairs(io);
-            if (is_mouse_down && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
-            else if (!is_mouse_down || is_mouse_over_window) dragging = false;
+            else if (is_mouse_down && !is_mouse_over_window && !was_mouse_down) dragging = true;
+            else if (!is_mouse_down) dragging = false;
+
+            if (dragging && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) pan_with_crosshairs(io);
 
             if (!dragging && scrollhold)
             {
@@ -679,6 +680,8 @@ int main (int argc, char** argv)
                 ImGuiFileDialog::Instance()->Close();
                 fdlg_shown = false;
             }
+
+            was_mouse_down = is_mouse_down;
         }
         if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
         {
@@ -716,7 +719,6 @@ int main (int argc, char** argv)
         // More code copied from the ImGui example:
         // Rendering
         ImGui::Render();
-        // if (hide_mouse && !is_mouse_over_window && !splash) SDL_ShowCursor(SDL_DISABLE);
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
