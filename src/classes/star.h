@@ -77,17 +77,17 @@ namespace alienorum
         static void load_main_seq_dat();
 
         static double get_mseqidx_from_sptyp(const char* sptyp);
-        double get_mseqidx_from_mass(double mass);
-        double get_mseqidx_from_rad(double rad);
-        double get_mseqidx_from_lum(double lum);
-        double get_mseqidx_from_temp(double tempK);
-        double get_mseqidx_from_BV(double BV);
+        static double get_mseqidx_from_mass(double mass);
+        static double get_mseqidx_from_rad(double rad);
+        static double get_mseqidx_from_lum(double lum);
+        static double get_mseqidx_from_temp(double tempK);
+        static double get_mseqidx_from_BV(double BV);
 
-        double interpolate_mseq_mass(double mseqidx);
-        double interpolate_mseq_rad(double mseqidx);
-        double interpolate_mseq_lum(double mseqidx);
-        double interpolate_mseq_temp(double mseqidx);
-        double interpolate_mseq_BV(double mseqidx);
+        static double interpolate_mseq_mass(double mseqidx);
+        static double interpolate_mseq_rad(double mseqidx);
+        static double interpolate_mseq_lum(double mseqidx);
+        static double interpolate_mseq_temp(double mseqidx);
+        static double interpolate_mseq_BV(double mseqidx);
 
         double estimate_radius();
         void gotta_be_named_something();

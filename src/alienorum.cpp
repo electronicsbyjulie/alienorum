@@ -537,7 +537,7 @@ int main (int argc, char** argv)
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
 
-            if (!is_mouse_over_window)
+            if (!is_mouse_over_window && !dragging)
             {
                 is_click = io.MouseReleased[0];
                 if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
@@ -562,10 +562,14 @@ int main (int argc, char** argv)
             // Clicking and dragging
             is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
             if (trackidx >= 0) dragging = false;
-            else if (is_mouse_down && !is_mouse_over_window && !was_mouse_down) dragging = true;
-            else if (!is_mouse_down) dragging = false;
+            else if (is_mouse_down && !is_mouse_over_window && !was_mouse_down) draggable = true;
+            else if (!is_mouse_down) dragging = draggable = false;
 
-            if (dragging && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) pan_with_crosshairs(io);
+            if (draggable && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3))
+            {
+                dragging = true;
+                pan_with_crosshairs(io);
+            }
 
             if (!dragging && scrollhold)
             {
