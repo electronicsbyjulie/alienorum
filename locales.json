@@ -792,6 +792,12 @@
             "timezone": "UTC-05:00D"
         },
         {
+            "name": "Bridgetown",
+            "latitude": 13.098,
+            "longitude": -59.618,
+            "timezone": "UTC-05:00D"
+        },
+        {
             "name": "Buffalo, NY",
             "latitude": 42.886,
             "longitude": -78.879,
@@ -2102,13 +2108,13 @@
         },
         {
             "name": "Durban",
-            "latitude": -29.883333,
-            "longitude": 31.05
+            "latitude": -29.883,
+            "longitude": 31.050
         },
         {
             "name": "Gqeberha",
-            "latitude": -33.958056,
-            "longitude": 25.6
+            "latitude": -33.958,
+            "longitude": 25.600
         },
         {
             "name": "Johannesburg",

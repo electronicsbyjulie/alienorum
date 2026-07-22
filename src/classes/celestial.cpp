@@ -1384,7 +1384,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     cel->randomize();
     double T_surf = p->estimate_surface_temperature();
-    const double Tboil = water_freezing + 100;
+    const double Tboil = water_freezing+100;
+    bool life_possible = false;
     if (p->is_in_con_HZ()
         && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
     {
@@ -1426,6 +1427,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
         double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
         double T_boil = 1.0 / inv_T2;
+        // std::cout << "At " << (p->surface_pressure / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
         if (randomize_txgen)
         {
@@ -1444,6 +1446,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // TODO: Overcast Venusian-style cloud map.
             }
         }
+
+        if (has_water >= 0.05
+            && p->surface_pressure >= 600
+            && T_surf > 0.9*water_freezing && T_surf < 320
+            && p->surface_pressure < oneatm*2000)
+            life_possible = true;
     }
 
     int octaves = 5 + (rand() % 4);
@@ -1536,7 +1544,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     ? (T_surf + halfswing - Tswing * cos(psi*0.5))
                     : (T_surf - halfswing + Tswing * sin(theta));
                 T_local = T_base - 62.5 * fmax(0, height_value - has_water);
-                if (T_local < water_freezing)
+                if (height_value < has_water && (T_local < water_freezing))
                 {
                     // Polar and elevation ice
                     red_data[idx] = 167 + 67 * r_weight;
@@ -1568,7 +1576,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     green_data[idx] = 200 * r_weight;
                     blue_data[idx] = 150 * r_weight;
                 }
-                else if (T_local >= veg_min_temp && (!tidal_locked_to_star || psi >= half_pi))          // vegetation only on the day side
+                else if (life_possible && T_local >= veg_min_temp
+                    && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
                 {   // Forests
                     red_data[idx] = vegetation_r * r_weight;
                     green_data[idx] = vegetation_g * r_weight;

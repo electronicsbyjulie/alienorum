@@ -653,6 +653,11 @@ void add_batch_satellites(std::vector<std::string> listlines)
 
 void load_stuff()
 {
+    mtx.lock();
+    loading_msg = "Reading spectral types...";
+    mtx.unlock();
+    Star::load_main_seq_dat();
+
     fstream fs("user.json", std::ios::in);
     if (fs)
     {
@@ -668,7 +673,7 @@ void load_stuff()
     }
     else
     {
-        viewer_lat = 32.5425   * fiftyseventh;              // Babylon
+        viewer_lat = 32.5425   * fiftyseventh;              // Babylon, site of some of the earliest attested astronomical knowledge.
         viewer_lon = 44.421111 * fiftyseventh;
     }
 
@@ -695,6 +700,11 @@ void load_stuff()
 
 void reload_stuff()
 {
+    mtx.lock();
+    loading_msg = "Refreshing spectral types...";
+    mtx.unlock();
+    Star::load_main_seq_dat();
+
     CatalogReader cr;
     consname.clear();
     consabbrev.clear();

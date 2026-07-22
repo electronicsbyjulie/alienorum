@@ -38,6 +38,10 @@ void draw_status_window(ImGuiIO& io)
         focus_findbox = false;
     }
     if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_CallbackEdit | ImGuiInputTextFlags_EnterReturnsTrue, lookfor_cb)) do_find();
+    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+    {
+        // TODO:
+    }
     if (styles_to_pop) ImGui::PopStyleColor(styles_to_pop);
     ImGui::SameLine();
     if (ImGui::Button("Find")) do_find();
@@ -289,7 +293,7 @@ void draw_status_window(ImGuiIO& io)
             sssg << "Est. gravity: " << (f >= 0.01 ? std::fixed : std::scientific) << std::setprecision(3) << f << " g";
             ImGui::Text("%s", sssg.str().c_str());
 
-            if (save_viewer_latlon)
+            if (1) // save_viewer_latlon)
             {
                 double vlat_edit = viewer_lat * fiftyseven;
                 ImGui::Text("%s", "Lat:");
