@@ -529,7 +529,7 @@ void process_keyboard_commands(ImGuiIO& io)
             double coslat = cos(viewer_lat);
             viewer_lat += walk_speed * inv_circ * cos(azimuth);
             if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
-            // save_viewer_latlon = false;
+            save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
@@ -555,7 +555,7 @@ void process_keyboard_commands(ImGuiIO& io)
             double coslat = cos(viewer_lat);
             viewer_lat -= walk_speed * inv_circ * cos(azimuth);
             if (coslat) viewer_lon -= walk_speed * inv_circ * sin(azimuth) / coslat;
-            // save_viewer_latlon = false;
+            save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {

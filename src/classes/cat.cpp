@@ -3077,60 +3077,67 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             }
         }
 
-        if (!s || s == A)
+        bool s_is_new = false;
+        int bs = trim(buffer).size();
+        if (bs >= 180)
         {
-            int bs = trim(buffer).size();
-            if (bs >= 180)
+            if (!s || s == A)
             {
                 s = new Star();
-                s->distance_known = true;
                 append_cel(s);
-                strcpy(s->name, bdyname.c_str());
-                s->has_custom_name = true;
-                read_field_onebased(buffer, 161, 175, field);
-                strcpy(s->spectral_type, trim(field).c_str());
-                read_field_onebased(buffer, 177, 191, field);
-                s->absolute_magnitude = atof(field);
-                double msun=0, rsun=0, lum=0, tempK=0;
-                if (bs > 193)
-                {
-                    read_field_onebased(buffer, 193, 203, field);
-                    msun = atof(field);
-                    s->mass = msun * solar_mass;
-                }
-                if (bs > 205)
-                {
-                    read_field_onebased(buffer, 205, 215, field);
-                    rsun = atof(field);
-                    s->volumetric_mean_radius = rsun * solar_radius;
-                    assert(!isinf(s->volumetric_mean_radius));
-                }
-                if (bs > 217)
-                {
-                    read_field_onebased(buffer, 217, 227, field);
-                    lum = atof(field);
-                    if (!s->absolute_magnitude)
-                    {
-                        if (lum)
-                        {
-                            double magshift = log(lum)/log(magnbase);
-                            s->absolute_magnitude = 4.85 - magshift;
-                        }
-                        s->absolute_magnitude = 11;
-                    }
-                }
-                if (bs > 229)
-                {
-                    read_field_onebased(buffer, 229, 238, field);
-                    tempK = atof(field);
-                    if (s->volumetric_mean_radius && tempK)
-                    {
-                        if (!lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
-                        s->estimate_BV(tempK);
-                        s->estimate_UB(tempK);
-                    }
-                }
+                s_is_new = true;
+            }
 
+            strcpy(s->name, bdyname.c_str());
+            s->has_custom_name = true;
+            s->distance_known = true;
+            read_field_onebased(buffer, 161, 175, field);
+            strcpy(s->spectral_type, trim(field).c_str());
+            read_field_onebased(buffer, 177, 191, field);
+            s->absolute_magnitude = atof(field);
+            double msun=0, rsun=0, lum=0, tempK=0;
+            if (bs > 193)
+            {
+                read_field_onebased(buffer, 193, 203, field);
+                msun = atof(field);
+                s->mass = msun * solar_mass;
+            }
+            if (bs > 205)
+            {
+                read_field_onebased(buffer, 205, 215, field);
+                rsun = atof(field);
+                s->volumetric_mean_radius = rsun * solar_radius;
+                assert(!isinf(s->volumetric_mean_radius));
+            }
+            if (bs > 217)
+            {
+                read_field_onebased(buffer, 217, 227, field);
+                lum = atof(field);
+                if (!s->absolute_magnitude)
+                {
+                    if (lum)
+                    {
+                        double magshift = log(lum)/log(magnbase);
+                        s->absolute_magnitude = 4.85 - magshift;
+                    }
+                    s->absolute_magnitude = 11;
+                }
+            }
+            if (bs > 229)
+            {
+                read_field_onebased(buffer, 229, 238, field);
+                tempK = atof(field);
+                // if (A->HD == 47152) std::cout << s->name << " tempK=" << tempK << std::endl;
+                if (tempK)
+                {
+                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
+                    s->estimate_BV(tempK);
+                    s->estimate_UB(tempK);
+                }
+            }
+
+            if (s_is_new)
+            {
                 double mseqi = 0;
                 int mseqn = 0;
 
@@ -3162,33 +3169,40 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                     // Filter out white dwarfs and brown dwarfs.
                     if (
                             (!msun  || fabs(mseqim - mseqi) < 7 )
-                         && (!rsun  || fabs(mseqir - mseqi) < 7 )
-                         && (!lum   || fabs(mseqil - mseqi) < 7 )
-                         && (!tempK || fabs(mseqit - mseqi) < 7 )
-                       )
+                            && (!rsun  || fabs(mseqir - mseqi) < 7 )
+                            && (!lum   || fabs(mseqil - mseqi) < 7 )
+                            && (!tempK || fabs(mseqit - mseqi) < 7 )
+                        )
                     {
                         if (!msun ) s->mass = Star::interpolate_mseq_mass(mseqi) * solar_mass;
                         if (!rsun ) s->volumetric_mean_radius = Star::interpolate_mseq_rad(mseqi) * solar_radius;
                         if (!lum  )
                         {
-                            lum = Star::interpolate_mseq_lum(mseqi);
-                            double magshift = log(lum)/log(magnbase);
+                            double llum = Star::interpolate_mseq_lum(mseqi);
+                            double magshift = log(llum)/log(magnbase);
                             s->absolute_magnitude = 4.85 - magshift;
                         }
                         if (!tempK)
                         {
-                            tempK = Star::interpolate_mseq_temp(mseqi);
-                            s->estimate_BV(tempK);
-                            s->estimate_UB(tempK);
+                            double ltempK = Star::interpolate_mseq_temp(mseqi);
+                            s->estimate_BV(ltempK);
+                            s->estimate_UB(ltempK);
                         }
                     }
                 }
+
+                #if 0
+                if (A->HD == 205877) std::cout << s->name << ": " << msun << " " << rsun << " " << lum << " " << tempK
+                    << " | " << mseqi
+                    << " | " << Star::interpolate_mseq_temp(mseqi)
+                    << std::endl;
+                #endif
             }
-            else
-            {
-                std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": member not found and insufficient data to construct new." << std::endl;
-                continue;
-            }
+        }
+        else if (!s || s == A)
+        {
+            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": member not found and insufficient data to construct new." << std::endl;
+            continue;
         }
 
         if (A->HD == 20766)

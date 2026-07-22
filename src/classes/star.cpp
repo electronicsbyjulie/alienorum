@@ -341,6 +341,7 @@ void alienorum::Star::load_main_seq_dat()
         int i = mseqmin;
         while (fgets(buffer, 1022, fp))
         {
+            if (strlen(buffer) < 41) continue;
             if (buffer[0] == '#') continue;
             //           1111111111222222222233333333334444444444
             // 01234567890123456789012345678901234567890123456789
