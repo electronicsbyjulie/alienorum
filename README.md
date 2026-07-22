@@ -271,6 +271,7 @@ Shift+L     Label stars with planets in habitable zone
 Shift+X     Label stars with known poles
 P           Label local system objects
 Shift+O     Show/hide orbits
+Shift+V     Show/hide local system objects
 J           Show/hide satellites
 !           Hide all annotations (realism mode)
 1           Bring back default image elements

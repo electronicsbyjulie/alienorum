@@ -809,6 +809,9 @@ int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
 double global_magshift;
 bool draw_one_object(int i)
 {
+    bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
+    if (!show_localsys && obj_is_localsys) return false;
+
     int j;
     cel_obj_class cls = cels[i]->typeclass();
     xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
@@ -953,7 +956,7 @@ bool draw_one_object(int i)
             || (cbolbls_selected_idx == lbltype_binary && (((Star*)cels[i])->multisys))
             || (cbolbls_selected_idx == lbltype_knpole && cels[i]->known_poles)
             ))
-        || ((cels[i]->cenobj == mycenobj) && lbl_localsys
+        || (obj_is_localsys && lbl_localsys
             && ((cels[i]->mass >= lmasslim)
                 || (vmag_cache[i] < (mag_limit_adjusted-4))
                 || (cels[i]->tmprel.magnitude() < AU)
