@@ -269,31 +269,7 @@ double Star::estimate_temperature()
     double msqi = get_mseqidx_from_sptyp(spectral_type);
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_temp(msqi);
 
-    /*double subtype = atof(&spectral_type[1]) / 10;
-
-    int offset = 0;
-    if (!strchr("OBAFGKMCTD", spectral_type[offset])) offset++;
-    if (!strchr("OBAFGKMCTD", spectral_type[offset])) offset++;
-
-    // https://en.wikipedia.org/wiki/Stellar_classification#Harvard_spectral_classification
-    // https://en.wikipedia.org/wiki/O-type_star
-    #define O_hitemp  52000.0
-    #define O_lowtemp 33000.0
-    #define B_lowtemp 10000.0
-    #define A_lowtemp  7300.0
-    #define F_lowtemp  6000.0
-    #define G_lowtemp  5300.0
-    #define K_lowtemp  3900.0
-    #define M_lowtemp  2300.0
-
-    if      (spectral_type[offset] == 'O') temperature = O_lowtemp + (1.0-subtype) * (O_hitemp -O_lowtemp);
-    else if (spectral_type[offset] == 'B') temperature = B_lowtemp + (1.0-subtype) * (O_lowtemp-B_lowtemp);
-    else if (spectral_type[offset] == 'A') temperature = A_lowtemp + (1.0-subtype) * (B_lowtemp-A_lowtemp);
-    else if (spectral_type[offset] == 'F') temperature = F_lowtemp + (1.0-subtype) * (A_lowtemp-F_lowtemp);
-    else if (spectral_type[offset] == 'G') temperature = G_lowtemp + (1.0-subtype) * (F_lowtemp-G_lowtemp);
-    else if (spectral_type[offset] == 'K') temperature = K_lowtemp + (1.0-subtype) * (G_lowtemp-K_lowtemp);
-    else if (spectral_type[offset] == 'M') temperature = M_lowtemp + (1.0-subtype) * (K_lowtemp-M_lowtemp);
-    else*/ temperature = 2000;
+    temperature = 2000;
     return temperature;
 }
 
