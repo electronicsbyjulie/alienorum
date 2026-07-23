@@ -53,7 +53,7 @@ bool neighborhood = false;
 bool locwnd = false;
 bool show_taucalc = false;
 bool hide_mouse = true;
-bool searched = false, focus_findbox = false;
+bool searched = false, focus_findbox = false, whtbkgd = false;
 double mag_limit_adjusted = normal_best_mag_limit;
 const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+N)", "Bayer (Sh+F)", "Flamsteed (F)", "Gould (Sh+G)",
     "Sunlike (Sh+C)", "Has Planets (Sh+P)", "Planet in HZ (Sh+L)", "Binary Orbit (2)", "Known Poles (Sh+X)" };
@@ -61,7 +61,7 @@ const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
     have_astorb = false, have_exo = false,
-    noexo = false, nosats = false;
+    noexo = false, nosats = false, keyprobe = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = -0.62;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;

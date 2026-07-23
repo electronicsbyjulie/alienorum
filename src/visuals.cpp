@@ -758,6 +758,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
 void draw_flare(double flare, Color col)
 {
+    if (whtbkgd) return;
     double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
     RGB3Byte rgb;
     rgb.r = (int)(col.red * divisor);
@@ -836,7 +837,9 @@ bool draw_one_object(int i)
             ? rgba_apply_redlight(global_style.selected_color)
             : ((line_of_sight < cels[i]->volumetric_mean_radius)
                 ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
-                : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
+                : (whtbkgd
+                    ? rgba_apply_redlight(IM_COL32(  0,   0,   0, 255))
+                    : rgba_apply_redlight(IM_COL32(255, 255, 255, 255))));
 
         if (show_labels || lbl_localsys || show_consln || show_grid)
         {
@@ -1583,6 +1586,7 @@ void draw_horizon()
 void draw_sky_gradient()
 {
     sky_grad.clear();
+    if (whtbkgd) return;
     if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
     {
         Planet *p = (Planet*)cels[whereami];

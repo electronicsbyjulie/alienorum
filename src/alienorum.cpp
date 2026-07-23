@@ -156,6 +156,10 @@ int main (int argc, char** argv)
         {
             nosats = true;
         }
+        else if (!strcmp(argv[l], "keyprobe"))
+        {
+            keyprobe = true;
+        }
         else if (!strcmp(argv[l], "magtest")) magnitude_test = true;
         else if (!strcmp(argv[l], "sizeof"))
         {
@@ -488,8 +492,9 @@ int main (int argc, char** argv)
 
             if (!cels[1]) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2((int)io.DisplaySize.x, (int)io.DisplaySize.y), IM_COL32(78, 137, 225, 255));
 
-            set_viewer_location_and_plane();
+            if (whtbkgd) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), rgba_apply_redlight(IM_COL32(255,255,255,255)));
 
+            set_viewer_location_and_plane();
             compute_object_draw_coordinates();
             if (view_mode == vm_horizon)
             {
@@ -565,11 +570,9 @@ int main (int argc, char** argv)
             else if (is_mouse_down && !is_mouse_over_window && !was_mouse_down) draggable = true;
             else if (!is_mouse_down) dragging = draggable = false;
 
-            if (draggable && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3))
-            {
-                dragging = true;
-                pan_with_crosshairs(io);
-            }
+            if (draggable && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
+            if (!draggable) dragging = false;
+            if (dragging) pan_with_crosshairs(io);
 
             if (!dragging && scrollhold)
             {

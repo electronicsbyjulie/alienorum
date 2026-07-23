@@ -83,14 +83,30 @@ ImU32 Color::black_to_transparent(ImU32 input)
 {
     int a = input >> 24;
     int r = input&0xff, g = (input&0xff00)>>8, b = (input&0xff0000)>>16;
-    double highest = fmax(fmax(r,g),b);
-    if (highest < 255)
+    if (whtbkgd)
     {
-        double normalize = 255.0 / highest;
-        a *= (highest/255);
-        r *= normalize;
-        g *= normalize;
-        b *= normalize;
+        double least = fmax(fmax(r,g),b);
+        if (least > 0)
+        {
+            double range = 255.0 - least;
+            double normalize = 255.0 / range;
+            a *= range/255;
+            r = fmax(0, 255 - (255-r) * normalize);
+            g = fmax(0, 255 - (255-g) * normalize);
+            b = fmax(0, 255 - (255-b) * normalize);
+        }
+    }
+    else
+    {
+        double highest = fmax(fmax(r,g),b);
+        if (highest < 255)
+        {
+            double normalize = 255.0 / highest;
+            a *= (highest/255);
+            r *= normalize;
+            g *= normalize;
+            b *= normalize;
+        }
     }
     return (a<<24) + (b<<16) + (g<<8) + r;
 }

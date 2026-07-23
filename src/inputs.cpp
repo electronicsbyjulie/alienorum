@@ -273,6 +273,7 @@ void process_key_cmd_char(char c)
 
         case 'r':
         velocity = center;
+        whtbkgd = false;
         zoom = 1;
         spin = 0;
         whereami = iamhome;
@@ -352,6 +353,8 @@ void process_key_cmd_char(char c)
         tookoff_countdown = 5;
         whereami = -1;
         break;
+
+        case 'W': whtbkgd = !whtbkgd; break;
 
         case 'x':
         velocity = center;
@@ -464,6 +467,7 @@ void process_keyboard_commands(ImGuiIO& io)
     {
         timeout_ms = 5;
         ImWchar c = io.InputQueueCharacters[i];
+        if (keyprobe) std::cout << "Key press: " << c << std::endl;         // Output the ASCII value.
         process_key_cmd_char(c);
     }
 
