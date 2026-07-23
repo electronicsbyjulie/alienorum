@@ -289,7 +289,7 @@ E           Show/hide system explorer
 ```
 
 
-### Motion and Location
+### Motion, Direction, and Location
 
 ```
 O           Go to object (selected or tracked)
@@ -301,6 +301,10 @@ X           Full stop
 {arrows}    Steering
 {Home}      Accelerate backward
 {End}       Accelerate forward
+4           Set azimuth to 270 degrees/right ascension to 90 degrees
+5           Set azimuth/right ascension to 0 degrees
+6           Set azimuth to 90 degrees/right ascension to 270 degrees
+8           Set azimuth/right ascension to 180 degrees
 ```
 
 

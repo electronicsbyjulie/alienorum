@@ -493,6 +493,15 @@ int main (int argc, char** argv)
             if (!cels[1]) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2((int)io.DisplaySize.x, (int)io.DisplaySize.y), IM_COL32(78, 137, 225, 255));
 
             if (whtbkgd) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), rgba_apply_redlight(IM_COL32(255,255,255,255)));
+            if (view_mode == vm_skymap && whereami >= 0)
+            {
+                std::string toplbl = std::string("Sky map for ") + std::string(cels[whereami]->name);
+                ImGui::GetBackgroundDrawList()->AddText(ImVec2(5,5),
+                        rgba_apply_redlight(whtbkgd
+                            ? IM_COL32(0,0,0,255)
+                            : IM_COL32(255,255,255,255)),
+                    toplbl.c_str());
+            }
 
             set_viewer_location_and_plane();
             compute_object_draw_coordinates();

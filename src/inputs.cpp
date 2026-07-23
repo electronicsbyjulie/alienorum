@@ -383,6 +383,11 @@ void process_key_cmd_char(char c)
         global_style.load(themes[themes_selected_idx]);
         break;
 
+        case '4': azimuth = -half_pi; viewchanged = true; break;            // look west
+        case '6': azimuth =  half_pi; viewchanged = true; break;            // look east
+        case '5': azimuth = 0; viewchanged = true; break;                   // look north, or toward equinox
+        case '8': azimuth = _pi; viewchanged = true; break;                // look south, or away from equinox
+
         case '+':
         vm = velocity.magnitude();
         vmfr = vm * target_frame_rate;
