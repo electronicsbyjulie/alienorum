@@ -90,7 +90,30 @@ void set_viewer_location_and_plane()
 
     if (view_mode == vm_skyatlas || view_mode == vm_skymap)
     {
+        // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
+        // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;
+
+        // Issue #98 quick fix
+        if (!cels[whereami]->location.orbital_plane.a && !cels[whereami]->location.orbital_plane.v.magnitude()
+            && cels[whereami]->orbit && cels[whereami]->orbit->center && !cels[whereami]->orbit->period)
+        {
+            cels[whereami]->location.equatorial_plane = cels[whereami]->location.orbital_plane = cels[whereami]->location.local_system_plane
+                = cels[whereami]->orbit->center->location.local_system_plane;
+            cels[whereami]->location.local_position = (Point)cels[whereami]->location - (Point)cels[whereami]->orbit->center->location;
+            cels[whereami]->location.system_center = cels[whereami]->orbit->center->location.system_center;
+        }
+
         here = cels[whereami]->location;
+
+        // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
+        #if 0
+        std::cout << "Viewer location: " << here.system_center << ":" << here.local_position
+            << "\n\tsystem plane=" << here.local_system_plane
+            << "\n\torbital plane=" << here.orbital_plane
+            << "\n\tequatorial plane=" << here.equatorial_plane
+            << std::endl << std::endl;
+        #endif
+
         azimuth_correction = 0;
         npaz = 0;
     }

@@ -541,6 +541,13 @@ std::ostream& operator<<(std::ostream& os, const Point& p)
     return os;
 }
 
+std::ostream &operator<<(std::ostream &os, const Rotation &r)
+{
+    os << r.v.printable();
+    os << "/" << (r.a * fiftyseven);
+    return os;
+}
+
 bool operator==(const Point &p, const Point &q)
 {
     return p.x == q.x && p.y == q.y && p.z == q.z;

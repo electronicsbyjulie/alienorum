@@ -132,6 +132,7 @@ Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation or
 void elements_in_new_reference_plane(Rotation original, Rotation reference, double& out_new_inclination, double& out_new_node);
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
+std::ostream& operator<<(std::ostream& os, const Rotation& r);
 bool operator==(const Point&, const Point&);
 
 void convert_to_J2000(const double RA_radians, const double Decl_radians, double input_year, double &RA_J2000, double &Decl_J2000, bool is_besselian);
