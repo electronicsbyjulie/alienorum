@@ -526,3 +526,28 @@ int sgn(double f)
     else if (f > 0) return 1;
     else return 0;
 }
+
+std::string Roman(int num)
+{
+    const std::vector<std::pair<int, std::string>> romanMapping =
+    {
+        {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+        {100, "C"},  {90, "XC"},  {50, "L"},  {40, "XL"},
+        {10, "X"},   {9, "IX"},   {5, "V"},   {4, "IV"},
+        {1, "I"}
+    };
+
+    std::string result = "";
+
+    // Loop through the map and reduce the number greedily
+    for (const auto& [value, symbol] : romanMapping)
+    {
+        while (num >= value)
+        {
+            result += symbol;
+            num -= value;
+        }
+    }
+
+    return result;
+}

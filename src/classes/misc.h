@@ -165,6 +165,7 @@ time_t from_iso_string(std::string iso_string, const char* format = nullptr);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
 double probability_density_function(double x, double mean, double stddev);
 int sgn(double f);
+std::string Roman(int num);
 
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);

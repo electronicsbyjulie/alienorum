@@ -1990,7 +1990,55 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::SameLine();
     if (ImGui::Button("Add New...##explored"))
     {
+        selected = celidx_sel_in_sysxplor;
         process_key_cmd_char('A');
+    }
+    if (celidx_sel_in_sysxplor > 0)
+    {
+        CelestialObject *cel = cels[celidx_sel_in_sysxplor];
+        if (cel->typeclass() == class_planet)
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Gen. Fic. Moons##explored"))
+            {
+                cel->randomize();
+                double A = sqrt(cel->orbit->period / oneday) / 4;
+                double B = sqrt(cel->mass / earth_mass);
+                double C = sqrt(A*B);
+                int n = round(frand(0.1, 1) * C);
+                for (i=0; i<n; i++)
+                {
+                    Moon *m = new Moon();
+                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
+                    strcpy(m->name, mname.c_str());
+                    m->mass = 0.1 * pow(frand(0, 1), 4) * cel->mass;
+                    m->volumetric_mean_radius = pow(m->mass / earth_mass, 0.333) * frand(0.1, 1.5) * earth_radius;
+                    m->albedo = frand(0.1, 0.6);
+                    m->BV_color = frand(0.8, 1.8);
+                    m->cenobj = cel->cenobj;
+                    m->epoch = J2000;
+                    m->equinox = frand(0, _pi*2);
+                    m->obliquity = pow(frand(0, 1), 10) * _pi;
+                    m->major_moon = true;
+                    m->orbit = new Orbit();
+                    m->orbit->center = cel;
+                    m->orbit->arg_periapsis = frand(0, _pi*2);
+                    m->orbit->ascending_node = frand(0, _pi*2);
+                    m->orbit->eccentricity = pow(frand(0, 0.99999), 10);
+                    m->orbit->epoch = J2000;
+                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi; if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
+                    m->orbit->mean_anomaly = frand(0, _pi*2);
+                    m->orbit->period = frand(0.5, 3) * frand(1, 10) * oneday;            // TODO: bound SMA by Roche limit and Hill sphere
+                    m->orbit->compute_semimajor_axis(m->mass);
+                    m->estimate_rotation();
+                    m->classify();
+                    double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
+                    m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
+
+                    append_cel(m);
+                }
+            }
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button("Add Satellite...##explored"))
