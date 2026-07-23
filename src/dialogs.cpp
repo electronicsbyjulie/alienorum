@@ -1334,6 +1334,13 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
+            ImGui::SameLine();
+            if (ImGui::Button("rnd##orbincl"))
+            {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                orb->inclination = pow(frand(0, half_pi), 3);
+                if (frand(0,1) < 0.03) orb->inclination = _pi - orb->inclination;
+            }
             ImGui::SameLine(col2);
             edit_node = cel->orbit->ascending_node * fiftyseven;
             cel->lock_equatorial_plane = false;
@@ -1365,13 +1372,19 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->eccentricity = edit_eccn;
+                cel->orbit->eccentricity = edit_eccn;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("rnd##ecce"))
+            {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                cel->orbit->eccentricity = pow(frand(0, 0.999), 10);
             }
             ImGui::SameLine(col2);
             edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
@@ -1380,7 +1393,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtargperi", &edit_argperi, 0, 0, "%.9f"))
             {
-                cels[editidx]->orbit->arg_periapsis = edit_argperi * fiftyseventh;
+                cel->orbit->arg_periapsis = edit_argperi * fiftyseventh;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
