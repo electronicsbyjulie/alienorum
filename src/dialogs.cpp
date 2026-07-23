@@ -2002,11 +2002,12 @@ void draw_system_explorer(ImGuiIO& io)
             if (ImGui::Button("Gen. Fic. Moons##explored"))
             {
                 cel->randomize();
-                double A = sqrt(cel->orbit->period / oneday) / 4;
+                /*double A = sqrt(cel->orbit->period / oneday) / 4;
                 double B = sqrt(cel->mass / earth_mass);
                 double C = sqrt(A*B);
-                int n = round(frand(0.1, 1) * C);
-                for (i=0; i<n; i++)
+                int n = round(frand(0.1, 1) * C);*/
+                double P = frand(0.5, 2) * oneday;                                      // TODO: figure this from Roche limit
+                for (i=0; i<20; i++)
                 {
                     Moon *m = new Moon();
                     std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
@@ -2028,14 +2029,22 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->epoch = J2000;
                     m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi; if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
                     m->orbit->mean_anomaly = frand(0, _pi*2);
-                    m->orbit->period = frand(0.5, 3) * frand(1, 10) * oneday;            // TODO: bound SMA by Roche limit and Hill sphere
+                    m->orbit->period = frand(1.8, 2.2) * P;
                     m->orbit->compute_semimajor_axis(m->mass);
+                    if (m->orbit->semimajor_axis > ((Planet*)cel)->hill_sphere_radius())
+                    {
+                        delete m->orbit;
+                        m->orbit = nullptr;
+                        delete m;
+                        break;
+                    }
                     m->estimate_rotation();
                     m->classify();
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
 
                     append_cel(m);
+                    P = m->orbit->period;
                 }
             }
         }
