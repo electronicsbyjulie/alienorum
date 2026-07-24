@@ -45,8 +45,6 @@ namespace alienorum
         json to_json();
         bool from_json(json j);
 
-        double hill_sphere_radius();
-
     protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;

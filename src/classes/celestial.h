@@ -235,6 +235,7 @@ namespace alienorum
         std::string scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat = false);
         void randomize();
         double density();
+        double Hill_sphere_radius();
         double Roche_limit(CelestialObject *orbiter = nullptr);
         json to_json();
         bool from_json(json j);

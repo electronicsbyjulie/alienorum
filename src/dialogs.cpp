@@ -2002,10 +2002,12 @@ void draw_system_explorer(ImGuiIO& io)
             if (ImGui::Button("Gen. Fic. Moons##explored"))
             {
                 cel->randomize();
-                /*double A = sqrt(cel->orbit->period / oneday) / 4;
+                double A = sqrt(cel->orbit->period / oneday) / 4;
                 double B = sqrt(cel->mass / earth_mass);
                 double C = sqrt(A*B);
-                int n = round(frand(0.1, 1) * C);*/
+                double Hill_over_Roche = cel->Hill_sphere_radius() / cel->Roche_limit();
+                double D = C * Hill_over_Roche / 500;
+                /*int n = round(frand(0.1, 1) * C);*/
 
                 double P = 0;
                 for (i=0; i<20; i++)
@@ -2026,7 +2028,7 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->center = cel;
                     m->orbit->arg_periapsis = frand(0, _pi*2);
                     m->orbit->ascending_node = frand(0, _pi*2);
-                    m->orbit->eccentricity = pow(frand(0, 0.99999), 10);
+                    m->orbit->eccentricity = pow(frand(0, 0.1), 10);
                     m->orbit->epoch = J2000;
                     m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi; if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
                     m->orbit->mean_anomaly = frand(0, _pi*2);
@@ -2041,7 +2043,17 @@ void draw_system_explorer(ImGuiIO& io)
                         m->orbit->period = frand(1.8, 2.2) * P;
                         m->orbit->compute_semimajor_axis(m->mass);
                     }
-                    if (m->orbit->semimajor_axis > ((Planet*)cel)->hill_sphere_radius())
+
+                    if (frand(0,1) > D)
+                    {
+                        P = m->orbit->period;
+                        delete m->orbit;
+                        m->orbit = nullptr;
+                        delete m;
+                        continue;
+                    }
+
+                    if (m->orbit->semimajor_axis > ((Planet*)cel)->Hill_sphere_radius())
                     {
                         delete m->orbit;
                         m->orbit = nullptr;

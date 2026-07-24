@@ -1826,6 +1826,14 @@ double alienorum::CelestialObject::density()
     return mass / sphere_volume(volumetric_mean_radius) * 1e-6;
 }
 
+double alienorum::CelestialObject::Hill_sphere_radius()
+{
+    if (!orbit || !orbit->center) return 0.0;
+    if (orbit->eccentricity < 0.0 || orbit->eccentricity >= 1.0) return 0.0;
+    return orbit->semimajor_axis * (1.0 - orbit->eccentricity) * std::cbrt(mass / (3.0 * orbit->center->mass));
+}
+
+
 double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
 {
     double primary_density = density(), orbiter_density = orbiter ? orbiter->density() : 3.35;          // Default = lunar density

@@ -338,10 +338,3 @@ bool Planet::from_json(json j)
     try { j.at("J2").get_to(J2); } catch (...) { ; }
     return true;
 }
-
-double Planet::hill_sphere_radius()
-{
-    if (!orbit || !orbit->center) return 0.0;
-    if (orbit->eccentricity < 0.0 || orbit->eccentricity >= 1.0) return 0.0;
-    return orbit->semimajor_axis * (1.0 - orbit->eccentricity) * std::cbrt(mass / (3.0 * orbit->center->mass));
-}
