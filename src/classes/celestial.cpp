@@ -1820,6 +1820,25 @@ void alienorum::Map::mark_for_map_regen(CelestialObject *cel)
     }
 }
 
+double alienorum::CelestialObject::density()
+{
+    if (!volumetric_mean_radius || !mass) return 0;
+    return mass / sphere_volume(volumetric_mean_radius) * 1e-6;
+}
+
+double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
+{
+    double primary_density = density(), orbiter_density = orbiter ? orbiter->density() : 3.35;          // Default = lunar density
+    if (primary_density <= 0.0 || orbiter_density <= 0.0) return 0.0;
+
+    // Multiplier constant changes based on rigidity
+    bool is_fluid = orbiter && (orbiter->type == waterworld
+        || orbiter->type == gas_giant || orbiter->type == ice_giant || orbiter->type == hot_jupiter || orbiter->type == star);
+    double constant = is_fluid ? 2.44 : std::cbrt(2.0);
+
+    return constant * volumetric_mean_radius * std::cbrt(primary_density / orbiter_density);
+}
+
 void append_cel(CelestialObject *cel)
 {
     if (ncelobjs >= MAX_CELOBJS-1) return;

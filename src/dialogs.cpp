@@ -790,7 +790,7 @@ void draw_objedit_window(ImGuiIO& io)
             }
 
             stringstream massss;
-            massss << "Density " << std::setprecision(3) << (cel->mass / sphere_volume(cel->volumetric_mean_radius) * 1e-6) << " g/cm^3";
+            massss << "Density " << std::setprecision(3) << cel->density() << " g/cm^3";
             std::string dens = massss.str();
             ImGui::Text("%s", dens.c_str());
             ImGui::SameLine(col2);
@@ -2006,7 +2006,8 @@ void draw_system_explorer(ImGuiIO& io)
                 double B = sqrt(cel->mass / earth_mass);
                 double C = sqrt(A*B);
                 int n = round(frand(0.1, 1) * C);*/
-                double P = frand(0.5, 2) * oneday;                                      // TODO: figure this from Roche limit
+
+                double P = 0;
                 for (i=0; i<20; i++)
                 {
                     Moon *m = new Moon();
@@ -2029,8 +2030,17 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->epoch = J2000;
                     m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi; if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
                     m->orbit->mean_anomaly = frand(0, _pi*2);
-                    m->orbit->period = frand(1.8, 2.2) * P;
-                    m->orbit->compute_semimajor_axis(m->mass);
+                    if (!P)
+                    {
+                        double A = cel->Roche_limit(m) * (1.1 + pow(frand(0,1), 4) * 20);
+                        m->orbit->semimajor_axis = A;
+                        m->orbit->compute_period(m->mass);
+                    }
+                    else
+                    {
+                        m->orbit->period = frand(1.8, 2.2) * P;
+                        m->orbit->compute_semimajor_axis(m->mass);
+                    }
                     if (m->orbit->semimajor_axis > ((Planet*)cel)->hill_sphere_radius())
                     {
                         delete m->orbit;
