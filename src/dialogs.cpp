@@ -2019,7 +2019,7 @@ void draw_system_explorer(ImGuiIO& io)
                     m->cenobj = cel->cenobj;
                     m->epoch = J2000;
                     m->equinox = frand(0, _pi*2);
-                    m->obliquity = pow(frand(0, 1), 10) * _pi;
+                    m->obliquity = pow(frand(0, 1), 10) * half_pi;
                     m->major_moon = true;
                     m->orbit = new Orbit();
                     m->orbit->center = cel;
