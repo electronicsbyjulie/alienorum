@@ -73,6 +73,7 @@ using json = nlohmann::json;
 #define sun_temp 5778
 #define Rsun 695700000
 #define Msun 1.988475e+33
+#define solar_lum_W 3.828e26
 #define U_band 3.6e-7
 #define B_band 4.4e-7
 #define V_band 5.5e-7

@@ -9,8 +9,7 @@
 #include <fstream>
 #include <algorithm>
 #include "celestial.h"
-#include "star.h"
-#include "planet.h"
+#include "shore.h"
 
 using namespace alienorum;
 
@@ -1389,11 +1388,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
     if (p->is_in_con_HZ()
         && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
     {
-        double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
+        // double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
+        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
+        double max_atm_pressure = pow(10, shoreline) * 503;
         if (randomize_txgen && !p->surface_pressure)
         {
-            // TODO: Cosmic Shoreline
-            p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
+            // p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
+            p->surface_pressure = frand(0, max_atm_pressure);
+
             double CO2_fraction = frand(0, frand(0.001, 0.99));
             p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
                 CO2_fraction,                           // CO2

@@ -225,16 +225,16 @@ double Planet::est_bolometric_flux(double t_eff)
     }
 
     // Calculate absolute bolometric magnitude.
-    double m_bol = s->absolute_magnitude + bc_v;
+    s->m_bol = s->absolute_magnitude + bc_v;
 
     // Convert to bolometric luminosity relative to the Sun's bolometric 4.74 magnitude.
-    double star_intrinsic = std::pow(magnbase, (4.74 - m_bol));
+    s->m_bol = std::pow(magnbase, (4.74 - s->m_bol));
 
     // Compute planetary illumination
     CelestialObject *myplanet = this;
     while (myplanet->orbit && myplanet->orbit->center != s) myplanet = myplanet->orbit->center;
     double sma_au = myplanet->orbit->semimajor_axis / AU;
-    return star_intrinsic / (sma_au * sma_au);            // inverse square of distance
+    return s->m_bol / (sma_au * sma_au);            // inverse square of distance
 }
 
 double Planet::estimate_surface_temperature()

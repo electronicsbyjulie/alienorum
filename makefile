@@ -33,7 +33,7 @@ IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgu
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp \
-			$(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp
+			$(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp
 
 BIN = bin
 OBJ = obj
@@ -152,6 +152,9 @@ $(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/misc
 
 $(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/satellite.cpp $(CPPFLAGS) -c -o $(OBJ)/satellite.o
+
+$(OBJ)/shore.o: $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/shore.h $(CLASSES_DIR)/planet.h makefile
+	$(CPP) $(CLASSES_DIR)/shore.cpp $(CPPFLAGS) -c -o $(OBJ)/shore.o
 
 $(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h makefile
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o
