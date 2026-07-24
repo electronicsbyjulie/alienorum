@@ -5,6 +5,7 @@
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include "../globals.h"
 #include "point.h"
 
 using namespace alienorum;
@@ -458,6 +459,26 @@ void elements_in_new_reference_plane(Rotation original, Rotation reference, doub
         out_new_node = 0.0;
     }
     #endif
+}
+
+void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness)
+{
+    if (zoom<2 && fabs(term1.x - term2.x) > zoom*dispcx)
+    {
+        ImVec2 term3=term2, term4=term1;
+
+        if (term3.x > dispcx) term3.x -= dispcx*2;
+        else term3.x += dispcx*2;
+        if (term4.x > dispcx) term4.x -= dispcx*2;
+        else term4.x += dispcx*2;
+
+        ImGui::GetBackgroundDrawList()->AddLine(term1, term3, rgba_apply_redlight(color), thickness);
+        ImGui::GetBackgroundDrawList()->AddLine(term2, term4, rgba_apply_redlight(color), thickness);
+    }
+    else
+    {
+        ImGui::GetBackgroundDrawList()->AddLine(term1, term2, rgba_apply_redlight(color), thickness);
+    }
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)

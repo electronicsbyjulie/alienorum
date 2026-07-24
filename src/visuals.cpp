@@ -1682,9 +1682,10 @@ void draw_cons_lines()
         }
 
         if (draw_actual_conslines || i >= nconsln)
-            ImGui::GetBackgroundDrawList()->AddLine(
+            wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), (i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128), 1);
+            /*ImGui::GetBackgroundDrawList()->AddLine(
                 ImVec2(dx1, dy1), ImVec2(dx2, dy2),
-                rgba_apply_redlight((i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128)), 1);
+                rgba_apply_redlight((i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128)), 1);*/
     }
 
     // Constellation labels
