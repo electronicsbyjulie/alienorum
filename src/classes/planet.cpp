@@ -115,11 +115,10 @@ void Planet::estimate_rotation()
     {
         sidereal_rotational_period = 1.5 * orbit->period;
     }
-    else if (type == rocky || type == icy
-        || type == lavaworld    ) sidereal_rotational_period = 2.38e+6 / log(mass);
     else if (type == waterworld ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
     else if (type == ice_giant  ) sidereal_rotational_period = 1.74e+6 / log(mass);
     else if (type == gas_giant  ) sidereal_rotational_period = 1.11e+6 / log(mass);
+    else sidereal_rotational_period = 2.38e+6 / log(mass);                              // rocky, icy, or lava world.
 }
 
 double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double phase, double sourcemagn, double sourcedist)

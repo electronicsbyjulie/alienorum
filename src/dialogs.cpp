@@ -292,6 +292,9 @@ void draw_status_window(ImGuiIO& io)
             double f = cels[whereami]->estimate_surface_gravity();
             sssg << "Est. gravity: " << (f >= 0.01 ? std::fixed : std::scientific) << std::setprecision(3) << f << " g";
             ImGui::Text("%s", sssg.str().c_str());
+            sssg.str("");
+            sssg << "Est. temp.:   " << std::fixed << std::setprecision(1) << ((Planet*)cels[whereami])->estimate_surface_temperature() << " K";
+            ImGui::Text("%s", sssg.str().c_str());
 
             if (1) // save_viewer_latlon)
             {
@@ -2099,6 +2102,7 @@ void draw_system_explorer(ImGuiIO& io)
                         break;
                     }
                     m->estimate_rotation();
+                    if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
                     m->classify();
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
