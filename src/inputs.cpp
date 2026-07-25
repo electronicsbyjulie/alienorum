@@ -582,6 +582,7 @@ void process_keyboard_commands(ImGuiIO& io)
     {
         focus_findbox = true;
         statuswnd = true;
+        lookfor[0] = 0;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F4))
     {

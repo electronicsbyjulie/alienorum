@@ -5,6 +5,7 @@
 #include "planet.h"
 #include "star.h"
 #include "point.h"
+#include "patch.h"
 
 using namespace alienorum;
 
@@ -236,10 +237,23 @@ double Planet::est_bolometric_flux(double t_eff)
     return s->m_bol / (sma_au * sma_au);            // inverse square of distance
 }
 
+double Planet::estimate_bond_albedo()
+{
+    #if 1
+    LocalPatchPredictor model;
+    model.load_data(dataset_bond_albedines);
+    return fmax(0, fmin(1, model.predict(BV_color, albedo)));
+    #else
+    if (albedo > 0.65) return 1.0 - (1.0 - albedo) * 0.77;              // Venus
+    return albedo / 1.46;                                               // typical value
+    #endif
+}
+
 double Planet::estimate_surface_temperature()
 {
     if (temperature) return temperature;
-    double absorbed_flux = (est_bolometric_flux() * (1.0 - albedo)) / 4.0;
+    double Bond = estimate_bond_albedo();
+    double absorbed_flux = (est_bolometric_flux() * (1.0 - Bond)) / 4.0;
     double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN_NORM, 0.25);
 
     // 4. Apply the Eddington Gray-Atmosphere Approximation
@@ -249,7 +263,7 @@ double Planet::estimate_surface_temperature()
     // 5. Calculate final surface temperature
     double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
 
-    return temperature = t_surface;
+    return t_surface;
 }
 
 bool Planet::is_in_con_HZ()

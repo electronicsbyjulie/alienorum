@@ -833,6 +833,7 @@ void draw_objedit_window(ImGuiIO& io)
                     double disc_area = pow(p->volumetric_mean_radius / earth_radius, 2);
                     double absmag = earth_absmag - log(disc_area * p->albedo / earth_albedo) / log(magnbase);
                     if (!isnan(absmag)) p->absolute_magnitude = absmag;
+                    if (cel->typeclass() == class_planet || cel->typeclass() == class_moon) ((Planet*)cel)->estimate_surface_temperature();
 
                     cel->user_edited = true;
                     viewchanged = true;
