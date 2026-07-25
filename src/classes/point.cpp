@@ -463,7 +463,13 @@ void elements_in_new_reference_plane(Rotation original, Rotation reference, doub
 
 void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness)
 {
-    if (zoom<2 && fabs(term1.x - term2.x) > zoom*dispcx)
+    if ((view_mode == vm_skymap || view_mode == vm_sunclock)
+        && fabs(term1.x - term2.x) > zoom*dispcx
+        && ((term1.x < dispcx && term2.x > dispcx)
+            ||
+            (term1.x > dispcx && term2.x < dispcx)
+           )
+        )
     {
         ImVec2 term3=term2, term4=term1;
 
@@ -566,6 +572,12 @@ std::ostream &operator<<(std::ostream &os, const Rotation &r)
 {
     os << r.v.printable();
     os << "/" << (r.a * fiftyseven);
+    return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const ImVec2 &v)
+{
+    os << v.x << "," << v.y;
     return os;
 }
 

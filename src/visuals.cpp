@@ -64,7 +64,7 @@ void draw_ra_dec_lines()
 
                 if (prev_valid)
                 {
-                    ImGui::GetBackgroundDrawList()->AddLine(destart, deend, gc, 1.1);
+                    wrapped_line(destart, deend, gc, 1.1);
                 }
             }
 
@@ -107,7 +107,7 @@ void draw_ra_dec_lines()
 
                 if (prev_valid)
                 {
-                    ImGui::GetBackgroundDrawList()->AddLine(rastart, raend, j ? gc : gcb, 1.1);
+                    wrapped_line(rastart, raend, j ? gc : gcb, 1.1);
                 }
             }
 
@@ -148,16 +148,8 @@ void draw_ra_dec_lines()
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                if (view_mode == vm_skymap)
-                {
-                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
-                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
-                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
-                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
-                }
-
                 if (prev_valid)
-                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1.1);
+                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1.1);
             }
 
             prev = zdes;
@@ -335,17 +327,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                     dx2 = dispcx + prev.x * dispcx,
                     dy2 = dispcy + prev.y * dispcx;
 
-                if (view_mode == vm_skymap)
-                {
-                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
-                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
-                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
-                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
-                }
-
                 if (prev_valid)
                 {
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
+                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
                     if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                 }
             }
@@ -467,7 +451,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     ImVec2 v = ImVec2(dx1, dy1);
                     if (prev_valid)
                     {
-                        if (wireframe) ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                        if (wireframe) wrapped_line(v, ImVec2(dx2, dy2), gc, 1);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1)
                         {
                             cel->onscreen = true;
@@ -690,7 +674,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     if (prev_valid && wireframe)
                     {
-                        ImGui::GetBackgroundDrawList()->AddLine(v, ImVec2(dx2, dy2), gc, 1);
+                        wrapped_line(v, ImVec2(dx2, dy2), gc, 1);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                     }
 
@@ -1069,16 +1053,8 @@ void draw_objects()
 
                 double dx1 = cart.x, dy1 = cart.y, dx2 = lastcart.x, dy2 = lastcart.y;
 
-                if (view_mode == vm_skymap)
-                {
-                    if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
-                    if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
-                    if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
-                    if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
-                }
-
                 if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol);
+                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol);
             }
             catch (...)
             {
@@ -1293,7 +1269,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         if (show_orbits && obj->orbit)
         {
             int dx1 = -1e9, dy1 = -1e9, dx2, dx2a, dy2;
-            double sincewhen, hasta_la_pasta = simnow + 0.5*obj->orbit->period, stepf = obj->orbit->period / 29;
+            double sincewhen, hasta_la_pasta = simnow + 0.5*obj->orbit->period, stepf = obj->orbit->period / 30;
             bool satsunlit;
 
             for (sincewhen = simnow - 0.5*obj->orbit->period; sincewhen <= hasta_la_pasta; sincewhen += stepf)
@@ -1320,7 +1296,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
                     if (dx2a < (dx1-dispcx)) dx2a += dispcx*2;
                     else if (dx2a > (dx1+dispcx)) dx2a -= dispcx*2;
 
-                    ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1,dy1), ImVec2(dx2a,dy2), satcol);
+                    wrapped_line(ImVec2(dx1,dy1), ImVec2(dx2,dy2), satcol);
                 }
 
                 dx1 = dx2;
@@ -1673,19 +1649,8 @@ void draw_cons_lines()
         if (dx2 < -1e3) continue;
         if (dy2 < -1e3) continue;
 
-        if (view_mode == vm_skymap)
-        {
-            if (dx1 > dx2 + 1.9 * dispcx) dx2 += dispcx*2;
-            if (dx2 > dx1 + 1.9 * dispcx) dx1 += dispcx*2;
-            if (dy1 > dy2 + 1.9 * dispcy) dy2 += dispcy*2;
-            if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
-        }
-
         if (draw_actual_conslines || i >= nconsln)
             wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), (i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128), 1);
-            /*ImGui::GetBackgroundDrawList()->AddLine(
-                ImVec2(dx1, dy1), ImVec2(dx2, dy2),
-                rgba_apply_redlight((i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128)), 1);*/
     }
 
     // Constellation labels

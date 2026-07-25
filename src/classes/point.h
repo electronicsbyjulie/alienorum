@@ -134,6 +134,7 @@ void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness = 1);
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
 std::ostream& operator<<(std::ostream& os, const Rotation& r);
+std::ostream& operator<<(std::ostream& os, const ImVec2& v);
 bool operator==(const Point&, const Point&);
 
 void convert_to_J2000(const double RA_radians, const double Decl_radians, double input_year, double &RA_J2000, double &Decl_J2000, bool is_besselian);
