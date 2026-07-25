@@ -2009,7 +2009,16 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     else p->BV_color = 0.71;                            // typical value for asteroids
 
     p->volumetric_mean_radius = r->diam * 500;
-    if (!p->volumetric_mean_radius && !strcmp(r->name.c_str(), "Pluto")) p->volumetric_mean_radius = 1188300;
+    if (!p->volumetric_mean_radius)
+    {
+        if (!strcmp(r->name.c_str(), "Pluto")) p->volumetric_mean_radius = 1188300;
+        else if (!strcmp(r->name.c_str(), "Eris")) p->volumetric_mean_radius = 1163000;
+        else if (!strcmp(r->name.c_str(), "Quaoar")) p->volumetric_mean_radius = 1097600 / 2;
+        else if (!strcmp(r->name.c_str(), "Sedna")) p->volumetric_mean_radius = 906000 / 2;
+        else if (!strcmp(r->name.c_str(), "Orcus")) p->volumetric_mean_radius = 913000 / 2;
+        else if (!strcmp(r->name.c_str(), "Haumea")) p->volumetric_mean_radius = 1544000 / 2;
+        else if (!strcmp(r->name.c_str(), "Makemake")) p->volumetric_mean_radius = 715000;
+    }
     assert(!isinf(p->volumetric_mean_radius));
     p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * _pi * 1853;  // Pluto density.
 

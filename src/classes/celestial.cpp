@@ -1412,6 +1412,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 0                                       // C2H5
                                                 );
         }
+        T_surf = p->estimate_surface_temperature();
         #ifdef DEBUG
             std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
@@ -1455,6 +1456,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             && p->surface_pressure < oneatm*2000)
             life_possible = true;
     }
+    T_surf = p->estimate_surface_temperature();
 
     int octaves = 5 + (rand() % 4);
     double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));

@@ -55,7 +55,7 @@ void Planet::classify(bool HZ, bool mnrk)
 
     double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff                    // Mass cutoff between rocky planets and ice giants
-        || (mnrk && density > rocky_density_cutoff)
+        || (mass < jupiter_mass && mnrk && density > rocky_density_cutoff)
         )
     {
         if (mnrk && T < water_freezing && density < rocky_density_cutoff) type = icy;
