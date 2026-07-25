@@ -1871,7 +1871,7 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::SameLine();
     ImGui::InputText("##xplorsearch", xplorfor, name_max_len, 0);
 
-    static bool list_planets = true, list_moons = true, list_asteroids = false, list_kbos = true;
+    static bool list_planets = true, list_moons = true, list_asteroids = false, list_kbos = true, list_sats = false;
     ImGui::Text("%s", "Include:");
     ImGui::SameLine();
     ImGui::Checkbox("Planets##xplorr", &list_planets);
@@ -1881,6 +1881,8 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::Checkbox("Asteroids##xplorr", &list_asteroids);
     ImGui::SameLine();
     ImGui::Checkbox("KBOs##xplorr", &list_kbos);
+    ImGui::SameLine();
+    ImGui::Checkbox("Sats##xplorr", &list_sats);
 
     int i, j, l, xplorlen = strlen(xplorfor);
     std::vector<int> list_item_celids;
@@ -1896,6 +1898,7 @@ void draw_system_explorer(ImGuiIO& io)
             bool is_selected = (item_selected_idx == j);
 
             cel_obj_class cls = cels[i]->typeclass();
+            if (cls == class_satellite && !list_sats) continue;
             if (cls == class_moon && !list_moons) continue;
             if (cls == class_planet)
             {

@@ -370,6 +370,8 @@ int main (int argc, char** argv)
     ImVec2 PrevDispSize;
     view_mode = vm_skyatlas;
     bool is_mouse_down = false, was_mouse_down = false;
+    double last_click = 0;
+    ImVec2 last_click_pos;
     while (!done)
     {
         auto frame_began = std::chrono::high_resolution_clock::now();
@@ -554,8 +556,22 @@ int main (int argc, char** argv)
             if (!is_mouse_over_window && !dragging)
             {
                 is_click = io.MouseReleased[0];
+                // if (is_click) std::cout << "CLICK! Last click = " << (simnow - last_click) << " seconds ago." << std::endl;
+                if (is_click && (simnow - last_click) < (frame_dur*2 + 0.2) && distance(last_click_pos, io.MousePos) < 3) is_dbl_click = true;
+                if (is_click)
+                {
+                    last_click = simnow;
+                    last_click_pos = io.MousePos;
+                }
                 if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
                 identify_object_under_cursor(io);
+            }
+
+            if (is_dbl_click && (view_mode == vm_sunclock))
+            {
+                viewer_lat = (double)(dispcy - io.MousePos.y) * sclk_scale + altitude;
+                viewer_lon = (double)(io.MousePos.x - dispcx) * sclk_scale + azimuth;
+                view_mode = vm_horizon;
             }
 
             // Positioning updates
@@ -772,6 +788,8 @@ int main (int argc, char** argv)
             auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
             frame_dur = frame_elapsed.count() * 1e-6;
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
+            io.DeltaTime = frame_dur;
+            is_click = is_dbl_click = false;
 
             vmfr = velocity.magnitude() * target_frame_rate;
             if (vmfr >= speed_of_light)

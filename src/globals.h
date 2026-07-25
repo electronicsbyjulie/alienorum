@@ -38,7 +38,7 @@ extern float dispcx, dispcy;
 extern int frames_without_mousemove, num_stars_in_box, editidx, addcenidx, themes_selected_idx;
 extern double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edit_epoch,
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
-extern bool is_click;
+extern bool is_click, is_dbl_click;
 extern double frame_dur, best_frame_dur, scrollhold;
 extern bool splash, magnitude_test, redo_proper_motions, fdlg_shown;
 extern CelestialObject npdummy;
