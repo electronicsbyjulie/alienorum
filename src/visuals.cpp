@@ -1003,7 +1003,7 @@ void draw_objects()
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
     // Orbits
-    if (show_orbits) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;

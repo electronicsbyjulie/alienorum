@@ -80,7 +80,7 @@ void draw_status_window(ImGuiIO& io)
     ImGui::Text("%s", flagstr.c_str());
 
     flagstr = (std::string)"Orbits (Sh+O): "
-        + std::string(show_orbits ? "ON" : "OFF");
+        + std::string(show_orbits ? (show_localsys ? "ON" : "(hidden)") : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
     if (nsatobjs)
