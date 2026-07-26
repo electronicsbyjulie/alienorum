@@ -2063,6 +2063,7 @@ void draw_system_explorer(ImGuiIO& io)
                     Moon *m = new Moon();
                     std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
                     strcpy(m->name, mname.c_str());
+                    m->user_added = true;
                     m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;
                     m->volumetric_mean_radius = pow(m->mass / earth_mass, 0.333) * frand(0.9, 1.5) * earth_radius;
                     m->albedo = frand(0.1, 0.6);

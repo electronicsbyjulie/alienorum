@@ -3561,8 +3561,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             }
 
             // Ensure baseline primary keys exist
-            if (!row.contains("pl_name") || row["pl_name"].is_null() ||
-                !row.contains("hostname") || row["hostname"].is_null())
+            if (!row.contains("pl_name") || row["pl_name"].is_null()
+                || !row.contains("hostname") || row["hostname"].is_null()
+                || !row.contains("pl_orbsmax") || row["pl_orbsmax"].is_null()
+                || !row.contains("pl_orbper") || row["pl_orbper"].is_null()
+               )
             {
                 continue;
             }
