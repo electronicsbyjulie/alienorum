@@ -1602,9 +1602,8 @@ void draw_sky_gradient()
                 r *= 0.999;
                 g *= 0.9995;
                 b *= 0.9999;
-                // a *= 0.99999;
 
-                sky_grad[y] = RGB3Byte(r255, g255, b255);
+                sky_grad[y] = RGB3Byte(r255*a, g255*a, b255*a);
             }
         }
     }
