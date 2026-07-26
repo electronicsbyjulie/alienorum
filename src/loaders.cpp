@@ -480,9 +480,9 @@ void read_cons_lines()
     FILE* fp = fopen("consline.dat", "rb");
     if (fp)
     {
-        char buffer[256];
+        char buffer[65536];
         l = -1;
-        while (fgets(buffer, 253, fp))
+        while (fgets(buffer, 65532, fp))
         {
             char* newline = strchr(buffer, '\n');
             if (newline) *newline = 0;
@@ -522,8 +522,9 @@ void read_cons_lines()
             }
             else if (l>=0)
             {
-                char* name2 = strchr(buffer, ',');
-                if (!name2) continue;
+                char *name1=buffer, *name2, *name3;
+                name2 = strchr(name1, ',');
+                if (!name2) goto _no_more_names;
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -531,15 +532,37 @@ void read_cons_lines()
                     *name2 = 0;
                     name2++;
                 }
-                if (strlen(name2))
+
+                do
                 {
-                    consline_a.push_back(buffer);
-                    consline_b.push_back(trim(name2));
-                    considx.push_back(l);
-                    lnpercons[l]++;
-                    nconsln++;
-                }
+                    name3 = nullptr;
+                    if (strlen(name2))
+                    {
+                        name3 = strchr(name2, ',');
+                        if (name3)
+                        {
+                            *name3 = 0;
+                            name3++;
+                            while (*name3 == ' ')
+                            {
+                                *name3 = 0;
+                                name3++;
+                            }
+                        }
+                        consline_a.push_back(name1);
+                        consline_b.push_back(trim(name2));
+                        considx.push_back(l);
+                        lnpercons[l]++;
+                        nconsln++;
+                    }
+
+                    name1 = name2;
+                    name2 = name3;
+                } while (name3);
             }
+
+            _no_more_names:
+            ;
         }
         fclose(fp);
     }

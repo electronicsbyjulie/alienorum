@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <regex>
 #include "serial.h"
 
 using namespace alienorum;
@@ -99,10 +100,15 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         return result;
     }
 
+    std::string str_search = search_term;
+    std::regex Gould_regex(R"([0-9]+\s*G[.]?\s*[A-Za-z]{3})");
+    std::smatch Gould_match;
+    bool is_Gould = std::regex_search(str_search, Gould_match, Gould_regex);
+
     if (match_cons && termi)
     {
         // TODO: put Bayer search in here too.
-        if (result < 0) for (i=0; cels[i]; i++)
+        if (result < 0 && !is_Gould) for (i=0; cels[i]; i++)
         {
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
             if (!s) continue;
