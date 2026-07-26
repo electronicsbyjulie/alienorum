@@ -65,7 +65,7 @@ bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, h
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = -0.62;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
-bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false;
+bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
 float has_water, veg_min_temp = 278, veg_max_temp = 310;
 int vegetation_r, vegetation_g, vegetation_b;

@@ -493,7 +493,7 @@ int main (int argc, char** argv)
         {
             mouse_over_menu = menu && (io.MousePos.y < menu_ht);
             if (menu) show_menu();
-            if (splash) goto _dammit_imgui_i_am_sick_of_you_crashing_my_app;                       // Prevent crash if user clicks reload constellations.
+            if (menu_clicked || splash) goto _render;                       // Prevent click-selecting object behind menu and prevent crash if user reloads constellations.
 
             dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
@@ -757,7 +757,7 @@ int main (int argc, char** argv)
 
         // More code copied from the ImGui example:
         // Rendering
-        _dammit_imgui_i_am_sick_of_you_crashing_my_app:
+        _render:
         ImGui::Render();
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
