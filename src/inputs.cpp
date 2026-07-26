@@ -195,6 +195,7 @@ void show_menu()
     {
         if (ImGui::BeginMenu("Object"))
         {
+            mouse_over_menu = true;
             if (ImGui::MenuItem("Track Selected", "T")) { process_key_cmd_char('t'); }
             if (ImGui::MenuItem("Clear Selection", "Shift+S")) { process_key_cmd_char('S'); }
             if (ImGui::MenuItem("Clear Tracking", "Shift+T")) { process_key_cmd_char('T'); }
@@ -213,6 +214,7 @@ void show_menu()
         }
         if (ImGui::BeginMenu("Spacetime"))
         {
+            mouse_over_menu = true;
             if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); }
             if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); }
             ImGui::Separator();
@@ -244,6 +246,7 @@ void show_menu()
         }
         if (ImGui::BeginMenu("View"))
         {
+            mouse_over_menu = true;
             if (ImGui::MenuItem("Increase Brightness", "B")) { process_key_cmd_char('b'); }
             if (ImGui::MenuItem("Decrease Brightness", "Shift+B")) { process_key_cmd_char('B'); }
             if (ImGui::MenuItem("Increase Gamma", "`")) { process_key_cmd_char('`'); }
@@ -274,6 +277,7 @@ void show_menu()
         }
         if (ImGui::BeginMenu("Show"))
         {
+            mouse_over_menu = true;
             if (ImGui::MenuItem("Info Panel", "N")) { process_key_cmd_char('n'); }
             if (ImGui::MenuItem("Status Panel", "S")) { process_key_cmd_char('s'); }
             if (ImGui::MenuItem("System Explorer", "E")) { process_key_cmd_char('e'); }
@@ -282,18 +286,22 @@ void show_menu()
             if (ImGui::MenuItem("Constellations", "C")) { process_key_cmd_char('c'); }
             if (ImGui::MenuItem("RA/Dec Grid", "G")) { process_key_cmd_char('g'); }
             if (ImGui::MenuItem("Star Labels", "L")) { process_key_cmd_char('l'); }
+            if (ImGui::BeginMenu("Label Stars By"))
+            {
+                mouse_over_menu = true;
+                if (ImGui::MenuItem("Bayer Designations", "Shift+F")) { process_key_cmd_char('F'); }
+                if (ImGui::MenuItem("Flamsteed Numbers", "F")) { process_key_cmd_char('f'); }
+                if (ImGui::MenuItem("Gould Uranometria Numbers", "Shift+G")) { process_key_cmd_char('G'); }
+                if (ImGui::MenuItem("Sunlike Stars", "Shift+C")) { process_key_cmd_char('C'); }
+                if (ImGui::MenuItem("Stars with Planets", "Shift+P")) { process_key_cmd_char('P'); }
+                if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L")) { process_key_cmd_char('L'); }
+                if (ImGui::MenuItem("Stars with Known Poles", "Shift+X")) { process_key_cmd_char('X'); }
+                ImGui::EndMenu();
+            }
             if (ImGui::MenuItem("Satellites", "J")) { process_key_cmd_char('j'); }
             if (ImGui::MenuItem("Local System Objects", "Shift+V")) { process_key_cmd_char('V'); }
             if (ImGui::MenuItem("Local System Labels", "P")) { process_key_cmd_char('p'); }
             if (ImGui::MenuItem("Orbits", "Shift+O")) { process_key_cmd_char('o'); }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Bayer Designations", "Shift+F")) { process_key_cmd_char('F'); }
-            if (ImGui::MenuItem("Flamsteed Numbers", "F")) { process_key_cmd_char('f'); }
-            if (ImGui::MenuItem("Gould Uranometria Numbers", "Shift+G")) { process_key_cmd_char('G'); }
-            if (ImGui::MenuItem("Sunlike Stars", "Shift+C")) { process_key_cmd_char('C'); }
-            if (ImGui::MenuItem("Stars with Planets", "Shift+P")) { process_key_cmd_char('P'); }
-            if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L")) { process_key_cmd_char('L'); }
-            if (ImGui::MenuItem("Stars with Known Poles", "Shift+X")) { process_key_cmd_char('X'); }
             ImGui::Separator();
             if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); }
             if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); }
@@ -301,6 +309,7 @@ void show_menu()
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
+        if (ImGui::IsItemHovered()) mouse_over_menu = true;                 // Yet another ImgUI feature that doesn't work.
     }
 }
 

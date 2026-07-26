@@ -491,6 +491,7 @@ int main (int argc, char** argv)
         }
         else
         {
+            mouse_over_menu = menu && (io.MousePos.y < menu_ht);
             if (menu) show_menu();
             if (splash) goto _dammit_imgui_i_am_sick_of_you_crashing_my_app;                       // Prevent crash if user clicks reload constellations.
 
@@ -783,7 +784,10 @@ int main (int argc, char** argv)
 
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
 
-            hide_mouse = !splash && !fdlg_shown && (frame_dur < 0.2 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4) && cels[1];
+            hide_mouse = !splash && !fdlg_shown
+                && !mouse_over_menu
+                && (frame_dur < 0.2 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4)
+                && cels[1];
 
             lmx = io.MousePos.x;
             lmy = io.MousePos.y;

@@ -21,7 +21,7 @@ using namespace alienorum;
 void draw_status_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
-    int stattop = menu ? 21 : 0, statleft = 0;
+    int stattop = menu ? menu_ht : 0, statleft = 0;
     ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     /////////////////////////////////////////////////////
@@ -543,7 +543,7 @@ void draw_objinf_window(ImGuiIO& io)
 
     ImGui::SetWindowSize(ImVec2(0, 0));
     ImVec2 siz = ImGui::GetWindowSize();
-    int objinfwidth = siz.x, objinfheight = siz.y, objinftop = menu ? 21 : 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
+    int objinfwidth = siz.x, objinfheight = siz.y, objinftop = menu ? menu_ht : 0, objinfleft = (int)io.DisplaySize.x - objinfwidth;
     ImGui::SetWindowPos(ImVec2(objinfleft, objinftop));
     ImGui::End();
 

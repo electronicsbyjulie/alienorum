@@ -1717,7 +1717,7 @@ void draw_cons_lines()
 
 void draw_mouse_cursor(ImGuiIO& io)
 {
-    if ((frames_without_mousemove > 203) || !cels[1]) return;
+    if (!hide_mouse || (frames_without_mousemove > 203) || !cels[1]) return;
 
     cursor_size = (int)io.DisplaySize.x/99;
     circle_size = cursor_size / 2.5;
