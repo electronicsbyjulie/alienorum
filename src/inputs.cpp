@@ -252,12 +252,12 @@ void show_menu()
             if (ImGui::MenuItem("Zoom Out", "/")) { process_key_cmd_char('/'); }
             if (ImGui::MenuItem("Reset Brightness and Zoom", "%")) { process_key_cmd_char('%'); }
             if (ImGui::MenuItem("Increase Texture Quality", "Q")) { process_key_cmd_char('q'); }
-            if (ImGui::MenuItem("Decrease Texture Quality", "Shift+Q")) { process_key_cmd_char('Q'); }
+            if (ImGui::MenuItem("Increase Texture Speed", "Shift+Q")) { process_key_cmd_char('Q'); }
             ImGui::Separator();
-            if (ImGui::MenuItem("Azimuth zero", "5")) { process_key_cmd_char('5'); }
-            if (ImGui::MenuItem("Azimuth 90deg", "6")) { process_key_cmd_char('6'); }
-            if (ImGui::MenuItem("Azimuth 180deg", "8")) { process_key_cmd_char('8'); }
-            if (ImGui::MenuItem("Azimuth 270deg", "4")) { process_key_cmd_char('4'); }
+            if (ImGui::MenuItem("Azimuth zero", "5", nullptr, (trackidx < 0))) { process_key_cmd_char('5'); }
+            if (ImGui::MenuItem("Azimuth 90deg", "6", nullptr, (trackidx < 0))) { process_key_cmd_char('6'); }
+            if (ImGui::MenuItem("Azimuth 180deg", "8", nullptr, (trackidx < 0))) { process_key_cmd_char('8'); }
+            if (ImGui::MenuItem("Azimuth 270deg", "4", nullptr, (trackidx < 0))) { process_key_cmd_char('4'); }
             ImGui::Separator();
             if (ImGui::MenuItem("Red Light Mode", "Shift+R")) { process_key_cmd_char('R'); }
             if (ImGui::MenuItem("White Background Mode", "Shift+W")) { process_key_cmd_char('W'); }
