@@ -491,6 +491,9 @@ int main (int argc, char** argv)
         }
         else
         {
+            if (menu) show_menu();
+            if (splash) goto _dammit_imgui_i_am_sick_of_you_crashing_my_app;                       // Prevent crash if user clicks reload constellations.
+
             dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
@@ -721,8 +724,7 @@ int main (int argc, char** argv)
         }
         if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
         {
-            SDL_SetWindowFullscreen(window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
-            fullscreen = !fullscreen;
+            process_key_F11();
             argsfs = false;
         }
 
@@ -754,6 +756,7 @@ int main (int argc, char** argv)
 
         // More code copied from the ImGui example:
         // Rendering
+        _dammit_imgui_i_am_sick_of_you_crashing_my_app:
         ImGui::Render();
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);

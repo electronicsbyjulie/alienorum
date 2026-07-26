@@ -18,7 +18,7 @@ double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argperi, edi
     edit_node, edit_manom, edit_period, edit_eqincl, edit_equinox, edit_precnode, edit_procargperi;
 bool is_click = false, is_dbl_click = false;
 double frame_dur = 0, best_frame_dur = 1e9, scrollhold = 0;
-bool splash = true, magnitude_test = false, redo_proper_motions = true, fdlg_shown = false;
+bool splash = true, menu = false, magnitude_test = false, redo_proper_motions = true, fdlg_shown = false;
 CelestialObject npdummy;
 char xplorfor[name_max_len];
 CelestialObject *last_xplored_cen = nullptr, *last_neighb_cen = nullptr;

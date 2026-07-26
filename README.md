@@ -240,7 +240,7 @@ $           Sun clock mode
 \           Sky map mode
 Shift+J     Toggle upside-down mode when viewing from satellites
 3           Cycle forward through themes
-Shift+#     Cycle backward through themes
+#           Cycle backward through themes
 ```
 
 
