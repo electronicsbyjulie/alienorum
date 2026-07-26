@@ -1323,6 +1323,12 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::Text("%.5f AU", ra / AU);
             }
 
+            if (cel->orbit && cel->orbit->center)
+            {
+                double Roche = cel->orbit->center->Roche_limit(cel);
+                if (rp < Roche) ImGui::TextColored(ImVec4(1,0,0,1), "DANGER: OBJECT IS INSIDE ROCHE LIMIT.");
+            }
+
             edit_incl = cel->orbit->inclination * fiftyseven;
             ImGui::Text("%s", "Inclination");
             ImGui::SameLine(col1);

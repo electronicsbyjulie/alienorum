@@ -12,6 +12,7 @@ const char *Greek_symbol_mapping = "abgdezhuiklmnqoprstyfxjv";
 
 void draw_ra_dec_lines()
 {
+    ImGuiIO& io = ImGui::GetIO();
     if (!cels[1]) return;
     int i, j;
     Cartesian2D prev, zdes;
@@ -64,7 +65,7 @@ void draw_ra_dec_lines()
 
                 if (prev_valid)
                 {
-                    wrapped_line(destart, deend, gc, 1.1);
+                    wrapped_line(destart, deend, gc, 1.1, io);
                 }
             }
 
@@ -107,7 +108,7 @@ void draw_ra_dec_lines()
 
                 if (prev_valid)
                 {
-                    wrapped_line(rastart, raend, j ? gc : gcb, 1.1);
+                    wrapped_line(rastart, raend, j ? gc : gcb, 1.1, io);
                 }
             }
 
@@ -149,7 +150,7 @@ void draw_ra_dec_lines()
                     dy2 = dispcy + prev.y * dispcx;
 
                 if (prev_valid)
-                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1.1);
+                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), ec, 1.1, io);
             }
 
             prev = zdes;
@@ -174,6 +175,8 @@ int draw_sphere(CelestialObject* cel, double arad)
         bs = (((Planet*)cel)->surf_map && ((Planet*)cel)->surf_map->has_bump_data())
             ? ((Planet*)cel)->estimate_bump_scale() : 0;
     }
+
+    ImGuiIO& io = ImGui::GetIO();
 
     if ((d < cel->volumetric_mean_radius || (cls == class_satellite && d < 100)))
     {
@@ -329,7 +332,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
                 if (prev_valid)
                 {
-                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1);
+                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1, io);
                     if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                 }
             }
@@ -451,7 +454,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     ImVec2 v = ImVec2(dx1, dy1);
                     if (prev_valid)
                     {
-                        if (wireframe) wrapped_line(v, ImVec2(dx2, dy2), gc, 1);
+                        if (wireframe) wrapped_line(v, ImVec2(dx2, dy2), gc, 1, io);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1)
                         {
                             cel->onscreen = true;
@@ -674,7 +677,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 {
                     if (prev_valid && wireframe)
                     {
-                        wrapped_line(v, ImVec2(dx2, dy2), gc, 1);
+                        wrapped_line(v, ImVec2(dx2, dy2), gc, 1, io);
                         if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
                     }
 
@@ -1002,6 +1005,8 @@ void draw_objects()
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
+    ImGuiIO& io = ImGui::GetIO();
+
     // Orbits
     if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
@@ -1054,7 +1059,7 @@ void draw_objects()
                 double dx1 = cart.x, dy1 = cart.y, dx2 = lastcart.x, dy2 = lastcart.y;
 
                 if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
-                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol);
+                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol, io);
             }
             catch (...)
             {
@@ -1173,6 +1178,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
 {
     ImVec2 objdxy = sc_drawcoords(obj, cel);
     cel_obj_class cls = obj->typeclass();
+    ImGuiIO& io = ImGui::GetIO();
 
     int dx, dy;
     if (cls == class_star)
@@ -1296,7 +1302,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
                     if (dx2a < (dx1-dispcx)) dx2a += dispcx*2;
                     else if (dx2a > (dx1+dispcx)) dx2a -= dispcx*2;
 
-                    wrapped_line(ImVec2(dx1,dy1), ImVec2(dx2,dy2), satcol);
+                    wrapped_line(ImVec2(dx1,dy1), ImVec2(dx2,dy2), satcol, io);
                 }
 
                 dx1 = dx2;
@@ -1610,6 +1616,7 @@ void draw_cons_lines()
     int i, l, n;
     double dispw = dispcx*2, disph = dispcy*2;
     bool initcons = false;
+    ImGuiIO& io = ImGui::GetIO();
 
     // Hide lines if more than 10 l.y. from Sun.
     draw_actual_conslines = here.distance_to(cels[0]->location) < light_year*10;
@@ -1650,7 +1657,7 @@ void draw_cons_lines()
         if (dy2 < -1e3) continue;
 
         if (draw_actual_conslines || i >= nconsln)
-            wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), (i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128), 1);
+            wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), (i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128), 1, io);
     }
 
     // Constellation labels

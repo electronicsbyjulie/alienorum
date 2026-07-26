@@ -131,9 +131,13 @@ int main (int argc, char** argv)
         {
             argsfs = true;
         }
-        else if (!strcmp(argv[l], "jd"))
+        else if (!strcmp(argv[l], "jd") || !strcmp(argv[l], "JD"))
         {
             setjd = argv[++l];
+        }
+        else if (argv[l][0] == 'J' && argv[l][1] == 'D' && argv[l][2] >= '0' && argv[l][2] <= '9')
+        {
+            setjd = &argv[l][2];
         }
         else if (!strcmp(argv[l], "hz") || !strcmp(argv[l], "horizon"))
         {
@@ -487,7 +491,7 @@ int main (int argc, char** argv)
         }
         else
         {
-            dispcx = (int)io.DisplaySize.x/2;
+            dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
             drawblxscaley = drawn_cache_split / io.DisplaySize.y;

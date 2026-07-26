@@ -8,9 +8,16 @@ Mu  And, Phi And
 Mu  And, Kap And
 Kap And, Omi And
 ~Ant, Antlia, Antliae
-Iot Ant, Alp Ant
-Alp Ant, The Ant
-The Ant, Eta Ant
+Eta Ant, HD90132
+HD90132, HD91793
+HD91793, Iot Ant
+Iot Ant, HD96146
+HD96146, Alp Ant
+Alp Ant, Eta Ant
+Alp Ant, Del Ant
+Del Ant, HD89353
+HD89353, Eps Ant
+Eps Ant, The Ant
 ~Aps, Apus, Apodis
 Alp Aps, Del1Aps
 Del1Aps, Gam Aps

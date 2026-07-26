@@ -57,10 +57,12 @@ add_library(CLASSES STATIC
 	src/classes/misc.cpp
 	src/classes/moon.cpp
 	src/classes/noise.cpp
+	src/classes/patch.cpp
 	src/classes/planet.cpp
 	src/classes/point.cpp
 	src/classes/satellite.cpp
 	src/classes/serial.cpp
+	src/classes/shore.cpp
 	src/classes/star.cpp
 )
 

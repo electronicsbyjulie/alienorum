@@ -5,8 +5,8 @@
 #include <iostream>
 #include <algorithm>
 #include <sstream>
-#include "../globals.h"
 #include "point.h"
+#include "color.h"
 
 using namespace alienorum;
 
@@ -461,22 +461,28 @@ void elements_in_new_reference_plane(Rotation original, Rotation reference, doub
     #endif
 }
 
-void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness)
+void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, ImGuiIO& io)
 {
+    wrapped_line(term1, term2, color, 1, io);
+}
+
+void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness, ImGuiIO& io)
+{
+    int dcx = (int)io.DisplaySize.x / 2;
     if ((view_mode == vm_skymap || view_mode == vm_sunclock)
-        && fabs(term1.x - term2.x) > zoom*dispcx
-        && ((term1.x < dispcx && term2.x > dispcx)
+        && fabs(term1.x - term2.x) > zoom*dcx
+        && ((term1.x < dcx && term2.x > dcx)
             ||
-            (term1.x > dispcx && term2.x < dispcx)
+            (term1.x > dcx && term2.x < dcx)
            )
         )
     {
         ImVec2 term3=term2, term4=term1;
 
-        if (term3.x > dispcx) term3.x -= dispcx*2;
-        else term3.x += dispcx*2;
-        if (term4.x > dispcx) term4.x -= dispcx*2;
-        else term4.x += dispcx*2;
+        if (term3.x > dcx) term3.x -= dcx*2;
+        else term3.x += dcx*2;
+        if (term4.x > dcx) term4.x -= dcx*2;
+        else term4.x += dcx*2;
 
         ImGui::GetBackgroundDrawList()->AddLine(term1, term3, rgba_apply_redlight(color), thickness);
         ImGui::GetBackgroundDrawList()->AddLine(term2, term4, rgba_apply_redlight(color), thickness);

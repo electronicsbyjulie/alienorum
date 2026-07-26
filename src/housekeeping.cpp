@@ -303,6 +303,8 @@ void compute_object_draw_coordinates()
         }
     }
 
+    if (mycenobj) here.system_center = mycenobj->location.system_center;
+
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();
 

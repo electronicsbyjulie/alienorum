@@ -130,7 +130,8 @@ void incl_and_node_from_system_plane(Rotation plane, double &out_inclination, do
 double distance(ImVec2 a, ImVec2 b);
 Rotation tilt_plane_to_heliocentric_inclination(Point system_center, Rotation original, double helioincl);
 void elements_in_new_reference_plane(Rotation original, Rotation reference, double& out_new_inclination, double& out_new_node);
-void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness = 1);
+void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, ImGuiIO& io);
+void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness, ImGuiIO& io);
 
 std::ostream& operator<<(std::ostream& os, const Point& p);
 std::ostream& operator<<(std::ostream& os, const Rotation& r);

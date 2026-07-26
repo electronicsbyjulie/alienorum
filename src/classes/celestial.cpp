@@ -615,6 +615,7 @@ json CelestialObject::to_json()
     towrite["type"] = type;
     towrite["typeclass"] = typeclass();
     towrite["UB_color"] = UB_color;
+    towrite["user_added"] = user_added;
     towrite["volumetric_mean_radius"] = volumetric_mean_radius;
     towrite["VR_color"] = VR_color;
 
@@ -666,6 +667,7 @@ bool CelestialObject::from_json(json j)
     try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
+    try { j.at("user_added").get_to(user_added); } catch (...) { ; }
     try { j.at("volumetric_mean_radius").get_to(volumetric_mean_radius); } catch (...) { ; }
     try { j.at("VR_color").get_to(VR_color); } catch (...) { ; }
 

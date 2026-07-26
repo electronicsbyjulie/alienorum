@@ -3510,7 +3510,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         // Constructing the synchronous TAP ADQL query targeting the pscomppars table
         // Selects core planetary and fallback/stellar fields
         std::string url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query="
-                        "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,"
+                        "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,pl_tranmid,"
                         "pl_bmasse,pl_bmassj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
                         "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
                         "from+pscomppars+order+by+pl_name+asc"
@@ -3751,12 +3751,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             orb->center = host_star;
             orb->center_name = host_star->name;
 
-            if (row.contains("pl_orbtper") && !row["pl_orbtper"].is_null())
-            {
-                double ep = row["pl_orbtper"].get<double>();
-                orb->epoch = new_planet->epoch = ep;
-                orb->mean_anomaly = 0;
-            }
+            double pl_tranmid=0, pl_orbtper=0, pl_orblper=0;
+
+            // Subtract light travel time to get true epochs.
+            if (row.contains("pl_orbtper") && !row["pl_orbtper"].is_null()) pl_orbtper = row["pl_orbtper"].get<double>() - host_star->distance*(oneyear/oneday);
+            if (row.contains("pl_orblper") && !row["pl_orblper"].is_null()) pl_orblper = row["pl_orblper"].get<double>();
+            if (row.contains("pl_tranmid") && !row["pl_tranmid"].is_null()) pl_tranmid = row["pl_tranmid"].get<double>() - host_star->distance*(oneyear/oneday);
+
             if (row.contains("pl_orbper") && !row["pl_orbper"].is_null())
             {
                 orb->period = row["pl_orbper"].get<double>() * oneday;
@@ -3769,11 +3770,29 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             {
                 orb->eccentricity = row["pl_orbeccen"].get<double>();
             }
-            if (row.contains("pl_orblper") && !row["pl_orblper"].is_null())
-            {
-                orb->arg_periapsis = row["pl_orblper"].get<double>() * fiftyseventh;
-            }
             orb->inclination = inclination;
+
+            if (pl_orblper)
+            {
+                orb->arg_periapsis = pl_orblper * fiftyseventh;
+            }
+            if (pl_orbtper)
+            {
+                orb->epoch = new_planet->epoch = pl_orbtper;
+                orb->mean_anomaly = 0;
+            }
+            else if (pl_tranmid)
+            {
+                host_star->update_location(simnow);
+                orb->epoch = new_planet->epoch = pl_tranmid;
+                double pl_tranmid_timet = (pl_tranmid - J2000) * oneyear + J2000_TIME_T;
+                orb->mean_anomaly = (360 - pl_orblper) * fiftyseventh + cels[0]->RA_as_radians(host_star->location, 0);
+                for (int i=0; i<10; i++)
+                {
+                    new_planet->update_location(pl_tranmid_timet);
+                    orb->mean_anomaly += cels[0]->RA_as_radians(host_star->location, 0) - new_planet->RA_as_radians(host_star->location, 0);
+                }
+            }
 
             new_planet->orbit = orb;
             new_planet->update_location(simnow);
