@@ -959,7 +959,7 @@ bool draw_one_object(int i)
         std::string str;
         cel_obj_class cls = cels[i]->typeclass();
         double lfontsz = global_font_size;
-        if (cbolbls_selected_idx == lbltype_Bayer && cls == class_star)
+        if (cbolbls_selected_idx == lbltype_Bayer && cls == class_star && (((Star*)cels[i])->BayerGrkno >= 0))
         {
             // str = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
             // dispname = str.c_str();
@@ -970,12 +970,12 @@ bool draw_one_object(int i)
             font = Greek_font;
             lfontsz *= 1.312;           // for better visibility
         }
-        else if (cbolbls_selected_idx == lbltype_Flamsteed && cls == class_star)
+        else if (cbolbls_selected_idx == lbltype_Flamsteed && cls == class_star && strlen(((Star*)cels[i])->Flamsteed))
         {
             str = trim(std::string(((Star*)cels[i])->Flamsteed).substr(0, strlen(((Star*)cels[i])->Flamsteed)-3));
             dispname = str.c_str();
         }
-        else if (cbolbls_selected_idx == lbltype_Gould && cls == class_star)
+        else if (cbolbls_selected_idx == lbltype_Gould && cls == class_star && (((Star*)cels[i])->GouldNo > 0))
         {
             str = std::to_string(((Star*)cels[i])->GouldNo);
             dispname = str.c_str();
