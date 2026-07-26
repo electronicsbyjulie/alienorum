@@ -432,6 +432,7 @@ bool AlienStyle::load(std::string theme)
                     l.at(0).get_to(r); l.at(1).get_to(g); l.at(2).get_to(b); l.at(3).get_to(a);
                     consline_color = IM_COL32(255*r, 255*g, 255*b, 255*a);
                     border_color = ImVec4(0.5*r, 0.5*g, 0.5*b, 0.50f);
+                    menu_bg_color = ImVec4(0.5*r, 0.5*g, 0.5*b, 0.93f);
                 }
                 catch (...) { ; }
                 try

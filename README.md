@@ -46,14 +46,20 @@ has incomplete support for gzip, Alienorum will require 7zip (https://www.7-zip.
 
 ## Initial Run
 
-The first time you run Alienorum, you will see a splash screen featuring our alien mascot (maybe the alien
-should have a name?) and a dynamic loading message. The application will begin by downloading star catalogs;
-if you run it in a terminal you'll be able to see the download process. This might take a while, but it's a
-one-time thing.
+The first time you run Alienorum, you will see a splash screen featuring our alien mascot (maybe the mascot
+should have a name, anyone?) and a dynamic loading message. The application will begin by downloading star
+catalogs and other celestial object data. This might take a while, but it's a one-time thing.
 
 After downloading finishes, the application will load a selection of stars from the catalogs. When displaying
 stars and during spaceflight, Alienorum dynamically hides stars that are too far away or too dim, that way it
 can load hundreds of thousands of stars and still smoothly animate views of space.
+
+
+## Menu
+
+To access the menu system, press F2. Every menu command has a keyboard shortcut. For certain functions such as
+spaceflight, you will definitely want to memorize the keyboard shortcuts since accessing everything through a
+menu is by nature not fast enough to effectively control the app while zooming past planets.
 
 
 ## Spaceflight
@@ -198,6 +204,11 @@ You can also edit the universe JSON files to modify other parameters not include
 file is still valid JSON after any edits. There are third party apps that will check a .json file to make sure it's
 valid and find any errors.
 
+IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the
+external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file
+or back up your old file and rename universe.json to the working filename. It's also a good idea to check
+universe.json to make sure it has all the custom celestial objects.
+
 
 ## Setting Your Latitude/Longitude
 
@@ -211,138 +222,6 @@ and add the following lines, changing the numbers to your own location:
     "Longitude": -122.68
 }
 ```
-
-
-## Keyboard Shortcuts
-
-The current full list of keyboard shortcuts is:
-
-
-### View Controls
-
-```
-B           Increase brightness
-Shift+B     Decrease brightness
-`           Increase gamma
-~           Decrease gamma
-*           Zoom in
-/           Zoom out
-{scroll}    Zoom
-%           Reset default brightness and zoom
-Shift+R     Toggle red light mode
-Shift+W     Toggle white background mode
-Q           Increase texture rendering quality. WARNING: Use cautiously; the value can get too high quickly and render the app unusable!
-Shift+Q     Improve performance by decreasing texture rendering quality
-F11         Toggle fullscreen
-&           Sky atlas mode
-_           Horizon mode
-$           Sun clock mode
-\           Sky map mode
-Shift+J     Toggle upside-down mode when viewing from satellites
-3           Cycle forward through themes
-Shift+#     Cycle backward through themes
-```
-
-
-## Info and Tracking
-
-```
-{click}     Select object
-Shift+S     Clear selection
-T           Track selected object / cease tracking and select
-Shift+T     Clear tracking
-```
-
-
-### Image Elements
-
-```
-C           Show/hide constellation lines (only within 10 l.y. of Sun)
-G           Show/hide RA/Dec lines
-L           Show/hide labels
-A           Label brightest stars
-V           Label intrinsically bright stars
-Shift+N     Label nearby stars
-F           Label Flamsteed stars
-Shift+F     Label Bayer stars
-Shift+G     Label Gould (Uranometria) stars
-Shift+C     Label Sunlike stars
-Shift+P     Label stars with planets
-Shift+L     Label stars with planets in habitable zone
-Shift+X     Label stars with known poles
-P           Label local system objects
-Shift+O     Show/hide orbits
-Shift+V     Show/hide local system objects
-J           Show/hide satellites
-!           Hide all annotations (realism mode)
-1           Bring back default image elements
-,           Hide mouse cursor until next mouse move (e.g. for taking screenshots)
-```
-
-
-### Dialogs
-```
-N           Show/hide info panel
-S           Show/hide status panel
-E           Show/hide system explorer
-0           Show/hide stellar neighborhood
-```
-
-
-### Motion, Direction, and Location
-
-```
-O           Go to object (selected or tracked)
-R           Return to default view, from Earth, at current time
-W           Warp speed
-X           Full stop
-+           Increase speed
--           Decrease speed (no effect if already stopped)
-{arrows}    Steering
-{Home}      Accelerate backward
-{End}       Accelerate forward
-4           Set azimuth to 270 degrees/right ascension to 90 degrees
-5           Set azimuth/right ascension to 0 degrees
-6           Set azimuth to 90 degrees/right ascension to 270 degrees
-8           Set azimuth/right ascension to 180 degrees
-```
-
-
-### Time Seeking
-
-```
-Z           Advance one century
-Shift+Z     Rewind one century
-Y           Advance one year
-Shift+Y     Rewind one year
-M           Advance one month
-Shift+M     Rewind one month
-D           Advance one day
-Shift+D     Rewind one day
-H           Advance one hour
-Shift+H     Rewind one hour
-I           Advance one minute
-Shift+I     Rewind one minute
-@           Return to present moment
-```
-
-
-### Misc.
-
-Shift+A     Add new object in orbit around current object
-^           Add satellite from downloaded lists
-.           Add asteroid/minor planet from astorb
-Shift+E     Edit current object
-U           Export user-added and user-modified objects to universe.json
-Shift+U     Save current user settings (theme, home lat/lon)
-F3          Search
-F4          Load user objects from an external JSON file
-F5          Reload constellation lines
-
-IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the
-external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file
-or back up your old file and rename universe.json to the working filename. It's also a good idea to check
-universe.json to make sure it has all the custom celestial objects.
 
 
 ## Troubleshooting

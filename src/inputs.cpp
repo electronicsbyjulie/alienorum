@@ -110,6 +110,7 @@ void identify_object_under_cursor(ImGuiIO& io)
 
 void pan_with_crosshairs(ImGuiIO& io)
 {
+    if (trackidx >= 0) return;
     double amount = 1;
     if (view_mode == vm_skymap) amount = 3;
     else if (view_mode == vm_sunclock) amount = 5;
@@ -153,6 +154,11 @@ void pan_with_crosshairs(ImGuiIO& io)
         ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
         ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
     }
+    else
+    {
+        dragging = false;
+        return;
+    }
 
     if (io.MouseDelta.x < 0 && io.MousePos.x < -3*io.MouseDelta.x)
     {
@@ -181,6 +187,131 @@ void thread_check_sats()
 {
     std::thread tsat(SatSource::check_satcat_and_latest);
     tsat.detach();
+}
+
+void show_menu()
+{
+    menu_clicked = false;
+    if (ImGui::BeginMainMenuBar())
+    {
+        if (ImGui::BeginMenu("Object"))
+        {
+            mouse_over_menu = true;
+            if (ImGui::MenuItem("Track Selected", "T")) { process_key_cmd_char('t'); menu_clicked = true; }
+            if (ImGui::MenuItem("Clear Selection", "Shift+S")) { process_key_cmd_char('S'); menu_clicked = true; }
+            if (ImGui::MenuItem("Clear Tracking", "Shift+T")) { process_key_cmd_char('T'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Search...", "F3")) { process_key_F3(); menu_clicked = true; }
+            if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
+            if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
+            if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
+            if (ImGui::MenuItem("Edit Object...", "Shift+E")) { process_key_cmd_char('E'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
+            if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
+            if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
+            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Spacetime"))
+        {
+            mouse_over_menu = true;
+            if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); menu_clicked = true; }
+            if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Spaceflight/Speed Up", "+")) { process_key_cmd_char('+'); menu_clicked = true; }
+            if (ImGui::MenuItem("Slow Down", "-")) { process_key_cmd_char('-'); menu_clicked = true; }
+            if (ImGui::MenuItem("Steer Left", "Left Arrow")) { process_key_arrowleft(); menu_clicked = true; }
+            if (ImGui::MenuItem("Steer Right", "Right Arrow")) { process_key_arrowright(); menu_clicked = true; }
+            if (ImGui::MenuItem("Steer Up", "Up Arrow")) { process_key_arrowup(); menu_clicked = true; }
+            if (ImGui::MenuItem("Steer Down", "Down Arrow")) { process_key_arrowdn(); menu_clicked = true; }
+            if (ImGui::MenuItem("Accelerate Forward", "End")) { process_key_end(); menu_clicked = true; }
+            if (ImGui::MenuItem("Accelerate Backward", "Home")) { process_key_home(); menu_clicked = true; }
+            if (ImGui::MenuItem("Warp Speed", "W")) { process_key_cmd_char('w'); menu_clicked = true; }
+            if (ImGui::MenuItem("Full Stop", "X")) { process_key_cmd_char('x'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Advance One Minute", "I")) { process_key_cmd_char('i'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Minute", "Shift+I")) { process_key_cmd_char('I'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Hour", "H")) { process_key_cmd_char('h'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Hour", "Shift+H")) { process_key_cmd_char('H'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Day", "D")) { process_key_cmd_char('d'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Day", "Shift+D")) { process_key_cmd_char('D'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Month", "M")) { process_key_cmd_char('m'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Month", "Shift+M")) { process_key_cmd_char('M'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Year", "Y")) { process_key_cmd_char('y'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Year", "Shift+Y")) { process_key_cmd_char('Y'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Century", "Z")) { process_key_cmd_char('z'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Century", "Shift+Z")) { process_key_cmd_char('Z'); menu_clicked = true; }
+            if (ImGui::MenuItem("Return to Present", "@")) { process_key_cmd_char('@'); menu_clicked = true; }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("View"))
+        {
+            mouse_over_menu = true;
+            if (ImGui::MenuItem("Increase Brightness", "B")) { process_key_cmd_char('b'); menu_clicked = true; }
+            if (ImGui::MenuItem("Decrease Brightness", "Shift+B")) { process_key_cmd_char('B'); menu_clicked = true; }
+            if (ImGui::MenuItem("Increase Gamma", "`")) { process_key_cmd_char('`'); menu_clicked = true; }
+            if (ImGui::MenuItem("Decrease Gamma", "~")) { process_key_cmd_char('~'); menu_clicked = true; }
+            if (ImGui::MenuItem("Zoom In", "*")) { process_key_cmd_char('*'); menu_clicked = true; }
+            if (ImGui::MenuItem("Zoom Out", "/")) { process_key_cmd_char('/'); menu_clicked = true; }
+            if (ImGui::MenuItem("Reset Brightness and Zoom", "%")) { process_key_cmd_char('%'); menu_clicked = true; }
+            if (ImGui::MenuItem("Increase Texture Quality", "Q")) { process_key_cmd_char('q'); menu_clicked = true; }
+            if (ImGui::MenuItem("Increase Texture Speed", "Shift+Q")) { process_key_cmd_char('Q'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Azimuth zero", "5", nullptr, (trackidx < 0))) { process_key_cmd_char('5'); menu_clicked = true; }
+            if (ImGui::MenuItem("Azimuth 90deg", "6", nullptr, (trackidx < 0))) { process_key_cmd_char('6'); menu_clicked = true; }
+            if (ImGui::MenuItem("Azimuth 180deg", "8", nullptr, (trackidx < 0))) { process_key_cmd_char('8'); menu_clicked = true; }
+            if (ImGui::MenuItem("Azimuth 270deg", "4", nullptr, (trackidx < 0))) { process_key_cmd_char('4'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Red Light Mode", "Shift+R")) { process_key_cmd_char('R'); menu_clicked = true; }
+            if (ImGui::MenuItem("White Background Mode", "Shift+W")) { process_key_cmd_char('W'); menu_clicked = true; }
+            if (ImGui::MenuItem("Fullscreen", "F11")) { process_key_F11(); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sky Atlas Mode", "&")) { process_key_cmd_char('&'); menu_clicked = true; }
+            if (ImGui::MenuItem("Horizon", "_")) { process_key_cmd_char('_'); menu_clicked = true; }
+            if (ImGui::MenuItem("Sun Clock", "$")) { process_key_cmd_char('$'); menu_clicked = true; }
+            if (ImGui::MenuItem("Sky Map", "\\")) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J")) { process_key_cmd_char('J'); menu_clicked = true; }
+            if (ImGui::MenuItem("Previous Theme", "#")) { process_key_cmd_char('#'); menu_clicked = true; }
+            if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Show"))
+        {
+            mouse_over_menu = true;
+            if (ImGui::MenuItem("Info Panel", "N")) { process_key_cmd_char('n'); menu_clicked = true; }
+            if (ImGui::MenuItem("Status Panel", "S")) { process_key_cmd_char('s'); menu_clicked = true; }
+            if (ImGui::MenuItem("System Explorer", "E")) { process_key_cmd_char('e'); menu_clicked = true; }
+            if (ImGui::MenuItem("Stellar Neighborhood", "0")) { process_key_cmd_char('0'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Constellations", "C")) { process_key_cmd_char('c'); menu_clicked = true; }
+            if (ImGui::MenuItem("RA/Dec Grid", "G")) { process_key_cmd_char('g'); menu_clicked = true; }
+            if (ImGui::MenuItem("Star Labels", "L")) { process_key_cmd_char('l'); menu_clicked = true; }
+            if (ImGui::BeginMenu("Label Stars By"))
+            {
+                mouse_over_menu = true;
+                if (ImGui::MenuItem("Bayer Designations", "Shift+F")) { process_key_cmd_char('F'); menu_clicked = true; }
+                if (ImGui::MenuItem("Flamsteed Numbers", "F")) { process_key_cmd_char('f'); menu_clicked = true; }
+                if (ImGui::MenuItem("Gould Uranometria Numbers", "Shift+G")) { process_key_cmd_char('G'); menu_clicked = true; }
+                if (ImGui::MenuItem("Sunlike Stars", "Shift+C")) { process_key_cmd_char('C'); menu_clicked = true; }
+                if (ImGui::MenuItem("Stars with Planets", "Shift+P")) { process_key_cmd_char('P'); menu_clicked = true; }
+                if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L")) { process_key_cmd_char('L'); menu_clicked = true; }
+                if (ImGui::MenuItem("Stars with Known Poles", "Shift+X")) { process_key_cmd_char('X'); menu_clicked = true; }
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Satellites", "J")) { process_key_cmd_char('j'); menu_clicked = true; }
+            if (ImGui::MenuItem("Local System Objects", "Shift+V")) { process_key_cmd_char('V'); menu_clicked = true; }
+            if (ImGui::MenuItem("Local System Labels", "P")) { process_key_cmd_char('p'); menu_clicked = true; }
+            if (ImGui::MenuItem("Orbits", "Shift+O")) { process_key_cmd_char('o'); menu_clicked = true; }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); menu_clicked = true; }
+            if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); menu_clicked = true; }
+            if (ImGui::MenuItem("Hide Mouse Cursor", ",")) { process_key_cmd_char(','); menu_clicked = true; }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+        if (ImGui::IsItemHovered()) mouse_over_menu = true;                 // Yet another ImgUI feature that doesn't work.
+    }
 }
 
 void process_key_cmd_char(char c)
@@ -375,12 +506,14 @@ void process_key_cmd_char(char c)
         themes_selected_idx++;
         if ((unsigned)themes_selected_idx >= themes.size()) themes_selected_idx = 0;
         global_style.load(themes[themes_selected_idx]);
+        apply_default_style();
         break;
 
         case '#':
         themes_selected_idx--;
         if (themes_selected_idx < 0) themes_selected_idx = themes.size()-1;
         global_style.load(themes[themes_selected_idx]);
+        apply_default_style();
         break;
 
         case '4': azimuth = -half_pi; viewchanged = true; break;            // look west
@@ -465,6 +598,7 @@ void process_key_cmd_char(char c)
     }
 }
 
+double steering_rate, walk_speed;
 void process_keyboard_commands(ImGuiIO& io)
 {
     int i;
@@ -476,84 +610,74 @@ void process_keyboard_commands(ImGuiIO& io)
         process_key_cmd_char(c);
     }
 
-    double steering_rate = _pi/16/zoom;
-    double walk_speed = 4 * frame_dur;                              // a fast run
-    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window)
+    steering_rate = _pi/16/zoom;
+    walk_speed = 4 * frame_dur;                              // a fast run
+    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window) process_key_arrowleft();
+    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window) process_key_arrowright();
+    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window) process_key_arrowup();
+    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window) process_key_arrowdn();
+    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
+    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
+    if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
+    if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
+    if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
+    if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
+}
+
+void process_key_arrowup()
+{
+    if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
     {
-        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
-        {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
-        }
-        Point yaw = to_viewer_plane(yaxis, -1);
-        velocity = rotate3D(velocity, center, yaw, -steering_rate);
-        if (trackidx<0) azimuth -= steering_rate;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window)
+    Point pitch = to_viewer_plane(xaxis, -1);
+    velocity = rotate3D(velocity, center, pitch, -steering_rate);
+    if (trackidx<0) altitude += steering_rate;
+    if (altitude > half_pi) altitude = half_pi;
+    enforce_y_pan_limit();
+}
+
+void process_key_arrowdn()
+{
+    if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
     {
-        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
-        {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
-        }
-        Point yaw = to_viewer_plane(yaxis, -1);
-        velocity = rotate3D(velocity, center, yaw,  steering_rate);
-        if (trackidx<0) azimuth += steering_rate;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window)
+    Point pitch = to_viewer_plane(xaxis, -1);
+    velocity = rotate3D(velocity, center, pitch,  steering_rate);
+    if (trackidx<0) altitude -= steering_rate;
+    if (altitude < -half_pi) altitude = -half_pi;
+    enforce_y_pan_limit();
+}
+
+void process_key_arrowleft()
+{
+    if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
     {
-        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
-        {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
-        }
-        Point pitch = to_viewer_plane(xaxis, -1);
-        velocity = rotate3D(velocity, center, pitch, -steering_rate);
-        if (trackidx<0) altitude += steering_rate;
-        if (altitude > half_pi) altitude = half_pi;
-        enforce_y_pan_limit();
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window)
+    Point yaw = to_viewer_plane(yaxis, -1);
+    velocity = rotate3D(velocity, center, yaw, -steering_rate);
+    if (trackidx<0) azimuth -= steering_rate;
+}
+
+void process_key_arrowright()
+{
+    if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
     {
-        if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
-        {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
-        }
-        Point pitch = to_viewer_plane(xaxis, -1);
-        velocity = rotate3D(velocity, center, pitch,  steering_rate);
-        if (trackidx<0) altitude -= steering_rate;
-        if (altitude < -half_pi) altitude = -half_pi;
-        enforce_y_pan_limit();
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
+        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
-    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window)
-    {
-        double vmag;
-        if (view_mode == vm_horizon)
-        {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
-            if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
-            if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
-            double inv_circ = 1.0 / (_pi * 2 * cels[whereami]->volumetric_mean_radius);
-            double coslat = cos(viewer_lat);
-            viewer_lat += walk_speed * inv_circ * cos(azimuth);
-            if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
-        }
-        else if ((vmag = velocity.magnitude()))                 // assignment not comparison
-        {
-            double acceleration = vmag * 0.1;
-            Point forward;
-            forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
-            forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
-            forward.y =  sin(altitude) * acceleration;
-            forward = to_viewer_plane(forward, -1);
-            velocity += forward;
-        }
-    }
-    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window)
-    {
+    Point yaw = to_viewer_plane(yaxis, -1);
+    velocity = rotate3D(velocity, center, yaw,  steering_rate);
+    if (trackidx<0) azimuth += steering_rate;
+}
+
+void process_key_home()
+{
         double vmag;
         if (view_mode == vm_horizon)
         {
@@ -577,26 +701,94 @@ void process_keyboard_commands(ImGuiIO& io)
             forward = to_viewer_plane(forward, -1);
             velocity -= forward;
         }
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_F3))
-    {
+}
+
+void process_key_end()
+{
+        double vmag;
+        if (view_mode == vm_horizon)
+        {
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
+            if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
+            if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
+            double inv_circ = 1.0 / (_pi * 2 * cels[whereami]->volumetric_mean_radius);
+            double coslat = cos(viewer_lat);
+            viewer_lat += walk_speed * inv_circ * cos(azimuth);
+            if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
+            save_viewer_latlon = false;
+        }
+        else if ((vmag = velocity.magnitude()))                 // assignment not comparison
+        {
+            double acceleration = vmag * 0.1;
+            Point forward;
+            forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+            forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
+            forward.y =  sin(altitude) * acceleration;
+            forward = to_viewer_plane(forward, -1);
+            velocity += forward;
+        }
+}
+
+void process_key_F1()
+{
+}
+
+void process_key_F2()
+{
+    menu = !menu;
+}
+
+void process_key_F3()
+{
         focus_findbox = true;
         statuswnd = true;
         lookfor[0] = 0;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_F4))
-    {
-        IGFD::FileDialogConfig config;
-        config.path = ".";
-        ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
-        fdlg_shown = true;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_F5))
-    {
-        splash = true;
-        std::thread t1(reload_stuff);
-        t1.detach();
-    }
+}
+
+void process_key_F4()
+{
+    IGFD::FileDialogConfig config;
+    config.path = ".";
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
+    fdlg_shown = true;
+}
+
+void process_key_F5()
+{
+    splash = true;
+    std::thread t1(reload_stuff);
+    t1.detach();
+}
+
+void process_key_F6()
+{
+}
+
+void process_key_F7()
+{
+}
+
+void process_key_F8()
+{
+}
+
+void process_key_F9()
+{
+}
+
+void process_key_F10()
+{
+}
+
+void process_key_F11()
+{
+    SDL_SetWindowFullscreen(window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+    fullscreen = !fullscreen;
+}
+
+void process_key_F12()
+{
 }
 
 void do_find()

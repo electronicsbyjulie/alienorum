@@ -491,6 +491,10 @@ int main (int argc, char** argv)
         }
         else
         {
+            mouse_over_menu = menu && (io.MousePos.y < menu_ht);
+            if (menu) show_menu();
+            if (menu_clicked || splash) goto _render;                       // Prevent click-selecting object behind menu and prevent crash if user reloads constellations.
+
             dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
             drawblxscalex = drawn_cache_split / io.DisplaySize.x;
@@ -721,8 +725,7 @@ int main (int argc, char** argv)
         }
         if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
         {
-            SDL_SetWindowFullscreen(window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
-            fullscreen = !fullscreen;
+            process_key_F11();
             argsfs = false;
         }
 
@@ -754,6 +757,7 @@ int main (int argc, char** argv)
 
         // More code copied from the ImGui example:
         // Rendering
+        _render:
         ImGui::Render();
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
@@ -780,7 +784,10 @@ int main (int argc, char** argv)
 
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
 
-            hide_mouse = !splash && !fdlg_shown && (frame_dur < 0.2 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4) && cels[1];
+            hide_mouse = !splash && !fdlg_shown
+                && !mouse_over_menu
+                && (frame_dur < 0.2 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4)
+                && cels[1];
 
             lmx = io.MousePos.x;
             lmy = io.MousePos.y;

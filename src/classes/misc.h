@@ -218,12 +218,12 @@ extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_lo
     is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing, generating_fic_texture, focus_findbox, whtbkgd,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood, locwnd,
     show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo,
-    noexo, nosats, keyprobe;
+    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked;
 extern std::string objname, objinfo, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern float has_water, veg_min_temp, veg_max_temp;
-extern int vegetation_r, vegetation_g, vegetation_b;
+extern int menu_ht, vegetation_r, vegetation_g, vegetation_b;
 extern char lblcut0[256], lblcut1[256], lblcut2[256];
 extern const char* compass[16];
 extern PerlinNoise pn;
