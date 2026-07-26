@@ -506,12 +506,14 @@ void process_key_cmd_char(char c)
         themes_selected_idx++;
         if ((unsigned)themes_selected_idx >= themes.size()) themes_selected_idx = 0;
         global_style.load(themes[themes_selected_idx]);
+        apply_default_style();
         break;
 
         case '#':
         themes_selected_idx--;
         if (themes_selected_idx < 0) themes_selected_idx = themes.size()-1;
         global_style.load(themes[themes_selected_idx]);
+        apply_default_style();
         break;
 
         case '4': azimuth = -half_pi; viewchanged = true; break;            // look west
