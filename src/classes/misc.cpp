@@ -82,7 +82,6 @@ PerlinNoise pn;
 const std::string WHITESPACE = " \n\r\t\f\v";
 uint32_t xonsm[13] = {0x0e432843, 0x0e4328ec, 0x25443485, 0x29cc28ec, 0x29cc513a, 0x43363485, 0x511e0000, 0x511e3485, 0x511e513a, 0x511e5147, 0x511eab3a, 0x2b85e980, 0x57e47000};
 double magnbase = pow(100, 1.0/5), invlogmagnbase = 1.0 / log(magnbase);
-std::vector<std::string> consname, consabbrev, consgen;
 
 std::string Greek_letter[24] =
 {

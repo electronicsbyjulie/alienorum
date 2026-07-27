@@ -12,13 +12,25 @@ namespace alienorum
         double decl = 0;                // RADIANS
     };
 
+    class ConsLine
+    {
+        public:
+        Star *a = nullptr, *b = nullptr;
+        std::string starnamea, starnameb;
+    };
+
     class Constellation
     {
-        //
+        public:
+        std::string name, genitive, abbrev;
+        std::vector<ConsLine> lines;
+        std::vector<ConsBoundary> bounds;
     };
-}
 
-extern std::vector<ConsBoundary> consbounds;
+    Constellation* identify_cons_of_star(Star* s);
+
+    extern std::vector<Constellation> constellations;
+}
 
 #endif
 

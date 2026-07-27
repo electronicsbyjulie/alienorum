@@ -512,13 +512,13 @@ void read_cons_lines()
                 }
                 if (strlen(name2))
                 {
-                    consname.push_back(name2);
-                    consabbrev.push_back(&buffer[1]);
-                    lnpercons.push_back(0);
+                    Constellation c;
+                    c.name = name2;
+                    c.abbrev = &buffer[1];
+                    if (name3 && strlen(name3)) c.genitive = name3;
+                    constellations.push_back(c);
                     l++;
                 }
-                if (name3 && strlen(name3)) consgen.push_back(name3);
-                else consgen.push_back("");
             }
             else if (l>=0)
             {
@@ -549,11 +549,10 @@ void read_cons_lines()
                                 name3++;
                             }
                         }
-                        consline_a.push_back(name1);
-                        consline_b.push_back(trim(name2));
-                        considx.push_back(l);
-                        lnpercons[l]++;
-                        nconsln++;
+                        ConsLine cl;
+                        cl.starnamea = name1;
+                        cl.starnameb = trim(name2);
+                        constellations[l].lines.push_back(cl);
                     }
 
                     name1 = name2;
@@ -570,73 +569,50 @@ void read_cons_lines()
 
 void cache_cons_lines()
 {
-    int i, j, n;
+    int i, j, l, n, ncons, nln;
 
-    // Cache star indices of consline termini
-    consaidx = new int[nconsln+16];
-    consbidx = new int[nconsln+16];
-    for (i=0; i<nconsln; i++)
+    ncons = constellations.size();
+    for (i=0; i<ncons; i++)
     {
-        double mag_limit = (considx[i] == 34) ? 7.5 : 6.5;
+        double mag_limit = (i == 34) ? 7.5 : 6.5;
         int founda = -1, foundb = -1, rechercher;
 
-        if (constellation_index.count(consabbrev[considx[i]]))
+        nln = constellations[i].lines.size();
+        for (l=0; l<nln; l++)
         {
-            n = constellation_index[consabbrev[considx[i]]].size();
-            for (j=0; j<n; j++)
+            if (constellation_index.count(constellations[i].abbrev))
             {
-                Star* s = (Star*) constellation_index[consabbrev[considx[i]]][j];
-                if (s->apparent_magnitude > mag_limit) continue;
-                if ((founda<0) && !strcmp(s->Bayer, consline_a[i].c_str()))
-                    founda = s->seqno;
-                if ((founda<0) && !strcmp(s->Flamsteed, consline_a[i].c_str()))
-                    founda = s->seqno;
-                if ((foundb<0) && !strcmp(s->Bayer, consline_b[i].c_str()))
-                    foundb = s->seqno;
-                if ((foundb<0) && !strcmp(s->Flamsteed, consline_b[i].c_str()))
-                    foundb = s->seqno;
-            }
-        }
-
-        if (founda<0 || foundb<0)
-        {
-            rechercher = find_object(consline_a[i].c_str(), true, mag_limit);
-            if (rechercher >= 0) founda = rechercher;
-            rechercher = find_object(consline_b[i].c_str(), true, mag_limit);
-            if (rechercher >= 0) foundb = rechercher;
-        }
-
-        if (founda < 0) std::cerr << "Warning: Failed to identify " << consline_a[i] << " for constellation lines." << std::endl;
-        if (foundb < 0) std::cerr << "Warning: Failed to identify " << consline_b[i] << " for constellation lines." << std::endl;
-
-        consaidx[i] = founda;
-        consbidx[i] = foundb;
-        if (founda >= 0) ((Star*)cels[founda])->make_universally_visible();
-        if (foundb >= 0) ((Star*)cels[foundb])->make_universally_visible();
-    }
-
-    if (show_xonsm)
-    {
-        for (i=0; i<11; i++)
-        {
-            int founda = -1, foundb = -1;
-            uint32_t ztym = xonsm[i] & 65535, srap = xonsm[i] / 65536;
-            for (j=0; cels[j]; j++)
-            {
-                if (cels[j]->type != star) continue;
-                Star* s = (Star*)cels[j];
-                if (founda < 0 && ((!j && !ztym) || s->HD == ztym)) founda = j;
-                else if (foundb < 0 && ((!j && !srap) || s->HD == srap)) foundb = j;
+                n = constellation_index[constellations[i].abbrev].size();
+                for (j=0; j<n; j++)
+                {
+                    Star* s = (Star*) constellation_index[constellations[i].abbrev][j];
+                    if (s->apparent_magnitude > mag_limit) continue;
+                    if ((founda<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnamea.c_str()))
+                        founda = s->seqno;
+                    if ((founda<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnamea.c_str()))
+                        founda = s->seqno;
+                    if ((foundb<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnameb.c_str()))
+                        foundb = s->seqno;
+                    if ((foundb<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnameb.c_str()))
+                        foundb = s->seqno;
+                }
             }
 
-            consname.push_back("");
-            if (founda >= 0 && foundb >= 0)
+            if (founda<0 || foundb<0)
             {
-                consaidx[i+nconsln] = founda;
-                consbidx[i+nconsln] = foundb;
-                ((Star*)cels[founda])->make_universally_visible();
-                ((Star*)cels[foundb])->make_universally_visible();
+                rechercher = find_object(constellations[i].lines[l].starnamea.c_str(), true, mag_limit);
+                if (rechercher >= 0) founda = rechercher;
+                rechercher = find_object(constellations[i].lines[l].starnameb.c_str(), true, mag_limit);
+                if (rechercher >= 0) foundb = rechercher;
             }
+
+            if (founda < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
+            if (foundb < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
+
+            constellations[i].lines[l].a = (Star*)cels[founda];
+            constellations[i].lines[l].b = (Star*)cels[foundb];
+            if (founda >= 0) ((Star*)cels[founda])->make_universally_visible();
+            if (foundb >= 0) ((Star*)cels[foundb])->make_universally_visible();
         }
     }
 }
@@ -738,15 +714,7 @@ void reload_stuff()
     Star::load_main_seq_dat();
 
     CatalogReader cr;
-    consname.clear();
-    consabbrev.clear();
-    consgen.clear();
-    constellation_index.clear();
-    lnpercons.clear();
-    consline_a.clear();
-    consline_b.clear();
-    considx.clear();
-    nconsln = 0;
+    constellations.clear();
 
     mtx.lock();
     loading_msg = "Refreshing constellations...";

@@ -13,11 +13,6 @@
 #include "moon.h"
 
 extern std::vector<std::string> known_catalog_names;
-extern std::vector<std::string> consline_a, consline_b;
-extern std::vector<int> considx, lnpercons;
-extern std::vector<Point> consdir;
-extern int nconsln;
-extern int *consaidx, *consbidx;
 extern Star **hdcache, **hipcache;
 extern std::map<int,std::map<char,Star* > > hipcomps;
 

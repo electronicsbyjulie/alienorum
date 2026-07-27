@@ -2,7 +2,7 @@
 #include <string.h>
 #include <algorithm>
 #include <math.h>
-#include "star.h"
+#include "cons.h"
 
 using namespace alienorum;
 
@@ -126,17 +126,17 @@ void Star::rename_from_Bayer_Flamsteed()
     }
     if (BayerGrkno < 0 && !FlamsteedNo && (GouldNo < 1)) return;
 
-    if (!consabbrev.size() || !consgen.size())
+    if (!constellations.size())
     {
         std::cerr << "Must read constellation definitions before setting Bayer-Flamsteed names." << std::endl;
         throw 0xbadc0de;
     }
 
     // Find gentive of constellation.
-    int i, j=-1, n = consabbrev.size();
+    int i, j=-1, n = constellations.size();
     for (i=0; i<n; i++)
     {
-        if (!strcmp(consabbrev[i].c_str(), constellation))
+        if (!strcmp(constellations[i].abbrev.c_str(), constellation))
         {
             j = i;
             break;
@@ -155,27 +155,27 @@ void Star::rename_from_Bayer_Flamsteed()
         int number = atoi(std::string(Bayer).substr(3, 1).c_str());
         if (number)
         {
-            if (!strcmp(consabbrev[j].c_str(), "Ori") && BayerGrkno == 7)
+            if (!strcmp(constellations[j].abbrev.c_str(), "Ori") && BayerGrkno == 7)
                 strcpy(name, (std::string("HD" + std::to_string(HD)).c_str()));
-            if (!strcmp(consabbrev[j].c_str(), "UMa") && BayerGrkno == 13)
+            if (!strcmp(constellations[j].abbrev.c_str(), "UMa") && BayerGrkno == 13)
                 strcpy(name, Gliese);
-            else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
+            else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + constellations[j].genitive).c_str());
         }
-        else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
+        else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + constellations[j].genitive).c_str());
 
-        if (BayerGrkno == 5 && !strcmp(consabbrev[j].c_str(), "Ret")) has_custom_name = true;
+        if (BayerGrkno == 5 && !strcmp(constellations[j].abbrev.c_str(), "Ret")) has_custom_name = true;
     }
     else if (FlamsteedNo > 0)
     {
-        if (!strcmp(consabbrev[j].c_str(), "UMa") && FlamsteedNo == 53)
+        if (!strcmp(constellations[j].abbrev.c_str(), "UMa") && FlamsteedNo == 53)
             strcpy(name, Gliese);
-        else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
+        else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + constellations[j].genitive).c_str());
     }
     else if (GouldNo > 0)
     {
-        if (GouldNo == 82 && !strcmp(consabbrev[j].c_str(), "Eri"))
-            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + consgen[j]).c_str());
-        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + consgen[j]).c_str());
+        if (GouldNo == 82 && !strcmp(constellations[j].abbrev.c_str(), "Eri"))
+            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + constellations[j].genitive).c_str());
+        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + constellations[j].genitive).c_str());
     }
 
     if (multisys && multisys->get_member('A') == this)

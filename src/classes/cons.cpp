@@ -1,3 +1,3 @@
 #include "cons.h"
 
-std::vector<ConsBoundary> consbounds;
+std::vector<Constellation> constellations;

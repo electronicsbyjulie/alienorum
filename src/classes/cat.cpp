@@ -46,12 +46,6 @@ std::vector<std::string> known_catalog_names =
     // TODO: Add hundreds more...
 };
 
-std::vector<std::string> consline_a, consline_b;
-std::vector<int> considx, lnpercons;
-std::vector<Point> consdir;
-int nconsln = 0;
-int *consaidx, *consbidx;
-
 #if _debug_sbinaries_zetret
 Star *zet1ret = nullptr, *zet2ret = nullptr;
 #endif
@@ -1530,6 +1524,7 @@ int alienorum::CatalogReader::read_cons_boundaries()
     char buffer[1024];
     char field[32];
     int num_read = 0;
+    int i, n = constellations.size();
 
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
@@ -1548,10 +1543,15 @@ int alienorum::CatalogReader::read_cons_boundaries()
 
         // 25- 28   A4      ---     cst     Constellation abbreviation
         read_field_onebased(buffer, 25, 28, field);
-        // TODO:
-
-        consbounds.push_back(cb);
-        num_read++;
+        for (i=0; i<n; i++)
+        {
+            // TODO: Serpens
+            if (!strcasecmp(constellations[i].genitive.c_str(), field))
+            {
+                constellations[i].bounds.push_back(cb);
+                num_read++;
+            }
+        }
     }
 
     return num_read;

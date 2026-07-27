@@ -142,7 +142,6 @@ extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
 extern uint32_t xonsm[13];
 extern const std::string WHITESPACE;
-extern std::vector<std::string> consname, consabbrev, consgen;
 
 std::string ltrim(const std::string &s);
 std::string rtrim(const std::string &s);
