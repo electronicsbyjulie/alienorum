@@ -25,14 +25,15 @@ namespace alienorum
         std::string name, genitive, abbrev;
         std::vector<ConsLine> lines;
         std::vector<ConsBoundary> bounds;
+        double RA_center;               // RADIANS
+        double decl_center;             // RADIANS
     };
-
-    Constellation* identify_cons_of_star(Star* s);
 }
 
 using namespace alienorum;
 
 extern std::vector<Constellation> constellations;
+Constellation* identify_cons_of_star(Star* s);
 
 #endif
 
