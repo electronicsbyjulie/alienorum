@@ -1524,6 +1524,39 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+int alienorum::CatalogReader::read_cons_boundaries()
+{
+    std::string path = "catalogs" _FILESLASH "CBD" _FILESLASH "bound_20.dat";
+    char buffer[1024];
+    char field[32];
+    int num_read = 0;
+
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp) return 0;
+
+    while (fgets(buffer, 1020, fp))
+    {
+        ConsBoundary cb;
+
+        //  1- 11   F11.7   deg     RAdeg   [0/360] Right ascension in degrees (J2000)
+        read_field_onebased(buffer, 1, 11, field);
+        cb.RA = atof(field) * fiftyseventh;
+
+        // 13- 23   F11.7   deg     DEdeg   [-86/89] Declination in degrees (J2000)
+        read_field_onebased(buffer, 13, 23, field);
+        cb.decl= atof(field) * fiftyseventh;
+
+        // 25- 28   A4      ---     cst     Constellation abbreviation
+        read_field_onebased(buffer, 25, 28, field);
+        // TODO:
+
+        consbounds.push_back(cb);
+        num_read++;
+    }
+
+    return num_read;
+}
+
 int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 {
     std::string path = "catalogs" _FILESLASH "CCDM" _FILESLASH "ccdm.dat";

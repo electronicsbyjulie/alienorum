@@ -1681,6 +1681,20 @@ void draw_cons_lines()
         }
     }
 
+    // Constellation boundaries
+    n = consbounds.size();
+    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.2));
+    if (draw_actual_conslines) for (i=0; i<n; i++)
+    {
+        Point cbd = Point::from_ra_dec(consbounds[i].RA, consbounds[i].decl, light_year);
+        cbd = to_viewer_plane(cbd);
+        Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
+        float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+
+        if (dx < 0 || dy < 0) continue;
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx,dy), ImVec2(dx+1,dy+1), cbcol);
+    }
+
     if (show_axes)
     {
         Point axisdir[6] = {xaxis, yaxis, zaxis, center-xaxis, center-yaxis, center-zaxis};

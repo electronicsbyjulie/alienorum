@@ -111,6 +111,13 @@ ImU32 Color::black_to_transparent(ImU32 input)
     return (a<<24) + (b<<16) + (g<<8) + r;
 }
 
+ImU32 alienorum::Color::adjust_alpha(ImU32 input, double new_alpha)
+{
+    int a = fmax(0, fmin(255, new_alpha*255));
+    int r = input&0xff, g = (input&0xff00)>>8, b = (input&0xff0000)>>16;
+    return (a<<24) + (b<<16) + (g<<8) + r;
+}
+
 json Color::to_json()
 {
     return

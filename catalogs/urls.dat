@@ -29,6 +29,9 @@ GALEX           table5.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/A
 astorb          astorb.dat.gz               ftp://cdsarc.cds.unistra.fr/cats/B/astorb/astorb.dat.gz
 comets          comets.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/comets/comets.dat
 
+# constellation boundaries
+CBD             bound_20.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/VI/49/bound_20.dat.gz
+
 # Complete list of auto-downloadable catalogs from VizieR:
 # https://vizier.cds.unistra.fr/vizier/cats/U.htx
 

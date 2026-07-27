@@ -704,14 +704,23 @@ void load_stuff()
     loading_msg = "Reading constellations...";
     mtx.unlock();
     read_cons_lines();
+
+    mtx.lock();
+    loading_msg = "Reading constellation boundaires...";
+    mtx.unlock();
+    CatalogReader cr;
+    cr.read_cons_boundaries();
+
     mtx.lock();
     loading_msg = "Loading star data...";
     mtx.unlock();
     load_catalogs();
+
     mtx.lock();
     loading_msg = "Assigning constellations...";
     mtx.unlock();
     cache_cons_lines();
+
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
 

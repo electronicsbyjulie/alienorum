@@ -8,7 +8,7 @@
 #include <random>
 #include "point.h"
 #include "galaxy.h"
-#include "star.h"
+#include "cons.h"
 #include "planet.h"
 #include "moon.h"
 
@@ -37,6 +37,7 @@ namespace alienorum
         int read_Hipparcos_catalog(CelestialObject** cels, int max);
         int read_Uranometria_catalog(CelestialObject** cels, int max);
         int read_WD_catalog(CelestialObject** cels, int max);
+        int read_cons_boundaries();
 
         // Binary and Multiple Systems
         int read_CCDM_catalog(CelestialObject** cels, int max);

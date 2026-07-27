@@ -49,6 +49,7 @@ namespace alienorum
         static RGB3Byte disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
+        static ImU32 adjust_alpha(ImU32 input, double new_alpha);
         json to_json();
         bool from_json(json j);
 
