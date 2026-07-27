@@ -575,11 +575,11 @@ void cache_cons_lines()
     for (i=0; i<ncons; i++)
     {
         double mag_limit = (i == 34) ? 7.5 : 6.5;
-        int founda = -1, foundb = -1, rechercher;
 
         nln = constellations[i].lines.size();
         for (l=0; l<nln; l++)
         {
+            int founda = -1, foundb = -1, rechercher;
             if (constellation_index.count(constellations[i].abbrev))
             {
                 n = constellation_index[constellations[i].abbrev].size();

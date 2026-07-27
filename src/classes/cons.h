@@ -28,9 +28,11 @@ namespace alienorum
     };
 
     Constellation* identify_cons_of_star(Star* s);
-
-    extern std::vector<Constellation> constellations;
 }
+
+using namespace alienorum;
+
+extern std::vector<Constellation> constellations;
 
 #endif
 
