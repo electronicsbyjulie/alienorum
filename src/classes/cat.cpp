@@ -2030,12 +2030,12 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     read_field_onebased(buffer, 113, 114, field);
     _day = atoi(field);
 
-    tm epoch;
-    epoch.tm_year = _year-1900;
-    epoch.tm_mon = _month-1;
+    std::tm epoch = {};
+    epoch.tm_year = _year - 1900;
+    epoch.tm_mon = _month - 1;
     epoch.tm_mday = _day;
     time_t t = mktime(&epoch);
-    p->epoch = (t/oneday) + 2440587.5;
+    p->epoch = p->orbit->epoch = (((double)t - J2000_TIME_T)/oneday) + 2451544.5;
 
     // 116-125  F10.6 deg     M         Mean anomaly (3)
     read_field_onebased(buffer, 116, 125, field);
@@ -3757,9 +3757,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             double pl_tranmid=0, pl_orbtper=0, pl_orblper=0;
 
             // Subtract light travel time to get true epochs.
-            if (row.contains("pl_orbtper") && !row["pl_orbtper"].is_null()) pl_orbtper = row["pl_orbtper"].get<double>() - host_star->distance*(oneyear/oneday);
+            if (row.contains("pl_orbtper") && !row["pl_orbtper"].is_null()) pl_orbtper = row["pl_orbtper"].get<double>() - host_star->distance/light_year*oneyear/oneday;
             if (row.contains("pl_orblper") && !row["pl_orblper"].is_null()) pl_orblper = row["pl_orblper"].get<double>();
-            if (row.contains("pl_tranmid") && !row["pl_tranmid"].is_null()) pl_tranmid = row["pl_tranmid"].get<double>() - host_star->distance*(oneyear/oneday);
+            if (row.contains("pl_tranmid") && !row["pl_tranmid"].is_null()) pl_tranmid = row["pl_tranmid"].get<double>() - host_star->distance/light_year*oneyear/oneday;
 
             if (row.contains("pl_orbper") && !row["pl_orbper"].is_null())
             {
