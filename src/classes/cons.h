@@ -26,7 +26,9 @@ namespace alienorum
         std::vector<ConsLine> lines;
         std::vector<ConsBoundary> bounds;
         double RA_center;               // RADIANS
-        double decl_center;             // RADIANS
+        double decl_center;
+        void build_constellation_perimeter();           // Run this after load to translate the catalog's RA ordering into a perimeter order.
+        // RADIANS
     };
 }
 
@@ -34,6 +36,7 @@ using namespace alienorum;
 
 extern std::vector<Constellation> constellations;
 Constellation* identify_cons_of_star(Star* s);
+void fill_alienorum_ids();
 
 #endif
 

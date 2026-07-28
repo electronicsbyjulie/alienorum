@@ -1545,13 +1545,18 @@ int alienorum::CatalogReader::read_cons_boundaries()
         read_field_onebased(buffer, 25, 28, field);
         for (i=0; i<n; i++)
         {
-            // TODO: Serpens
-            if (!strcasecmp(constellations[i].genitive.c_str(), field))
+            if (!strcasecmp(constellations[i].abbrev.c_str(), trim(field).c_str()))
             {
                 constellations[i].bounds.push_back(cb);
                 num_read++;
+                break;
             }
         }
+    }
+
+    for (i=0; i<n; i++)
+    {
+        constellations[i].build_constellation_perimeter();
     }
 
     return num_read;
@@ -3480,6 +3485,50 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     }
 
     return result;
+}
+
+int alienorum::CatalogReader::write_condensed_star_cat(CelestialObject** cels)
+{
+    int i, l, written = 0;
+    std::string path = "catalogs" _FILESLASH "stellae_alienorum.dat";
+    FILE *fp = fopen(path.c_str(), "w");
+    if (fp)
+    {
+        for (i=0; cels[i]; i++)
+        {
+            if (cels[i]->typeclass() != class_star) continue;
+            Star* s = (Star*)cels[i];
+            std::string line = s->alienorumid;
+            l = 15;
+            line += std::string(l - line.size(), ' ');
+
+            line += std::string(s->name);
+            l += 40;
+            line += std::string(l - line.size(), ' ');
+
+            line += s->RA_as_hms(0);
+            l += 15;
+            line += std::string(l - line.size(), ' ');
+
+            line += s->Decl_as_degms();
+            l += 15;
+            line += std::string(l - line.size(), ' ');
+
+            line += std::to_string(s->apparent_magnitude);
+            l += 15;
+            line += std::string(l - line.size(), ' ');
+
+            //
+
+            // std::cout << line << std::endl;
+            line += std::string("\n");
+            fputs(line.c_str(), fp);
+        }
+
+        fclose(fp);
+    }
+
+    return written;
 }
 
 void CatalogReader::read_field_onebased(const char *buffer, size_t start, int end, char *out)

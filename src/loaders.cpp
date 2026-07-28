@@ -1,6 +1,7 @@
 
 #include "loaders.h"
 #include "housekeeping.h"
+#include "classes/cons.h"
 
 using namespace alienorum;
 
@@ -682,7 +683,7 @@ void load_stuff()
     read_cons_lines();
 
     mtx.lock();
-    loading_msg = "Reading constellation boundaires...";
+    loading_msg = "Reading constellation boundaries...";
     mtx.unlock();
     CatalogReader cr;
     cr.read_cons_boundaries();
@@ -696,6 +697,8 @@ void load_stuff()
     loading_msg = "Assigning constellations...";
     mtx.unlock();
     cache_cons_lines();
+    fill_alienorum_ids();
+    cr.write_condensed_star_cat(cels);
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
