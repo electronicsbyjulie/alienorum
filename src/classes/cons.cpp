@@ -37,6 +37,12 @@ void Constellation::build_constellation_perimeter()
     perimeter.push_back(unvisited.front());
     unvisited.erase(unvisited.begin());
 
+    RA_center = perimeter[0].RA;
+    decl_center = perimeter[0].decl;
+    int ra_dec_div = 2;
+    double ra_dec_mul, ra_dec_mul_1;
+    double new_ra, new_decl;
+
     // Walk from point to nearest point
     while (!unvisited.empty()) 
     {
@@ -59,13 +65,26 @@ void Constellation::build_constellation_perimeter()
         // Add the nearest vertex to our perimeter and remove it from the unvisited list
         perimeter.push_back(*nearest_it);
         unvisited.erase(nearest_it);
+
+        new_ra = perimeter.back().RA;
+        new_decl = perimeter.back().decl;
+
+        if (new_ra < RA_center - _pi) new_ra += _pi*2;
+        else if (new_ra > RA_center + _pi) new_ra -= _pi*2;
+
+        ra_dec_mul = 1.0/ra_dec_div;
+        ra_dec_mul_1 = 1.0 - ra_dec_mul;
+        RA_center = ra_dec_mul_1 * RA_center + ra_dec_mul * new_ra;
+        decl_center = ra_dec_mul_1 * decl_center + ra_dec_mul * new_decl;
+        ra_dec_div++;
     }
 
     bounds = perimeter;
 }
 
 // Helper algorithm to handle Point-In-Polygon on the celestial sphere
-bool is_star_in_constellation(double s_ra, double s_decl, const std::vector<ConsBoundary>& bounds) 
+// Warning: THis fuction is buggy AI slop and should be deleted and rewritten from scratch.
+bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std::vector<ConsBoundary>& bounds)
 {
     bool inside = false;
     int n = bounds.size();
@@ -83,8 +102,6 @@ bool is_star_in_constellation(double s_ra, double s_decl, const std::vector<Cons
             double ra_i = bounds[i].RA - s_ra;
             double ra_j = bounds[j].RA - s_ra;
 
-            if (ra_i > _pi && ra_j > _pi) continue;
-
             // 3. Normalize the relative RA values to range [-pi, pi]
             while (ra_i <= -_pi) ra_i += 2.0 * _pi;
             while (ra_i >   _pi) ra_i -= 2.0 * _pi;
@@ -99,7 +116,7 @@ bool is_star_in_constellation(double s_ra, double s_decl, const std::vector<Cons
             double intersect_ra = ra_i + (s_decl - decl_i) / (decl_j - decl_i) * (ra_j - ra_i);
 
             // 6. Ray-cast check: If the intersection is in the positive RA direction, count it
-            if (intersect_ra > 0.0 && intersect_ra < 2.0) 
+            if (intersect_ra > 0.0 && intersect_ra < _pi) 
             {
                 inside = !inside;
             }
@@ -111,6 +128,9 @@ bool is_star_in_constellation(double s_ra, double s_decl, const std::vector<Cons
 
 Constellation* identify_cons_of_star(Star* s) 
 {
+    Constellation* result = nullptr;
+    double best = 1e29;
+
     if (s->declination >= _pi) s->declination -= _pi*2;
     for (auto& cons : constellations) 
     {
@@ -121,15 +141,24 @@ Constellation* identify_cons_of_star(Star* s)
         double d_ra = fabs(s->right_ascension - cons.RA_center);
         if (d_ra > _pi) d_ra = 2.0 * _pi - d_ra; 
 
-        // If the center is more than ~114 degrees (2.0 radians) away,
+        // If the center is more than 90 degrees away,
         // it's impossible for the star to be inside it. Skip it.
-        if (d_ra > 2.0) continue;
+        if (d_ra > half_pi) continue;
 
-        if (is_star_in_constellation(s->right_ascension, s->declination, cons.bounds)) 
+        if (might_star_be_maybe_in_constellation(s->right_ascension, s->declination, cons.bounds)) 
         {
-            return &cons;
+            double d_decl = fabs(s->declination - cons.decl_center);
+            double r = sqrt(d_ra*d_ra+d_decl*d_decl);
+
+            if (r < best)
+            {
+                result = &cons;
+                best = r;
+            }
         }
     }
+
+    if (result) return result;
 
     // The Polar Fallback: If the star didn't fit into any closed polygon,
     // assume it must be in the polar caps where the 2D projection breaks down.
