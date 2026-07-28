@@ -131,7 +131,6 @@ Constellation* identify_cons_of_star(Star* s)
     Constellation* result = nullptr;
     double best = 1e29;
 
-    if (s->declination >= _pi) s->declination -= _pi*2;
     for (auto& cons : constellations) 
     {
         if (cons.bounds.empty()) continue;              // Safety check
@@ -206,15 +205,12 @@ void fill_alienorum_ids()
     {
         if (cels[i]->typeclass() != class_star) continue;
         Star* s = (Star*)cels[i];
+        if (s->declination >= _pi) s->declination -= _pi*2;
 
         if (s->multisys)
         {
             Star* A = s->multisys->get_member('A');
-            if (A && s != A)
-            {
-                s->alienorumid = lop_component(A->alienorumid.c_str()) + std::string(" ") + std::string(1, s->get_component());
-                continue;
-            }
+            if (A && s != A) continue;                      // Leave components out of the serial numbering.
         }
 
         Constellation *cs = identify_cons_of_star(s);
@@ -267,7 +263,28 @@ void fill_alienorum_ids()
                 n = val3.size();
                 for (i=0; i<n; i++)
                 {
-                    val3[i]->alienorumid = cs->abbrev + std::to_string(m) + std::string(1, cc) + std::to_string(i+1);
+                    Star *s = val3[i];
+                    s->alienorumid =
+                        std::to_string(m)
+                        + std::string(1, cc)
+                        + std::string(" ")
+                        + cs->abbrev
+                        + std::string(" ")
+                        + std::to_string(i+1)
+                        ;
+
+                    if (s->multisys)
+                    {
+                        char comp;
+                        for (comp = 'B'; comp <= 'Z'; comp++)
+                        {
+                            Star *B = s->multisys->get_member(comp);
+                            if (B)
+                            {
+                                B->alienorumid = lop_component(s->alienorumid.c_str()) + std::string(" ") + std::string(1, B->get_component());
+                            }
+                        }
+                    }
                 }
             }
         }
