@@ -264,13 +264,14 @@ void fill_alienorum_ids()
                 for (i=0; i<n; i++)
                 {
                     Star *s = val3[i];
-                    s->alienorumid =
+                    if (s->seqno == 0) s->alienorumid = std::to_string(m);          // Sun has no fixed RA/dec and is the only -26 mag star from Earth.
+                    else s->alienorumid =
                         std::to_string(m)
                         + std::string(1, cc)
                         + std::string(" ")
                         + cs->abbrev
                         + std::string(" ")
-                        + std::to_string(i+1)
+                        + (n>1 ? std::to_string(i+1) : std::string(""))
                         ;
 
                     if (s->multisys)
