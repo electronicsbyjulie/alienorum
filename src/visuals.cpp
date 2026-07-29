@@ -1647,7 +1647,7 @@ void draw_cons_lines()
     }
 
     // Constellation labels
-    n=l;
+    n = constellations.size();
     ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.2));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<=n; l++)
     {

@@ -3572,6 +3572,55 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 12;
     line << std::string(l - line.str().size(), ' ');
 
+    line << (s->has_disk ? "D" : " ");
+    line << (s->rot_axis_known ? "R" : " ");
+    l += 3;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->rot_heliocen_incl)
+    {
+        double theta = s->rot_heliocen_incl * fiftyseven;
+        if (theta < 0) theta += 360;
+        if (theta < 100) line << "0";
+        if (theta < 10) line << "0";
+        line << std::fixed << std::setprecision(3) << theta << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->rot_heliocen_node)
+    {
+        double theta = s->rot_heliocen_node * fiftyseven;
+        if (theta < 0) theta += 360;
+        if (theta < 100) line << "0";
+        if (theta < 10) line << "0";
+        line << std::fixed << std::setprecision(3) << theta << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->disk_heliocen_inclination)
+    {
+        double theta = s->disk_heliocen_inclination * fiftyseven;
+        if (theta < 0) theta += 360;
+        if (theta < 100) line << "0";
+        if (theta < 10) line << "0";
+        line << std::fixed << std::setprecision(3) << theta << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->disk_heliocen_node)
+    {
+        double theta = s->disk_heliocen_node * fiftyseven;
+        if (theta < 0) theta += 360;
+        if (theta < 100) line << "0";
+        if (theta < 10) line << "0";
+        line << std::fixed << std::setprecision(3) << theta << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
     //
 
     // std::cout << line << std::endl;
