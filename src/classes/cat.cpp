@@ -2471,6 +2471,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         std::cout << std::endl;
         #endif
 
+        if (sysincl) s->planets_heliocen_inclination = sysincl;
+        if (sysnode) s->planets_heliocen_node = sysnode;
+
         s->location.local_system_plane = system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? sysincl : half_pi,
             sysnode, s->location.system_center);
         s->lock_system_plane = true;
@@ -3507,9 +3510,9 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 10;
     line << std::string(l - line.str().size(), ' ');
 
-    if (s->apparent_magnitude >= 0) line << "+";
+    line << ((s->apparent_magnitude >= 0) ? "+" : "-");
     if (fabs(s->apparent_magnitude) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << s->apparent_magnitude << std::flush;
+    line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -3518,16 +3521,16 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     line << std::string(l - line.str().size(), ' ');
 
     if (!s->BV_color) s->estimate_BV(s->estimate_temperature());
-    if (s->BV_color >= 0) line << "+";
+    line << ((s->BV_color >= 0) ? "+" : "-");
     if (fabs(s->BV_color) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << s->BV_color << std::flush;
+    line << std::fixed << std::setprecision(2) << fabs(s->BV_color) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
     if (!s->UB_color) s->estimate_BV(s->estimate_temperature());
-    if (s->UB_color >= 0) line << "+";
+    line << ((s->UB_color >= 0) ? "+" : "-");
     if (fabs(s->UB_color) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << s->UB_color << std::flush;
+    line << std::fixed << std::setprecision(2) << fabs(s->UB_color) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -3591,9 +3594,9 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
     }
-    if (s->absolute_magnitude >= 0) line << "+";
+    line << ((s->absolute_magnitude >= 0) ? "+" : "-");
     if (fabs(s->absolute_magnitude) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << s->absolute_magnitude << std::flush;
+    line << std::fixed << std::setprecision(2) << fabs(s->absolute_magnitude) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -3667,9 +3670,10 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 8;
     line << std::string(l - line.str().size(), ' ');
 
-    if (s->disk_heliocen_inclination)
+    double inclination = s->disk_heliocen_inclination ? s->disk_heliocen_inclination : s->planets_heliocen_inclination;
+    if (inclination)
     {
-        double theta = s->disk_heliocen_inclination * fiftyseven;
+        double theta = inclination * fiftyseven;
         if (theta < 0) theta += 360;
         if (theta < 100) line << "0";
         if (theta < 10) line << "0";
@@ -3678,9 +3682,10 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 8;
     line << std::string(l - line.str().size(), ' ');
 
-    if (s->disk_heliocen_node)
+    double node = s->disk_heliocen_node ? s->disk_heliocen_node : s->planets_heliocen_node;
+    if (node)
     {
-        double theta = s->disk_heliocen_node * fiftyseven;
+        double theta = node * fiftyseven;
         if (theta < 0) theta += 360;
         if (theta < 100) line << "0";
         if (theta < 10) line << "0";
@@ -4106,6 +4111,12 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 orb->eccentricity = row["pl_orbeccen"].get<double>();
             }
             orb->inclination = inclination;
+            if (inclination)
+            {
+                host_star->planets_heliocen_inclination = inclination;
+                if (host_star->disk_heliocen_node) host_star->planets_heliocen_node = host_star->disk_heliocen_node;
+                else if (host_star->rot_heliocen_node) host_star->planets_heliocen_node = host_star->rot_heliocen_node;
+            }
 
             if (pl_orblper)
             {
