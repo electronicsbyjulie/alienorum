@@ -58,7 +58,7 @@ Star::Star()
     memset(Flamsteed, 0, 32*sizeof(char));
     memset(constellation, 0, 4*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
-    sidereal_rotational_period = 25 * oneday;            // Sun
+    // sidereal_rotational_period = 25 * oneday;            // Sun
 }
 
 Star::~Star()

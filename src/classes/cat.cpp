@@ -4014,7 +4014,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             }
             if (row.contains("st_spectype") && !row["st_spectype"].is_null())
             {
-                strcpy(host_star->spectral_type, row["st_spectype"].get<std::string>().c_str());
+                std::string st_spectype = row["st_spectype"].get<std::string>();
+                size_t pos = st_spectype.find("&plusmn;");
+                if (pos != std::string::npos) st_spectype.replace(pos, 8, "\xf1");
+                strcpy(host_star->spectral_type, st_spectype.c_str());
             }
             if (row.contains("st_rotp") && !row["st_rotp"].is_null())
             {
