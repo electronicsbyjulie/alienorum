@@ -196,9 +196,9 @@ char get_color_code_from_temp(double tempK)
     return 'r';
 }
 
-void fill_alienorum_ids()
+ConsBins fill_alienorum_ids()
 {
-    std::map<Constellation*, std::map<int, std::map<char, std::vector<Star*>>>> bins;
+    ConsBins bins;
 
     int i, j, n;
     for (i=0; cels[i]; i++)
@@ -290,4 +290,6 @@ void fill_alienorum_ids()
             }
         }
     }
+
+    return bins;
 }

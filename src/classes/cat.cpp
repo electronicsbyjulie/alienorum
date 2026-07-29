@@ -14,6 +14,7 @@
 #include <string.h>
 #include "cat.h"
 #include "serial.h"
+#include "cons.h"
 
 // Zeta 1,2 Reticuli make for a good case study in the program correctly identifying binary systems,
 // since they have a decent separation both in actual physical distance and in angular position from the solar system.
@@ -3487,42 +3488,114 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     return result;
 }
 
-int alienorum::CatalogReader::write_condensed_star_cat(CelestialObject** cels)
+int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 {
-    int i, l, written = 0;
+    int i, l, n, written = 0;
     std::string path = "catalogs" _FILESLASH "stellae_alienorum.dat";
     FILE *fp = fopen(path.c_str(), "w");
     if (fp)
     {
-        for (i=0; cels[i]; i++)
+        for (const auto& [cs, val1] : cb)
         {
-            if (cels[i]->typeclass() != class_star) continue;
-            Star* s = (Star*)cels[i];
-            std::string line = s->alienorumid;
-            l = 15;
-            line += std::string(l - line.size(), ' ');
+            for (const auto& [m, val2] : val1)
+            {
+                for (const auto& [cc, val3] : val2)
+                {
+                    n = val3.size();
+                    for (i=0; i<n; i++)
+                    {
+                        Star *s = val3[i];
 
-            line += std::string(s->name);
-            l += 40;
-            line += std::string(l - line.size(), ' ');
+                        std::stringstream line;
+                        line << s->alienorumid << std::flush;
+                        l = 15;
+                        line << std::string(l - line.str().size(), ' ');
 
-            line += s->RA_as_hms(0);
-            l += 15;
-            line += std::string(l - line.size(), ' ');
+                        line << std::string(s->name) << std::flush;
+                        l += 40;
+                        line << std::string(l - line.str().size(), ' ');
 
-            line += s->Decl_as_degms();
-            l += 15;
-            line += std::string(l - line.size(), ' ');
+                        line << s->RA_as_hms(0) << std::flush;
+                        l += 11;
+                        line << std::string(l - line.str().size(), ' ');
 
-            line += std::to_string(s->apparent_magnitude);
-            l += 15;
-            line += std::string(l - line.size(), ' ');
+                        line << s->Decl_as_degms() << std::flush;
+                        l += 10;
+                        line << std::string(l - line.str().size(), ' ');
 
-            //
+                        if (s->apparent_magnitude >= 0) line << "+";
+                        if (fabs(s->apparent_magnitude) < 10) line << "0";
+                        line << std::fixed << std::setprecision(2) << s->apparent_magnitude << std::flush;
+                        l += 7;
+                        line << std::string(l - line.str().size(), ' ');
 
-            // std::cout << line << std::endl;
-            line += std::string("\n");
-            fputs(line.c_str(), fp);
+                        line << s->spectral_type << std::flush;
+                        l += 16;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->HD) line << s->HD << std::flush;
+                        l += 7;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->HIP) line << s->HIP << std::flush;
+                        l += 7;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->HR) line << s->HR << std::flush;
+                        l += 7;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->SB9) line << s->SB9 << std::flush;
+                        l += 7;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->FlamsteedNo > 0) line << s->FlamsteedNo << std::flush;
+                        l += 4;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        line << s->Bayer << std::flush;
+                        l += 8;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        line << s->Gliese << std::flush;
+                        l += 16;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->GouldNo > 0) line << s->GouldNo << std::flush;
+                        l += 4;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->proper_motion_RA >= 0) line << " ";
+                        line << std::scientific << std::setprecision(4) << s->proper_motion_RA << std::flush;
+                        l += 12;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->proper_motion_decl >= 0) line << " ";
+                        line << std::scientific << std::setprecision(4) << s->proper_motion_decl << std::flush;
+                        l += 12;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        if (s->radial_velocity >= 0) line << " ";
+                        line << std::scientific << std::setprecision(4) << s->radial_velocity << std::flush;
+                        l += 12;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        line << std::scientific << std::setprecision(4) << s->parallax << std::flush;
+                        l += 12;
+                        line << std::string(l - line.str().size(), ' ') << std::flush;
+
+                        line << std::scientific << std::setprecision(4) << (s->distance / light_year) << std::flush;
+                        l += 12;
+                        line << std::string(l - line.str().size(), ' ');
+
+                        //
+
+                        // std::cout << line << std::endl;
+                        line << std::string("\n");
+                        fputs(line.str().c_str(), fp);
+                    }
+                }
+            }
         }
 
         fclose(fp);

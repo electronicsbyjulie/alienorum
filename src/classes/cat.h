@@ -50,7 +50,7 @@ namespace alienorum
         int read_local_planets(CelestialObject** cels, int max, CelestialObject* must_orbit = nullptr, CelestialObject* mustnt_orbit = nullptr);
 
         // Condensed star catalog
-        int write_condensed_star_cat(CelestialObject** cels);
+        int write_condensed_star_cat(ConsBins cb);
         int read_condensed_star_cat(CelestialObject** cels, int max);
 
         protected:

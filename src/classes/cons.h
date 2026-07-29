@@ -3,6 +3,8 @@
 
 #include "star.h"
 
+#define ConsBins std::map<Constellation*, std::map<int, std::map<char, std::vector<Star*>>>>
+
 namespace alienorum
 {
     class ConsBoundary
@@ -36,7 +38,7 @@ using namespace alienorum;
 
 extern std::vector<Constellation> constellations;
 Constellation* identify_cons_of_star(Star* s);
-void fill_alienorum_ids();
+ConsBins fill_alienorum_ids();
 
 #endif
 

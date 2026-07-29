@@ -697,8 +697,8 @@ void load_stuff()
     loading_msg = "Assigning constellations...";
     mtx.unlock();
     cache_cons_lines();
-    fill_alienorum_ids();
-    cr.write_condensed_star_cat(cels);
+    ConsBins cb = fill_alienorum_ids();
+    cr.write_condensed_star_cat(cb);
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
