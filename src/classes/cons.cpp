@@ -216,6 +216,7 @@ ConsBins fill_alienorum_ids()
         Constellation *cs = identify_cons_of_star(s);
         if (!cs) continue;
         int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
+        if (m < -30 || m > 50) m = 20;
         char cc = s->spectral_type[0];
         if (cc < 'A' || cc > 'Z') cc = s->spectral_type[1];
         if (cc == 'O' || cc == 'B') cc = 'b';
