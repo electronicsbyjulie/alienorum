@@ -269,8 +269,7 @@ double Star::estimate_temperature()
     double msqi = get_mseqidx_from_sptyp(spectral_type);
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_temp(msqi);
 
-    temperature = 2000;
-    return temperature;
+    return 2000;
 }
 
 double Star::estimate_luminosity(double tempK)

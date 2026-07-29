@@ -3517,6 +3517,20 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 16;
     line << std::string(l - line.str().size(), ' ');
 
+    if (!s->BV_color) s->estimate_BV(s->estimate_temperature());
+    if (s->BV_color >= 0) line << "+";
+    if (fabs(s->BV_color) < 10) line << "0";
+    line << std::fixed << std::setprecision(2) << s->BV_color << std::flush;
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (!s->UB_color) s->estimate_BV(s->estimate_temperature());
+    if (s->UB_color >= 0) line << "+";
+    if (fabs(s->UB_color) < 10) line << "0";
+    line << std::fixed << std::setprecision(2) << s->UB_color << std::flush;
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
     if (s->HD) line << s->HD << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
@@ -3572,9 +3586,63 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 12;
     line << std::string(l - line.str().size(), ' ');
 
+    if (!s->absolute_magnitude)
+    {
+        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+    }
+    if (s->absolute_magnitude >= 0) line << "+";
+    if (fabs(s->absolute_magnitude) < 10) line << "0";
+    line << std::fixed << std::setprecision(2) << s->absolute_magnitude << std::flush;
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->mass)
+    {
+        double M = s->mass / solar_mass;
+        line << std::scientific << std::setprecision(4) << M << std::flush;
+    }
+    l += 12;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->volumetric_mean_radius)
+    {
+        double R = s->volumetric_mean_radius / solar_radius;
+        line << std::scientific << std::setprecision(4) << R << std::flush;
+    }
+    l += 12;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->temperature)
+    {
+        int T = s->temperature;
+        if (T < 100000) line << " ";
+        if (T <  10000) line << " ";
+        if (T <   1000) line << " ";
+        if (T <    100) line << " ";
+        if (T <     10) line << " ";
+        line << std::fixed << T << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->sidereal_rotational_period)
+    {
+        double P = s->sidereal_rotational_period / oneday;
+        if (P < 100000) line << " ";
+        if (P <  10000) line << " ";
+        if (P <   1000) line << " ";
+        if (P <    100) line << " ";
+        if (P <     10) line << " ";
+        line << std::fixed << std::setprecision(3) << P << std::flush;
+    }
+    l += 11;
+    line << std::string(l - line.str().size(), ' ');
+
     line << (s->has_disk ? "D" : " ");
     line << (s->rot_axis_known ? "R" : " ");
-    l += 3;
+    line << (s->known_poles ? "N" : (s->estimated_poles ? "E" : " "));
+    l += 4;
     line << std::string(l - line.str().size(), ' ');
 
     if (s->rot_heliocen_incl)
@@ -3585,7 +3653,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         if (theta < 10) line << "0";
         line << std::fixed << std::setprecision(3) << theta << std::flush;
     }
-    l += 7;
+    l += 8;
     line << std::string(l - line.str().size(), ' ');
 
     if (s->rot_heliocen_node)
@@ -3596,7 +3664,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         if (theta < 10) line << "0";
         line << std::fixed << std::setprecision(3) << theta << std::flush;
     }
-    l += 7;
+    l += 8;
     line << std::string(l - line.str().size(), ' ');
 
     if (s->disk_heliocen_inclination)
@@ -3607,7 +3675,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         if (theta < 10) line << "0";
         line << std::fixed << std::setprecision(3) << theta << std::flush;
     }
-    l += 7;
+    l += 8;
     line << std::string(l - line.str().size(), ' ');
 
     if (s->disk_heliocen_node)
@@ -3618,10 +3686,53 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         if (theta < 10) line << "0";
         line << std::fixed << std::setprecision(3) << theta << std::flush;
     }
-    l += 7;
+    l += 8;
     line << std::string(l - line.str().size(), ' ');
 
-    //
+    if (s->orbit && s->orbit->center) line << ((Star*)s->orbit->center)->alienorumid;
+    l += 15;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->period) line << std::scientific << std::setprecision(5) << (s->orbit->period / oneday);
+    l += 13;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->semimajor_axis) line << std::scientific << std::setprecision(5) << (s->orbit->semimajor_axis / AU);
+    l += 13;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->eccentricity) line << std::fixed << std::setprecision(5) << (s->orbit->eccentricity);
+    l += 13;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->arg_periapsis)
+    {
+        double omega = s->orbit->arg_periapsis * fiftyseven;
+        if (omega < 0) omega += 360;
+        if (omega < 100) line << " ";
+        if (omega <  10) line << " ";
+        line << std::fixed << std::setprecision(4) << omega << std::flush;
+    }
+    l += 9;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->mean_anomaly)
+    {
+        double omega = s->orbit->mean_anomaly * fiftyseven;
+        if (omega < 0) omega += 360;
+        if (omega < 100) line << " ";
+        if (omega <  10) line << " ";
+        line << std::fixed << std::setprecision(4) << omega << std::flush;
+    }
+    l += 9;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->epoch && (s->orbit->mean_anomaly || (fabs(s->orbit->epoch - J2000) > 0.001)))
+        line << std::fixed << std::setprecision(6) << s->orbit->epoch;
+    l += 15;
+    line << std::string(l - line.str().size(), ' ');
+
+    // TODO:
 
     // std::cout << line << std::endl;
     line << std::string("\n");
@@ -3652,7 +3763,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                             for (c = 'A'; c <= 'Z'; c++)
                             {
                                 Star *B = val3[i]->multisys->get_member(c);
-                                if (B) write_condensed_star_cat_line(fp, B);
+                                if (B && B->get_component() == c) write_condensed_star_cat_line(fp, B);
                             }
                         }
                         else write_condensed_star_cat_line(fp, val3[i]);
