@@ -50,10 +50,11 @@ namespace alienorum
         int read_local_planets(CelestialObject** cels, int max, CelestialObject* must_orbit = nullptr, CelestialObject* mustnt_orbit = nullptr);
 
         // Condensed star catalog
+        std::string get_condensed_starcat_name();
         int write_condensed_star_cat(ConsBins cb);
-        int read_condensed_star_cat(CelestialObject** cels, int max);
+        int read_condensed_star_cat();
 
-        protected:
+    protected:
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
         void apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids);
         bool worth_searching(std::string star_name);

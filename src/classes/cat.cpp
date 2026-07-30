@@ -3748,7 +3748,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 {
     int i, n, written = 0;
     char c;
-    std::string path = "catalogs" _FILESLASH "stellae_alienorum.dat";
+    std::string path = get_condensed_starcat_name();
     FILE *fp = fopen(path.c_str(), "w");
     if (fp)
     {
@@ -3781,6 +3781,183 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     }
 
     return written;
+}
+
+std::string alienorum::CatalogReader::get_condensed_starcat_name()
+{
+    return "catalogs" _FILESLASH "stellae_alienorum.dat";
+}
+
+int alienorum::CatalogReader::read_condensed_star_cat()
+{
+    int num_read = 0, i, n;
+    char c;
+    char buffer[1024];
+    char field[32];
+    double deg, mnt, sec, RA, Decl;
+    std::string str, path = get_condensed_starcat_name();
+    FILE *fp = fopen(path.c_str(), "r");
+    if (fp)
+    {
+        while (fgets(buffer, 1022, fp))
+        {
+            Star *s = new Star();
+
+            read_field_onebased(buffer, 1, 14, field);
+            s->alienorumid = trim(field);
+
+            read_field_onebased(buffer, 16, 54, field);
+            strcpy(s->name, field);
+
+
+            read_field_onebased(buffer, 56, 57, field);
+            deg = atof(field) * 15;
+
+            read_field_onebased(buffer, 59, 60, field);
+            mnt = atof(field) * 15;
+
+            read_field_onebased(buffer, 62, 65, field);
+            sec = atof(field) * 15;
+
+            RA = (deg + mnt/60 + sec/3600) * fiftyseventh;
+
+            read_field_onebased(buffer, 67, 67, field);
+            int sgndecl = (field[0] == '-') ? -1 : 1;
+
+            read_field_onebased(buffer, 68, 69, field);
+            deg = atof(field);
+
+            read_field_onebased(buffer, 71, 72, field);
+            mnt = atof(field);
+
+            read_field_onebased(buffer, 74, 75, field);
+            sec = atof(field);
+
+            Decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+
+
+            read_field_onebased(buffer, 77, 82, field);
+            s->apparent_magnitude = atof(field);
+
+            read_field_onebased(buffer, 84, 98, field);
+            str = trim(field);
+            strcpy(s->spectral_type, str.c_str());
+
+            read_field_onebased(buffer, 100, 105, field);
+            s->BV_color = atof(field);
+
+            read_field_onebased(buffer, 107, 112, field);
+            s->BV_color = atof(field);
+
+
+            read_field_onebased(buffer, 114, 119, field);
+            s->HD = atoi(field);
+
+            read_field_onebased(buffer, 121, 126, field);
+            s->HIP = atoi(field);
+
+            read_field_onebased(buffer, 128, 132, field);
+            s->HR = atoi(field);
+
+            read_field_onebased(buffer, 134, 140, field);
+            s->HR = atoi(field);
+
+            read_field_onebased(buffer, 142, 145, field);
+            s->FlamsteedNo = atoi(field);
+
+            read_field_onebased(buffer, 146, 152, field);
+            str = trim(field);
+            strcpy(s->Bayer, str.c_str());
+
+            read_field_onebased(buffer, 154, 168, field);
+            str = trim(field);
+            strcpy(s->Gliese, str.c_str());
+
+            read_field_onebased(buffer, 170, 172, field);
+            s->GouldNo = atoi(field);
+
+
+            read_field_onebased(buffer, 174, 184, field);
+            s->proper_motion_RA = atof(field);
+
+            read_field_onebased(buffer, 186, 196, field);
+            s->proper_motion_decl = atof(field);
+
+            read_field_onebased(buffer, 198, 208, field);
+            s->radial_velocity = atof(field);
+
+            read_field_onebased(buffer, 210, 219, field);
+            s->parallax = atof(field);
+
+            read_field_onebased(buffer, 222, 231, field);
+            s->distance = atof(field) * light_year;
+
+            read_field_onebased(buffer, 234, 239, field);
+            s->absolute_magnitude = atof(field);
+
+
+            read_field_onebased(buffer, 241, 250, field);
+            s->mass = atof(field) * solar_mass;
+
+            read_field_onebased(buffer, 253, 262, field);
+            s->volumetric_mean_radius = atof(field) * solar_radius;
+
+            read_field_onebased(buffer, 264, 270, field);
+            s->temperature = atof(field);
+
+            read_field_onebased(buffer, 272, 281, field);
+            s->sidereal_rotational_period = atof(field) * oneday;
+
+            if (buffer[282] == 'D') s->has_disk = true;
+            if (buffer[283] == 'R') s->rot_axis_known = true;
+            if (buffer[284] == 'N') s->known_poles = true;
+            else if (buffer[284] == 'E') s->estimated_poles = true;
+
+            read_field_onebased(buffer, 287, 293, field);
+            s->rot_heliocen_incl = atof(field) * fiftyseventh;
+
+            read_field_onebased(buffer, 295, 301, field);
+            s->rot_heliocen_node = atof(field) * fiftyseventh;
+
+            read_field_onebased(buffer, 303, 309, field);
+            s->disk_heliocen_inclination = s->planets_heliocen_inclination = atof(field) * fiftyseventh;
+
+            read_field_onebased(buffer, 311, 317, field);
+            s->disk_heliocen_node = s->planets_heliocen_node = atof(field) * fiftyseventh;
+
+            read_field_onebased(buffer, 319, 332, field);
+            str = trim(field);
+            if (str.size()) s->orbit = new Orbit();
+
+            // PaewM
+
+            read_field_onebased(buffer, 334, 344, field);
+            if (s->orbit) s->orbit->period = atof(field) * oneday;
+
+            read_field_onebased(buffer, 347, 358, field);
+            if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
+
+            read_field_onebased(buffer, 360, 366, field);
+            if (s->orbit) s->orbit->eccentricity = atof(field);
+
+            read_field_onebased(buffer, 373, 380, field);
+            if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
+
+            read_field_onebased(buffer, 382, 389, field);
+            if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
+
+            read_field_onebased(buffer, 391, 404, field);
+            if (s->orbit) s->orbit->epoch = atof(field);
+
+
+            append_cel(s);
+            num_read++;
+        }
+
+        fclose(fp);
+    }
+
+    return num_read;
 }
 
 void CatalogReader::read_field_onebased(const char *buffer, size_t start, int end, char *out)

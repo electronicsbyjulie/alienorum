@@ -242,8 +242,11 @@ void load_catalogs()
     int i, j, m, n;
     time_t began = time(NULL);
 
-    // TODO: Read data from more star catalogs.
     CatalogReader cr;
+    std::string ihcfn = cr.get_condensed_starcat_name();
+    if (
+
+    // TODO: Read data from more star catalogs.
     cr.download_catalogs();
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
