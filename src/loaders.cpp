@@ -350,8 +350,11 @@ void load_catalogs()
     mtx.lock();
     loading_msg = std::string("Naming stars...");
     mtx.unlock();
-    rename_all_from_Bayer_Flamsteed();
-    cr.read_starname_dat(cels);
+    if (!ihsc)
+    {
+        rename_all_from_Bayer_Flamsteed();
+        cr.read_starname_dat(cels);
+    }
 
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
@@ -713,10 +716,12 @@ void load_stuff()
     loading_msg = "Assigning constellations...";
     mtx.unlock();
     cache_cons_lines();
-    ConsBins cb = fill_alienorum_ids();
     std::string ihcfn = cr.get_condensed_starcat_name();
     if (!file_exists(ihcfn.c_str()))
+    {
+        ConsBins cb = fill_alienorum_ids();
         cr.write_condensed_star_cat(cb);
+    }
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;

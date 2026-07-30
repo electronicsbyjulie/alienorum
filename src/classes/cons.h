@@ -27,6 +27,9 @@ namespace alienorum
         std::string name, genitive, abbrev;
         std::vector<ConsLine> lines;
         std::vector<ConsBoundary> bounds;
+        std::map<int, Star*> Bayer_stars;               // 0 = alpha, 1 = beta, etc.
+        std::map<int, Star*> Flamsteed_stars;
+        std::map<int, Star*> Gould_stars;
         double RA_center;               // RADIANS
         double decl_center;
         void build_constellation_perimeter();           // Run this after load to translate the catalog's RA ordering into a perimeter order.

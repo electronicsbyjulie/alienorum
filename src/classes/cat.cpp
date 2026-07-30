@@ -3831,7 +3831,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 62, 65, field);
             sec = atof(field) * 15;
 
-            RA = (deg + mnt/60 + sec/3600) * fiftyseventh;
+            s->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
 
             read_field_onebased(buffer, 67, 67, field);
             int sgndecl = (field[0] == '-') ? -1 : 1;
@@ -3845,7 +3845,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 74, 75, field);
             sec = atof(field);
 
-            Decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+            s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
 
 
             read_field_onebased(buffer, 77, 82, field);
@@ -3882,6 +3882,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 146, 152, field);
             str = trim(field);
             if (str.size()) strcpy(s->Bayer, str.c_str());
+            // TODO: BayerGrkno
 
             read_field_onebased(buffer, 154, 168, field);
             str = trim(field);
@@ -3890,18 +3891,26 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 170, 172, field);
             s->GouldNo = atoi(field);
 
+            Constellation *mycons = nullptr;
             if (strlen(s->Bayer) || (s->FlamsteedNo > 0) || (s->GouldNo > 0))
             {
                 strcpy(s->constellation, cons_from_alienorumid(s->alienorumid).c_str());
+                j = constellations.size();
+                for (i=0; i<j && !mycons; i++) if (!strcmp(constellations[i].name.c_str(), s->constellation)) mycons = &constellations[i];
             }
 
-            if (s->FlamsteedNo)
+            if (s->FlamsteedNo > 0)
             {
                 str = std::to_string(s->FlamsteedNo) + std::string(" ");
                 if (s->FlamsteedNo < 10) str += std::string(" ");
                 str += std::string(s->constellation);
                 strcpy(s->Flamsteed, str.c_str());
+
+                if (mycons) mycons->Flamsteed_stars[s->FlamsteedNo] = s;
             }
+
+            if (mycons && s->BayerGrkno >= 0) mycons->Bayer_stars[s->BayerGrkno] = s;
+            if (mycons && s->GouldNo > 0) mycons->Gould_stars[s->GouldNo] = s;
 
 
             read_field_onebased(buffer, 174, 184, field);
@@ -3918,6 +3927,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 222, 231, field);
             s->distance = atof(field) * light_year;
+            s->update_location(simnow);
 
             read_field_onebased(buffer, 234, 239, field);
             s->absolute_magnitude = atof(field);
@@ -3950,6 +3960,14 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 311, 317, field);
             s->disk_heliocen_node = s->planets_heliocen_node = atof(field) * fiftyseventh;
+
+            s->location.local_system_plane = system_plane_from_incl_and_node( s->disk_heliocen_inclination ?: half_pi, s->disk_heliocen_node );
+            s->lock_system_plane = true;
+            if (s->rot_heliocen_incl)
+            {
+                s->location.equatorial_plane = system_plane_from_incl_and_node( s->rot_heliocen_incl, s->rot_heliocen_node );
+                s->lock_equatorial_plane = true;
+            }
 
             read_field_onebased(buffer, 319, 332, field);
             str = trim(field);
