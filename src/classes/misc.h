@@ -182,6 +182,8 @@ void enforce_y_pan_limit();
 
 std::string elapsed_time(time_t start, time_t end);
 
+std::string cons_from_alienorumid(const std::string alienorumid);
+
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide
     double ch4_fraction,        // Methane

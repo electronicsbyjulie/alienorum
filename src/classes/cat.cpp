@@ -3334,7 +3334,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
         try
         {
             pl.at("BODYNAME").get_to(bodyname);
-            j = find_object(bodyname.c_str(), false, 9e+29, 0);
+            j = -1; // find_object(bodyname.c_str(), false, 9e+29, 0);
             cenname = "";
             try { pl.at("CENTER_OF_ORBIT").get_to(cenname); } catch (...) { ; }
             k = -1;
@@ -3790,11 +3790,23 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
-    int num_read = 0, i, n;
+    int num_read = 0, i, j, n;
     char c;
     char buffer[1024];
-    char field[32];
+    char field[64];
     double deg, mnt, sec, RA, Decl;
+
+    if (!hdcache)
+    {
+        hdcache = new Star*[MAX_HD+1];
+        memset(hdcache, 0, sizeof(Star*)*(MAX_HD+1));
+    }
+    if (!hipcache)
+    {
+        hipcache = new Star*[MAX_HIP+1];
+        memset(hipcache, 0, sizeof(Star*)*(MAX_HIP+1));
+    }
+
     std::string str, path = get_condensed_starcat_name();
     FILE *fp = fopen(path.c_str(), "r");
     if (fp)
@@ -3802,13 +3814,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         while (fgets(buffer, 1022, fp))
         {
             Star *s = new Star();
-
             read_field_onebased(buffer, 1, 14, field);
             s->alienorumid = trim(field);
 
             read_field_onebased(buffer, 16, 54, field);
-            strcpy(s->name, field);
 
+            str = trim(field);
+            strcpy(s->name, str.c_str());
 
             read_field_onebased(buffer, 56, 57, field);
             deg = atof(field) * 15;
@@ -3852,9 +3864,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 114, 119, field);
             s->HD = atoi(field);
+            hdcache[s->HD] = s;
 
             read_field_onebased(buffer, 121, 126, field);
             s->HIP = atoi(field);
+            hipcache[s->HIP] = s;
 
             read_field_onebased(buffer, 128, 132, field);
             s->HR = atoi(field);
@@ -3867,7 +3881,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 146, 152, field);
             str = trim(field);
-            strcpy(s->Bayer, str.c_str());
+            if (str.size()) strcpy(s->Bayer, str.c_str());
 
             read_field_onebased(buffer, 154, 168, field);
             str = trim(field);
@@ -3875,6 +3889,19 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 170, 172, field);
             s->GouldNo = atoi(field);
+
+            if (strlen(s->Bayer) || (s->FlamsteedNo > 0) || (s->GouldNo > 0))
+            {
+                strcpy(s->constellation, cons_from_alienorumid(s->alienorumid).c_str());
+            }
+
+            if (s->FlamsteedNo)
+            {
+                str = std::to_string(s->FlamsteedNo) + std::string(" ");
+                if (s->FlamsteedNo < 10) str += std::string(" ");
+                str += std::string(s->constellation);
+                strcpy(s->Flamsteed, str.c_str());
+            }
 
 
             read_field_onebased(buffer, 174, 184, field);
@@ -3894,7 +3921,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 234, 239, field);
             s->absolute_magnitude = atof(field);
-
 
             read_field_onebased(buffer, 241, 250, field);
             s->mass = atof(field) * solar_mass;
@@ -3929,8 +3955,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             str = trim(field);
             if (str.size()) s->orbit = new Orbit();
 
-            // PaewM
-
             read_field_onebased(buffer, 334, 344, field);
             if (s->orbit) s->orbit->period = atof(field) * oneday;
 
@@ -3955,6 +3979,22 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         }
 
         fclose(fp);
+    }
+
+    for (i=0; cels[i]; i++)
+    {
+        if (cels[i]->orbit && cels[i]->orbit->center_name.size())
+        {
+            for (j=0; cels[j]; j++)
+            {
+                if (j==i) continue;
+                if (!strcmp(((Star*)cels[j])->alienorumid.c_str(), cels[i]->orbit->center_name.c_str()))
+                {
+                    cels[i]->orbit->center = cels[j];
+                    break;
+                }
+            }
+        }
     }
 
     return num_read;

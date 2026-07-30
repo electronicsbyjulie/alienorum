@@ -242,15 +242,22 @@ void load_catalogs()
     int i, j, m, n;
     time_t began = time(NULL);
 
+    cels[0] = nullptr;
+
     CatalogReader cr;
     std::string ihcfn = cr.get_condensed_starcat_name();
-    if (
+    bool ihsc = false;
+    if (file_exists(ihcfn.c_str()))
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading star catalog...");
+        mtx.unlock();
+        ihsc = cr.read_condensed_star_cat();
+    }
 
     // TODO: Read data from more star catalogs.
     cr.download_catalogs();
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
-
-    cels[0] = nullptr;
 
     n = cats.size();
     for (i=0; i<n; i++)
@@ -266,7 +273,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "astorb")) have_astorb = true;
     }
 
-    if (have_Gliese)
+    if (have_Gliese && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading Gliese catalog...");
@@ -300,7 +307,7 @@ void load_catalogs()
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
-    if (have_BSC)
+    if (have_BSC && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading Bright Star Catalog...");
@@ -310,7 +317,7 @@ void load_catalogs()
         cout << "Read " << nBSC << " objects." << endl << flush;
     }
     Gliese_doubles_fix();
-    if (have_HIP && !magnitude_test)
+    if (have_HIP && !ihsc && !magnitude_test)
     {
         mtx.lock();
         loading_msg = std::string("Loading Hipparcos Catalog...");
@@ -320,7 +327,7 @@ void load_catalogs()
         cout << "Read " << nHIP << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
-    if (have_Uranio)
+    if (have_Uranio && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading Uranometria Catalog...");
@@ -329,7 +336,7 @@ void load_catalogs()
         int nUra = cr.read_Uranometria_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nUra << " objects." << endl << flush;
     }
-    if (0) // have_WD)
+    if (0) // have_WD && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading White Dwarfs Catalog...");
@@ -360,7 +367,7 @@ void load_catalogs()
         }
         #endif
 
-        if (have_SB9)
+        if (have_SB9 && !ihsc)
         {
             mtx.lock();
             loading_msg = std::string("Loading Stellar Binaries Catalog...");
@@ -377,22 +384,28 @@ void load_catalogs()
         }
     }
 
-    mtx.lock();
-    loading_msg = std::string("Naming stars...");
-    mtx.unlock();
-    // rename_all_from_Bayer_Flamsteed();
-    cr.read_starname_dat(cels);
+    if (!ihsc)
+    {
+        mtx.lock();
+        loading_msg = std::string("Naming stars...");
+        mtx.unlock();
+        // rename_all_from_Bayer_Flamsteed();
+        cr.read_starname_dat(cels);
+    }
 
     // Because of system inclinations, we will die unless we read star orbits before reading exoplanets.
     // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
     // What to do, oh what to do...
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
-    mtx.lock();
-    loading_msg = std::string("Orbiting stars...");
-    mtx.unlock();
-    if (!magnitude_test) cr.read_star_orbits_dat(cels);
-    else splash = false;
+    if (!ihsc)
+    {
+        mtx.lock();
+        loading_msg = std::string("Orbiting stars...");
+        mtx.unlock();
+        if (!magnitude_test) cr.read_star_orbits_dat(cels);
+        else splash = false;
+    }
 
     if (!noexo)
     {
@@ -701,7 +714,9 @@ void load_stuff()
     mtx.unlock();
     cache_cons_lines();
     ConsBins cb = fill_alienorum_ids();
-    cr.write_condensed_star_cat(cb);
+    std::string ihcfn = cr.get_condensed_starcat_name();
+    if (!file_exists(ihcfn.c_str()))
+        cr.write_condensed_star_cat(cb);
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;

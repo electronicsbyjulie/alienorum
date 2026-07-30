@@ -211,6 +211,22 @@ std::string elapsed_time(time_t start, time_t end)
     return elapsed;
 }
 
+std::string cons_from_alienorumid(const std::string alienorumid)
+{
+    std::string result = "";
+    const char *c = alienorumid.c_str();
+    if (!c) return result;
+    const char *space = strchr(c, ' ');
+    if (!space) return result;
+    c = space+1;
+    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z')) result += std::string(1, *c);
+    c++;
+    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z')) result += std::string(1, *c);
+    c++;
+    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z')) result += std::string(1, *c);
+    return result;
+}
+
 // TODO: Consider storing the gases in a JSON file.
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,
