@@ -3881,8 +3881,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             read_field_onebased(buffer, 146, 152, field);
             str = trim(field);
-            if (str.size()) strcpy(s->Bayer, str.c_str());
-            // TODO: BayerGrkno
+            if (str.size())
+            {
+                strcpy(s->Bayer, str.c_str());
+                s->BayerGrkno = grkno_from_abbrev(s->Bayer);
+            }
 
             read_field_onebased(buffer, 154, 168, field);
             str = trim(field);

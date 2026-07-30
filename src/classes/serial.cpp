@@ -2,6 +2,7 @@
 #include <iostream>
 #include <regex>
 #include "serial.h"
+#include "cons.h"
 
 using namespace alienorum;
 
@@ -68,6 +69,13 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         )
         match_cons = &search_term[co];
 
+    Constellation *cons2match = nullptr;
+    n = constellations.size();
+    for (i=0; !cons2match && i<n; i++)
+    {
+        if (!strcasecmp(match_cons, constellations[i].name.c_str())) cons2match = &constellations[i];
+    }
+
     for (i=0; cels[i]; i++)
     {
         if (os && (cels[i]->typeclass() != class_star)) continue;
@@ -103,9 +111,36 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     }
 
     std::string str_search = search_term;
+    std::regex Bayer_regex(R"([A-Za-z]{3}\s*[A-Za-z]{3})");
+    std::smatch Bayer_match;
+    std::regex Flamsteed_regex(R"([0-9]+\s*[A-Za-z]{3})");
+    std::smatch Flamsteed_match;
     std::regex Gould_regex(R"([0-9]+\s*G[.]?\s*[A-Za-z]{3})");
     std::smatch Gould_match;
+    bool is_Bayer = std::regex_search(str_search, Bayer_match, Bayer_regex);
+    bool is_Flamsteed = std::regex_search(str_search, Flamsteed_match, Flamsteed_regex);
     bool is_Gould = std::regex_search(str_search, Gould_match, Gould_regex);
+
+    if (cons2match && is_Bayer)
+    {
+        int igrk = grkno_from_abbrev(search_term);
+        if (cons2match->Bayer_stars.find(igrk) != cons2match->Bayer_stars.end())
+            return cons2match->Bayer_stars[igrk]->seqno;
+    }
+
+    if (cons2match && is_Flamsteed)
+    {
+        i = atoi(search_term);
+        if (cons2match->Flamsteed_stars.find(i) != cons2match->Flamsteed_stars.end())
+            return cons2match->Flamsteed_stars[i]->seqno;
+    }
+
+    if (cons2match && is_Gould)
+    {
+        i = atoi(search_term);
+        if (cons2match->Gould_stars.find(i) != cons2match->Gould_stars.end())
+            return cons2match->Gould_stars[i]->seqno;
+    }
 
     if (match_cons && termi)
     {

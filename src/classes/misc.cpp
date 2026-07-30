@@ -227,6 +227,57 @@ std::string cons_from_alienorumid(const std::string alienorumid)
     return result;
 }
 
+int grkno_from_abbrev(const char *abbrev)
+{
+    static const char *only1 = "ABGDZIKLMNXRSUC";
+    static const int ionly1[15] = {0, 1, 2, 3, 5, 8, 9, 10, 11, 12, 13, 16, 17, 19, 21};
+    char c = abbrev[0] & 0x5f;
+    const char *i;
+    int idx, result=-1;
+    if (i = strchr(only1, c))
+    {
+        idx = i - only1;
+        result = ionly1[idx];
+    }
+    else if (strlen(abbrev) < 3)
+    {
+        // TODO:
+    }
+    else if (c == 'E')
+    {
+        c = abbrev[1];
+        if (c == 'P') result = 4;
+        else if (c == 'T') result = 6;
+    }
+    else if (c == 'T')
+    {
+        c = abbrev[1];
+        if (c == 'H') result = 7;
+        else if (c == 'A') result = 18;
+    }
+    else if (c == 'O')
+    {
+        c = abbrev[2];
+        if (c == 'I') result = 14;
+        else if (c == 'E') result = 23;
+    }
+    else if (c == 'P')
+    {
+        c = abbrev[1];
+        if (c == 'I') result = 15;
+        else if (c == 'H') result = 20;
+        else if (c == 'S') result = 22;
+    }
+
+    if (strlen(abbrev) >= 7)
+    {
+        int n = abbrev[3] - '0';
+        if (n > 0) result = 100 + 10*result + n;
+    }
+
+    return result;
+}
+
 // TODO: Consider storing the gases in a JSON file.
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,
