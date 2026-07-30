@@ -3512,7 +3512,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 
     line << ((s->apparent_magnitude >= 0) ? "+" : "-");
     if (fabs(s->apparent_magnitude) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
+    if (s->apparent_magnitude < 99) line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
