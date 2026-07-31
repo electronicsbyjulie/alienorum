@@ -401,14 +401,11 @@ void load_catalogs()
     // What to do, oh what to do...
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
-    if (!ihsc)
-    {
-        mtx.lock();
-        loading_msg = std::string("Orbiting stars...");
-        mtx.unlock();
-        if (!magnitude_test) cr.read_star_orbits_dat(cels);
-        else splash = false;
-    }
+    mtx.lock();
+    loading_msg = std::string("Orbiting stars...");
+    mtx.unlock();
+    if (!magnitude_test) cr.read_star_orbits_dat(cels);
+    else splash = false;
 
     if (!noexo)
     {

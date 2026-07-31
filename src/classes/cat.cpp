@@ -3642,6 +3642,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 11;
     line << std::string(l - line.str().size(), ' ');
 
+    /*
     line << (s->has_disk ? "D" : " ");
     line << (s->rot_axis_known ? "R" : " ");
     line << (s->known_poles ? "N" : (s->estimated_poles ? "E" : " "));
@@ -3670,7 +3671,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 8;
     line << std::string(l - line.str().size(), ' ');
 
-    double inclination = s->disk_heliocen_inclination ? s->disk_heliocen_inclination : s->planets_heliocen_inclination;
+    double inclination = s->disk_heliocen_inclination; // ? s->disk_heliocen_inclination : s->planets_heliocen_inclination;
     if (inclination)
     {
         double theta = inclination * fiftyseven;
@@ -3693,6 +3694,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     }
     l += 8;
     line << std::string(l - line.str().size(), ' ');
+    */
 
     if (s->orbit && s->orbit->center) line << ((Star*)s->orbit->center)->alienorumid;
     l += 15;
@@ -3785,7 +3787,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 
 std::string alienorum::CatalogReader::get_condensed_starcat_name()
 {
-    return "catalogs" _FILESLASH "stellae_alienorum.dat";
+    return "catalogs" _FILESLASH "soles_alienorum.dat";
 }
 
 int alienorum::CatalogReader::read_condensed_star_cat()
@@ -3947,6 +3949,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 272, 281, field);
             s->sidereal_rotational_period = atof(field) * oneday;
 
+            int offset = -36;
+            /*
             if (buffer[282] == 'D') s->has_disk = true;
             if (buffer[283] == 'R') s->rot_axis_known = true;
             if (buffer[284] == 'N') s->known_poles = true;
@@ -3972,26 +3976,33 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 s->lock_equatorial_plane = true;
             }
 
-            read_field_onebased(buffer, 319, 332, field);
-            str = trim(field);
-            if (str.size()) s->orbit = new Orbit();
+            offset = 0;
+            */
 
-            read_field_onebased(buffer, 334, 344, field);
+            read_field_onebased(buffer, 319+offset, 332+offset, field);
+            str = trim(field);
+            if (str.size())
+            {
+                s->orbit = new Orbit();
+                s->orbit->center_name = str;
+            }
+
+            read_field_onebased(buffer, 334+offset, 344+offset, field);
             if (s->orbit) s->orbit->period = atof(field) * oneday;
 
-            read_field_onebased(buffer, 347, 358, field);
+            read_field_onebased(buffer, 347+offset, 358+offset, field);
             if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
 
-            read_field_onebased(buffer, 360, 366, field);
+            read_field_onebased(buffer, 360+offset, 366+offset, field);
             if (s->orbit) s->orbit->eccentricity = atof(field);
 
-            read_field_onebased(buffer, 373, 380, field);
+            read_field_onebased(buffer, 373+offset, 380+offset, field);
             if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
 
-            read_field_onebased(buffer, 382, 389, field);
+            read_field_onebased(buffer, 382+offset, 389+offset, field);
             if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-            read_field_onebased(buffer, 391, 404, field);
+            read_field_onebased(buffer, 391+offset, 404+offset, field);
             if (s->orbit) s->orbit->epoch = atof(field);
 
 
@@ -4382,7 +4393,30 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             new_planet->update_location(simnow);
 
             // 4. Run automated estimation/classification fallbacks provided in class declarations
-            if ((pl_msini_known && !pl_massknown) || !inclination || (pl_msini == pl_mass))
+            // Decide whether the reported "true" mass can be trusted, or whether it should be
+            // recomputed from msini using the star's own disk/rotation inclination instead.
+            // With pl_orbincl known, pl_mass should equal msini/sin(pl_orbincl) if the two were
+            // derived together; a value that doesn't match came from an independent method (or a
+            // stale/default pl_orbincl) and is left alone. With pl_orbincl unknown, a pl_mass that
+            // matches msini is almost certainly just msini relabeled by the archive rather than a
+            // real independent measurement, so that's the case worth recomputing.
+            const double mass_consistency_tolerance = 0.10;
+            bool mass_untrustworthy = false;
+            if (pl_msini_known)
+            {
+                if (!pl_massknown)
+                {
+                    mass_untrustworthy = true;
+                }
+                else
+                {
+                    double expected_mass = inclination ? (pl_msini / sin(inclination)) : pl_msini;
+                    bool consistent = fabs(pl_mass - expected_mass) <= mass_consistency_tolerance * expected_mass;
+                    mass_untrustworthy = inclination ? !consistent : consistent;
+                }
+            }
+
+            if (mass_untrustworthy)
             {
                 double st_incl = 0;
                 if (host_star->disk_heliocen_inclination) st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
@@ -4390,7 +4424,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
                 if (st_incl)
                 {
-                    new_planet->mass /= sin(st_incl);
+                    new_planet->mass = pl_msini / sin(st_incl);
                     std::cout << "Mass of " << new_planet->name << " computed at " << (new_planet->mass / earth_mass)
                         << " based on system inclination " << (st_incl * fiftyseven) << std::endl;
                     pl_massknown = true;
