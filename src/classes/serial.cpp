@@ -71,7 +71,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     Constellation *cons2match = nullptr;
     n = constellations.size();
-    for (i=0; !cons2match && i<n; i++)
+    if (match_cons) for (i=0; !cons2match && i<n; i++)
     {
         if (!strcasecmp(match_cons, constellations[i].name.c_str())) cons2match = &constellations[i];
     }
