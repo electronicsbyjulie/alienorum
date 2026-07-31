@@ -3861,7 +3861,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->BV_color = atof(field);
 
             read_field_onebased(buffer, 107, 112, field);
-            s->BV_color = atof(field);
+            s->UB_color = atof(field);
 
 
             read_field_onebased(buffer, 114, 119, field);
