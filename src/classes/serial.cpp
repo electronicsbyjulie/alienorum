@@ -117,9 +117,12 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     std::smatch Flamsteed_match;
     std::regex Gould_regex(R"([0-9]+\s*G[.]?\s*[A-Za-z]{3})");
     std::smatch Gould_match;
-    bool is_Bayer = std::regex_search(str_search, Bayer_match, Bayer_regex);
-    bool is_Flamsteed = std::regex_search(str_search, Flamsteed_match, Flamsteed_regex);
-    bool is_Gould = std::regex_search(str_search, Gould_match, Gould_regex);
+    bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))
+        ? std::regex_search(str_search, Bayer_match, Bayer_regex) : false;
+    bool is_Flamsteed = (search_term[0] >= '0' && search_term[0] <= '9')
+        ? std::regex_search(str_search, Flamsteed_match, Flamsteed_regex) : false;
+    bool is_Gould = (search_term[0] >= '0' && search_term[0] <= '9')
+        ? std::regex_search(str_search, Gould_match, Gould_regex) : false;
 
     if (cons2match && is_Bayer)
     {
