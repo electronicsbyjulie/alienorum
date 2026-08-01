@@ -60,7 +60,6 @@ add_library(CLASSES STATIC
 	src/classes/color.cpp
 	src/classes/cons.cpp
 	src/classes/galaxy.cpp
-	src/classes/gputex.cpp
 	src/classes/misc.cpp
 	src/classes/moon.cpp
 	src/classes/noise.cpp
@@ -84,9 +83,11 @@ target_link_libraries(CLASSES JPEG::JPEG PNG::PNG
 add_executable(alienorum
 	src/dialogs.cpp
 	src/globals.cpp
+	src/gputex.cpp
 	src/housekeeping.cpp
 	src/inputs.cpp
 	src/loaders.cpp
+	src/sphere_impostor.cpp
 	src/visuals.cpp
 	src/alienorum.cpp)
 
