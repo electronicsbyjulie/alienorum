@@ -20,7 +20,14 @@ namespace alienorum
 
     GLuint gputex_for(Map* map)
     {
-        if (!map || !map->has_rgb_data()) return 0;
+        // gen==0 means touch_gen() hasn't run yet -- i.e. red_data/green_data/blue_data are
+        // allocated (has_rgb_data() already true) but the load/generation fill loop that
+        // actually writes real pixels into them hasn't finished. Uploading at that point grabs
+        // whatever the background thread has gotten to plus uninitialized heap bytes for the
+        // rest -- see Map::gen's own comment in celestial.h for the full story (bug: textures
+        // showing a small "real" patch surrounded by glitch on whatever was looked at soon
+        // after its load/generation started).
+        if (!map || !map->gen || !map->has_rgb_data()) return 0;
 
         GpuTexEntry &entry = gputex_cache[map];
         if (entry.tex && entry.gen == map->gen) return entry.tex;

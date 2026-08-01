@@ -11,11 +11,14 @@
 //
 // This loader is also deliberately stripped down to only the symbols imgui_impl_opengl3.cpp
 // itself happens to call, which excludes a few otherwise-ordinary GL calls (glDrawArrays,
-// glBindAttribLocation, glUniform4f/1f/3f, GL_DYNAMIC_DRAW/GL_STATIC_DRAW). The code below is
-// written to only use what's actually present: glDrawElements + a static index buffer instead
-// of glDrawArrays, glGetAttribLocation (post-link query) instead of glBindAttribLocation,
-// every per-draw value (color, sphere center, ray direction) passed as a per-vertex attribute
-// instead of a uniform, and GL_STREAM_DRAW throughout.
+// glBindAttribLocation, glUniform4f/3f/1f -- but not glUniform1i or glUniformMatrix4fv, which
+// ImGui's own backend does use, for its texture sampler and projection matrix respectively --
+// and GL_DYNAMIC_DRAW/GL_STATIC_DRAW). The code below is written to only use what's actually
+// present: glDrawElements + a static index buffer instead of glDrawArrays, glGetAttribLocation
+// (post-link query) instead of glBindAttribLocation, per-draw values that would otherwise be
+// float/vec uniforms (color, sphere center, orientation basis) passed as per-vertex attributes
+// instead, GL_STREAM_DRAW throughout, and glUniform1i for the one uniform that is available
+// (the day-map sampler's texture unit).
 #include "imgui/backends/imgui_impl_opengl3_loader.h"
 
 using namespace alienorum;
@@ -41,12 +44,24 @@ namespace alienorum
         // unit-radius -- keeps the ray-sphere quadratic's coefficients O(1) instead of O(planet
         // radius in meters), which matters for float32 precision).
         float ccx, ccy, ccz;
-        float r, g, b, a;
+        // Object's local +X/+Y axes, in the same camera space (see SphereImpostorInput) -- used
+        // to rotate the per-pixel camera-space normal back into the object's own frame.
+        float bxx, bxy, bxz, byx, byy, byz;
+        float has_tex;   // 0 or 1
+        GLuint tex;
+        GLuint night_tex;
+        float r, g, b, a;   // fallback color, used when has_tex is 0
+        float lightx, lighty, lightz;   // camera space, unit length
+        float tintr, tintg, tintb;
+        // x=self_luminous, y=night_illum, z=has_night_tex, w=redlight_mode -- all 0/1 except y.
+        float flagx, flagy, flagz, flagw;
     };
 
     static GLuint s_program = 0;
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
-    static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aCenterLoc = -1, s_aColorLoc = -1;
+    static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aCenterLoc = -1;
+    static GLint s_aBasisXLoc = -1, s_aBasisYLoc = -1, s_aHasTexLoc = -1, s_aColorLoc = -1;
+    static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -58,32 +73,65 @@ namespace alienorum
         "in vec2 aPos;\n"
         "in vec2 aRayXY;\n"
         "in vec3 aCenter;\n"
+        "in vec3 aBasisX;\n"
+        "in vec3 aBasisY;\n"
+        "in float aHasTex;\n"
         "in vec4 aColor;\n"
+        "in vec3 aLightDir;\n"
+        "in vec3 aTint;\n"
+        "in vec4 aFlags;\n"
         "out vec2 vRayXY;\n"
         "out vec3 vCenter;\n"
+        "out vec3 vBasisX;\n"
+        "out vec3 vBasisY;\n"
+        "out float vHasTex;\n"
         "out vec4 vColor;\n"
+        "out vec3 vLightDir;\n"
+        "out vec3 vTint;\n"
+        "out vec4 vFlags;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
         "    vCenter = aCenter;\n"
+        "    vBasisX = aBasisX;\n"
+        "    vBasisY = aBasisY;\n"
+        "    vHasTex = aHasTex;\n"
         "    vColor = aColor;\n"
+        "    vLightDir = aLightDir;\n"
+        "    vTint = aTint;\n"
+        "    vFlags = aFlags;\n"
         "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
         "}\n";
 
-    // Unlit placeholder for this implementation phase: fills the true perspective silhouette
-    // (found by intersecting each fragment's actual camera-space ray against the sphere, not
-    // by approximating it as a screen-space circle -- that approximation is only valid when
-    // the sphere is far enough away / small enough on screen that perspective distortion
-    // across its silhouette is negligible, which breaks down badly at close range, e.g. a
-    // low-orbit satellite looking at a planet) with a flat color. Per-pixel normal-based
-    // lighting and texturing land in later phases; the normal (hit - center) is already
-    // available here (`n`) for that purpose.
+    // Finds the true perspective silhouette by intersecting each fragment's actual
+    // camera-space ray against the sphere, not by approximating it as a screen-space circle
+    // (that approximation only holds when the sphere is far enough away / small enough on
+    // screen that perspective distortion across its silhouette is negligible, which breaks
+    // down badly at close range, e.g. a low-orbit satellite looking at a planet). Day-map/
+    // night-map textures are sampled by rotating the hit normal back into the object's own
+    // frame (via the basis vectors -- see SphereImpostorInput) to recover lat/lon matching
+    // Point::from_ra_dec's convention (x=-sin(lon)cos(lat), y=sin(lat)); the fallback color is
+    // used unlit when no day map is available. Lighting matches the CPU path's Lambertian
+    // day/night blend (visuals.cpp's draw_sphere(), the non-GPU fallback): a cube-root-softened
+    // cosine term between the surface normal and the light direction (or, for a self-luminous
+    // object like a star, the view direction instead -- a limb-darkening-like falloff), a
+    // white-balance daylight tint, an ambient night_illum floor, and a night-map blend on the
+    // unlit side where available.
     static const char *kFragmentShaderSrc =
         "#version 130\n"
         "in vec2 vRayXY;\n"
         "in vec3 vCenter;\n"
+        "in vec3 vBasisX;\n"
+        "in vec3 vBasisY;\n"
+        "in float vHasTex;\n"
         "in vec4 vColor;\n"
+        "in vec3 vLightDir;\n"
+        "in vec3 vTint;\n"
+        "in vec4 vFlags;\n"   // x=self_luminous, y=night_illum, z=has_night_tex, w=redlight_mode
         "out vec4 FragColor;\n"
+        "uniform sampler2D uDayMap;\n"
+        "uniform sampler2D uNightMap;\n"
+        "const float PI = 3.14159265358979;\n"
         "void main()\n"
         "{\n"
         "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
@@ -97,7 +145,27 @@ namespace alienorum
         "    if (t < 0.0) discard;\n"
         "    vec3 hit = dir * t;\n"
         "    vec3 n = normalize(hit - vCenter);\n"
-        "    FragColor = vColor;\n"
+        "\n"
+        "    float costerm = (vFlags.x > 0.5) ? dot(n, normalize(-hit)) : dot(n, vLightDir);\n"
+        "    float isDay = clamp(pow(max(costerm, 0.0), 0.3333) + vFlags.y, 0.0, 1.0);\n"
+        "\n"
+        "    vec3 basisZ = cross(vBasisX, vBasisY);\n"
+        "    vec3 ln = vBasisX*n.x + vBasisY*n.y + basisZ*n.z;\n"
+        "    float lat = asin(clamp(ln.y, -1.0, 1.0));\n"
+        "    float lon = atan(-ln.x, ln.z);\n"
+        "    vec2 uv = vec2(fract((lon + PI) / (2.0*PI)), 0.5 - lat/PI);\n"
+        "\n"
+        "    vec3 baseColor = ((vHasTex > 0.5) ? texture(uDayMap, uv).rgb : vColor.rgb) * vTint;\n"
+        "    vec3 outColor = (vFlags.z > 0.5)\n"
+        "        ? isDay*baseColor + (1.0 - isDay)*texture(uNightMap, uv).rgb\n"
+        "        : isDay*baseColor;\n"
+        "\n"
+        "    if (vFlags.w > 0.5)\n"          // redlight_mode -- see rgba_apply_redlight() in color.cpp
+        "    {\n"
+        "        float r2 = min(1.0, outColor.r + 0.5*outColor.g + 0.3*outColor.b);\n"
+        "        outColor = vec3(r2, outColor.g/3.0, outColor.b/3.0);\n"
+        "    }\n"
+        "    FragColor = vec4(outColor, vColor.a);\n"
         "}\n";
 
     static GLuint compile_shader(GLenum type, const char *src)
@@ -116,8 +184,10 @@ namespace alienorum
         return sh;
     }
 
-    // Bytes per vertex: pos(2) + rayxy(2) + center(3) + color(4).
-    static const int kFloatsPerVertex = 11;
+    // Floats per vertex: pos(2) rayxy(2) center(3) basisX(3) basisY(3) hasTex(1) color(4)
+    // lightDir(3) tint(3) flags(4) = 28.
+    static const int kFloatsPerVertex = 28;
+    static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1;
 
     static void ensure_gl_objects()
     {
@@ -141,10 +211,26 @@ namespace alienorum
         glDeleteShader(vs);
         glDeleteShader(fs);
 
-        s_aPosLoc    = glGetAttribLocation(s_program, "aPos");
-        s_aRayXYLoc  = glGetAttribLocation(s_program, "aRayXY");
-        s_aCenterLoc = glGetAttribLocation(s_program, "aCenter");
-        s_aColorLoc  = glGetAttribLocation(s_program, "aColor");
+        s_aPosLoc      = glGetAttribLocation(s_program, "aPos");
+        s_aRayXYLoc    = glGetAttribLocation(s_program, "aRayXY");
+        s_aCenterLoc   = glGetAttribLocation(s_program, "aCenter");
+        s_aBasisXLoc   = glGetAttribLocation(s_program, "aBasisX");
+        s_aBasisYLoc   = glGetAttribLocation(s_program, "aBasisY");
+        s_aHasTexLoc   = glGetAttribLocation(s_program, "aHasTex");
+        s_aColorLoc    = glGetAttribLocation(s_program, "aColor");
+        s_aLightDirLoc = glGetAttribLocation(s_program, "aLightDir");
+        s_aTintLoc     = glGetAttribLocation(s_program, "aTint");
+        s_aFlagsLoc    = glGetAttribLocation(s_program, "aFlags");
+        s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
+        s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
+
+        // Texture units 0/1, matching the convention ImGui's own backend uses for its font/UI
+        // texture on unit 0 -- safe since our AddCallback runs between ImGui draw commands,
+        // and the paired ImDrawCallback_ResetRenderState immediately after re-establishes
+        // ImGui's own state (including its own texture bindings) before anything else draws.
+        glUseProgram(s_program);
+        glUniform1i(s_uDayMapLoc, 0);
+        glUniform1i(s_uNightMapLoc, 1);
 
         glGenVertexArrays(1, &s_vao);
         glGenBuffers(1, &s_vbo);
@@ -160,8 +246,20 @@ namespace alienorum
         glVertexAttribPointer(s_aRayXYLoc, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 2));
         glEnableVertexAttribArray(s_aCenterLoc);
         glVertexAttribPointer(s_aCenterLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 4));
+        glEnableVertexAttribArray(s_aBasisXLoc);
+        glVertexAttribPointer(s_aBasisXLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 7));
+        glEnableVertexAttribArray(s_aBasisYLoc);
+        glVertexAttribPointer(s_aBasisYLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 10));
+        glEnableVertexAttribArray(s_aHasTexLoc);
+        glVertexAttribPointer(s_aHasTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 13));
         glEnableVertexAttribArray(s_aColorLoc);
-        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 7));
+        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
+        glEnableVertexAttribArray(s_aLightDirLoc);
+        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 18));
+        glEnableVertexAttribArray(s_aTintLoc);
+        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 21));
+        glEnableVertexAttribArray(s_aFlagsLoc);
+        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 24));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -184,7 +282,12 @@ namespace alienorum
 
         float corners_x[4] = {p->ndc_x0, p->ndc_x1, p->ndc_x1, p->ndc_x0};
         float corners_y[4] = {p->ndc_y0, p->ndc_y0, p->ndc_y1, p->ndc_y1};
-        float verts[4 * kFloatsPerVertex];
+        // Zero-initialized: if a future field ever gets added to SphereImpostorParams without
+        // a matching assignment below (exactly what just happened to lightDir/tint/flags after
+        // an editor save collision), it reads as a defined 0 rather than whatever happened to
+        // be on the stack -- a wrong-but-obviously-wrong result instead of one that can look
+        // plausible enough to pass a casual glance.
+        float verts[4 * kFloatsPerVertex] = {};
         for (int i = 0; i < 4; i++)
         {
             float *v = &verts[i * kFloatsPerVertex];
@@ -195,17 +298,46 @@ namespace alienorum
             v[4] = p->ccx;
             v[5] = p->ccy;
             v[6] = p->ccz;
-            v[7] = p->r;
-            v[8] = p->g;
-            v[9] = p->b;
-            v[10] = p->a;
+            v[7] = p->bxx;
+            v[8] = p->bxy;
+            v[9] = p->bxz;
+            v[10] = p->byx;
+            v[11] = p->byy;
+            v[12] = p->byz;
+            v[13] = p->has_tex;
+            v[14] = p->r;
+            v[15] = p->g;
+            v[16] = p->b;
+            v[17] = p->a;
+            v[18] = p->lightx;
+            v[19] = p->lighty;
+            v[20] = p->lightz;
+            v[21] = p->tintr;
+            v[22] = p->tintg;
+            v[23] = p->tintb;
+            v[24] = p->flagx;
+            v[25] = p->flagy;
+            v[26] = p->flagz;
+            v[27] = p->flagw;
         }
 
         glUseProgram(s_program);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, p->tex);
+        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1 isn't in this stripped loader's symbol
+                                             // set; texture unit enums are guaranteed sequential.
+        glBindTexture(GL_TEXTURE_2D, p->night_tex);
         glBindVertexArray(s_vao);
         glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
+
+        // ImGui_ImplOpenGL3_SetupRenderState() (run right after this, via the paired
+        // ImDrawCallback_ResetRenderState) never calls glActiveTexture itself -- it just binds
+        // to whatever unit is already active, trusting it's unit 0. Leaving it on unit 1 here
+        // was corrupting every ImGui draw after a sphere, including the font atlas (bug: UI
+        // text rendering as boxes).
+        glActiveTexture(GL_TEXTURE0);
 
         delete p;
     }
@@ -226,7 +358,7 @@ namespace alienorum
     // the thousands, which is large enough to trip GPU clipping/rasterization guard-band
     // limits on some implementations and get the whole primitive culled instead of clipped
     // (this was bug: Jupiter disappearing from Adrastea/Metis whenever enough of it was
-    // offscreen to need this fallback).
+    // offscreen to require this fallback).
     static void tangent_bounds(double u, double w, double r, double zoom, bool flip_sign,
         double *out_min, double *out_max)
     {
@@ -263,10 +395,11 @@ namespace alienorum
         *out_max = std::max(vals[0], vals[1]);
     }
 
-    bool queue_sphere_impostor(double cx, double cy, double cz, double r, double zoom,
-        double dispcx, double dispcy, ImU32 color,
+    bool queue_sphere_impostor(const SphereImpostorInput &in, double zoom,
+        double dispcx, double dispcy,
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax)
     {
+        double cx = in.cx, cy = in.cy, cz = in.cz, r = in.r;
         if (r <= 0 || zoom <= 0) return false;
         if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera genuinely inside the sphere
 
@@ -325,8 +458,21 @@ namespace alienorum
         p->ccy = (float)(cy / r);
         p->ccz = (float)(cz / r);
 
-        ImVec4 col = ImGui::ColorConvertU32ToFloat4(color);
+        p->bxx = (float)in.basisX[0]; p->bxy = (float)in.basisX[1]; p->bxz = (float)in.basisX[2];
+        p->byx = (float)in.basisY[0]; p->byy = (float)in.basisY[1]; p->byz = (float)in.basisY[2];
+        p->has_tex = in.day_map_texture ? 1.0f : 0.0f;
+        p->tex = (GLuint)in.day_map_texture;
+        p->night_tex = (GLuint)in.night_map_texture;
+
+        ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
         p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;
+
+        p->lightx = (float)in.light_dir[0]; p->lighty = (float)in.light_dir[1]; p->lightz = (float)in.light_dir[2];
+        p->tintr = (float)in.daylight_tint[0]; p->tintg = (float)in.daylight_tint[1]; p->tintb = (float)in.daylight_tint[2];
+        p->flagx = in.self_luminous ? 1.0f : 0.0f;
+        p->flagy = (float)in.night_illum;
+        p->flagz = in.night_map_texture ? 1.0f : 0.0f;
+        p->flagw = in.redlight_mode ? 1.0f : 0.0f;
 
         ImDrawList *dl = ImGui::GetBackgroundDrawList();
         dl->AddCallback(render_sphere_impostor, p);

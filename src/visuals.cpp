@@ -3,6 +3,7 @@
 #include "visuals.h"
 #include "loaders.h"
 #include "sphere_impostor.h"
+#include "gputex.h"
 
 using namespace alienorum;
 
@@ -193,13 +194,77 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         ttex.detach();
     }
 
+    // The object's local +X/+Y axes (Point::from_ra_dec's convention: x=-sin(lon)cos(lat),
+    // y=sin(lat)), expressed in camera space -- i.e. run through the exact inverse of the
+    // chain that places a point on the object's surface (spin, axial tilt, viewer-plane,
+    // camera rotation -- see the CPU polygon loop further down in this file for the forward
+    // version), applied here to the standard basis vectors rather than a surface point.
+    // sphere_impostor.cpp's shader uses these (plus their cross product for local +Z) to
+    // rotate a camera-space hit normal back into the object's own frame and recover lat/lon.
+    auto undo_to_local = [&](Point p) -> Point
+    {
+        p = rotate3D(p, center, xaxis, -altitude);
+        p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
+        p = to_viewer_plane(p, -1);
+        p = rotate3D(p, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+        p = rotate3D(p, center, yaxis, cel->timeofday());
+        return p;
+    };
+    Point basisX = undo_to_local(Point(1, 0, 0));
+    Point basisY = undo_to_local(Point(0, 1, 0));
+
     Color col = Color::color_from_magnitude_indices(4.2, cel->BV_color);
     RGB3Byte rgb = Color::rgb_from_color(col, -1);
-    ImU32 solid_color = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255));
+    // Redlight (night-vision) mode is applied once, in the shader, after lighting/texturing --
+    // applying it here too would double it up for the untextured fallback case.
+    ImU32 solid_color = IM_COL32(rgb.r, rgb.g, rgb.b, 255);
+
+    // Gas giants (Jupiter etc.) get their texture into cloud_map, never surf_map -- rocky
+    // bodies (Earth, Moon, Io) use surf_map. Matches the CPU path's own priority.
+    Map *day_map = cel->cloud_map ? cel->cloud_map : cel->surf_map;
+
+    // Lighting: matches the CPU path's own Lambertian day/night blend (see the "self_luminous"/
+    // "daylight" logic further down in this file, in the CPU polygon-shading loop).
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+
+    Point light_dir(0, 0, 1);
+    if (!self_luminous)
+    {
+        Point light_camera_space = rotate3D(
+            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+            center, xaxis, altitude);
+        light_dir = light_camera_space - camera_space;
+        double mag = light_dir.magnitude();
+        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+    }
+
+    Color daylight = Color::color_from_magnitude_indices(0, lightcen->BV_color);
+    double dmax = fmax(fmax(daylight.red, daylight.green), daylight.blue);
+    if (dmax > 0)
+    {
+        daylight.red /= dmax; daylight.green /= dmax; daylight.blue /= dmax;
+    }
+    // Compensate for the eye's white balance adjustment (matches the CPU path exactly).
+    daylight.red = pow(daylight.red, 0.333);
+    daylight.green = pow(daylight.green, 0.333);
+    daylight.blue = pow(daylight.blue, 0.333);
+
+    SphereImpostorInput in;
+    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z; in.r = R;
+    in.basisX[0] = basisX.x; in.basisX[1] = basisX.y; in.basisX[2] = basisX.z;
+    in.basisY[0] = basisY.x; in.basisY[1] = basisY.y; in.basisY[2] = basisY.z;
+    in.day_map_texture = gputex_for(day_map);
+    in.night_map_texture = gputex_for(cel->night_map);
+    in.fallback_color = solid_color;
+    in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
+    in.daylight_tint[0] = daylight.red; in.daylight_tint[1] = daylight.green; in.daylight_tint[2] = daylight.blue;
+    in.self_luminous = self_luminous;
+    in.night_illum = cel->night_map ? 0.0 : starlight;
+    in.redlight_mode = redlight_mode;
 
     double xmin, ymin, xmax, ymax;
-    bool ok = queue_sphere_impostor(camera_space.x, camera_space.y, camera_space.z, R, zoom,
-        dispcx, dispcy, solid_color, &xmin, &ymin, &xmax, &ymax);
+    bool ok = queue_sphere_impostor(in, zoom, dispcx, dispcy, &xmin, &ymin, &xmax, &ymax);
     if (!ok) return 0;
 
     cel->drawnxmin = xmin;

@@ -123,13 +123,24 @@ namespace alienorum
         // data. Bumped by touch_gen() whenever red_data/green_data/blue_data change, so the
         // GPU texture cache (see gputex.h) can tell a stale upload from a fresh one just by
         // comparing this number, with no chance of confusing two different Map objects that
-        // happen to share an address.
+        // happen to share an address. next_gen() never returns 0, which is reserved to mean
+        // "touch_gen() hasn't run yet" -- see gen's own comment below for why that matters.
         static unsigned int next_gen();
 
         public:
-        unsigned int gen;
-        Map() : gen(next_gen()) { ; }
-        Map(CelestialObject* joined_cel) : gen(next_gen()) { mcel = joined_cel; }
+        // Starts at 0 rather than a real generation number on purpose: red_data/green_data/
+        // blue_data become non-null (has_rgb_data() true) as soon as they're allocated, well
+        // before load_from_jpeg/_png or generate_rocky_map/generate_gas_giant_map's fill loop
+        // actually finishes writing real pixels into them (each of those releases mtx, or in
+        // the generate_* case never takes it during the fill loop at all, right after
+        // allocating). touch_gen() only runs once the fill is actually done. If gputex_for()
+        // (gputex.h) went by has_rgb_data() alone, it could -- and did -- upload a texture
+        // that's still mid-fill: real data whatever the background thread had gotten to,
+        // uninitialized heap bytes for the rest. Treating gen==0 as "not ready" closes that
+        // window; gputex_for() should check it in addition to has_rgb_data().
+        unsigned int gen = 0;
+        Map() { ; }
+        Map(CelestialObject* joined_cel) { mcel = joined_cel; }
 
         void touch_gen() { gen = next_gen(); }
 
