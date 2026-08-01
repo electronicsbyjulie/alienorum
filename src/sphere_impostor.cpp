@@ -731,16 +731,34 @@ namespace alienorum
         "        if (tSphereNear > 0.0 && tSphereNear < s) discard;\n"
         "    }\n"
         "\n"
-        "    // Radial fraction across the ring width -> the same 1D scan Map::color_at(0, xmapd)\n"
-        "    // does on the CPU (idx_of() shifts lon by +PI before wrapping, hence the +0.5 here;\n"
-        "    // lat=0 always lands on the middle row, v=0.5).\n"
-        "    float frac = clamp((ringDist - vRhoInner) / (vRhoOuter - vRhoInner), 0.0, 1.0);\n"
-        "    float u = fract(frac + 0.5);\n"
+        "    // Radial fraction across the ring width: 0 at the inner edge (immediately\n"
+        "    // adjacent to the planet), 1 at the outer edge -- a plain left-to-right scan of\n"
+        "    // ring_map/ringx_map, matching how those textures are actually authored. An\n"
+        "    // earlier version of this shader instead mimicked Map::idx_of()'s +PI-before-wrap\n"
+        "    // convention (u = fract(frac + 0.5)), which is the right move for an actual\n"
+        "    // cyclic longitude around a sphere but wrong here: a ring's radial extent doesn't\n"
+        "    // wrap around at all, so that shift just mirrored/offset the sampled position\n"
+        "    // from a seam in the middle of the texture instead of scanning it directly --\n"
+        "    // bug: rings reading as mostly transparent with only a thin bright sliver, instead\n"
+        "    // of the real bright main rings with a distinct dark gap partway out. lat=0 always\n"
+        "    // lands on the middle row, v=0.5.\n"
+        "    float u = clamp((ringDist - vRhoInner) / (vRhoOuter - vRhoInner), 0.0, 1.0);\n"
         "\n"
         "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(u, 0.5)).rgb : vColor.rgb;\n"
         "    float opacity = (vHasRingXTex > 0.5)\n"
         "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
         "        : 0.5;\n"
+        // GOSSAMER's steep exponent means the raw opacity curve above only approaches 1.0 for
+        // ringx pixels essentially exactly at g=0 -- real image data (compression, anti-
+        // aliasing) rarely hits that, so even the densest main rings read as only dimly
+        // opaque. A flat multiply-and-clamp here was tried and rejected (it disproportionately
+        // pushed *mid*-range values up to the 1.0 ceiling, flattening the Cassini division's
+        // relative darkness into the same "fully opaque" bucket as the bright main rings). A
+        // sqrt-family gamma instead boosts low values more than high ones while staying
+        // strictly monotonic -- brighter overall, same relative density ordering preserved
+        // (thin stays visibly thinner than dense, it's just that "dense" now actually reads as
+        // dense instead of merely translucent).
+        "    opacity = pow(opacity, 0.4);\n"
         "\n"
         "    float isDay;\n"
         "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
@@ -750,7 +768,24 @@ namespace alienorum
         "        float tl = dot(toCenter, vLightDir);\n"
         "        vec3 perp2 = toCenter - vLightDir * tl;\n"
         "        float d2shadow = dot(perp2, perp2);\n"
-        "        isDay = (d2shadow < vRhoInner*vRhoInner) ? 0.0 : (0.15 + 0.44*vAmtLit);\n"
+        // tl>0 means going from the ring point towards the planet center moves *closer* to
+        // the light -- i.e. the planet sits between this point and the light, the actual
+        // eclipse condition. Without it, the perpendicular-distance test alone is symmetric
+        // and flags shadow on both the true (far/anti-sun) side *and* its mirror on the near/
+        // sunward side (bug: rings dark on both sides instead of just the one facing away
+        // from the sun). The CPU path avoids this for a different reason -- its equivalent
+        // test (get_distance_to_line) measures distance to the finite *segment* from the ring
+        // point to the light's actual position, not an infinite line, so a closest-approach
+        // behind the ring point clamps to the ring point itself (distance = the ring's own
+        // radius, always >= equatorial_radius, so never < it) -- tl>0 reproduces the same
+        // exclusion directly, since vLightDir here is a direction, not a finite point.
+        // Baseline lit brightness raised from the CPU path's 0.15+0.44*amt_lit (max 0.59) to
+        // 0.4+0.6*amt_lit (max 1.0): per direct feedback, ring particles stay highly
+        // reflective even where they're sparse, so the *color* term shouldn't read as dim just
+        // because the *opacity* term (above) is low there -- those are deliberately separate
+        // knobs (opacity controls how much of the ring shows through vs. background, this
+        // controls how bright what does show is), and the CPU value undersold the latter.
+        "        isDay = (tl > 0.0 && d2shadow < vRhoInner*vRhoInner) ? 0.0 : (0.4 + 0.6*vAmtLit);\n"
         "    }\n"
         "\n"
         "    vec3 outColor = ringColor * isDay;\n"

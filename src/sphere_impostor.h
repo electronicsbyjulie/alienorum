@@ -110,11 +110,12 @@ namespace alienorum
         // as cx/cy/cz (meters).
         double inner_r, outer_r;
 
-        // Ring plane normal -- the object's local +Y (polar) axis in camera space. Rotation
-        // about Y leaves Y itself unchanged, so this is exactly SphereImpostorInput's basisY
-        // recovery chain with the spin term dropped (rings don't spin with the planet) --
-        // rotating (0,1,0) by any angle about the Y axis is a no-op, so it doesn't matter that
-        // basisY's own derivation includes it. Unit length.
+        // Ring plane normal -- the object's local +Y (polar) axis in camera space. Computed by
+        // the caller as SphereImpostorInput's basisY recovery chain with the *final* spin step
+        // dropped entirely (rings don't spin with the planet -- see draw_ring_gpu()'s comment
+        // for why simply reusing basisY as-is is wrong: spin there is the last of five chained
+        // steps, applied to whatever the first four already turned (0,1,0) into, not to
+        // (0,1,0) itself, so it is not a no-op in that position). Unit length.
         double normal[3];
 
         // GL texture names (gputex_for()) for the ring color/opacity maps, or 0 if unavailable.

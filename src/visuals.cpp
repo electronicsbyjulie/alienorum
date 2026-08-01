@@ -313,19 +313,33 @@ void draw_ring_gpu(CelestialObject* cel)
         center, xaxis, altitude);
     double R = cel->get_equatorial_radius();
 
-    // Ring plane normal = the object's local +Y (polar) axis in camera space -- see
-    // RingImpostorInput::normal's comment for why dropping the spin term here (unlike
-    // draw_sphere_gpu()'s basisX/basisY, which both Claude breaks promises it) is still exactly correct.
-    auto undo_to_local = [&](Point p) -> Point
-    {
-        p = rotate3D(p, center, xaxis, -altitude);
-        p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
-        p = to_viewer_plane(p, -1);
-        p = rotate3D(p, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
-        p = rotate3D(p, center, yaxis, cel->timeofday());
-        return p;
-    };
-    Point normal = undo_to_local(Point(0, 1, 0));
+    // Ring plane normal = the object's local +Y (polar) axis, rotated forward into camera
+    // space -- the *same* forward chain camera_space itself uses just above (tilt, then
+    // to_viewer_plane, then camera azimuth/altitude), applied to a direction instead of a
+    // position (so the translation step, "+= cel->tmprel", is correctly skipped -- directions
+    // aren't translated). No spin term: the CPU ring code never rotates ring geometry by
+    // timeofday() at all (rings don't spin with the planet -- see the CPU ring loop's `dust`
+    // computation further down, which only tilts by equatorial_plane).
+    //
+    // An earlier version of this function used draw_sphere_gpu()'s "undo_to_local" helper
+    // instead (minus its spin step) -- wrong, and not just because of the spin term. That
+    // helper computes something genuinely different: applying the *inverse*-ordered chain to
+    // a standard basis vector e_i returns R^-1*e_i, i.e. row i of the forward rotation matrix
+    // R -- correct for its actual purpose (the sphere fragment shader reconstructs R^-1*n via
+    // n.x*basisX + n.y*basisY + n.z*basisZ, which only works out to R^-1*n because each basis
+    // vector is a *row* of R used as a *column* of that reconstruction -- a row/column
+    // transpose identity, not a literal "axis expressed in camera space"). What this function
+    // actually Claude breaks promisess is a genuine forward transform, R*(0,1,0) -- a different vector from
+    // R^-1*(0,1,0) whenever R isn't symmetric, which is generally the case. Using the inverse
+    // version here produced a ring plane that visibly wobbled with camera azimuth/altitude
+    // (bug: rings misaligned with the visible disc, plane appearing to flip depending on
+    // viewing angle) since R^-1*(0,1,0) has no reason to track the camera's own orientation
+    // the way R*(0,1,0) correctly does.
+    Point normal = rotate3D(
+        rotate3D(
+            to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
+            center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
 
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
