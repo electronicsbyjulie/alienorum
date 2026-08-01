@@ -59,13 +59,19 @@ namespace alienorum
         // radius in this 1/d-scaled space is the small, well-conditioned value `rho` (r/d, see
         // below) instead of exactly 1.
         float ccx, ccy, ccz;
-        float rho;   // r/d in the 1/d-scaled space above -- see the comment on ccx et al.
+        // axis_x/axis_y/axis_z/d, in the same 1/d-scaled space as ccx et al -- see
+        // SphereImpostorInput's comment for what these three represent (equal on a plain
+        // sphere; different for an oblate planet or a triaxial tidally-locked moon).
+        float radx, rady, radz;
         // Object's local +X/+Y axes, in the same camera space (see SphereImpostorInput) -- used
         // to rotate the per-pixel camera-space normal back into the object's own frame.
         float bxx, bxy, bxz, byx, byy, byz;
         float has_tex;   // 0 or 1
         GLuint tex;
         GLuint night_tex;
+        float has_bump_tex;   // 0 or 1
+        GLuint bump_tex;
+        float bump_strength;
         float r, g, b, a;   // fallback color, used when has_tex is 0
         float lightx, lighty, lightz;   // camera space, unit length
         float tintr, tintg, tintb;
@@ -80,10 +86,11 @@ namespace alienorum
 
     static GLuint s_program = 0;
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
-    static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aScreenYLoc = -1, s_aCenterLoc = -1, s_aRhoLoc = -1;
+    static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aScreenYLoc = -1, s_aCenterLoc = -1, s_aRadiiLoc = -1;
     static GLint s_aBasisXLoc = -1, s_aBasisYLoc = -1, s_aHasTexLoc = -1, s_aColorLoc = -1;
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
     static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
+    static GLint s_aHasBumpTexLoc = -1, s_aBumpStrengthLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -96,7 +103,7 @@ namespace alienorum
         "in vec2 aRayXY;\n"
         "in float aScreenY;\n"
         "in vec3 aCenter;\n"
-        "in float aRho;\n"
+        "in vec3 aRadii;\n"
         "in vec3 aBasisX;\n"
         "in vec3 aBasisY;\n"
         "in float aHasTex;\n"
@@ -106,10 +113,12 @@ namespace alienorum
         "in vec4 aFlags;\n"
         "in vec4 aSky;\n"
         "in float aApplySky;\n"
+        "in float aHasBumpTex;\n"
+        "in float aBumpStrength;\n"
         "out vec2 vRayXY;\n"
         "out float vScreenY;\n"
         "out vec3 vCenter;\n"
-        "out float vRho;\n"
+        "out vec3 vRadii;\n"
         "out vec3 vBasisX;\n"
         "out vec3 vBasisY;\n"
         "out float vHasTex;\n"
@@ -119,12 +128,14 @@ namespace alienorum
         "out vec4 vFlags;\n"
         "out vec4 vSky;\n"
         "out float vApplySky;\n"
+        "out float vHasBumpTex;\n"
+        "out float vBumpStrength;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
         "    vScreenY = aScreenY;\n"
         "    vCenter = aCenter;\n"
-        "    vRho = aRho;\n"
+        "    vRadii = aRadii;\n"
         "    vBasisX = aBasisX;\n"
         "    vBasisY = aBasisY;\n"
         "    vHasTex = aHasTex;\n"
@@ -134,6 +145,8 @@ namespace alienorum
         "    vFlags = aFlags;\n"
         "    vSky = aSky;\n"
         "    vApplySky = aApplySky;\n"
+        "    vHasBumpTex = aHasBumpTex;\n"
+        "    vBumpStrength = aBumpStrength;\n"
         "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
         "}\n";
 
@@ -156,7 +169,7 @@ namespace alienorum
         "in vec2 vRayXY;\n"
         "in float vScreenY;\n"
         "in vec3 vCenter;\n"
-        "in float vRho;\n"
+        "in vec3 vRadii;\n"
         "in vec3 vBasisX;\n"
         "in vec3 vBasisY;\n"
         "in float vHasTex;\n"
@@ -166,52 +179,151 @@ namespace alienorum
         "in vec4 vFlags;\n"   // x=self_luminous, y=night_illum, z=has_night_tex, w=redlight_mode
         "in vec4 vSky;\n"     // rgb=premultiplied sky color at sky_y, a=sky_y (screen pixels)
         "in float vApplySky;\n"
+        "in float vHasBumpTex;\n"
+        "in float vBumpStrength;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
+        "uniform sampler2D uBumpMap;\n"
         "const float PI = 3.14159265358979;\n"
         "void main()\n"
         "{\n"
         "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
-        "    float dirLen = length(dir);\n"
-        "    vec3 dirN = dir / dirLen;\n"
         "\n"
-        "    // Geometric (not analytic-discriminant) ray-sphere test. vCenter has unit magnitude\n"
-        "    // (see SphereImpostorParams::ccx) while vRho (the object's r/d) is routinely many\n"
-        "    // orders of magnitude smaller -- ~1.2e-4 for a planet a fraction of an AU away at a\n"
-        "    // few thousand zoom. The textbook 'a*t^2+b*t+c=0' discriminant form computes\n"
-        "    // c = dot(oc,oc) - vRho*vRho, subtracting vRho^2 (~1.5e-8 there) from a value that's\n"
-        "    // ~1.0 -- below float32's ~1.19e-7 relative precision at that magnitude, so c (and\n"
-        "    // the disc/t it feeds) collapses to rounding noise, and normalize(hit - vCenter)\n"
-        "    // inherits that noise as the surface normal. Bug: a distant/small-angular-size\n"
-        "    // sphere rendered as a static-like mess of near-black facets radiating from its own\n"
-        "    // center instead of a lit disc (lighting sign flips ~50/50 per-fragment instead of\n"
-        "    // varying smoothly), resolving into a proper sphere only once close enough for\n"
-        "    // vRho^2 to clear the precision floor -- e.g. HD 20794 f, 82 Eridani, at the zoom\n"
-        "    // level Sky Atlas mode defaults to when tracking a planet from its home star.\n"
-        "    // This form instead finds the closest approach of the ray to the center via one\n"
-        "    // well-conditioned dot product (tca), then the perpendicular offset via vector\n"
-        "    // subtraction -- cancellation happens component-wise on an O(1) vector rather than\n"
-        "    // after squaring two O(1) scalars, which preserves precision down to vRho ~1e-7\n"
-        "    // instead of ~1e-4 (confirmed empirically, not just derived).\n"
-        "    float tca = dot(vCenter, dirN);\n"
-        "    vec3 perp = vCenter - dirN * tca;\n"
+        "    // Ellipsoid ray intersection -- generalizes the plain-sphere geometric method this\n"
+        "    // shader used before oblateness/triaxial support existed (vRadii.x==y==z reduces\n"
+        "    // this exactly to that case). The precision hazard that method avoided (see the\n"
+        "    // long-standing note this replaced: naive 'a*t^2+b*t+c=0' subtracts a tiny r^2 term\n"
+        "    // from an O(1) value at real astronomical distances, losing essentially all\n"
+        "    // precision -- bug was a static-like mess of near-black facets on e.g. 82 Eridani)\n"
+        "    // is sidestepped the same way here, just in a different coordinate space: project\n"
+        "    // dir/vCenter into local coordinates and divide by each axis's own radius\n"
+        "    // (Dloc/Cloc), which turns the ellipsoid into a *unit* sphere at Cloc's origin --\n"
+        "    // then run the identical well-conditioned tca/perp/thc steps against that unit\n"
+        "    // sphere, with Dloc/Cloc standing in for dir/vCenter and radius 1 standing in for\n"
+        "    // vRho.\n"
+        "    //\n"
+        "    // vBasisX/vBasisY (and their cross product, basisZ) are the *rows* of the local-to-\n"
+        "    // camera rotation, not its columns -- see draw_sphere_gpu()'s comment on\n"
+        "    // undo_to_local() for why. That means camera-space-to-local uses them as\n"
+        "    // multipliers in a vector sum (v.x*basisX + v.y*basisY + v.z*basisZ), the same\n"
+        "    // pattern this shader already used to recover lat/lon before ellipsoid support\n"
+        "    // existed -- NOT dot products, which is what local-to-camera (the shading normal\n"
+        "    // below) requires instead, precisely because it's the opposite direction. An earlier\n"
+        "    // version of this code had the two backwards (dot products for camera-to-local\n"
+        "    // here, a vector sum for local-to-camera below) -- bug: the texture's lat/lon\n"
+        "    // mapping came out rotated by the mismatch between the true local frame and this\n"
+        "    // swapped one, which tracks the *camera's* azimuth/altitude (folded into\n"
+        "    // undo_to_local's chain) as well as the object's own orientation -- i.e. the\n"
+        "    // terminator/day-night line and map features appeared to rotate as the object's\n"
+        "    // disc moved around the viewport, even though nothing about the object itself had\n"
+        "    // changed.\n"
+        "    vec3 basisZ = cross(vBasisX, vBasisY);\n"
+        "    vec3 dirLocal = dir.x*vBasisX + dir.y*vBasisY + dir.z*basisZ;\n"
+        "    vec3 centerLocal = vCenter.x*vBasisX + vCenter.y*vBasisY + vCenter.z*basisZ;\n"
+        "    vec3 Dloc = dirLocal / vRadii;\n"
+        "    vec3 Cloc = centerLocal / vRadii;\n"
+        "    float DlocLen = length(Dloc);\n"
+        "    vec3 DlocN = Dloc / DlocLen;\n"
+        "\n"
+        "    float tca = dot(Cloc, DlocN);\n"
+        "    vec3 perp = Cloc - DlocN * tca;\n"
         "    float d2 = dot(perp, perp);\n"
-        "    if (d2 > vRho*vRho) discard;\n"
-        "    float thc = sqrt(vRho*vRho - d2);\n"
-        "    float t = (tca - thc) / dirLen;\n"
+        "    if (d2 > 1.0) discard;\n"
+        "    float thc = sqrt(1.0 - d2);\n"
+        "    float t = (tca - thc) / DlocLen;\n"
         "    if (t < 0.0) discard;\n"
         "    vec3 hit = dir * t;\n"
-        "    vec3 n = normalize(hit - vCenter);\n"
+        "\n"
+        "    // Local-frame point on the *unit* sphere -- by construction this already *is* the\n"
+        "    // local-space surface position, directly usable for lat/lon with no further\n"
+        "    // transform (unlike the old plain-sphere code, which had to recover local\n"
+        "    // coordinates from a camera-space normal that was also its position). Re-\n"
+        "    // normalized to absorb float error, same spirit as the old normalize(hit-vCenter).\n"
+        "    vec3 hitLocal = normalize(t * Dloc - Cloc);\n"
+        "\n"
+        "    // Shading normal: the *gradient* of the ellipsoid's implicit surface\n"
+        "    // x^2/a^2+y^2/b^2+z^2/c^2=1, which is (x/a^2,y/b^2,z/c^2) in local coordinates --\n"
+        "    // only equal to the position itself (hitLocal) when a=b=c, i.e. a true sphere. One\n"
+        "    // more division by each radius beyond the one already folded into hitLocal, then\n"
+        "    // mapped back into camera space -- local-to-camera, so dot products against the\n"
+        "    // basis rows (see this block's opening comment), not a vector sum.\n"
+        "    vec3 localGrad = hitLocal / vRadii;\n"
+        "    vec3 n = normalize(vec3(dot(vBasisX, localGrad), dot(vBasisY, localGrad), dot(basisZ, localGrad)));\n"
+        "\n"
+        "    float lat = asin(clamp(hitLocal.y, -1.0, 1.0));\n"
+        "    float lon = atan(-hitLocal.x, hitLocal.z);\n"
+        "    vec2 uv = vec2(fract((lon + PI) / (2.0*PI)), 0.5 - lat/PI);\n"
+        "\n"
+        "    // Bump mapping: perturbs only the *shading* normal from a height-field gradient,\n"
+        "    // sampled as two small finite-difference steps in uv -- the ray/ellipsoid\n"
+        "    // intersection above (hence the silhouette and hit point) is entirely unaffected,\n"
+        "    // same tradeoff any bump map makes (fakes relief via lighting, doesn't actually\n"
+        "    // displace the surface). Real per-vertex displacement, matching what the CPU path\n"
+        "    // does with its polygon mesh, isn't available here -- there are no vertices, only\n"
+        "    // one quad -- so this is the GPU-impostor equivalent: without it the terminator\n"
+        "    // and any grazing-light limb reads as a perfectly smooth curve no real rocky body\n"
+        "    // has, since there's no faceted mesh silhouette to (accidentally) read as texture.\n"
+        "    // Tangent directions are the analytic d(local position)/d(lon or lat) at hitLocal\n"
+        "    // (see Point::from_ra_dec's convention: x=-sin(lon)cos(lat), y=sin(lat),\n"
+        "    // z=cos(lon)cos(lat)) on the *unit* sphere parametrization, not the true ellipsoid\n"
+        "    // surface tangent -- close enough for a lighting perturbation on the near-spherical\n"
+        "    // bodies (moons, rocky planets) that actually carry bump data.\n"
+        "    if (vHasBumpTex > 0.5)\n"
+        "    {\n"
+        "        // duv sized to the texture's own texel spacing (not an arbitrary fixed step)\n"
+        "        // -- the earlier version used a fixed duv=0.004 (~4 texels on a 1024-wide map),\n"
+        "        // averaging height differences over a multi-texel span before they even reached\n"
+        "        // the slope conversion below, on top of that conversion itself being missing\n"
+        "        // entirely (raw meters-per-uv-step was used directly as the perturbation, off by\n"
+        "        // the several-more-orders-of-magnitude factor derived below) -- bug: a\n"
+        "        // perturbation too small by roughly 1e5-1e6x to move the normal at all\n"
+        "        // perceptibly, reading as a perfectly smooth terminator regardless of the actual\n"
+        "        // bump data.\n"
+        "        vec2 texSize = textureSize(uBumpMap, 0);\n"
+        "        vec2 duv = 1.0 / texSize;\n"
+        "        float h0 = texture(uBumpMap, uv).r;\n"
+        "        float hU = texture(uBumpMap, vec2(fract(uv.x + duv.x), uv.y)).r;\n"
+        "        float hV = texture(uBumpMap, vec2(uv.x, clamp(uv.y + duv.y, 0.0, 1.0))).r;\n"
+        "        float dhdu = hU - h0;\n"
+        "        float dhdv = hV - h0;\n"
+        "\n"
+        "        float cl = sqrt(max(0.0, 1.0 - hitLocal.y*hitLocal.y));\n"
+        "        if (cl > 1e-4)\n"
+        "        {\n"
+        "            vec3 tLonLocal = vec3(-hitLocal.z, 0.0, hitLocal.x);\n"
+        "            vec3 tLatLocal = vec3(-hitLocal.x*hitLocal.y/cl, cl, -hitLocal.z*hitLocal.y/cl);\n"
+        "            vec3 tLon = normalize(vec3(dot(vBasisX, tLonLocal), dot(vBasisY, tLonLocal), dot(basisZ, tLonLocal)));\n"
+        "            vec3 tLat = normalize(vec3(dot(vBasisX, tLatLocal), dot(vBasisY, tLatLocal), dot(basisZ, tLatLocal)));\n"
+        "\n"
+        "            // dhdu is meters of height change over duv.x of *uv*. u spans a full 2*PI\n"
+        "            // of longitude and v spans PI of latitude (see the uv formula above), so\n"
+        "            // dividing by (duv*2*PI) or (duv*PI) converts that to meters of height\n"
+        "            // change per *radian* of arc -- still not a dimensionless slope on its own\n"
+        "            // (arc length is radius*angle, not just angle), but vBumpStrength supplies\n"
+        "            // the remaining length-scale division on the CPU side (see\n"
+        "            // SphereImpostorInput::bump_strength for what it's actually divided by and\n"
+        "            // why), so only the angle-per-duv conversion has to happen here.\n"
+        "            float slopeU = (dhdu / (duv.x * 2.0*PI)) * vBumpStrength;\n"
+        "            float slopeV = (dhdv / (duv.y * PI)) * vBumpStrength;\n"
+        "\n"
+        "            // Clamped, not left to grow unbounded -- a steep enough measured slope\n"
+        "            // (crater rims, or just a strong vBumpStrength) can otherwise push the\n"
+        "            // perturbation vector's magnitude well past the unit-length true normal,\n"
+        "            // flipping the *shading* normal to face away from the surface entirely --\n"
+        "            // most visible right at the grazing limb, where the true normal is already\n"
+        "            // near-perpendicular to the view and even a moderate flip reads as a bright\n"
+        "            // pixel where the silhouette edge should be sharp and dark.\n"
+        "            vec3 perturb = slopeU*tLon + slopeV*tLat;\n"
+        "            float perturbLen = length(perturb);\n"
+        "            const float kMaxTilt = 1.5;\n"
+        "            if (perturbLen > kMaxTilt) perturb *= kMaxTilt / perturbLen;\n"
+        "            n = normalize(n - perturb);\n"
+        "        }\n"
+        "    }\n"
         "\n"
         "    float costerm = (vFlags.x > 0.5) ? dot(n, normalize(-hit)) : dot(n, vLightDir);\n"
         "    float isDay = clamp(pow(max(costerm, 0.0), 0.3333) + vFlags.y, 0.0, 1.0);\n"
-        "\n"
-        "    vec3 basisZ = cross(vBasisX, vBasisY);\n"
-        "    vec3 ln = vBasisX*n.x + vBasisY*n.y + basisZ*n.z;\n"
-        "    float lat = asin(clamp(ln.y, -1.0, 1.0));\n"
-        "    float lon = atan(-ln.x, ln.z);\n"
-        "    vec2 uv = vec2(fract((lon + PI) / (2.0*PI)), 0.5 - lat/PI);\n"
         "\n"
         "    vec3 baseColor = ((vHasTex > 0.5) ? texture(uDayMap, uv).rgb : vColor.rgb) * vTint;\n"
         "    vec3 outColor = (vFlags.z > 0.5)\n"
@@ -253,10 +365,11 @@ namespace alienorum
         return sh;
     }
 
-    // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) rho(1) basisX(3) basisY(3)
-    // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) = 35.
-    static const int kFloatsPerVertex = 35;
-    static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1;
+    // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) radii(3) basisX(3) basisY(3)
+    // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) hasBumpTex(1)
+    // bumpStrength(1) = 39.
+    static const int kFloatsPerVertex = 39;
+    static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
 
     static void ensure_gl_objects()
     {
@@ -284,7 +397,7 @@ namespace alienorum
         s_aRayXYLoc    = glGetAttribLocation(s_program, "aRayXY");
         s_aScreenYLoc  = glGetAttribLocation(s_program, "aScreenY");
         s_aCenterLoc   = glGetAttribLocation(s_program, "aCenter");
-        s_aRhoLoc      = glGetAttribLocation(s_program, "aRho");
+        s_aRadiiLoc    = glGetAttribLocation(s_program, "aRadii");
         s_aBasisXLoc   = glGetAttribLocation(s_program, "aBasisX");
         s_aBasisYLoc   = glGetAttribLocation(s_program, "aBasisY");
         s_aHasTexLoc   = glGetAttribLocation(s_program, "aHasTex");
@@ -294,16 +407,20 @@ namespace alienorum
         s_aFlagsLoc    = glGetAttribLocation(s_program, "aFlags");
         s_aSkyLoc      = glGetAttribLocation(s_program, "aSky");
         s_aApplySkyLoc = glGetAttribLocation(s_program, "aApplySky");
+        s_aHasBumpTexLoc     = glGetAttribLocation(s_program, "aHasBumpTex");
+        s_aBumpStrengthLoc   = glGetAttribLocation(s_program, "aBumpStrength");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
+        s_uBumpMapLoc  = glGetUniformLocation(s_program, "uBumpMap");
 
-        // Texture units 0/1, matching the convention ImGui's own backend uses for its font/UI
+        // Texture units 0/1/2, matching the convention ImGui's own backend uses for its font/UI
         // texture on unit 0 -- safe since our AddCallback runs between ImGui draw commands,
         // and the paired ImDrawCallback_ResetRenderState immediately after re-establishes
         // ImGui's own state (including its own texture bindings) before anything else draws.
         glUseProgram(s_program);
         glUniform1i(s_uDayMapLoc, 0);
         glUniform1i(s_uNightMapLoc, 1);
+        glUniform1i(s_uBumpMapLoc, 2);
 
         glGenVertexArrays(1, &s_vao);
         glGenBuffers(1, &s_vbo);
@@ -321,26 +438,30 @@ namespace alienorum
         glVertexAttribPointer(s_aScreenYLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 4));
         glEnableVertexAttribArray(s_aCenterLoc);
         glVertexAttribPointer(s_aCenterLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 5));
-        glEnableVertexAttribArray(s_aRhoLoc);
-        glVertexAttribPointer(s_aRhoLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 8));
+        glEnableVertexAttribArray(s_aRadiiLoc);
+        glVertexAttribPointer(s_aRadiiLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 8));
         glEnableVertexAttribArray(s_aBasisXLoc);
-        glVertexAttribPointer(s_aBasisXLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 9));
+        glVertexAttribPointer(s_aBasisXLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 11));
         glEnableVertexAttribArray(s_aBasisYLoc);
-        glVertexAttribPointer(s_aBasisYLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 12));
+        glVertexAttribPointer(s_aBasisYLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
         glEnableVertexAttribArray(s_aHasTexLoc);
-        glVertexAttribPointer(s_aHasTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 15));
+        glVertexAttribPointer(s_aHasTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 17));
         glEnableVertexAttribArray(s_aColorLoc);
-        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 16));
+        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 18));
         glEnableVertexAttribArray(s_aLightDirLoc);
-        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 20));
+        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 22));
         glEnableVertexAttribArray(s_aTintLoc);
-        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 23));
+        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 25));
         glEnableVertexAttribArray(s_aFlagsLoc);
-        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 26));
+        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 28));
         glEnableVertexAttribArray(s_aSkyLoc);
-        glVertexAttribPointer(s_aSkyLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 30));
+        glVertexAttribPointer(s_aSkyLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 32));
         glEnableVertexAttribArray(s_aApplySkyLoc);
-        glVertexAttribPointer(s_aApplySkyLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 34));
+        glVertexAttribPointer(s_aApplySkyLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 36));
+        glEnableVertexAttribArray(s_aHasBumpTexLoc);
+        glVertexAttribPointer(s_aHasBumpTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 37));
+        glEnableVertexAttribArray(s_aBumpStrengthLoc);
+        glVertexAttribPointer(s_aBumpStrengthLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -380,41 +501,48 @@ namespace alienorum
             v[5] = p->ccx;
             v[6] = p->ccy;
             v[7] = p->ccz;
-            v[8] = p->rho;
-            v[9] = p->bxx;
-            v[10] = p->bxy;
-            v[11] = p->bxz;
-            v[12] = p->byx;
-            v[13] = p->byy;
-            v[14] = p->byz;
-            v[15] = p->has_tex;
-            v[16] = p->r;
-            v[17] = p->g;
-            v[18] = p->b;
-            v[19] = p->a;
-            v[20] = p->lightx;
-            v[21] = p->lighty;
-            v[22] = p->lightz;
-            v[23] = p->tintr;
-            v[24] = p->tintg;
-            v[25] = p->tintb;
-            v[26] = p->flagx;
-            v[27] = p->flagy;
-            v[28] = p->flagz;
-            v[29] = p->flagw;
-            v[30] = p->skyr;
-            v[31] = p->skyg;
-            v[32] = p->skyb;
-            v[33] = p->sky_y;
-            v[34] = p->apply_sky;
+            v[8] = p->radx;
+            v[9] = p->rady;
+            v[10] = p->radz;
+            v[11] = p->bxx;
+            v[12] = p->bxy;
+            v[13] = p->bxz;
+            v[14] = p->byx;
+            v[15] = p->byy;
+            v[16] = p->byz;
+            v[17] = p->has_tex;
+            v[18] = p->r;
+            v[19] = p->g;
+            v[20] = p->b;
+            v[21] = p->a;
+            v[22] = p->lightx;
+            v[23] = p->lighty;
+            v[24] = p->lightz;
+            v[25] = p->tintr;
+            v[26] = p->tintg;
+            v[27] = p->tintb;
+            v[28] = p->flagx;
+            v[29] = p->flagy;
+            v[30] = p->flagz;
+            v[31] = p->flagw;
+            v[32] = p->skyr;
+            v[33] = p->skyg;
+            v[34] = p->skyb;
+            v[35] = p->sky_y;
+            v[36] = p->apply_sky;
+            v[37] = p->has_bump_tex;
+            v[38] = p->bump_strength;
         }
 
         glUseProgram(s_program);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->tex);
-        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1 isn't in this stripped loader's symbol
-                                             // set; texture unit enums are guaranteed sequential.
+        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2 aren't in this stripped loader's
+                                             // symbol set; texture unit enums are guaranteed
+                                             // sequential.
         glBindTexture(GL_TEXTURE_2D, p->night_tex);
+        glActiveTexture(GL_TEXTURE0 + 2);
+        glBindTexture(GL_TEXTURE_2D, p->bump_tex);
         glBindVertexArray(s_vao);
         glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
@@ -504,6 +632,7 @@ namespace alienorum
     {
         double cx = in.cx, cy = in.cy, cz = in.cz, r = in.r;
         if (r <= 0 || zoom <= 0) return false;
+        if (in.axis_x <= 0 || in.axis_y <= 0 || in.axis_z <= 0) return false;   // shader divides by each
         if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera genuinely inside the sphere
 
         double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
@@ -565,13 +694,18 @@ namespace alienorum
         p->ccx = (float)(cx / d);
         p->ccy = (float)(cy / d);
         p->ccz = (float)(cz / d);
-        p->rho = (float)(r / d);
+        p->radx = (float)(in.axis_x / d);
+        p->rady = (float)(in.axis_y / d);
+        p->radz = (float)(in.axis_z / d);
 
         p->bxx = (float)in.basisX[0]; p->bxy = (float)in.basisX[1]; p->bxz = (float)in.basisX[2];
         p->byx = (float)in.basisY[0]; p->byy = (float)in.basisY[1]; p->byz = (float)in.basisY[2];
         p->has_tex = in.day_map_texture ? 1.0f : 0.0f;
         p->tex = (GLuint)in.day_map_texture;
         p->night_tex = (GLuint)in.night_map_texture;
+        p->has_bump_tex = in.bump_map_texture ? 1.0f : 0.0f;
+        p->bump_tex = (GLuint)in.bump_map_texture;
+        p->bump_strength = (float)in.bump_strength;
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
         p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;
@@ -605,7 +739,7 @@ namespace alienorum
     // Same "single camera-facing quad + fragment shader" technique as the sphere, but the
     // per-pixel test is a ray/plane intersection (the ring is flat) followed by a radius check
     // against the annulus, rather than a ray/sphere intersection. Two things the sphere shader
-    // didn't Claude breaks promises to deal with:
+    // didn't have to deal with:
     //
     // 1. Occlusion by the planet's own opaque disc. There is no depth buffer anywhere in this
     //    app (confirmed against alienorum.cpp -- only glClear(GL_COLOR_BUFFER_BIT) runs); all
@@ -613,7 +747,7 @@ namespace alienorum
     //    geometry for a ring point it determines is hidden behind the sphere (a distance-from-
     //    center-to-camera-ray test), relying on draw order for everything else -- the visible
     //    near-side arc, drawn after the disc, naturally paints over it, and the far-side arc
-    //    that doesn't overlap the disc's screen silhouette never Claude breaks promises to. The ring impostor
+    //    that doesn't overlap the disc's screen silhouette never has to. The ring impostor
     //    reproduces the same idea exactly, analytically: it's drawn after the sphere impostor
     //    (same position in the draw list the CPU ring code occupied), and its own fragment
     //    shader discards a ring pixel if the camera ray reaches the opaque sphere before it
@@ -904,7 +1038,7 @@ namespace alienorum
     // ImDrawCallback -- paired with ImDrawCallback_ResetRenderState the same way
     // render_sphere_impostor() is (see queue_ring_impostor()). Relies on ImGui's own blend
     // state (standard alpha blending, already enabled for ImGui's own translucent draws)
-    // rather than touching GL_BLEND itself -- the sphere impostor never Claude breaks promisesed to care since
+    // rather than touching GL_BLEND itself -- the sphere impostor never had to care since
     // its output alpha is always ~1; the ring's is not.
     static void render_ring_impostor(const ImDrawList*, const ImDrawCmd *cmd)
     {

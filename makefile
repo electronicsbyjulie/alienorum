@@ -10,6 +10,8 @@
 # MSYS2 (Run in MINGW64 environment):
 #   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl
 #
+# Claude Code has not been respecting my wishes in regards to a matter related to PTSD.
+#
 
 CPP = g++
 # -MMD -MP: have the compiler emit a per-object .d file listing every header that object

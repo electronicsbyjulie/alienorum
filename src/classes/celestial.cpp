@@ -923,20 +923,32 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
         {
             assert(j < allocated);
 
+            // cinfo.output_components can be 1 (grayscale -- e.g. Moon_bump.jpg) as well as 3
+            // (RGB -- e.g. Mars_bump.jpg). This used to always read i/i+1/i+2 regardless,
+            // which for a 1-component image pulled bytes from the *next* pixel(s) in as g/b
+            // instead of using the one real channel -- running past the row buffer's own end
+            // entirely for the last pixel or two of every row. Bug: garbled/wrong bump (or
+            // color) data for any grayscale-encoded JPEG specifically, while an RGB-encoded
+            // one read correctly -- "Moon bump doesn't work, Mars bump does."
             if (as_bump)
             {
                 // Allow false color bump maps using the visual luminance as the elevation for better granularity
-                bump_data[j] = bump_scale *
-                            (( 0.001137 * jpeg_image_buffer[0][i]
-                             + 0.002196 * jpeg_image_buffer[0][i+1]
-                             + 0.000588 * jpeg_image_buffer[0][i+2])
-                             - 0.5);
+                double lum = (cinfo.output_components >= 3)
+                    ? (0.001137 * jpeg_image_buffer[0][i]
+                        + 0.002196 * jpeg_image_buffer[0][i+1]
+                        + 0.000588 * jpeg_image_buffer[0][i+2])
+                    : (0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
+                bump_data[j] = bump_scale * (lum - 0.5);
             }
-            else
+            else if (cinfo.output_components >= 3)
             {
                 red_data[j]   = jpeg_image_buffer[0][i];
                 green_data[j] = jpeg_image_buffer[0][i+1];
                 blue_data[j]  = jpeg_image_buffer[0][i+2];
+            }
+            else
+            {
+                red_data[j] = green_data[j] = blue_data[j] = jpeg_image_buffer[0][i];
             }
             j++;
         }
@@ -1351,6 +1363,13 @@ void Map::export_rgba(unsigned char *out) const
         out[i*4+2] = blue_data  ? blue_data[i]  : 255;
         out[i*4+3] = 255;
     }
+}
+
+void Map::export_bump(float *out) const
+{
+    unsigned long n = image_width * image_height;
+    for (unsigned long i = 0; i < n; i++)
+        out[i] = bump_data ? (float)bump_data[i] : 0.0f;
 }
 
 RGB3Byte Map::color_at(double lat, double lon)

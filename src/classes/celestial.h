@@ -166,6 +166,11 @@ namespace alienorum
         inline unsigned long get_width() const { return image_width; }
         inline unsigned long get_height() const { return image_height; }
         void export_rgba(unsigned char *out) const;
+
+        // Same idea as export_rgba(), for bump_data instead -- out must be
+        // get_width()*get_height() floats, caller-allocated. Real-world units (meters), same
+        // as elevation_at(); 0 wherever bump_data itself is null (has_bump_data() false).
+        void export_bump(float *out) const;
     };
 
     class Locale

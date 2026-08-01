@@ -16,11 +16,29 @@ namespace alienorum
     // so this header stays free of a globals.h dependency -- see the comment above.
     struct SphereImpostorInput
     {
-        // Center and radius in the app's existing "camera space" -- i.e. after
-        // to_viewer_plane() and the azimuth/altitude rotation Cartesian2D itself applies, but
-        // before its perspective divide (see point.cpp) -- in the same distance units as
-        // everything else in the app (meters).
-        double cx, cy, cz, r;
+        // Center in the app's existing "camera space" -- i.e. after to_viewer_plane() and the
+        // azimuth/altitude rotation Cartesian2D itself applies, but before its perspective
+        // divide (see point.cpp) -- in the same distance units as everything else in the app
+        // (meters).
+        double cx, cy, cz;
+
+        // r is the overall bounding radius (max(axis_x,axis_y,axis_z)) used for the impostor's
+        // screen-space bounding quad (see tangent_bounds()) and lent to the ring impostor's own
+        // occlusion test -- for a non-spherical body this is a conservative over-estimate of
+        // the true (smaller, direction-dependent) silhouette, same "slack costs some cheap
+        // discards" tradeoff already used for the ring's own bounding quad.
+        //
+        // axis_x/axis_y/axis_z are the true semi-axes along the local +X/+Y/+Z directions (see
+        // basisX/basisY below; +Z is their cross product) -- equal to r on all three for a
+        // plain sphere, the common case. Two real shapes reuse this:
+        //   - An oblate planet: axis_x=axis_z=equatorial_radius, axis_y=equatorial_radius*
+        //     (1-oblateness) (flattened at the poles, matching the CPU path's own "obl"
+        //     factor).
+        //   - A moon with known depth/width/height (tidally locked, generally triaxial):
+        //     axis_x=width/2 (orbit-direction), axis_y=height/2 (polar),
+        //     axis_z=depth/2 (the axis pointing at the host planet -- lon=0 in
+        //     Point::from_ra_dec's convention, matching the CPU path's own dwh scaling).
+        double r, axis_x, axis_y, axis_z;
 
         // The object's local +X and +Y axes (as used by Point::from_ra_dec: x=-sin(lon)cos(lat),
         // y=sin(lat)), expressed in the same camera space as cx,cy,cz above -- i.e. these are
@@ -39,6 +57,30 @@ namespace alienorum
         unsigned int day_map_texture;
         unsigned int night_map_texture;
         ImU32 fallback_color;
+
+        // GL texture name (gputex_bump_for() in gputex.h) for the day map's bump/elevation
+        // data, or 0 if unavailable (most objects never load one). Perturbs the shading normal
+        // per-pixel (bump mapping -- the true ray/ellipsoid intersection and silhouette are
+        // never affected, only the lighting) to fake the rough, cratered look a real rocky
+        // body's terminator has, which the perfectly smooth analytic disc has no other way to
+        // show -- matches the CPU path's own use of the same bump data (Map::elevation_at()),
+        // just as a lighting perturbation instead of an actual per-vertex displacement (the
+        // impostor has no vertices to displace).
+        //
+        // bump_strength is pre-divided, on the CPU side, by the object's own
+        // estimate_bump_scale() -- the same value bump_data's elevations were originally scaled
+        // by at load time (see Map::load_from_jpeg/_png's "as_bump" branch) -- rather than by
+        // the object's radius. That value already folds in both the object's size and (for
+        // worlds with an atmosphere) a surface-pressure factor, so normalizing by it keeps the
+        // resulting effect visually consistent across bodies whose elevation data was baked at
+        // very different absolute scales (an earlier version divided by radius alone, which
+        // left the pressure factor uncancelled: Earth's atmosphere-driven elevation range is
+        // roughly 11x its radius-only share versus the airless Moon's, so the same tuning
+        // constant read as tasteful on the Moon and overdone on Earth). 0 disables the effect
+        // (same as bump_map_texture==0, kept separate so a caller could in principle dial it
+        // down without dropping the texture).
+        unsigned int bump_map_texture;
+        double bump_strength;
 
         // Direction from the object's center towards its light source (e.g. planet -> star),
         // in the same camera space as cx,cy,cz -- unit length. Unused (may be left zeroed)
@@ -148,8 +190,8 @@ namespace alienorum
     // the same tangent-line geometry (a conservative over-estimate for a tilted ring's true
     // elliptical silhouette, never an under-estimate); the fragment shader discards every pixel
     // outside the true annulus, so the extra quad area just costs some cheap discards.
-    // No output bounding box -- unlike the disc, nothing downstream Claude breaks promises the ring's on-screen
-    // extent. Returns false (queues nothing) if the input is geometrically degenerate (e.g.
+    // No output bounding box -- unlike the disc, nothing downstream requires the ring's
+    // on-screen extent. Returns false (queues nothing) if the input is geometrically degenerate (e.g.
     // inner_r >= outer_r, or the camera is inside the outer radius).
     bool queue_ring_impostor(const RingImpostorInput &in, double zoom,
         double dispcx, double dispcy);

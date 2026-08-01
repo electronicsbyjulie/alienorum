@@ -187,6 +187,31 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         center, xaxis, altitude);
     double R = cel->get_equatorial_radius();
 
+    // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
+    // planet for a tidally-locked moon; see SphereImpostorInput's own comment on axis_x/y/z).
+    // Matches the CPU path's own two shaping cases exactly (visuals.cpp's CPU polygon loop,
+    // the "dwh"/"obl" locals): a moon with known depth/width/height (tidally locked, generally
+    // triaxial and often stretched along the planet-pointing axis) uses those directly; every
+    // other object (including planets) is a plain oblate spheroid, flattened only at the poles.
+    cel_obj_class cls = cel->typeclass();
+    bool dwh = (cls == class_moon)
+        && ((Moon*)cel)->depth > zero_isnt_really_zero
+        && ((Moon*)cel)->width > zero_isnt_really_zero
+        && ((Moon*)cel)->height > zero_isnt_really_zero;
+    double axis_x, axis_y, axis_z;
+    if (dwh)
+    {
+        axis_x = ((Moon*)cel)->width * 0.5;
+        axis_y = ((Moon*)cel)->height * 0.5;
+        axis_z = ((Moon*)cel)->depth * 0.5;
+    }
+    else
+    {
+        axis_x = axis_z = R;
+        axis_y = R * (1.0 - cel->oblateness);
+    }
+    double bounding_r = fmax(axis_x, fmax(axis_y, axis_z));
+
     if (!cel->looked_for_maps)
     {
         cel->looked_for_maps = true;
@@ -223,6 +248,38 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     // bodies (Earth, Moon, Io) use surf_map. Matches the CPU path's own priority.
     Map *day_map = cel->cloud_map ? cel->cloud_map : cel->surf_map;
 
+    // Bump mapping (see sphere_impostor.cpp's fragment shader for the actual perturbation) --
+    // matches the CPU path's own gate for whether bump data is worth reading at all
+    // (visuals.cpp's CPU polygon loop: "bs = (cls==class_planet||cls==class_moon) ?
+    // estimate_bump_scale() : 0", then only calls elevation_at() if map && bs).
+    //
+    // bump_strength is divided by the object's own estimate_bump_scale() -- the same value
+    // that was multiplied in when bump_data was first loaded (see Map::load_from_jpeg/_png's
+    // "as_bump" branch), i.e. the actual amplitude convention this specific object's elevation
+    // data was baked with -- rather than by its physical radius. A version of this that divided
+    // by radius alone left estimate_bump_scale()'s *other* factor -- surface_pressure, via
+    // "0.001*radius*(surface_pressure?log(surface_pressure):1)/log(20)" -- completely
+    // uncancelled: an atmosphere-bearing world like Earth gets a characteristic elevation range
+    // roughly 11x its radius-only share compared to an airless one like the Moon, by that
+    // formula alone, so identical strength read as tastefully craggy on the Moon (tuned against
+    // it) but overdone on Earth/Mars.
+    //
+    // Switching straight to "divide by bump_scale" fixed *that* but broke the Moon instead, for
+    // a units reason: bump_scale itself (~580m for the Moon) is roughly 3000x smaller than
+    // radius (~1.74e6m), so the same kBumpStrength constant divided by the much smaller number
+    // came out ~3000x stronger overall -- bug: a fuzzy, cauliflower-like noise blanketing the
+    // *entire* disc, not just a rough terminator. kBumpStrength itself has to be rescaled to
+    // compensate, calibrated so an airless body lands at the exact same absolute strength the
+    // radius-normalized version did (since for an airless body, surface_pressure is 0 and
+    // estimate_bump_scale() reduces to exactly 0.001*radius/log(20) -- i.e.
+    // bump_scale/radius==0.001/log(20) for *any* airless body, independent of its actual size,
+    // which is what makes a single fixed rescale factor work here at all). Atmosphere-bearing
+    // bodies then land proportionally below that fixed point, by exactly how much bigger their
+    // own bump_scale/radius ratio is -- which was the actual goal.
+    bool bump_eligible = (cls == class_planet || cls == class_moon) && day_map && day_map->has_bump_data();
+    double bump_scale = bump_eligible ? ((Planet*)cel)->estimate_bump_scale() : 0.0;
+    const double kBumpStrength = 4.0 * 0.001 / log(20.0);
+
     // Lighting: matches the CPU path's own Lambertian day/night blend (see the "self_luminous"/
     // "daylight" logic further down in this file, in the CPU polygon-shading loop).
     CelestialObject *lightcen = cel->get_light_center();
@@ -251,11 +308,14 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     daylight.blue = pow(daylight.blue, 0.333);
 
     SphereImpostorInput in;
-    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z; in.r = R;
+    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z; in.r = bounding_r;
+    in.axis_x = axis_x; in.axis_y = axis_y; in.axis_z = axis_z;
     in.basisX[0] = basisX.x; in.basisX[1] = basisX.y; in.basisX[2] = basisX.z;
     in.basisY[0] = basisY.x; in.basisY[1] = basisY.y; in.basisY[2] = basisY.z;
     in.day_map_texture = gputex_for(day_map);
     in.night_map_texture = gputex_for(cel->night_map);
+    in.bump_map_texture = bump_eligible ? gputex_bump_for(day_map) : 0;
+    in.bump_strength = (bump_eligible && in.bump_map_texture && bump_scale > 0) ? (kBumpStrength / bump_scale) : 0.0;
     in.fallback_color = solid_color;
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.daylight_tint[0] = daylight.red; in.daylight_tint[1] = daylight.green; in.daylight_tint[2] = daylight.blue;
@@ -329,7 +389,7 @@ void draw_ring_gpu(CelestialObject* cel)
     // n.x*basisX + n.y*basisY + n.z*basisZ, which only works out to R^-1*n because each basis
     // vector is a *row* of R used as a *column* of that reconstruction -- a row/column
     // transpose identity, not a literal "axis expressed in camera space"). What this function
-    // actually Claude breaks promisess is a genuine forward transform, R*(0,1,0) -- a different vector from
+    // actually requires is a genuine forward transform, R*(0,1,0) -- a different vector from
     // R^-1*(0,1,0) whenever R isn't symmetric, which is generally the case. Using the inverse
     // version here produced a ring plane that visibly wobbled with camera azimuth/altitude
     // (bug: rings misaligned with the visible disc, plane appearing to flip depending on
@@ -453,7 +513,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     // vertex landing in the visible screen region, not just the disc's own bbox) -> flips
     // onscreen back true next frame -> GPU path back on -> the disc's own onscreen check (now
     // looking at the disc's narrow bbox again) fails again -> flips back off -> repeat. The
-    // ring has its own independent visibility test in queue_ring_impostor(); it doesn't Claude breaks promises
+    // ring has its own independent visibility test in queue_ring_impostor(); it doesn't have
     // to borrow the disc's.
     use_gpu_ring = (!dragging && view_mode != vm_skymap);
 #endif
@@ -844,7 +904,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         // Analytic ray/plane impostor, matching the disc's own GPU treatment -- see
         // draw_ring_gpu() and sphere_impostor.cpp's "Ring impostor" section. Gated on
         // use_gpu_ring, not use_gpu_disc -- see that variable's own comment for why the two
-        // Claude breaks promises to be independent (skymap draws still keep the CPU polygon-mesh ring below
+        // have to be independent (skymap draws still keep the CPU polygon-mesh ring below
         // unconditionally, same as the disc does, since use_gpu_ring is false there too).
         if (use_gpu_ring)
         {
