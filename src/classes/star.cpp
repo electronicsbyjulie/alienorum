@@ -266,7 +266,8 @@ double Star::estimate_temperature()
 {
     if (temperature) return temperature;
     if (!strlen(spectral_type)) return 5800;
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_temp(msqi);
 
     return 2000;
@@ -274,7 +275,8 @@ double Star::estimate_temperature()
 
 double Star::estimate_luminosity(double tempK)
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_lum(msqi);
 
     return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
@@ -282,7 +284,8 @@ double Star::estimate_luminosity(double tempK)
 
 void Star::estimate_BV()
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) BV_color = interpolate_mseq_BV(msqi);
     else
     {
@@ -425,17 +428,19 @@ double alienorum::Star::get_mseqidx_from_temp(double T)
 
 double alienorum::Star::get_mseqidx_from_BV(double BV)
 {
+    // Unlike msq_mass/msq_rad/msq_lum/msq_temp, msq_BV increases with i (hot to cool),
+    // so this scans for the first entry >= BV rather than <= BV.
     int i;
     double delta, d, coeff;
     for (i=mseqmin; i<mseqmax; i++)
     {
-        if (msq_BV[i] <= BV)
+        if (msq_BV[i] >= BV)
         {
             if (i == mseqmin) return i;
-            delta = msq_BV[i-1] - msq_BV[i];
-            d = BV - msq_BV[i];
+            delta = msq_BV[i] - msq_BV[i-1];
+            d = BV - msq_BV[i-1];
             coeff = d/delta;
-            return (double)i - coeff;
+            return (double)(i-1) + coeff;
         }
     }
     return mseqmax-1;
@@ -493,7 +498,8 @@ double alienorum::Star::interpolate_mseq_BV(double mseqidx)
 
 double Star::estimate_radius()
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi);
 
     if (!cels[0])
@@ -670,7 +676,8 @@ void Star::make_companion_of(Star *A, char comp)
 
 double Star::estimate_mass()
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return mass = interpolate_mseq_mass(msqi);
 
     if (!cels[0])

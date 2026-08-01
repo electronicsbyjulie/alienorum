@@ -409,6 +409,7 @@ void draw_objinf_window(ImGuiIO& io)
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
+            if (s->alienorumid.size()) objinfo += s->alienorumid + std::string("\n");
             if (strlen(s->Bayer) && strlen(s->Flamsteed))
             {
                 int Fl = atoi(s->Flamsteed);

@@ -217,15 +217,7 @@ ConsBins fill_alienorum_ids()
         if (!cs) continue;
         int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
         if (m < -30 || m > 50) m = 20;
-        char cc = s->spectral_type[0];
-        if (cc < 'A' || cc > 'Z') cc = s->spectral_type[1];
-        if (cc == 'O' || cc == 'B') cc = 'b';
-        else if (cc == 'A') cc = 'c';
-        else if (cc == 'F') cc = 'w';
-        else if (cc == 'G') cc = 'y';
-        else if (cc == 'K') cc = 'o';
-        else if (cc == 'M' || cc == 'C' || cc == 'T') cc = 'r';
-        else cc = get_color_code_from_temp(s->estimate_temperature());
+        char cc = get_color_code_from_temp(s->estimate_temperature());
 
         if (bins.find(cs) != bins.end()
          && bins[cs].find(m) != bins[cs].end()

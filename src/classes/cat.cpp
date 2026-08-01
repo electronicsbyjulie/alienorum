@@ -563,7 +563,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     double f;
     char comp = 0;
     // StarMulti *current_multi = nullptr;
-    double current_multi_ra, current_multi_decl;
+    double current_multi_ra = -1e9, current_multi_decl = -1e9;
     #define ra_dec_multi_limit (fiftyseventh / 60)
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
@@ -841,7 +841,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     int offset, j;
     uint32_t HD, HIP;
     double deg, mnt, sec, RA, Decl, f;
-    Star *s, *A;
+    Star *s, *A = nullptr;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -1105,6 +1105,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         {
             A = hipcache[HIP];
             if (A->seqno < 0 || cels[A->seqno] != A) A = hipcache[HIP] = nullptr;
+            if (!A) continue;
+
             if (!A->multisys) A->set_component('A', A);
             s = A->multisys->get_member(buffer[40]);
             if (!s)
