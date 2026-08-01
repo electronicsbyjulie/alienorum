@@ -63,7 +63,7 @@ bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, h
     have_astorb = false, have_exo = false,
     noexo = false, nosats = false, keyprobe = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
-double bv_correction = -0.62;
+double bv_correction = 0;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
@@ -82,7 +82,6 @@ PerlinNoise pn;
 const std::string WHITESPACE = " \n\r\t\f\v";
 uint32_t xonsm[13] = {0x0e432843, 0x0e4328ec, 0x25443485, 0x29cc28ec, 0x29cc513a, 0x43363485, 0x511e0000, 0x511e3485, 0x511e513a, 0x511e5147, 0x511eab3a, 0x2b85e980, 0x57e47000};
 double magnbase = pow(100, 1.0/5), invlogmagnbase = 1.0 / log(magnbase);
-std::vector<std::string> consname, consabbrev, consgen;
 
 std::string Greek_letter[24] =
 {
@@ -210,6 +209,73 @@ std::string elapsed_time(time_t start, time_t end)
     if (seconds < 10) elapsed += (std::string)"0";
     elapsed += std::to_string(seconds);
     return elapsed;
+}
+
+std::string cons_from_alienorumid(const std::string alienorumid)
+{
+    std::string result = "";
+    const char *c = alienorumid.c_str();
+    if (!c) return result;
+    const char *space = strchr(c, ' ');
+    if (!space) return result;
+    c = space+1;
+    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z')) result += std::string(1, *c);
+    c++;
+    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z')) result += std::string(1, *c);
+    c++;
+    if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z')) result += std::string(1, *c);
+    return result;
+}
+
+int grkno_from_abbrev(const char *abbrev)
+{
+    static const char *only1 = "ABGDZIKLMNXRSUC";
+    static const int ionly1[15] = {0, 1, 2, 3, 5, 8, 9, 10, 11, 12, 13, 16, 17, 19, 21};
+    char c = abbrev[0] & 0x5f;
+    const char *i;
+    int idx, result=-1;
+    if (i = strchr(only1, c))
+    {
+        idx = i - only1;
+        result = ionly1[idx];
+    }
+    else if (strlen(abbrev) < 3)
+    {
+        // TODO:
+    }
+    else if (c == 'E')
+    {
+        c = abbrev[1];
+        if (c == 'P') result = 4;
+        else if (c == 'T') result = 6;
+    }
+    else if (c == 'T')
+    {
+        c = abbrev[1];
+        if (c == 'H') result = 7;
+        else if (c == 'A') result = 18;
+    }
+    else if (c == 'O')
+    {
+        c = abbrev[2];
+        if (c == 'I') result = 14;
+        else if (c == 'E') result = 23;
+    }
+    else if (c == 'P')
+    {
+        c = abbrev[1];
+        if (c == 'I') result = 15;
+        else if (c == 'H') result = 20;
+        else if (c == 'S') result = 22;
+    }
+
+    if (strlen(abbrev) >= 7)
+    {
+        int n = abbrev[3] - '0';
+        if (n > 0) result = 100 + 10*result + n;
+    }
+
+    return result;
 }
 
 // TODO: Consider storing the gases in a JSON file.

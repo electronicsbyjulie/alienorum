@@ -290,9 +290,9 @@ Gam Scl, Mu  Scl
 Bet Sct, Alp Sct, Gam Sct
 Alp Sct, Zet Sct
 ~Ser, Serpens, Serpentis
-~Ser, Serpens Caput, Serpentis
+~Ser1, Serpens Caput, Serpentis
 Bet Ser, Gam Ser, Kap Ser, Bet Ser, Del Ser A, Alp Ser, Eps Ser, Mu  Ser, Nu  Ser
-~Ser, Serpens Cauda, Serpentis
+~Ser2, Serpens Cauda, Serpentis
 Nu  Ser, Xi  Ser, Omi Ser, Nu  Oph, Tau Oph, Eta Ser
 ~Sex, Sextans, Sextantis
 Bet Sex, Alp Sex, Gam Sex

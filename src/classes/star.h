@@ -26,6 +26,7 @@ namespace alienorum
         int BayerGrkno = -1;
         int FlamsteedNo = -1;
         int GouldNo = -1;
+        std::string alienorumid = "";
         char constellation[4] = {0,0,0,0};
         std::string CCDM, WD;
         char ccdm_compseq = 0;
@@ -52,6 +53,7 @@ namespace alienorum
         bool rot_axis_known = false;
         bool has_hot_jupiter = false;
         double disk_heliocen_inclination = 0, disk_heliocen_node = 0;
+        double planets_heliocen_inclination = 0, planets_heliocen_node = 0;
         double rot_heliocen_incl = 0, rot_heliocen_node = 0;
         double m_bol = 0;
 

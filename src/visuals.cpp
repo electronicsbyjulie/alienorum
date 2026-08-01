@@ -1343,7 +1343,7 @@ void draw_sunclock()
     RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
     daylight.normalize(1);
 
-    int x, y, dx, dy, step=3, size = dispcx/2, halfwid = size*2;
+    int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
     sclk_scale = half_pi / size / zoom;
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
     Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
@@ -1612,87 +1612,75 @@ void draw_sky_gradient()
 void draw_cons_lines()
 {
     if (!cels[1]) return;
-    int i, l, n;
+    int i, l, m, n;
     double dispw = dispcx*2, disph = dispcy*2;
-    bool initcons = false;
     ImGuiIO& io = ImGui::GetIO();
 
     // Hide lines if more than 10 l.y. from Sun.
     draw_actual_conslines = here.distance_to(cels[0]->location) < light_year*10;
 
-    n = consname.size();
-    if (!consdir.size())
-    {
-        initcons = true;
-        for (l=0; l<n; l++)
-        {
-            consdir.push_back(Point(0,0,0));
-            lnpercons[l] = 0;
-        }
-    }
-    n = show_xonsm ? (nconsln+11) : nconsln;
+    n = constellations.size();
     for (i=0; i<n; i++)
     {
-        if (consaidx[i] < 0 || consbidx[i] < 0) continue;
-        if (cels[consaidx[i]] == mycenobj) continue;
-        if (cels[consbidx[i]] == mycenobj) continue;
+        m = constellations[i].lines.size();
+        for (l=0; l<m; l++)
+        {
+            if (!constellations[i].lines[l].a || !constellations[i].lines[l].b) continue;
+            if (constellations[i].lines[l].a == mycenobj) continue;
+            if (constellations[i].lines[l].b == mycenobj) continue;
 
-        int dx1, dx2, dy1, dy2;
-        if (i >= nconsln) considx[i] = consname.size()-1;
-        l = considx[i];
+            int dx1, dx2, dy1, dy2;
 
-        assert (l < (int)consdir.size());
-        if (initcons) consdir[l] += Point(cels[consaidx[i]]->location) + Point(cels[consbidx[i]]->location);
-        lnpercons[l]++;
+            dx1 = constellations[i].lines[l].a->drawnx;
+            dy1 = constellations[i].lines[l].a->drawny;
+            if (dx1 < -1e3) continue;
+            if (dy1 < -1e3) continue;
 
-        dx1 = cels[consaidx[i]]->drawnx;
-        dy1 = cels[consaidx[i]]->drawny;
-        if (dx1 < -1e3) continue;
-        if (dy1 < -1e3) continue;
+            dx2 = constellations[i].lines[l].b->drawnx;
+            dy2 = constellations[i].lines[l].b->drawny;
+            if (dx2 < -1e3) continue;
+            if (dy2 < -1e3) continue;
 
-        dx2 = cels[consbidx[i]]->drawnx;
-        dy2 = cels[consbidx[i]]->drawny;
-        if (dx2 < -1e3) continue;
-        if (dy2 < -1e3) continue;
-
-        if (draw_actual_conslines || i >= nconsln)
-            wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), (i<nconsln) ? global_style.consline_color : IM_COL32(255, 64, 0, 128), 1, io);
+            if (draw_actual_conslines)
+                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), global_style.consline_color, 1, io);
+        }
     }
 
     // Constellation labels
-    n=l;
+    n = constellations.size();
+    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.2));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<=n; l++)
     {
-        if (!lnpercons[l]) continue;
-        // if (initcons) consdir[l].scale(1e303);
-        Point lconsdir = to_viewer_plane(consdir[l]);
+        Point lconsdir;
+
+        // Constellation boundaries
+        m = constellations[l].bounds.size();
+        for (i=0; i<m; i++)
+        {
+            Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
+            cbd = to_viewer_plane(cbd);
+            lconsdir += cbd;
+            Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
+            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+
+            if (dx < 0 || dy < 0) continue;
+            if (draw_actual_conslines) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx,dy), ImVec2(dx+1,dy+1), cbcol);
+        }
+
+        if (!constellations[l].lines.size()) continue;
         Cartesian2D cart(lconsdir, azimuth+azimuth_correction, altitude, zoom);
         float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
         if (dx < 0 || dy < 0) continue;
-        ImVec2 sz = ImGui::CalcTextSize(consname[l].c_str());
+        ImVec2 sz = ImGui::CalcTextSize(constellations[l].name.c_str());
         dx -= sz.x/2;
         dy -= sz.y/2;
         if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
-                rgba_apply_redlight((l<nconsln) ? global_style.conslbl_color : IM_COL32(255, 64, 0, 128)),
-                consname[l].c_str());
+                rgba_apply_redlight(global_style.conslbl_color),
+                constellations[l].name.c_str());
         }
-    }
-
-    // Constellation boundaries
-    n = consbounds.size();
-    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.2));
-    if (draw_actual_conslines) for (i=0; i<n; i++)
-    {
-        Point cbd = Point::from_ra_dec(consbounds[i].RA, consbounds[i].decl, light_year);
-        cbd = to_viewer_plane(cbd);
-        Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
-        float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-
-        if (dx < 0 || dy < 0) continue;
-        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx,dy), ImVec2(dx+1,dy+1), cbcol);
     }
 
     if (show_axes)

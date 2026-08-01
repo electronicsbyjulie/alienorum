@@ -1,6 +1,7 @@
 
 #include "loaders.h"
 #include "housekeeping.h"
+#include "classes/cons.h"
 
 using namespace alienorum;
 
@@ -241,12 +242,22 @@ void load_catalogs()
     int i, j, m, n;
     time_t began = time(NULL);
 
-    // TODO: Read data from more star catalogs.
+    cels[0] = nullptr;
+
     CatalogReader cr;
+    std::string ihcfn = cr.get_condensed_starcat_name();
+    bool ihsc = false;
+    if (file_exists(ihcfn.c_str()))
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading star catalog...");
+        mtx.unlock();
+        ihsc = cr.read_condensed_star_cat();
+    }
+
+    // TODO: Read data from more star catalogs.
     cr.download_catalogs();
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
-
-    cels[0] = nullptr;
 
     n = cats.size();
     for (i=0; i<n; i++)
@@ -262,7 +273,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "astorb")) have_astorb = true;
     }
 
-    if (have_Gliese)
+    if (have_Gliese && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading Gliese catalog...");
@@ -296,7 +307,7 @@ void load_catalogs()
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
-    if (have_BSC)
+    if (have_BSC && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading Bright Star Catalog...");
@@ -306,7 +317,7 @@ void load_catalogs()
         cout << "Read " << nBSC << " objects." << endl << flush;
     }
     Gliese_doubles_fix();
-    if (have_HIP && !magnitude_test)
+    if (have_HIP && !ihsc && !magnitude_test)
     {
         mtx.lock();
         loading_msg = std::string("Loading Hipparcos Catalog...");
@@ -316,7 +327,7 @@ void load_catalogs()
         cout << "Read " << nHIP << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
-    if (have_Uranio)
+    if (have_Uranio && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading Uranometria Catalog...");
@@ -325,7 +336,7 @@ void load_catalogs()
         int nUra = cr.read_Uranometria_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nUra << " objects." << endl << flush;
     }
-    if (0) // have_WD)
+    if (0) // have_WD && !ihsc)
     {
         mtx.lock();
         loading_msg = std::string("Loading White Dwarfs Catalog...");
@@ -339,8 +350,11 @@ void load_catalogs()
     mtx.lock();
     loading_msg = std::string("Naming stars...");
     mtx.unlock();
-    rename_all_from_Bayer_Flamsteed();
-    cr.read_starname_dat(cels);
+    if (!ihsc)
+    {
+        rename_all_from_Bayer_Flamsteed();
+        cr.read_starname_dat(cels);
+    }
 
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
@@ -356,7 +370,7 @@ void load_catalogs()
         }
         #endif
 
-        if (have_SB9)
+        if (have_SB9 && !ihsc)
         {
             mtx.lock();
             loading_msg = std::string("Loading Stellar Binaries Catalog...");
@@ -373,11 +387,14 @@ void load_catalogs()
         }
     }
 
-    mtx.lock();
-    loading_msg = std::string("Naming stars...");
-    mtx.unlock();
-    // rename_all_from_Bayer_Flamsteed();
-    cr.read_starname_dat(cels);
+    if (!ihsc)
+    {
+        mtx.lock();
+        loading_msg = std::string("Naming stars...");
+        mtx.unlock();
+        // rename_all_from_Bayer_Flamsteed();
+        cr.read_starname_dat(cels);
+    }
 
     // Because of system inclinations, we will die unless we read star orbits before reading exoplanets.
     // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
@@ -512,13 +529,13 @@ void read_cons_lines()
                 }
                 if (strlen(name2))
                 {
-                    consname.push_back(name2);
-                    consabbrev.push_back(&buffer[1]);
-                    lnpercons.push_back(0);
+                    Constellation c;
+                    c.name = name2;
+                    c.abbrev = &buffer[1];
+                    if (name3 && strlen(name3)) c.genitive = name3;
+                    constellations.push_back(c);
                     l++;
                 }
-                if (name3 && strlen(name3)) consgen.push_back(name3);
-                else consgen.push_back("");
             }
             else if (l>=0)
             {
@@ -549,11 +566,10 @@ void read_cons_lines()
                                 name3++;
                             }
                         }
-                        consline_a.push_back(name1);
-                        consline_b.push_back(trim(name2));
-                        considx.push_back(l);
-                        lnpercons[l]++;
-                        nconsln++;
+                        ConsLine cl;
+                        cl.starnamea = name1;
+                        cl.starnameb = trim(name2);
+                        constellations[l].lines.push_back(cl);
                     }
 
                     name1 = name2;
@@ -570,73 +586,50 @@ void read_cons_lines()
 
 void cache_cons_lines()
 {
-    int i, j, n;
+    int i, j, l, n, ncons, nln;
 
-    // Cache star indices of consline termini
-    consaidx = new int[nconsln+16];
-    consbidx = new int[nconsln+16];
-    for (i=0; i<nconsln; i++)
+    ncons = constellations.size();
+    for (i=0; i<ncons; i++)
     {
-        double mag_limit = (considx[i] == 34) ? 7.5 : 6.5;
-        int founda = -1, foundb = -1, rechercher;
+        double mag_limit = (i == 34) ? 7.5 : 6.5;
 
-        if (constellation_index.count(consabbrev[considx[i]]))
+        nln = constellations[i].lines.size();
+        for (l=0; l<nln; l++)
         {
-            n = constellation_index[consabbrev[considx[i]]].size();
-            for (j=0; j<n; j++)
+            int founda = -1, foundb = -1, rechercher;
+            if (constellation_index.count(constellations[i].abbrev))
             {
-                Star* s = (Star*) constellation_index[consabbrev[considx[i]]][j];
-                if (s->apparent_magnitude > mag_limit) continue;
-                if ((founda<0) && !strcmp(s->Bayer, consline_a[i].c_str()))
-                    founda = s->seqno;
-                if ((founda<0) && !strcmp(s->Flamsteed, consline_a[i].c_str()))
-                    founda = s->seqno;
-                if ((foundb<0) && !strcmp(s->Bayer, consline_b[i].c_str()))
-                    foundb = s->seqno;
-                if ((foundb<0) && !strcmp(s->Flamsteed, consline_b[i].c_str()))
-                    foundb = s->seqno;
-            }
-        }
-
-        if (founda<0 || foundb<0)
-        {
-            rechercher = find_object(consline_a[i].c_str(), true, mag_limit);
-            if (rechercher >= 0) founda = rechercher;
-            rechercher = find_object(consline_b[i].c_str(), true, mag_limit);
-            if (rechercher >= 0) foundb = rechercher;
-        }
-
-        if (founda < 0) std::cerr << "Warning: Failed to identify " << consline_a[i] << " for constellation lines." << std::endl;
-        if (foundb < 0) std::cerr << "Warning: Failed to identify " << consline_b[i] << " for constellation lines." << std::endl;
-
-        consaidx[i] = founda;
-        consbidx[i] = foundb;
-        if (founda >= 0) ((Star*)cels[founda])->make_universally_visible();
-        if (foundb >= 0) ((Star*)cels[foundb])->make_universally_visible();
-    }
-
-    if (show_xonsm)
-    {
-        for (i=0; i<11; i++)
-        {
-            int founda = -1, foundb = -1;
-            uint32_t ztym = xonsm[i] & 65535, srap = xonsm[i] / 65536;
-            for (j=0; cels[j]; j++)
-            {
-                if (cels[j]->type != star) continue;
-                Star* s = (Star*)cels[j];
-                if (founda < 0 && ((!j && !ztym) || s->HD == ztym)) founda = j;
-                else if (foundb < 0 && ((!j && !srap) || s->HD == srap)) foundb = j;
+                n = constellation_index[constellations[i].abbrev].size();
+                for (j=0; j<n; j++)
+                {
+                    Star* s = (Star*) constellation_index[constellations[i].abbrev][j];
+                    if (s->apparent_magnitude > mag_limit) continue;
+                    if ((founda<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnamea.c_str()))
+                        founda = s->seqno;
+                    if ((founda<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnamea.c_str()))
+                        founda = s->seqno;
+                    if ((foundb<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnameb.c_str()))
+                        foundb = s->seqno;
+                    if ((foundb<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnameb.c_str()))
+                        foundb = s->seqno;
+                }
             }
 
-            consname.push_back("");
-            if (founda >= 0 && foundb >= 0)
+            if (founda<0 || foundb<0)
             {
-                consaidx[i+nconsln] = founda;
-                consbidx[i+nconsln] = foundb;
-                ((Star*)cels[founda])->make_universally_visible();
-                ((Star*)cels[foundb])->make_universally_visible();
+                rechercher = find_object(constellations[i].lines[l].starnamea.c_str(), true, mag_limit);
+                if (rechercher >= 0) founda = rechercher;
+                rechercher = find_object(constellations[i].lines[l].starnameb.c_str(), true, mag_limit);
+                if (rechercher >= 0) foundb = rechercher;
             }
+
+            if (founda < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
+            if (foundb < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
+
+            constellations[i].lines[l].a = (Star*)cels[founda];
+            constellations[i].lines[l].b = (Star*)cels[foundb];
+            if (founda >= 0) ((Star*)cels[founda])->make_universally_visible();
+            if (foundb >= 0) ((Star*)cels[foundb])->make_universally_visible();
         }
     }
 }
@@ -706,7 +699,7 @@ void load_stuff()
     read_cons_lines();
 
     mtx.lock();
-    loading_msg = "Reading constellation boundaires...";
+    loading_msg = "Reading constellation boundaries...";
     mtx.unlock();
     CatalogReader cr;
     cr.read_cons_boundaries();
@@ -720,6 +713,12 @@ void load_stuff()
     loading_msg = "Assigning constellations...";
     mtx.unlock();
     cache_cons_lines();
+    std::string ihcfn = cr.get_condensed_starcat_name();
+    if (!file_exists(ihcfn.c_str()))
+    {
+        ConsBins cb = fill_alienorum_ids();
+        cr.write_condensed_star_cat(cb);
+    }
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
@@ -738,15 +737,7 @@ void reload_stuff()
     Star::load_main_seq_dat();
 
     CatalogReader cr;
-    consname.clear();
-    consabbrev.clear();
-    consgen.clear();
-    constellation_index.clear();
-    lnpercons.clear();
-    consline_a.clear();
-    consline_b.clear();
-    considx.clear();
-    nconsln = 0;
+    constellations.clear();
 
     mtx.lock();
     loading_msg = "Refreshing constellations...";

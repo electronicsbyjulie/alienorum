@@ -2,7 +2,7 @@
 #include <string.h>
 #include <algorithm>
 #include <math.h>
-#include "star.h"
+#include "cons.h"
 
 using namespace alienorum;
 
@@ -58,7 +58,7 @@ Star::Star()
     memset(Flamsteed, 0, 32*sizeof(char));
     memset(constellation, 0, 4*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
-    sidereal_rotational_period = 25 * oneday;            // Sun
+    // sidereal_rotational_period = 25 * oneday;            // Sun
 }
 
 Star::~Star()
@@ -126,17 +126,17 @@ void Star::rename_from_Bayer_Flamsteed()
     }
     if (BayerGrkno < 0 && !FlamsteedNo && (GouldNo < 1)) return;
 
-    if (!consabbrev.size() || !consgen.size())
+    if (!constellations.size())
     {
         std::cerr << "Must read constellation definitions before setting Bayer-Flamsteed names." << std::endl;
         throw 0xbadc0de;
     }
 
     // Find gentive of constellation.
-    int i, j=-1, n = consabbrev.size();
+    int i, j=-1, n = constellations.size();
     for (i=0; i<n; i++)
     {
-        if (!strcmp(consabbrev[i].c_str(), constellation))
+        if (!strcmp(constellations[i].abbrev.c_str(), constellation))
         {
             j = i;
             break;
@@ -155,27 +155,27 @@ void Star::rename_from_Bayer_Flamsteed()
         int number = atoi(std::string(Bayer).substr(3, 1).c_str());
         if (number)
         {
-            if (!strcmp(consabbrev[j].c_str(), "Ori") && BayerGrkno == 7)
+            if (!strcmp(constellations[j].abbrev.c_str(), "Ori") && BayerGrkno == 7)
                 strcpy(name, (std::string("HD" + std::to_string(HD)).c_str()));
-            if (!strcmp(consabbrev[j].c_str(), "UMa") && BayerGrkno == 13)
+            if (!strcmp(constellations[j].abbrev.c_str(), "UMa") && BayerGrkno == 13)
                 strcpy(name, Gliese);
-            else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + consgen[j]).c_str());
+            else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + std::to_string(number) + std::string(" ") + constellations[j].genitive).c_str());
         }
-        else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + consgen[j]).c_str());
+        else strcpy(name, (Greek_letter[BayerGrkno] + std::string(" ") + constellations[j].genitive).c_str());
 
-        if (BayerGrkno == 5 && !strcmp(consabbrev[j].c_str(), "Ret")) has_custom_name = true;
+        if (BayerGrkno == 5 && !strcmp(constellations[j].abbrev.c_str(), "Ret")) has_custom_name = true;
     }
     else if (FlamsteedNo > 0)
     {
-        if (!strcmp(consabbrev[j].c_str(), "UMa") && FlamsteedNo == 53)
+        if (!strcmp(constellations[j].abbrev.c_str(), "UMa") && FlamsteedNo == 53)
             strcpy(name, Gliese);
-        else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + consgen[j]).c_str());
+        else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + constellations[j].genitive).c_str());
     }
     else if (GouldNo > 0)
     {
-        if (GouldNo == 82 && !strcmp(consabbrev[j].c_str(), "Eri"))
-            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + consgen[j]).c_str());
-        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + consgen[j]).c_str());
+        if (GouldNo == 82 && !strcmp(constellations[j].abbrev.c_str(), "Eri"))
+            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + constellations[j].genitive).c_str());
+        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + constellations[j].genitive).c_str());
     }
 
     if (multisys && multisys->get_member('A') == this)
@@ -266,16 +266,17 @@ double Star::estimate_temperature()
 {
     if (temperature) return temperature;
     if (!strlen(spectral_type)) return 5800;
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_temp(msqi);
 
-    temperature = 2000;
-    return temperature;
+    return 2000;
 }
 
 double Star::estimate_luminosity(double tempK)
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_lum(msqi);
 
     return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
@@ -283,7 +284,8 @@ double Star::estimate_luminosity(double tempK)
 
 void Star::estimate_BV()
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) BV_color = interpolate_mseq_BV(msqi);
     else
     {
@@ -426,17 +428,19 @@ double alienorum::Star::get_mseqidx_from_temp(double T)
 
 double alienorum::Star::get_mseqidx_from_BV(double BV)
 {
+    // Unlike msq_mass/msq_rad/msq_lum/msq_temp, msq_BV increases with i (hot to cool),
+    // so this scans for the first entry >= BV rather than <= BV.
     int i;
     double delta, d, coeff;
     for (i=mseqmin; i<mseqmax; i++)
     {
-        if (msq_BV[i] <= BV)
+        if (msq_BV[i] >= BV)
         {
             if (i == mseqmin) return i;
-            delta = msq_BV[i-1] - msq_BV[i];
-            d = BV - msq_BV[i];
+            delta = msq_BV[i] - msq_BV[i-1];
+            d = BV - msq_BV[i-1];
             coeff = d/delta;
-            return (double)i - coeff;
+            return (double)(i-1) + coeff;
         }
     }
     return mseqmax-1;
@@ -494,7 +498,8 @@ double alienorum::Star::interpolate_mseq_BV(double mseqidx)
 
 double Star::estimate_radius()
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi);
 
     if (!cels[0])
@@ -671,7 +676,8 @@ void Star::make_companion_of(Star *A, char comp)
 
 double Star::estimate_mass()
 {
-    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    // double msqi = get_mseqidx_from_sptyp(spectral_type);
+    double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) return mass = interpolate_mseq_mass(msqi);
 
     if (!cels[0])

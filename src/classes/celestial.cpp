@@ -386,7 +386,7 @@ std::string CelestialObject::RA_as_hms(double seen_equinox)
         + std::to_string(hours) + std::string(":")
         + std::string(minutes<10 ? "0" : "")
         + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<10 ? "0" : "")
+        + std::string(seconds<9.95 ? "0" : "")
         + sec;
 }
 
@@ -403,7 +403,7 @@ std::string CelestialObject::Decl_as_degms()
         + std::to_string(degrees) + std::string(":")
         + std::string(minutes<10 ? "0" : "")
         + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<10 ? "0" : "")
+        + std::string(seconds<9.5 ? "0" : "")
         + std::to_string((int)seconds);
 }
 

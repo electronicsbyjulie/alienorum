@@ -1,9 +1,77 @@
 
 #include <iostream>
-#include <regex>
+#include <cctype>
 #include "serial.h"
+#include "cons.h"
 
 using namespace alienorum;
+
+static bool is_alpha3(const char* s)
+{
+    return isalpha((unsigned char)s[0]) && isalpha((unsigned char)s[1]) && isalpha((unsigned char)s[2]);
+}
+
+static int skip_ws(const char* s, int i)
+{
+    while (isspace((unsigned char)s[i])) i++;
+    return i;
+}
+
+// Equivalent to std::regex_search(s, R"([A-Za-z]{3}\s*[A-Za-z]{3})") -- three letters,
+// optional whitespace, three more letters, starting anywhere in s -- without paying for
+// NFA construction on every call. Fixed-length {3} quantifiers mean there's nothing to
+// backtrack, so a single left-to-right scan is exactly equivalent.
+static bool looks_like_Bayer(const char* s)
+{
+    int n = strlen(s);
+    for (int i=0; i+3<=n; i++)
+    {
+        if (!is_alpha3(&s[i])) continue;
+        int j = skip_ws(s, i+3);
+        if (j+3<=n && is_alpha3(&s[j])) return true;
+    }
+    return false;
+}
+
+// Equivalent to std::regex_search(s, R"([0-9]+\s*[A-Za-z]{3})"). [0-9]+ is greedy, but
+// backtracking it can never help: any character exposed by giving back digits from a
+// contiguous run is itself still a digit, which immediately fails the following
+// (whitespace* then letter) check. So trying the maximal digit run at every digit
+// position, with no backtracking, is exactly equivalent to the regex.
+static bool looks_like_Flamsteed(const char* s)
+{
+    int n = strlen(s);
+    for (int i=0; i<n; i++)
+    {
+        if (!isdigit((unsigned char)s[i])) continue;
+        int j = i+1;
+        while (j<n && isdigit((unsigned char)s[j])) j++;
+        j = skip_ws(s, j);
+        if (j+3<=n && is_alpha3(&s[j])) return true;
+    }
+    return false;
+}
+
+// Equivalent to std::regex_search(s, R"([0-9]+\s*G[.]?\s*[A-Za-z]{3})"), same reasoning
+// as looks_like_Flamsteed for the digit run and whitespace runs; the optional '.' is a
+// literal, so greedily consuming it when present (and not otherwise) is unambiguous.
+static bool looks_like_Gould(const char* s)
+{
+    int n = strlen(s);
+    for (int i=0; i<n; i++)
+    {
+        if (!isdigit((unsigned char)s[i])) continue;
+        int j = i+1;
+        while (j<n && isdigit((unsigned char)s[j])) j++;
+        j = skip_ws(s, j);
+        if (j>=n || s[j] != 'G') continue;
+        j++;
+        if (j<n && s[j] == '.') j++;
+        j = skip_ws(s, j);
+        if (j+3<=n && is_alpha3(&s[j])) return true;
+    }
+    return false;
+}
 
 int find_object(const char* search_term, bool os, double ml, int levreq)
 {
@@ -14,6 +82,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     int i, m, n, termi = atoi(search_term);
     Star *s;
+
+    // if (!strcmp(search_term, cels[0]->name)) return 0;
 
     uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
@@ -66,6 +136,13 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         )
         match_cons = &search_term[co];
 
+    Constellation *cons2match = nullptr;
+    n = constellations.size();
+    if (match_cons) for (i=0; !cons2match && i<n; i++)
+    {
+        if (!strcasecmp(match_cons, constellations[i].name.c_str())) cons2match = &constellations[i];
+    }
+
     for (i=0; cels[i]; i++)
     {
         if (os && (cels[i]->typeclass() != class_star)) continue;
@@ -100,10 +177,33 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         return result;
     }
 
-    std::string str_search = search_term;
-    std::regex Gould_regex(R"([0-9]+\s*G[.]?\s*[A-Za-z]{3})");
-    std::smatch Gould_match;
-    bool is_Gould = std::regex_search(str_search, Gould_match, Gould_regex);
+    bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))
+        ? looks_like_Bayer(search_term) : false;
+    bool is_Flamsteed = (search_term[0] >= '0' && search_term[0] <= '9')
+        ? looks_like_Flamsteed(search_term) : false;
+    bool is_Gould = (search_term[0] >= '0' && search_term[0] <= '9')
+        ? looks_like_Gould(search_term) : false;
+
+    if (cons2match && is_Bayer)
+    {
+        int igrk = grkno_from_abbrev(search_term);
+        if (cons2match->Bayer_stars.find(igrk) != cons2match->Bayer_stars.end())
+            return cons2match->Bayer_stars[igrk]->seqno;
+    }
+
+    if (cons2match && is_Flamsteed)
+    {
+        i = atoi(search_term);
+        if (cons2match->Flamsteed_stars.find(i) != cons2match->Flamsteed_stars.end())
+            return cons2match->Flamsteed_stars[i]->seqno;
+    }
+
+    if (cons2match && is_Gould)
+    {
+        i = atoi(search_term);
+        if (cons2match->Gould_stars.find(i) != cons2match->Gould_stars.end())
+            return cons2match->Gould_stars[i]->seqno;
+    }
 
     if (match_cons && termi)
     {

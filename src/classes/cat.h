@@ -6,6 +6,7 @@
 #include <vector>
 #include <fstream>
 #include <random>
+#include <cmath>
 #include "point.h"
 #include "galaxy.h"
 #include "cons.h"
@@ -13,15 +14,27 @@
 #include "moon.h"
 
 extern std::vector<std::string> known_catalog_names;
-extern std::vector<std::string> consline_a, consline_b;
-extern std::vector<int> considx, lnpercons;
-extern std::vector<Point> consdir;
-extern int nconsln;
-extern int *consaidx, *consbidx;
 extern Star **hdcache, **hipcache;
 extern std::map<int,std::map<char,Star* > > hipcomps;
 
 #define auto_match_multiples 0
+
+namespace alienorum
+{
+    // Flattened view of one row of the NASA Exoplanet Archive TAP "pscomppars" table
+    // (or a cached line derived from it -- see load_exoplanets_from_tap). Missing
+    // numeric fields are NAN, missing strings are empty, exactly matching how the
+    // archive itself reports fields as absent.
+    struct ExoRow
+    {
+        std::string pl_name, hostname, hd_name, hip_name, st_spectype;
+        double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
+        double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
+        double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
+        double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;
+        double pl_orbtper=NAN, pl_orblper=NAN, pl_tranmid=NAN, pl_orbper=NAN, pl_orbsmax=NAN, pl_orbeccen=NAN;
+    };
+}
 
 namespace alienorum
 {
@@ -55,13 +68,26 @@ namespace alienorum
         int read_local_planets(CelestialObject** cels, int max, CelestialObject* must_orbit = nullptr, CelestialObject* mustnt_orbit = nullptr);
 
         // Condensed star catalog
-        int write_condensed_star_cat(CelestialObject** cels);
-        int read_condensed_star_cat(CelestialObject** cels, int max);
+        std::string get_condensed_starcat_name();
+        int write_condensed_star_cat(ConsBins cb);
+        int read_condensed_star_cat();
 
-        protected:
+    protected:
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
         void apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids);
         bool worth_searching(std::string star_name);
+        void write_condensed_star_cat_line(FILE *fp, Star *s);
+
+        // Helpers for load_exoplanets_from_tap: turn one TAP row (or one cached
+        // line derived from a TAP row) into an ExoRow, then resolve/create the
+        // host star and optionally the planet from it. Kept separate so the same
+        // derivation logic runs whether the data came fresh off the wire or from
+        // the small derived caches of just what was actually added last time.
+        static ExoRow exorow_from_json(const json& row, bool* ok);
+        static void exorow_write_line(FILE* fp, const ExoRow& row);
+        static bool exorow_read_line(FILE* fp, ExoRow& row);
+        Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new);
+        void add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
     };
 }
 

@@ -12,10 +12,10 @@
 #
 
 CPP = g++
-CPPFLAGS = -std=c++17 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
+CPPFLAGS = -std=c++17 -O2 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 
 # Uncomment for debug mode
-# CPPFLAGS += -g -DDEBUG
+# CPPFLAGS += -g -DDEBUG -O0
 
 # Uncomment to track down memory errors
 # CPPFLAGS += -g -O0 -fsanitize=address -fno-omit-frame-pointer

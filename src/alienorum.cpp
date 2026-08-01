@@ -842,8 +842,6 @@ int main (int argc, char** argv)
     delete[] discinstead;
     delete[] bx_cache;
     delete[] by_cache;
-    delete[] consaidx;
-    delete[] consbidx;
     if (hdcache) delete[] hdcache;
     if (hipcache) delete[] hipcache;
     return 0;

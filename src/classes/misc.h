@@ -142,7 +142,6 @@ extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
 extern uint32_t xonsm[13];
 extern const std::string WHITESPACE;
-extern std::vector<std::string> consname, consabbrev, consgen;
 
 std::string ltrim(const std::string &s);
 std::string rtrim(const std::string &s);
@@ -182,6 +181,9 @@ double lat_from_y(double y);
 void enforce_y_pan_limit();
 
 std::string elapsed_time(time_t start, time_t end);
+
+std::string cons_from_alienorumid(const std::string alienorumid);
+int grkno_from_abbrev(const char *abbrev);
 
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide
