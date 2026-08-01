@@ -435,13 +435,27 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
 
-    bool use_gpu_disc = false;
+    bool use_gpu_disc = false, use_gpu_ring = false;
 #if ALIENORUM_GPU_SPHERES
     // vm_skymap isn't a pinhole camera (see Cartesian2D in point.cpp), so the camera-space
     // math draw_sphere_gpu() relies on doesn't apply there; fall through to the CPU path.
-    // Note this only decides how the *disc* is rendered -- rings (further down) always use
-    // the CPU path in both configurations, so we fall through instead of returning here.
     use_gpu_disc = (!wireframe && view_mode != vm_skymap);
+
+    // Deliberately its own condition, not just "use_gpu_disc" -- independent of
+    // cel->onscreen and the close-range "d < volumetric_mean_radius" check baked into
+    // `wireframe`. Both of those describe the *disc's* own state (is the disc's own small
+    // bounding box on screen; is the camera essentially at the planet's surface), neither of
+    // which says anything about whether the ring -- routinely 2-2.5x larger than the planet
+    // itself -- is visible. Coupling ring rendering to the disc's wireframe/onscreen state
+    // produced a feedback flicker: with the planet off-screen but the ring still (correctly)
+    // extending into view, onscreen reads false -> GPU ring path off -> the CPU wireframe
+    // ring-line code runs instead, whose own onscreen check is far more generous (any ring
+    // vertex landing in the visible screen region, not just the disc's own bbox) -> flips
+    // onscreen back true next frame -> GPU path back on -> the disc's own onscreen check (now
+    // looking at the disc's narrow bbox again) fails again -> flips back off -> repeat. The
+    // ring has its own independent visibility test in queue_ring_impostor(); it doesn't Claude breaks promises
+    // to borrow the disc's.
+    use_gpu_ring = (!dragging && view_mode != vm_skymap);
 #endif
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
@@ -828,10 +842,11 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
 #if ALIENORUM_GPU_SPHERES
         // Analytic ray/plane impostor, matching the disc's own GPU treatment -- see
-        // draw_ring_gpu() and sphere_impostor.cpp's "Ring impostor" section. Only reachable
-        // when the disc itself used the GPU path (use_gpu_disc): wireframe/skymap draws keep
-        // the CPU polygon-mesh ring below unconditionally, same as the disc does.
-        if (use_gpu_disc)
+        // draw_ring_gpu() and sphere_impostor.cpp's "Ring impostor" section. Gated on
+        // use_gpu_ring, not use_gpu_disc -- see that variable's own comment for why the two
+        // Claude breaks promises to be independent (skymap draws still keep the CPU polygon-mesh ring below
+        // unconditionally, same as the disc does, since use_gpu_ring is false there too).
+        if (use_gpu_ring)
         {
             draw_ring_gpu(cel);
         }
@@ -857,8 +872,9 @@ int draw_sphere(CelestialObject* cel, double arad)
         // to react to on those frames, so `step` can drift far finer than the ring actually
         // requires on screen -- round(_pi*2/step)*13 was observed reaching ~9800, producing
         // 150,000+ AddConvexPolyFilled calls in a single frame. This CPU path is now only
-        // reached in wireframe/skymap mode, but the cap is cheap and correct there too, so it
-        // stays rather than special-casing it back out. Cap n by the ring's actual apparent
+        // reached while dragging or in skymap mode (see use_gpu_ring), but the cap is cheap
+        // and correct there too, so it stays rather than special-casing it back out. Cap n by
+        // the ring's actual apparent
         // size (arad, independent of the runaway step) instead: target roughly one quad per
         // 2px along the outer circumference. arad is a slope (~tan(angular_radius)*zoom), not
         // a pixel count -- dispcx converts it to one, same as the disc placement math further

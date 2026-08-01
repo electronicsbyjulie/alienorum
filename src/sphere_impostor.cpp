@@ -458,13 +458,28 @@ namespace alienorum
             *out_max = kFiniteBound * zoom;
             return;
         }
-        // r/L > 1 here means the camera sits inside this axis-pair's shadow of the sphere --
+        // r >= L here means the camera sits inside this axis-pair's shadow of the sphere --
         // not an error (the camera can be outside the sphere in 3D while this 2D slice still
-        // engulfs it, e.g. looking somewhat sideways from low orbit), it just means the
-        // silhouette is unbounded on this screen axis. asin clamped to 1 caps alpha at 90
-        // degrees, which combined with the tw<=0 fallback below still produces a sane (if
-        // maximally wide) bound rather than NaN. This was bug: Earth not appearing at all from
-        // low Earth orbit, where this triggered on nearly every non-nadir view.
+        // engulfs it, e.g. looking somewhat sideways from low orbit, or for a ring, simply
+        // being closer to the planet than the ring's own outer radius, which is routine).
+        // There's no external tangent line from inside a circle, so the silhouette is
+        // genuinely unbounded on this screen axis -- same case as the L<1e-6 branch above,
+        // handled the same way. An earlier version instead let alpha clamp to 90 degrees and
+        // fell through to the tw<=0 branch below to pick a wide bound's sign from tu -- usually
+        // fine, but tu independently approaches 0 in exactly this regime too (both tu and tw
+        // are ~0 when the camera sits almost exactly along this slice's u axis, e.g. flying
+        // near a ring's own plane), making the sign it picked essentially frame-to-frame noise.
+        // Bug: a hard, creeping cutoff edge partway across the screen (the wide bound
+        // intermittently flipping to the wrong side instead of just being wide), and the
+        // planet's onscreen flag flickering with it -- rings alternating against the wireframe
+        // fallback frame to frame. Bailing out directly here avoids the unstable branch
+        // entirely rather than trying to patch its sign heuristic.
+        if (r >= L)
+        {
+            *out_min = -kFiniteBound * zoom;
+            *out_max = kFiniteBound * zoom;
+            return;
+        }
         double alpha = asin(std::min(1.0, r / L));
         double cu = u / L, cw = w / L;   // unit vector towards center, in this 2D slice
 
@@ -949,7 +964,17 @@ namespace alienorum
     {
         double cx = in.cx, cy = in.cy, cz = in.cz, r = in.outer_r;
         if (r <= 0 || zoom <= 0 || in.inner_r <= 0 || in.inner_r >= in.outer_r) return false;
-        if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera inside the ring's outer radius
+        // NOT "camera inside outer_r" -- that was copied from the sphere impostor's genuine
+        // camera-inside-the-solid-sphere bail-out, but a ring is a flat zero-thickness annulus,
+        // not a solid volume the camera can be "inside" in any meaningful sense. ring_radius is
+        // typically ~2-2.5x the planet's own radius, so that guard fired on any moderately close
+        // flyby -- bug: rings vanishing entirely when approaching the planet, well before actually
+        // getting near the ring plane. tangent_bounds() already handles "camera within r for this
+        // 2D slice" gracefully (see its own comment on the r/L>1 case) -- the only real degenerate
+        // case here is the camera sitting essentially exactly at the ring/planet center, which
+        // would divide by ~0 a few lines down.
+        double d0 = sqrt(cx*cx + cy*cy + cz*cz);
+        if (d0 < 1e-6) return false;
 
         // Bounding quad from the *outer* radius using the exact same tangent-line geometry the
         // sphere impostor uses for its own silhouette (see tangent_bounds() above) -- this
@@ -991,7 +1016,7 @@ namespace alienorum
 
         // Same 1/d scaling as SphereImpostorParams::ccx/rho -- see this file's top-of-section
         // comment for why (float32 precision at real astronomical distances).
-        double d = sqrt(cx*cx + cy*cy + cz*cz);
+        double d = d0;
         p->ccx = (float)(cx / d);
         p->ccy = (float)(cy / d);
         p->ccz = (float)(cz / d);
