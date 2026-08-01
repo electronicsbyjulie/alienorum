@@ -66,6 +66,19 @@ namespace alienorum
         // the pixel level, unlike every other on-screen primitive where it's applied to an
         // already-fixed color on the CPU.
         bool redlight_mode;
+
+        // Matches the CPU path's sky_grad blend (visuals.cpp draw_sphere(), vm_horizon only):
+        // in horizon mode, standing on a body with an atmosphere, the sky itself glows near
+        // the horizon and fades with altitude above it -- this blends that same glow over the
+        // dark/unlit side of any other disc near the horizon, exactly the way it fades into a
+        // real planet's own atmosphere in that view. sky_color is the already alpha-
+        // premultiplied glow color (0-1) at sky_horizon_y (screen pixels, same convention as
+        // everything else here); the per-row falloff above that (the CPU path's fixed 0.999/
+        // 0.9995/0.9999 per-row decay for r/g/b) is reproduced analytically in the shader.
+        // false unless the caller is actually in vm_horizon with a live sky gradient this frame.
+        bool apply_sky_blend;
+        double sky_color[3];
+        double sky_horizon_y;
     };
 
     // Queues a GPU-rendered sphere impostor (see GPU_SPHERE_RENDERING_PLAN.md) into ImGui's

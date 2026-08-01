@@ -263,6 +263,25 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.night_illum = cel->night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
 
+    // Matches the CPU path's sky_grad blend (see the "if (view_mode == vm_horizon)" block
+    // further down in this file): in horizon mode, standing on a body with an atmosphere, the
+    // sky glows near the horizon and fades with altitude above it -- read the reference
+    // ("at horizon", undecayed) entry straight out of the same sky_grad map draw_sky_gradient()
+    // already populates once per frame (rbegin() is the highest key, i.e. the first-computed,
+    // least-decayed row -- see that function), and let the shader reproduce the same per-row
+    // exponential falloff (its fixed 0.999/0.9995/0.9999 factors) analytically from there,
+    // rather than re-deriving the underlying atmosphere-color computation here.
+    in.apply_sky_blend = false;
+    if (view_mode == vm_horizon && !sky_grad.empty())
+    {
+        auto it = sky_grad.rbegin();
+        in.sky_horizon_y = (double)it->first;
+        in.sky_color[0] = it->second.r / 255.0;
+        in.sky_color[1] = it->second.g / 255.0;
+        in.sky_color[2] = it->second.b / 255.0;
+        in.apply_sky_blend = true;
+    }
+
     double xmin, ymin, xmax, ymax;
     bool ok = queue_sphere_impostor(in, zoom, dispcx, dispcy, &xmin, &ymin, &xmax, &ymax);
     if (!ok) return 0;

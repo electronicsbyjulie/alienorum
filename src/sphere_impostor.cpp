@@ -40,10 +40,26 @@ namespace alienorum
         // map) the screen position itself, so no perspective-correction subtlety applies; the
         // fragment shader reconstructs each pixel's true camera-space ray direction from this.
         float rayxy[4][2];
-        // Sphere center in camera space, scaled by 1/r (so the shader can treat the sphere as
-        // unit-radius -- keeps the ray-sphere quadratic's coefficients O(1) instead of O(planet
-        // radius in meters), which matters for float32 precision).
+        // Pixel Y (top-down, same convention as sky_grad's keys/dy1 in the CPU path) at each
+        // of the 4 corners, same order as rayxy/ndc above -- interpolates exactly across the
+        // quad for the same reason rayxy does (it's the same affine function of vertex
+        // position the CPU path itself uses for dy1). Used for the sky-glow blend below.
+        float screeny[4];
+        // Sphere center in camera space, scaled by 1/d (distance to the center) rather than
+        // 1/r (the object's own radius) -- this makes ccx,ccy,ccz a plain unit vector, always
+        // perfectly conditioned regardless of how far away the object is. Scaling by 1/r
+        // instead (an earlier version of this code did) makes this vector's magnitude d/r,
+        // which is unbounded for a distant object -- for a planet several tenths of an AU away
+        // zoomed in, d/r can reach into the thousands, and the ray-sphere quadratic's b/c terms
+        // (which scale with that squared) become huge numbers whose difference near the
+        // sphere's true edge -- meant to resolve to something tiny and meaningful -- loses
+        // essentially all precision to float32 rounding error. Bug: a hard-edged square instead
+        // of a circle, with what should be smoothly-varying per-pixel surface normals coming
+        // out as near-incoherent noise, e.g. distant zoomed-in exoplanets. The sphere's own
+        // radius in this 1/d-scaled space is the small, well-conditioned value `rho` (r/d, see
+        // below) instead of exactly 1.
         float ccx, ccy, ccz;
+        float rho;   // r/d in the 1/d-scaled space above -- see the comment on ccx et al.
         // Object's local +X/+Y axes, in the same camera space (see SphereImpostorInput) -- used
         // to rotate the per-pixel camera-space normal back into the object's own frame.
         float bxx, bxy, bxz, byx, byy, byz;
@@ -55,13 +71,19 @@ namespace alienorum
         float tintr, tintg, tintb;
         // x=self_luminous, y=night_illum, z=has_night_tex, w=redlight_mode -- all 0/1 except y.
         float flagx, flagy, flagz, flagw;
+        // Sky-glow blend (see SphereImpostorInput::apply_sky_blend) -- rgb = premultiplied sky
+        // color at sky_y, a = sky_y itself (the reference row the CPU path's per-row decay is
+        // measured from), packed together since they're always used as a unit.
+        float skyr, skyg, skyb, sky_y;
+        float apply_sky;   // 0 or 1
     };
 
     static GLuint s_program = 0;
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
-    static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aCenterLoc = -1;
+    static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aScreenYLoc = -1, s_aCenterLoc = -1, s_aRhoLoc = -1;
     static GLint s_aBasisXLoc = -1, s_aBasisYLoc = -1, s_aHasTexLoc = -1, s_aColorLoc = -1;
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
+    static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -72,7 +94,9 @@ namespace alienorum
         "#version 130\n"
         "in vec2 aPos;\n"
         "in vec2 aRayXY;\n"
+        "in float aScreenY;\n"
         "in vec3 aCenter;\n"
+        "in float aRho;\n"
         "in vec3 aBasisX;\n"
         "in vec3 aBasisY;\n"
         "in float aHasTex;\n"
@@ -80,8 +104,12 @@ namespace alienorum
         "in vec3 aLightDir;\n"
         "in vec3 aTint;\n"
         "in vec4 aFlags;\n"
+        "in vec4 aSky;\n"
+        "in float aApplySky;\n"
         "out vec2 vRayXY;\n"
+        "out float vScreenY;\n"
         "out vec3 vCenter;\n"
+        "out float vRho;\n"
         "out vec3 vBasisX;\n"
         "out vec3 vBasisY;\n"
         "out float vHasTex;\n"
@@ -89,10 +117,14 @@ namespace alienorum
         "out vec3 vLightDir;\n"
         "out vec3 vTint;\n"
         "out vec4 vFlags;\n"
+        "out vec4 vSky;\n"
+        "out float vApplySky;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
+        "    vScreenY = aScreenY;\n"
         "    vCenter = aCenter;\n"
+        "    vRho = aRho;\n"
         "    vBasisX = aBasisX;\n"
         "    vBasisY = aBasisY;\n"
         "    vHasTex = aHasTex;\n"
@@ -100,6 +132,8 @@ namespace alienorum
         "    vLightDir = aLightDir;\n"
         "    vTint = aTint;\n"
         "    vFlags = aFlags;\n"
+        "    vSky = aSky;\n"
+        "    vApplySky = aApplySky;\n"
         "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
         "}\n";
 
@@ -120,7 +154,9 @@ namespace alienorum
     static const char *kFragmentShaderSrc =
         "#version 130\n"
         "in vec2 vRayXY;\n"
+        "in float vScreenY;\n"
         "in vec3 vCenter;\n"
+        "in float vRho;\n"
         "in vec3 vBasisX;\n"
         "in vec3 vBasisY;\n"
         "in float vHasTex;\n"
@@ -128,6 +164,8 @@ namespace alienorum
         "in vec3 vLightDir;\n"
         "in vec3 vTint;\n"
         "in vec4 vFlags;\n"   // x=self_luminous, y=night_illum, z=has_night_tex, w=redlight_mode
+        "in vec4 vSky;\n"     // rgb=premultiplied sky color at sky_y, a=sky_y (screen pixels)
+        "in float vApplySky;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
@@ -138,7 +176,7 @@ namespace alienorum
         "    vec3 oc = -vCenter;\n"
         "    float a = dot(dir, dir);\n"
         "    float b = 2.0 * dot(dir, oc);\n"
-        "    float c = dot(oc, oc) - 1.0;\n"      // sphere is unit-radius in this (1/r-scaled) space
+        "    float c = dot(oc, oc) - vRho*vRho;\n"   // sphere radius is vRho (r/d) in this 1/d-scaled space
         "    float disc = b*b - 4.0*a*c;\n"
         "    if (disc < 0.0) discard;\n"
         "    float t = (-b - sqrt(disc)) / (2.0*a);\n"
@@ -159,6 +197,17 @@ namespace alienorum
         "    vec3 outColor = (vFlags.z > 0.5)\n"
         "        ? isDay*baseColor + (1.0 - isDay)*texture(uNightMap, uv).rgb\n"
         "        : isDay*baseColor;\n"
+        "\n"
+        "    if (vApplySky > 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
+        "    {\n"
+        "        float dy = vSky.a - vScreenY;\n"
+        "        if (dy >= 0.0)\n"
+        "        {\n"
+        "            vec3 skyAtY = vec3(vSky.r*pow(0.999, dy), vSky.g*pow(0.9995, dy), vSky.b*pow(0.9999, dy));\n"
+        "            float lum = 0.29*skyAtY.r + 0.56*skyAtY.g + 0.15*skyAtY.b;\n"
+        "            outColor = min(vec3(1.0), (1.0 - lum)*outColor + skyAtY);\n"
+        "        }\n"
+        "    }\n"
         "\n"
         "    if (vFlags.w > 0.5)\n"          // redlight_mode -- see rgba_apply_redlight() in color.cpp
         "    {\n"
@@ -184,9 +233,9 @@ namespace alienorum
         return sh;
     }
 
-    // Floats per vertex: pos(2) rayxy(2) center(3) basisX(3) basisY(3) hasTex(1) color(4)
-    // lightDir(3) tint(3) flags(4) = 28.
-    static const int kFloatsPerVertex = 28;
+    // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) rho(1) basisX(3) basisY(3)
+    // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) = 35.
+    static const int kFloatsPerVertex = 35;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1;
 
     static void ensure_gl_objects()
@@ -213,7 +262,9 @@ namespace alienorum
 
         s_aPosLoc      = glGetAttribLocation(s_program, "aPos");
         s_aRayXYLoc    = glGetAttribLocation(s_program, "aRayXY");
+        s_aScreenYLoc  = glGetAttribLocation(s_program, "aScreenY");
         s_aCenterLoc   = glGetAttribLocation(s_program, "aCenter");
+        s_aRhoLoc      = glGetAttribLocation(s_program, "aRho");
         s_aBasisXLoc   = glGetAttribLocation(s_program, "aBasisX");
         s_aBasisYLoc   = glGetAttribLocation(s_program, "aBasisY");
         s_aHasTexLoc   = glGetAttribLocation(s_program, "aHasTex");
@@ -221,6 +272,8 @@ namespace alienorum
         s_aLightDirLoc = glGetAttribLocation(s_program, "aLightDir");
         s_aTintLoc     = glGetAttribLocation(s_program, "aTint");
         s_aFlagsLoc    = glGetAttribLocation(s_program, "aFlags");
+        s_aSkyLoc      = glGetAttribLocation(s_program, "aSky");
+        s_aApplySkyLoc = glGetAttribLocation(s_program, "aApplySky");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
 
@@ -244,22 +297,30 @@ namespace alienorum
         glVertexAttribPointer(s_aPosLoc, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
         glEnableVertexAttribArray(s_aRayXYLoc);
         glVertexAttribPointer(s_aRayXYLoc, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 2));
+        glEnableVertexAttribArray(s_aScreenYLoc);
+        glVertexAttribPointer(s_aScreenYLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 4));
         glEnableVertexAttribArray(s_aCenterLoc);
-        glVertexAttribPointer(s_aCenterLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 4));
+        glVertexAttribPointer(s_aCenterLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 5));
+        glEnableVertexAttribArray(s_aRhoLoc);
+        glVertexAttribPointer(s_aRhoLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 8));
         glEnableVertexAttribArray(s_aBasisXLoc);
-        glVertexAttribPointer(s_aBasisXLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 7));
+        glVertexAttribPointer(s_aBasisXLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 9));
         glEnableVertexAttribArray(s_aBasisYLoc);
-        glVertexAttribPointer(s_aBasisYLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 10));
+        glVertexAttribPointer(s_aBasisYLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 12));
         glEnableVertexAttribArray(s_aHasTexLoc);
-        glVertexAttribPointer(s_aHasTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 13));
+        glVertexAttribPointer(s_aHasTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 15));
         glEnableVertexAttribArray(s_aColorLoc);
-        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
+        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 16));
         glEnableVertexAttribArray(s_aLightDirLoc);
-        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 18));
+        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 20));
         glEnableVertexAttribArray(s_aTintLoc);
-        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 21));
+        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 23));
         glEnableVertexAttribArray(s_aFlagsLoc);
-        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 24));
+        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 26));
+        glEnableVertexAttribArray(s_aSkyLoc);
+        glVertexAttribPointer(s_aSkyLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 30));
+        glEnableVertexAttribArray(s_aApplySkyLoc);
+        glVertexAttribPointer(s_aApplySkyLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 34));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -295,30 +356,37 @@ namespace alienorum
             v[1] = corners_y[i];
             v[2] = p->rayxy[i][0];
             v[3] = p->rayxy[i][1];
-            v[4] = p->ccx;
-            v[5] = p->ccy;
-            v[6] = p->ccz;
-            v[7] = p->bxx;
-            v[8] = p->bxy;
-            v[9] = p->bxz;
-            v[10] = p->byx;
-            v[11] = p->byy;
-            v[12] = p->byz;
-            v[13] = p->has_tex;
-            v[14] = p->r;
-            v[15] = p->g;
-            v[16] = p->b;
-            v[17] = p->a;
-            v[18] = p->lightx;
-            v[19] = p->lighty;
-            v[20] = p->lightz;
-            v[21] = p->tintr;
-            v[22] = p->tintg;
-            v[23] = p->tintb;
-            v[24] = p->flagx;
-            v[25] = p->flagy;
-            v[26] = p->flagz;
-            v[27] = p->flagw;
+            v[4] = p->screeny[i];
+            v[5] = p->ccx;
+            v[6] = p->ccy;
+            v[7] = p->ccz;
+            v[8] = p->rho;
+            v[9] = p->bxx;
+            v[10] = p->bxy;
+            v[11] = p->bxz;
+            v[12] = p->byx;
+            v[13] = p->byy;
+            v[14] = p->byz;
+            v[15] = p->has_tex;
+            v[16] = p->r;
+            v[17] = p->g;
+            v[18] = p->b;
+            v[19] = p->a;
+            v[20] = p->lightx;
+            v[21] = p->lighty;
+            v[22] = p->lightz;
+            v[23] = p->tintr;
+            v[24] = p->tintg;
+            v[25] = p->tintb;
+            v[26] = p->flagx;
+            v[27] = p->flagy;
+            v[28] = p->flagz;
+            v[29] = p->flagw;
+            v[30] = p->skyr;
+            v[31] = p->skyg;
+            v[32] = p->skyb;
+            v[33] = p->sky_y;
+            v[34] = p->apply_sky;
         }
 
         glUseProgram(s_program);
@@ -448,15 +516,21 @@ namespace alienorum
         // above is accounted for -- each corner's ray direction is just its own zdes/zoom.
         double cornerZdesX[4] = {zdesXmin, zdesXmax, zdesXmax, zdesXmin};
         double cornerZdesY[4] = {zdesYmax, zdesYmax, zdesYmin, zdesYmin};
+        double cornerScreenY[4] = {ymax, ymax, ymin, ymin};
         for (int i = 0; i < 4; i++)
         {
             p->rayxy[i][0] = (float)(cornerZdesX[i] / zoom);
             p->rayxy[i][1] = (float)(cornerZdesY[i] / zoom);
+            p->screeny[i] = (float)cornerScreenY[i];
         }
 
-        p->ccx = (float)(cx / r);
-        p->ccy = (float)(cy / r);
-        p->ccz = (float)(cz / r);
+        // Scaled by 1/d (distance to center), not 1/r -- see the comment on
+        // SphereImpostorParams::ccx for why (float32 precision at real astronomical distances).
+        double d = sqrt(cx*cx + cy*cy + cz*cz);
+        p->ccx = (float)(cx / d);
+        p->ccy = (float)(cy / d);
+        p->ccz = (float)(cz / d);
+        p->rho = (float)(r / d);
 
         p->bxx = (float)in.basisX[0]; p->bxy = (float)in.basisX[1]; p->bxz = (float)in.basisX[2];
         p->byx = (float)in.basisY[0]; p->byy = (float)in.basisY[1]; p->byz = (float)in.basisY[2];
@@ -473,6 +547,10 @@ namespace alienorum
         p->flagy = (float)in.night_illum;
         p->flagz = in.night_map_texture ? 1.0f : 0.0f;
         p->flagw = in.redlight_mode ? 1.0f : 0.0f;
+
+        p->skyr = (float)in.sky_color[0]; p->skyg = (float)in.sky_color[1]; p->skyb = (float)in.sky_color[2];
+        p->sky_y = (float)in.sky_horizon_y;
+        p->apply_sky = in.apply_sky_blend ? 1.0f : 0.0f;
 
         ImDrawList *dl = ImGui::GetBackgroundDrawList();
         dl->AddCallback(render_sphere_impostor, p);

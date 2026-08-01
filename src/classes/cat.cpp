@@ -3935,21 +3935,25 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 222, 231, field);
             s->distance = atof(field) * light_year;
             s->update_location(simnow);
+            if (s->parallax > 0) s->distance_known = true;
 
             read_field_onebased(buffer, 234, 239, field);
             s->absolute_magnitude = atof(field);
 
             read_field_onebased(buffer, 241, 250, field);
             s->mass = atof(field) * solar_mass;
+            if (s->mass < jupiter_mass) s->mass = s->estimate_mass();
 
             read_field_onebased(buffer, 253, 262, field);
             s->volumetric_mean_radius = atof(field) * solar_radius;
+            if (s->volumetric_mean_radius < 0.5 * jupiter_radius) s->volumetric_mean_radius = s->estimate_radius();
 
             read_field_onebased(buffer, 264, 270, field);
             s->temperature = atof(field);
 
             read_field_onebased(buffer, 272, 281, field);
             s->sidereal_rotational_period = atof(field) * oneday;
+            if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
             int offset = -36;
             /*
