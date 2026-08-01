@@ -1,6 +1,8 @@
 
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
+#include <iostream>
 #include "gputex.h"
 
 using namespace alienorum;
@@ -35,6 +37,45 @@ namespace alienorum
         unsigned long w = map->get_width(), h = map->get_height();
         std::vector<unsigned char> rgba(w * h * 4);
         map->export_rgba(rgba.data());
+
+        // Downsample if either dimension exceeds the driver's max 2D texture size.
+        // glTexImage2D() silently rejects an over-limit size (GL_INVALID_VALUE) and leaves the
+        // texture object with no image data -- per the GL spec, sampling an incomplete texture
+        // returns solid black, opaque. Not a corrupted image, not a visible error unless you
+        // specifically check glGetError(), just a flatly black disc with a perfectly valid
+        // nonzero texture name. Bug: a procedurally-generated map large enough to exceed the
+        // limit (e.g. a 10000x5000 exoplanet cloud map, well past a common 8192 cap) rendering
+        // solid black in the GPU disc path, while the CPU path -- which samples the CPU-side
+        // red_data/green_data/blue_data arrays directly, no GPU texture involved at all --
+        // showed the same map completely correctly.
+        static GLint max_tex_size = 0;
+        if (!max_tex_size)
+        {
+            glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+            if (max_tex_size <= 0) max_tex_size = 4096;   // conservative fallback if the query itself fails
+        }
+        if ((long)w > max_tex_size || (long)h > max_tex_size)
+        {
+            double scale = std::min((double)max_tex_size / w, (double)max_tex_size / h);
+            unsigned long nw = std::max(1UL, (unsigned long)(w * scale));
+            unsigned long nh = std::max(1UL, (unsigned long)(h * scale));
+            std::cerr << "gputex_for: downsampling " << w << "x" << h << " map to "
+                << nw << "x" << nh << " (GL_MAX_TEXTURE_SIZE=" << max_tex_size << ")" << std::endl;
+
+            std::vector<unsigned char> down(nw * nh * 4);
+            for (unsigned long y = 0; y < nh; y++)
+            {
+                unsigned long sy = std::min(h - 1, (unsigned long)((double)y * h / nh));
+                for (unsigned long x = 0; x < nw; x++)
+                {
+                    unsigned long sx = std::min(w - 1, (unsigned long)((double)x * w / nw));
+                    for (int c = 0; c < 4; c++)
+                        down[(y * nw + x) * 4 + c] = rgba[(sy * w + sx) * 4 + c];
+                }
+            }
+            rgba.swap(down);
+            w = nw; h = nh;
+        }
 
         if (!entry.tex) glGenTextures(1, &entry.tex);
         glBindTexture(GL_TEXTURE_2D, entry.tex);
