@@ -2,6 +2,8 @@
 #include "globals.h"
 #include "visuals.h"
 #include "loaders.h"
+#include "sphere_impostor.h"
+#include "gputex.h"
 
 using namespace alienorum;
 
@@ -161,6 +163,272 @@ void draw_ra_dec_lines()
 
 double sphresolution = 0.1;
 bool bugged = false;
+
+// GPU sphere impostor path (see GPU_SPHERE_RENDERING_PLAN.md). Only reached when
+// ALIENORUM_GPU_SPHERES is 1, and only for non-wireframe, non-skymap draws (draw_sphere()
+// keeps handling wireframe mode itself in both configurations, and vm_skymap is excluded at
+// the dispatch point below) -- see the dispatch point in draw_sphere().
+//
+// The screen placement is derived from the object's exact camera-space position and radius,
+// not from a screen-space "projected center + scalar radius" circle: that circle
+// approximation only holds when the object is far enough away (or small enough on screen)
+// that perspective distortion across its own silhouette is negligible, and breaks down badly
+// at close range / large angular size -- e.g. a low-orbit satellite looking at a planet, where
+// the true projected shape is neither centered on the projected 3D center nor circular. See
+// sphere_impostor.cpp for the tangent-line bounding geometry and per-pixel ray-sphere
+// intersection that replace it; this function's job is just to hand that code the object's
+// exact position and radius in the same "camera space" Cartesian2D itself works in (see
+// point.cpp) -- after to_viewer_plane() and the azimuth/altitude rotation, before the
+// perspective divide.
+int draw_sphere_gpu(CelestialObject* cel, double arad)
+{
+    Point camera_space = rotate3D(
+        rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+    double R = cel->get_equatorial_radius();
+
+    // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
+    // planet for a tidally-locked moon; see SphereImpostorInput's own comment on axis_x/y/z).
+    // Matches the CPU path's own two shaping cases exactly (visuals.cpp's CPU polygon loop,
+    // the "dwh"/"obl" locals): a moon with known depth/width/height (tidally locked, generally
+    // triaxial and often stretched along the planet-pointing axis) uses those directly; every
+    // other object (including planets) is a plain oblate spheroid, flattened only at the poles.
+    cel_obj_class cls = cel->typeclass();
+    bool dwh = (cls == class_moon)
+        && ((Moon*)cel)->depth > zero_isnt_really_zero
+        && ((Moon*)cel)->width > zero_isnt_really_zero
+        && ((Moon*)cel)->height > zero_isnt_really_zero;
+    double axis_x, axis_y, axis_z;
+    if (dwh)
+    {
+        axis_x = ((Moon*)cel)->width * 0.5;
+        axis_y = ((Moon*)cel)->height * 0.5;
+        axis_z = ((Moon*)cel)->depth * 0.5;
+    }
+    else
+    {
+        axis_x = axis_z = R;
+        axis_y = R * (1.0 - cel->oblateness);
+    }
+    double bounding_r = fmax(axis_x, fmax(axis_y, axis_z));
+
+    if (!cel->looked_for_maps)
+    {
+        cel->looked_for_maps = true;
+        std::thread ttex(load_textures, cel);
+        ttex.detach();
+    }
+
+    // The object's local +X/+Y axes (Point::from_ra_dec's convention: x=-sin(lon)cos(lat),
+    // y=sin(lat)), expressed in camera space -- i.e. run through the exact inverse of the
+    // chain that places a point on the object's surface (spin, axial tilt, viewer-plane,
+    // camera rotation -- see the CPU polygon loop further down in this file for the forward
+    // version), applied here to the standard basis vectors rather than a surface point.
+    // sphere_impostor.cpp's shader uses these (plus their cross product for local +Z) to
+    // rotate a camera-space hit normal back into the object's own frame and recover lat/lon.
+    auto undo_to_local = [&](Point p) -> Point
+    {
+        p = rotate3D(p, center, xaxis, -altitude);
+        p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
+        p = to_viewer_plane(p, -1);
+        p = rotate3D(p, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+        p = rotate3D(p, center, yaxis, cel->timeofday());
+        return p;
+    };
+    Point basisX = undo_to_local(Point(1, 0, 0));
+    Point basisY = undo_to_local(Point(0, 1, 0));
+
+    Color col = Color::color_from_magnitude_indices(4.2, cel->BV_color);
+    RGB3Byte rgb = Color::rgb_from_color(col, -1);
+    // Redlight (night-vision) mode is applied once, in the shader, after lighting/texturing --
+    // applying it here too would double it up for the untextured fallback case.
+    ImU32 solid_color = IM_COL32(rgb.r, rgb.g, rgb.b, 255);
+
+    // Gas giants (Jupiter etc.) get their texture into cloud_map, never surf_map -- rocky
+    // bodies (Earth, Moon, Io) use surf_map. Matches the CPU path's own priority.
+    Map *day_map = cel->cloud_map ? cel->cloud_map : cel->surf_map;
+
+    // Bump mapping (see sphere_impostor.cpp's fragment shader for the actual perturbation) --
+    // matches the CPU path's own gate for whether bump data is worth reading at all
+    // (visuals.cpp's CPU polygon loop: "bs = (cls==class_planet||cls==class_moon) ?
+    // estimate_bump_scale() : 0", then only calls elevation_at() if map && bs).
+    //
+    // bump_strength is divided by the object's own estimate_bump_scale() -- the same value
+    // that was multiplied in when bump_data was first loaded (see Map::load_from_jpeg/_png's
+    // "as_bump" branch), i.e. the actual amplitude convention this specific object's elevation
+    // data was baked with -- rather than by its physical radius. A version of this that divided
+    // by radius alone left estimate_bump_scale()'s *other* factor -- surface_pressure, via
+    // "0.001*radius*(surface_pressure?log(surface_pressure):1)/log(20)" -- completely
+    // uncancelled: an atmosphere-bearing world like Earth gets a characteristic elevation range
+    // roughly 11x its radius-only share compared to an airless one like the Moon, by that
+    // formula alone, so identical strength read as tastefully craggy on the Moon (tuned against
+    // it) but overdone on Earth/Mars.
+    //
+    // Switching straight to "divide by bump_scale" fixed *that* but broke the Moon instead, for
+    // a units reason: bump_scale itself (~580m for the Moon) is roughly 3000x smaller than
+    // radius (~1.74e6m), so the same kBumpStrength constant divided by the much smaller number
+    // came out ~3000x stronger overall -- bug: a fuzzy, cauliflower-like noise blanketing the
+    // *entire* disc, not just a rough terminator. kBumpStrength itself has to be rescaled to
+    // compensate, calibrated so an airless body lands at the exact same absolute strength the
+    // radius-normalized version did (since for an airless body, surface_pressure is 0 and
+    // estimate_bump_scale() reduces to exactly 0.001*radius/log(20) -- i.e.
+    // bump_scale/radius==0.001/log(20) for *any* airless body, independent of its actual size,
+    // which is what makes a single fixed rescale factor work here at all). Atmosphere-bearing
+    // bodies then land proportionally below that fixed point, by exactly how much bigger their
+    // own bump_scale/radius ratio is -- which was the actual goal.
+    bool bump_eligible = (cls == class_planet || cls == class_moon) && day_map && day_map->has_bump_data();
+    double bump_scale = bump_eligible ? ((Planet*)cel)->estimate_bump_scale() : 0.0;
+    const double kBumpStrength = 4.0 * 0.001 / log(20.0);
+
+    // Lighting: matches the CPU path's own Lambertian day/night blend (see the "self_luminous"/
+    // "daylight" logic further down in this file, in the CPU polygon-shading loop).
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+
+    Point light_dir(0, 0, 1);
+    if (!self_luminous)
+    {
+        Point light_camera_space = rotate3D(
+            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+            center, xaxis, altitude);
+        light_dir = light_camera_space - camera_space;
+        double mag = light_dir.magnitude();
+        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+    }
+
+    Color daylight = Color::color_from_magnitude_indices(0, lightcen->BV_color);
+    double dmax = fmax(fmax(daylight.red, daylight.green), daylight.blue);
+    if (dmax > 0)
+    {
+        daylight.red /= dmax; daylight.green /= dmax; daylight.blue /= dmax;
+    }
+    // Compensate for the eye's white balance adjustment (matches the CPU path exactly).
+    daylight.red = pow(daylight.red, 0.333);
+    daylight.green = pow(daylight.green, 0.333);
+    daylight.blue = pow(daylight.blue, 0.333);
+
+    SphereImpostorInput in;
+    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z; in.r = bounding_r;
+    in.axis_x = axis_x; in.axis_y = axis_y; in.axis_z = axis_z;
+    in.basisX[0] = basisX.x; in.basisX[1] = basisX.y; in.basisX[2] = basisX.z;
+    in.basisY[0] = basisY.x; in.basisY[1] = basisY.y; in.basisY[2] = basisY.z;
+    in.day_map_texture = gputex_for(day_map);
+    in.night_map_texture = gputex_for(cel->night_map);
+    in.bump_map_texture = bump_eligible ? gputex_bump_for(day_map) : 0;
+    in.bump_strength = (bump_eligible && in.bump_map_texture && bump_scale > 0) ? (kBumpStrength / bump_scale) : 0.0;
+    in.fallback_color = solid_color;
+    in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
+    in.daylight_tint[0] = daylight.red; in.daylight_tint[1] = daylight.green; in.daylight_tint[2] = daylight.blue;
+    in.self_luminous = self_luminous;
+    in.night_illum = cel->night_map ? 0.0 : starlight;
+    in.redlight_mode = redlight_mode;
+
+    // Matches the CPU path's sky_grad blend (see the "if (view_mode == vm_horizon)" block
+    // further down in this file): in horizon mode, standing on a body with an atmosphere, the
+    // sky glows near the horizon and fades with altitude above it -- read the reference
+    // ("at horizon", undecayed) entry straight out of the same sky_grad map draw_sky_gradient()
+    // already populates once per frame (rbegin() is the highest key, i.e. the first-computed,
+    // least-decayed row -- see that function), and let the shader reproduce the same per-row
+    // exponential falloff (its fixed 0.999/0.9995/0.9999 factors) analytically from there,
+    // rather than re-deriving the underlying atmosphere-color computation here.
+    in.apply_sky_blend = false;
+    if (view_mode == vm_horizon && !sky_grad.empty())
+    {
+        auto it = sky_grad.rbegin();
+        in.sky_horizon_y = (double)it->first;
+        in.sky_color[0] = it->second.r / 255.0;
+        in.sky_color[1] = it->second.g / 255.0;
+        in.sky_color[2] = it->second.b / 255.0;
+        in.apply_sky_blend = true;
+    }
+
+    double xmin, ymin, xmax, ymax;
+    bool ok = queue_sphere_impostor(in, zoom, dispcx, dispcy, &xmin, &ymin, &xmax, &ymax);
+    if (!ok) return 0;
+
+    cel->drawnxmin = xmin;
+    cel->drawnxmax = xmax;
+    cel->drawnymin = ymin;
+    cel->drawnymax = ymax;
+
+    ImGuiIO& io = ImGui::GetIO();
+    if (xmax > 0 && xmin < io.DisplaySize.x && ymax > 0 && ymin < io.DisplaySize.y)
+        cel->onscreen = true;
+
+    return fmax(xmax - xmin, ymax - ymin) / 2;
+}
+
+// GPU ring impostor path -- companion to draw_sphere_gpu() above, called from the "// Rings"
+// block further down in draw_sphere() whenever that same call is using the GPU disc path (see
+// sphere_impostor.cpp's "Ring impostor" section for why this exists and how it replicates the
+// CPU ring code's occlusion/shadow logic analytically instead of via a polygon mesh). Mirrors
+// draw_sphere_gpu()'s own structure: recomputes the object's camera-space position and basis
+// independently rather than receiving them from the caller, since it's meant to be a
+// self-contained drop-in the same way draw_sphere_gpu() is.
+void draw_ring_gpu(CelestialObject* cel)
+{
+    Planet *pl = (Planet*)cel;
+    Point camera_space = rotate3D(
+        rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+    double R = cel->get_equatorial_radius();
+
+    // Ring plane normal = the object's local +Y (polar) axis, rotated forward into camera
+    // space -- the *same* forward chain camera_space itself uses just above (tilt, then
+    // to_viewer_plane, then camera azimuth/altitude), applied to a direction instead of a
+    // position (so the translation step, "+= cel->tmprel", is correctly skipped -- directions
+    // aren't translated). No spin term: the CPU ring code never rotates ring geometry by
+    // timeofday() at all (rings don't spin with the planet -- see the CPU ring loop's `dust`
+    // computation further down, which only tilts by equatorial_plane).
+    //
+    // An earlier version of this function used draw_sphere_gpu()'s "undo_to_local" helper
+    // instead (minus its spin step) -- wrong, and not just because of the spin term. That
+    // helper computes something genuinely different: applying the *inverse*-ordered chain to
+    // a standard basis vector e_i returns R^-1*e_i, i.e. row i of the forward rotation matrix
+    // R -- correct for its actual purpose (the sphere fragment shader reconstructs R^-1*n via
+    // n.x*basisX + n.y*basisY + n.z*basisZ, which only works out to R^-1*n because each basis
+    // vector is a *row* of R used as a *column* of that reconstruction -- a row/column
+    // transpose identity, not a literal "axis expressed in camera space"). What this function
+    // actually requires is a genuine forward transform, R*(0,1,0) -- a different vector from
+    // R^-1*(0,1,0) whenever R isn't symmetric, which is generally the case. Using the inverse
+    // version here produced a ring plane that visibly wobbled with camera azimuth/altitude
+    // (bug: rings misaligned with the visible disc, plane appearing to flip depending on
+    // viewing angle) since R^-1*(0,1,0) has no reason to track the camera's own orientation
+    // the way R*(0,1,0) correctly does.
+    Point normal = rotate3D(
+        rotate3D(
+            to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
+            center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+    Point light_dir(0, 0, 1);
+    if (!self_luminous)
+    {
+        Point light_camera_space = rotate3D(
+            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+            center, xaxis, altitude);
+        light_dir = light_camera_space - camera_space;
+        double mag = light_dir.magnitude();
+        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+    }
+
+    RingImpostorInput in;
+    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z;
+    in.inner_r = R; in.outer_r = pl->ring_radius;
+    in.normal[0] = normal.x; in.normal[1] = normal.y; in.normal[2] = normal.z;
+    in.ring_map_texture = gputex_for(cel->ring_map);
+    in.ringx_map_texture = gputex_for(cel->ringx_map);
+    in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
+    in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
+    in.self_luminous = self_luminous;
+    in.amt_lit = pl->amt_lit;
+    in.redlight_mode = redlight_mode;
+
+    queue_ring_impostor(in, zoom, dispcx, dispcy);
+}
+
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (cel->seqno == whereami) return 0;
@@ -226,6 +494,29 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
     bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
+
+    bool use_gpu_disc = false, use_gpu_ring = false;
+#if ALIENORUM_GPU_SPHERES
+    // vm_skymap isn't a pinhole camera (see Cartesian2D in point.cpp), so the camera-space
+    // math draw_sphere_gpu() relies on doesn't apply there; fall through to the CPU path.
+    use_gpu_disc = (!wireframe && view_mode != vm_skymap);
+
+    // Deliberately its own condition, not just "use_gpu_disc" -- independent of
+    // cel->onscreen and the close-range "d < volumetric_mean_radius" check baked into
+    // `wireframe`. Both of those describe the *disc's* own state (is the disc's own small
+    // bounding box on screen; is the camera essentially at the planet's surface), neither of
+    // which says anything about whether the ring -- routinely 2-2.5x larger than the planet
+    // itself -- is visible. Coupling ring rendering to the disc's wireframe/onscreen state
+    // produced a feedback flicker: with the planet off-screen but the ring still (correctly)
+    // extending into view, onscreen reads false -> GPU ring path off -> the CPU wireframe
+    // ring-line code runs instead, whose own onscreen check is far more generous (any ring
+    // vertex landing in the visible screen region, not just the disc's own bbox) -> flips
+    // onscreen back true next frame -> GPU path back on -> the disc's own onscreen check (now
+    // looking at the disc's narrow bbox again) fails again -> flips back off -> repeat. The
+    // ring has its own independent visibility test in queue_ring_impostor(); it doesn't have
+    // to borrow the disc's.
+    use_gpu_ring = (!dragging && view_mode != vm_skymap);
+#endif
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
@@ -369,6 +660,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     double latmin_rad = fiftyseventh * (latmin-5) - step, latmax_rad = fiftyseventh * (latmax+5) + step,
         lonmin_rad = fiftyseventh * lonmin, lonmax_rad = fiftyseventh * lonmax;
     double lon360;
+    if (use_gpu_disc)
+    {
+        int r = draw_sphere_gpu(cel, arad);
+        if (!r) return 0;
+        result = r;
+    }
+    else
     for (lat=-half_pi; lat <= half_pi; lat+=step)
     {
         if (lat < latmin_rad || lat > latmax_rad) continue;
@@ -602,6 +900,19 @@ int draw_sphere(CelestialObject* cel, double arad)
     // Rings
     if (cls == class_planet && ((Planet*)cel)->ring_radius)
     {
+#if ALIENORUM_GPU_SPHERES
+        // Analytic ray/plane impostor, matching the disc's own GPU treatment -- see
+        // draw_ring_gpu() and sphere_impostor.cpp's "Ring impostor" section. Gated on
+        // use_gpu_ring, not use_gpu_disc -- see that variable's own comment for why the two
+        // have to be independent (skymap draws still keep the CPU polygon-mesh ring below
+        // unconditionally, same as the disc does, since use_gpu_ring is false there too).
+        if (use_gpu_ring)
+        {
+            draw_ring_gpu(cel);
+        }
+        else
+#endif
+        {
         std::vector<ImVec2> todrawr;
         std::vector<bool> tdvalidr;
         l = 0;
@@ -614,7 +925,23 @@ int draw_sphere(CelestialObject* cel, double arad)
             throw 0xbadda7a;
         }
 
-        n = round(_pi*2/step) * 13;
+        // n (angular subdivisions) used to be implicitly bounded by `step`, which the
+        // end-of-function adaptive throttle kept sane by measuring the CPU disc-mesh loop's
+        // own render cost. With the disc now GPU-rendered (near-zero CPU cost) whenever
+        // use_gpu_disc is true elsewhere in the app, that feedback loop no longer has anything
+        // to react to on those frames, so `step` can drift far finer than the ring actually
+        // requires on screen -- round(_pi*2/step)*13 was observed reaching ~9800, producing
+        // 150,000+ AddConvexPolyFilled calls in a single frame. This CPU path is now only
+        // reached while dragging or in skymap mode (see use_gpu_ring), but the cap is cheap
+        // and correct there too, so it stays rather than special-casing it back out. Cap n by
+        // the ring's actual apparent
+        // size (arad, independent of the runaway step) instead: target roughly one quad per
+        // 2px along the outer circumference. arad is a slope (~tan(angular_radius)*zoom), not
+        // a pixel count -- dispcx converts it to one, same as the disc placement math further
+        // up (e.g. "dx1 = dispcx + zdes.x * dispcx").
+        double ring_outer_px = arad * dispcx * pl->ring_radius / equatorial_radius;
+        int n_cap = (int)fmax(24, fmin(3000, _pi * ring_outer_px));
+        n = fmin((double)n_cap, round(_pi*2/step) * 13);
         m = fmax(4, fmin(result, round(_pi*2/step)/2));
         double step1 = (double)ringsize / m, step2 = _pi*2/n;
 
@@ -717,6 +1044,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 l++;
             }
         }
+        } // else (CPU ring path)
     }
 
     auto sphere_finished = std::chrono::high_resolution_clock::now();

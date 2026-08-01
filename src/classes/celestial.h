@@ -118,9 +118,31 @@ namespace alienorum
 
         __uint128_t ___ = 0;
 
+        // Globally-unique (never reused, even across a delete+new at the same address --
+        // see mark_for_map_regen()'s `delete this`) version stamp for this Map's RGB pixel
+        // data. Bumped by touch_gen() whenever red_data/green_data/blue_data change, so the
+        // GPU texture cache (see gputex.h) can tell a stale upload from a fresh one just by
+        // comparing this number, with no chance of confusing two different Map objects that
+        // happen to share an address. next_gen() never returns 0, which is reserved to mean
+        // "touch_gen() hasn't run yet" -- see gen's own comment below for why that matters.
+        static unsigned int next_gen();
+
         public:
+        // Starts at 0 rather than a real generation number on purpose: red_data/green_data/
+        // blue_data become non-null (has_rgb_data() true) as soon as they're allocated, well
+        // before load_from_jpeg/_png or generate_rocky_map/generate_gas_giant_map's fill loop
+        // actually finishes writing real pixels into them (each of those releases mtx, or in
+        // the generate_* case never takes it during the fill loop at all, right after
+        // allocating). touch_gen() only runs once the fill is actually done. If gputex_for()
+        // (gputex.h) went by has_rgb_data() alone, it could -- and did -- upload a texture
+        // that's still mid-fill: real data whatever the background thread had gotten to,
+        // uninitialized heap bytes for the rest. Treating gen==0 as "not ready" closes that
+        // window; gputex_for() should check it in addition to has_rgb_data().
+        unsigned int gen = 0;
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
+
+        void touch_gen() { gen = next_gen(); }
 
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
@@ -137,6 +159,18 @@ namespace alienorum
         void generate_rocky_map(CelestialObject *cel);
         void generate_gas_giant_map(CelestialObject *cel);
         void mark_for_map_regen(CelestialObject *cel);
+
+        // For the GPU texture cache (src/gputex.h): dimensions of the equirectangular pixel
+        // grid, and a bulk RGBA8 export (out must be get_width()*get_height()*4 bytes,
+        // caller-allocated) -- keeps red_data/green_data/blue_data themselves unexposed.
+        inline unsigned long get_width() const { return image_width; }
+        inline unsigned long get_height() const { return image_height; }
+        void export_rgba(unsigned char *out) const;
+
+        // Same idea as export_rgba(), for bump_data instead -- out must be
+        // get_width()*get_height() floats, caller-allocated. Real-world units (meters), same
+        // as elevation_at(); 0 wherever bump_data itself is null (has_bump_data() false).
+        void export_bump(float *out) const;
     };
 
     class Locale

@@ -1,5 +1,6 @@
 
 #include <math.h>
+#include <atomic>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -922,20 +923,32 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
         {
             assert(j < allocated);
 
+            // cinfo.output_components can be 1 (grayscale -- e.g. Moon_bump.jpg) as well as 3
+            // (RGB -- e.g. Mars_bump.jpg). This used to always read i/i+1/i+2 regardless,
+            // which for a 1-component image pulled bytes from the *next* pixel(s) in as g/b
+            // instead of using the one real channel -- running past the row buffer's own end
+            // entirely for the last pixel or two of every row. Bug: garbled/wrong bump (or
+            // color) data for any grayscale-encoded JPEG specifically, while an RGB-encoded
+            // one read correctly -- "Moon bump doesn't work, Mars bump does."
             if (as_bump)
             {
                 // Allow false color bump maps using the visual luminance as the elevation for better granularity
-                bump_data[j] = bump_scale *
-                            (( 0.001137 * jpeg_image_buffer[0][i]
-                             + 0.002196 * jpeg_image_buffer[0][i+1]
-                             + 0.000588 * jpeg_image_buffer[0][i+2])
-                             - 0.5);
+                double lum = (cinfo.output_components >= 3)
+                    ? (0.001137 * jpeg_image_buffer[0][i]
+                        + 0.002196 * jpeg_image_buffer[0][i+1]
+                        + 0.000588 * jpeg_image_buffer[0][i+2])
+                    : (0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
+                bump_data[j] = bump_scale * (lum - 0.5);
             }
-            else
+            else if (cinfo.output_components >= 3)
             {
                 red_data[j]   = jpeg_image_buffer[0][i];
                 green_data[j] = jpeg_image_buffer[0][i+1];
                 blue_data[j]  = jpeg_image_buffer[0][i+2];
+            }
+            else
+            {
+                red_data[j] = green_data[j] = blue_data[j] = jpeg_image_buffer[0][i];
             }
             j++;
         }
@@ -945,6 +958,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     jpeg_destroy_decompress(&cinfo);
     fclose(infile);
 
+    if (!as_bump) touch_gen();
     return true;
 }
 
@@ -988,7 +1002,6 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     png_init_io(png_ptr, fp);
     png_read_png(png_ptr, info_ptr, 0, NULL);
 
-    auto bytes_per_row = png_get_rowbytes( png_ptr, info_ptr );
     if (as_bump)
     {
         if (image_height != png_get_image_height( png_ptr, info_ptr ) || image_width != png_get_image_width( png_ptr, info_ptr ))
@@ -1008,7 +1021,17 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         lon_scale = (double)image_width / (_pi * 2);
         inv_lat_scale = 1.0 / lat_scale;
         inv_lon_scale = 1.0 / lon_scale;
-        int toalloc = image_height*bytes_per_row;
+        // One byte per pixel per channel array (red_data/green_data/blue_data are each
+        // indexed by idx_of()/export_rgba() as a plain image_width*image_height grid, never
+        // by row byte-stride). This used to allocate image_height*png_get_rowbytes(...)
+        // instead -- row bytes is width*bytes_per_pixel for an RGB/RGBA PNG, so that
+        // over-allocated by a factor of bytes_per_pixel (3x for RGB) with no correctness
+        // effect (the fill loop below still writes the correct image_width*image_height
+        // entries; the excess just sat unused at the end of each array), only wasted memory --
+        // e.g. a 10000x5000 RGB map allocating 150,000,000 bytes per channel instead of the
+        // 50,000,000 it actually holds. long here to match load_from_jpeg's equivalent line
+        // just above in this file.
+        long toalloc = image_height*image_width;
         std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
         red_data = new unsigned char[toalloc];
         green_data = new unsigned char[toalloc];
@@ -1086,6 +1109,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         return false;
     }
 
+    if (!as_bump) touch_gen();
     return true;
 }
 
@@ -1193,6 +1217,12 @@ bool Map::save_to_png(std::string filename)
     fclose(fp);
 
     return true;
+}
+
+unsigned int Map::next_gen()
+{
+    static std::atomic<unsigned int> counter{0};
+    return ++counter;
 }
 
 unsigned int Map::idx_of(double lat, double lon)
@@ -1321,6 +1351,25 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
     allocated = toalloc;
     delete[] bump_data_old;
     generating_fic_texture = false;
+}
+
+void Map::export_rgba(unsigned char *out) const
+{
+    unsigned long n = image_width * image_height;
+    for (unsigned long i = 0; i < n; i++)
+    {
+        out[i*4+0] = red_data   ? red_data[i]   : 255;
+        out[i*4+1] = green_data ? green_data[i] : 255;
+        out[i*4+2] = blue_data  ? blue_data[i]  : 255;
+        out[i*4+3] = 255;
+    }
+}
+
+void Map::export_bump(float *out) const
+{
+    unsigned long n = image_width * image_height;
+    for (unsigned long i = 0; i < n; i++)
+        out[i] = bump_data ? (float)bump_data[i] : 0.0f;
 }
 
 RGB3Byte Map::color_at(double lat, double lon)
@@ -1617,6 +1666,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 
     generating_fic_texture = false;
+    touch_gen();
 }
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
@@ -1774,6 +1824,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         }
     }
     generating_fic_texture = false;
+    touch_gen();
 }
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)

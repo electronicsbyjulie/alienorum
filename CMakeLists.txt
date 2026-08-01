@@ -83,9 +83,11 @@ target_link_libraries(CLASSES JPEG::JPEG PNG::PNG
 add_executable(alienorum
 	src/dialogs.cpp
 	src/globals.cpp
+	src/gputex.cpp
 	src/housekeeping.cpp
 	src/inputs.cpp
 	src/loaders.cpp
+	src/sphere_impostor.cpp
 	src/visuals.cpp
 	src/alienorum.cpp)
 
