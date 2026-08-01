@@ -990,7 +990,6 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     png_init_io(png_ptr, fp);
     png_read_png(png_ptr, info_ptr, 0, NULL);
 
-    auto bytes_per_row = png_get_rowbytes( png_ptr, info_ptr );
     if (as_bump)
     {
         if (image_height != png_get_image_height( png_ptr, info_ptr ) || image_width != png_get_image_width( png_ptr, info_ptr ))
@@ -1010,7 +1009,17 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         lon_scale = (double)image_width / (_pi * 2);
         inv_lat_scale = 1.0 / lat_scale;
         inv_lon_scale = 1.0 / lon_scale;
-        int toalloc = image_height*bytes_per_row;
+        // One byte per pixel per channel array (red_data/green_data/blue_data are each
+        // indexed by idx_of()/export_rgba() as a plain image_width*image_height grid, never
+        // by row byte-stride). This used to allocate image_height*png_get_rowbytes(...)
+        // instead -- row bytes is width*bytes_per_pixel for an RGB/RGBA PNG, so that
+        // over-allocated by a factor of bytes_per_pixel (3x for RGB) with no correctness
+        // effect (the fill loop below still writes the correct image_width*image_height
+        // entries; the excess just sat unused at the end of each array), only wasted memory --
+        // e.g. a 10000x5000 RGB map allocating 150,000,000 bytes per channel instead of the
+        // 50,000,000 it actually holds. long here to match load_from_jpeg's equivalent line
+        // just above in this file.
+        long toalloc = image_height*image_width;
         std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
         red_data = new unsigned char[toalloc];
         green_data = new unsigned char[toalloc];

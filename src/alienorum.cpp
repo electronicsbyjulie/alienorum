@@ -2,6 +2,8 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_IMPLEMENTATION
 #include <queue>
+#include <chrono>
+#include <thread>
 #include "include/stb/stb_image.h"
 #include "globals.h"
 #include "loaders.h"
@@ -798,6 +800,7 @@ int main (int argc, char** argv)
             auto frame_finished = std::chrono::high_resolution_clock::now();
             auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
             frame_dur = frame_elapsed.count() * 1e-6;
+            if (frame_dur < 0.0666) std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(frame_dur * 1e6 - 66666));
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
             io.DeltaTime = frame_dur;
             is_click = is_dbl_click = false;
