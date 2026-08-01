@@ -298,6 +298,63 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     return fmax(xmax - xmin, ymax - ymin) / 2;
 }
 
+// GPU ring impostor path -- companion to draw_sphere_gpu() above, called from the "// Rings"
+// block further down in draw_sphere() whenever that same call is using the GPU disc path (see
+// sphere_impostor.cpp's "Ring impostor" section for why this exists and how it replicates the
+// CPU ring code's occlusion/shadow logic analytically instead of via a polygon mesh). Mirrors
+// draw_sphere_gpu()'s own structure: recomputes the object's camera-space position and basis
+// independently rather than receiving them from the caller, since it's meant to be a
+// self-contained drop-in the same way draw_sphere_gpu() is.
+void draw_ring_gpu(CelestialObject* cel)
+{
+    Planet *pl = (Planet*)cel;
+    Point camera_space = rotate3D(
+        rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+    double R = cel->get_equatorial_radius();
+
+    // Ring plane normal = the object's local +Y (polar) axis in camera space -- see
+    // RingImpostorInput::normal's comment for why dropping the spin term here (unlike
+    // draw_sphere_gpu()'s basisX/basisY, which both Claude breaks promises it) is still exactly correct.
+    auto undo_to_local = [&](Point p) -> Point
+    {
+        p = rotate3D(p, center, xaxis, -altitude);
+        p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
+        p = to_viewer_plane(p, -1);
+        p = rotate3D(p, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+        p = rotate3D(p, center, yaxis, cel->timeofday());
+        return p;
+    };
+    Point normal = undo_to_local(Point(0, 1, 0));
+
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+    Point light_dir(0, 0, 1);
+    if (!self_luminous)
+    {
+        Point light_camera_space = rotate3D(
+            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+            center, xaxis, altitude);
+        light_dir = light_camera_space - camera_space;
+        double mag = light_dir.magnitude();
+        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+    }
+
+    RingImpostorInput in;
+    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z;
+    in.inner_r = R; in.outer_r = pl->ring_radius;
+    in.normal[0] = normal.x; in.normal[1] = normal.y; in.normal[2] = normal.z;
+    in.ring_map_texture = gputex_for(cel->ring_map);
+    in.ringx_map_texture = gputex_for(cel->ringx_map);
+    in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
+    in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
+    in.self_luminous = self_luminous;
+    in.amt_lit = pl->amt_lit;
+    in.redlight_mode = redlight_mode;
+
+    queue_ring_impostor(in, zoom, dispcx, dispcy);
+}
+
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (cel->seqno == whereami) return 0;
@@ -364,10 +421,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
 
+    bool use_gpu_disc = false;
 #if ALIENORUM_GPU_SPHERES
     // vm_skymap isn't a pinhole camera (see Cartesian2D in point.cpp), so the camera-space
     // math draw_sphere_gpu() relies on doesn't apply there; fall through to the CPU path.
-    if (!wireframe && view_mode != vm_skymap) return draw_sphere_gpu(cel, arad);
+    // Note this only decides how the *disc* is rendered -- rings (further down) always use
+    // the CPU path in both configurations, so we fall through instead of returning here.
+    use_gpu_disc = (!wireframe && view_mode != vm_skymap);
 #endif
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
@@ -512,6 +572,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     double latmin_rad = fiftyseventh * (latmin-5) - step, latmax_rad = fiftyseventh * (latmax+5) + step,
         lonmin_rad = fiftyseventh * lonmin, lonmax_rad = fiftyseventh * lonmax;
     double lon360;
+    if (use_gpu_disc)
+    {
+        int r = draw_sphere_gpu(cel, arad);
+        if (!r) return 0;
+        result = r;
+    }
+    else
     for (lat=-half_pi; lat <= half_pi; lat+=step)
     {
         if (lat < latmin_rad || lat > latmax_rad) continue;
@@ -745,6 +812,18 @@ int draw_sphere(CelestialObject* cel, double arad)
     // Rings
     if (cls == class_planet && ((Planet*)cel)->ring_radius)
     {
+#if ALIENORUM_GPU_SPHERES
+        // Analytic ray/plane impostor, matching the disc's own GPU treatment -- see
+        // draw_ring_gpu() and sphere_impostor.cpp's "Ring impostor" section. Only reachable
+        // when the disc itself used the GPU path (use_gpu_disc): wireframe/skymap draws keep
+        // the CPU polygon-mesh ring below unconditionally, same as the disc does.
+        if (use_gpu_disc)
+        {
+            draw_ring_gpu(cel);
+        }
+        else
+#endif
+        {
         std::vector<ImVec2> todrawr;
         std::vector<bool> tdvalidr;
         l = 0;
@@ -757,7 +836,22 @@ int draw_sphere(CelestialObject* cel, double arad)
             throw 0xbadda7a;
         }
 
-        n = round(_pi*2/step) * 13;
+        // n (angular subdivisions) used to be implicitly bounded by `step`, which the
+        // end-of-function adaptive throttle kept sane by measuring the CPU disc-mesh loop's
+        // own render cost. With the disc now GPU-rendered (near-zero CPU cost) whenever
+        // use_gpu_disc is true elsewhere in the app, that feedback loop no longer has anything
+        // to react to on those frames, so `step` can drift far finer than the ring actually
+        // requires on screen -- round(_pi*2/step)*13 was observed reaching ~9800, producing
+        // 150,000+ AddConvexPolyFilled calls in a single frame. This CPU path is now only
+        // reached in wireframe/skymap mode, but the cap is cheap and correct there too, so it
+        // stays rather than special-casing it back out. Cap n by the ring's actual apparent
+        // size (arad, independent of the runaway step) instead: target roughly one quad per
+        // 2px along the outer circumference. arad is a slope (~tan(angular_radius)*zoom), not
+        // a pixel count -- dispcx converts it to one, same as the disc placement math further
+        // up (e.g. "dx1 = dispcx + zdes.x * dispcx").
+        double ring_outer_px = arad * dispcx * pl->ring_radius / equatorial_radius;
+        int n_cap = (int)fmax(24, fmin(3000, _pi * ring_outer_px));
+        n = fmin((double)n_cap, round(_pi*2/step) * 13);
         m = fmax(4, fmin(result, round(_pi*2/step)/2));
         double step1 = (double)ringsize / m, step2 = _pi*2/n;
 
@@ -860,6 +954,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 l++;
             }
         }
+        } // else (CPU ring path)
     }
 
     auto sphere_finished = std::chrono::high_resolution_clock::now();

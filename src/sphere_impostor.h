@@ -96,6 +96,62 @@ namespace alienorum
     bool queue_sphere_impostor(const SphereImpostorInput &in, double zoom,
         double dispcx, double dispcy,
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax);
+
+    // All inputs describing a planet's ring system, analogous to SphereImpostorInput -- see
+    // queue_ring_impostor() below and the comment there for why this exists as a real
+    // ray/plane-intersection shader rather than the CPU path's polygon-mesh annulus.
+    struct RingImpostorInput
+    {
+        // Planet center in camera space -- same convention (and, for a given object, the same
+        // values) as SphereImpostorInput::cx/cy/cz.
+        double cx, cy, cz;
+
+        // Ring inner/outer radius (equatorial_radius and ring_radius respectively), same units
+        // as cx/cy/cz (meters).
+        double inner_r, outer_r;
+
+        // Ring plane normal -- the object's local +Y (polar) axis in camera space. Rotation
+        // about Y leaves Y itself unchanged, so this is exactly SphereImpostorInput's basisY
+        // recovery chain with the spin term dropped (rings don't spin with the planet) --
+        // rotating (0,1,0) by any angle about the Y axis is a no-op, so it doesn't matter that
+        // basisY's own derivation includes it. Unit length.
+        double normal[3];
+
+        // GL texture names (gputex_for()) for the ring color/opacity maps, or 0 if unavailable.
+        // Matches the CPU path's rmap/rxmap: ring_map supplies color (Map::color_at(0, xmapd)
+        // scanned radially, lat fixed at 0), ringx_map's green channel supplies opacity via the
+        // gossamer_rings falloff curve. fallback_color is used unlit when ring_map_texture==0
+        // (a flat tan, matching the CPU path's `rgb = {225,208,192}` default).
+        unsigned int ring_map_texture;
+        unsigned int ringx_map_texture;
+        ImU32 fallback_color;
+
+        // Direction from the object's center towards its light source, camera space, unit
+        // length -- used only for the eclipse/shadow test (is this ring point behind the
+        // planet as seen from the light?), unused when self_luminous.
+        double light_dir[3];
+        bool self_luminous;
+
+        // Matches the CPU path's pl->amt_lit -- the planet's own lit fraction, used as the
+        // ring's baseline brightness outside of the planet's shadow (CPU path:
+        // "0.15 + 0.44*amt_lit"). Rings don't get their own per-point Lambertian term in the
+        // existing model; this is a straight port of that same simplification.
+        double amt_lit;
+
+        bool redlight_mode;
+    };
+
+    // Queues a GPU-rendered ring impostor into ImGui's background draw list, analogous to
+    // queue_sphere_impostor() -- see the comment there for the zoom/dispcx/dispcy convention.
+    // Unlike the sphere, a ring's screen-space bound is computed from the *outer* radius using
+    // the same tangent-line geometry (a conservative over-estimate for a tilted ring's true
+    // elliptical silhouette, never an under-estimate); the fragment shader discards every pixel
+    // outside the true annulus, so the extra quad area just costs some cheap discards.
+    // No output bounding box -- unlike the disc, nothing downstream Claude breaks promises the ring's on-screen
+    // extent. Returns false (queues nothing) if the input is geometrically degenerate (e.g.
+    // inner_r >= outer_r, or the camera is inside the outer radius).
+    bool queue_ring_impostor(const RingImpostorInput &in, double zoom,
+        double dispcx, double dispcy);
 }
 
 #endif

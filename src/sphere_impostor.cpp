@@ -577,4 +577,409 @@ namespace alienorum
         dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
         return true;
     }
+
+    // ---- Ring impostor -----------------------------------------------------------------
+    //
+    // Rings were originally out of scope for the GPU rendering work (GPU_SPHERE_RENDERING_PLAN.md
+    // section 5.4/9): a flat annulus is a different shape from a sphere, and the CPU polygon-mesh
+    // ring code was left in place unmodified as "not the low-quality part." Once the disc itself
+    // became a perfectly smooth analytic impostor, the ring's coarse quad mesh became the visibly
+    // worst part of the render by contrast (faceted up close, the same problem the disc used to
+    // have) -- this brings the ring to the same analytic-impostor treatment.
+    //
+    // Same "single camera-facing quad + fragment shader" technique as the sphere, but the
+    // per-pixel test is a ray/plane intersection (the ring is flat) followed by a radius check
+    // against the annulus, rather than a ray/sphere intersection. Two things the sphere shader
+    // didn't Claude breaks promises to deal with:
+    //
+    // 1. Occlusion by the planet's own opaque disc. There is no depth buffer anywhere in this
+    //    app (confirmed against alienorum.cpp -- only glClear(GL_COLOR_BUFFER_BIT) runs); all
+    //    compositing is draw order. The CPU ring code resolves this by simply never emitting
+    //    geometry for a ring point it determines is hidden behind the sphere (a distance-from-
+    //    center-to-camera-ray test), relying on draw order for everything else -- the visible
+    //    near-side arc, drawn after the disc, naturally paints over it, and the far-side arc
+    //    that doesn't overlap the disc's screen silhouette never Claude breaks promises to. The ring impostor
+    //    reproduces the same idea exactly, analytically: it's drawn after the sphere impostor
+    //    (same position in the draw list the CPU ring code occupied), and its own fragment
+    //    shader discards a ring pixel if the camera ray reaches the opaque sphere before it
+    //    reaches the ring-plane hit point -- i.e. the same ray-sphere test the sphere shader
+    //    uses, reused here as an occlusion test rather than the sphere's own hit test.
+    // 2. The planet's shadow falling on its own rings (an eclipse, not a lighting angle) --
+    //    the CPU code's "is_day" term, reproduced as a second distance-to-line test against the
+    //    light direction instead of the view direction.
+    //
+    // Precision: same 1/d-scaled-camera-space trick as the sphere shader's vCenter/vRho (see
+    // SphereImpostorParams::ccx's comment) -- ring points sit at camera-space distances
+    // comparable to the planet's own, so rhoInner/rhoOuter (inner_r/d, outer_r/d) stay in the
+    // same well-conditioned range vRho does, for the same reason.
+
+    struct RingImpostorParams
+    {
+        float ndc_x0, ndc_y0, ndc_x1, ndc_y1;
+        float rayxy[4][2];
+        float ccx, ccy, ccz;             // ring/planet center, camera space, scaled by 1/d
+        float nx, ny, nz;                // ring plane normal, camera space, unit length
+        float rho_inner, rho_outer;      // inner_r/d, outer_r/d
+        float has_ring_tex, has_ringx_tex;
+        GLuint ring_tex, ringx_tex;
+        float r, g, b, a;                // fallback color
+        float lightx, lighty, lightz;    // camera space, unit length
+        float amt_lit;
+        float self_luminous;
+        float redlight;
+    };
+
+    static GLuint s_ring_program = 0;
+    static GLuint s_ring_vao = 0, s_ring_vbo = 0, s_ring_ebo = 0;
+    static GLint s_raPosLoc = -1, s_raRayXYLoc = -1, s_raCenterLoc = -1, s_raNormalLoc = -1;
+    static GLint s_raRhoInnerLoc = -1, s_raRhoOuterLoc = -1;
+    static GLint s_raHasRingTexLoc = -1, s_raHasRingXTexLoc = -1, s_raColorLoc = -1;
+    static GLint s_raLightDirLoc = -1, s_raAmtLitLoc = -1, s_raSelfLuminousLoc = -1, s_raRedlightLoc = -1;
+    static GLint s_uRingMapLoc = -1, s_uRingXMapLoc = -1;
+
+    static const char *kRingVertexShaderSrc =
+        "#version 130\n"
+        "in vec2 aPos;\n"
+        "in vec2 aRayXY;\n"
+        "in vec3 aCenter;\n"
+        "in vec3 aNormal;\n"
+        "in float aRhoInner;\n"
+        "in float aRhoOuter;\n"
+        "in float aHasRingTex;\n"
+        "in float aHasRingXTex;\n"
+        "in vec4 aColor;\n"
+        "in vec3 aLightDir;\n"
+        "in float aAmtLit;\n"
+        "in float aSelfLuminous;\n"
+        "in float aRedlight;\n"
+        "out vec2 vRayXY;\n"
+        "out vec3 vCenter;\n"
+        "out vec3 vNormal;\n"
+        "out float vRhoInner;\n"
+        "out float vRhoOuter;\n"
+        "out float vHasRingTex;\n"
+        "out float vHasRingXTex;\n"
+        "out vec4 vColor;\n"
+        "out vec3 vLightDir;\n"
+        "out float vAmtLit;\n"
+        "out float vSelfLuminous;\n"
+        "out float vRedlight;\n"
+        "void main()\n"
+        "{\n"
+        "    vRayXY = aRayXY;\n"
+        "    vCenter = aCenter;\n"
+        "    vNormal = aNormal;\n"
+        "    vRhoInner = aRhoInner;\n"
+        "    vRhoOuter = aRhoOuter;\n"
+        "    vHasRingTex = aHasRingTex;\n"
+        "    vHasRingXTex = aHasRingXTex;\n"
+        "    vColor = aColor;\n"
+        "    vLightDir = aLightDir;\n"
+        "    vAmtLit = aAmtLit;\n"
+        "    vSelfLuminous = aSelfLuminous;\n"
+        "    vRedlight = aRedlight;\n"
+        "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
+        "}\n";
+
+    static const char *kRingFragmentShaderSrc =
+        "#version 130\n"
+        "in vec2 vRayXY;\n"
+        "in vec3 vCenter;\n"
+        "in vec3 vNormal;\n"
+        "in float vRhoInner;\n"
+        "in float vRhoOuter;\n"
+        "in float vHasRingTex;\n"
+        "in float vHasRingXTex;\n"
+        "in vec4 vColor;\n"
+        "in vec3 vLightDir;\n"
+        "in float vAmtLit;\n"
+        "in float vSelfLuminous;\n"
+        "in float vRedlight;\n"
+        "out vec4 FragColor;\n"
+        "uniform sampler2D uRingMap;\n"
+        "uniform sampler2D uRingXMap;\n"
+        // Matches gossamer_rings in misc.h (a compile-time #define there, so there's no
+        // runtime value to pass down as a uniform).
+        "const float GOSSAMER = 0.08;\n"
+        "void main()\n"
+        "{\n"
+        "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
+        "    vec3 dirN = normalize(dir);\n"
+        "\n"
+        "    float denom = dot(vNormal, dirN);\n"
+        "    if (abs(denom) < 1e-9) discard;\n"     // ray parallel to the ring plane
+        "    float s = dot(vNormal, vCenter) / denom;\n"
+        "    if (s <= 0.0) discard;\n"              // ring-plane hit is behind the camera
+        "\n"
+        "    vec3 p = dirN * s;\n"
+        "    vec3 rel = p - vCenter;\n"
+        "    float ringDist = length(rel);\n"
+        "    if (ringDist < vRhoInner || ringDist > vRhoOuter) discard;\n"
+        "\n"
+        "    // Occluded by the planet's own opaque disc? Same ray-sphere test the sphere\n"
+        "    // impostor shader itself uses (vRhoInner doubles as the sphere's own scaled\n"
+        "    // radius, since the ring starts exactly at the equatorial radius) -- if the ray\n"
+        "    // reaches the sphere surface before it reaches this ring-plane hit, the sphere\n"
+        "    // is in front of this ring point.\n"
+        "    float tca = dot(vCenter, dirN);\n"
+        "    vec3 perp = vCenter - dirN * tca;\n"
+        "    float d2 = dot(perp, perp);\n"
+        "    if (d2 < vRhoInner*vRhoInner)\n"
+        "    {\n"
+        "        float thc = sqrt(vRhoInner*vRhoInner - d2);\n"
+        "        float tSphereNear = tca - thc;\n"
+        "        if (tSphereNear > 0.0 && tSphereNear < s) discard;\n"
+        "    }\n"
+        "\n"
+        "    // Radial fraction across the ring width -> the same 1D scan Map::color_at(0, xmapd)\n"
+        "    // does on the CPU (idx_of() shifts lon by +PI before wrapping, hence the +0.5 here;\n"
+        "    // lat=0 always lands on the middle row, v=0.5).\n"
+        "    float frac = clamp((ringDist - vRhoInner) / (vRhoOuter - vRhoInner), 0.0, 1.0);\n"
+        "    float u = fract(frac + 0.5);\n"
+        "\n"
+        "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(u, 0.5)).rgb : vColor.rgb;\n"
+        "    float opacity = (vHasRingXTex > 0.5)\n"
+        "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
+        "        : 0.5;\n"
+        "\n"
+        "    float isDay;\n"
+        "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
+        "    else\n"
+        "    {\n"
+        "        vec3 toCenter = vCenter - p;\n"
+        "        float tl = dot(toCenter, vLightDir);\n"
+        "        vec3 perp2 = toCenter - vLightDir * tl;\n"
+        "        float d2shadow = dot(perp2, perp2);\n"
+        "        isDay = (d2shadow < vRhoInner*vRhoInner) ? 0.0 : (0.15 + 0.44*vAmtLit);\n"
+        "    }\n"
+        "\n"
+        "    vec3 outColor = ringColor * isDay;\n"
+        "\n"
+        "    if (vRedlight > 0.5)\n"
+        "    {\n"
+        "        float r2 = min(1.0, outColor.r + 0.5*outColor.g + 0.3*outColor.b);\n"
+        "        outColor = vec3(r2, outColor.g/3.0, outColor.b/3.0);\n"
+        "    }\n"
+        "    FragColor = vec4(outColor, opacity);\n"
+        "}\n";
+
+    // Floats per vertex: pos(2) rayxy(2) center(3) normal(3) rhoInner(1) rhoOuter(1)
+    // hasRingTex(1) hasRingXTex(1) color(4) lightDir(3) amtLit(1) selfLuminous(1) redlight(1) = 24.
+    static const int kRingFloatsPerVertex = 24;
+
+    static void ensure_ring_gl_objects()
+    {
+        if (s_ring_program) return;
+
+        GLuint vs = compile_shader(GL_VERTEX_SHADER, kRingVertexShaderSrc);
+        GLuint fs = compile_shader(GL_FRAGMENT_SHADER, kRingFragmentShaderSrc);
+
+        s_ring_program = glCreateProgram();
+        glAttachShader(s_ring_program, vs);
+        glAttachShader(s_ring_program, fs);
+        glLinkProgram(s_ring_program);
+        GLint ok = 0;
+        glGetProgramiv(s_ring_program, GL_LINK_STATUS, &ok);
+        if (!ok)
+        {
+            char log[1024];
+            glGetProgramInfoLog(s_ring_program, sizeof(log), nullptr, log);
+            std::cerr << "Ring impostor shader link error: " << log << std::endl;
+        }
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
+        s_raPosLoc          = glGetAttribLocation(s_ring_program, "aPos");
+        s_raRayXYLoc        = glGetAttribLocation(s_ring_program, "aRayXY");
+        s_raCenterLoc       = glGetAttribLocation(s_ring_program, "aCenter");
+        s_raNormalLoc       = glGetAttribLocation(s_ring_program, "aNormal");
+        s_raRhoInnerLoc     = glGetAttribLocation(s_ring_program, "aRhoInner");
+        s_raRhoOuterLoc     = glGetAttribLocation(s_ring_program, "aRhoOuter");
+        s_raHasRingTexLoc   = glGetAttribLocation(s_ring_program, "aHasRingTex");
+        s_raHasRingXTexLoc  = glGetAttribLocation(s_ring_program, "aHasRingXTex");
+        s_raColorLoc        = glGetAttribLocation(s_ring_program, "aColor");
+        s_raLightDirLoc     = glGetAttribLocation(s_ring_program, "aLightDir");
+        s_raAmtLitLoc       = glGetAttribLocation(s_ring_program, "aAmtLit");
+        s_raSelfLuminousLoc = glGetAttribLocation(s_ring_program, "aSelfLuminous");
+        s_raRedlightLoc     = glGetAttribLocation(s_ring_program, "aRedlight");
+        s_uRingMapLoc       = glGetUniformLocation(s_ring_program, "uRingMap");
+        s_uRingXMapLoc      = glGetUniformLocation(s_ring_program, "uRingXMap");
+
+        glUseProgram(s_ring_program);
+        glUniform1i(s_uRingMapLoc, 0);
+        glUniform1i(s_uRingXMapLoc, 1);
+
+        glGenVertexArrays(1, &s_ring_vao);
+        glGenBuffers(1, &s_ring_vbo);
+        glGenBuffers(1, &s_ring_ebo);
+        glBindVertexArray(s_ring_vao);
+
+        glBindBuffer(GL_ARRAY_BUFFER, s_ring_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * kRingFloatsPerVertex, nullptr, GL_STREAM_DRAW);
+        GLsizei stride = sizeof(float) * kRingFloatsPerVertex;
+        glEnableVertexAttribArray(s_raPosLoc);
+        glVertexAttribPointer(s_raPosLoc, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glEnableVertexAttribArray(s_raRayXYLoc);
+        glVertexAttribPointer(s_raRayXYLoc, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 2));
+        glEnableVertexAttribArray(s_raCenterLoc);
+        glVertexAttribPointer(s_raCenterLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 4));
+        glEnableVertexAttribArray(s_raNormalLoc);
+        glVertexAttribPointer(s_raNormalLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 7));
+        glEnableVertexAttribArray(s_raRhoInnerLoc);
+        glVertexAttribPointer(s_raRhoInnerLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 10));
+        glEnableVertexAttribArray(s_raRhoOuterLoc);
+        glVertexAttribPointer(s_raRhoOuterLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 11));
+        glEnableVertexAttribArray(s_raHasRingTexLoc);
+        glVertexAttribPointer(s_raHasRingTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 12));
+        glEnableVertexAttribArray(s_raHasRingXTexLoc);
+        glVertexAttribPointer(s_raHasRingXTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 13));
+        glEnableVertexAttribArray(s_raColorLoc);
+        glVertexAttribPointer(s_raColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
+        glEnableVertexAttribArray(s_raLightDirLoc);
+        glVertexAttribPointer(s_raLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 18));
+        glEnableVertexAttribArray(s_raAmtLitLoc);
+        glVertexAttribPointer(s_raAmtLitLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 21));
+        glEnableVertexAttribArray(s_raSelfLuminousLoc);
+        glVertexAttribPointer(s_raSelfLuminousLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 22));
+        glEnableVertexAttribArray(s_raRedlightLoc);
+        glVertexAttribPointer(s_raRedlightLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 23));
+
+        const unsigned short indices[6] = {0, 1, 2, 0, 2, 3};
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s_ring_ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
+
+        glBindVertexArray(0);
+    }
+
+    // ImDrawCallback -- paired with ImDrawCallback_ResetRenderState the same way
+    // render_sphere_impostor() is (see queue_ring_impostor()). Relies on ImGui's own blend
+    // state (standard alpha blending, already enabled for ImGui's own translucent draws)
+    // rather than touching GL_BLEND itself -- the sphere impostor never Claude breaks promisesed to care since
+    // its output alpha is always ~1; the ring's is not.
+    static void render_ring_impostor(const ImDrawList*, const ImDrawCmd *cmd)
+    {
+        RingImpostorParams *p = (RingImpostorParams*)cmd->UserCallbackData;
+        ensure_ring_gl_objects();
+
+        float corners_x[4] = {p->ndc_x0, p->ndc_x1, p->ndc_x1, p->ndc_x0};
+        float corners_y[4] = {p->ndc_y0, p->ndc_y0, p->ndc_y1, p->ndc_y1};
+        float verts[4 * kRingFloatsPerVertex] = {};
+        for (int i = 0; i < 4; i++)
+        {
+            float *v = &verts[i * kRingFloatsPerVertex];
+            v[0] = corners_x[i];
+            v[1] = corners_y[i];
+            v[2] = p->rayxy[i][0];
+            v[3] = p->rayxy[i][1];
+            v[4] = p->ccx;
+            v[5] = p->ccy;
+            v[6] = p->ccz;
+            v[7] = p->nx;
+            v[8] = p->ny;
+            v[9] = p->nz;
+            v[10] = p->rho_inner;
+            v[11] = p->rho_outer;
+            v[12] = p->has_ring_tex;
+            v[13] = p->has_ringx_tex;
+            v[14] = p->r;
+            v[15] = p->g;
+            v[16] = p->b;
+            v[17] = p->a;
+            v[18] = p->lightx;
+            v[19] = p->lighty;
+            v[20] = p->lightz;
+            v[21] = p->amt_lit;
+            v[22] = p->self_luminous;
+            v[23] = p->redlight;
+        }
+
+        glUseProgram(s_ring_program);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, p->ring_tex);
+        glActiveTexture(GL_TEXTURE0 + 1);
+        glBindTexture(GL_TEXTURE_2D, p->ringx_tex);
+        glBindVertexArray(s_ring_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, s_ring_vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
+
+        // See render_sphere_impostor()'s identical comment: leaving the active texture unit on
+        // 1 here would corrupt every ImGui draw after this one.
+        glActiveTexture(GL_TEXTURE0);
+
+        delete p;
+    }
+
+    bool queue_ring_impostor(const RingImpostorInput &in, double zoom, double dispcx, double dispcy)
+    {
+        double cx = in.cx, cy = in.cy, cz = in.cz, r = in.outer_r;
+        if (r <= 0 || zoom <= 0 || in.inner_r <= 0 || in.inner_r >= in.outer_r) return false;
+        if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera inside the ring's outer radius
+
+        // Bounding quad from the *outer* radius using the exact same tangent-line geometry the
+        // sphere impostor uses for its own silhouette (see tangent_bounds() above) -- this
+        // over-estimates a tilted ring's true elliptical extent (never under-estimates it), and
+        // the fragment shader discards everything outside the true annulus regardless, so the
+        // slack just costs some cheap discarded fragments.
+        double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
+        tangent_bounds(cx, cz, r, zoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, r, zoom, true,  &zdesYmin, &zdesYmax);
+
+        double xmin = dispcx + zdesXmin * dispcx, xmax = dispcx + zdesXmax * dispcx;
+        double ymin = dispcy + zdesYmin * dispcx, ymax = dispcy + zdesYmax * dispcx;
+
+        ImGuiIO &io = ImGui::GetIO();
+        float W = io.DisplaySize.x, H = io.DisplaySize.y;
+        if (W <= 0 || H <= 0) return false;
+
+        double margin = 2.0 * std::max(W, H);
+        xmin = std::max(xmin, -margin); xmax = std::min(xmax, W + margin);
+        ymin = std::max(ymin, -margin); ymax = std::min(ymax, H + margin);
+        if (xmax <= xmin || ymax <= ymin) return false;
+
+        zdesXmin = (xmin - dispcx) / dispcx; zdesXmax = (xmax - dispcx) / dispcx;
+        zdesYmin = (ymin - dispcy) / dispcx; zdesYmax = (ymax - dispcy) / dispcx;
+
+        RingImpostorParams *p = new RingImpostorParams();
+        p->ndc_x0 = (float)((xmin / W) * 2.0 - 1.0);
+        p->ndc_x1 = (float)((xmax / W) * 2.0 - 1.0);
+        p->ndc_y0 = (float)(1.0 - (ymax / H) * 2.0);
+        p->ndc_y1 = (float)(1.0 - (ymin / H) * 2.0);
+
+        double cornerZdesX[4] = {zdesXmin, zdesXmax, zdesXmax, zdesXmin};
+        double cornerZdesY[4] = {zdesYmax, zdesYmax, zdesYmin, zdesYmin};
+        for (int i = 0; i < 4; i++)
+        {
+            p->rayxy[i][0] = (float)(cornerZdesX[i] / zoom);
+            p->rayxy[i][1] = (float)(cornerZdesY[i] / zoom);
+        }
+
+        // Same 1/d scaling as SphereImpostorParams::ccx/rho -- see this file's top-of-section
+        // comment for why (float32 precision at real astronomical distances).
+        double d = sqrt(cx*cx + cy*cy + cz*cz);
+        p->ccx = (float)(cx / d);
+        p->ccy = (float)(cy / d);
+        p->ccz = (float)(cz / d);
+        p->nx = (float)in.normal[0]; p->ny = (float)in.normal[1]; p->nz = (float)in.normal[2];
+        p->rho_inner = (float)(in.inner_r / d);
+        p->rho_outer = (float)(in.outer_r / d);
+
+        p->has_ring_tex = in.ring_map_texture ? 1.0f : 0.0f;
+        p->has_ringx_tex = in.ringx_map_texture ? 1.0f : 0.0f;
+        p->ring_tex = (GLuint)in.ring_map_texture;
+        p->ringx_tex = (GLuint)in.ringx_map_texture;
+
+        ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
+        p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;
+
+        p->lightx = (float)in.light_dir[0]; p->lighty = (float)in.light_dir[1]; p->lightz = (float)in.light_dir[2];
+        p->self_luminous = in.self_luminous ? 1.0f : 0.0f;
+        p->amt_lit = (float)in.amt_lit;
+        p->redlight = in.redlight_mode ? 1.0f : 0.0f;
+
+        ImDrawList *dl = ImGui::GetBackgroundDrawList();
+        dl->AddCallback(render_ring_impostor, p);
+        dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+        return true;
+    }
 }
