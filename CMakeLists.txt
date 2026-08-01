@@ -60,6 +60,7 @@ add_library(CLASSES STATIC
 	src/classes/color.cpp
 	src/classes/cons.cpp
 	src/classes/galaxy.cpp
+	src/classes/gputex.cpp
 	src/classes/misc.cpp
 	src/classes/moon.cpp
 	src/classes/noise.cpp

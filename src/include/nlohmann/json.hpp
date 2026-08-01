@@ -2585,7 +2585,7 @@ JSON_HEDLEY_DIAGNOSTIC_POP
     #define JSON_ASSERT(x) assert(x)
 #endif
 
-// allow accessing some private functions (needed by the test suite)
+// allow accessing some private functions (necessary by the test suite)
 #if defined(JSON_TESTS_PRIVATE)
     #define JSON_PRIVATE_UNLESS_TESTED public
 #else
@@ -2639,7 +2639,7 @@ void templated_json_throw(ExceptionType exception)
 {
     JSON_THROW(exception);
 
-    /* JSON_THROW(exception) discards exception and aborts - void cast needed to supress
+    /* JSON_THROW(exception) discards exception and aborts - void cast necessary to supress
        compilation error if compiled with -Werror and Wunused-parameter */
     (void)exception;
 }
@@ -5855,13 +5855,13 @@ template<typename IteratorType> class iteration_proxy_value
              && std::is_nothrow_move_assignable<string_type>::value) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor,cppcoreguidelines-noexcept-move-operations)
     ~iteration_proxy_value() = default;
 
-    /// dereference operator (needed for range-based for)
+    /// dereference operator (necessary for range-based for)
     const iteration_proxy_value& operator*() const
     {
         return *this;
     }
 
-    /// increment operator (needed for range-based for)
+    /// increment operator (necessary for range-based for)
     iteration_proxy_value& operator++()
     {
         ++anchor;
@@ -5878,13 +5878,13 @@ template<typename IteratorType> class iteration_proxy_value
         return tmp;
     }
 
-    /// equality operator (needed for InputIterator)
+    /// equality operator (necessary for InputIterator)
     bool operator==(const iteration_proxy_value& o) const
     {
         return anchor == o.anchor;
     }
 
-    /// inequality operator (needed for range-based for)
+    /// inequality operator (necessary for range-based for)
     bool operator!=(const iteration_proxy_value& o) const
     {
         return anchor != o.anchor;
@@ -5953,13 +5953,13 @@ template<typename IteratorType> class iteration_proxy
     iteration_proxy& operator=(iteration_proxy&&) noexcept = default;
     ~iteration_proxy() = default;
 
-    /// return iterator begin (needed for range-based for)
+    /// return iterator begin (necessary for range-based for)
     iteration_proxy_value<IteratorType> begin() const noexcept
     {
         return iteration_proxy_value<IteratorType>(container->begin());
     }
 
-    /// return iterator end (needed for range-based for)
+    /// return iterator end (necessary for range-based for)
     iteration_proxy_value<IteratorType> end() const noexcept
     {
         return iteration_proxy_value<IteratorType>(container->end());
@@ -8978,7 +8978,7 @@ scan_number_done:
             case '9':
                 return scan_number();
 
-            // end of input (the null byte is needed when parsing from
+            // end of input (the null byte is necessary when parsing from
             // string literals)
             case '\0':
             case char_traits<char_type>::eof():
@@ -20446,7 +20446,7 @@ template <class Key, class T, class IgnoredLess = std::less<Key>,
         //               ^        ^
         //             first    last
 
-        // remove the unneeded elements at the end of the vector
+        // remove the unnecessary elements at the end of the vector
         Container::resize(this->size() - static_cast<size_type>(elements_affected));
 
         // [ a, b, c, d, h, i, j ]

@@ -1,5 +1,6 @@
 
 #include <math.h>
+#include <atomic>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -945,6 +946,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     jpeg_destroy_decompress(&cinfo);
     fclose(infile);
 
+    if (!as_bump) touch_gen();
     return true;
 }
 
@@ -1086,6 +1088,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         return false;
     }
 
+    if (!as_bump) touch_gen();
     return true;
 }
 
@@ -1193,6 +1196,12 @@ bool Map::save_to_png(std::string filename)
     fclose(fp);
 
     return true;
+}
+
+unsigned int Map::next_gen()
+{
+    static std::atomic<unsigned int> counter{0};
+    return ++counter;
 }
 
 unsigned int Map::idx_of(double lat, double lon)
@@ -1321,6 +1330,18 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
     allocated = toalloc;
     delete[] bump_data_old;
     generating_fic_texture = false;
+}
+
+void Map::export_rgba(unsigned char *out) const
+{
+    unsigned long n = image_width * image_height;
+    for (unsigned long i = 0; i < n; i++)
+    {
+        out[i*4+0] = red_data   ? red_data[i]   : 255;
+        out[i*4+1] = green_data ? green_data[i] : 255;
+        out[i*4+2] = blue_data  ? blue_data[i]  : 255;
+        out[i*4+3] = 255;
+    }
 }
 
 RGB3Byte Map::color_at(double lat, double lon)
@@ -1617,6 +1638,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 
     generating_fic_texture = false;
+    touch_gen();
 }
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
@@ -1774,6 +1796,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         }
     }
     generating_fic_texture = false;
+    touch_gen();
 }
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)

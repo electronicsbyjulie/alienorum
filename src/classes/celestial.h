@@ -118,9 +118,20 @@ namespace alienorum
 
         __uint128_t ___ = 0;
 
+        // Globally-unique (never reused, even across a delete+new at the same address --
+        // see mark_for_map_regen()'s `delete this`) version stamp for this Map's RGB pixel
+        // data. Bumped by touch_gen() whenever red_data/green_data/blue_data change, so the
+        // GPU texture cache (see gputex.h) can tell a stale upload from a fresh one just by
+        // comparing this number, with no chance of confusing two different Map objects that
+        // happen to share an address.
+        static unsigned int next_gen();
+
         public:
-        Map() { ; }
-        Map(CelestialObject* joined_cel) { mcel = joined_cel; }
+        unsigned int gen;
+        Map() : gen(next_gen()) { ; }
+        Map(CelestialObject* joined_cel) : gen(next_gen()) { mcel = joined_cel; }
+
+        void touch_gen() { gen = next_gen(); }
 
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
@@ -137,6 +148,13 @@ namespace alienorum
         void generate_rocky_map(CelestialObject *cel);
         void generate_gas_giant_map(CelestialObject *cel);
         void mark_for_map_regen(CelestialObject *cel);
+
+        // For the GPU texture cache (src/gputex.h): dimensions of the equirectangular pixel
+        // grid, and a bulk RGBA8 export (out must be get_width()*get_height()*4 bytes,
+        // caller-allocated) -- keeps red_data/green_data/blue_data themselves unexposed.
+        inline unsigned long get_width() const { return image_width; }
+        inline unsigned long get_height() const { return image_height; }
+        void export_rgba(unsigned char *out) const;
     };
 
     class Locale

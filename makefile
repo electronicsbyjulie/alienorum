@@ -12,7 +12,13 @@
 #
 
 CPP = g++
-CPPFLAGS = -std=c++17 -O2 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
+# -MMD -MP: have the compiler emit a per-object .d file listing every header that object
+# actually includes (recursively), so editing any header rebuilds everything that transitively
+# depends on it -- no more hand-maintained header lists per rule silently drifting out of sync
+# with reality (-MP adds phantom targets for each header so a deleted/renamed header doesn't
+# break the build with a "no rule to make target" error). See the `-include` near the bottom
+# of this file, which is what actually pulls the generated .d files back in.
+CPPFLAGS = -std=c++17 -O2 -MMD -MP -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 
 # Uncomment for debug mode
 # CPPFLAGS += -g -DDEBUG -O0
@@ -46,7 +52,7 @@ IMGUI_OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SR
 OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
-OBJS += $(OBJ)/globals.o $(OBJ)/loaders.o $(OBJ)/housekeeping.o $(OBJ)/inputs.o $(OBJ)/dialogs.o $(OBJ)/visuals.o
+OBJS += $(OBJ)/globals.o $(OBJ)/loaders.o $(OBJ)/housekeeping.o $(OBJ)/inputs.o $(OBJ)/dialogs.o $(OBJ)/visuals.o $(OBJ)/gputex.o $(OBJ)/sphere_impostor.o
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
@@ -87,6 +93,7 @@ $(OBJ):
 
 clean: makefile
 	rm -Rf $(OBJ)/*.o
+	rm -Rf $(OBJ)/*.d
 	rm -Rf $(BIN)/*
 
 apps: alienorum
@@ -99,94 +106,104 @@ alienorum: $(BIN)/alienorum
 %.o:$(IMGUI_DIR)/backends/%.cpp makefile
 	$(CPP) $(CPPFLAGS) -c -o $(OBJ)/$@ $<
 
-$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp makefile
 	$(CPP) $(IMGUI_DIR)/imgui_demo.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_demo.o
 
-$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp makefile
 	$(CPP) $(IMGUI_DIR)/imgui_draw.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_draw.o
 
-$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp makefile
 	$(CPP) $(IMGUI_DIR)/imgui_tables.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_tables.o
 
-$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp makefile
 	$(CPP) $(IMGUI_DIR)/imgui_widgets.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_widgets.o
 
-$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp makefile
 	$(CPP) $(IMGUI_DIR)/imgui.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui.o
 
-$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp makefile
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_opengl3.o
 
-$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp makefile
 	$(CPP) $(IGFD_DIR)/ImGuiFileDialog.cpp $(CPPFLAGS) -c -o $(OBJ)/ImGuiFileDialog.o
 
-$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp makefile $(IMGUI_DIR)/imconfig.h
+$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp makefile
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_sdl2.o
 
-$(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp makefile
 	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJ)/misc.o
 
-$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/noise.h makefile
+$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp makefile
 	$(CPP) $(CLASSES_DIR)/noise.cpp $(CPPFLAGS) -c -o $(OBJ)/noise.o
 
-$(OBJ)/patch.o: $(CLASSES_DIR)/patch.cpp $(CLASSES_DIR)/patch.h makefile
+$(OBJ)/patch.o: $(CLASSES_DIR)/patch.cpp makefile
 	$(CPP) $(CLASSES_DIR)/patch.cpp $(CPPFLAGS) -c -o $(OBJ)/patch.o
 
-$(OBJ)/color.o: $(CLASSES_DIR)/color.cpp $(CLASSES_DIR)/color.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/color.o: $(CLASSES_DIR)/color.cpp makefile
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJ)/color.o
 
-$(OBJ)/point.o: $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/point.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/point.o: $(CLASSES_DIR)/point.cpp makefile
 	$(CPP) $(CLASSES_DIR)/point.cpp $(CPPFLAGS) -c -o $(OBJ)/point.o
 
-$(OBJ)/celestial.o: $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/celestial.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/celestial.o: $(CLASSES_DIR)/celestial.cpp makefile
 	$(CPP) $(CLASSES_DIR)/celestial.cpp $(CPPFLAGS) -c -o $(OBJ)/celestial.o
 
-$(OBJ)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/galaxy.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp makefile
 	$(CPP) $(CLASSES_DIR)/galaxy.cpp $(CPPFLAGS) -c -o $(OBJ)/galaxy.o
 
-$(OBJ)/star.o: $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/star.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/star.o: $(CLASSES_DIR)/star.cpp makefile
 	$(CPP) $(CLASSES_DIR)/star.cpp $(CPPFLAGS) -c -o $(OBJ)/star.o
 
-$(OBJ)/cons.o: $(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/cons.h $(CLASSES_DIR)/star.h makefile
+$(OBJ)/cons.o: $(CLASSES_DIR)/cons.cpp makefile
 	$(CPP) $(CLASSES_DIR)/cons.cpp $(CPPFLAGS) -c -o $(OBJ)/cons.o
 
-$(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp makefile
 	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJ)/planet.o
 
-$(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp makefile
 	$(CPP) $(CLASSES_DIR)/moon.cpp $(CPPFLAGS) -c -o $(OBJ)/moon.o
 
-$(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp makefile
 	$(CPP) $(CLASSES_DIR)/satellite.cpp $(CPPFLAGS) -c -o $(OBJ)/satellite.o
 
-$(OBJ)/shore.o: $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/shore.h $(CLASSES_DIR)/planet.h makefile
+$(OBJ)/shore.o: $(CLASSES_DIR)/shore.cpp makefile
 	$(CPP) $(CLASSES_DIR)/shore.cpp $(CPPFLAGS) -c -o $(OBJ)/shore.o
 
-$(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp makefile
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o
 
-$(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/misc.h makefile
+$(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp makefile
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
 
-$(OBJ)/globals.o: src/globals.cpp src/globals.h makefile
+$(OBJ)/globals.o: src/globals.cpp makefile
 	$(CPP) src/globals.cpp $(CPPFLAGS) -c -o $(OBJ)/globals.o
 
-$(OBJ)/loaders.o: src/loaders.cpp src/loaders.h makefile
+$(OBJ)/loaders.o: src/loaders.cpp makefile
 	$(CPP) src/loaders.cpp $(CPPFLAGS) -c -o $(OBJ)/loaders.o
 
-$(OBJ)/housekeeping.o: src/housekeeping.cpp src/housekeeping.h makefile
+$(OBJ)/housekeeping.o: src/housekeeping.cpp makefile
 	$(CPP) src/housekeeping.cpp $(CPPFLAGS) -c -o $(OBJ)/housekeeping.o
 
-$(OBJ)/inputs.o: src/inputs.cpp src/inputs.h makefile
+$(OBJ)/inputs.o: src/inputs.cpp makefile
 	$(CPP) src/inputs.cpp $(CPPFLAGS) -c -o $(OBJ)/inputs.o
 
-$(OBJ)/dialogs.o: src/dialogs.cpp src/dialogs.h makefile
+$(OBJ)/dialogs.o: src/dialogs.cpp makefile
 	$(CPP) src/dialogs.cpp $(CPPFLAGS) -c -o $(OBJ)/dialogs.o
 
-$(OBJ)/visuals.o: src/visuals.cpp src/visuals.h makefile
+$(OBJ)/visuals.o: src/visuals.cpp makefile
 	$(CPP) src/visuals.cpp $(CPPFLAGS) -c -o $(OBJ)/visuals.o
+
+$(OBJ)/gputex.o: src/gputex.cpp makefile
+	$(CPP) src/gputex.cpp $(CPPFLAGS) -c -o $(OBJ)/gputex.o
+
+$(OBJ)/sphere_impostor.o: src/sphere_impostor.cpp makefile
+	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJ)/sphere_impostor.o
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp makefile
 	$(CPP) src/alienorum.cpp $(OBJS) $(CPPFLAGS) -o $(BIN)/alienorum $(LIBS) $(GPROF)
+
+# Auto-generated per-object header dependencies (see -MMD -MP above). The leading '-' means
+# make won't complain on a clean checkout, before any .d files exist yet.
+-include $(OBJS:.o=.d)
 

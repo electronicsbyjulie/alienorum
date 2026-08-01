@@ -2,6 +2,7 @@
 #include "globals.h"
 #include "visuals.h"
 #include "loaders.h"
+#include "sphere_impostor.h"
 
 using namespace alienorum;
 
@@ -161,6 +162,58 @@ void draw_ra_dec_lines()
 
 double sphresolution = 0.1;
 bool bugged = false;
+
+// GPU sphere impostor path (see GPU_SPHERE_RENDERING_PLAN.md). Only reached when
+// ALIENORUM_GPU_SPHERES is 1, and only for non-wireframe, non-skymap draws (draw_sphere()
+// keeps handling wireframe mode itself in both configurations, and vm_skymap is excluded at
+// the dispatch point below) -- see the dispatch point in draw_sphere().
+//
+// The screen placement is derived from the object's exact camera-space position and radius,
+// not from a screen-space "projected center + scalar radius" circle: that circle
+// approximation only holds when the object is far enough away (or small enough on screen)
+// that perspective distortion across its own silhouette is negligible, and breaks down badly
+// at close range / large angular size -- e.g. a low-orbit satellite looking at a planet, where
+// the true projected shape is neither centered on the projected 3D center nor circular. See
+// sphere_impostor.cpp for the tangent-line bounding geometry and per-pixel ray-sphere
+// intersection that replace it; this function's job is just to hand that code the object's
+// exact position and radius in the same "camera space" Cartesian2D itself works in (see
+// point.cpp) -- after to_viewer_plane() and the azimuth/altitude rotation, before the
+// perspective divide.
+int draw_sphere_gpu(CelestialObject* cel, double arad)
+{
+    Point camera_space = rotate3D(
+        rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+    double R = cel->get_equatorial_radius();
+
+    if (!cel->looked_for_maps)
+    {
+        cel->looked_for_maps = true;
+        std::thread ttex(load_textures, cel);
+        ttex.detach();
+    }
+
+    Color col = Color::color_from_magnitude_indices(4.2, cel->BV_color);
+    RGB3Byte rgb = Color::rgb_from_color(col, -1);
+    ImU32 solid_color = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255));
+
+    double xmin, ymin, xmax, ymax;
+    bool ok = queue_sphere_impostor(camera_space.x, camera_space.y, camera_space.z, R, zoom,
+        dispcx, dispcy, solid_color, &xmin, &ymin, &xmax, &ymax);
+    if (!ok) return 0;
+
+    cel->drawnxmin = xmin;
+    cel->drawnxmax = xmax;
+    cel->drawnymin = ymin;
+    cel->drawnymax = ymax;
+
+    ImGuiIO& io = ImGui::GetIO();
+    if (xmax > 0 && xmin < io.DisplaySize.x && ymax > 0 && ymin < io.DisplaySize.y)
+        cel->onscreen = true;
+
+    return fmax(xmax - xmin, ymax - ymin) / 2;
+}
+
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (cel->seqno == whereami) return 0;
@@ -226,6 +279,12 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
     bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
+
+#if ALIENORUM_GPU_SPHERES
+    // vm_skymap isn't a pinhole camera (see Cartesian2D in point.cpp), so the camera-space
+    // math draw_sphere_gpu() relies on doesn't apply there; fall through to the CPU path.
+    if (!wireframe && view_mode != vm_skymap) return draw_sphere_gpu(cel, arad);
+#endif
     int i, j, l, m, lastm, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
