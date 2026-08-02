@@ -1,10 +1,17 @@
 bin
 build
+build-win
 obj
 maps
 catalogs
 imgui.ini
+vcpkg
+vcpkg_installed
+package/release-maps
+package/release-assets
+package/*.exe
 *.json
+!vcpkg.json
 *[m-o][d-f]e[c-e]*
 *[e-g][t-v][b-d][j-l]*
 assets/mascot*

@@ -1518,6 +1518,17 @@ void Map::generate_rocky_map(CelestialObject *cel)
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
     RGB3Byte rgb = Color::rgb_from_color(col, -1);
 
+    // Tholins only form and survive on cold, distant bodies (Pluto, Triton, the icy
+    // Galilean/Saturnian moons) where they stain an otherwise pale, icy-white crust.
+    // Elsewhere province coloring stays a neutral tint of the base rock color.
+    bool cold_icy_world = (cel->type == icy) && (T_surf < 150.0);
+    if (cold_icy_world)
+    {
+        rgb.r = (unsigned char)(rgb.r * 0.15 + 235 * 0.85);
+        rgb.g = (unsigned char)(rgb.g * 0.15 + 235 * 0.85);
+        rgb.b = (unsigned char)(rgb.b * 0.15 + 240 * 0.85);
+    }
+
     int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
 
     bool create_bump = (bump_data == nullptr);
@@ -1548,8 +1559,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
     mtx.unlock();
 
     double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
+    double province_scale = scale * 0.4, albedo_value, grain_value, border_noise;
+    double province_pos, province_t, rmult, gmult, bmult;
+    double edge_dist, mottle_strength, mottle_noise, hue_noise;
     unsigned int x, y;
-    int idx;
+    int idx, province_idx, neighbor_province_idx, mottled_idx;
     if (has_water && randomize_txgen)
     {
         RGB3Byte veg_color = generate_vegetation_color();
@@ -1563,6 +1577,56 @@ void Map::generate_rocky_map(CelestialObject *cel)
         && p->is_tidal_locked();
 
     double Tswing = 256.0 / (p->surface_pressure * 3.5e-5), halfswing = Tswing*0.5;
+
+    // A small per-planet palette of terrain "provinces" -- e.g. bright neutral highlands
+    // vs. a darker, differently-tinted basalt or tholin-rich province -- so terrain color
+    // forms distinct, high-contrast patches with rough, irregular borders, rather than
+    // one continuous gradient.
+    const bool enable_provinces = true;
+    int num_provinces = 2 + (rand() % 3);                                    // 2-4 provinces
+    double border_roughness = frand(0.6, 1.3);                               // how jagged the border itself is
+    double border_noise_scale = province_scale * frand(3.5, 7.0);
+    double mottle_scale = province_scale * frand(6.0, 12.0);                 // size of the speckled spots along a border
+    double mottle_zone = frand(0.2, 0.4);                                    // how far the speckling reaches into each province
+    double hue_scale = province_scale * frand(2.0, 4.0);                     // sub-regions within a single province
+    double hue_amount = frand(0.06, 0.15);                                   // subtle warm/cool wobble, green left alone
+    double province_variability = frand(0.4, 0.85);
+    double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
+    double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
+    double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
+    int tholin_province = cold_icy_world ? (num_provinces - 1) : -1;
+    for (int p_i = 1; p_i < num_provinces; ++p_i)
+    {
+        if (p_i == tholin_province)
+        {
+            // Reddish-brown tholin staining: red retained, blue heavily suppressed.
+            double stain = frand(0.5, 0.85);
+            province_rmult[p_i] = 1.0 - stain * 0.25;
+            province_gmult[p_i] = 1.0 - stain * 0.55;
+            province_bmult[p_i] = 1.0 - stain * 0.85;
+        }
+        else if (cold_icy_world)
+        {
+            // Otherwise just brightness variation across the icy background -- no hue shift.
+            double p_mult = 1.0 - frand(0, 0.2);
+            province_rmult[p_i] = p_mult;
+            province_gmult[p_i] = p_mult;
+            province_bmult[p_i] = p_mult;
+        }
+        else
+        {
+            double p_rmult = fmax(0.05, 1.0 + frand(-province_variability, province_variability));
+            double p_bmult = fmax(0.05, 1.0 + frand(-province_variability, province_variability));
+            // Bias green toward the low side rather than drawing it freely between red and
+            // blue: real airless regolith/rock runs grey, tan, or rust-red, essentially never
+            // green, and a green channel free to land near the high side reads as olive/green.
+            double lo = fmin(p_rmult, p_bmult), hi = fmax(p_rmult, p_bmult);
+            double p_gmult = frand(lo, lo + 0.3 * (hi - lo));
+            province_rmult[p_i] = p_rmult;
+            province_gmult[p_i] = p_gmult;
+            province_bmult[p_i] = p_bmult;
+        }
+    }
 
     for (y = 0; y < image_height; ++y)
     {
@@ -1591,10 +1655,75 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
             if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
 
+            // Terrain albedo is driven mostly by an independent, broader noise field
+            // (geological provinces), not by local elevation, plus a fine high-frequency
+            // "grain" pass for per-pixel mottling. The coordinate offsets decorrelate this
+            // from height_value even though both draw on the same underlying noise field.
+            albedo_value = fBm(nx * province_scale + 5.2, ny * province_scale + 1.3, nz * province_scale + 2.7,
+                4, lacunarity, gain);
+
+            if (enable_provinces)
+            {
+                // Rough, high-contrast per-pixel texture (ridged rather than smooth fBm),
+                // so terrain reads as weathered/grainy instead of a smooth airbrushed gradient.
+                grain_value = ridged_fBm(nx * scale * 14.0 + 91.7, ny * scale * 14.0 + 43.1, nz * scale * 14.0 + 17.9,
+                    4, lacunarity, gain);
+                r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
+
+                // Jitter the province boundary itself with a higher-frequency noise field so
+                // it reads as a ragged, weathered edge instead of a smooth isocontour.
+                border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
+                    3, lacunarity, gain);
+
+                // Posterize the broad albedo field into a handful of provinces with a narrow,
+                // still-readable border between them, instead of blending continuously across
+                // the whole surface -- this is what gives the Moon's maria, Pluto's tholin-rich
+                // patches, and Venus's radar-brightness zones their distinct, ragged edges.
+                province_pos = fmod(albedo_value * num_provinces + (border_noise - 0.5) * border_roughness, (double)num_provinces);
+                if (province_pos < 0) province_pos += num_provinces;
+                province_idx = (int)province_pos;
+                if (province_idx >= num_provinces) province_idx = num_provinces - 1;
+                province_t = province_pos - province_idx;
+
+                // Rather than a clean gradient at the border, scatter patches of the neighboring
+                // province's color into a halo around it -- denser right at the border, thinning
+                // out with distance -- so both sides mottle into each other the way Pluto's dark
+                // equatorial belt frays into its surroundings instead of cutting a clean line.
+                edge_dist = fmin(province_t, 1.0 - province_t);
+                mottle_strength = fmax(0.0, 1.0 - edge_dist / mottle_zone);
+                mottle_noise = fBm(nx * mottle_scale + 13.7, ny * mottle_scale + 58.2, nz * mottle_scale + 91.4,
+                    3, lacunarity, gain);
+                neighbor_province_idx = (province_t < 0.5)
+                    ? (province_idx - 1 + num_provinces) % num_provinces
+                    : (province_idx + 1) % num_provinces;
+                mottled_idx = (mottle_noise < mottle_strength * 0.5) ? neighbor_province_idx : province_idx;
+                rmult = province_rmult[mottled_idx];
+                gmult = province_gmult[mottled_idx];
+                bmult = province_bmult[mottled_idx];
+
+                // Subtle regional hue drift within a province -- broader than the fine grain,
+                // smaller than the province itself -- so flat provinces read as having internal
+                // sub-regions (mineral/weathering variation) rather than one solid color. A warm/
+                // cool wobble on red vs. blue only; green is left alone (see the anti-green bias
+                // above -- a wobble that lifts green would read as the same olive cast we fixed).
+                hue_noise = fBm(nx * hue_scale + 71.2, ny * hue_scale + 34.9, nz * hue_scale + 6.1,
+                    3, lacunarity, gain);
+                double hue_t = 2.0 * (hue_noise - 0.5);
+                rmult *= (1.0 + hue_amount * hue_t);
+                bmult *= (1.0 - hue_amount * hue_t);
+            }
+            else
+            {
+                // Provinces disabled for now -- fall back to the plain decoupled-from-height
+                // albedo + grain shading (no palette, no posterized borders).
+                grain_value = fBm(nx * scale * 6.0 + 91.7, ny * scale * 6.0 + 43.1, nz * scale * 6.0 + 17.9,
+                    2, lacunarity, gain);
+                r_weight = fmin(1.0, fmax(0.0, 0.75 * albedo_value + 0.25 * grain_value));
+                rmult = gmult = bmult = 1.0;
+            }
+
             if (has_water)
             {
-                r_weight = height_value;
-
                 T_base = tidal_locked_to_star
                     ? (T_surf + halfswing - Tswing * cos(psi*0.5))
                     : (T_surf - halfswing + Tswing * sin(theta));
@@ -1627,9 +1756,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
                 else if (T_local > veg_max_temp)
                 {   // Beach or desert sand
-                    red_data[idx] = 220 * r_weight;
-                    green_data[idx] = 200 * r_weight;
-                    blue_data[idx] = 150 * r_weight;
+                    red_data[idx] = 220 * rmult * r_weight;
+                    green_data[idx] = 200 * gmult * r_weight;
+                    blue_data[idx] = 150 * bmult * r_weight;
                 }
                 else if (life_possible && T_local >= veg_min_temp
                     && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
@@ -1640,20 +1769,19 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
                 else
                 {   // Mountains
-                    red_data[idx] = 110 * r_weight;
-                    green_data[idx] = 90 * r_weight;
-                    blue_data[idx] = 75 * r_weight;
+                    red_data[idx] = 110 * rmult * r_weight;
+                    green_data[idx] = 90 * gmult * r_weight;
+                    blue_data[idx] = 75 * bmult * r_weight;
                 }
             }
             else
             {
                 // Lifeless planet or moon
-                r_weight = height_value;
                 red_data[idx] = (cel->type == lavaworld)
-                    ? ((unsigned char)(128 + fmin(127, rgb.r * r_weight + radd)))
-                    : ((unsigned char)(fmin(255, rgb.r * r_weight + radd)));
-                green_data[idx] = (unsigned char)(fmin(255, rgb.g * r_weight + gadd));
-                blue_data[idx] = (unsigned char)(fmin(255, rgb.b * r_weight + badd));
+                    ? ((unsigned char)(128 + fmin(127, rgb.r * rmult * r_weight + radd)))
+                    : ((unsigned char)(fmin(255, rgb.r * rmult * r_weight + radd)));
+                green_data[idx] = (unsigned char)(fmin(255, rgb.g * gmult * r_weight + gadd));
+                blue_data[idx] = (unsigned char)(fmin(255, rgb.b * bmult * r_weight + badd));
             }
 
             // TODO: This does not work.

@@ -16,6 +16,10 @@
 #include <SDL_opengl.h>
 #include <SDL_image.h>
 #ifdef _WIN32
+// WIN32_LEAN_AND_MEAN excludes windows.h's COM/OLE headers (objidl.h, oaidl.h), which
+// otherwise collide with std::byte -- pulled into the global namespace by `using namespace
+// std` below -- and fail to compile under mingw's C++17 libstdc++.
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>        // SetProcessDPIAware()
 #endif
 #include "classes/misc.h"

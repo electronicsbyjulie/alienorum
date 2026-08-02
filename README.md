@@ -238,3 +238,61 @@ so, then it's safe to delete the .jpg file. Alternatively, if you wish to keep t
 delete the .png instead (it's just a scaled down version of the .jpg) and use your favorite image editor to
 resample the `maps/Moon_bump.jpg` map up to 2048x1024 resolution.
 
+
+## For Developers
+
+### Building the Windows Installer
+
+This is separate from the MSYS2 instructions above, which are for building and running natively on Windows.
+`package/build_windows_installer.sh` instead cross-compiles a Windows .exe from a Linux machine and packages
+it into `Alienorum-<version>-win64.exe`, a self-contained NSIS installer for non-programmer end users.
+
+One-time setup on the Linux build machine:
+
+```
+sudo apt-get install -y g++-mingw-w64-x86-64 nsis
+git clone https://github.com/microsoft/vcpkg.git
+./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+```
+
+`vcpkg` (dependencies) and NSIS (the installer compiler) are not checked into the repo; the first line
+installs NSIS system-wide, and the `git clone`/`bootstrap-vcpkg.sh` steps set up vcpkg once. Both are safe
+to redo any time -- if `vcpkg/` is ever deleted, just rerun the two vcpkg lines.
+
+Then, to build:
+
+```
+package/build_windows_installer.sh
+```
+
+This will:
+* Use vcpkg to fetch and build SDL2, SDL2_image, curl, libpng, and libjpeg-turbo for the `x64-mingw-static`
+  triplet (this step can take 20-40 minutes the first time; later runs are cached and fast).
+* Cross-compile `alienorum.exe` with mingw-w64, statically linked, so it carries no external DLL dependencies.
+* Package it with the git-tracked contents of `assets/` and `ephemerides/`, the small tracked `catalogs/*`
+  files, and a starter set of texture maps (see below) into an NSIS installer, written to
+  `package/Alienorum-<version>-win64.exe`.
+
+To cut a new release, bump `VERSION` in the `project(alienorum VERSION x.y.z ...)` line near the top of
+`CMakeLists.txt` and rerun the script.
+
+#### What gets bundled vs. downloaded
+
+Alienorum downloads its large scientific catalogs and most texture maps itself at runtime (see `CatalogReader`
+in `src/classes/cat.cpp` and the `SurfMap`/`CloudMap`/`BumpMap`/`NightMap` URLs in `catalogs/planets.json`).
+The installer bundles the small git-tracked `catalogs/*` files that are actually read by live code and have
+no live download URL (or one disabled with a leading `#`): `star_orbits.dat`, `planets.json`,
+`soles_alienorum.dat`, `mainseq.dat`, `urls.dat`, and `sat/sources.json`. (`catalogs/WD_names.dat` is also
+git-tracked but is not read anywhere in the source -- its one related code path is gated behind `if (0)` --
+so it's deliberately left out rather than shipped unused.) It also bundles the git-tracked files in `maps/`
+(currently the Moon, Mars, Earth, Pluto, Charon, and Uranus's rings), the git-tracked `.gz` files in
+`ephemerides/` (osculating elements for the local solar system -- `Orbit::read_osc_elements()` in
+`celestial.cpp` only ever reads these locally, there's no download fallback, so they have to ship), and the
+git-tracked contents of `assets/` (fonts, icons, `themes.json`). `assets/` and `maps/` are staged via
+`git ls-files`, specifically so nothing that's only sitting in the local working directory -- draft images,
+alternate mascots, editor source files, unused fonts, whatever -- ends up in a build by accident.
+(`ephemerides/` doesn't require that staging step: only `.gz` files are ever tracked there, and the app-generated
+`.txt` decompressions are gitignored, so a plain `*.gz` pattern match in `CMakeLists.txt` is enough on its
+own.) The build script regenerates `package/release-maps/` and `package/release-assets/` from `git ls-files`
+on every run, so adding something to either bundle is just a matter of `git add`-ing it under `maps/` -- no
+changes to the packaging scripts required.
