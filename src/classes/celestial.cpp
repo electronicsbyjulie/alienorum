@@ -1586,8 +1586,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
     int num_provinces = 2 + (rand() % 3);                                    // 2-4 provinces
     double border_roughness = frand(0.6, 1.3);                               // how jagged the border itself is
     double border_noise_scale = province_scale * frand(3.5, 7.0);
-    double mottle_scale = province_scale * frand(6.0, 12.0);                 // size of the speckled spots along a border
-    double mottle_zone = frand(0.2, 0.4);                                    // how far the speckling reaches into each province
+    double mottle_zone = frand(0.64, 1.2);                                   // how far the speckling reaches into each province
+    unsigned int dither_seed = (unsigned int)rand();                         // per-planet salt for the per-pixel mottle hash
     double hue_scale = province_scale * frand(2.0, 4.0);                     // sub-regions within a single province
     double hue_amount = frand(0.06, 0.15);                                   // subtle warm/cool wobble, green left alone
     double province_variability = frand(0.4, 0.85);
@@ -1679,7 +1679,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // still-readable border between them, instead of blending continuously across
                 // the whole surface -- this is what gives the Moon's maria, Pluto's tholin-rich
                 // patches, and Venus's radar-brightness zones their distinct, ragged edges.
-                province_pos = fmod(albedo_value * num_provinces + (border_noise - 0.5) * border_roughness, (double)num_provinces);
+                // fBm's actual output clusters well short of the full [0,1] range for these
+                // octave/gain settings, so a straight *num_provinces would starve whichever
+                // province requires the extreme end of the range -- contrast-stretch first so
+                // every province gets a fair shot at appearing.
+                double albedo_stretched = fmin(1.0, fmax(0.0, (albedo_value - 0.5) * 2.2 + 0.5));
+                province_pos = fmod(albedo_stretched * num_provinces + (border_noise - 0.5) * border_roughness, (double)num_provinces);
                 if (province_pos < 0) province_pos += num_provinces;
                 province_idx = (int)province_pos;
                 if (province_idx >= num_provinces) province_idx = num_provinces - 1;
@@ -1689,14 +1694,22 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // province's color into a halo around it -- denser right at the border, thinning
                 // out with distance -- so both sides mottle into each other the way Pluto's dark
                 // equatorial belt frays into its surroundings instead of cutting a clean line.
+                // This needs a genuinely per-pixel-independent source, not a smooth noise field:
+                // smooth noise thresholded like this just draws a second, smoother contour line
+                // parallel to the border (confirmed by rendering both side by side) -- an actual
+                // hash gives true salt-and-pepper speckling instead.
                 edge_dist = fmin(province_t, 1.0 - province_t);
                 mottle_strength = fmax(0.0, 1.0 - edge_dist / mottle_zone);
-                mottle_noise = fBm(nx * mottle_scale + 13.7, ny * mottle_scale + 58.2, nz * mottle_scale + 91.4,
-                    3, lacunarity, gain);
+                {
+                    unsigned int mh = x * 374761393u + y * 668265263u + dither_seed;
+                    mh = (mh ^ (mh >> 13)) * 1274126177u;
+                    mh ^= (mh >> 16);
+                    mottle_noise = (double)(mh & 0xFFFFFFu) / (double)0xFFFFFFu;
+                }
                 neighbor_province_idx = (province_t < 0.5)
                     ? (province_idx - 1 + num_provinces) % num_provinces
                     : (province_idx + 1) % num_provinces;
-                mottled_idx = (mottle_noise < mottle_strength * 0.5) ? neighbor_province_idx : province_idx;
+                mottled_idx = (mottle_noise < mottle_strength * 0.65) ? neighbor_province_idx : province_idx;
                 rmult = province_rmult[mottled_idx];
                 gmult = province_gmult[mottled_idx];
                 bmult = province_bmult[mottled_idx];
