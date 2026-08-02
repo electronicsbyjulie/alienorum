@@ -1744,17 +1744,17 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 if (height_value < has_water && (T_local < water_freezing))
                 {
                     // Polar and elevation ice
-                    red_data[idx] = 167 + 67 * r_weight;
-                    green_data[idx] = 181 + 57 * r_weight;
-                    blue_data[idx] = 190 + 63 * r_weight;
+                    red_data[idx] = fmin(255, 167 + 67 * r_weight);
+                    green_data[idx] = fmin(255, 181 + 57 * r_weight);
+                    blue_data[idx] = fmin(255, 190 + 63 * r_weight);
                     // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
                 }
                 else if (cel->type == waterworld)
                 {
                     // Deep ocean
-                    red_data[idx] = (12+16*height_value);
-                    green_data[idx] = (24+24*height_value);
-                    blue_data[idx] = (32+128*height_value);
+                    red_data[idx] = fmin(255, 12+16*height_value);
+                    green_data[idx] = fmin(255, 24+24*height_value);
+                    blue_data[idx] = fmin(255, 32+128*height_value);
                 }
                 // Biome allocation based on height thresholds
                 else if (height_value < has_water && (T_local < Tboil))
@@ -1762,29 +1762,29 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     sh = height_value*inv_h2o_level;
                     sh *= (Tboil - T_base) / (Tboil - water_freezing);
                     sh = pow(sh, 20);                                                           // shallowness multiplied to show water optical density
-                    red_data[idx] = (12+16*sh);
-                    green_data[idx] = (24+168*sh);
-                    blue_data[idx] = (192+32*sh);
+                    red_data[idx] = fmin(255, 12+16*sh);
+                    green_data[idx] = fmin(255, 24+168*sh);
+                    blue_data[idx] = fmin(255, 192+32*sh);
                     // if (create_bump) bump_data[idx] = 0;
                 }
                 else if (T_local > veg_max_temp)
                 {   // Beach or desert sand
-                    red_data[idx] = 220 * rmult * r_weight;
-                    green_data[idx] = 200 * gmult * r_weight;
-                    blue_data[idx] = 150 * bmult * r_weight;
+                    red_data[idx] = fmin(255, 220 * rmult * r_weight);
+                    green_data[idx] = fmin(255, 200 * gmult * r_weight);
+                    blue_data[idx] = fmin(255, 150 * bmult * r_weight);
                 }
                 else if (life_possible && T_local >= veg_min_temp
                     && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
                 {   // Forests
-                    red_data[idx] = vegetation_r * r_weight;
-                    green_data[idx] = vegetation_g * r_weight;
-                    blue_data[idx] = vegetation_b * r_weight;
+                    red_data[idx] = fmin(255, vegetation_r * r_weight);
+                    green_data[idx] = fmin(255, vegetation_g * r_weight);
+                    blue_data[idx] = fmin(255, vegetation_b * r_weight);
                 }
                 else
                 {   // Mountains
-                    red_data[idx] = 110 * rmult * r_weight;
-                    green_data[idx] = 90 * gmult * r_weight;
-                    blue_data[idx] = 75 * bmult * r_weight;
+                    red_data[idx] = fmin(255, 110 * rmult * r_weight);
+                    green_data[idx] = fmin(255, 90 * gmult * r_weight);
+                    blue_data[idx] = fmin(255, 75 * bmult * r_weight);
                 }
             }
             else
@@ -1835,11 +1835,11 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)(1000 * bombardment_factor);
+    int num_craters = (int)(30000 * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
-    double min_diam = 100.0;                                                // meters.
+    double min_diam = 50.0;                                                 // meters.
     double max_diam = fmin(planet_radius * 0.3, 900000.0);                  // cap basins at ~900 km or 30% of the planet, whichever is smaller
 
     std::vector<Crater> craters(num_craters);
