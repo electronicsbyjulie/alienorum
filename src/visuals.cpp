@@ -1187,6 +1187,8 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     if (spike_str > 0.02)
     {
         const int nslots = 24, nlayers = 5;
+        // Off cardinal/diagonal so the four points don't look like a cross.
+        const double spike_rotation = azimuth - 0.3 * altitude; // 25.0 * fiftyseventh;
         double ray_len = base_len * (1.0 - 0.5 * haze);
         double halfwidth_base = (1.7 + flare * 0.006) * (1.0 + 2.5 * haze);
         for (int k=0; k<nslots; k++)
@@ -1206,7 +1208,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
             double vary = 0.78 + 0.22 * (double)((k * 7) % 5) / 4.0;
             double len = ray_len * vary * (primary ? 1.0 : 0.55);
             double halfwidth = halfwidth_base * (primary ? 1.0 : 0.7);
-            double ang = k * (_pi * 2.0 / nslots);
+            double ang = k * (_pi * 2.0 / nslots) + spike_rotation;
 
             for (int j=1; j<=nlayers; j++)
             {
