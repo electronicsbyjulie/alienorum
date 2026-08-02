@@ -502,7 +502,7 @@ void draw_objinf_window(ImGuiIO& io)
         if (cels[i]->mass)
         {
             if (cls == class_star) 
-                ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / Msun) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
+                ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / solar_mass) << " M(sun)\n" << std::endl;       // TODO: Fix Star::estimate_mass()
             else if (cls == class_planet || cls == class_moon)
             {
                 oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)" << std::endl;
@@ -512,7 +512,7 @@ void draw_objinf_window(ImGuiIO& io)
         if (cels[i]->volumetric_mean_radius)
         {
             if (cls == class_star)
-                ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / Rsun) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
+                ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / solar_radius) << " R(sun)" << std::endl;       // TODO: Fix Star::estimate_radius()
             else if (cls == class_planet || cls == class_moon)
             {
                 oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)

@@ -395,8 +395,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             {
                 s->distance = 0;
                 s->distance_known = true;
-                s->mass = Msun;
-                s->volumetric_mean_radius = Rsun;
+                s->mass = solar_mass;
+                s->volumetric_mean_radius = solar_radius;
                 assert(!isinf(s->volumetric_mean_radius));
             }
             else
@@ -641,7 +641,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         s->FlamsteedNo = atoi(field);
         read_field_onebased(buffer, 8, 11, field);
         std::string bayer = trim(field);
-        if (field[3] < 'A') s->BayerGrkno = Grkno_from_abbrev(field);
+        if (field[3] < 'A') s->BayerGrkno = grkno_from_abbrev(field);
         read_field_onebased(buffer, 12, 14, field);
         std::string cons = trim(field);
 

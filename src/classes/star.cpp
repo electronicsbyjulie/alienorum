@@ -500,7 +500,7 @@ double Star::estimate_radius()
 {
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
-    if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi);
+    if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
 
     if (!cels[0])
     {
@@ -514,7 +514,7 @@ double Star::estimate_radius()
 
     // 2. Calculate radius relative to the Sun (R/R_sun) using Stefan-Boltzmann then scale to meters
     double solar_radii = std::sqrt(luminosity) * std::pow(sun_temp / T, 2.0);
-    return volumetric_mean_radius = solar_radii * Rsun;
+    return volumetric_mean_radius = solar_radii * solar_radius;
 }
 
 void Star::gotta_be_named_something()
@@ -678,7 +678,7 @@ double Star::estimate_mass()
 {
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
-    if (msqi >= mseqmin && msqi <= mseqmax) return mass = interpolate_mseq_mass(msqi);
+    if (msqi >= mseqmin && msqi <= mseqmax) return mass = interpolate_mseq_mass(msqi) * solar_mass;
 
     if (!cels[0])
     {
@@ -688,7 +688,7 @@ double Star::estimate_mass()
     double T = estimate_temperature();
     double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
     double luminosity = std::pow(magnbase, logL);
-    double radius = (volumetric_mean_radius ? volumetric_mean_radius : estimate_radius()) / Rsun;
+    double radius = (volumetric_mean_radius ? volumetric_mean_radius : estimate_radius()) / solar_radius;
 
     // Approximate Surface Gravity (log g) based on empirical stellar trends
     // Hotter and more luminous stars have different surface profiles.
@@ -723,7 +723,7 @@ double Star::estimate_mass()
     // Expressed cleanly using solar constants:
     // (g / g_sun) * (R / R_sun)^2 = M / M_sun
     double solargravity = 27400.0; // Sun's surface gravity is ~27,400 cm/s^2
-    mass = (gravity / solargravity) * std::pow(radius, 2.0) * Msun;
+    mass = (gravity / solargravity) * std::pow(radius, 2.0) * solar_mass;
 
     return mass;
 }

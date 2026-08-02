@@ -75,11 +75,6 @@ static bool looks_like_Gould(const char* s)
 
 int find_object(const char* search_term, bool os, double ml, int levreq)
 {
-    // TODO:
-    // 1.) Completely rewrite this fuction to be more efficient and make fewer mistakes;
-    // 2.) Print out the current version of this function pre-rewrite and BURN IT IN A FIRE;
-    // 3.) Permanently delete every digital copy of the legacy version.
-
     int i, m, n, termi = atoi(search_term);
     Star *s;
 
@@ -143,6 +138,36 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         if (!strcasecmp(match_cons, constellations[i].name.c_str())) cons2match = &constellations[i];
     }
 
+    bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))
+        ? looks_like_Bayer(search_term) : false;
+    bool is_Flamsteed = (search_term[0] >= '0' && search_term[0] <= '9')
+        ? looks_like_Flamsteed(search_term) : false;
+    bool is_Gould = (search_term[0] >= '0' && search_term[0] <= '9')
+        ? looks_like_Gould(search_term) : false;
+
+    // These constellation-scoped maps are O(log n) lookups, so try them before paying
+    // for the full linear scan below.
+    if (cons2match && is_Bayer)
+    {
+        int igrk = grkno_from_abbrev(search_term);
+        if (cons2match->Bayer_stars.find(igrk) != cons2match->Bayer_stars.end())
+            return cons2match->Bayer_stars[igrk]->seqno;
+    }
+
+    if (cons2match && is_Flamsteed)
+    {
+        i = atoi(search_term);
+        if (cons2match->Flamsteed_stars.find(i) != cons2match->Flamsteed_stars.end())
+            return cons2match->Flamsteed_stars[i]->seqno;
+    }
+
+    if (cons2match && is_Gould)
+    {
+        i = atoi(search_term);
+        if (cons2match->Gould_stars.find(i) != cons2match->Gould_stars.end())
+            return cons2match->Gould_stars[i]->seqno;
+    }
+
     for (i=0; cels[i]; i++)
     {
         if (os && (cels[i]->typeclass() != class_star)) continue;
@@ -175,34 +200,6 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     if (is_gliese)
     {
         return result;
-    }
-
-    bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))
-        ? looks_like_Bayer(search_term) : false;
-    bool is_Flamsteed = (search_term[0] >= '0' && search_term[0] <= '9')
-        ? looks_like_Flamsteed(search_term) : false;
-    bool is_Gould = (search_term[0] >= '0' && search_term[0] <= '9')
-        ? looks_like_Gould(search_term) : false;
-
-    if (cons2match && is_Bayer)
-    {
-        int igrk = grkno_from_abbrev(search_term);
-        if (cons2match->Bayer_stars.find(igrk) != cons2match->Bayer_stars.end())
-            return cons2match->Bayer_stars[igrk]->seqno;
-    }
-
-    if (cons2match && is_Flamsteed)
-    {
-        i = atoi(search_term);
-        if (cons2match->Flamsteed_stars.find(i) != cons2match->Flamsteed_stars.end())
-            return cons2match->Flamsteed_stars[i]->seqno;
-    }
-
-    if (cons2match && is_Gould)
-    {
-        i = atoi(search_term);
-        if (cons2match->Gould_stars.find(i) != cons2match->Gould_stars.end())
-            return cons2match->Gould_stars[i]->seqno;
     }
 
     if (match_cons && termi)

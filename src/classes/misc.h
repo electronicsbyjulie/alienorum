@@ -56,9 +56,9 @@ using json = nlohmann::json;
 #define lava_T_cutoff 1300
 
 #define lunar_mass 7.349E+22
-#define earth_mass 5.972e+27
+#define earth_mass 5.97217e+27
 #define jupiter_mass 1.898e+30
-#define solar_mass 1.989e+33
+#define solar_mass 1.988475e+33
 #define hot_jupiter_density 2.22e+5
 #define earth_radius 6.371e+6
 #define jupiter_radius 6.9886e+7
@@ -71,8 +71,6 @@ using json = nlohmann::json;
 #define arcsecond (arcminute / 60)
 #define color_ref_temp 9758.5
 #define sun_temp 5778
-#define Rsun 695700000
-#define Msun 1.988475e+33
 #define solar_lum_W 3.828e26
 #define U_band 3.6e-7
 #define B_band 4.4e-7
@@ -152,7 +150,6 @@ std::string ltrim(const std::string &s);
 std::string rtrim(const std::string &s);
 std::string trim(const std::string &s);
 double frand(double lmin, double lmax);
-int Grkno_from_abbrev(char* abbrev);
 std::string Greek_from_abbrev(char* abbrev);
 std::string Greek_from_abbrev(std::string abbrev);
 double blackbody_flux(double temperature, double wavelength);               // Kelvins and meters.
