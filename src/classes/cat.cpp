@@ -3097,6 +3097,10 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         {
             A->disk_heliocen_inclination = inclination;
             A->disk_heliocen_node = ascending_node;
+
+            read_field_onebased(buffer, 101, 111, field);
+            double disk_sma = atof(field);
+            if (disk_sma) A->disk_inner_edge_sma = disk_sma;
         }
 
         if (!strcmp(bdystr, "(stellar rotation)"))

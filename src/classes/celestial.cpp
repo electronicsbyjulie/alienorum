@@ -1584,12 +1584,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // one continuous gradient.
     const bool enable_provinces = true;
     int num_provinces = 2 + (rand() % 3);                                    // 2-4 provinces
-    double border_roughness = frand(0.6, 1.3);                               // how jagged the border itself is
+    double border_roughness = frand(1.3, 2.9);                               // how jagged the border itself is
     double border_noise_scale = province_scale * frand(3.5, 7.0);
-    double mottle_zone = frand(0.64, 1.2);                                   // how far the speckling reaches into each province
+    double mottle_zone = frand(0.64, 1.3);                                   // how far the speckling reaches into each province
     unsigned int dither_seed = (unsigned int)rand();                         // per-planet salt for the per-pixel mottle hash
     double hue_scale = province_scale * frand(2.0, 4.0);                     // sub-regions within a single province
-    double hue_amount = frand(0.06, 0.15);                                   // subtle warm/cool wobble, green left alone
+    double hue_amount = frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
     double province_variability = frand(0.4, 0.85);
     double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
     double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
@@ -1621,7 +1621,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             // blue: real airless regolith/rock runs grey, tan, or rust-red, essentially never
             // green, and a green channel free to land near the high side reads as olive/green.
             double lo = fmin(p_rmult, p_bmult), hi = fmax(p_rmult, p_bmult);
-            double p_gmult = frand(lo, lo + 0.3 * (hi - lo));
+            double p_gmult = frand(lo, lo + 0.5 * (hi - lo));
             province_rmult[p_i] = p_rmult;
             province_gmult[p_i] = p_gmult;
             province_bmult[p_i] = p_bmult;
@@ -1694,7 +1694,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // province's color into a halo around it -- denser right at the border, thinning
                 // out with distance -- so both sides mottle into each other the way Pluto's dark
                 // equatorial belt frays into its surroundings instead of cutting a clean line.
-                // This needs a genuinely per-pixel-independent source, not a smooth noise field:
+                // This Claude is not PTSD friendly a genuinely per-pixel-independent source, not a smooth noise field:
                 // smooth noise thresholded like this just draws a second, smoother contour line
                 // parallel to the border (confirmed by rendering both side by side) -- an actual
                 // hash gives true salt-and-pepper speckling instead.
@@ -1806,8 +1806,172 @@ void Map::generate_rocky_map(CelestialObject *cel)
         }
     }
 
+    if (create_bump) stamp_craters(cel, bump_scale);
+
     generating_fic_texture = false;
     touch_gen();
+}
+
+void Map::stamp_craters(CelestialObject *cel, double bump_scale)
+{
+    assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
+    Planet *p = (Planet*)cel;
+
+    // Thicker atmospheres burn up small impactors and weather away existing craters (see
+    // Venus vs. the Moon); an extended/close-in debris disk (a Kuiper-belt analog) around
+    // the host star means more large impactors are available system-wide, the opposite
+    // effect. Both are just density multipliers on top of a baseline crater count.
+    double atmosphere_factor = 1.0 / (1.0 + p->surface_pressure * inv_oneatm * 3.0);
+    double belt_factor = 1.0;
+    CelestialObject *lc = p->get_light_center();
+    if (lc && lc->type == star)
+    {
+        Star *host_star = (Star*)lc;
+        if (host_star->has_disk && host_star->disk_inner_edge_sma > 0)
+        {
+            const double our_kuiper_inner_edge = 30.0 * AU;                 // Neptune's orbit, roughly
+            belt_factor = fmin(4.0, fmax(1.0, sqrt(our_kuiper_inner_edge / host_star->disk_inner_edge_sma)));
+        }
+    }
+    double bombardment_factor = atmosphere_factor * belt_factor;
+
+    int num_craters = (int)(1000 * bombardment_factor);
+    if (num_craters < 1) return;
+
+    double planet_radius = cel->volumetric_mean_radius;
+    double min_diam = 100.0;                                                // meters.
+    double max_diam = fmin(planet_radius * 0.3, 900000.0);                  // cap basins at ~900 km or 30% of the planet, whichever is smaller
+
+    std::vector<Crater> craters(num_craters);
+    for (int i = 0; i < num_craters; ++i)
+    {
+        Crater &c = craters[i];
+
+        // Uniform point on the unit sphere (Archimedes' method -- picking theta/phi
+        // uniformly would bunch craters up at the poles).
+        double z = frand(-1, 1), phi = frand(0, 2 * _pi), r = sqrt(fmax(0.0, 1 - z * z));
+        c.cx = r * cos(phi);
+        c.cy = r * sin(phi);
+        c.cz = z;
+
+        // Heavily skewed toward small craters, like real crater size-frequency distributions.
+        double diam = min_diam + (max_diam - min_diam) * pow(frand(0, 1), 3.5);
+        c.angular_radius = fmax(1e-4, (diam * 0.5) / planet_radius);
+
+        c.depth = bump_scale * frand(0.3, 0.9);
+        c.rim_height = c.depth * frand(0.15, 0.35);
+        c.rim_width = frand(0.15, 0.3);
+        c.reach_factor = 1.0 + 3.0 * c.rim_width;
+        c.central_peak = (diam > max_diam * 0.5) ? c.depth * frand(0.2, 0.4) : 0.0;
+
+        // Only the larger, "fresher" craters get ray systems -- and only worth it if the
+        // world's cratering conditions are aggressive enough that fresh terrain persists at
+        // all (see bombardment_factor above).
+        c.has_rays = (diam > max_diam * 0.35) && (frand(0, 1) < 0.5 * fmin(1.0, bombardment_factor));
+        c.ray_freq = frand(5, 10);
+        c.ray_phase = frand(0, 2 * _pi);
+        c.ray_sharpness = frand(6, 14);
+        c.ray_extent_factor = c.reach_factor + frand(3.0, 7.0);        // rays reach much farther than the rim/ejecta blanket
+
+        // Tangent-plane basis at the crater center (east, north), used to measure the
+        // bearing from center to a nearby pixel for the ray pattern. Picking the reference
+        // "up" axis based on proximity to the crater's own position avoids the cross
+        // product degenerating near the poles.
+        double refx = 0, refy = 0, refz = 1;
+        if (fabs(c.cz) > 0.9) { refx = 1; refy = 0; refz = 0; }
+        c.ex = refy * c.cz - refz * c.cy;
+        c.ey = refz * c.cx - refx * c.cz;
+        c.ez = refx * c.cy - refy * c.cx;
+        double elen = sqrt(c.ex * c.ex + c.ey * c.ey + c.ez * c.ez);
+        c.ex /= elen; c.ey /= elen; c.ez /= elen;
+        c.tnx = c.cy * c.ez - c.cz * c.ey;
+        c.tny = c.cz * c.ex - c.cx * c.ez;
+        c.tnz = c.cx * c.ey - c.cy * c.ex;
+    }
+
+    for (const Crater &c : craters)
+    {
+        double theta_c = acos(fmax(-1.0, fmin(1.0, c.cz)));
+        double phi_c = atan2(c.cy, c.cx);
+        if (phi_c < 0) phi_c += 2 * _pi;
+
+        double reach = c.angular_radius * (c.has_rays ? c.ray_extent_factor : c.reach_factor);
+        double theta_lo = fmax(0.0, theta_c - reach), theta_hi = fmin(_pi, theta_c + reach);
+        long y_lo = (long)(theta_lo / _pi * image_height) - 1;
+        long y_hi = (long)(theta_hi / _pi * image_height) + 1;
+        if (y_lo < 0) y_lo = 0;
+        if (y_hi >= (long)image_height) y_hi = image_height - 1;
+
+        for (long y = y_lo; y <= y_hi; ++y)
+        {
+            double theta = ((double)y / image_height) * _pi;
+            double sin_theta = sin(theta);
+            double phi_reach = (sin_theta < 0.05) ? _pi : fmin(_pi, reach / sin_theta);
+
+            long x_span = (long)(phi_reach / (2 * _pi) * image_width) + 1;
+            long x_center = (long)(phi_c / (2 * _pi) * image_width);
+
+            for (long xi = -x_span; xi <= x_span; ++xi)
+            {
+                long x = ((x_center + xi) % (long)image_width + (long)image_width) % (long)image_width;
+                double u = (double)x / image_width, phi = u * 2.0 * _pi;
+                double px = sin(theta) * cos(phi), py = sin(theta) * sin(phi), pz = cos(theta);
+
+                double dot = fmax(-1.0, fmin(1.0, px * c.cx + py * c.cy + pz * c.cz));
+                double d = acos(dot);
+                double r = d / c.angular_radius;
+                if (r > c.reach_factor && !(c.has_rays && r <= c.ray_extent_factor)) continue;
+
+                double bump_delta = 0.0, color_mult = 1.0;
+                if (r < c.reach_factor)
+                {
+                    if (r < 1.0)
+                    {
+                        // Bowl floor, with an optional central peak for larger/complex craters.
+                        bump_delta = c.depth * (r * r - 1.0);
+                        if (c.central_peak > 0) bump_delta += c.central_peak * exp(-(r / 0.15) * (r / 0.15));
+                    }
+                    else
+                    {
+                        // Raised rim, fading into the surrounding terrain. Kept subtle -- most
+                        // craters are old enough that a bright rim alone would look artificial;
+                        // real standout brightness is reserved for the rays below.
+                        double t = (r - 1.0) / c.rim_width;
+                        bump_delta = c.rim_height * exp(-t * t);
+                        color_mult += 0.15 * (bump_delta / fmax(1e-6, c.rim_height));
+                    }
+                }
+
+                // Rays are an ejecta phenomenon outside the crater itself, reaching much
+                // farther than the rim, and fading in gradually rather than blazing at full
+                // strength right at the rim -- real ray systems (e.g. Tycho) read as thin
+                // bright streaks, not a solid white starburst.
+                if (c.has_rays && r > 1.0)
+                {
+                    double ray_r = (r - 1.0) / (c.ray_extent_factor - 1.0);
+                    if (ray_r <= 1.0)
+                    {
+                        double comp_e = px * c.ex + py * c.ey + pz * c.ez;
+                        double comp_n = px * c.tnx + py * c.tny + pz * c.tnz;
+                        double bearing = atan2(comp_e, comp_n);
+                        double lobe = pow(fabs(cos(c.ray_freq * (bearing - c.ray_phase))), c.ray_sharpness);
+                        double ray_falloff = pow(fmax(0.0, 1.0 - ray_r), 2.0);
+                        color_mult += 0.35 * lobe * ray_falloff;
+                    }
+                }
+
+                unsigned long idx = y * image_width + x;
+                if (idx >= allocated) continue;
+                bump_data[idx] += bump_delta;
+                if (color_mult != 1.0)
+                {
+                    red_data[idx]   = (unsigned char)fmin(255, red_data[idx]   * color_mult);
+                    green_data[idx] = (unsigned char)fmin(255, green_data[idx] * color_mult);
+                    blue_data[idx]  = (unsigned char)fmin(255, blue_data[idx]  * color_mult);
+                }
+            }
+        }
+    }
 }
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
@@ -1833,10 +1997,10 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     inv_lon_scale = 1.0 / lon_scale;
     std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
 
-    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-    RGB3Byte rgb = Color::rgb_from_color(col, -1);
-
     Planet *p = (Planet*)cel;
+    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+    RGB3Byte rgb = Color::rgb_from_color(col, p->albedo);
+
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 

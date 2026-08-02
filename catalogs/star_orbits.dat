@@ -88,7 +88,7 @@ HD20794                 (dust disk)                             004.        050.
 # https://doi.org/10.1086%2F174210
 # https://doi.org/10.1093/mnras/stu1641
 HD10700                 (stellar rotation)      4e+6                        007
-HD10700                 (debris disk)                           105         035
+HD10700                 (debris disk)                           105         035                     1.5e+12
 
 # https://doi.org/10.48550/arXiv.2303.13584
 # The paper assumes a node of -1.1 degrees based on the position angle of the belt, without any observation of the direction of rotation nor

@@ -100,6 +100,22 @@ namespace alienorum
         bool from_json(json j);
     };
 
+    // A single impact crater: a bowl-with-rim (and, above a size threshold, a central peak)
+    // stamped into the bump map, plus optional bright rays and rim brightening in the color
+    // data. Center is a unit vector on the sphere; sizes are angular (radians), since that's
+    // resolution- and radius-independent.
+    struct Crater
+    {
+        double cx, cy, cz;                  // unit vector, crater center
+        double angular_radius;              // radians
+        double reach_factor;                // how far past angular_radius (in units of it) the rim/ejecta fade out
+        double depth, rim_height, rim_width, central_peak;
+        bool has_rays;
+        double ray_freq, ray_phase, ray_sharpness, ray_extent_factor;
+        // Tangent-plane basis at the crater center, for measuring ray bearing.
+        double ex, ey, ez, tnx, tny, tnz;
+    };
+
     class Map
     {
         protected:
@@ -115,6 +131,7 @@ namespace alienorum
         CelestialObject *mcel = nullptr;
 
         unsigned int idx_of(double latitude, double longitude);
+        void stamp_craters(CelestialObject *cel, double bump_scale);
 
         __uint128_t ___ = 0;
 
