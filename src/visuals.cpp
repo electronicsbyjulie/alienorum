@@ -1071,7 +1071,59 @@ int draw_sphere(CelestialObject* cel, double arad)
     return result;
 }
 
-void draw_flare(double flare, Color col)
+// Deterministic per-streak jitter. Keyed off the streak index rather than the clock so the
+// corona keeps the same shape from frame to frame instead of shimmering.
+static double flare_hash(int k)
+{
+    double s = sin(k * 12.9898) * 43758.5453;
+    return s - floor(s);
+}
+
+// ImGui has no radial gradient, and stacking translucent discs leaves a hard edge at every
+// disc, which is what made the halo read as a set of concentric rings. Drawing vertex-
+// coloured annuli hands the falloff to the hardware interpolator, so it comes out smooth.
+static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3Byte rgb,
+    double peak_alpha, double falloff)
+{
+    if (r_out <= r_in || peak_alpha < 1.0) return;
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
+    const int nring = 16;
+    int nseg = (int)fmin(64.0, fmax(24.0, r_out * 0.5));
+
+    dl->AddCircleFilled(c, r_in, rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)peak_alpha)), 0);
+
+    dl->PrimReserve(nring*nseg*6, nring*nseg*4);
+    for (int i=0; i<nring; i++)
+    {
+        double f0 = (double)i/nring, f1 = (double)(i+1)/nring;
+        double ra = r_in + (r_out-r_in)*f0, rb = r_in + (r_out-r_in)*f1;
+        ImU32 ca = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)(peak_alpha*pow(1.0-f0, falloff))));
+        ImU32 cb = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)(peak_alpha*pow(1.0-f1, falloff))));
+        for (int s=0; s<nseg; s++)
+        {
+            double t0 = s*(_pi*2.0/nseg), t1 = (s+1)*(_pi*2.0/nseg);
+            double x0 = cos(t0), y0 = sin(t0), x1 = cos(t1), y1 = sin(t1);
+            unsigned int base = dl->_VtxCurrentIdx;
+            dl->PrimWriteVtx(ImVec2(c.x + x0*ra, c.y + y0*ra), uv, ca);
+            dl->PrimWriteVtx(ImVec2(c.x + x1*ra, c.y + y1*ra), uv, ca);
+            dl->PrimWriteVtx(ImVec2(c.x + x1*rb, c.y + y1*rb), uv, cb);
+            dl->PrimWriteVtx(ImVec2(c.x + x0*rb, c.y + y0*rb), uv, cb);
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+1));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+3));
+        }
+    }
+}
+
+// Diffraction-style flare. A faint point source gets a four-point cross that fills out into
+// a full circle of rays as it brightens. A very bright or well-resolved source (the Sun, the
+// Moon) scatters its light into a hazy corona instead: sharp spikes wash out, and what is
+// left is a smooth core glow frayed by fine radiating streaks.
+void draw_flare(double flare, Color col, double vmag, double disc_px)
 {
     if (whtbkgd) return;
     double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
@@ -1080,16 +1132,88 @@ void draw_flare(double flare, Color col)
     rgb.g = (int)(col.green* divisor);
     rgb.b = (int)(col.blue * divisor);
 
-    #define jmax 3
-    for (int j=jmax; j>0; j--)
+    // Four rays around magnitude -10 and dimmer, filling in to a full circle by the Sun.
+    double fill = (vmag > -10.0) ? 0.0 : fmin(1.0, (-10.0 - vmag) / 16.0);
+
+    // Glare scatters into a haze either because the source is overwhelmingly bright or
+    // because its disc is resolved enough that it stops behaving like a point. Brightness
+    // is what dominates: the Sun hazes over even when its disc is only a few pixels wide.
+    // Ramps in smoothly from magnitude -1 so Venus and Jupiter pick up a slight haze while
+    // the Moon and Sun saturate it.
+    double glare = fmax(0.0, -1.0 - vmag);
+    double haze = fmin(1.0, fmax(disc_px / 12.0, 1.0 - exp(-glare / 7.0)));
+
+    double base_len = max_bloomrad * 1.5 + flare * 1.1;
+    auto draw_streak = [&](double ang, double from_r, double to_r, double halfwidth, ImU32 c)
     {
-        jay = 0.25 + 0.25 * j * flare;
-        double jay15 = jay+max_bloomrad;
-        ImVec2 radii(jay15, jay15*0.333);
-        ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (jmax+1-j)*2));
-        double thoff = _pi*0.1*j;
-        for (theta=0; theta<_pi*2; theta += _pi*0.2)
-            ImGui::GetBackgroundDrawList()->AddEllipseFilled(xycoord, radii, fcol, theta+thoff);
+        double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
+        ImVec2 base_a(xycoord.x + dx*from_r + px*halfwidth, xycoord.y + dy*from_r + py*halfwidth);
+        ImVec2 base_b(xycoord.x + dx*from_r - px*halfwidth, xycoord.y + dy*from_r - py*halfwidth);
+        ImVec2 tip(xycoord.x + dx*to_r, xycoord.y + dy*to_r);
+        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_a, base_b, tip, c);
+    };
+
+    if (haze > 0.01)
+    {
+        double halo_span = disc_px * 0.8 + base_len * 0.7;
+        draw_radial_glow(xycoord, fmax(1.0, disc_px * 0.85), disc_px + halo_span, rgb,
+            230.0 * haze, 2.2);
+
+        // Fine radiating streaks. These are what keep the corona from reading as circles:
+        // each one starts at the limb and runs out to its own length, so the glow frays.
+        // The angle jitter is wider than one slot so streaks clump and leave gaps instead
+        // of landing on an even spoke pattern.
+        const int nfine = 128;
+        double corona_len = base_len * (0.55 + 0.85 * haze);
+        for (int k=0; k<nfine; k++)
+        {
+            double h1 = flare_hash(k), h2 = flare_hash(k + 977), h3 = flare_hash(k + 3121);
+            int a = (int)(30.0 * haze * (0.25 + 0.75 * h2));
+            if (a < 1) continue;
+            ImU32 scol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, a));
+            double ang = (k + (h3 - 0.5) * 1.7) * (_pi * 2.0 / nfine);
+            draw_streak(ang, disc_px * 0.7, disc_px + corona_len * (0.18 + 0.82 * pow(h1, 1.8)),
+                0.6 + 1.2 * h2, scol);
+        }
+    }
+
+    // Diffraction spikes. Each is a stack of triangles of growing length, so the overlap
+    // piles up into a bright base that tapers toward the tip. Haze both dims these and
+    // fattens them, which is what turns a hard cross into a soft blur.
+    // Spikes belong to small point sources examined closely. A wide field washes them out,
+    // and so does a resolved disc, so they fade in with zoom and out with haze.
+    double zf = 0.1 + 0.9 * fmin(1.0, log(fmax(1.0, zoom)) / log(24.0));
+    double spike_str = pow(1.0 - haze * 0.9, 1.6) * zf;
+    if (spike_str > 0.02)
+    {
+        const int nslots = 24, nlayers = 5;
+        double ray_len = base_len * (1.0 - 0.5 * haze);
+        double halfwidth_base = (1.7 + flare * 0.006) * (1.0 + 2.5 * haze);
+        for (int k=0; k<nslots; k++)
+        {
+            bool primary = !(k % 6);
+            double weight;
+            if (primary) weight = 1.0;
+            else if (!(k % 3)) weight = fill;                    // diagonals fill in first
+            else weight = fmax(0.0, fill * 2.0 - 1.0);           // the rest arrive last
+            if (weight < 0.01) continue;
+
+            int a = (int)(105.0 * weight * spike_str);
+            if (a < 1) continue;
+            ImU32 fcol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, a));
+
+            // A little length variation so the corona does not look mechanically even.
+            double vary = 0.78 + 0.22 * (double)((k * 7) % 5) / 4.0;
+            double len = ray_len * vary * (primary ? 1.0 : 0.55);
+            double halfwidth = halfwidth_base * (primary ? 1.0 : 0.7);
+            double ang = k * (_pi * 2.0 / nslots);
+
+            for (int j=1; j<=nlayers; j++)
+            {
+                double frac = (double)j / nlayers;
+                draw_streak(ang, 0, len*frac, halfwidth * (1.0 - 0.55*frac), fcol);
+            }
+        }
     }
 }
 
@@ -1134,7 +1258,15 @@ bool draw_one_object(int i)
     appmag = vmag_cache[i] - sky_mag_shift;
     double brght = pow(magnbase, -appmag);
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
-    flare = (bloomrad>max_bloomrad) ? fmin(max_flare, fmax(0, 1.0+sqrt(bloomrad-1.5*max_bloomrad)*8)) : 0;
+    // The bloom disc saturates at max_bloomrad long before the bloom-based flare threshold
+    // is met, which left the brightest planets and stars as flat blobs with nothing around
+    // them. Give anything brighter than magnitude -1 a glare of its own. Keying that off
+    // magnitude rather than bloomrad keeps the count bounded: bloomrad scales with
+    // global_brightness, so a threshold low enough to catch Venus at default brightness
+    // would flare six figures' worth of stars once brightness is turned up.
+    double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*8 : 0;
+    double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 12.0;
+    flare = fmin(max_flare, fmax(f_bloom, f_mag));
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     if (cls == class_satellite)
     {
@@ -1171,7 +1303,7 @@ bool draw_one_object(int i)
         if (flare)
         {
             Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
-            draw_flare(flare, col);
+            draw_flare(flare, col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
         }
 
         CelestialObject *cel = cels[i];
@@ -1199,7 +1331,7 @@ bool draw_one_object(int i)
             col.blue = effect*col.green + effect1*col.blue;
         }
 
-        if (flare) draw_flare(flare, col);
+        if (flare) draw_flare(flare, col, vmag_cache[i], 0);
 
         brght = pow(magnbase, -appmag) * global_brightness * 50;
         double circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
