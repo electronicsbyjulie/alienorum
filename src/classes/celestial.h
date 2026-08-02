@@ -133,8 +133,6 @@ namespace alienorum
         unsigned int idx_of(double latitude, double longitude);
         void stamp_craters(CelestialObject *cel, double bump_scale);
 
-        __uint128_t ___ = 0;
-
         // Globally-unique (never reused, even across a delete+new at the same address --
         // see mark_for_map_regen()'s `delete this`) version stamp for this Map's RGB pixel
         // data. Bumped by touch_gen() whenever red_data/green_data/blue_data change, so the

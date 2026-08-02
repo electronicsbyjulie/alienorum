@@ -1416,8 +1416,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
     mtx.lock();
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
-    __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
-    ___ = __;
     generating_fic_texture = true;
 
     Planet *p = (Planet*)cel;
@@ -1796,13 +1794,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 green_data[idx] = (unsigned char)(fmin(255, rgb.g * gmult * r_weight + gadd));
                 blue_data[idx] = (unsigned char)(fmin(255, rgb.b * bmult * r_weight + badd));
             }
-
-            // TODO: This does not work.
-            if (__ != ___)
-            {
-                std::cout << "Abort previous rocky map." << std::endl << std::flush;
-                return;
-            }
         }
     }
 
@@ -1979,8 +1970,6 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     mtx.lock();
-    __uint128_t __ = (__uint128_t)rand() << 64 | (__uint128_t)rand();
-    ___ = __;
     generating_fic_texture = true;
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
@@ -2124,8 +2113,6 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
                 green_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].g + t * bands[nextBandIdx].g);
                 blue_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].b + t * bands[nextBandIdx].b);
             }
-
-            if (___ != __) return;
         }
     }
     generating_fic_texture = false;
