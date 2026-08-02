@@ -287,6 +287,8 @@ HD81809                 HD81809 B               1.090e+9        150.42      085.
 HD90508                 HD90508 B               1.9e+12         016.5       081.4       016.5       1.60e+13    .0          0                   1958.6                                          0.25
 HD100623                GJ 432 B                4.4e+12                     083.4                   2.12e+13    .28                                                                             0.554                   8.8e-5       5000
 HD138918                HD138917                1.0e+11                                             4e+13
+HD48915                 Sirius B                1.58190e+9      045.400     136.336     149.161     2.96e+12    .59142      0                   1994.5715                                       1.018       .008098     .02448      25000
+
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

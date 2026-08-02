@@ -1191,11 +1191,13 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 54, 59, field);
         double inclination = atof(field) * fiftyseventh;
         s->orbit->inclination = A->obliquity = 0;
+        s->orbit->heliocentric_inclination = inclination;
 
         //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
         read_field_onebased(buffer, 61, 66, field);
         double node = atof(field) * fiftyseventh;
         s->orbit->ascending_node = A->obliquity = 0;
+        s->orbit->heliocentric_node = node;
 
         A->location.local_system_plane = system_plane_from_incl_and_node(inclination, node, A->location.system_center);
         A->lock_system_plane = true;
@@ -3091,7 +3093,9 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (!strcmp(bdystr, "(system inclination)")
             || strstr(bdystr, " disk") || strstr(bdystr, " disc")
-            || strstr(bdystr, " belt"))
+            || strstr(bdystr, " belt")
+            || !strcmp(bdystr, "(companion orbit)")
+            )
             A->has_disk = A->known_poles;
         if (A->has_disk)
         {
@@ -3745,6 +3749,28 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 15;
     line << std::string(l - line.str().size(), ' ');
 
+    if (s->orbit && s->orbit->heliocentric_inclination)
+    {
+        double omega = s->orbit->heliocentric_inclination * fiftyseven;
+        if (omega < 0) omega += 360;
+        if (omega < 100) line << " ";
+        if (omega <  10) line << " ";
+        line << std::fixed << std::setprecision(4) << omega << std::flush;
+    }
+    l += 9;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->orbit && s->orbit->heliocentric_node)
+    {
+        double omega = s->orbit->heliocentric_node * fiftyseven;
+        if (omega < 0) omega += 360;
+        if (omega < 100) line << " ";
+        if (omega <  10) line << " ";
+        line << std::fixed << std::setprecision(4) << omega << std::flush;
+    }
+    l += 9;
+    line << std::string(l - line.str().size(), ' ');
+
     // TODO:
 
     // std::cout << line << std::endl;
@@ -3802,7 +3828,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     char c;
     char buffer[1024];
     char field[64];
-    double deg, mnt, sec, RA, Decl;
+    double f, deg, mnt, sec, RA, Decl;
 
     if (!hdcache)
     {
@@ -4015,6 +4041,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 391+offset, 404+offset, field);
             if (s->orbit) s->orbit->epoch = atof(field);
 
+            read_field_onebased(buffer, 406+offset, 413+offset, field);
+            f = atof(field) * fiftyseventh;
+            if (s->orbit) s->orbit->heliocentric_inclination = f;
+
+            read_field_onebased(buffer, 415+offset, 422+offset, field);
+            f = atof(field) * fiftyseventh;
+            if (s->orbit) s->orbit->heliocentric_node = f;
 
             append_cel(s);
             num_read++;

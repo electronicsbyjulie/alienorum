@@ -247,6 +247,21 @@ void load_catalogs()
     CatalogReader cr;
     std::string ihcfn = cr.get_condensed_starcat_name();
     bool ihsc = false;
+    if (!file_exists(ihcfn.c_str()))
+    {
+        std::string ihscgz = ihcfn + std::string(".gz");
+
+        if (file_exists(ihscgz.c_str()))
+        {
+            #ifdef _WIN32
+            std::string cmd = (std::string)"7z e -y " + ihscgz + std::string(" -so > ") + ihcfn;
+            #else
+            std::string cmd = (std::string)"gunzip -k " + ihscgz;
+            #endif
+            std::cout << cmd << std::endl;
+            std::system(cmd.c_str());
+        }
+    }
     if (file_exists(ihcfn.c_str()))
     {
         mtx.lock();
@@ -743,6 +758,7 @@ void reload_stuff()
     loading_msg = "Refreshing constellations...";
     mtx.unlock();
     read_cons_lines();
+    cr.read_cons_boundaries();
     mtx.lock();
     loading_msg = "Assigning stars to constellations...";
     mtx.unlock();
