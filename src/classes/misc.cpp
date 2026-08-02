@@ -580,6 +580,27 @@ double fBm(double x, double y, double z, int octaves, double lacunarity, double 
     return (total / maxValue + 1.0) / 2.0;
 }
 
+// Ridged multifractal: folds each octave around zero, so the result has sharp,
+// high-contrast ridges and creases instead of fBm's smooth rolling hills --
+// suited to rough, weathered-looking surface texture rather than clouds.
+double ridged_fBm(double x, double y, double z, int octaves, double lacunarity, double gain)
+{
+    double total = 0.0;
+    double frequency = 1.0;
+    double amplitude = 1.0;
+    double maxValue = 0.0;
+    for (int i = 0; i < octaves; i++)
+    {
+        double n = 1.0 - fabs(pn.noise(x * frequency, y * frequency, z * frequency));
+        total += n * n * amplitude;
+        maxValue += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+
+    return total / maxValue;
+}
+
 double probability_density_function(double x, double mean, double std_dev)
 {
     double exponent = -0.5 * std::pow((x - mean) / std_dev, 2);

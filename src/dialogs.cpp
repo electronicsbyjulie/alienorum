@@ -1,11 +1,8 @@
 
-#include "dialogs.h"
-#include "inputs.h"
-#include "loaders.h"
-#include "housekeeping.h"
-#include <cstdint>
-#include <algorithm>
-
+// shlwapi.h must be included before any project header pulls in `using namespace std`
+// (see globals.h) -- shlwapi.h's own transitive COM headers declare an unqualified
+// `byte` typedef that becomes ambiguous against std::byte once that using-directive
+// is active.
 #ifdef __MINGW32__
 #include <shlwapi.h>
 #define strcasestr StrStrI
@@ -15,6 +12,13 @@
 #endif
 #include <string.h>
 #endif
+
+#include "dialogs.h"
+#include "inputs.h"
+#include "loaders.h"
+#include "housekeeping.h"
+#include <cstdint>
+#include <algorithm>
 
 using namespace alienorum;
 

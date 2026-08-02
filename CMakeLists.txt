@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(alienorum LANGUAGES CXX)
+project(alienorum VERSION 0.1.0 LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 	set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
@@ -112,11 +112,52 @@ elseif(APPLE)
 	)
 elseif(WIN32)
     target_link_libraries(alienorum
-		SDL2::SDL2main
-		SDL2::SDL2
-		SDL2_image
+		$<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>
+		$<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
+		$<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
 		OpenGL::GL
 		gdi32
 		winmm
     )
+endif()
+
+# --- Windows installer packaging (see package/build_windows_installer.sh) ---
+if(WIN32)
+	install(TARGETS alienorum RUNTIME DESTINATION .)
+
+	install(DIRECTORY assets DESTINATION .)
+
+	install(FILES
+		catalogs/star_orbits.dat
+		catalogs/planets.json
+		catalogs/soles_alienorum.dat
+		catalogs/mainseq.dat
+		catalogs/urls.dat
+		DESTINATION catalogs)
+	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
+
+	if(EXISTS "${CMAKE_SOURCE_DIR}/package/release-maps")
+		install(DIRECTORY package/release-maps/ DESTINATION maps)
+	endif()
+
+	set(CPACK_GENERATOR "NSIS")
+	set(CPACK_PACKAGE_NAME "Alienorum")
+	set(CPACK_PACKAGE_VENDOR "Alienorum")
+	set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+	set(CPACK_PACKAGE_INSTALL_DIRECTORY "Alienorum")
+	set(CPACK_PACKAGE_EXECUTABLES "alienorum" "Alienorum")
+	set(CPACK_NSIS_DISPLAY_NAME "Alienorum")
+	set(CPACK_NSIS_PACKAGE_NAME "Alienorum")
+	set(CPACK_NSIS_INSTALLED_ICON_NAME "alienorum.exe")
+	set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/assets/icon48.ico")
+	set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/assets/icon48.ico")
+	set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+	set(CPACK_NSIS_MODIFY_PATH OFF)
+	# The exe is installed to the package root (not a bin/ subfolder) specifically so
+	# NSIS's default Start Menu shortcut -- whose working directory defaults to the
+	# target executable's own folder -- lands on $INSTDIR, where catalogs/assets/maps
+	# also live. The app resolves all its data paths relative to its working directory
+	# (see look_for_catalogs() in loaders.cpp), so this keeps it finding its data without
+	# any source changes.
+	include(CPack)
 endif()
