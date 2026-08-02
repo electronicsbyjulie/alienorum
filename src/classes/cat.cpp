@@ -2438,6 +2438,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         if (pmeanincl && !sysincl) sysincl = pmeanincl;
         if (!sysincl && stincl) sysincl = stincl;
         if (cmeanincl && !sysincl) sysincl = cmeanincl;
+        if (!sysincl && s->orbit && s->orbit->heliocentric_inclination) sysincl = s->orbit->heliocentric_inclination;
         if (sysincl)
         {
             if (!stincl) stincl = sysincl;
@@ -2450,6 +2451,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         if (pmeannode && !sysnode) sysnode = pmeannode;
         if (!sysnode && stnode) sysnode = stnode;
         if (cmeannode && !sysnode) sysnode = cmeannode;
+        if (!sysnode && s->orbit && s->orbit->heliocentric_node) sysnode = s->orbit->heliocentric_node;
         if (sysnode)
         {
             if (!stnode) stnode = sysnode;
@@ -3309,6 +3311,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         {
             s->location.equatorial_plane = s->location.orbital_plane = s->location.local_system_plane = new_orbital_plane;
             s->lock_system_plane = true;
+            s->lock_equatorial_plane = true;
             s->obliquity = 0;
             s->equinox = 0;
             A->known_poles = s->known_poles = true;
@@ -4065,7 +4068,19 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 if (j==i) continue;
                 if (!strcmp(((Star*)cels[j])->alienorumid.c_str(), cels[i]->orbit->center_name.c_str()))
                 {
-                    cels[i]->orbit->center = cels[j];
+                    Star *A = (Star*)cels[j];
+                    cels[i]->orbit->center = A;
+
+                    A->update_location(simnow);
+                    if (!cels[j]->lock_system_plane)
+                    {
+                        cels[j]->location.equatorial_plane = cels[j]->location.orbital_plane = cels[j]->location.local_system_plane
+                            = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
+                            cels[i]->orbit->heliocentric_node, A->location.system_center);
+                        // cels[j]->lock_system_plane = true;
+                    }
+
+                    cels[i]->known_poles = A->known_poles = true;
                     break;
                 }
             }
