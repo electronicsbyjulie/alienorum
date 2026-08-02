@@ -1835,7 +1835,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)(30000 * bombardment_factor);
+    int num_craters = (int)(10000 * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
@@ -1867,7 +1867,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
         // Only the larger, "fresher" craters get ray systems -- and only worth it if the
         // world's cratering conditions are aggressive enough that fresh terrain persists at
         // all (see bombardment_factor above).
-        c.has_rays = (diam > max_diam * 0.35) && (frand(0, 1) < 0.5 * fmin(1.0, bombardment_factor));
+        c.has_rays = (diam > max_diam * 0.81) && (frand(0, 1) < 0.01 * fmin(1.0, bombardment_factor));
         c.ray_freq = frand(5, 10);
         c.ray_phase = frand(0, 2 * _pi);
         c.ray_sharpness = frand(6, 14);
