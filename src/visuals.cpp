@@ -1126,6 +1126,17 @@ static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3Byte rgb,
 void draw_flare(double flare, Color col, double vmag, double disc_px)
 {
     if (whtbkgd) return;
+
+    // An object viewed from zero distance (e.g. the Sun as seen from the Sun) makes
+    // viewer_magnitude() divide by r*r = 0 and return -Infinity, which turns every
+    // channel of col Infinite. 255/Infinity is a well-defined 0, but Infinite*0 is NaN,
+    // and casting NaN to int is undefined behavior -- it does not clamp, it corrupts the
+    // packed color's bits (verified: INT_MIN on this build), so a shape that size no
+    // longer paints garbage over a small area, it paints garbage over most of the screen.
+    if (!std::isfinite(flare) || !std::isfinite(vmag) || !std::isfinite(disc_px)
+        || !std::isfinite(col.red) || !std::isfinite(col.green) || !std::isfinite(col.blue))
+        return;
+
     double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
     RGB3Byte rgb;
     rgb.r = (int)(col.red * divisor);
