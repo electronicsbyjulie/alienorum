@@ -48,6 +48,7 @@ namespace alienorum
         int read_Gliese_catalog(CelestialObject** cels, int max);
         int read_BrightStars_catalog(CelestialObject** cels, int max);
         int read_Hipparcos_catalog(CelestialObject** cels, int max);
+        int read_Tycho_catalog(CelestialObject** cels, int max);
         int read_Uranometria_catalog(CelestialObject** cels, int max);
         int read_WD_catalog(CelestialObject** cels, int max);
         int read_cons_boundaries();
