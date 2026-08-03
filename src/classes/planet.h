@@ -25,7 +25,7 @@ namespace alienorum
 
         void classify();
         void set_color_from_type(bool HZ);
-        void classify(bool HZ, bool mass_and_rad_known = false);
+        void classify(bool HZ, bool mass_and_rad_known = false, bool color_known = false);
                                                             // set the type, e.g. for exoplanets
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets

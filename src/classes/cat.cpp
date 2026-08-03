@@ -3475,10 +3475,10 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             if (p->orbit && p->orbit->center && createnew)
             {
                 p->known_poles = p->obliquity && p->equinox;
-                p->location = p->orbit->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
+                p->location = p->orbit->center->location;           // Copy the system center and local plane. The local position will auto-fill later.
                 p->location.equatorial_plane.a = p->obliquity;
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
-                p->classify();              // TODO: Verify this works for all solar system objects.
+                p->classify(p->is_in_con_HZ(), true, true);         // TODO: Verify this works for all solar system objects.
 
                 Star* s = (Star*)p->get_light_center();
                 if (p->orbit->center == s)

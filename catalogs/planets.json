@@ -5,7 +5,7 @@
         "NorthPoleDecl": 63.87,
         "Oblateness": 0.00005,
         "RotationPeriod": 2164000,
-        "SurfMap": "https://svs.gsfc.nasa.gov/vis/a000000/a003800/a003851/solarSphere304A.0200.jpg",
+        "#SurfMap": "https://svs.gsfc.nasa.gov/vis/a000000/a003800/a003851/solarSphere304A.0200.jpg",
         "SystemInclination": 90.00,
         "SystemNode": 23.45
     },

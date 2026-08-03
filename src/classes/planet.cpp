@@ -46,7 +46,7 @@ void Planet::classify()
     classify(is_in_con_HZ());
 }
 
-void Planet::classify(bool HZ, bool mnrk)
+void Planet::classify(bool HZ, bool mnrk, bool ck)
 {
     Star *s = nullptr;
     double density = mnrk ? (mass / sphere_volume(volumetric_mean_radius) * 1e-6) : 0;
@@ -82,7 +82,7 @@ void Planet::classify(bool HZ, bool mnrk)
     }
     else type = gas_giant;
 
-    set_color_from_type(HZ);
+    if (!ck) set_color_from_type(HZ);
 }
 
 void Planet::estimate_radius()
