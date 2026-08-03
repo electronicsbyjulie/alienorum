@@ -156,7 +156,7 @@ void Star::rename_from_Bayer_Flamsteed()
 
         if (BayerGrkIdx >= 100)
         {
-            BayerGrkIdx = BayerGrkIdx % 100;
+            BayerGrkIdx -= 100;
             BayerGrkIdx/= 10;
         }
 
