@@ -611,7 +611,7 @@ void draw_addcel_window(ImGuiIO& io)
             if (cboceltyp_selected_idx == 2 && is_cen_planet) cboceltyp_selected_idx = 3;
             else if (cboceltyp_selected_idx == 3 && !is_cen_planet) cboceltyp_selected_idx = 2;
 
-            CelestialObject *cel;
+            CelestialObject *cel = nullptr;
             switch (cboceltyp_selected_idx)
             {
                 case 0: cel = new Galaxy();     append_cel(cel); cel->type = galaxy;        break;
