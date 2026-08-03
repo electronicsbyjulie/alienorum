@@ -128,6 +128,11 @@ void load_textures(CelestialObject* cel)
     {
         cel->surf_map = new Map(cel);
         cel->surf_map->generate_rocky_map(cel);
+        if (cel->type == lavaworld && !cel->night_map)
+        {
+            cel->night_map = new Map(cel);
+            cel->night_map->generate_lava_map(cel);
+        }
     }
 }
 

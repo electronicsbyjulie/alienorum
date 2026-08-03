@@ -1738,7 +1738,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 T_base = tidal_locked_to_star
                     ? (T_surf + halfswing - Tswing * cos(psi*0.5))
                     : (T_surf - halfswing + Tswing * sin(theta));
-                T_local = T_base - 62.5 * fmax(0, height_value - has_water);
+                T_local = T_base - Tswing * fmax(0, height_value - has_water);
                 if (height_value < has_water && (T_local < water_freezing))
                 {
                     // Polar and elevation ice
@@ -1798,6 +1798,65 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 
     if (create_bump) stamp_craters(cel, bump_scale);
+
+    generating_fic_texture = false;
+    touch_gen();
+}
+
+void alienorum::Map::generate_lava_map(CelestialObject *cel)
+{
+    mtx.lock();
+    generating_fic_texture = true;
+    Planet *p = (Planet*)cel;
+
+    // Copy size and allocate arrays.
+    Map *rm = cel->surf_map;
+    assert(rm);
+    image_height = rm->image_height;
+    image_width = rm->image_width;
+
+    allocated = image_height * image_width;
+    assert(allocated == rm->allocated);
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+
+    // Copy bump data.
+    double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
+    bump_data = new double[allocated];
+    memcpy(bump_data, rm->bump_data, allocated * sizeof(double));
+    std::cout << "Allocated " << allocated << " pixels for fictitious night map." << std::endl;
+    mtx.unlock();
+
+    // Based on temperature, calculate the degree of lava glow.
+    double tempK = p->estimate_surface_temperature(), ltemp;
+    const double glow_amt = 24.0 / blackbody_flux(tempK, R_band);
+    std::cout << glow_amt << std::endl;
+    double Tswing = tempK * 0.1 / (1.0 + p->surface_pressure * 3.5e-5);
+
+    // Fill in glowing hot lava.
+    int x, y, y1, idx;
+    double height;
+    RGB3Byte rgb;
+    for (y=0; y<image_height; y++)
+    {
+        y1 = y * image_width;
+        for (x=0; x<image_width; x++)
+        {
+            idx = y1 + x;
+            height = 0.5 + inv_bump_scale * bump_data[idx];
+            ltemp = tempK - Tswing * height;
+
+            // if (!x) std::cout << ltemp << " -> " << (glow_amt * blackbody_flux(ltemp, R_band)) << std::endl;
+            rgb.r = fmin(255, glow_amt * blackbody_flux(ltemp*1.25, R_band));            // exaggerate the colors for effect.
+            rgb.g = fmin(255, glow_amt * blackbody_flux(ltemp, V_band));
+            rgb.b = fmin(255, glow_amt * blackbody_flux(ltemp, U_band));
+
+            red_data[idx] = rgb.r;
+            green_data[idx] = rgb.g;
+            blue_data[idx] = rgb.b;
+        }
+    }
 
     generating_fic_texture = false;
     touch_gen();
@@ -2128,6 +2187,11 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
     if (lblue ) delete[] lblue;
     resample_bump_data(cel->fictitious_map_height);
     generate_rocky_map(cel);
+    if (cel->type == lavaworld && !cel->night_map)
+    {
+        cel->night_map = new Map(cel);
+        cel->night_map->generate_lava_map(cel);
+    }
 }
 
 void _resample_bump_regen_rocky(Map *map, CelestialObject *cel)
@@ -2181,7 +2245,6 @@ double alienorum::CelestialObject::Hill_sphere_radius()
     if (orbit->eccentricity < 0.0 || orbit->eccentricity >= 1.0) return 0.0;
     return orbit->semimajor_axis * (1.0 - orbit->eccentricity) * std::cbrt(mass / (3.0 * orbit->center->mass));
 }
-
 
 double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
 {
