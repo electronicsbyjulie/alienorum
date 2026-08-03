@@ -227,9 +227,62 @@
     {
         "BODYNAME": "Pluto",
         "Equinox": 43.24,
+        "Mass": 1.3e+22,
         "Obliquity": 119.51,
         "RotationPeriod": 551856.672,
         "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pluto-map-sept-16-2015.jpg/3840px-Pluto-map-sept-16-2015.jpg"
+    },
+    {
+        "BODYNAME": "Ceres",
+        "Mass": 9.38648e+20
+    },
+    {
+        "BODYNAME": "Pallas",
+        "Mass": 2.04195e+20
+    },
+    {
+        "BODYNAME": "Juno",
+        "Mass": 2.74958e+19
+    },
+    {
+        "BODYNAME": "Vesta",
+        "Mass": 2.59e+20
+    },
+    {
+        "BODYNAME": "Julia",
+        "Mass": 6.70397e+18
+    },
+    {
+        "BODYNAME": "Artemis",
+        "Mass": 2.11112e+18
+    },
+    {
+        "BODYNAME": "Veritas",
+        "Mass": 6.11102e+17
+    },
+    {
+        "BODYNAME": "Apollo",
+        "Mass": 3.35e+12
+    },
+    {
+        "BODYNAME": "Quaoar",
+        "Mass": 1.39616e+21
+    },
+    {
+        "BODYNAME": "Orcus",
+        "Mass": 6.32862e+20
+    },
+    {
+        "BODYNAME": "Haumea",
+        "Mass": 4.05345e+21
+    },
+    {
+        "BODYNAME": "Eris",
+        "Mass": 1.66e+22
+    },
+    {
+        "BODYNAME": "Makemake",
+        "Mass": 2.6e+21
     },
     {
         "ABSMG": 0.21,
