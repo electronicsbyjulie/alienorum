@@ -300,6 +300,10 @@ void draw_status_window(ImGuiIO& io)
             sssg << "Est. temp.:   " << std::fixed << std::setprecision(1) << ((Planet*)cels[whereami])->estimate_surface_temperature() << " K";
             ImGui::Text("%s", sssg.str().c_str());
 
+            CelestialObject *lcen = cels[whereami]->get_light_center();
+            double lightalt = lcen->Decl_as_radians(here);
+            std::cout << "Sun at altitude " << (lightalt*fiftyseven) << std::endl;
+
             if (1) // save_viewer_latlon)
             {
                 double vlat_edit = viewer_lat * fiftyseven;

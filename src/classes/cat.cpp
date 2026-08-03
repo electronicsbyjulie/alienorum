@@ -2189,7 +2189,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 6006 && asno != 6032 && asno != 6123 && asno != 6143 && asno != 6186 && asno != 6433 && asno != 6469 && asno != 6470
             && asno != 6471 && asno != 6486 && asno != 6493 && asno != 6701 && asno != 6714 && asno != 6826 && asno != 6875 && asno != 6914 && asno != 6999
             && asno != 7000 && asno != 50000 && asno != 90377 && asno != 90482 && asno != 134340 && asno != 136108 && asno != 136199
-            && asno != 136472 && asno != 163693 && asno != 541132
+            && asno != 136472 && asno != 163693 && asno != 486958 && asno != 541132
             )
         {
             astorb.push_back(row);
@@ -3425,9 +3425,6 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             {
                 pl.at("Mass").get_to(p->mass);
                 p->mass *= 1000;
-                std::cerr << "TEMP DEBUG mass merge: " << p->name << " -> " << (p->mass/1000) << " kg" << std::endl;
-                if (p->orbit->semimajor_axis >= 2e+12) p->type = ice_giant;
-                else if (p->mass >= rocky_mass_cutoff) p->type = gas_giant;
             } catch (...) { ; }
             try { pl.at("MeanAnom").get_to(p->orbit->mean_anomaly); p->orbit->mean_anomaly *= fiftyseventh; } catch (...) { ; }
             try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
@@ -3481,6 +3478,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->location = p->orbit->center->location;          // Copy the system center and local plane. The local position will auto-fill later.
                 p->location.equatorial_plane.a = p->obliquity;
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
+                p->classify();              // TODO: Verify this works for all solar system objects.
 
                 Star* s = (Star*)p->get_light_center();
                 if (p->orbit->center == s)

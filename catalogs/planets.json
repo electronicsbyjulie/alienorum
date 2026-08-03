@@ -234,7 +234,8 @@
     },
     {
         "BODYNAME": "Ceres",
-        "Mass": 9.38648e+20
+        "Mass": 9.38648e+20,
+        "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/solar/2023/09/p/i/a/2/PIA20354_hires.jpg?w=1200&h=600&fit=clip&crop=faces%2Cfocalpoint"
     },
     {
         "BODYNAME": "Pallas",
@@ -246,7 +247,8 @@
     },
     {
         "BODYNAME": "Vesta",
-        "Mass": 2.59e+20
+        "Mass": 2.59e+20,
+        "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Vesta_map_for_GeoHack.png/1280px-Vesta_map_for_GeoHack.png"
     },
     {
         "BODYNAME": "Julia",
@@ -283,6 +285,11 @@
     {
         "BODYNAME": "Makemake",
         "Mass": 2.6e+21
+    },
+    {
+        "BODYNAME": "Arrokoth",
+        "Mass": 7.485e+14,
+        "VolMeanRad": 19896
     },
     {
         "ABSMG": 0.21,
