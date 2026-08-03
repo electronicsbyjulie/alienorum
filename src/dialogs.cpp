@@ -301,8 +301,13 @@ void draw_status_window(ImGuiIO& io)
             ImGui::Text("%s", sssg.str().c_str());
 
             CelestialObject *lcen = cels[whereami]->get_light_center();
-            double lightalt = lcen->Decl_as_radians(here);
-            std::cout << "Sun at altitude " << (lightalt*fiftyseven) << std::endl;
+            double lightalt = lcen->Decl_as_radians(here)*fiftyseven;
+            // std::cout << "Sun at altitude " << (lightalt) << std::endl;
+            if (lightalt > 0) ImGui::Text("%s", "Daytime");
+            else if (whereami == iamhome && lightalt > -6) ImGui::Text("%s", "Civil Twilight");
+            else if (whereami == iamhome && lightalt > -12) ImGui::Text("%s", "Nautical Twilight");
+            else if (whereami == iamhome && lightalt > -18) ImGui::Text("%s", "Astronomical Twilight");
+            else ImGui::Text("%s", "Nighttime");
 
             if (1) // save_viewer_latlon)
             {
