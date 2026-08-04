@@ -1965,8 +1965,9 @@ void draw_sunclock()
     }
 }
 
-bool draw_marker[16];
-double hz_dx[16], hz_dy[16];
+#define hznodes 1024
+bool draw_marker[hznodes];
+double hz_dx[hznodes], hz_dy[hznodes];
 void find_horizon()
 {
     hz_y = dispcy*29;
@@ -2001,7 +2002,7 @@ void find_horizon()
         // std::cout << "pthz=" << pthz << std::endl;
 
         double theta = 0, step = _pi/8;
-        for (j = 0; j < 16; j++)
+        for (j = 0; j < hznodes; j++)
         {
             draw_marker[j] = false;
             Point pt = rotate3D(pthz, center, yaxis, theta);
@@ -2010,7 +2011,7 @@ void find_horizon()
             hz_dx[j] = horizon.x * dispcx + dispcx;
             hz_dy[j] = horizon.y * dispcx + dispcy;
             if (hz_dy[j] < 0) hz_dy[j] = 0;
-            else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
+            else if (!(j % 128)) draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
             // if (draw_marker[j]) std::cout << "pt=" << pt << std::endl;
             if (draw_marker[j] && hz_y > dispcy*2) hz_y = hz_dy[j];
             theta += step;
@@ -2024,7 +2025,7 @@ void draw_horizon()
     // TODO: Render according to bump map and generate a fictitious skyline.
     if (view_mode == vm_horizon)
     {
-        int j;
+        int i, j;
         CelestialObject *cel = cels[whereami];
 
         if (!cel->looked_for_maps)
@@ -2044,7 +2045,7 @@ void draw_horizon()
 
         double hz_fx = -1e9, hz_fy = 1e9;
         ImVec2 points[4];
-        for (j = 0; j < 16; j++) if (hz_dx[j] > -1e5 && hz_dy[j] > -1e5)              // draw_marker[j])
+        for (j = 0; j < hznodes; j++) if (hz_dx[j] > -1e5 && hz_dy[j] > -1e5)              // draw_marker[j])
         {
             if (hz_fx > -1e8 && hz_fy < 1e8)
             {
@@ -2069,10 +2070,10 @@ void draw_horizon()
         {
             double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
             ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
-            if (show_grid) for (j = 0; j < 16; j++) if (draw_marker[j])
+            if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*64])
             {
-                ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[j]);
-                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[j]);
+                ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
+                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
             }
         }
     }
