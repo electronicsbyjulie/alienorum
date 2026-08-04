@@ -613,6 +613,10 @@ void cache_cons_lines()
     {
         double mag_limit = (i == 34) ? 7.5 : 6.5;
 
+        mtx.lock();
+        loading_msg = std::string("Assigning ") + constellations[i].name + std::string("...");
+        mtx.unlock();
+
         nln = constellations[i].lines.size();
         for (l=0; l<nln; l++)
         {
