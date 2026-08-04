@@ -1981,16 +1981,37 @@ void find_horizon()
             ttex.detach();
         }
 
+        Planet *p;
+        double horizon_lift_rad = 0;
+        if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+        {
+            p = (Planet*)cel;
+
+            // Standard refractive index of air at STP (288.15 K, 1013.25 hPa) is ~1.000293
+            // We scale this baseline by the planet's local density
+            double density_ratio = (p->surface_pressure / 101325) * (288.15 / p->estimate_surface_temperature());
+            double n_0 = 1.0 + (0.000293 * density_ratio);
+
+            // Calculate the visual horizon lift (returns radians)
+            horizon_lift_rad = std::acos(1.0 / n_0) * sqrt(p->volumetric_mean_radius / earth_radius);
+            // std::cout << "horizon_lift_deg=" << (horizon_lift_rad * fiftyseven) << std::endl;
+        }
+
+        Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
+        // std::cout << "pthz=" << pthz << std::endl;
+
         double theta = 0, step = _pi/8;
         for (j = 0; j < 16; j++)
         {
             draw_marker[j] = false;
-            Point pt = rotate3D(zaxis, center, yaxis, theta);
+            Point pt = rotate3D(pthz, center, yaxis, theta);
+
             Cartesian2D horizon = Cartesian2D(pt, azimuth, altitude, zoom);
             hz_dx[j] = horizon.x * dispcx + dispcx;
             hz_dy[j] = horizon.y * dispcx + dispcy;
             if (hz_dy[j] < 0) hz_dy[j] = 0;
             else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
+            // if (draw_marker[j]) std::cout << "pt=" << pt << std::endl;
             if (draw_marker[j] && hz_y > dispcy*2) hz_y = hz_dy[j];
             theta += step;
         }
@@ -2021,9 +2042,28 @@ void draw_horizon()
         rgb.g *= is_day;
         rgb.b *= is_day;
 
-        double hz_draw_y = (hz_y > dispcy*28 && altitude < 0) ? 0 : hz_y;
+        double hz_fx = -1e9, hz_fy = 1e9;
+        ImVec2 points[4];
+        for (j = 0; j < 16; j++) if (hz_dx[j] > -1e5 && hz_dy[j] > -1e5)              // draw_marker[j])
+        {
+            if (hz_fx > -1e8 && hz_fy < 1e8)
+            {
+                points[0] = ImVec2(hz_fx, hz_fy);
+                points[1] = ImVec2(hz_dx[j], hz_dy[j]);
+                points[2] = ImVec2(hz_dx[j], dispcy*2);
+                points[3] = ImVec2(hz_fx, dispcy*2);
+
+                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4,
+                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
+            }
+
+            hz_fx = hz_dx[j];
+            hz_fy = hz_dy[j];
+        }
+
+        /*double hz_draw_y = (hz_y > dispcy*28 && altitude < 0) ? 0 : hz_y;
         ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_draw_y), ImVec2(dispcx*2, dispcy*2),
-            rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
+            rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));*/
 
         if (hz_y < dispcy*2)
         {

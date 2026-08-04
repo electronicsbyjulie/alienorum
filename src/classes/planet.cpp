@@ -266,6 +266,80 @@ double Planet::estimate_surface_temperature()
     return t_surface;
 }
 
+// Convert true altitude to observed.
+double alienorum::Planet::atmospheric_refraction(double alt_rad)
+{
+    temperature = estimate_surface_temperature();       // Kelvins
+    double P_hpa = surface_pressure * 0.01;             // Pascals to hPa (millibars)
+    double T_c = temperature - 273.15;
+
+    double h_true_deg = alt_rad * fiftyseven;
+
+    // 1. Calculate pressure modifier first
+    double pressure_ratio = P_hpa / 1013.25;
+    if (pressure_ratio > 5.0)
+    {
+        pressure_ratio = 5.0 + std::log10(pressure_ratio - 4.0);
+    }
+
+    // 2. Dynamic clamp to prevent the "hang"
+    // Earth-like (~1 atm) clamps safely at -1.0. 
+    // Extreme atmospheres push the clamp higher to avoid the ultra-steep slope.
+    double min_calc_alt = -1.0;
+    #if 1
+    if (pressure_ratio > 1.0)
+    {
+        min_calc_alt = -1.0 + (pressure_ratio * 0.25); 
+    }
+    #else
+    // ... calculate min_calc_alt dynamically based on pressure as before ...
+
+    double delta = h_true_deg - min_calc_alt;
+    double calc_h_deg;
+
+    if (delta > 20.0) 
+    {
+        // Prevent std::exp overflow for stars high in the sky.
+        // At this altitude, the smoothing function is effectively y = x anyway.
+        calc_h_deg = h_true_deg; 
+    } 
+    else 
+    {
+        // 'k' dictates the width of the smoothing curve in degrees.
+        // A value of 0.5 to 1.0 usually provides a natural visual deceleration.
+        double k = 0.5; 
+        
+        // As delta goes negative (dropping below the limit), the exp() term 
+        // approaches 0, log1p approaches 0, and calc_h_deg smoothly approaches min_calc_alt.
+        calc_h_deg = min_calc_alt + k * std::log1p(std::exp(delta / k));
+    }
+
+    // Now feed calc_h_deg into Saemundsson's formula...
+    #endif
+
+    double calc_h_deg = h_true_deg;
+    if (calc_h_deg < min_calc_alt) calc_h_deg = min_calc_alt;
+
+    // 3. Saemundsson's base formula using the safe clamped altitude
+    double correction = 10.3 / (calc_h_deg + 5.11);
+    double arg_deg = calc_h_deg + correction;
+
+    if (arg_deg >= 90.0) return 0.0; // Zenith: No refraction
+
+    double arg_rad = arg_deg * fiftyseventh;
+    double cot_val = 1.0 / std::tan(arg_rad);
+
+    // 4. Calculate final refraction
+    double R_arcmin = 1.02 * cot_val * pressure_ratio * (283.0 / (273.0 + T_c));
+    double R_deg = R_arcmin / 60.0;
+
+    // Final safety clamps
+    if (R_deg < 0.0) R_deg = 0.0;
+    if (R_deg > 5.0) R_deg = 5.0; 
+
+    return R_deg * fiftyseventh;  // Return just the refractive shift in radians
+}
+
 bool Planet::is_in_con_HZ()
 {
     if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;

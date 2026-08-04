@@ -39,6 +39,7 @@ namespace alienorum
         bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
         double estimate_bump_scale();
         void incline_exo_orbit(double sys_solincl, double sys_solnode);
+        double atmospheric_refraction(double altitiude);
 
         Planet();
         ~Planet() { if (orbit) delete orbit; }

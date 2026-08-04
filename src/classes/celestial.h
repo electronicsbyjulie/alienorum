@@ -282,6 +282,7 @@ namespace alienorum
         void Decl_from_degms(std::string);
         double RA_as_radians(CelestialLocation seen_from, double seen_equinox);
         double Decl_as_radians(CelestialLocation seen_from);
+
         std::string scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat = false);
         void randomize();
         double density();
