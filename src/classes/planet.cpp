@@ -6,6 +6,7 @@
 #include "star.h"
 #include "point.h"
 #include "patch.h"
+#include "shore.h"
 
 using namespace alienorum;
 
@@ -83,6 +84,12 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     else type = gas_giant;
 
     if (!ck) set_color_from_type(HZ);
+
+    if (!surface_pressure)
+    {
+        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(get_light_center()), *this);
+        surface_pressure = pow(10, shoreline) * 503;
+    }
 }
 
 void Planet::estimate_radius()

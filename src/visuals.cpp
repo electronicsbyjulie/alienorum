@@ -2001,7 +2001,7 @@ void find_horizon()
         Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
         // std::cout << "pthz=" << pthz << std::endl;
 
-        double theta = 0, step = _pi/8;
+        double theta = 0, step = _pi*2/hznodes;
         for (j = 0; j < hznodes; j++)
         {
             draw_marker[j] = false;
@@ -2052,8 +2052,8 @@ void draw_horizon()
             if (hz_fx > -1e8 && hz_fy < 1e8 && fabs(hz_fx-hz_dx[j%hznodes]) < dispcx * zoom)
             {
                 points[0] = ImVec2(hz_fx, hz_fy);
-                points[1] = ImVec2(hz_dx[j%hznodes], hz_dy[j%hznodes]);
-                points[2] = ImVec2(hz_dx[j%hznodes], dispcy*2);
+                points[1] = ImVec2(hz_dx[j%hznodes]+1, hz_dy[j%hznodes]);
+                points[2] = ImVec2(hz_dx[j%hznodes]+1, dispcy*2);
                 points[3] = ImVec2(hz_fx, dispcy*2);
 
                 ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4,
