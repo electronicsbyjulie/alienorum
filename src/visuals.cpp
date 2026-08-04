@@ -1988,14 +1988,15 @@ void find_horizon()
         {
             p = (Planet*)cel;
 
-            // Standard refractive index of air at STP (288.15 K, 1013.25 hPa) is ~1.000293
-            // We scale this baseline by the planet's local density
             double density_ratio = (p->surface_pressure / 101325) * (288.15 / p->estimate_surface_temperature());
-            double n_0 = 1.0 + (0.000293 * density_ratio);
+            if (density_ratio > 4.0) 
+            {
+                double n_0 = 1.0 + (0.000293 * density_ratio);
 
-            // Calculate the visual horizon lift (returns radians)
-            horizon_lift_rad = std::acos(1.0 / n_0) * sqrt(p->volumetric_mean_radius / earth_radius);
-            // std::cout << "horizon_lift_deg=" << (horizon_lift_rad * fiftyseven) << std::endl;
+                // Calculate the visual horizon lift (returns radians)
+                horizon_lift_rad = std::acos(1.0 / n_0);
+                // std::cout << "horizon_lift_deg=" << (horizon_lift_rad * fiftyseven) << std::endl;
+            }
         }
 
         Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
