@@ -40,6 +40,7 @@ namespace alienorum
         double estimate_bump_scale();
         void incline_exo_orbit(double sys_solincl, double sys_solnode);
         double atmospheric_refraction(double altitiude);
+        double atmospheric_horizon_lift();
 
         Planet();
         ~Planet() { if (orbit) delete orbit; }

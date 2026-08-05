@@ -2011,15 +2011,10 @@ void find_horizon()
         {
             p = (Planet*)cel;
 
-            double density_ratio = (p->surface_pressure / 101325) * (288.15 / p->estimate_surface_temperature());
-            if (density_ratio > 4.0) 
-            {
-                double n_0 = 1.0 + (0.000293 * density_ratio);
-
-                // Calculate the visual horizon lift (returns radians)
-                horizon_lift_rad = std::acos(1.0 / n_0);
-                // std::cout << "horizon_lift_deg=" << (horizon_lift_rad * fiftyseven) << std::endl;
-            }
+            // Shared with atmospheric_refraction() (planet.cpp) -- see its own comment: star
+            // refraction near the horizon is calibrated against this same lift, so a star at the
+            // true horizon doesn't render as if it were behind the visually-raised ground.
+            horizon_lift_rad = p->atmospheric_horizon_lift();
         }
 
         Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
