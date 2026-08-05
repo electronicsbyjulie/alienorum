@@ -2031,7 +2031,8 @@ void find_horizon()
             Cartesian2D horizon0 = Cartesian2D(pt0, azimuth, altitude, zoom);
             hz_dx[j] = horizon.x * dispcx + dispcx;
             hz_dy[j] = horizon.y * dispcx + dispcy;
-            if (hz_dy[j] < 0) hz_dy[j] = 0;
+            if (hz_dx[j] < -1e4) draw_marker[j] = false;
+            // else if (hz_dy[j] < 0) hz_dy[j] = 0;
             else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
             // if (draw_marker[j]) std::cout << "pt=" << pt << std::endl;
             if (draw_marker[j] && hz_y > dispcy*2) hz_y = horizon0.y * dispcx + dispcy;
@@ -2068,8 +2069,10 @@ void draw_horizon()
         ImVec2 points[4];
         for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hz_dy[j%hznodes] > -1e5)              // draw_marker[j])
         {
-            if (hz_fx > -1e8 && hz_fy < 1e8 && fabs(hz_fx-hz_dx[j%hznodes]) < dispcx * zoom)
+            if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hz_dy[j%hznodes] > -1e4 && fabs(hz_fx-hz_dx[j%hznodes]) < dispcx * zoom)
             {
+                if (altitude > (fiftyseventh * 40) && (hz_dy[j%hznodes] <= 0 || hz_fy <= 0)) continue;
+
                 points[0] = ImVec2(hz_fx, hz_fy);
                 points[1] = ImVec2(hz_dx[j%hznodes]+1, hz_dy[j%hznodes]);
                 points[2] = ImVec2(hz_dx[j%hznodes]+1, dispcy*2);
@@ -2083,19 +2086,12 @@ void draw_horizon()
             hz_fy = hz_dy[j%hznodes];
         }
 
-        /*double hz_draw_y = (hz_y > dispcy*28 && altitude < 0) ? 0 : hz_y;
-        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_draw_y), ImVec2(dispcx*2, dispcy*2),
-            rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));*/
-
-        if (1) // hz_y < dispcy*2)
+        double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
+        ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
+        if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*64])
         {
-            double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
-            ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
-            if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*64])
-            {
-                ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
-                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
-            }
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
+            if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
         }
     }
 }
@@ -2194,6 +2190,7 @@ void draw_cons_lines()
         {
             Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
             cbd = to_viewer_plane(cbd);
+            cbd = refract_true_point(cbd);
             lconsdir += cbd;
             Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -2224,6 +2221,7 @@ void draw_cons_lines()
         for (i=0; i<6; i++)
         {
             Point laxdir = to_viewer_plane(axisdir[i]);
+            laxdir = refract_true_point(laxdir);
             Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
