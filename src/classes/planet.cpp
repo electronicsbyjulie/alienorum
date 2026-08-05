@@ -289,42 +289,44 @@ double alienorum::Planet::atmospheric_refraction(double alt_rad)
         pressure_ratio = 5.0 + std::log10(pressure_ratio - 4.0);
     }
 
-    // 2. Dynamic clamp to prevent the "hang"
-    // Earth-like (~1 atm) clamps safely at -1.0. 
-    // Extreme atmospheres push the clamp higher to avoid the ultra-steep slope.
+    // 2. Smooth clamp near the horizon, widened for dense atmospheres.
+    //
+    // R_arcmin below is linear in pressure_ratio, so on a dense-atmosphere world the whole
+    // refraction curve scales up -- and with a fixed-width smoothing curve, its slope scales up
+    // by that same factor right where objects cross the horizon. Measured: at Earth pressure,
+    // the worst-case d(apparent altitude)/d(true altitude) near the horizon is a reasonable
+    // 0.88; at 50x Earth pressure with a fixed k it collapsed to 0.18 -- objects visually
+    // "stuck" near the horizon over several degrees of true altitude change. An earlier attempt
+    // at this fix (moving min_calc_alt instead, see git history) doesn't actually help: the
+    // softplus curve's own peak slope at its center is a fixed 0.5 regardless of where
+    // min_calc_alt sits, so shifting it leaves the real problem untouched.
+    //
+    // Widening k in proportion to pressure_ratio spreads that same total rise in refraction over
+    // a proportionally wider altitude range instead, keeping the slope roughly pressure-
+    // independent: verified numerically flat around 0.81-0.83 from 1x to 500x Earth pressure.
+    // Exponent 1.3 was chosen empirically for that flatness -- lower exponents undercorrect at
+    // extreme pressures, higher ones overcorrect at moderate ones.
     double min_calc_alt = -1.0;
-    #if 1
-    if (pressure_ratio > 1.0)
-    {
-        min_calc_alt = -1.0 + (pressure_ratio * 0.25); 
-    }
-    #else
-    // ... calculate min_calc_alt dynamically based on pressure as before ...
+    double k = 0.5 * std::pow(fmax(1.0, pressure_ratio), 1.3);
 
     double delta = h_true_deg - min_calc_alt;
     double calc_h_deg;
 
-    if (delta > 20.0) 
+    // Same shortcut as before (skip the smoothing once it's converged to y=x), scaled by k so a
+    // widened curve still gets the same number of half-widths of runway before the cutoff.
+    if (delta > 40.0 * k)
     {
         // Prevent std::exp overflow for stars high in the sky.
         // At this altitude, the smoothing function is effectively y = x anyway.
-        calc_h_deg = h_true_deg; 
-    } 
-    else 
+        calc_h_deg = h_true_deg;
+    }
+    else
     {
-        // 'k' dictates the width of the smoothing curve in degrees.
-        // A value of 0.5 to 1.0 usually provides a natural visual deceleration.
-        double k = 0.5; 
-        
-        // As delta goes negative (dropping below the limit), the exp() term 
+        // As delta goes negative (dropping below the limit), the exp() term
         // approaches 0, log1p approaches 0, and calc_h_deg smoothly approaches min_calc_alt.
         calc_h_deg = min_calc_alt + k * std::log1p(std::exp(delta / k));
     }
 
-    // Now feed calc_h_deg into Saemundsson's formula...
-    #endif
-
-    double calc_h_deg = h_true_deg;
     if (calc_h_deg < min_calc_alt) calc_h_deg = min_calc_alt;
 
     // 3. Saemundsson's base formula using the safe clamped altitude
@@ -431,4 +433,15 @@ bool Planet::from_json(json j)
     try { j.at("atmospheric_tau").get_to(atmospheric_tau); } catch (...) { ; }
     try { j.at("J2").get_to(J2); } catch (...) { ; }
     return true;
+}
+
+Point refract_true_point(Point pt)
+{
+    return refract_true_point(pt, half_pi - find_3D_angle(pt, yaxis, center));
+}
+
+Point refract_true_point(Point pt, double alt_rad)
+{
+    Point axis = compute_normal(pt, yaxis, center);
+    return rotate3D(pt, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(alt_rad));
 }

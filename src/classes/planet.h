@@ -61,6 +61,9 @@ namespace alienorum
     };
 }
 
+Point refract_true_point(Point pt);
+Point refract_true_point(Point pt, double alt_rad);
+
 extern std::vector<alienorum::AstorbRow> astorb;
 
 #endif

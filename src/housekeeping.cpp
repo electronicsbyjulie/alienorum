@@ -351,8 +351,10 @@ void compute_object_draw_coordinates()
 
             if (view_mode == vm_horizon)
             {
-                Point axis = compute_normal(rel, yaxis, center);
-                rel = rotate3D(rel, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(cels[i]->Decl_as_radians(here)));
+                /* Point axis = compute_normal(rel, yaxis, center);
+                rel = rotate3D(rel, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(cels[i]->Decl_as_radians(here))); */
+
+                rel = refract_true_point(rel);
 
                 if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
                 {
