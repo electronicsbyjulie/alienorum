@@ -463,7 +463,13 @@ void draw_objinf_window(ImGuiIO& io)
             npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
             double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
             if (objaz < 0) objaz += _pi*2;
-            objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
+            double horizon_lift_rad = 0;
+            if (view_mode == vm_horizon)
+            {
+                // TODO: This loses accuracy for altitudes far above the horizon.
+                horizon_lift_rad = ((Planet*)cels[whereami])->atmospheric_horizon_lift();
+            }
+            objinfo += (std::string)"Altitude: " + std::to_string((cels[i]->Decl_as_radians_refracted(here) - horizon_lift_rad)*fiftyseven) + (std::string)"\n"
                     +  (std::string)"Azimuth:  "
                     +  std::to_string(objaz*fiftyseven)
                     +  (std::string)"\n";

@@ -14,7 +14,7 @@ void center_selected()
         azimuth = cels[selected]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
-        altitude = cels[selected]->Decl_as_radians(here);
+        altitude = cels[selected]->Decl_as_radians_refracted(here);
     }
     enforce_y_pan_limit();
     viewchanged = true;
@@ -27,7 +27,7 @@ void center_tracked()
         azimuth = cels[trackidx]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
-        altitude = cels[trackidx]->Decl_as_radians(here);
+        altitude = cels[trackidx]->Decl_as_radians_refracted(here);
     }
     enforce_y_pan_limit();
     viewchanged = true;
