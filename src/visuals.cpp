@@ -2087,7 +2087,7 @@ void draw_horizon()
         ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_draw_y), ImVec2(dispcx*2, dispcy*2),
             rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));*/
 
-        if (hz_y < dispcy*2)
+        if (1) // hz_y < dispcy*2)
         {
             double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
             ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
