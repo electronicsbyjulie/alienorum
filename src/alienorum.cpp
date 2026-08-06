@@ -246,6 +246,7 @@ int main (int argc, char** argv)
     }
 
     if (!look_for_catalogs()) return -1;
+    if (file_exists("nonet")) radio_silence = true;
     SDL_Surface* icon = IMG_Load("assets" _FILESLASH "icon48.png");
     if (icon)
     {

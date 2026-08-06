@@ -2,6 +2,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "classes/cons.h"
+#include <cstdlib>              // std::getenv, pour ALIENORUM_HOME dans establish_project_root()
 
 using namespace alienorum;
 
@@ -156,29 +157,75 @@ void save_textures(CelestialObject* cel)
     }
 }
 
+// Localise la racine du projet -- le dossier qui contient `catalogs` -- et s'y place, de sorte que
+// tout le reste du programme puisse continuer a resoudre ses fichiers en relatif.
+//
+// La recherche part de l'executable avant de se rabattre sur le repertoire courant. La remontee
+// existe precisement parce que le repertoire courant n'est pas a nous : le shell peut avoir ete
+// lance de n'importe ou. SDL_GetBasePath() donne le dossier de l'executable, et SDL est initialise
+// (alienorum.cpp, SDL_Init) bien avant l'appel a look_for_catalogs(), donc il est disponible ici.
+// Lance en bin/alienorum, la recherche demarre a <racine>/bin et trouve <racine>/catalogs au
+// premier pas, quel que soit le dossier depuis lequel la commande a ete tapee.
+//
+// L'arret se fait sur `dir == dir.parent_path()`, seul vrai a la racine du systeme de fichiers.
+// Une version anterieure s'arretait quand current_path().string().size() tombait sous 5 -- une
+// heuristique sur la longueur d'une chaine ("/" fait 1, "/opt" 4, "/home" 5, "C:\" 3) qui laissait
+// la remontee traverser /home : un dossier `catalogs` egare au-dessus du projet devenait
+// silencieusement la racine, et radio_silence allait alors lire son `nonet` ailleurs que chez nous.
+//
+// Tout passe par les surcharges a std::error_code, donc rien ne leve : le try/catch d'antan n'a
+// plus d'objet.
+static bool establish_project_root()
+{
+    namespace fs = std::filesystem;
+    std::vector<fs::path> candidates;
+
+    if (const char *home = std::getenv("ALIENORUM_HOME")) candidates.push_back(home);
+    if (char *base = SDL_GetBasePath())
+    {
+        candidates.push_back(base);
+        SDL_free(base);                                 // le tampon appartient a SDL
+    }
+    candidates.push_back(fs::current_path());
+
+    for (const fs::path &start : candidates)
+    {
+        std::error_code ec;
+        fs::path dir = fs::weakly_canonical(start, ec);
+        if (ec) continue;
+
+        while (true)
+        {
+            if (fs::exists(dir / p, ec))
+            {
+                fs::current_path(dir, ec);
+                return !ec;
+            }
+            if (dir == dir.parent_path()) break;         // racine reelle, pas une longueur de chaine
+            dir = dir.parent_path();
+        }
+    }
+
+    return false;
+}
+
 bool look_for_catalogs()
 {
-    try
-    {
-        while (!std::filesystem::exists(p))
-        {
-            std::filesystem::path up = "..";
-            std::filesystem::current_path(up);
-            if (std::filesystem::current_path().string().size() < 5) break;
-        }
-        if (std::filesystem::exists(p)) catalogs_found = true;
-    }
-    catch (const std::filesystem::filesystem_error& e)
-    {
-        std::cerr << "Error: " << e.what() << endl;
-        catalogs_found = false;
-        return catalogs_found;
-    }
+    catalogs_found = establish_project_root();
+
+    // radio_silence se decide depuis la racine *resolue*, d'ou sa place apres la recherche et non
+    // avant : le fichier appartient au projet, pas au repertoire d'ou l'on a lance la commande.
+    // Si la racine n'a pas pu etre etablie, on ignore si `nonet` s'y trouve -- le drapeau echoue
+    // donc du cote ferme plutot que d'accorder la permission par defaut. std::filesystem::exists()
+    // plutot que file_exists() : ce dernier ouvre le fichier, donc un `nonet` present mais illisible
+    // ne comptait pas.
+    // On accumule au lieu d'affecter : le drapeau s'enclenche et ne se relache plus. Il existe un
+    // second controle du meme fichier dans main() (alienorum.cpp, juste apres l'appel a cette
+    // fonction) ; une affectation seche ici l'ecraserait si l'ordre des deux venait a s'inverser.
+    radio_silence = radio_silence || !catalogs_found || std::filesystem::exists("nonet");
+
     if (!catalogs_found)
-    {
         std::cerr << "No star catalogs found. Ensure the catalogs folder exists, contains data, and that the files are readable." << endl;
-        return catalogs_found;
-    }
 
     return catalogs_found;
 }

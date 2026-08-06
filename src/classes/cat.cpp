@@ -4731,7 +4731,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     std::string readBuffer;
     json planets_array;
 
-    if (do_download)
+    if (radio_silence) do_download = false;
+    if (do_download && !radio_silence)                  // Deliberately redundant.
     {
         CURL* curl = curl_easy_init();
         if (!curl)

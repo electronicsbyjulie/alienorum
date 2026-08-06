@@ -515,6 +515,7 @@ bool Planet::from_json(json j)
 
 Point refract_true_point(Point pt)
 {
+    if (view_mode != vm_horizon) return pt;
     return refract_true_point(pt, half_pi - find_3D_angle(pt, yaxis, center));
 }
 
