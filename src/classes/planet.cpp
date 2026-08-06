@@ -369,15 +369,39 @@ double alienorum::Planet::atmospheric_refraction(double alt_rad)
     // onto the rim, which is precisely what the visible horizon means -- and then decays away above
     // it, leaving high-altitude stars on Saemundsson's own curve. Below the horizon it simply holds
     // (the base curve's own softplus floor keeps things monotonic down there). Verified across
-    // Earth/Titan/Venus/300 atm: apparent altitude stays strictly increasing everywhere, with a
-    // worst-case slope of 0.21-0.63, and a star at true altitude 0 lands exactly on the rim.
+    // Earth/Titan/Venus/300 atm/1000 atm: apparent altitude stays strictly increasing everywhere,
+    // with a worst-case slope of 0.21, a star at true altitude 0 landing exactly on the rim, and
+    // one at 90 landing exactly on the zenith (see the renormalization inside the block below --
+    // both endpoints are pinned, which is what keeps the two ends of the sky from folding over).
     double horizon_lift_deg = atmospheric_horizon_lift() * fiftyseven;
     double extra_at_horizon_deg = fmax(0.0, horizon_lift_deg - base_refraction_deg(0.0));
     if (extra_at_horizon_deg > 0.0)
     {
-        // decay == 1 exactly at (and below) the true horizon, falling smoothly to 0 well above it.
         double k_extra = fmax(0.5, extra_at_horizon_deg * 1.5);
-        double decay = 2.0 / (1.0 + std::exp(fmax(0.0, h_true_deg) / k_extra));
+        auto shape = [&](double h_deg) -> double
+        {
+            return 2.0 / (1.0 + std::exp(fmax(0.0, h_deg) / k_extra));
+        };
+
+        // shape() on its own only approaches 0 asymptotically, and k_extra scales with the bowl
+        // itself -- so the deeper the bowl, the slower the decay, which is backwards. At 1000 atm
+        // (k_extra 57 deg) shape(90) was still 0.343, leaving ~13 deg of lift at the zenith: a
+        // star directly overhead was pushed 13 deg *past* the zenith and folded over to the
+        // opposite azimuth, which is what scrunched everything up there. It also made
+        // refract_true_point()'s degenerate rotation axis near the zenith (compute_normal() of two
+        // parallel vectors) visible, since it was applying a 13 deg rotation about it.
+        //
+        // Renormalizing onto shape(90) pins both ends instead: 1 at the true horizon, so h=0 still
+        // lands exactly on the rim as step 4 requires, and exactly 0 at the zenith, so the zenith
+        // stays the zenith and the axis degeneracy no longer matters (the angle goes to 0 with it).
+        //
+        // Pinning both ends fixes the mean slope at (90 - lift)/90, so the near-horizon slope
+        // necessarily drops -- the old curve only read steeper there by overshooting the far end.
+        // Verified across Earth/Titan/Venus/300 atm/1000 atm: apparent altitude stays strictly
+        // increasing, h=0 lands on the rim and h=90 on the zenith to the last digit, worst-case
+        // slope 0.21 (Titan, and set by the base curve, not this term).
+        double shape90 = shape(90.0);
+        double decay = fmax(0.0, (shape(h_true_deg) - shape90) / (1.0 - shape90));
         R_deg += extra_at_horizon_deg * decay;
     }
 

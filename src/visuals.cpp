@@ -2071,7 +2071,7 @@ void draw_horizon()
         {
             if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hz_dy[j%hznodes] > -1e4 && fabs(hz_fx-hz_dx[j%hznodes]) < dispcx * zoom)
             {
-                if (altitude > (fiftyseventh * 40) && (hz_dy[j%hznodes] <= 0 || hz_fy <= 0)) continue;
+                if (altitude > (fiftyseventh * 40) && (hz_dy[j%hznodes] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
 
                 points[0] = ImVec2(hz_fx, hz_fy);
                 points[1] = ImVec2(hz_dx[j%hznodes]+1, hz_dy[j%hznodes]);
@@ -2082,6 +2082,7 @@ void draw_horizon()
                     rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
             }
 
+            _skip_hz_element:
             hz_fx = hz_dx[j%hznodes];
             hz_fy = hz_dy[j%hznodes];
         }
