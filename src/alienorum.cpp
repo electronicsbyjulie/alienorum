@@ -246,6 +246,7 @@ int main (int argc, char** argv)
     }
 
     if (!look_for_catalogs()) return -1;
+    if (file_exists("nonet")) radio_silence = true;
     SDL_Surface* icon = IMG_Load("assets" _FILESLASH "icon48.png");
     if (icon)
     {
@@ -536,8 +537,8 @@ int main (int argc, char** argv)
                 if (show_grid) draw_ra_dec_lines();
                 if (show_consln) draw_cons_lines();
                 draw_objects();
-                draw_horizon();
                 draw_cloudy_sky();
+                draw_horizon();
             }
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;

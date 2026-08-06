@@ -6,6 +6,7 @@
 #include "star.h"
 #include "point.h"
 #include "patch.h"
+#include "shore.h"
 
 using namespace alienorum;
 
@@ -83,6 +84,12 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     else type = gas_giant;
 
     if (!ck) set_color_from_type(HZ);
+
+    if (!surface_pressure)
+    {
+        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(get_light_center()), *this);
+        surface_pressure = pow(10, shoreline) * 503;
+    }
 }
 
 void Planet::estimate_radius()
@@ -266,6 +273,160 @@ double Planet::estimate_surface_temperature()
     return t_surface;
 }
 
+// Convert true altitude to observed.
+double alienorum::Planet::atmospheric_refraction(double alt_rad)
+{
+    temperature = estimate_surface_temperature();       // Kelvins
+    double P_hpa = surface_pressure * 0.01;             // Pascals to hPa (millibars)
+    double T_c = temperature - 273.15;
+
+    double h_true_deg = alt_rad * fiftyseven;
+
+    // 1. Calculate pressure modifier first
+    double pressure_ratio = P_hpa / 1013.25;
+    if (pressure_ratio > 5.0)
+    {
+        pressure_ratio = 5.0 + std::log10(pressure_ratio - 4.0);
+    }
+
+    double tempfactor = 283.0 / (273.0 + T_c);
+
+    // Saemundsson's formula on its own (see step 2/3 below for the altitude it actually gets
+    // called with). Factored out because step 4 requires it evaluated at a second altitude too.
+    auto saemundsson_deg = [&](double x_deg) -> double
+    {
+        double correction = 10.3 / (x_deg + 5.11);
+        double arg_deg = x_deg + correction;
+        if (arg_deg >= 90.0) return 0.0; // Zenith: no refraction.
+        double cot_val = 1.0 / std::tan(arg_deg * fiftyseventh);
+        return fmax(0.0, 1.02 * cot_val * pressure_ratio * tempfactor / 60.0);
+    };
+
+    // 2. Smooth clamp near the horizon, widened for dense atmospheres.
+    //
+    // R_arcmin above is linear in pressure_ratio, so on a dense-atmosphere world the whole
+    // refraction curve scales up -- and with a fixed-width smoothing curve, its slope scales up
+    // by that same factor right where objects cross the horizon. Measured: at Earth pressure,
+    // the worst-case d(apparent altitude)/d(true altitude) near the horizon is a reasonable
+    // 0.88; at 50x Earth pressure with a fixed k it collapsed to 0.18 -- objects visually
+    // "stuck" near the horizon over several degrees of true altitude change. An earlier attempt
+    // at this fix (moving min_calc_alt instead, see git history) doesn't actually help: the
+    // softplus curve's own peak slope at its center is a fixed 0.5 regardless of where
+    // min_calc_alt sits, so shifting it leaves the real problem untouched.
+    //
+    // Widening k in proportion to pressure_ratio spreads that same total rise in refraction over
+    // a proportionally wider altitude range instead, keeping the slope roughly pressure-
+    // independent: verified numerically flat around 0.81-0.83 from 1x to 500x Earth pressure.
+    // Exponent 1.3 was chosen empirically for that flatness -- lower exponents undercorrect at
+    // extreme pressures, higher ones overcorrect at moderate ones.
+    double min_calc_alt = -1.0;
+    double k = 0.5 * std::pow(fmax(1.0, pressure_ratio), 1.3);
+
+    // Steps 2 and 3 together: clamp the altitude, then run Saemundsson on it. A lambda because
+    // step 4 must evaluate this same base curve at a second altitude (the true horizon).
+    auto base_refraction_deg = [&](double h_deg) -> double
+    {
+        double delta = h_deg - min_calc_alt;
+        double calc_h_deg;
+
+        // Same shortcut as before (skip the smoothing once it's converged to y=x), scaled by k so
+        // a widened curve still gets the same number of half-widths of runway before the cutoff.
+        if (delta > 40.0 * k)
+        {
+            // Prevent std::exp overflow for stars high in the sky.
+            // At this altitude, the smoothing function is effectively y = x anyway.
+            calc_h_deg = h_deg;
+        }
+        else
+        {
+            // As delta goes negative (dropping below the limit), the exp() term
+            // approaches 0, log1p approaches 0, and calc_h_deg smoothly approaches min_calc_alt.
+            calc_h_deg = min_calc_alt + k * std::log1p(std::exp(delta / k));
+        }
+
+        if (calc_h_deg < min_calc_alt) calc_h_deg = min_calc_alt;
+        return saemundsson_deg(calc_h_deg);
+    };
+
+    double R_deg = base_refraction_deg(h_true_deg);
+
+    // 4. Horizon-bowl consistency (see find_horizon() in visuals.cpp, "Horizon bowl" -- it draws
+    // the ground/sky boundary lifted by atmospheric_horizon_lift() on dense-atmosphere worlds).
+    // Star refraction and that ground lift used to be computed by two unrelated formulas that
+    // disagreed by several degrees (verified: ~7.7 deg gap on a Venus-like world, since the flat
+    // 5 deg ceiling below was far short of an 8.2 deg ground lift) -- any star between the true
+    // and visually-lifted horizon rendered as if behind solid ground.
+    //
+    // The binding constraint is at the true horizon itself, not below it: the ground polygon
+    // (draw_horizon()) fills everything below the lifted rim, so a star at true altitude 0 that
+    // lands even slightly under the rim is painted over and vanishes. An earlier version of this
+    // step aimed only to converge on the rim asymptotically, several degrees *below* the horizon,
+    // which left a star at true altitude 0 sitting 2.5 deg under the rim at 10 atm -- verified
+    // against the 1atm/10atm screenshot pair, where an Ursa Major star that should have risen with
+    // the horizon disappeared behind it instead, and only cleared the rim at 3.35 deg true.
+    //
+    // So the extra lift is sized to exactly close the gap AT h=0 -- making apparent altitude 0 map
+    // onto the rim, which is precisely what the visible horizon means -- and then decays away above
+    // it, leaving high-altitude stars on Saemundsson's own curve. Below the horizon it simply holds
+    // (the base curve's own softplus floor keeps things monotonic down there). Verified across
+    // Earth/Titan/Venus/300 atm/1000 atm: apparent altitude stays strictly increasing everywhere,
+    // with a worst-case slope of 0.21, a star at true altitude 0 landing exactly on the rim, and
+    // one at 90 landing exactly on the zenith (see the renormalization inside the block below --
+    // both endpoints are pinned, which is what keeps the two ends of the sky from folding over).
+    double horizon_lift_deg = atmospheric_horizon_lift() * fiftyseven;
+    double extra_at_horizon_deg = fmax(0.0, horizon_lift_deg - base_refraction_deg(0.0));
+    if (extra_at_horizon_deg > 0.0)
+    {
+        double k_extra = fmax(0.5, extra_at_horizon_deg * 1.5);
+        auto shape = [&](double h_deg) -> double
+        {
+            return 2.0 / (1.0 + std::exp(fmax(0.0, h_deg) / k_extra));
+        };
+
+        // shape() on its own only approaches 0 asymptotically, and k_extra scales with the bowl
+        // itself -- so the deeper the bowl, the slower the decay, which is backwards. At 1000 atm
+        // (k_extra 57 deg) shape(90) was still 0.343, leaving ~13 deg of lift at the zenith: a
+        // star directly overhead was pushed 13 deg *past* the zenith and folded over to the
+        // opposite azimuth, which is what scrunched everything up there. It also made
+        // refract_true_point()'s degenerate rotation axis near the zenith (compute_normal() of two
+        // parallel vectors) visible, since it was applying a 13 deg rotation about it.
+        //
+        // Renormalizing onto shape(90) pins both ends instead: 1 at the true horizon, so h=0 still
+        // lands exactly on the rim as step 4 requires, and exactly 0 at the zenith, so the zenith
+        // stays the zenith and the axis degeneracy no longer matters (the angle goes to 0 with it).
+        //
+        // Pinning both ends fixes the mean slope at (90 - lift)/90, so the near-horizon slope
+        // necessarily drops -- the old curve only read steeper there by overshooting the far end.
+        // Verified across Earth/Titan/Venus/300 atm/1000 atm: apparent altitude stays strictly
+        // increasing, h=0 lands on the rim and h=90 on the zenith to the last digit, worst-case
+        // slope 0.21 (Titan, and set by the base curve, not this term).
+        double shape90 = shape(90.0);
+        double decay = fmax(0.0, (shape(h_true_deg) - shape90) / (1.0 - shape90));
+        R_deg += extra_at_horizon_deg * decay;
+    }
+
+    // Final safety clamp -- never exceed the larger of the old flat ceiling or what the bowl
+    // itself requires.
+    double ceiling_deg = fmax(5.0, horizon_lift_deg);
+    if (R_deg < 0.0) R_deg = 0.0;
+    if (R_deg > ceiling_deg) R_deg = ceiling_deg;
+
+    return R_deg * fiftyseventh;  // Return just the refractive shift in radians
+}
+
+// Visual horizon lift from atmospheric density (see find_horizon() in visuals.cpp, which draws
+// the ground/sky boundary at this same elevation, and atmospheric_refraction() above, which
+// calibrates star refraction near the horizon to reach it too). Modeled as the critical angle of
+// a thin shell of uniform refractive index n_0 wrapping the planet, from Snell's law. Zero below
+// density_ratio 4 -- mild atmospheres (Earth included) don't show a visible "bowl".
+double alienorum::Planet::atmospheric_horizon_lift()
+{
+    double density_ratio = (surface_pressure / 101325.0) * (288.15 / estimate_surface_temperature());
+    if (density_ratio <= 4.0) return 0.0;
+    double n_0 = 1.0 + (0.000293 * density_ratio);
+    return std::acos(1.0 / n_0);
+}
+
 bool Planet::is_in_con_HZ()
 {
     if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;
@@ -350,4 +511,16 @@ bool Planet::from_json(json j)
     try { j.at("atmospheric_tau").get_to(atmospheric_tau); } catch (...) { ; }
     try { j.at("J2").get_to(J2); } catch (...) { ; }
     return true;
+}
+
+Point refract_true_point(Point pt)
+{
+    if (view_mode != vm_horizon) return pt;
+    return refract_true_point(pt, half_pi - find_3D_angle(pt, yaxis, center));
+}
+
+Point refract_true_point(Point pt, double alt_rad)
+{
+    Point axis = compute_normal(pt, yaxis, center);
+    return rotate3D(pt, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(alt_rad));
 }

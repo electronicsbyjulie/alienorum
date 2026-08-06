@@ -536,6 +536,16 @@ double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
     return result;
 }
 
+double alienorum::CelestialObject::Decl_as_radians_refracted(CelestialLocation seen_from)
+{
+    Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
+    relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
+    relloc = refract_true_point(relloc);
+    double result = find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y);
+    if (result > _pi/2) result -= _pi*2;
+    return result;
+}
+
 std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat)
 {
     double r = location.distance_to(fromwhere), dispr = r;

@@ -45,6 +45,7 @@ void draw_ra_dec_lines()
                 jadolzhnaperejexatdoma = to_viewer_plane(jadolzhnaperejexatdoma, 1);
                 jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center, yaxis, -azimuth_correction);
             }
+            if (view_mode == vm_horizon) jadolzhnaperejexatdoma = refract_true_point(jadolzhnaperejexatdoma);
             zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -88,6 +89,7 @@ void draw_ra_dec_lines()
                 umenjanetdeneg = to_viewer_plane(umenjanetdeneg, 1);
                 umenjanetdeneg = rotate3D(umenjanetdeneg, center, yaxis, -azimuth_correction);
             }
+            if (view_mode == vm_horizon) umenjanetdeneg = refract_true_point(umenjanetdeneg);
             zdes = Cartesian2D(umenjanetdeneg, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -128,6 +130,7 @@ void draw_ra_dec_lines()
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
             pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
             pt = to_viewer_plane(pt);
+            if (view_mode == vm_horizon) pt = refract_true_point(pt);
 
             zdes = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
 
@@ -182,9 +185,22 @@ bool bugged = false;
 // perspective divide.
 int draw_sphere_gpu(CelestialObject* cel, double arad)
 {
-    Point camera_space = rotate3D(
-        rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
-        center, xaxis, altitude);
+    // camera_space is the object's true physical position, used for lighting below. display_space
+    // is where it actually appears once atmospheric refraction bends the light on its way to the
+    // observer -- the same bending refract_true_point()/atmospheric_refraction() (planet.cpp)
+    // already applies to point-rendered stars in housekeeping.cpp and to grid lines in
+    // draw_ra_dec_lines(). Inserted here between the azimuth and altitude rotations, same as both
+    // of those call sites, so yaxis still means "zenith" at the moment refract_true_point()
+    // measures the object's true altitude off it -- Cartesian2D's own altitude rotation is the
+    // step that stops yaxis meaning zenith, so refraction has to land before it. Only the position
+    // is bent: basisX/basisY (orientation) and bounding_r (shape) are physical properties of the
+    // object itself, not of the light path to the observer, so they stay derived from the true
+    // position.
+    Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
+    Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+    Point display_space = (view_mode == vm_horizon)
+        ? rotate3D(refract_true_point(cel_azrot), center, xaxis, altitude)
+        : camera_space;
     double R = cel->get_equatorial_radius();
 
     // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
@@ -308,7 +324,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     daylight.blue = pow(daylight.blue, 0.333);
 
     SphereImpostorInput in;
-    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z; in.r = bounding_r;
+    in.cx = display_space.x; in.cy = display_space.y; in.cz = display_space.z; in.r = bounding_r;
     in.axis_x = axis_x; in.axis_y = axis_y; in.axis_z = axis_z;
     in.basisX[0] = basisX.x; in.basisX[1] = basisX.y; in.basisX[2] = basisX.z;
     in.basisY[0] = basisY.x; in.basisY[1] = basisY.y; in.basisY[2] = basisY.z;
@@ -368,9 +384,13 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 void draw_ring_gpu(CelestialObject* cel)
 {
     Planet *pl = (Planet*)cel;
-    Point camera_space = rotate3D(
-        rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
-        center, xaxis, altitude);
+    // display_space vs camera_space: see draw_sphere_gpu()'s own comment just above this
+    // function -- same refraction treatment, same reason light_dir below stays on camera_space.
+    Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
+    Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+    Point display_space = (view_mode == vm_horizon)
+        ? rotate3D(refract_true_point(cel_azrot), center, xaxis, altitude)
+        : camera_space;
     double R = cel->get_equatorial_radius();
 
     // Ring plane normal = the object's local +Y (polar) axis, rotated forward into camera
@@ -415,7 +435,7 @@ void draw_ring_gpu(CelestialObject* cel)
     }
 
     RingImpostorInput in;
-    in.cx = camera_space.x; in.cy = camera_space.y; in.cz = camera_space.z;
+    in.cx = display_space.x; in.cy = display_space.y; in.cz = display_space.z;
     in.inner_r = R; in.outer_r = pl->ring_radius;
     in.normal[0] = normal.x; in.normal[1] = normal.y; in.normal[2] = normal.z;
     in.ring_map_texture = gputex_for(cel->ring_map);
@@ -596,6 +616,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 prev_valid = false;
                 continue;
             }
+            if (view_mode == vm_horizon) cursor = refract_true_point(cursor);
             zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -706,6 +727,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
+            if (view_mode == vm_horizon) cursor = refract_true_point(cursor);
             zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -975,6 +997,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     continue;
                 }
 
+                if (view_mode == vm_horizon) cursor = refract_true_point(cursor);
                 zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
                 if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
                 {
@@ -1965,8 +1988,9 @@ void draw_sunclock()
     }
 }
 
-bool draw_marker[16];
-double hz_dx[16], hz_dy[16];
+#define hznodes 1024
+bool draw_marker[hznodes];
+double hz_dx[hznodes], hz_dy[hznodes];
 void find_horizon()
 {
     hz_y = dispcy*29;
@@ -1981,17 +2005,37 @@ void find_horizon()
             ttex.detach();
         }
 
-        double theta = 0, step = _pi/8;
-        for (j = 0; j < 16; j++)
+        Planet *p;
+        double horizon_lift_rad = 0;
+        if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+        {
+            p = (Planet*)cel;
+
+            // Shared with atmospheric_refraction() (planet.cpp) -- see its own comment: star
+            // refraction near the horizon is calibrated against this same lift, so a star at the
+            // true horizon doesn't render as if it were behind the visually-raised ground.
+            horizon_lift_rad = p->atmospheric_horizon_lift();
+        }
+
+        Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
+        // std::cout << "pthz=" << pthz << std::endl;
+
+        double theta = 0, step = _pi*2/hznodes;
+        for (j = 0; j < hznodes; j++)
         {
             draw_marker[j] = false;
-            Point pt = rotate3D(zaxis, center, yaxis, theta);
+            Point pt = rotate3D(pthz, center, yaxis, theta);
+            Point pt0 = rotate3D(zaxis, center, yaxis, theta);
+
             Cartesian2D horizon = Cartesian2D(pt, azimuth, altitude, zoom);
+            Cartesian2D horizon0 = Cartesian2D(pt0, azimuth, altitude, zoom);
             hz_dx[j] = horizon.x * dispcx + dispcx;
             hz_dy[j] = horizon.y * dispcx + dispcy;
-            if (hz_dy[j] < 0) hz_dy[j] = 0;
+            if (hz_dx[j] < -1e4) draw_marker[j] = false;
+            // else if (hz_dy[j] < 0) hz_dy[j] = 0;
             else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
-            if (draw_marker[j] && hz_y > dispcy*2) hz_y = hz_dy[j];
+            // if (draw_marker[j]) std::cout << "pt=" << pt << std::endl;
+            if (draw_marker[j] && hz_y > dispcy*2) hz_y = horizon0.y * dispcx + dispcy;
             theta += step;
         }
     }
@@ -2003,7 +2047,7 @@ void draw_horizon()
     // TODO: Render according to bump map and generate a fictitious skyline.
     if (view_mode == vm_horizon)
     {
-        int j;
+        int i, j;
         CelestialObject *cel = cels[whereami];
 
         if (!cel->looked_for_maps)
@@ -2021,19 +2065,34 @@ void draw_horizon()
         rgb.g *= is_day;
         rgb.b *= is_day;
 
-        double hz_draw_y = (hz_y > dispcy*28 && altitude < 0) ? 0 : hz_y;
-        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, hz_draw_y), ImVec2(dispcx*2, dispcy*2),
-            rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
-
-        if (hz_y < dispcy*2)
+        double hz_fx = -1e9, hz_fy = 1e9;
+        ImVec2 points[4];
+        for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hz_dy[j%hznodes] > -1e5)              // draw_marker[j])
         {
-            double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
-            ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
-            if (show_grid) for (j = 0; j < 16; j++) if (draw_marker[j])
+            if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hz_dy[j%hznodes] > -1e4 && fabs(hz_fx-hz_dx[j%hznodes]) < dispcx * zoom)
             {
-                ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[j]);
-                if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[j]);
+                if (altitude > (fiftyseventh * 40) && (hz_dy[j%hznodes] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
+
+                points[0] = ImVec2(hz_fx, hz_fy);
+                points[1] = ImVec2(hz_dx[j%hznodes]+1, hz_dy[j%hznodes]);
+                points[2] = ImVec2(hz_dx[j%hznodes]+1, dispcy*2);
+                points[3] = ImVec2(hz_fx, dispcy*2);
+
+                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4,
+                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
             }
+
+            _skip_hz_element:
+            hz_fx = hz_dx[j%hznodes];
+            hz_fy = hz_dy[j%hznodes];
+        }
+
+        double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
+        ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
+        if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*64])
+        {
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
+            if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
         }
     }
 }
@@ -2132,6 +2191,7 @@ void draw_cons_lines()
         {
             Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
             cbd = to_viewer_plane(cbd);
+            cbd = refract_true_point(cbd);
             lconsdir += cbd;
             Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -2162,6 +2222,7 @@ void draw_cons_lines()
         for (i=0; i<6; i++)
         {
             Point laxdir = to_viewer_plane(axisdir[i]);
+            laxdir = refract_true_point(laxdir);
             Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 

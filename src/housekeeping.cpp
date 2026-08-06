@@ -349,24 +349,32 @@ void compute_object_draw_coordinates()
 
             double brght;
 
-            if ((view_mode == vm_horizon) && vmag_cache[i] < -10 /* && rel.y >= 0 */)
+            if (view_mode == vm_horizon)
             {
-                brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-                float theta = cels[i]->Decl_as_radians(here);
+                /* Point axis = compute_normal(rel, yaxis, center);
+                rel = rotate3D(rel, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(cels[i]->Decl_as_radians(here))); */
 
-                if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
+                rel = refract_true_point(rel);
+
+                if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
                 {
-                    // Interpolated twilight values.
-                    float theta_deg = theta * fiftyseven, twilight;
-                    if (theta_deg >= 6) twilight = 6.0;
-                    else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg);
-                    else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6));
-                    else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12));
-                    else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18));
-                    else twilight = 0;
+                    brght = global_brightness * pow(magnbase, -vmag_cache[i]);
+                    float theta = cels[i]->Decl_as_radians(here);
 
-                    double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
-                    if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
+                    if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
+                    {
+                        // Interpolated twilight values.
+                        float theta_deg = theta * fiftyseven, twilight;
+                        if (theta_deg >= 6) twilight = 6.0;
+                        else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg);
+                        else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6));
+                        else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12));
+                        else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18));
+                        else twilight = 0;
+
+                        double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
+                        if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
+                    }
                 }
             }
 

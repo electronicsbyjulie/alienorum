@@ -463,7 +463,22 @@ void draw_objinf_window(ImGuiIO& io)
             npaz = fmod(npdummy.RA_as_radians(here, 0), _pi*2);
             double objaz = fmod(npaz - cels[i]->RA_as_radians(here, 0), _pi*2);
             if (objaz < 0) objaz += _pi*2;
-            objinfo += (std::string)"Altitude: " + std::to_string(cels[i]->Decl_as_radians(here)*fiftyseven) + (std::string)"\n"
+            double shown_alt = cels[i]->Decl_as_radians_refracted(here);
+            if (view_mode == vm_horizon)
+            {
+                // atmospheric_refraction() (planet.cpp, step 4) est calibree pour qu'une altitude
+                // vraie de 0 tombe pile sur le bord de la cuvette dessine par find_horizon() --
+                // l'altitude vraie est donc deja la hauteur au-dessus de l'horizon visible, nulle
+                // au bord et droite au zenith. Cette ligne retranchait atmospheric_horizon_lift()
+                // a l'altitude refractee, ce qui traitait ce relevage comme constant alors qu'il
+                // decroit avec l'altitude : juste au bord, mais 39 deg trop bas au zenith sur un
+                // monde a 1000 atm. Inverser la formule du relevage ne marcherait pas davantage,
+                // refract_true_point() voyant son axe de rotation degenerer pres du zenith, ou le
+                // decalage reellement applique s'effondre vers zero quand la formule en annonce
+                // encore 13 deg ; lire l'altitude vraie rend l'affichage independant de cela.
+                shown_alt = cels[i]->Decl_as_radians(here);
+            }
+            objinfo += (std::string)"Altitude: " + std::to_string(shown_alt*fiftyseven) + (std::string)"\n"
                     +  (std::string)"Azimuth:  "
                     +  std::to_string(objaz*fiftyseven)
                     +  (std::string)"\n";
