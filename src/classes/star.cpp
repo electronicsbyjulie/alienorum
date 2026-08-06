@@ -361,6 +361,42 @@ double Star::degenerate_radius(double mass_kg)
     return 0.0126 * pow(m, -1.0/3.0) * sqrt(core) * solar_radius;
 }
 
+// Assombrissement centre-bord, loi quadratique I(mu)/I(0) = 1 - a(1-mu) - b(1-mu)^2.
+//
+// Le shader employait auparavant un pow(mu, 1/3) fixe pour tout corps auto-lumineux. C'est une
+// approximation acceptable au centre du disque et fausse au limbe, ou elle tombe a ZERO : le bord
+// de l'etoile s'y rendait quasi noir, et comme le halo de draw_flare() est trace derriere et
+// continue au-dela, il en resultait un lisere sombre coince entre un coeur brillant et une couronne
+// brillante (mesure sur Sirius B : creux a 207 contre 277 juste au-dela, au rayon exact du disque).
+// Aucune etoile ne s'assombrit jusqu'au noir : le limbe solaire est encore a environ 30 % du centre
+// dans le visible.
+//
+// On modelise d'abord la perte totale au limbe, u = 1 - I(limbe)/I(centre), puis on la repartit
+// entre les deux termes. Elle decroit avec la temperature -- une etoile chaude est nettement moins
+// assombrie dans le visible -- et croit quand la gravite de surface baisse, l'atmosphere etendue
+// d'une geante froide etant le cas le plus marque. Reperes vises : Soleil 0.70 (valeur observee,
+// et les (a, b) qui en sortent, 0.49 et 0.21, encadrent bien les 0.47 et 0.23 tabules par Claret),
+// naine chaude 0.50, geante froide ~0.90, naine blanche ~0.36.
+void Star::limb_darkening_coefficients(double &a, double &b)
+{
+    double T = (temperature > 0) ? temperature : temperature_from_BV(BV_color);
+    if (!(T > 0) || isnan(T) || isinf(T)) T = sun_temp;
+
+    // Masses en grammes et longueurs en metres ici, et G est defini en consequence : G*M/R^2 sort
+    // directement en m/s^2. Le facteur 100 passe en cgs, unite dans laquelle log g se cite.
+    double radius_m = volumetric_mean_radius;
+    if (!(radius_m > 0)) radius_m = solar_radius;
+    double mass_grams = (mass > 0) ? mass : solar_mass;
+    double logg = log10(fmax(1e-6, G * mass_grams / (radius_m * radius_m)) * 100.0);
+
+    double u = 0.72 - 0.40 * log10(T / sun_temp) + 0.03 * (4.4 - logg);
+    if (u < 0.25) u = 0.25;
+    if (u > 0.92) u = 0.92;
+
+    b = 0.30 * u;                                   // repartition entre terme lineaire et quadratique
+    a = u - b;
+}
+
 // Classement photometrique -- voir le commentaire de stellar_regime_t (star.h) pour le pourquoi,
 // et STELLAR_TEXTURE_PLAN.md §5.1 pour le detail des deux pieges traites ici.
 alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)

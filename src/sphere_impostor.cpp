@@ -72,6 +72,9 @@ namespace alienorum
         float has_bump_tex;   // 0 or 1
         GLuint bump_tex;
         float bump_strength;
+        // Coefficients (a, b) de l'assombrissement centre-bord, corps auto-lumineux seulement.
+        // Voyagent dans les composantes y/z de aBumpLimb -- voir son commentaire plus bas.
+        float limba, limbb;
         float r, g, b, a;   // fallback color, used when has_tex is 0
         float lightx, lighty, lightz;   // camera space, unit length
         float tintr, tintg, tintb;
@@ -90,7 +93,7 @@ namespace alienorum
     static GLint s_aBasisXLoc = -1, s_aBasisYLoc = -1, s_aHasTexLoc = -1, s_aColorLoc = -1;
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
     static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
-    static GLint s_aHasBumpTexLoc = -1, s_aBumpStrengthLoc = -1;
+    static GLint s_aHasBumpTexLoc = -1, s_aBumpLimbLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -114,7 +117,14 @@ namespace alienorum
         "in vec4 aSky;\n"
         "in float aApplySky;\n"
         "in float aHasBumpTex;\n"
-        "in float aBumpStrength;\n"
+        // x = bump strength; y, z = the quadratic limb-darkening coefficients (a, b), used only
+        // when self_luminous. Three unrelated scalars share one attribute on purpose: OpenGL
+        // guarantees only GL_MAX_VERTEX_ATTRIBS >= 16, this machine reports exactly 16 (Mesa,
+        // Intel HD 2000), and the list above already uses all 16. Declaring a 17th made the
+        // program fail to link, which silently killed every disc in the app -- stars and planets
+        // alike, since they all come through this one shader. Any future per-object scalar has to
+        // ride along in an existing attribute's spare components the same way.
+        "in vec3 aBumpLimb;\n"
         "out vec2 vRayXY;\n"
         "out float vScreenY;\n"
         "out vec3 vCenter;\n"
@@ -129,7 +139,7 @@ namespace alienorum
         "out vec4 vSky;\n"
         "out float vApplySky;\n"
         "out float vHasBumpTex;\n"
-        "out float vBumpStrength;\n"
+        "out vec3 vBumpLimb;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
@@ -146,7 +156,7 @@ namespace alienorum
         "    vSky = aSky;\n"
         "    vApplySky = aApplySky;\n"
         "    vHasBumpTex = aHasBumpTex;\n"
-        "    vBumpStrength = aBumpStrength;\n"
+        "    vBumpLimb = aBumpLimb;\n"
         "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
         "}\n";
 
@@ -180,7 +190,7 @@ namespace alienorum
         "in vec4 vSky;\n"     // rgb=premultiplied sky color at sky_y, a=sky_y (screen pixels)
         "in float vApplySky;\n"
         "in float vHasBumpTex;\n"
-        "in float vBumpStrength;\n"
+        "in vec3 vBumpLimb;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
@@ -300,15 +310,15 @@ namespace alienorum
         "            // of longitude and v spans PI of latitude (see the uv formula above), so\n"
         "            // dividing by (duv*2*PI) or (duv*PI) converts that to meters of height\n"
         "            // change per *radian* of arc -- still not a dimensionless slope on its own\n"
-        "            // (arc length is radius*angle, not just angle), but vBumpStrength supplies\n"
+        "            // (arc length is radius*angle, not just angle), but vBumpLimb.x supplies\n"
         "            // the remaining length-scale division on the CPU side (see\n"
         "            // SphereImpostorInput::bump_strength for what it's actually divided by and\n"
         "            // why), so only the angle-per-duv conversion has to happen here.\n"
-        "            float slopeU = (dhdu / (duv.x * 2.0*PI)) * vBumpStrength;\n"
-        "            float slopeV = (dhdv / (duv.y * PI)) * vBumpStrength;\n"
+        "            float slopeU = (dhdu / (duv.x * 2.0*PI)) * vBumpLimb.x;\n"
+        "            float slopeV = (dhdv / (duv.y * PI)) * vBumpLimb.x;\n"
         "\n"
         "            // Clamped, not left to grow unbounded -- a steep enough measured slope\n"
-        "            // (crater rims, or just a strong vBumpStrength) can otherwise push the\n"
+        "            // (crater rims, or just a strong vBumpLimb.x) can otherwise push the\n"
         "            // perturbation vector's magnitude well past the unit-length true normal,\n"
         "            // flipping the *shading* normal to face away from the surface entirely --\n"
         "            // most visible right at the grazing limb, where the true normal is already\n"
@@ -337,7 +347,20 @@ namespace alienorum
         "    }\n"
         "\n"
         "    float costerm = (vFlags.x > 0.5) ? dot(n, normalize(-hit)) : dot(n, vLightDir);\n"
-        "    float isDay = clamp(pow(max(costerm, 0.0), 0.3333) + vFlags.y, 0.0, 1.0);\n"
+        "    float mu = max(costerm, 0.0);\n"
+        // A self-luminous body gets a real quadratic limb-darkening law, whose coefficients come
+        // from the star's own T_eff and log g (Star::limb_darkening_coefficients). The fixed
+        // pow(mu, 1/3) it used to share with the lit-by-a-star case reaches ZERO at the limb, so a
+        // star's own edge rendered nearly black against the flare halo drawn behind it -- a dark
+        // ring at exactly the disc's radius. No star darkens to black: the solar limb is still
+        // near 30% of disc center in the visible.
+        "    float isDay;\n"
+        "    if (vFlags.x > 0.5)\n"
+        "    {\n"
+        "        float om = 1.0 - mu;\n"
+        "        isDay = clamp(1.0 - vBumpLimb.y*om - vBumpLimb.z*om*om, 0.0, 1.0);\n"
+        "    }\n"
+        "    else isDay = clamp(pow(mu, 0.3333) + vFlags.y, 0.0, 1.0);\n"
         "\n"
         "    vec3 baseColor = ((vHasTex > 0.5) ? texture(uDayMap, uv).rgb : vColor.rgb) * vTint;\n"
         "    vec3 outColor = (vFlags.z > 0.5)\n"
@@ -382,7 +405,7 @@ namespace alienorum
     // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) radii(3) basisX(3) basisY(3)
     // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) hasBumpTex(1)
     // bumpStrength(1) = 39.
-    static const int kFloatsPerVertex = 39;
+    static const int kFloatsPerVertex = 41;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
 
     static void ensure_gl_objects()
@@ -422,7 +445,7 @@ namespace alienorum
         s_aSkyLoc      = glGetAttribLocation(s_program, "aSky");
         s_aApplySkyLoc = glGetAttribLocation(s_program, "aApplySky");
         s_aHasBumpTexLoc     = glGetAttribLocation(s_program, "aHasBumpTex");
-        s_aBumpStrengthLoc   = glGetAttribLocation(s_program, "aBumpStrength");
+        s_aBumpLimbLoc       = glGetAttribLocation(s_program, "aBumpLimb");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
         s_uBumpMapLoc  = glGetUniformLocation(s_program, "uBumpMap");
@@ -474,8 +497,8 @@ namespace alienorum
         glVertexAttribPointer(s_aApplySkyLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 36));
         glEnableVertexAttribArray(s_aHasBumpTexLoc);
         glVertexAttribPointer(s_aHasBumpTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 37));
-        glEnableVertexAttribArray(s_aBumpStrengthLoc);
-        glVertexAttribPointer(s_aBumpStrengthLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
+        glEnableVertexAttribArray(s_aBumpLimbLoc);
+        glVertexAttribPointer(s_aBumpLimbLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -546,6 +569,8 @@ namespace alienorum
             v[36] = p->apply_sky;
             v[37] = p->has_bump_tex;
             v[38] = p->bump_strength;
+            v[39] = p->limba;
+            v[40] = p->limbb;
         }
 
         glUseProgram(s_program);
@@ -720,6 +745,8 @@ namespace alienorum
         p->has_bump_tex = in.bump_map_texture ? 1.0f : 0.0f;
         p->bump_tex = (GLuint)in.bump_map_texture;
         p->bump_strength = (float)in.bump_strength;
+        p->limba = (float)in.limb_a;
+        p->limbb = (float)in.limb_b;
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
         p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;

@@ -102,6 +102,11 @@ namespace alienorum
         static double temperature_from_BV(double BV);
         static double degenerate_radius(double mass_kg);            // metres
 
+        // Coefficients de la loi quadratique d'assombrissement centre-bord,
+        //     I(mu)/I(0) = 1 - a*(1 - mu) - b*(1 - mu)^2,
+        // interpoles sur la temperature effective et log g de cette etoile.
+        void limb_darkening_coefficients(double &a, double &b);
+
         void gotta_be_named_something();
         json to_json();
         bool from_json(json j);

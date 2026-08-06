@@ -94,9 +94,15 @@ namespace alienorum
         double daylight_tint[3];
 
         // True for the object that *is* its own light source (a star) -- shades by view angle
-        // (a limb-darkening-like falloff) instead of by angle to a separate light source, and
-        // never blends a night side.
+        // (limb darkening) instead of by angle to a separate light source, and never blends a
+        // night side.
         bool self_luminous;
+
+        // Coefficients of the quadratic limb-darkening law used when self_luminous is set:
+        //     I(mu)/I(0) = 1 - a*(1 - mu) - b*(1 - mu)^2,     mu = cos(angle from disc center)
+        // Star::limb_darkening_coefficients() derives them from the star's own T_eff and log g.
+        // Ignored when self_luminous is false. Left at 0 they give a flat, unshaded disc.
+        double limb_a, limb_b;
 
         // Ambient illumination level for the unlit side when no night-map texture is available
         // (matches the CPU path's `starlight` constant, used only when there's no night map to

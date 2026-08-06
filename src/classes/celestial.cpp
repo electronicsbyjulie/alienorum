@@ -1616,15 +1616,15 @@ void Map::generate_rocky_map(CelestialObject *cel)
         else if (cold_icy_world)
         {
             // Otherwise just brightness variation across the icy background -- no hue shift.
-            double p_mult = 1.0 - frand(0, 0.2);
+            double p_mult = 0.9 - frand(0, 0.2);
             province_rmult[p_i] = p_mult;
             province_gmult[p_i] = p_mult;
             province_bmult[p_i] = p_mult;
         }
         else
         {
-            double p_rmult = fmax(0.05, 1.0 + frand(-province_variability, province_variability));
-            double p_bmult = fmax(0.05, 1.0 + frand(-province_variability, province_variability));
+            double p_rmult = fmax(0.05, 0.8 + frand(-province_variability, province_variability));
+            double p_bmult = fmax(0.05, 0.8 + frand(-province_variability, province_variability));
             // Bias green toward the low side rather than drawing it freely between red and
             // blue: real airless regolith/rock runs grey, tan, or rust-red, essentially never
             // green, and a green channel free to land near the high side reads as olive/green.
@@ -1895,7 +1895,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)(10000 * bombardment_factor);
+    int num_craters = (int)(1000 * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
@@ -2355,6 +2355,40 @@ void Map::generate_stellar_map(CelestialObject *cel)
     }
     int num_spots = (int)spot_axis.size();
 
+    // --- Facules et reseau (calque 6) ---------------------------------------------------------
+    // Elles sont ecrites dans le creneau night_map, et non dans la carte principale, parce que le
+    // shader melange isDay*jour + (1 - isDay)*nuit : le poids de la carte de nuit est donc maximal
+    // AU BORD du disque. C'est exactement le comportement des facules, invisibles au centre et
+    // brillantes au limbe, et on l'obtient sans toucher au shader (STELLAR_TEXTURE_PLAN.md §7.4).
+    //
+    // La carte de nuit ne porte que l'EXCES faculaire, noir partout ailleurs. Si elle portait la
+    // couleur de la photosphere, le melange etant une moyenne ponderee et non un produit, le bord
+    // reviendrait a pleine intensite et l'assombrissement centre-bord serait annule.
+    //
+    // Deux composantes : les plages, anneaux brillants ceinturant les regions actives, et le reseau
+    // magnetique, qui suit les bords des cellules de supergranulation -- une vingtaine de fois plus
+    // grandes que les granules, d'ou l'echelle divisee d'autant.
+    bool has_faculae = spotted && (activity > 0.02);
+    Map *fac = nullptr;
+    if (has_faculae && !cel->night_map)
+    {
+        fac = new Map(cel);
+        fac->image_height = image_height;
+        fac->image_width = image_width;
+        fac->allocated = allocated;
+        fac->red_data = new unsigned char[allocated];
+        fac->green_data = new unsigned char[allocated];
+        fac->blue_data = new unsigned char[allocated];
+        fac->lat_scale = lat_scale;
+        fac->lon_scale = lon_scale;
+        fac->inv_lat_scale = inv_lat_scale;
+        fac->inv_lon_scale = inv_lon_scale;
+        cel->night_map = fac;
+    }
+    double net_scale = fmax(0.7, gran_scale / 20.0);
+    double plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // exces relatif a la photosphere
+    double net_gain = fmin(0.30, 0.08 + 0.35 * activity);
+
     // Deformation du contour. L'echelle du bruit est asservie a la taille des taches -- quelques
     // ondulations sur le pourtour de chacune -- sans quoi un bruit de frequence fixe laissait les
     // petites parfaitement rondes. L'amplitude est franche : un vrai groupe est dechiquete.
@@ -2421,6 +2455,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
             // Taches : ombre pleine sur le coeur, puis penombre filamenteuse jusqu'au bord. La
             // distance angulaire se lit directement dans le produit scalaire.
+            double plage = 0;
             if (num_spots)
             {
                 warped = edge_amount * (fBm(nx * edge_scale, ny * edge_scale, nz * edge_scale, 5, 2.2, 0.55) - 0.5) * 2.0;
@@ -2428,7 +2463,19 @@ void Map::generate_stellar_map(CelestialObject *cel)
                 {
                     dist = acos(fmax(-1.0, fmin(1.0, nx * spot_axis[i].x + ny * spot_axis[i].y + nz * spot_axis[i].z)));
                     double r = spot_radius[i] * (1.0 + warped);
-                    if (r <= 0 || dist >= r) continue;
+                    if (r <= 0) continue;
+
+                    // Plage : couronne brillante debordant la tache, de son bord a 2.6 fois son
+                    // rayon, en decroissance. Une region active est toujours plus etendue en
+                    // facules qu'en taches -- c'est meme ce qui rend le Soleil PLUS brillant a son
+                    // maximum d'activite, malgre ses taches.
+                    if (has_faculae && dist >= r && dist < 2.6 * r)
+                    {
+                        double pt = (dist - r) / (1.6 * r);
+                        plage = fmax(plage, (1.0 - pt) * (1.0 - pt));
+                    }
+
+                    if (dist >= r) continue;
 
                     if (dist < 0.45 * r)
                     {
@@ -2443,6 +2490,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
                         umbra = 0.38 * (1.0 - t) * (0.7 + 0.6 * fil);
                     }
                     T_local = fmin(T_local, T_eff * gd_factor - spot_dT * umbra);
+                    plage = 0;                                          // pas de facule sur la tache elle-meme
                 }
             }
 
@@ -2461,10 +2509,25 @@ void Map::generate_stellar_map(CelestialObject *cel)
             red_data[idx]   = rgb.r;
             green_data[idx] = rgb.g;
             blue_data[idx]  = rgb.b;
+
+            if (fac)
+            {
+                // Reseau magnetique : ridged_fBm pris a l'endroit cette fois, ses cretes fines
+                // epousant les bords des cellules de supergranulation, la ou le champ se concentre.
+                double net = ridged_fBm(nx * net_scale + 13.7, ny * net_scale + 4.1, nz * net_scale + 29.3,
+                    2, 2.0, 0.5);
+                net = fmax(0.0, (net - 0.72) / 0.28);               // ne garder que les cretes
+
+                double excess = fmin(1.0, plage_gain * plage + net_gain * net);
+                fac->red_data[idx]   = (unsigned char)fmin(255.0, rgb.r * excess);
+                fac->green_data[idx] = (unsigned char)fmin(255.0, rgb.g * excess);
+                fac->blue_data[idx]  = (unsigned char)fmin(255.0, rgb.b * excess);
+            }
         }
     }
 
     generating_fic_texture = false;
+    if (fac) fac->touch_gen();
     touch_gen();
 }
 
