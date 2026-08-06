@@ -4170,6 +4170,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         fclose(fp);
     }
 
+    ((Star*)cels[0])->distance_known = true;
+
     for (i=0; cels[i]; i++)
     {
         if (cels[i]->orbit && cels[i]->orbit->center_name.size())

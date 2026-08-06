@@ -493,7 +493,7 @@ void draw_objinf_window(ImGuiIO& io)
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
-            if (s->distance_known)
+            if (s->distance_known || s->cenobj == mycenobj)
             {
                 oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
                 oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude << "\n";
