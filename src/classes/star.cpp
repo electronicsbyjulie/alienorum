@@ -318,6 +318,83 @@ void Star::estimate_UB(double T)
     UB_color = log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
 }
 
+// Inverse exact de estimate_BV(double T) ci-dessus : la meme relation de corps noir, resolue en
+// temperature. B-V y decroit de facon monotone avec T, donc une bissection suffit et ne peut pas
+// se tromper de branche.
+double Star::temperature_from_BV(double BV)
+{
+    auto bv_of = [](double T) -> double
+    {
+        return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+    };
+
+    double lo = 1000.0, hi = 200000.0;                      // du plancher des naines Y au plafond des DO
+    if (BV >= bv_of(lo)) return lo;
+    if (BV <= bv_of(hi)) return hi;
+
+    for (int i = 0; i < 50; i++)
+    {
+        double mid = 0.5 * (lo + hi);
+        if (bv_of(mid) > BV) lo = mid;                      // encore trop froid : B-V trop rouge
+        else hi = mid;
+    }
+
+    return 0.5 * (lo + hi);
+}
+
+// Relation masse-rayon de la matiere degeneree, sous sa forme analytique simple :
+//     R/R(soleil) = 0.0126 * (M/M(soleil))^(-1/3) * sqrt(1 - (M/M_Chandrasekhar)^(4/3))
+// Verifiee sur Sirius B (M = 1.02 M(soleil)) : 5 290 km calcules contre 5 850 km mesures, soit 10 %
+// d'ecart. Largement suffisant pour un rayon de rendu -- sans quoi une naine blanche n'a aucun
+// rayon exploitable et son disque n'est jamais resolu -- mais pas pour de l'asterosismologie.
+double Star::degenerate_radius(double mass_kg)
+{
+    const double chandrasekhar = 1.44;
+    double m = mass_kg / solar_mass;
+
+    if (!(m > 0)) m = 0.6;                                  // masse typique du pic observe, faute de mieux
+    if (m > 0.99 * chandrasekhar) m = 0.99 * chandrasekhar;
+
+    double core = 1.0 - pow(m / chandrasekhar, 4.0/3.0);
+    if (core < 0) core = 0;
+
+    return 0.0126 * pow(m, -1.0/3.0) * sqrt(core) * solar_radius;
+}
+
+// Classement photometrique -- voir le commentaire de stellar_regime_t (star.h) pour le pourquoi,
+// et STELLAR_TEXTURE_PLAN.md §5.1 pour le detail des deux pieges traites ici.
+alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
+{
+    if (!cel || cel->typeclass() != class_star) return regime_none;
+
+    // Ni estimate_temperature() ni la table de sequence principale sur laquelle elle s'adosse : on
+    // inverse le corps noir, ou l'on prend la temperature du catalogue quand elle existe.
+    double T = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+    if (!(T > 0) || isnan(T) || isinf(T)) return regime_stellar;
+
+    // Rayon deduit de la luminosite et de la temperature par Stefan-Boltzmann. On ne lit surtout
+    // pas volumetric_mean_radius : il peut avoir ete fabrique par estimate_radius() depuis la table
+    // de sequence principale, et rien ne distingue ensuite une valeur mesuree d'une valeur
+    // interpolee. Un rayon stocke de 2 R(soleil) sur une naine blanche n'est pas une refutation,
+    // c'est le symptome.
+    double implied_radius = 0;                              // rayons solaires
+    double absmag = cel->absolute_magnitude;
+    if (absmag != 0 && !isnan(absmag) && !isinf(absmag))
+    {
+        double lum = pow(magnbase, -(absmag - 4.83));       // 4.83 = magnitude absolue V du Soleil
+        implied_radius = sqrt(lum) * pow(sun_temp / T, 2.0);
+    }
+
+    // Le rayon seul se tromperait sur les naines brunes : une L0 rend ~0.009 R(soleil) par cette
+    // formule -- en plein territoire de naine blanche -- parce que M_V ignore l'infrarouge, ou elle
+    // emet l'essentiel de son flux. C'est donc la temperature qui tranche, les deux populations
+    // etant disjointes en pratique (naines blanches cataloguees : 10 000 a 170 000 K).
+    if (implied_radius > 0 && implied_radius < 0.05 && T > 4000.0) return regime_degenerate;
+    if (T < 2700.0) return regime_substellar;
+
+    return regime_stellar;
+}
+
 void alienorum::Star::load_main_seq_dat()
 {
     FILE *fp = fopen("catalogs/mainseq.dat", "rb");

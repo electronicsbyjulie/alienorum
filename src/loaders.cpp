@@ -135,6 +135,33 @@ void load_textures(CelestialObject* cel)
             cel->night_map->generate_lava_map(cel);
         }
     }
+    else if (!cel->surf_map && !cel->cloud_map)
+    {
+        // Corps auto-lumineux. L'aiguillage se fait sur le regime physique et non sur cel->type :
+        // une naine brune venue d'un catalogue est chargee comme une Star, la meme ecrite a la main
+        // dans un systeme fictif serait un gas_giant, et les deux branches ci-dessus ont deja
+        // servi ce second cas. Voir STELLAR_TEXTURE_PLAN.md §6.3.
+        switch (stellar_regime(cel))
+        {
+            case regime_degenerate:
+            case regime_stellar:
+                cel->surf_map = new Map(cel);
+                cel->surf_map->generate_stellar_map(cel);
+                break;
+
+            case regime_substellar:
+                // Les naines brunes relevent du generateur de geantes gazeuses passe en mode
+                // emissif, pas du generateur stellaire : leur structure dominante est un systeme
+                // nuageux de condensats en bandes zonales, auquel rien de la photosphere
+                // convective ne s'applique (STELLAR_TEXTURE_PLAN.md §6). Ce mode reste a ecrire --
+                // etape 5 -- et generate_gas_giant_map() transtype aujourd'hui son argument en
+                // Planet*, ce qu'une Star n'est pas. Donc rien ici pour l'instant, comme avant.
+                break;
+
+            default:
+                break;
+        }
+    }
 }
 
 void save_textures(CelestialObject* cel)

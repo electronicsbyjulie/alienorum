@@ -2188,6 +2188,192 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     touch_gen();
 }
 
+// Carte de "surface" fictive pour un corps auto-lumineux. Voir STELLAR_TEXTURE_PLAN.md, dont ceci
+// est l'etape 1 : fond de corps noir, assombrissement gravitationnel, taches. La granulation
+// (calque 3), le reseau et les facules (4 et 6), les taches chimiques Ap/Bp (7) et le voile des
+// supergeantes rouges (8) restent a faire ; les naines blanches sortent d'ici en disque uniforme,
+// leurs pulsations et leurs taches magnetiques (calque 9) attendant l'etape 4.
+//
+// Difference de fond avec les trois generateurs planetaires voisins : la carte porte une
+// EMISSIVITE et non un albedo. Chaque texel est une temperature locale, convertie en couleur de
+// corps noir par la meme voie que le reste du programme (estimate_BV puis
+// color_from_magnitude_indices), et non une reflectivite.
+void Map::generate_stellar_map(CelestialObject *cel)
+{
+    assert(cel->typeclass() == class_star);
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
+    mtx.lock();
+    generating_fic_texture = true;
+
+    image_height = cel->fictitious_map_height;
+    image_width = image_height * 2;
+    allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    lat_scale = (double)image_height / _pi;
+    lon_scale = (double)image_width / (_pi * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
+
+    stellar_regime_t regime = stellar_regime(cel);
+
+    double T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+    if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
+
+    // Nature de l'enveloppe : c'est elle, et non la couleur, qui decide de ce qui peut structurer
+    // la surface. En dessous de 0.35 M(soleil) l'etoile est pleinement convective et sa dynamo est
+    // distribuee -- pas de ceinture de latitudes privilegiee. Au-dela de la rupture de Kraft
+    // (~6200 K) l'enveloppe convective s'amincit puis disparait : une A normale n'a ni granulation
+    // ni taches thermiques, et doit rester lisse. Ce n'est pas une lacune, c'est le resultat juste.
+    double mass_solar = cel->mass / solar_mass;
+    bool fully_convective = (mass_solar > 0 && mass_solar < 0.35);
+    bool convective_envelope = (T_eff < 7000.0);
+    bool spotted = (regime == regime_stellar) && convective_envelope;
+
+    // Niveau d'activite. Il n'existe pas de champ age dans CelestialObject, donc on le tire de la
+    // rotation -- qui est de toute facon la meilleure correlation observationnelle. Nombre de
+    // Rossby approche : periode rapportee a un temps de retournement convectif qui s'allonge vers
+    // les etoiles froides (~12 jours au Soleil, ~40 chez une M tardive). L'activite sature en
+    // dessous de Ro ~ 0.1, comme observe.
+    double p_rot_days = cel->sidereal_rotational_period / oneday;
+    double tau_conv_days = 12.0 * pow(fmax(3000.0, fmin(7000.0, T_eff)) / sun_temp, -2.5);
+    double rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days) : frand(0.3, 3.0);
+    double activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
+
+    // Contraste thermique des taches, croissant avec T_eff : quelques centaines de K chez une M --
+    // large, rouge sombre et molle plutot que noire et nette -- contre ~1800 K au Soleil, ou
+    // l'ombre est a 3800-4200 K sous une photosphere a 5772 K. Ajustement lineaire passant par
+    // (3000 K, 300 K) et (5772 K, 1800 K).
+    double spot_dT = fmax(150.0, fmin(0.541 * T_eff - 1323.0, 0.45 * T_eff));
+
+    // Assombrissement gravitationnel (von Zeipel) : terme purement latitudinal, invisible tant que
+    // l'etoile n'est pas un rotateur rapide. beta vaut 0.25 en enveloppe radiative et 0.08 en
+    // enveloppe convective (Lucy). Le facteur (1 - 2f cos^2(lat)) approche le rapport de la gravite
+    // effective locale a celle du pole ; on le normalise par sa moyenne ponderee par l'aire,
+    // 1 - 4f/3, pour que la temperature moyenne de la surface reste T_eff.
+    double gd_beta = convective_envelope ? 0.08 : 0.25;
+    double f_obl = fmax(0.0, fmin(0.45, cel->oblateness));
+    double gd_mean = 1.0 - 4.0 * f_obl / 3.0;
+
+    // Regions actives. Latitudes selon le regime : ceinture papillon pour une dynamo de tachocline,
+    // uniformes quand l'etoile est pleinement convective, calotte polaire chez les rotateurs
+    // rapides -- les taches polaires massives des K et M jeunes.
+    int num_spots = spotted ? (int)(activity * 22.0 + frand(0, 2.0)) : 0;
+    bool polar_regime = (rossby < 0.12);
+
+    std::vector<Point> spot_axis;
+    std::vector<double> spot_radius;
+    for (int i = 0; i < num_spots; i++)
+    {
+        double slat;
+        if (polar_regime && frand(0, 1) < 0.55)
+            slat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 55, half_pi);
+        else if (fully_convective)
+            slat = asin(frand(-1, 1));                          // uniforme en aire, pas en latitude
+        else
+            slat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 5, fiftyseventh * 35);
+
+        double slon = frand(0, _pi * 2);
+        double cos_slat = cos(slat);
+        spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
+
+        // Rayon angulaire : de quelques degres sur une etoile calme a des calottes de 25 degres
+        // chez une M saturee, ou la couverture observee monte a 20-40 % de la surface.
+        spot_radius.push_back(fiftyseventh * frand(3.0, 6.0 + 20.0 * activity));
+    }
+
+    // Bruit tiede deformant le contour des taches, pour qu'elles ne se lisent pas comme des disques.
+    double edge_scale = frand(6.0, 11.0);
+    double edge_amount = frand(0.18, 0.34);
+
+    // B-V de corps noir, pour faire varier la teinte avec la temperature locale.
+    auto bv_of = [](double T) -> double
+    {
+        return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+    };
+
+    // On applique a BV_color l'ECART de corps noir entre la temperature locale et T_eff, plutot que
+    // le B-V de corps noir brut : la couleur mesuree de l'objet est ainsi conservee la ou rien ne
+    // vient l'alterer, et seule la variation spatiale est calculee.
+    //
+    // La reference de normalisation se calcule une fois pour toutes, et non par texel : la teinte
+    // suit alors la temperature locale pendant que la luminance suit exactement le terme physique
+    // plus bas. Normaliser chaque texel sur son propre maximum faisait travailler les deux l'un
+    // contre l'autre -- mesure sur une A5 aplatie, ou l'ecart pole-equateur tombait de 26 a 10 %.
+    // A T_local == T_eff le resultat est exactement la couleur de repli que draw_sphere_gpu()
+    // emploie deja faute de texture, gamma compris : rgb_from_color(col, -1).
+    double bv_at_teff = bv_of(T_eff);
+    Color ref_col = Color::color_from_magnitude_indices(0, cel->BV_color);
+    double ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
+    double inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
+    mtx.unlock();
+
+    double theta, phi, sin_theta, nx, ny, nz, lat, cos_lat;
+    double T_local, gd_factor, umbra, dist, warped;
+    unsigned int x, y, idx;
+
+    for (y = 0; y < image_height; ++y)
+    {
+        theta = ((double)y / image_height) * _pi;            // 0 au pole nord, PI au pole sud
+        lat = half_pi - theta;
+        sin_theta = sin(theta);
+        cos_lat = sin_theta;
+
+        gd_factor = pow((1.0 - 2.0 * f_obl * cos_lat * cos_lat) / gd_mean, gd_beta);
+
+        for (x = 0; x < image_width; ++x)
+        {
+            phi = ((double)x / image_width) * _pi * 2.0;
+            nx = sin_theta * cos(phi);
+            ny = sin_theta * sin(phi);
+            nz = cos(theta);
+
+            idx = y * image_width + x;
+            if (idx >= allocated) break;
+
+            T_local = T_eff * gd_factor;
+
+            // Taches : ombre pleine au centre, penombre a 0.4 du deficit sur le pourtour, avec un
+            // bord bruite. La distance angulaire se lit directement dans le produit scalaire.
+            if (num_spots)
+            {
+                warped = edge_amount * fBm(nx * edge_scale, ny * edge_scale, nz * edge_scale, 4, 2.0, 0.5);
+                for (int i = 0; i < num_spots; i++)
+                {
+                    dist = acos(fmax(-1.0, fmin(1.0, nx * spot_axis[i].x + ny * spot_axis[i].y + nz * spot_axis[i].z)));
+                    double r = spot_radius[i] * (1.0 + warped);
+                    if (dist >= r) continue;
+
+                    umbra = (dist < 0.6 * r) ? 1.0 : (1.0 - (dist - 0.6 * r) / (0.4 * r) * 0.6);
+                    T_local = fmin(T_local, T_eff * gd_factor - spot_dT * umbra);
+                }
+            }
+
+            if (T_local < 1000.0) T_local = 1000.0;
+
+            // Luminance : le rapport de flux va en T^4, ce qui saturerait vers le noir sur 8 bits --
+            // une ombre a 4000 K sous 5772 K vaut un quart du flux. On le comprime en (T/T_eff)^1.6,
+            // qui laisse cette meme ombre a 56 % : sombre et nettement lisible, comme sur une image
+            // du Soleil en lumiere blanche.
+            double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
+            double lum = pow(T_local / T_eff, 1.6);
+
+            RGB3Byte rgb = Color::rgb_from_color(
+                Color::color_from_magnitude_indices(0, bv_local), lum * inv_ref_max);
+
+            red_data[idx]   = rgb.r;
+            green_data[idx] = rgb.g;
+            blue_data[idx]  = rgb.b;
+        }
+    }
+
+    generating_fic_texture = false;
+    touch_gen();
+}
+
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 {
     unsigned char *lred = red_data, *lgreen = green_data, *lblue = blue_data;
