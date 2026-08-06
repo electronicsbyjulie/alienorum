@@ -85,7 +85,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
 
     if (!ck) set_color_from_type(HZ);
 
-    if (!surface_pressure)
+    if (!surface_pressure && get_light_center() != cels[0])
     {
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(get_light_center()), *this);
         surface_pressure = pow(10, shoreline) * 503;
