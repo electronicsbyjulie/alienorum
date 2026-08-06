@@ -2238,9 +2238,26 @@ void Map::generate_stellar_map(CelestialObject *cel)
     // Rossby approche : periode rapportee a un temps de retournement convectif qui s'allonge vers
     // les etoiles froides (~12 jours au Soleil, ~40 chez une M tardive). L'activite sature en
     // dessous de Ro ~ 0.1, comme observe.
+    //
+    // Gravite de surface : masses en grammes et longueurs en metres dans ce programme, et G y est
+    // defini en consequence, de sorte que G*M/R^2 sort directement en m/s^2 (verifie : 274 pour le
+    // Soleil). Elle sert ici a deux choses, l'activite et la taille des granules.
+    double radius_m = (regime == regime_degenerate) ? Star::degenerate_radius(cel->mass)
+                                                    : cel->volumetric_mean_radius;
+    if (!(radius_m > 0)) radius_m = solar_radius;
+    double mass_g = (cel->mass > 0) ? cel->mass : solar_mass;
+    double surface_g = G * mass_g / (radius_m * radius_m);
+    double logg_cgs = log10(fmax(1e-6, surface_g) * 100.0);
+
     double p_rot_days = cel->sidereal_rotational_period / oneday;
     double tau_conv_days = 12.0 * pow(fmax(3000.0, fmin(7000.0, T_eff)) / sun_temp, -2.5);
-    double rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days) : frand(0.3, 3.0);
+
+    // Faute de periode connue, le tirage de repli depend de la classe de luminosite : une geante a
+    // perdu son moment cinetique et tourne en des centaines de jours -- lui preter au hasard
+    // l'activite d'une naine jeune couvrait Aldebaran, Betelgeuse et Antares de taches, alors que
+    // ces etoiles sont magnetiquement calmes (sauf en binaire serree synchronisee, cas non traite).
+    double rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days)
+                                     : ((logg_cgs < 3.5) ? frand(2.5, 9.0) : frand(0.4, 3.0));
     double activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
 
     // Contraste thermique des taches, croissant avec T_eff : quelques centaines de K chez une M --
@@ -2258,36 +2275,93 @@ void Map::generate_stellar_map(CelestialObject *cel)
     double f_obl = fmax(0.0, fmin(0.45, cel->oblateness));
     double gd_mean = 1.0 - 4.0 * f_obl / 3.0;
 
-    // Regions actives. Latitudes selon le regime : ceinture papillon pour une dynamo de tachocline,
-    // uniformes quand l'etoile est pleinement convective, calotte polaire chez les rotateurs
-    // rapides -- les taches polaires massives des K et M jeunes.
-    int num_spots = spotted ? (int)(activity * 22.0 + frand(0, 2.0)) : 0;
+    // --- Granulation (calque 3) ---------------------------------------------------------------
+    // Taille caracteristique des granules : d = 10 * H_p, avec H_p = kB*T/(mu*m_u*g) -- la seule loi
+    // d'echelle vraiment indispensable (STELLAR_TEXTURE_PLAN.md §2), et celle qui separe une naine
+    // (un millier de cellules en travers du disque) d'une geante (quelques dizaines, qui dominent
+    // alors tout le reste). Le kB du programme et la masse atomique ci-dessous sont en SI, la
+    // gravite est en m/s^2 : H_p sort en metres.
+    const double atomic_mass_unit = 1.66053906660e-27;                  // kg
+    double scale_height = kB * T_eff / (1.3 * atomic_mass_unit * surface_g);
+    double d_granule = 10.0 * scale_height;
+
+    // Aux tres basses gravites la loi surestime le nombre de cellules : les simulations de
+    // supergeantes rouges n'en donnent qu'une poignee, de taille comparable a R/3.
+    if (d_granule > 0.5 * radius_m) d_granule = 0.5 * radius_m;
+    double cells_across = 2.0 * radius_m / fmax(1.0, d_granule);
+
+    // Une structure de taille angulaire 1/s occupe W/(2*pi*s) texels ; il en faut environ trois pour
+    // qu'une cellule se lise comme une cellule. Toute la sequence principale depasse cette limite a
+    // la resolution par defaut (§2), on l'y ramene alors en attenuant le contraste, de sorte que la
+    // granulation d'une naine se lise comme un grain fin et non comme du bruit d'echantillonnage.
+    bool granulated = (regime == regime_stellar) && convective_envelope;
+    double gran_scale = cells_across / _pi;
+    double gran_nyquist = (double)image_width / (6.0 * _pi);
+    double gran_amp = 1.0;
+    if (gran_scale > gran_nyquist)
+    {
+        gran_amp = fmax(0.25, gran_nyquist / gran_scale);
+        gran_scale = gran_nyquist;
+    }
+
+    // Contraste : ~15 % en flux au Soleil, croissant avec T_eff. Le flux allant en T^4, cela fait
+    // environ 3.5 % en temperature.
+    double gran_dT = granulated
+        ? T_eff * 0.035 * sqrt(fmax(0.5, fmin(1.8, T_eff / sun_temp))) * gran_amp : 0.0;
+
+    // --- Regions actives (calque 5) -----------------------------------------------------------
+    // Les taches viennent par GROUPES bipolaires et non isolees : deux taches principales de
+    // polarite opposee etirees en longitude, entourees de compagnes plus petites. Les semer une a
+    // une, toutes de meme taille, donnait des pois reguliers. Latitudes selon le regime : ceinture
+    // papillon pour une dynamo de tachocline, uniformes en aire quand l'etoile est pleinement
+    // convective, calotte polaire chez les rotateurs rapides -- les taches polaires des K et M jeunes.
+    //
+    // Taille : un grand groupe solaire s'etend sur ~50 000 km, soit un rayon angulaire de l'ordre du
+    // degre vu du centre de l'etoile. La version precedente partait de 3 degres pour aller jusqu'a
+    // 26 : d'ou les pois. On monte en revanche haut chez une M saturee, dont la couverture observee
+    // atteint 20 a 40 % de la surface.
+    double spot_base_deg = 0.35 + 7.0 * activity;
+    int num_groups = spotted ? (int)(activity * 7.0 + frand(0, 1.5)) : 0;
     bool polar_regime = (rossby < 0.12);
 
     std::vector<Point> spot_axis;
     std::vector<double> spot_radius;
-    for (int i = 0; i < num_spots; i++)
+    for (int gi = 0; gi < num_groups; gi++)
     {
-        double slat;
+        double glat;
         if (polar_regime && frand(0, 1) < 0.55)
-            slat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 55, half_pi);
+            glat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 55, half_pi);
         else if (fully_convective)
-            slat = asin(frand(-1, 1));                          // uniforme en aire, pas en latitude
+            glat = asin(frand(-1, 1));                          // uniforme en aire, pas en latitude
         else
-            slat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 5, fiftyseventh * 35);
+            glat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 5, fiftyseventh * 35);
 
-        double slon = frand(0, _pi * 2);
-        double cos_slat = cos(slat);
-        spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
+        double glon = frand(0, _pi * 2);
+        double spread = fiftyseventh * spot_base_deg * frand(2.0, 5.0);
+        int members = 2 + (rand() % 4);
 
-        // Rayon angulaire : de quelques degres sur une etoile calme a des calottes de 25 degres
-        // chez une M saturee, ou la couverture observee monte a 20-40 % de la surface.
-        spot_radius.push_back(fiftyseventh * frand(3.0, 6.0 + 20.0 * activity));
+        for (int mi = 0; mi < members; mi++)
+        {
+            // Un groupe est nettement plus large que haut : l'etalement en longitude domine.
+            double slat = fmax(-half_pi, fmin(half_pi, glat + frand(-0.4, 0.4) * spread));
+            double slon = glon + frand(-1.0, 1.0) * spread * 2.2 / fmax(0.25, cos(glat));
+            double cos_slat = cos(slat);
+            spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
+
+            // La tete du groupe est la tache principale, les suivantes lui sont subordonnees.
+            double rad_deg = spot_base_deg * (mi == 0 ? frand(0.8, 1.6) : frand(0.25, 0.7));
+            spot_radius.push_back(fiftyseventh * rad_deg);
+        }
     }
+    int num_spots = (int)spot_axis.size();
 
-    // Bruit tiede deformant le contour des taches, pour qu'elles ne se lisent pas comme des disques.
-    double edge_scale = frand(6.0, 11.0);
-    double edge_amount = frand(0.18, 0.34);
+    // Deformation du contour. L'echelle du bruit est asservie a la taille des taches -- quelques
+    // ondulations sur le pourtour de chacune -- sans quoi un bruit de frequence fixe laissait les
+    // petites parfaitement rondes. L'amplitude est franche : un vrai groupe est dechiquete.
+    double mean_spot_rad = fiftyseventh * fmax(0.2, spot_base_deg);
+    double edge_scale = fmax(4.0, 2.5 / mean_spot_rad);
+    double edge_amount = frand(0.45, 0.7);
+    double fil_scale = edge_scale * 3.5;                         // filaments de la penombre
 
     // B-V de corps noir, pour faire varier la teinte avec la temperature locale.
     auto bv_of = [](double T) -> double
@@ -2336,18 +2410,38 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
             T_local = T_eff * gd_factor;
 
-            // Taches : ombre pleine au centre, penombre a 0.4 du deficit sur le pourtour, avec un
-            // bord bruite. La distance angulaire se lit directement dans le produit scalaire.
+            // Granulation : ridged_fBm INVERSE, dont les cretes fines deviennent les intergranules
+            // sombres et etroits qui cernent des cellules claires et larges -- la morphologie
+            // correcte, et non un simple bruit doux.
+            if (gran_dT > 0)
+            {
+                double cell = ridged_fBm(nx * gran_scale, ny * gran_scale, nz * gran_scale, 3, 2.1, 0.5);
+                T_local -= gran_dT * (1.0 - cell);
+            }
+
+            // Taches : ombre pleine sur le coeur, puis penombre filamenteuse jusqu'au bord. La
+            // distance angulaire se lit directement dans le produit scalaire.
             if (num_spots)
             {
-                warped = edge_amount * fBm(nx * edge_scale, ny * edge_scale, nz * edge_scale, 4, 2.0, 0.5);
+                warped = edge_amount * (fBm(nx * edge_scale, ny * edge_scale, nz * edge_scale, 5, 2.2, 0.55) - 0.5) * 2.0;
                 for (int i = 0; i < num_spots; i++)
                 {
                     dist = acos(fmax(-1.0, fmin(1.0, nx * spot_axis[i].x + ny * spot_axis[i].y + nz * spot_axis[i].z)));
                     double r = spot_radius[i] * (1.0 + warped);
-                    if (dist >= r) continue;
+                    if (r <= 0 || dist >= r) continue;
 
-                    umbra = (dist < 0.6 * r) ? 1.0 : (1.0 - (dist - 0.6 * r) / (0.4 * r) * 0.6);
+                    if (dist < 0.45 * r)
+                    {
+                        umbra = 1.0;                                    // ombre : deficit plein
+                    }
+                    else
+                    {
+                        // Penombre : environ 0.38 du deficit, en decroissance vers le bord, striee
+                        // par un bruit plus fin pour la texture filamenteuse.
+                        double t = (dist - 0.45 * r) / (0.55 * r);
+                        double fil = fBm(nx * fil_scale, ny * fil_scale, nz * fil_scale, 3, 2.0, 0.5);
+                        umbra = 0.38 * (1.0 - t) * (0.7 + 0.6 * fil);
+                    }
                     T_local = fmin(T_local, T_eff * gd_factor - spot_dT * umbra);
                 }
             }

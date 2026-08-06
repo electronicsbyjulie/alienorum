@@ -390,7 +390,19 @@ alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
     // emet l'essentiel de son flux. C'est donc la temperature qui tranche, les deux populations
     // etant disjointes en pratique (naines blanches cataloguees : 10 000 a 170 000 K).
     if (implied_radius > 0 && implied_radius < 0.05 && T > 4000.0) return regime_degenerate;
-    if (T < 2700.0) return regime_substellar;
+
+    // Frontiere M/L. Elle est physiquement floue -- une naine brune jeune et massive atteint
+    // 2500-2900 K et ressemble a une M poussiereuse -- donc on ne la fait pas reposer sur la seule
+    // temperature. La masse tranche quand elle est connue : la fusion de l'hydrogene s'eteint vers
+    // 0.075 M(soleil). A defaut, le seuil se place au bas de la sequence M plutot qu'a 2700 K, qui
+    // rangeait toutes les M6 a M9 parmi les naines brunes -- elles n'obtenaient alors aucune carte
+    // et s'affichaient en boules lisses, alors qu'elles sont au contraire les plus tachetees.
+    double mass_solar = cel->mass / solar_mass;
+    if (mass_solar > 0)
+    {
+        if (mass_solar < 0.075) return regime_substellar;
+    }
+    else if (T < 2300.0) return regime_substellar;
 
     return regime_stellar;
 }
