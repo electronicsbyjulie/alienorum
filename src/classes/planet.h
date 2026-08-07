@@ -22,6 +22,7 @@ namespace alienorum
         double J2 = 0;
         double ring_radius = 0;
         int asteroid_no = 0;                                // Zero if major planet or moon.
+        bool lock_type = false;
 
         void classify();
         void set_color_from_type(bool HZ);

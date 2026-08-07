@@ -2437,10 +2437,12 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 if (!strcmp(ihavetomove, "gas_giant")) p->type = gas_giant;
                 else if (!strcmp(ihavetomove, "hot_jupiter")) p->type = hot_jupiter;
                 else if (!strcmp(ihavetomove, "rocky")) p->type = rocky;
+                else if (!strcmp(ihavetomove, "super_venus")) p->type = rocky;
                 else if (!strcmp(ihavetomove, "lavaworld")) p->type = lavaworld;
                 else if (!strcmp(ihavetomove, "ice_giant")) p->type = ice_giant;
                 else if (!strcmp(ihavetomove, "icy")) p->type = icy;
                 else if (!strcmp(ihavetomove, "waterworld")) p->type = waterworld;
+                p->lock_type = true;
                 p->set_color_from_type(p->is_in_con_HZ());
             }
 

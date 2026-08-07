@@ -49,6 +49,7 @@ void Planet::classify()
 
 void Planet::classify(bool HZ, bool mnrk, bool ck)
 {
+    if (lock_type) return;
     Star *s = nullptr;
     double density = mnrk ? (mass / sphere_volume(volumetric_mean_radius) * 1e-6) : 0;
 

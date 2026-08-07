@@ -1442,7 +1442,22 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     cel->randomize();
     double T_surf = p->estimate_surface_temperature();
-    const double Tboil = water_freezing+100;
+    const double Tboil = water_freezing+100;                                     // Reference pressure
+
+    // Constants for water b.p.
+    const double R = 8.314;                                         // J/(mol*K)
+    const double DELTA_H_VAP = 40660.0;                             // J/mol
+    const double P1 = 1.0e+5;  
+
+    // Clausius-Clapeyron calculation
+    double inv_T1 = 1.0 / Tboil;
+    double gas_constant_ratio = R / DELTA_H_VAP;
+    double pressure_log = std::log(p->surface_pressure / P1);
+
+    double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
+    double T_boil = 1.0 / inv_T2;
+    // std::cout << "At " << (p->surface_pressure / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
+
     bool life_possible = false;
     if (p->is_in_con_HZ()
         && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
@@ -1477,20 +1492,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
         #endif
 
-        // Constants for water b.p.
-        const double R = 8.314;                                         // J/(mol*K)
-        const double DELTA_H_VAP = 40660.0;                             // J/mol
-        const double P1 = 1.0e+5;                                       // Reference pressure
-
-        // Clausius-Clapeyron calculation
-        double inv_T1 = 1.0 / Tboil;
-        double gas_constant_ratio = R / DELTA_H_VAP;
-        double pressure_log = std::log(p->surface_pressure / P1);
-
-        double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
-        double T_boil = 1.0 / inv_T2;
-        // std::cout << "At " << (p->surface_pressure / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
-
         if (randomize_txgen)
         {
             if (T_surf < 0.9 * water_freezing)
@@ -1502,16 +1503,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
                 has_water = frand(0, max_water);
             }
-            else
-            {
-                has_water = 0;
-                // Overcast Venusian-style cloud map.
-                if (!p->cloud_map)
-                {
-                    p->cloud_map = new Map();
-                    p->cloud_map->generate_overcast_sky(cel);
-                }
-            }
         }
 
         if (has_water >= 0.05
@@ -1521,6 +1512,21 @@ void Map::generate_rocky_map(CelestialObject *cel)
             life_possible = true;
     }
     T_surf = p->estimate_surface_temperature();
+
+    // Too hot for surface water: the world wears a globally overcast, Venusian sky instead. The
+    // generation itself cannot happen here -- we are holding mtx (taken at the top of this
+    // function, released well below), generate_overcast_sky() opens by taking it too, and mtx is
+    // a plain std::mutex, so a nested call deadlocks the thread outright. That killed everything
+    // downstream of this point: no overcast map, no rocky fill loop, and no final
+    // generating_fic_texture = false either -- and since color_at() answers pure white while that
+    // flag is set, every map in the app read as blank. So just note it here and build it at the
+    // very end, once the lock is long gone and this map is finished.
+    bool want_overcast_sky = false;
+    if (T_surf > T_boil * 1.1)
+    {
+        has_water = 0;
+        want_overcast_sky = (p->cloud_map == nullptr);
+    }
 
     int octaves = 5 + (rand() % 4);
     double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
@@ -1816,6 +1822,15 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     generating_fic_texture = false;
     touch_gen();
+
+    // Deferred from the T_surf test far above -- see its comment for why this cannot run inline.
+    // Last of all, so the surface map is complete and usable before the sky is even started.
+    if (want_overcast_sky && !p->cloud_map)
+    {
+        if (!p->surface_pressure) p->surface_pressure = 100.0 * oneatm * p->mass / earth_mass;          // Complete guess, probably way off in most cases.
+        p->cloud_map = new Map(cel);
+        p->cloud_map->generate_overcast_sky(cel);
+    }
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -2220,7 +2235,11 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
 
     Planet *p = (Planet*)cel;
-    RGB3Byte rgb( (unsigned char)frand(250, 255), (unsigned char)frand(240, 255), (unsigned char)frand(224, 255) );
+    // Calibrated against maps/Venus_clouds.jpg: its 95th-99th percentile (the polar hoods, i.e.
+    // the brightest thing on the map) sits at about (245, 239, 222), not at pure white. Drawing
+    // this any brighter left no headroom below it, and the result came out washed out -- half the
+    // luminance spread of the real thing.
+    RGB3Byte rgb( (unsigned char)frand(242, 249), (unsigned char)frand(234, 243), (unsigned char)frand(214, 228) );
 
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
@@ -2233,9 +2252,12 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     // it with green and (much more) blue pulled down is the low-latitude deck. That contrast --
     // near-white poles against a distinctly tawnier equatorial belt -- is the single most
     // recognizable thing about Venus in visible light, more than any individual cloud feature.
-    RGB3Byte deep((unsigned char)(rgb.r * frand(0.95, 1.00)),
-                  (unsigned char)(rgb.g * frand(0.84, 0.92)),
-                  (unsigned char)(rgb.b * frand(0.58, 0.74)));
+    // Same calibration from the other end: Venus's 1st-5th percentile is about (199, 168, 112),
+    // giving ratios against the bright end of roughly 0.81 / 0.70 / 0.50. Blue falls furthest by
+    // far, which is what turns the deck tawny rather than merely grey.
+    RGB3Byte deep((unsigned char)(rgb.r * frand(0.78, 0.86)),
+                  (unsigned char)(rgb.g * frand(0.66, 0.75)),
+                  (unsigned char)(rgb.b * frand(0.44, 0.56)));
 
     // Zonal stretching is what makes an overcast sky read as overcast rather than as a gas
     // giant's banding: super-rotating winds drag every structure out east-west until it is
@@ -2252,7 +2274,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 
     double warp_amt = frand(0.5, 1.1);
     double polar_k = frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
-    double contrast = frand(0.30, 0.55);            // deliberately low: this is haze, not weather
+    double contrast = frand(0.38, 0.62);            // still low -- this is haze, not weather
 
     // A faint, very broad mottling on top of everything, to break up the smoothest areas without
     // ever reading as a distinct cloud.
