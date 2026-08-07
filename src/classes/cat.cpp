@@ -4455,11 +4455,36 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         double dec = isnan(row.dec) ? 0 : row.dec * fiftyseventh;
         double st_lum = 0, sy_vmag = 1e290;
 
+        // La temperature d'abord : la conversion de st_lum juste en dessous en depend.
+        if (!isnan(row.st_teff))
+        {
+            host_star->temperature = row.st_teff;
+        }
+
         if (!isnan(row.st_lum))
         {
             st_lum = row.st_lum;
             double lum = pow(10, st_lum);
-            if (lum) host_star->absolute_magnitude = 4.85 - log(lum) / log(magnbase);
+            if (lum)
+            {
+                // st_lum est la luminosite BOLOMETRIQUE (log10 L/Lsol) au sens de l'archive NASA,
+                // donc 4.74 - 2.5 log10(L) en donne la magnitude absolue bolometrique. Or
+                // absolute_magnitude signifie partout ailleurs dans le programme une magnitude
+                // VISUELLE : y ranger M_bol telle quelle faisait ensuite appliquer une correction
+                // bolometrique a une valeur qui l'etait deja, par est_bolometric_flux(). Le double
+                // comptage etait invisible pour une G (BC_V ~ -0.1) et catastrophique pour une
+                // naine M : TRAPPIST-1 en ressortait 42 fois trop lumineuse, ce qui repoussait sa
+                // zone habitable au-dela de e, f et g pour la poser sur h.
+                //
+                // On retranche donc ici la correction que est_bolometric_flux() rajoutera. L'erreur
+                // propre de la formule de BC ne compte pas : c'est la meme des deux cotes, donc
+                // l'aller-retour redonne exactement la luminosite du catalogue.
+                //
+                // L'ancien 4.85 melangeait par ailleurs les deux conventions -- c'est a peu pres la
+                // magnitude absolue VISUELLE du Soleil, appliquee a une luminosite bolometrique.
+                double m_bol = 4.74 - log(lum) / log(magnbase);
+                host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
+            }
         }
         else host_star->absolute_magnitude = 10;
 

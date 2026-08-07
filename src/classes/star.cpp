@@ -361,6 +361,27 @@ double Star::degenerate_radius(double mass_kg)
     return 0.0126 * pow(m, -1.0/3.0) * sqrt(core) * solar_radius;
 }
 
+// Correction bolometrique BC_V, telle que M_bol = M_V + BC_V. Extraite de
+// Planet::est_bolometric_flux(), ou elle vivait en ligne -- une grandeur purement stellaire logee
+// dans une methode de planete, et surtout inaccessible au chargeur d'exoetoiles qui doit appliquer
+// la conversion inverse.
+double Star::bolometric_correction(double t_eff)
+{
+    if (!(t_eff > 0)) t_eff = sun_temp;
+
+    if (t_eff < 3500.0)
+    {
+        // Interpolation lineaire pour les naines M, d'apres les modeles d'atmosphere BT-Settl
+        // employes par Kopparapu : BC_V vaut environ -1.75 a 3500 K et -4.33 a 2500 K.
+        double t_fraction = (t_eff - 2500.0) / (3500.0 - 2500.0);
+        return -4.33 + t_fraction * (-1.75 - (-4.33));
+    }
+
+    // Formule usuelle pour le reste de la sequence principale.
+    double t_star = t_eff - sun_temp;
+    return -0.192 - (1.41e-4 * t_star) - (1.25e-7 * t_star * t_star);
+}
+
 // Assombrissement centre-bord, loi quadratique I(mu)/I(0) = 1 - a(1-mu) - b(1-mu)^2.
 //
 // Le shader employait auparavant un pow(mu, 1/3) fixe pour tout corps auto-lumineux. C'est une

@@ -215,21 +215,10 @@ double Planet::est_bolometric_flux(double t_eff)
     if (!t_eff) t_eff = s->estimate_temperature();
     double t_star = t_eff - sun_temp;
 
-    double bc_v;
-    if (t_eff < 3500.0)
-    {
-        // Linear interpolation for M-dwarfs based on the 
-        // BT-Settl stellar atmospheric models used by Kopparapu.
-        // At 3500K, BC_V is ~ -1.75. At 2500K, BC_V drops to ~ -4.50.
-        double t_fraction = (t_eff - 2500.0) / (3500.0 - 2500.0);
-        // bc_v = -4.02 + t_fraction * (-1.75 - (-4.50));
-        bc_v = -4.33 + t_fraction * (-1.75 - (-4.33)); 
-    }
-    else
-    {
-        // Standard calculation for most main sequence stars.
-        bc_v = -0.192 - (1.41e-4 * t_star) - (1.25e-7 * std::pow(t_star, 2));
-    }
+    // Voir Star::bolometric_correction(), ou ce calcul vit desormais : le chargeur d'exoetoiles
+    // doit appliquer exactement la meme correction en sens inverse (cat.cpp,
+    // resolve_or_create_exostar), et deux copies auraient fini par diverger.
+    double bc_v = Star::bolometric_correction(t_eff);
 
     // Calculate absolute bolometric magnitude.
     s->m_bol = s->absolute_magnitude + bc_v;

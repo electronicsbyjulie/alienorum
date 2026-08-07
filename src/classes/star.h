@@ -102,6 +102,12 @@ namespace alienorum
         static double temperature_from_BV(double BV);
         static double degenerate_radius(double mass_kg);            // metres
 
+        // Correction bolometrique BC_V a une temperature effective donnee : M_bol = M_V + BC_V.
+        // Partagee entre Planet::est_bolometric_flux(), qui l'applique, et le chargement des
+        // exoetoiles (CatalogReader::resolve_or_create_exostar), qui la retranche -- les deux
+        // doivent employer exactement la meme, sans quoi l'aller-retour ne se referme pas.
+        static double bolometric_correction(double t_eff);
+
         // Coefficients de la loi quadratique d'assombrissement centre-bord,
         //     I(mu)/I(0) = 1 - a*(1 - mu) - b*(1 - mu)^2,
         // interpoles sur la temperature effective et log g de cette etoile.
