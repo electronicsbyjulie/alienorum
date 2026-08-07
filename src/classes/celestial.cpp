@@ -1449,7 +1449,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         // double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
-        double max_atm_pressure = pow(10, shoreline) * 503;
+        double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
         if (randomize_txgen && !p->surface_pressure)
         {
             // p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
@@ -1598,7 +1598,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     unsigned int dither_seed = (unsigned int)rand();                         // per-planet salt for the per-pixel mottle hash
     double hue_scale = province_scale * frand(2.0, 4.0);                     // sub-regions within a single province
     double hue_amount = frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
-    double province_variability = frand(0.4, 0.85);
+    double province_variability = frand(0.1, 0.25);
     double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
     double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
     double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
@@ -1895,7 +1895,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)(1000 * bombardment_factor);
+    int num_craters = (int)(10000 * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
@@ -1927,7 +1927,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
         // Only the larger, "fresher" craters get ray systems -- and only worth it if the
         // world's cratering conditions are aggressive enough that fresh terrain persists at
         // all (see bombardment_factor above).
-        c.has_rays = (diam > max_diam * 0.81) && (frand(0, 1) < 0.01 * fmin(1.0, bombardment_factor));
+        c.has_rays = (diam > max_diam * 0.67) && (frand(0, 1) < 0.3 * fmin(1.0, bombardment_factor));
         c.ray_freq = frand(5, 10);
         c.ray_phase = frand(0, 2 * _pi);
         c.ray_sharpness = frand(6, 14);
@@ -2006,6 +2006,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                 // farther than the rim, and fading in gradually rather than blazing at full
                 // strength right at the rim -- real ray systems (e.g. Tycho) read as thin
                 // bright streaks, not a solid white starburst.
+                int rayr = 0, rayg = 0, rayb = 0;
                 if (c.has_rays && r > 1.0)
                 {
                     double ray_r = (r - 1.0) / (c.ray_extent_factor - 1.0);
@@ -2016,7 +2017,11 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                         double bearing = atan2(comp_e, comp_n);
                         double lobe = pow(fabs(cos(c.ray_freq * (bearing - c.ray_phase))), c.ray_sharpness);
                         double ray_falloff = pow(fmax(0.0, 1.0 - ray_r), 2.0);
-                        color_mult += 0.35 * lobe * ray_falloff;
+                        double ray_strength = 0.35 * lobe * ray_falloff;
+                        rayr = 250 * ray_strength;
+                        rayg = 244 * ray_strength;
+                        rayb = 236 * ray_strength;
+                        color_mult *= (1.0 - ray_strength);
                     }
                 }
 
@@ -2025,9 +2030,9 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                 bump_data[idx] += bump_delta;
                 if (color_mult != 1.0)
                 {
-                    red_data[idx]   = (unsigned char)fmin(255, red_data[idx]   * color_mult);
-                    green_data[idx] = (unsigned char)fmin(255, green_data[idx] * color_mult);
-                    blue_data[idx]  = (unsigned char)fmin(255, blue_data[idx]  * color_mult);
+                    red_data[idx]   = (unsigned char)fmin(255, red_data[idx]   * color_mult + rayr);
+                    green_data[idx] = (unsigned char)fmin(255, green_data[idx] * color_mult + rayg);
+                    blue_data[idx]  = (unsigned char)fmin(255, blue_data[idx]  * color_mult + rayb);
                 }
             }
         }
@@ -2187,17 +2192,16 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     generating_fic_texture = false;
     touch_gen();
 }
-
-// Carte de "surface" fictive pour un corps auto-lumineux. Voir STELLAR_TEXTURE_PLAN.md, dont ceci
-// est l'etape 1 : fond de corps noir, assombrissement gravitationnel, taches. La granulation
-// (calque 3), le reseau et les facules (4 et 6), les taches chimiques Ap/Bp (7) et le voile des
-// supergeantes rouges (8) restent a faire ; les naines blanches sortent d'ici en disque uniforme,
-// leurs pulsations et leurs taches magnetiques (calque 9) attendant l'etape 4.
+// Fictitious "surface" map for a self-luminous body.
+// Stage 1: black body background, gravitational darkening, spots. Granulation
+// (layer 3), the network and faculae (4 and 6), the chemical spots Ap/Bp (7) and the veil of
+// red supergiants (8) remain to be done; white dwarfs come out of here in a uniform disk,
+// their pulsations and their magnetic spots (layer 9) waiting for step 4.
 //
-// Difference de fond avec les trois generateurs planetaires voisins : la carte porte une
-// EMISSIVITE et non un albedo. Chaque texel est une temperature locale, convertie en couleur de
-// corps noir par la meme voie que le reste du programme (estimate_BV puis
-// color_from_magnitude_indices), et non une reflectivite.
+// Basic difference with the three neighboring planetary generators: the card bears a
+// EMISSIVITY and not an albedo. Each texel is a local temperature, converted into color
+// black body by the same route as the rest of the program (estimate_BV then
+// color_from_magnitude_indices), and not reflectivity.
 void Map::generate_stellar_map(CelestialObject *cel)
 {
     assert(cel->typeclass() == class_star);
@@ -2223,25 +2227,25 @@ void Map::generate_stellar_map(CelestialObject *cel)
     double T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
     if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
 
-    // Nature de l'enveloppe : c'est elle, et non la couleur, qui decide de ce qui peut structurer
-    // la surface. En dessous de 0.35 M(soleil) l'etoile est pleinement convective et sa dynamo est
-    // distribuee -- pas de ceinture de latitudes privilegiee. Au-dela de la rupture de Kraft
-    // (~6200 K) l'enveloppe convective s'amincit puis disparait : une A normale n'a ni granulation
-    // ni taches thermiques, et doit rester lisse. Ce n'est pas une lacune, c'est le resultat juste.
+    // Nature of the envelope: it is this, and not the color, which decides what can structure 
+    // the surface. Below 0.35 M (sun) the star is fully convective and its dynamo is 
+    // distributed -- no privileged latitude belt. Beyond the Kraft breakup 
+    // (~6200 K) the convective envelope thins then disappears: a normal A has no granulation 
+    // no thermal stains, and must remain smooth. This is not a shortcoming, it is the correct result.
     double mass_solar = cel->mass / solar_mass;
     bool fully_convective = (mass_solar > 0 && mass_solar < 0.35);
     bool convective_envelope = (T_eff < 7000.0);
     bool spotted = (regime == regime_stellar) && convective_envelope;
 
-    // Niveau d'activite. Il n'existe pas de champ age dans CelestialObject, donc on le tire de la
-    // rotation -- qui est de toute facon la meilleure correlation observationnelle. Nombre de
-    // Rossby approche : periode rapportee a un temps de retournement convectif qui s'allonge vers
-    // les etoiles froides (~12 jours au Soleil, ~40 chez une M tardive). L'activite sature en
-    // dessous de Ro ~ 0.1, comme observe.
+    // Activity level. There is no age field in CelestialObject, so it is derived from
+    // rotation—which is the best observational correlate anyway. Rossby number
+    // approximation: period relative to a convective turnover time that increases for
+    // cooler stars (~12 days for the Sun, ~40 for a late-type M dwarf). Activity saturates
+    // below Ro ~ 0.1, as observed. 
     //
-    // Gravite de surface : masses en grammes et longueurs en metres dans ce programme, et G y est
-    // defini en consequence, de sorte que G*M/R^2 sort directement en m/s^2 (verifie : 274 pour le
-    // Soleil). Elle sert ici a deux choses, l'activite et la taille des granules.
+    // Surface gravity: masses are in grams and lengths in meters in this program, and G is
+    // defined accordingly so that G*M/R^2 yields a result directly in m/s^2 (verified: 274 for the
+    // Sun). It is used here for two purposes: activity and granule size.
     double radius_m = (regime == regime_degenerate) ? Star::degenerate_radius(cel->mass)
                                                     : cel->volumetric_mean_radius;
     if (!(radius_m > 0)) radius_m = solar_radius;
@@ -2252,48 +2256,48 @@ void Map::generate_stellar_map(CelestialObject *cel)
     double p_rot_days = cel->sidereal_rotational_period / oneday;
     double tau_conv_days = 12.0 * pow(fmax(3000.0, fmin(7000.0, T_eff)) / sun_temp, -2.5);
 
-    // Faute de periode connue, le tirage de repli depend de la classe de luminosite : une geante a
-    // perdu son moment cinetique et tourne en des centaines de jours -- lui preter au hasard
-    // l'activite d'une naine jeune couvrait Aldebaran, Betelgeuse et Antares de taches, alors que
-    // ces etoiles sont magnetiquement calmes (sauf en binaire serree synchronisee, cas non traite).
+    // In the absence of a known period, the fallback draw depends on the luminosity class: a giant has 
+    // lost its kinetic moment and turns in hundreds of days -- lend it to chance 
+    // the activity of a young dwarf covered Aldebaran, Betelgeuse and Antares with spots, while 
+    // these stars are magnetically calm (except in synchronized tight binary, untreated case).
     double rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days)
                                      : ((logg_cgs < 3.5) ? frand(2.5, 9.0) : frand(0.4, 3.0));
     double activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
 
-    // Contraste thermique des taches, croissant avec T_eff : quelques centaines de K chez une M --
-    // large, rouge sombre et molle plutot que noire et nette -- contre ~1800 K au Soleil, ou
-    // l'ombre est a 3800-4200 K sous une photosphere a 5772 K. Ajustement lineaire passant par
-    // (3000 K, 300 K) et (5772 K, 1800 K).
+    // Thermal contrast of the spots, increasing with T_eff: a few hundred K in an M -- 
+    // large, dark red and soft rather than black and sharp -- against ~1800 K in the Sun, or 
+    // the shadow is at 3800-4200 K under a photosphere at 5772 K. Linear adjustment passing through 
+    // (3000 K, 300 K) and (5772 K, 1800 K).
     double spot_dT = fmax(150.0, fmin(0.541 * T_eff - 1323.0, 0.45 * T_eff));
 
-    // Assombrissement gravitationnel (von Zeipel) : terme purement latitudinal, invisible tant que
-    // l'etoile n'est pas un rotateur rapide. beta vaut 0.25 en enveloppe radiative et 0.08 en
-    // enveloppe convective (Lucy). Le facteur (1 - 2f cos^2(lat)) approche le rapport de la gravite
-    // effective locale a celle du pole ; on le normalise par sa moyenne ponderee par l'aire,
-    // 1 - 4f/3, pour que la temperature moyenne de la surface reste T_eff.
+    // Gravitational darkening (von Zeipel): a purely latitudinal term, invisible unless
+    // the star is a rapid rotator. beta equals 0.25 for a radiative envelope and 0.08 for
+    // a convective envelope (Lucy). The factor (1 - 2f cos^2(lat)) approximates the ratio of local
+    // effective gravity to polar gravity; it is normalized by its area-weighted average,
+    // 1 - 4f/3, so that the mean surface temperature remains T_eff.
     double gd_beta = convective_envelope ? 0.08 : 0.25;
     double f_obl = fmax(0.0, fmin(0.45, cel->oblateness));
     double gd_mean = 1.0 - 4.0 * f_obl / 3.0;
 
-    // --- Granulation (calque 3) ---------------------------------------------------------------
-    // Taille caracteristique des granules : d = 10 * H_p, avec H_p = kB*T/(mu*m_u*g) -- la seule loi
-    // d'echelle vraiment indispensable (STELLAR_TEXTURE_PLAN.md §2), et celle qui separe une naine
-    // (un millier de cellules en travers du disque) d'une geante (quelques dizaines, qui dominent
-    // alors tout le reste). Le kB du programme et la masse atomique ci-dessous sont en SI, la
-    // gravite est en m/s^2 : H_p sort en metres.
+    // --- Granulation (layer 3) --------------------------------------------------------------- 
+    // Characteristic size of the granules: d = 10 * H_p, with H_p = kB*T/(mu*m_u*g) -- the only law 
+    // really essential scale (STELLAR_TEXTURE_PLAN.md §2), and that which separates a dwarf 
+    // (a thousand cells across the disc) of a giant (a few dozen, which dominate 
+    // then everything else). The kB of the program and the atomic mass below are in SI, the 
+    // gravity is in m/s^2: H_p comes out in meters.
     const double atomic_mass_unit = 1.66053906660e-27;                  // kg
     double scale_height = kB * T_eff / (1.3 * atomic_mass_unit * surface_g);
     double d_granule = 10.0 * scale_height;
 
-    // Aux tres basses gravites la loi surestime le nombre de cellules : les simulations de
-    // supergeantes rouges n'en donnent qu'une poignee, de taille comparable a R/3.
+    // At very low gravity the law underestimates the number of cells: simulations of
+    // red supergiants only give a handful, of size comparable to R/3.
     if (d_granule > 0.5 * radius_m) d_granule = 0.5 * radius_m;
     double cells_across = 2.0 * radius_m / fmax(1.0, d_granule);
 
-    // Une structure de taille angulaire 1/s occupe W/(2*pi*s) texels ; il en faut environ trois pour
-    // qu'une cellule se lise comme une cellule. Toute la sequence principale depasse cette limite a
-    // la resolution par defaut (§2), on l'y ramene alors en attenuant le contraste, de sorte que la
-    // granulation d'une naine se lise comme un grain fin et non comme du bruit d'echantillonnage.
+    // A structure of angular size 1/s occupies W/(2*pi*s) texels; it takes about three to 
+    // that a cell reads like a cell. The entire main sequence exceeds this limit at 
+    // the default resolution (§2), we then bring it back by reducing the contrast, so that the 
+    // graininess of a dwarf reads as fine grain and not as sampling noise.
     bool granulated = (regime == regime_stellar) && convective_envelope;
     double gran_scale = cells_across / _pi;
     double gran_nyquist = (double)image_width / (6.0 * _pi);
@@ -2304,24 +2308,24 @@ void Map::generate_stellar_map(CelestialObject *cel)
         gran_scale = gran_nyquist;
     }
 
-    // Contraste : ~15 % en flux au Soleil, croissant avec T_eff. Le flux allant en T^4, cela fait
-    // environ 3.5 % en temperature.
+    // Contrast: ~15% in flux to the Sun, increasing with T_eff. The flow going to T^4, this makes 
+    // approximately 3.5% in temperature.
     double gran_dT = granulated
         ? T_eff * 0.035 * sqrt(fmax(0.5, fmin(1.8, T_eff / sun_temp))) * gran_amp : 0.0;
 
-    // --- Regions actives (calque 5) -----------------------------------------------------------
-    // Les taches viennent par GROUPES bipolaires et non isolees : deux taches principales de
-    // polarite opposee etirees en longitude, entourees de compagnes plus petites. Les semer une a
-    // une, toutes de meme taille, donnait des pois reguliers. Latitudes selon le regime : ceinture
-    // papillon pour une dynamo de tachocline, uniformes en aire quand l'etoile est pleinement
-    // convective, calotte polaire chez les rotateurs rapides -- les taches polaires des K et M jeunes.
+    // --- Active regions (layer 5) -----------------------------------------------------------
+    // Spots appear in bipolar GROUPS rather than in isolation: two main spots of
+    // opposite polarity stretched in longitude, surrounded by smaller companions. Sowing them one
+    // by one, all the same size, resulted in a pattern of uniform "peas." Latitudes depend on the regime:
+    // a "butterfly" belt for a tachocline dynamo; uniform area distribution when the star is fully
+    // convective; polar caps for rapid rotators—like the polar spots on young K and M stars. 
     //
-    // Taille : un grand groupe solaire s'etend sur ~50 000 km, soit un rayon angulaire de l'ordre du
-    // degre vu du centre de l'etoile. La version precedente partait de 3 degres pour aller jusqu'a
-    // 26 : d'ou les pois. On monte en revanche haut chez une M saturee, dont la couverture observee
-    // atteint 20 a 40 % de la surface.
+    // Size: a large solar group spans ~50,000 km, corresponding to an angular radius on the order of
+    // one degree as viewed from the star's center. The previous version ranged from 3 to
+    // 26 degrees—hence the "peas." In contrast, values ​​are much higher for a saturated M-dwarf,
+    // where observed coverage reaches 20–40% of the surface.
     double spot_base_deg = 0.35 + 7.0 * activity;
-    int num_groups = spotted ? (int)(activity * 7.0 + frand(0, 1.5)) : 0;
+    int num_groups = spotted ? (int)(activity * 7.0 + frand(0.8, 1.5)) : 0;
     bool polar_regime = (rossby < 0.12);
 
     std::vector<Point> spot_axis;
@@ -2355,19 +2359,19 @@ void Map::generate_stellar_map(CelestialObject *cel)
     }
     int num_spots = (int)spot_axis.size();
 
-    // --- Facules et reseau (calque 6) ---------------------------------------------------------
-    // Elles sont ecrites dans le creneau night_map, et non dans la carte principale, parce que le
-    // shader melange isDay*jour + (1 - isDay)*nuit : le poids de la carte de nuit est donc maximal
-    // AU BORD du disque. C'est exactement le comportement des facules, invisibles au centre et
-    // brillantes au limbe, et on l'obtient sans toucher au shader (STELLAR_TEXTURE_PLAN.md §7.4).
-    //
-    // La carte de nuit ne porte que l'EXCES faculaire, noir partout ailleurs. Si elle portait la
-    // couleur de la photosphere, le melange etant une moyenne ponderee et non un produit, le bord
-    // reviendrait a pleine intensite et l'assombrissement centre-bord serait annule.
-    //
-    // Deux composantes : les plages, anneaux brillants ceinturant les regions actives, et le reseau
-    // magnetique, qui suit les bords des cellules de supergranulation -- une vingtaine de fois plus
-    // grandes que les granules, d'ou l'echelle divisee d'autant.
+    // --- Facules and network (layer 6) --------------------------------------------------------- 
+    // They are written in the night_map slot, and not in the main map, because the 
+    // shader mix isDay*day + (1 - isDay)*night: the weight of the night map is therefore maximum 
+    // AT THE EDGE of the disk. This is exactly the behavior of the faculae, invisible in the center and 
+    // shiny at the limb, and we obtain it without touching the shader (STELLAR_TEXTURE_PLAN.md §7.4). 
+    // 
+    // The night card only bears the facular EXCES, black everywhere else. If she wore the 
+    // color of the photosphere, the mixture being a weighted average and not a product, the edge 
+    // would return to full intensity and center-edge darkening would be canceled. 
+    // 
+    // Two components: the beaches, brilliant rings surrounding active regions, and the network 
+    // magnetic, which follows the edges of the supergranulation cells -- around twenty times more 
+    // larger than the granules, hence the scale divided accordingly.
     bool has_faculae = spotted && (activity > 0.02);
     Map *fac = nullptr;
     if (has_faculae && !cel->night_map)
@@ -2386,33 +2390,35 @@ void Map::generate_stellar_map(CelestialObject *cel)
         cel->night_map = fac;
     }
     double net_scale = fmax(0.7, gran_scale / 20.0);
-    double plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // exces relatif a la photosphere
+    double plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // excess relating to the photosphere
     double net_gain = fmin(0.30, 0.08 + 0.35 * activity);
 
-    // Deformation du contour. L'echelle du bruit est asservie a la taille des taches -- quelques
-    // ondulations sur le pourtour de chacune -- sans quoi un bruit de frequence fixe laissait les
-    // petites parfaitement rondes. L'amplitude est franche : un vrai groupe est dechiquete.
+    // Contour deformation. The noise scale is linked to the size of the spots—creating
+    // a few ripples along the edge of each—since otherwise, fixed-frequency noise left the
+    // small ones perfectly round. The amplitude is pronounced: a genuine cluster is torn apart.
     double mean_spot_rad = fiftyseventh * fmax(0.2, spot_base_deg);
     double edge_scale = fmax(4.0, 2.5 / mean_spot_rad);
     double edge_amount = frand(0.45, 0.7);
-    double fil_scale = edge_scale * 3.5;                         // filaments de la penombre
+    double fil_scale = edge_scale * 3.5;                         // penumbral filaments
 
-    // B-V de corps noir, pour faire varier la teinte avec la temperature locale.
+    // Blackbody B-V, to vary the hue according to local temperature.
     auto bv_of = [](double T) -> double
     {
         return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
     };
 
-    // On applique a BV_color l'ECART de corps noir entre la temperature locale et T_eff, plutot que
-    // le B-V de corps noir brut : la couleur mesuree de l'objet est ainsi conservee la ou rien ne
-    // vient l'alterer, et seule la variation spatiale est calculee.
+    // We apply the black-body *deviation* between the local temperature and T_eff to BV_color,
+    // rather than the raw black-body B-V value: this preserves the object's measured color
+    // where it remains unaltered, while only the spatial variation is calculated. 
     //
-    // La reference de normalisation se calcule une fois pour toutes, et non par texel : la teinte
-    // suit alors la temperature locale pendant que la luminance suit exactement le terme physique
-    // plus bas. Normaliser chaque texel sur son propre maximum faisait travailler les deux l'un
-    // contre l'autre -- mesure sur une A5 aplatie, ou l'ecart pole-equateur tombait de 26 a 10 %.
-    // A T_local == T_eff le resultat est exactement la couleur de repli que draw_sphere_gpu()
-    // emploie deja faute de texture, gamma compris : rgb_from_color(col, -1).
+    // The normalization reference is calculated once globally, not per texel; the hue
+    // thus tracks the local temperature while the luminance follows the physical term
+    // defined below. Normalizing each texel against its own maximum caused the two
+    // to work against each other—as observed on a flattened A5 model, where the
+    // pole-to-equator difference dropped from 26% to 10%. 
+    // At T_local == T_eff, the result is exactly the fallback color that
+    // draw_sphere_gpu() already uses when no texture is present (including gamma):
+    // rgb_from_color(col, -1).
     double bv_at_teff = bv_of(T_eff);
     Color ref_col = Color::color_from_magnitude_indices(0, cel->BV_color);
     double ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
@@ -2425,7 +2431,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
     for (y = 0; y < image_height; ++y)
     {
-        theta = ((double)y / image_height) * _pi;            // 0 au pole nord, PI au pole sud
+        theta = ((double)y / image_height) * _pi;            // 0 at the north pole, Pi at the south pole
         lat = half_pi - theta;
         sin_theta = sin(theta);
         cos_lat = sin_theta;
@@ -2444,17 +2450,17 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
             T_local = T_eff * gd_factor;
 
-            // Granulation : ridged_fBm INVERSE, dont les cretes fines deviennent les intergranules
-            // sombres et etroits qui cernent des cellules claires et larges -- la morphologie
-            // correcte, et non un simple bruit doux.
+            // Granulation: INVERSE ridged_fBm, where the fine ridges become the dark,
+            // narrow intergranular lanes surrounding broad, bright cells—the correct
+            // morphology, rather than mere smooth noise.
             if (gran_dT > 0)
             {
                 double cell = ridged_fBm(nx * gran_scale, ny * gran_scale, nz * gran_scale, 3, 2.1, 0.5);
                 T_local -= gran_dT * (1.0 - cell);
             }
 
-            // Taches : ombre pleine sur le coeur, puis penombre filamenteuse jusqu'au bord. La
-            // distance angulaire se lit directement dans le produit scalaire.
+            // Spots: full shadow on the heart, then filamentous penumbra up to the edge. The 
+            // angular distance is read directly in the dot product.
             double plage = 0;
             if (num_spots)
             {
@@ -2465,10 +2471,10 @@ void Map::generate_stellar_map(CelestialObject *cel)
                     double r = spot_radius[i] * (1.0 + warped);
                     if (r <= 0) continue;
 
-                    // Plage : couronne brillante debordant la tache, de son bord a 2.6 fois son
-                    // rayon, en decroissance. Une region active est toujours plus etendue en
-                    // facules qu'en taches -- c'est meme ce qui rend le Soleil PLUS brillant a son
-                    // maximum d'activite, malgre ses taches.
+                    // Beach: brilliant crown overflowing the spot, from its edge to 2.6 times its 
+                    // radius, decreasing. An active region is always more extensive in 
+                    // facules than spots -- this is even what makes the Sun BRIGHTER at its 
+                    // maximum activity, despite its stains.
                     if (has_faculae && dist >= r && dist < 2.6 * r)
                     {
                         double pt = (dist - r) / (1.6 * r);
@@ -2479,27 +2485,27 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
                     if (dist < 0.45 * r)
                     {
-                        umbra = 1.0;                                    // ombre : deficit plein
+                        umbra = 1.0;                                    // shadow : full defecit
                     }
                     else
                     {
-                        // Penombre : environ 0.38 du deficit, en decroissance vers le bord, striee
-                        // par un bruit plus fin pour la texture filamenteuse.
+                        // Penumbra : approximately 0.38 of the deficit, decreasing towards the edge, streaked 
+                        // by a finer noise for the filamentary texture.
                         double t = (dist - 0.45 * r) / (0.55 * r);
                         double fil = fBm(nx * fil_scale, ny * fil_scale, nz * fil_scale, 3, 2.0, 0.5);
                         umbra = 0.38 * (1.0 - t) * (0.7 + 0.6 * fil);
                     }
                     T_local = fmin(T_local, T_eff * gd_factor - spot_dT * umbra);
-                    plage = 0;                                          // pas de facule sur la tache elle-meme
+                    plage = 0;                                          // not easy on the stain itself
                 }
             }
 
             if (T_local < 1000.0) T_local = 1000.0;
 
-            // Luminance : le rapport de flux va en T^4, ce qui saturerait vers le noir sur 8 bits --
-            // une ombre a 4000 K sous 5772 K vaut un quart du flux. On le comprime en (T/T_eff)^1.6,
-            // qui laisse cette meme ombre a 56 % : sombre et nettement lisible, comme sur une image
-            // du Soleil en lumiere blanche.
+            // Luminance: the flux ratio goes to T^4, which would saturate towards black on 8 bits -- 
+            // a shadow at 4000 K under 5772 K is worth a quarter of the flux. We compress it to (T/T_eff)^1.6, 
+            // which leaves this same shadow at 56%: dark and clearly readable, like in an image 
+            // of the Sun in white light.
             double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
             double lum = pow(T_local / T_eff, 1.6);
 
@@ -2512,11 +2518,11 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
             if (fac)
             {
-                // Reseau magnetique : ridged_fBm pris a l'endroit cette fois, ses cretes fines
-                // epousant les bords des cellules de supergranulation, la ou le champ se concentre.
+                // Magnetic network: ridged_fBm taken right side up this time, its fine ridges 
+                // hugging the edges of the supergranulation cells, where the field is concentrated.
                 double net = ridged_fBm(nx * net_scale + 13.7, ny * net_scale + 4.1, nz * net_scale + 29.3,
                     2, 2.0, 0.5);
-                net = fmax(0.0, (net - 0.72) / 0.28);               // ne garder que les cretes
+                net = fmax(0.0, (net - 0.72) / 0.28);               // keep only the ridges
 
                 double excess = fmin(1.0, plage_gain * plage + net_gain * net);
                 fac->red_data[idx]   = (unsigned char)fmin(255.0, rgb.r * excess);

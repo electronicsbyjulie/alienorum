@@ -299,6 +299,10 @@ void draw_status_window(ImGuiIO& io)
             sssg.str("");
             sssg << "Est. temp.:   " << std::fixed << std::setprecision(1) << ((Planet*)cels[whereami])->estimate_surface_temperature() << " K";
             ImGui::Text("%s", sssg.str().c_str());
+            sssg.str("");
+            double bar = ((Planet*)cels[whereami])->surface_pressure / 1e5;
+            sssg << "Pressure:     " << std::fixed << std::setprecision(bar<1 ? 5 : 2) << bar << " bar";
+            ImGui::Text("%s", sssg.str().c_str());
 
             CelestialObject *lcen = cels[whereami]->get_light_center();
             double lightalt = lcen->Decl_as_radians(here)*fiftyseven;

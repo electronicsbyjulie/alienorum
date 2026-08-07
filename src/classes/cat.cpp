@@ -15,6 +15,7 @@
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
+#include "shore.h"
 
 // Zeta 1,2 Reticuli make for a good case study in the program correctly identifying binary systems,
 // since they have a decent separation both in actual physical distance and in angular position from the solar system.
@@ -3592,6 +3593,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->classify(p->is_in_con_HZ(), true, true);         // TODO: Verify this works for all solar system objects.
 
                 Star* s = (Star*)p->get_light_center();
+                // std::cout << p->name << " cosmic shoreline = " << CosmicShore::calculate_unified_metric(*s, *p) << std::endl;
                 if (p->orbit->center == s)
                 {
                     s->has_planets++;
