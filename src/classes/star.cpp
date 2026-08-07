@@ -318,6 +318,152 @@ void Star::estimate_UB(double T)
     UB_color = log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
 }
 
+// Exact inverse of estimate_BV(double T) above: the same black body relation, solved in
+//temperature. B-V y decreases monotonically with T, so a bisection is sufficient and cannot
+// take the wrong branch.
+double Star::temperature_from_BV(double BV)
+{
+    auto bv_of = [](double T) -> double
+    {
+        return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+    };
+
+    double lo = 1000.0, hi = 200000.0;                      // du plancher des naines Y au plafond des DO
+    if (BV >= bv_of(lo)) return lo;
+    if (BV <= bv_of(hi)) return hi;
+
+    for (int i = 0; i < 50; i++)
+    {
+        double mid = 0.5 * (lo + hi);
+        if (bv_of(mid) > BV) lo = mid;                      // encore trop froid : B-V trop rouge
+        else hi = mid;
+    }
+
+    return 0.5 * (lo + hi);
+}
+
+// Mass-radius relationship for degenerate matter, in its simple analytical form:
+//     R/R(Sun) = 0.0126 * (M/M(Sun))^(-1/3) * sqrt(1 - (M/M_Chandrasekhar)^(4/3))
+// Verified against Sirius B (M = 1.02 M(Sun)): 5,290 km calculated vs. 5,850 km measured—a 10%
+// discrepancy. More than sufficient for a rendering radius—without which a white dwarf has no
+// usable radius and its disk is never resolved—but not for asteroseismology.
+double Star::degenerate_radius(double mass_kg)
+{
+    const double chandrasekhar = 1.44;
+    double m = mass_kg / solar_mass;
+
+    if (!(m > 0)) m = 0.6;                                  // masse typique du pic observe, faute de mieux
+    if (m > 0.99 * chandrasekhar) m = 0.99 * chandrasekhar;
+
+    double core = 1.0 - pow(m / chandrasekhar, 4.0/3.0);
+    if (core < 0) core = 0;
+
+    return 0.0126 * pow(m, -1.0/3.0) * sqrt(core) * solar_radius;
+}
+
+// Bolometric correction BC_V, such that M_bol = M_V + BC_V. Extracted from
+// Planet::est_bolometric_flux(), where it lived online -- a purely stellar magnitude housed
+// in a planet method, and above all inaccessible to the exoestar charger which must apply
+// the reverse conversion.
+double Star::bolometric_correction(double t_eff)
+{
+    if (!(t_eff > 0)) t_eff = sun_temp;
+
+    if (t_eff < 3500.0)
+    {
+        // Linear interpolation for M dwarfs, based on BT-Settl atmosphere models
+        // used by Kopparapu: BC_V is approximately -1.75 at 3500 K and -4.33 at 2500 K.
+        double t_fraction = (t_eff - 2500.0) / (3500.0 - 2500.0);
+        return -4.33 + t_fraction * (-1.75 - (-4.33));
+    }
+
+    // Usual formula for the rest of the main sequence.
+    double t_star = t_eff - sun_temp;
+    return -0.192 - (1.41e-4 * t_star) - (1.25e-7 * t_star * t_star);
+}
+
+// Center-edge darkening, quadratic law I(mu)/I(0) = 1 - a(1-mu) - b(1-mu)^2.
+//
+// The shader previously employed a fixed pow(mu, 1/3) for any self-luminous body. It's a
+// acceptable approximation at the center of the disc and false at the limb, where it falls to ZERO: the edge
+// of the star was almost black, and as the halo of draw_flare() is traced behind and
+// continue beyond, the result was a dark border stuck between a shiny heart and a crown
+// brilliant (measurement on Sirius B: hollow at 207 against 277 just beyond, at the exact radius of the disk).
+// No star dims to black: the solar limb is still about 30% from the center
+// in the visible.
+//
+// We first model the total loss at the limb, u = 1 - I(limb)/I(center), then we distribute it
+// between the two terms. It decreases with temperature -- a hot star is significantly less
+// darkened in the visible -- and increases when surface gravity drops, the atmosphere expands
+// of a cold giant being the most marked case. Target benchmarks: Sun 0.70 (observed value,
+// and the (a, b) which come out of it, 0.49 and 0.21, well frame the 0.47 and 0.23 tabules by Claret),
+// hot dwarf 0.50, cold giant ~0.90, white dwarf ~0.36.
+void Star::limb_darkening_coefficients(double &a, double &b)
+{
+    double T = (temperature > 0) ? temperature : temperature_from_BV(BV_color);
+    if (!(T > 0) || isnan(T) || isinf(T)) T = sun_temp;
+
+    // Masses in grams and lengths in meters here, and G is defined accordingly: G*M/R^2 comes out 
+    // directly in m/s^2. The factor 100 passes to cgs, the unit in which log g is quoted.
+    double radius_m = volumetric_mean_radius;
+    if (!(radius_m > 0)) radius_m = solar_radius;
+    double mass_grams = (mass > 0) ? mass : solar_mass;
+    double logg = log10(fmax(1e-6, G * mass_grams / (radius_m * radius_m)) * 100.0);
+
+    double u = 0.72 - 0.40 * log10(T / sun_temp) + 0.03 * (4.4 - logg);
+    if (u < 0.25) u = 0.25;
+    if (u > 0.92) u = 0.92;
+
+    b = 0.30 * u;                                   // distribution between linear and quadratic term
+    a = u - b;
+}
+
+// Photometric classification -- see the comment by stellar_regime_t (star.h) for the rationale,
+// and STELLAR_TEXTURE_PLAN.md §5.1 for details on the two pitfalls addressed here.
+alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
+{
+    if (!cel || cel->typeclass() != class_star) return regime_none;
+
+    // Neither estimate_temperature() nor the main-sequence table it relies on: we
+    // invert the blackbody relation, or use the catalog temperature when available.
+    double T = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+    if (!(T > 0) || isnan(T) || isinf(T)) return regime_stellar;
+
+    // Radius derived from luminosity and temperature using Stefan-Boltzmann. We must strictly
+    // avoid using volumetric_mean_radius: it may have been generated by estimate_radius()
+    // based on the main-sequence table, and there is no way to distinguish a measured
+    // value from an interpolated one. A stored radius of 2 R(Sun) for a white dwarf
+    // is not a refutation; it is a symptom.
+    double implied_radius = 0;                              // solar radii
+    double absmag = cel->absolute_magnitude;
+    if (absmag != 0 && !isnan(absmag) && !isinf(absmag))
+    {
+        double lum = pow(magnbase, -(absmag - 4.83));       // 4.83 = absolute V magnitude of the Sun
+        implied_radius = sqrt(lum) * pow(sun_temp / T, 2.0);
+    }
+
+    // Radius alone would be misleading for brown dwarfs: an L0 yields ~0.009 R_Sun using this
+    // formula—firmly in white dwarf territory—because M_V ignores the infrared, where the
+    // object emits the bulk of its flux. Temperature is therefore the deciding factor, as the
+    // two populations are distinct in practice (catalogued white dwarfs: 10,000 to 170,000 K).
+    if (implied_radius > 0 && implied_radius < 0.05 && T > 4000.0) return regime_degenerate;
+
+    // Frontiere M/L. It is physically fuzzy -- a young, massive brown dwarf affected 
+    // 2500-2900 K and looks like a dusty M -- so we don't put it on the sole 
+    //temperature. The mass decides when it is known: the fusion of hydrogen is extinguished towards 
+    // 0.075 M(sun). Otherwise, the threshold is placed at the bottom of the sequence M rather than at 2700 K, which 
+    // placed all M6 to M9 among brown dwarfs -- they then obtained no cards 
+    // and appeared as smooth balls, whereas on the contrary they are the most spotted.
+    double mass_solar = cel->mass / solar_mass;
+    if (mass_solar > 0)
+    {
+        if (mass_solar < 0.075) return regime_substellar;
+    }
+    else if (T < 2300.0) return regime_substellar;
+
+    return regime_stellar;
+}
+
 void alienorum::Star::load_main_seq_dat()
 {
     FILE *fp = fopen("catalogs/mainseq.dat", "rb");

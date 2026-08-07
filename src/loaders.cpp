@@ -135,6 +135,23 @@ void load_textures(CelestialObject* cel)
             cel->night_map->generate_lava_map(cel);
         }
     }
+    else if (!cel->surf_map && !cel->cloud_map)
+    {
+        switch (stellar_regime(cel))
+        {
+            case regime_degenerate:
+            case regime_stellar:
+                cel->surf_map = new Map(cel);
+                cel->surf_map->generate_stellar_map(cel);
+                break;
+
+            case regime_substellar:
+                break;
+
+            default:
+                break;
+        }
+    }
 }
 
 void save_textures(CelestialObject* cel)
@@ -157,24 +174,6 @@ void save_textures(CelestialObject* cel)
     }
 }
 
-// Localise la racine du projet -- le dossier qui contient `catalogs` -- et s'y place, de sorte que
-// tout le reste du programme puisse continuer a resoudre ses fichiers en relatif.
-//
-// La recherche part de l'executable avant de se rabattre sur le repertoire courant. La remontee
-// existe precisement parce que le repertoire courant n'est pas a nous : le shell peut avoir ete
-// lance de n'importe ou. SDL_GetBasePath() donne le dossier de l'executable, et SDL est initialise
-// (alienorum.cpp, SDL_Init) bien avant l'appel a look_for_catalogs(), donc il est disponible ici.
-// Lance en bin/alienorum, la recherche demarre a <racine>/bin et trouve <racine>/catalogs au
-// premier pas, quel que soit le dossier depuis lequel la commande a ete tapee.
-//
-// L'arret se fait sur `dir == dir.parent_path()`, seul vrai a la racine du systeme de fichiers.
-// Une version anterieure s'arretait quand current_path().string().size() tombait sous 5 -- une
-// heuristique sur la longueur d'une chaine ("/" fait 1, "/opt" 4, "/home" 5, "C:\" 3) qui laissait
-// la remontee traverser /home : un dossier `catalogs` egare au-dessus du projet devenait
-// silencieusement la racine, et radio_silence allait alors lire son `nonet` ailleurs que chez nous.
-//
-// Tout passe par les surcharges a std::error_code, donc rien ne leve : le try/catch d'antan n'a
-// plus d'objet.
 static bool establish_project_root()
 {
     namespace fs = std::filesystem;

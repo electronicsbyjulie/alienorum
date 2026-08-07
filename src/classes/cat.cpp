@@ -15,6 +15,7 @@
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
+#include "shore.h"
 
 // Zeta 1,2 Reticuli make for a good case study in the program correctly identifying binary systems,
 // since they have a decent separation both in actual physical distance and in angular position from the solar system.
@@ -3592,6 +3593,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->classify(p->is_in_con_HZ(), true, true);         // TODO: Verify this works for all solar system objects.
 
                 Star* s = (Star*)p->get_light_center();
+                // std::cout << p->name << " cosmic shoreline = " << CosmicShore::calculate_unified_metric(*s, *p) << std::endl;
                 if (p->orbit->center == s)
                 {
                     s->has_planets++;
@@ -4170,6 +4172,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         fclose(fp);
     }
 
+    ((Star*)cels[0])->distance_known = true;
+
     for (i=0; cels[i]; i++)
     {
         if (cels[i]->orbit && cels[i]->orbit->center_name.size())
@@ -4451,11 +4455,37 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         double dec = isnan(row.dec) ? 0 : row.dec * fiftyseventh;
         double st_lum = 0, sy_vmag = 1e290;
 
+        // La temperature d'abord : la conversion de st_lum juste en dessous en depend.
+        if (!isnan(row.st_teff))
+        {
+            host_star->temperature = row.st_teff;
+        }
+
         if (!isnan(row.st_lum))
         {
             st_lum = row.st_lum;
             double lum = pow(10, st_lum);
-            if (lum) host_star->absolute_magnitude = 4.85 - log(lum) / log(magnbase);
+            if (lum)
+            {
+                // st_lum is the BOLOMETRIC luminosity (log10 L/Lsol) as defined in the NASA archive,
+                // so 4.74 - 2.5 log10(L) yields the absolute bolometric magnitude. However,
+                // absolute_magnitude refers to a VISUAL magnitude everywhere else in the
+                // program; storing M_bol there as-is caused a bolometric correction to be
+                // applied—via est_bolometric_flux()—to a value that was already bolometric. 
+                // This double counting was invisible for a G-type star (BC_V ~ -0.1) but
+                // catastrophic for an M-dwarf: TRAPPIST-1 appeared 42 times too luminous,
+                // pushing its habitable zone beyond planets e, f, and g to land on h. 
+                //
+                // We therefore subtract the correction that est_bolometric_flux() will
+                // subsequently add. The intrinsic error of the BC formula does not matter:
+                // it is the same on both sides, so the round-trip restores the catalog
+                // luminosity exactly. 
+                //
+                // The old value of 4.85 also conflated the two conventions—it is roughly
+                // the Sun's absolute VISUAL magnitude applied to a bolometric luminosity.
+                double m_bol = 4.74 - log(lum) / log(magnbase);
+                host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
+            }
         }
         else host_star->absolute_magnitude = 10;
 

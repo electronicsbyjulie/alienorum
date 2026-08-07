@@ -94,6 +94,16 @@ namespace alienorum
         static double interpolate_mseq_BV(double mseqidx);
 
         double estimate_radius();
+
+        static double temperature_from_BV(double BV);
+        static double degenerate_radius(double mass_kg);            // metere
+        static double bolometric_correction(double t_eff);
+
+        // Coefficients of the quadratic limb-darkening law,
+        //     I(mu)/I(0) = 1 - a*(1 - mu) - b*(1 - mu)^2,
+        // interpolated on the effective temperature and log g of this star.
+        void limb_darkening_coefficients(double &a, double &b);
+
         void gotta_be_named_something();
         json to_json();
         bool from_json(json j);
@@ -105,6 +115,16 @@ namespace alienorum
         bool _is_in_visible_range = true;
         bool _is_always_visible = false;            // for Sun and constellation line termini
     };
+
+    enum stellar_regime_t
+    {
+        regime_none = 0,            // nothing to do
+        regime_degenerate,          // white dwarf
+        regime_substellar,          // brown dwarf
+        regime_stellar              // main sequence, subgiant, giant, supergiant
+    };
+
+    stellar_regime_t stellar_regime(CelestialObject *cel);
 
     class StarMulti
     {

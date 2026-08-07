@@ -301,6 +301,13 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
 
+    double limb_a = 0, limb_b = 0;
+    if (self_luminous)
+    {
+        if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(limb_a, limb_b);
+        else { limb_a = 0.49; limb_b = 0.21; }          // repli de type solaire
+    }
+
     Point light_dir(0, 0, 1);
     if (!self_luminous)
     {
@@ -336,6 +343,8 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.daylight_tint[0] = daylight.red; in.daylight_tint[1] = daylight.green; in.daylight_tint[2] = daylight.blue;
     in.self_luminous = self_luminous;
+    in.limb_a = limb_a;
+    in.limb_b = limb_b;
     in.night_illum = cel->night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
 
@@ -665,6 +674,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool self_luminous = (lightcen == cel);
     ImU32 imcol;
 
+    double cpu_limb_a = 0, cpu_limb_b = 0;
+    if (self_luminous)
+    {
+        if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
+        else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
+    }
+
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe
             ? (fiftyseventh*15)
@@ -799,8 +815,11 @@ int draw_sphere(CelestialObject* cel, double arad)
                         {
                             if (self_luminous)
                             {
-                                cos_vtheta = cos(vtheta);
-                                is_day = fmin(1, pow(cos_vtheta, 0.333));
+                                // Quadratic law, identical to the GPU shader: pow(mu, 1/3) that
+                                // was here tumbled to zero at the star's limb and that's not what we want.
+                                cos_vtheta = fmax(0.0, cos(vtheta));
+                                double om = 1.0 - cos_vtheta;
+                                is_day = fmax(0.0, fmin(1.0, 1.0 - cpu_limb_a*om - cpu_limb_b*om*om));
                             }
                             else
                             {
