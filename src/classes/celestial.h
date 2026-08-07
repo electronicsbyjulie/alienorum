@@ -174,6 +174,7 @@ namespace alienorum
         void generate_rocky_map(CelestialObject *cel);
         void generate_lava_map(CelestialObject *cel);
         void generate_gas_giant_map(CelestialObject *cel);
+        void generate_overcast_sky(CelestialObject *cel);
         void generate_stellar_map(CelestialObject *cel);
         void mark_for_map_regen(CelestialObject *cel);
 

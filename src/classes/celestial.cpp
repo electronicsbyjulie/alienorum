@@ -1505,7 +1505,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
             else
             {
                 has_water = 0;
-                // TODO: Overcast Venusian-style cloud map.
+                // Overcast Venusian-style cloud map.
+                if (!p->cloud_map)
+                {
+                    p->cloud_map = new Map();
+                    p->cloud_map->generate_overcast_sky(cel);
+                }
             }
         }
 
@@ -2192,6 +2197,135 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     generating_fic_texture = false;
     touch_gen();
 }
+
+void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
+{
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
+    mtx.lock();
+    generating_fic_texture = true;
+    int lr = cel->fictitious_map_height;
+    double BV = cel->BV_color;
+    image_height = lr;
+    image_width = image_height * 2;
+
+    allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    lat_scale = image_height / _pi;
+    lon_scale = image_width / (_pi * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
+
+    Planet *p = (Planet*)cel;
+    RGB3Byte rgb( (unsigned char)frand(250, 255), (unsigned char)frand(240, 255), (unsigned char)frand(224, 255) );
+
+    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
+        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
+
+    cel->randomize();
+
+    // A globally overcast world has no weather to show, only haze -- so the whole map lives
+    // inside a narrow band of one pale hue, and every feature is a soft smear. The two colors
+    // below are the ends of that band: the near-white above is the polar hood, and a version of
+    // it with green and (much more) blue pulled down is the low-latitude deck. That contrast --
+    // near-white poles against a distinctly tawnier equatorial belt -- is the single most
+    // recognizable thing about Venus in visible light, more than any individual cloud feature.
+    RGB3Byte deep((unsigned char)(rgb.r * frand(0.95, 1.00)),
+                  (unsigned char)(rgb.g * frand(0.84, 0.92)),
+                  (unsigned char)(rgb.b * frand(0.58, 0.74)));
+
+    // Zonal stretching is what makes an overcast sky read as overcast rather than as a gas
+    // giant's banding: super-rotating winds drag every structure out east-west until it is
+    // several times longer than it is tall, with no sharp edge anywhere. Sampling the noise on a
+    // longitude axis divided by this factor (and a latitude axis left alone) produces exactly
+    // that anisotropy.
+    double zonal = frand(5.0, 9.0);
+    double scale = frand(1.6, 2.6);
+
+    // Latitude-dependent longitude shear. North and south drift in opposite directions, so
+    // structures crossing the equator get swept back into the shallow V that Venus's ultraviolet
+    // images are known for.
+    double shear = frand(1.5, 4.0);
+
+    double warp_amt = frand(0.5, 1.1);
+    double polar_k = frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
+    double contrast = frand(0.30, 0.55);            // deliberately low: this is haze, not weather
+
+    // A faint, very broad mottling on top of everything, to break up the smoothest areas without
+    // ever reading as a distinct cloud.
+    double mottle_scale = scale * frand(2.5, 4.5);
+    double mottle_amt = frand(0.04, 0.10);
+    mtx.unlock();
+
+    double u, v, theta, phi, phi_s, sin_theta, cos_theta, nx, ny, nz;
+    double ax, ay, az, wx, wy, n, band, t, mottle, psi;
+    unsigned int x, y, idx;
+
+    for (y = 0; y < image_height; ++y)
+    {
+        v = (double)y / image_height;
+        theta = v * _pi;
+        sin_theta = sin(theta);
+        cos_theta = cos(theta);                     // = sin(latitude), signed, +1 at the north pole
+
+        for (x = 0; x < image_width; ++x)
+        {
+            u = (double)x / image_width;
+            phi = u * 2.0 * _pi;
+
+            phi_s = phi + shear * cos_theta * fabs(cos_theta);
+            nx = sin_theta * cos(phi_s);
+            ny = sin_theta * sin(phi_s);
+            nz = cos_theta;
+
+            idx = y * image_width + x;
+            if (idx >= allocated) break;
+
+            // Anisotropic sampling: slow along longitude, ordinary along latitude.
+            ax = nx * scale / zonal;
+            ay = ny * scale / zonal;
+            az = nz * scale;
+
+            // Domain warping, itself stretched the same way, for the wispy drawn-out filaments a
+            // plain fBm never produces on its own.
+            wx = fBm(ax + 5.2, ay + 1.3, az + 2.7, 3, 2.0, 0.5) - 0.5;
+            wy = fBm(ax + 9.1, ay + 4.4, az + 7.3, 3, 2.0, 0.5) - 0.5;
+            n = fBm(ax + warp_amt * wx * 3.0, ay + warp_amt * wx * 3.0, az + warp_amt * wy * 0.8,
+                4, 2.0, 0.55);
+
+            if (tidal_locked_to_star)
+            {
+                // Tidally locked: there is no day/night cycle to drive zonal bands, so the deck
+                // organizes around the substellar point instead -- thickest and brightest where
+                // the updraft is, thinning towards the antistellar side.
+                psi = find_3D_angle(Point(nx, ny, nz), xaxis, center);
+                band = pow(fmax(0.0, cos(psi)) * 0.5 + 0.5, polar_k);
+            }
+            else
+            {
+                band = pow(fabs(cos_theta), polar_k);       // 0 at the equator, 1 at the poles
+            }
+
+            mottle = fBm(nx * mottle_scale + 31.7, ny * mottle_scale + 12.9, nz * mottle_scale + 44.1,
+                2, 2.0, 0.5) - 0.5;
+
+            t = band + contrast * (n - 0.5) + mottle_amt * mottle;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+
+            red_data[idx]   = (unsigned char)(deep.r + (rgb.r - deep.r) * t);
+            green_data[idx] = (unsigned char)(deep.g + (rgb.g - deep.g) * t);
+            blue_data[idx]  = (unsigned char)(deep.b + (rgb.b - deep.b) * t);
+        }
+    }
+
+    generating_fic_texture = false;
+    touch_gen();
+}
+
 // Fictitious "surface" map for a self-luminous body.
 // Stage 1: black body background, gravitational darkening, spots. Granulation
 // (layer 3), the network and faculae (4 and 6), the chemical spots Ap/Bp (7) and the veil of
