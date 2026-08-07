@@ -95,22 +95,13 @@ namespace alienorum
 
         double estimate_radius();
 
-        // Inverse corps noir de estimate_BV(double T), et relation masse-rayon degeneree. Toutes
-        // deux deliberement independantes de la table de sequence principale, qui attribuerait a
-        // une naine blanche de B-V voisin de 0 le rayon d'une A0 V -- deux ordres de grandeur de
-        // trop. Voir STELLAR_TEXTURE_PLAN.md §5.
         static double temperature_from_BV(double BV);
-        static double degenerate_radius(double mass_kg);            // metres
-
-        // Correction bolometrique BC_V a une temperature effective donnee : M_bol = M_V + BC_V.
-        // Partagee entre Planet::est_bolometric_flux(), qui l'applique, et le chargement des
-        // exoetoiles (CatalogReader::resolve_or_create_exostar), qui la retranche -- les deux
-        // doivent employer exactement la meme, sans quoi l'aller-retour ne se referme pas.
+        static double degenerate_radius(double mass_kg);            // metere
         static double bolometric_correction(double t_eff);
 
-        // Coefficients de la loi quadratique d'assombrissement centre-bord,
+        // Coefficients of the quadratic limb-darkening law,
         //     I(mu)/I(0) = 1 - a*(1 - mu) - b*(1 - mu)^2,
-        // interpoles sur la temperature effective et log g de cette etoile.
+        // interpolated on the effective temperature and log g of this star.
         void limb_darkening_coefficients(double &a, double &b);
 
         void gotta_be_named_something();
@@ -125,17 +116,12 @@ namespace alienorum
         bool _is_always_visible = false;            // for Sun and constellation line termini
     };
 
-    // Regime physique d'un corps auto-lumineux, tel qu'employe pour aiguiller la generation de
-    // texture (STELLAR_TEXTURE_PLAN.md §6.3). Le type declare de l'objet ne suffit pas : une naine
-    // brune venue d'un catalogue est chargee comme une Star, la meme ecrite a la main dans un
-    // systeme fictif serait un gas_giant. Un aiguillage sur cel->type se tromperait donc une fois
-    // sur deux ; celui-ci se fait sur la photometrie.
     enum stellar_regime_t
     {
-        regime_none = 0,            // rien a engendrer par cette voie
-        regime_degenerate,          // naine blanche
-        regime_substellar,          // naine brune
-        regime_stellar              // sequence principale, sous-geantes, geantes, supergeantes
+        regime_none = 0,            // nothing to do
+        regime_degenerate,          // white dwarf
+        regime_substellar,          // brown dwarf
+        regime_stellar              // main sequence, subgiant, giant, supergiant
     };
 
     stellar_regime_t stellar_regime(CelestialObject *cel);

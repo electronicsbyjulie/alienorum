@@ -4467,21 +4467,22 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             double lum = pow(10, st_lum);
             if (lum)
             {
-                // st_lum est la luminosite BOLOMETRIQUE (log10 L/Lsol) au sens de l'archive NASA,
-                // donc 4.74 - 2.5 log10(L) en donne la magnitude absolue bolometrique. Or
-                // absolute_magnitude signifie partout ailleurs dans le programme une magnitude
-                // VISUELLE : y ranger M_bol telle quelle faisait ensuite appliquer une correction
-                // bolometrique a une valeur qui l'etait deja, par est_bolometric_flux(). Le double
-                // comptage etait invisible pour une G (BC_V ~ -0.1) et catastrophique pour une
-                // naine M : TRAPPIST-1 en ressortait 42 fois trop lumineuse, ce qui repoussait sa
-                // zone habitable au-dela de e, f et g pour la poser sur h.
+                // st_lum is the BOLOMETRIC luminosity (log10 L/Lsol) as defined in the NASA archive,
+                // so 4.74 - 2.5 log10(L) yields the absolute bolometric magnitude. However,
+                // absolute_magnitude refers to a VISUAL magnitude everywhere else in the
+                // program; storing M_bol there as-is caused a bolometric correction to be
+                // applied—via est_bolometric_flux()—to a value that was already bolometric. 
+                // This double counting was invisible for a G-type star (BC_V ~ -0.1) but
+                // catastrophic for an M-dwarf: TRAPPIST-1 appeared 42 times too luminous,
+                // pushing its habitable zone beyond planets e, f, and g to land on h. 
                 //
-                // On retranche donc ici la correction que est_bolometric_flux() rajoutera. L'erreur
-                // propre de la formule de BC ne compte pas : c'est la meme des deux cotes, donc
-                // l'aller-retour redonne exactement la luminosite du catalogue.
+                // We therefore subtract the correction that est_bolometric_flux() will
+                // subsequently add. The intrinsic error of the BC formula does not matter:
+                // it is the same on both sides, so the round-trip restores the catalog
+                // luminosity exactly. 
                 //
-                // L'ancien 4.85 melangeait par ailleurs les deux conventions -- c'est a peu pres la
-                // magnitude absolue VISUELLE du Soleil, appliquee a une luminosite bolometrique.
+                // The old value of 4.85 also conflated the two conventions—it is roughly
+                // the Sun's absolute VISUAL magnitude applied to a bolometric luminosity.
                 double m_bol = 4.74 - log(lum) / log(magnbase);
                 host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
             }

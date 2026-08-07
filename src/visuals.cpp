@@ -301,10 +301,6 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
 
-    // Assombrissement centre-bord, pour les seuls corps auto-lumineux : le shader emploie une loi
-    // quadratique dont les coefficients dependent de la temperature et de log g de l'etoile, au
-    // lieu du pow(mu, 1/3) fixe qui tombait a zero au limbe. Voir
-    // Star::limb_darkening_coefficients().
     double limb_a = 0, limb_b = 0;
     if (self_luminous)
     {
@@ -678,9 +674,6 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool self_luminous = (lightcen == cel);
     ImU32 imcol;
 
-    // Memes coefficients que le chemin GPU (draw_sphere_gpu, plus haut) : les deux voies doivent
-    // assombrir le limbe de facon identique, sans quoi une etoile changerait d'aspect selon le
-    // mode de vue.
     double cpu_limb_a = 0, cpu_limb_b = 0;
     if (self_luminous)
     {
@@ -822,9 +815,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                         {
                             if (self_luminous)
                             {
-                                // Loi quadratique, identique au shader GPU : le pow(mu, 1/3) qui
-                                // etait ici tombait a zero au limbe et y noircissait le bord de
-                                // l'etoile.
+                                // Quadratic law, identical to the GPU shader: pow(mu, 1/3) that
+                                // was here tumbled to zero at the star's limb and that's not what we want.
                                 cos_vtheta = fmax(0.0, cos(vtheta));
                                 double om = 1.0 - cos_vtheta;
                                 is_day = fmax(0.0, fmin(1.0, 1.0 - cpu_limb_a*om - cpu_limb_b*om*om));

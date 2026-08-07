@@ -318,9 +318,9 @@ void Star::estimate_UB(double T)
     UB_color = log(blackbody_flux(T, B_band) / blackbody_flux(T, U_band)) * invlogmagnbase;
 }
 
-// Inverse exact de estimate_BV(double T) ci-dessus : la meme relation de corps noir, resolue en
-// temperature. B-V y decroit de facon monotone avec T, donc une bissection suffit et ne peut pas
-// se tromper de branche.
+// Exact inverse of estimate_BV(double T) above: the same black body relation, solved in
+//temperature. B-V y decreases monotonically with T, so a bisection is sufficient and cannot
+// take the wrong branch.
 double Star::temperature_from_BV(double BV)
 {
     auto bv_of = [](double T) -> double
@@ -342,11 +342,11 @@ double Star::temperature_from_BV(double BV)
     return 0.5 * (lo + hi);
 }
 
-// Relation masse-rayon de la matiere degeneree, sous sa forme analytique simple :
-//     R/R(soleil) = 0.0126 * (M/M(soleil))^(-1/3) * sqrt(1 - (M/M_Chandrasekhar)^(4/3))
-// Verifiee sur Sirius B (M = 1.02 M(soleil)) : 5 290 km calcules contre 5 850 km mesures, soit 10 %
-// d'ecart. Largement suffisant pour un rayon de rendu -- sans quoi une naine blanche n'a aucun
-// rayon exploitable et son disque n'est jamais resolu -- mais pas pour de l'asterosismologie.
+// Mass-radius relationship for degenerate matter, in its simple analytical form:
+//     R/R(Sun) = 0.0126 * (M/M(Sun))^(-1/3) * sqrt(1 - (M/M_Chandrasekhar)^(4/3))
+// Verified against Sirius B (M = 1.02 M(Sun)): 5,290 km calculated vs. 5,850 km measured—a 10%
+// discrepancy. More than sufficient for a rendering radius—without which a white dwarf has no
+// usable radius and its disk is never resolved—but not for asteroseismology.
 double Star::degenerate_radius(double mass_kg)
 {
     const double chandrasekhar = 1.44;
@@ -361,50 +361,50 @@ double Star::degenerate_radius(double mass_kg)
     return 0.0126 * pow(m, -1.0/3.0) * sqrt(core) * solar_radius;
 }
 
-// Correction bolometrique BC_V, telle que M_bol = M_V + BC_V. Extraite de
-// Planet::est_bolometric_flux(), ou elle vivait en ligne -- une grandeur purement stellaire logee
-// dans une methode de planete, et surtout inaccessible au chargeur d'exoetoiles qui doit appliquer
-// la conversion inverse.
+// Bolometric correction BC_V, such that M_bol = M_V + BC_V. Extracted from
+// Planet::est_bolometric_flux(), where it lived online -- a purely stellar magnitude housed
+// in a planet method, and above all inaccessible to the exoestar charger which must apply
+// the reverse conversion.
 double Star::bolometric_correction(double t_eff)
 {
     if (!(t_eff > 0)) t_eff = sun_temp;
 
     if (t_eff < 3500.0)
     {
-        // Interpolation lineaire pour les naines M, d'apres les modeles d'atmosphere BT-Settl
-        // employes par Kopparapu : BC_V vaut environ -1.75 a 3500 K et -4.33 a 2500 K.
+        // Linear interpolation for M dwarfs, based on BT-Settl atmosphere models
+        // used by Kopparapu: BC_V is approximately -1.75 at 3500 K and -4.33 at 2500 K.
         double t_fraction = (t_eff - 2500.0) / (3500.0 - 2500.0);
         return -4.33 + t_fraction * (-1.75 - (-4.33));
     }
 
-    // Formule usuelle pour le reste de la sequence principale.
+    // Usual formula for the rest of the main sequence.
     double t_star = t_eff - sun_temp;
     return -0.192 - (1.41e-4 * t_star) - (1.25e-7 * t_star * t_star);
 }
 
-// Assombrissement centre-bord, loi quadratique I(mu)/I(0) = 1 - a(1-mu) - b(1-mu)^2.
+// Center-edge darkening, quadratic law I(mu)/I(0) = 1 - a(1-mu) - b(1-mu)^2.
 //
-// Le shader employait auparavant un pow(mu, 1/3) fixe pour tout corps auto-lumineux. C'est une
-// approximation acceptable au centre du disque et fausse au limbe, ou elle tombe a ZERO : le bord
-// de l'etoile s'y rendait quasi noir, et comme le halo de draw_flare() est trace derriere et
-// continue au-dela, il en resultait un lisere sombre coince entre un coeur brillant et une couronne
-// brillante (mesure sur Sirius B : creux a 207 contre 277 juste au-dela, au rayon exact du disque).
-// Aucune etoile ne s'assombrit jusqu'au noir : le limbe solaire est encore a environ 30 % du centre
-// dans le visible.
+// The shader previously employed a fixed pow(mu, 1/3) for any self-luminous body. It's a
+// acceptable approximation at the center of the disc and false at the limb, where it falls to ZERO: the edge
+// of the star was almost black, and as the halo of draw_flare() is traced behind and
+// continue beyond, the result was a dark border stuck between a shiny heart and a crown
+// brilliant (measurement on Sirius B: hollow at 207 against 277 just beyond, at the exact radius of the disk).
+// No star dims to black: the solar limb is still about 30% from the center
+// in the visible.
 //
-// On modelise d'abord la perte totale au limbe, u = 1 - I(limbe)/I(centre), puis on la repartit
-// entre les deux termes. Elle decroit avec la temperature -- une etoile chaude est nettement moins
-// assombrie dans le visible -- et croit quand la gravite de surface baisse, l'atmosphere etendue
-// d'une geante froide etant le cas le plus marque. Reperes vises : Soleil 0.70 (valeur observee,
-// et les (a, b) qui en sortent, 0.49 et 0.21, encadrent bien les 0.47 et 0.23 tabules par Claret),
-// naine chaude 0.50, geante froide ~0.90, naine blanche ~0.36.
+// We first model the total loss at the limb, u = 1 - I(limb)/I(center), then we distribute it
+// between the two terms. It decreases with temperature -- a hot star is significantly less
+// darkened in the visible -- and increases when surface gravity drops, the atmosphere expands
+// of a cold giant being the most marked case. Target benchmarks: Sun 0.70 (observed value,
+// and the (a, b) which come out of it, 0.49 and 0.21, well frame the 0.47 and 0.23 tabules by Claret),
+// hot dwarf 0.50, cold giant ~0.90, white dwarf ~0.36.
 void Star::limb_darkening_coefficients(double &a, double &b)
 {
     double T = (temperature > 0) ? temperature : temperature_from_BV(BV_color);
     if (!(T > 0) || isnan(T) || isinf(T)) T = sun_temp;
 
-    // Masses en grammes et longueurs en metres ici, et G est defini en consequence : G*M/R^2 sort
-    // directement en m/s^2. Le facteur 100 passe en cgs, unite dans laquelle log g se cite.
+    // Masses in grams and lengths in meters here, and G is defined accordingly: G*M/R^2 comes out 
+    // directly in m/s^2. The factor 100 passes to cgs, the unit in which log g is quoted.
     double radius_m = volumetric_mean_radius;
     if (!(radius_m > 0)) radius_m = solar_radius;
     double mass_grams = (mass > 0) ? mass : solar_mass;
@@ -414,46 +414,46 @@ void Star::limb_darkening_coefficients(double &a, double &b)
     if (u < 0.25) u = 0.25;
     if (u > 0.92) u = 0.92;
 
-    b = 0.30 * u;                                   // repartition entre terme lineaire et quadratique
+    b = 0.30 * u;                                   // distribution between linear and quadratic term
     a = u - b;
 }
 
-// Classement photometrique -- voir le commentaire de stellar_regime_t (star.h) pour le pourquoi,
-// et STELLAR_TEXTURE_PLAN.md §5.1 pour le detail des deux pieges traites ici.
+// Photometric classification -- see the comment by stellar_regime_t (star.h) for the rationale,
+// and STELLAR_TEXTURE_PLAN.md §5.1 for details on the two pitfalls addressed here.
 alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 {
     if (!cel || cel->typeclass() != class_star) return regime_none;
 
-    // Ni estimate_temperature() ni la table de sequence principale sur laquelle elle s'adosse : on
-    // inverse le corps noir, ou l'on prend la temperature du catalogue quand elle existe.
+    // Neither estimate_temperature() nor the main-sequence table it relies on: we
+    // invert the blackbody relation, or use the catalog temperature when available.
     double T = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
     if (!(T > 0) || isnan(T) || isinf(T)) return regime_stellar;
 
-    // Rayon deduit de la luminosite et de la temperature par Stefan-Boltzmann. On ne lit surtout
-    // pas volumetric_mean_radius : il peut avoir ete fabrique par estimate_radius() depuis la table
-    // de sequence principale, et rien ne distingue ensuite une valeur mesuree d'une valeur
-    // interpolee. Un rayon stocke de 2 R(soleil) sur une naine blanche n'est pas une refutation,
-    // c'est le symptome.
-    double implied_radius = 0;                              // rayons solaires
+    // Radius derived from luminosity and temperature using Stefan-Boltzmann. We must strictly
+    // avoid using volumetric_mean_radius: it may have been generated by estimate_radius()
+    // based on the main-sequence table, and there is no way to distinguish a measured
+    // value from an interpolated one. A stored radius of 2 R(Sun) for a white dwarf
+    // is not a refutation; it is a symptom.
+    double implied_radius = 0;                              // solar radii
     double absmag = cel->absolute_magnitude;
     if (absmag != 0 && !isnan(absmag) && !isinf(absmag))
     {
-        double lum = pow(magnbase, -(absmag - 4.83));       // 4.83 = magnitude absolue V du Soleil
+        double lum = pow(magnbase, -(absmag - 4.83));       // 4.83 = absolute V magnitude of the Sun
         implied_radius = sqrt(lum) * pow(sun_temp / T, 2.0);
     }
 
-    // Le rayon seul se tromperait sur les naines brunes : une L0 rend ~0.009 R(soleil) par cette
-    // formule -- en plein territoire de naine blanche -- parce que M_V ignore l'infrarouge, ou elle
-    // emet l'essentiel de son flux. C'est donc la temperature qui tranche, les deux populations
-    // etant disjointes en pratique (naines blanches cataloguees : 10 000 a 170 000 K).
+    // Radius alone would be misleading for brown dwarfs: an L0 yields ~0.009 R_Sun using this
+    // formula—firmly in white dwarf territory—because M_V ignores the infrared, where the
+    // object emits the bulk of its flux. Temperature is therefore the deciding factor, as the
+    // two populations are distinct in practice (catalogued white dwarfs: 10,000 to 170,000 K).
     if (implied_radius > 0 && implied_radius < 0.05 && T > 4000.0) return regime_degenerate;
 
-    // Frontiere M/L. Elle est physiquement floue -- une naine brune jeune et massive atteint
-    // 2500-2900 K et ressemble a une M poussiereuse -- donc on ne la fait pas reposer sur la seule
-    // temperature. La masse tranche quand elle est connue : la fusion de l'hydrogene s'eteint vers
-    // 0.075 M(soleil). A defaut, le seuil se place au bas de la sequence M plutot qu'a 2700 K, qui
-    // rangeait toutes les M6 a M9 parmi les naines brunes -- elles n'obtenaient alors aucune carte
-    // et s'affichaient en boules lisses, alors qu'elles sont au contraire les plus tachetees.
+    // Frontiere M/L. It is physically fuzzy -- a young, massive brown dwarf affected 
+    // 2500-2900 K and looks like a dusty M -- so we don't put it on the sole 
+    //temperature. The mass decides when it is known: the fusion of hydrogen is extinguished towards 
+    // 0.075 M(sun). Otherwise, the threshold is placed at the bottom of the sequence M rather than at 2700 K, which 
+    // placed all M6 to M9 among brown dwarfs -- they then obtained no cards 
+    // and appeared as smooth balls, whereas on the contrary they are the most spotted.
     double mass_solar = cel->mass / solar_mass;
     if (mass_solar > 0)
     {

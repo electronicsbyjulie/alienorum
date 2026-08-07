@@ -72,8 +72,6 @@ namespace alienorum
         float has_bump_tex;   // 0 or 1
         GLuint bump_tex;
         float bump_strength;
-        // Coefficients (a, b) de l'assombrissement centre-bord, corps auto-lumineux seulement.
-        // Voyagent dans les composantes y/z de aBumpLimb -- voir son commentaire plus bas.
         float limba, limbb;
         float r, g, b, a;   // fallback color, used when has_tex is 0
         float lightx, lighty, lightz;   // camera space, unit length

@@ -215,9 +215,9 @@ double Planet::est_bolometric_flux(double t_eff)
     if (!t_eff) t_eff = s->estimate_temperature();
     double t_star = t_eff - sun_temp;
 
-    // Voir Star::bolometric_correction(), ou ce calcul vit desormais : le chargeur d'exoetoiles
-    // doit appliquer exactement la meme correction en sens inverse (cat.cpp,
-    // resolve_or_create_exostar), et deux copies auraient fini par diverger.
+    // See Star::bolometric_correction(), where this calculation now resides: the exostar loader
+    // must apply exactly the same correction in reverse (cat.cpp,
+    // resolve_or_create_exostar), and two copies would eventually have diverged.
     double bc_v = Star::bolometric_correction(t_eff);
 
     // Calculate absolute bolometric magnitude.
