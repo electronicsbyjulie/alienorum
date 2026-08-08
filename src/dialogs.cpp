@@ -123,6 +123,10 @@ void draw_status_window(ImGuiIO& io)
         ImGui::EndCombo();
     }
 
+    flagstr = (std::string)"Galaxy lbls (K): "
+        + std::string(label_galaxies ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
     if (cbolbls_selected_idx == lbltype_brightest)
     {
         snprintf(lblcut0, sizeof(lblcut0), "%.2f", appmagn_lblcut);

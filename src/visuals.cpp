@@ -1328,6 +1328,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     Rotation pl = cel->location.local_system_plane;
     Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
     Point e2 = rotate3D(zaxis, center, pl.v, -pl.a);
+    e1.scale(1);
+    e2.scale(1);
 
     const int nring = 10, nseg = 40;
 
@@ -1341,8 +1343,11 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         p = to_viewer_plane(p);
         if (view_mode == vm_horizon) p = refract_true_point(p);
         Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
-        if (z.x < -1e4 || z.y < -1e4) return 0;                 // behind the camera
         rim[s] = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
+        if (z.x < -1e4 || z.y < -1e4)
+        {
+            continue;                 // behind the camera
+        }
         if (rim[s].x < xmin) xmin = rim[s].x;
         if (rim[s].x > xmax) xmax = rim[s].x;
         if (rim[s].y < ymin) ymin = rim[s].y;
@@ -1350,12 +1355,13 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     }
 
     double wide = xmax - xmin, tall = ymax - ymin;
+    // std::cout << cel->name << " wide=" << wide << " tall=" << tall << std::endl;
     if (wide < 1.5 && tall < 1.5) return 0;                     // smaller than a pixel: the point path has it
     if (xmax < 0 || ymax < 0 || xmin > dispcx*2 || ymin > dispcy*2) return 0;
 
     // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
     double area = fmax(4.0, _pi * wide * tall * 0.25);
-    double total = pow(magnbase, -appmag) * global_brightness * 900.0;
+    double total = pow(magnbase, -appmag) * global_brightness * zoom * 1e+5;
     double peak = fmin(210.0, total / area * 255.0);
     if (peak < 2.0) return 0;
 
@@ -1386,6 +1392,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         for (int s = 0; s < nseg; s++)
         {
             int s1 = (s+1) % nseg;
+            if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4) continue;
             // Each rim point scaled towards the centre gives the inner rings for free, and keeps
             // them concentric in SCREEN space, which is what the projected disc actually is.
             ImVec2 a0(mid.x + (rim[s ].x - mid.x)*f0, mid.y + (rim[s ].y - mid.y)*f0);
