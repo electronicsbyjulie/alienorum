@@ -19,8 +19,27 @@ SB9             orbits.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/s
 
 # galaxies
 #REGALADE        regalade.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/J/A+A/706/A284/regalade.dat.gz
-GALEX           table1.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table1.dat
-GALEX           table5.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table5.dat
+
+# RC3 (de Vaucouleurs+ 1991), ~23000 galaxies: the backbone. Carries morphological type T,
+# total B magnitude, the D25 diameter, axis ratio and position angle -- the last two being what
+# lets a galaxy be oriented in space rather than laid flat -- plus radial velocity.
+# Distances have to come from the velocity via Hubble, which is sound past ~20 Mpc and wrong
+# closer in, where peculiar motion dominates (Andromeda's velocity is negative). Hence UNGC below.
+RC3             catalog.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/VII/155/catalog.dat.gz
+
+# UNGC (Karachentsev+ 2013), 869 galaxies within 11 Mpc, with individually MEASURED distances
+# (tip of the red giant branch, Cepheids) rather than redshift-derived ones. Covers exactly the
+# volume where RC3's velocities cannot be turned into distances.
+UNGC            table1.dat                  ftp://cdsarc.cds.unistra.fr/cats/VII/239/table1.dat
+UNGC            table2.dat                  ftp://cdsarc.cds.unistra.fr/cats/VII/239/table2.dat
+
+# GALEX ultraviolet atlas (Gil de Paz+ 2007), 1034 nearby galaxies. Superseded for our purposes by
+# UNGC, which covers the same volume with better distances and without being tied to what GALEX
+# happened to observe. The already-downloaded copy in catalogs/galeckxs is still worth keeping as a
+# cross-check: its table1.dat carries distance in Mpc, D25 major/minor axes, position angle and the
+# RC3 T type, all in one place.
+#GALEX           table1.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table1.dat
+#GALEX           table5.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table5.dat
 
 # The REGALADE catalog is very large - about 8 GB zipped - so if functionality is ever added to read this catalog,
 # the user will be invited to download the catalog manually.
