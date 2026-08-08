@@ -26,6 +26,10 @@ namespace alienorum
         double position_angle = 0;                  // RADIANS, of the major axis. 0 when unknown.
         bool position_angle_known = false;
 
+        // 0 is face-on, pi/2 edge-on. Measured where the UNGC supplies one, otherwise deprojected
+        // from the axis ratio; see galaxy_inclination() in cat.cpp for which and why.
+        double inclination = 0;                     // RADIANS!
+
         double apparent_magnitude = 0;              // total B magnitude as catalogued
         double radial_velocity = 0;                 // m/s, heliocentric. 0 when unknown.
         uint32_t PGC = 0;                           // Principal Galaxies Catalogue number, 0 if none

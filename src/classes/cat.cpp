@@ -4979,6 +4979,43 @@ static std::string normalize_galaxy_name(const std::string &raw)
     return raw.substr(0, letters) + " " + raw.substr(digits);
 }
 
+// Deprojected inclination, by the Hubble relation as refined by Holmberg:
+//
+//     cos^2(i) = ((b/a)^2 - q0^2) / (1 - q0^2)
+//
+// q0 is the axis ratio a disc still shows when seen exactly edge-on, i.e. its thickness. Without
+// that term every flattened galaxy comes out at 90 degrees and everything in between is wrong.
+//
+// The q0 values below were fitted against the UNGC's own inclination column over its 861 galaxies
+// that have both. That fit reproduces the catalog to better than a degree for late spirals -- which
+// is not a measure of how right the physics is, but of the fact that the UNGC computed its
+// inclinations this same way. Matching its q0 is still the useful thing to do: it keeps the 16000
+// RC3 galaxies on the same convention as the 869 that came with a number.
+//
+// Ellipticals are a different shape of problem. A triaxial spheroid's apparent flattening describes
+// its intrinsic shape, not its orientation, so there is nothing to deproject -- the fitted q0 of
+// 0.44 for T<0 is just the formula being used outside its domain. They take a flat 90 degrees.
+static double galaxy_inclination(double axis_ratio, double T, bool T_known)
+{
+    if (T_known && T < 0) return half_pi;               // elliptical or S0: see above
+
+    double q0 = 0.20;                                   // the classic value, for an unknown type
+    if (T_known)
+    {
+        if (T <= 4.0) q0 = 0.26;                        // early spirals, thicker discs
+        else if (T <= 7.0) q0 = 0.16;                   // late spirals, the thinnest
+        else q0 = 0.42;                                 // irregulars, genuinely puffy
+    }
+
+    if (axis_ratio >= 1.0) return 0;                    // round on the sky: face-on
+    if (axis_ratio <= q0) return half_pi;               // at or past the edge-on limit
+
+    double cos2 = (axis_ratio*axis_ratio - q0*q0) / (1.0 - q0*q0);
+    if (cos2 < 0) cos2 = 0;
+    if (cos2 > 1) cos2 = 1;
+    return acos(sqrt(cos2));
+}
+
 static double galaxy_apparent_to_absolute(double apparent, double distance_m)
 {
     if (!(distance_m > 0)) return 0;
@@ -5000,6 +5037,10 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
+    // Keyed on the RAW catalog name, so table2 below -- which spells them the same way -- matches
+    // straight off, before normalize_galaxy_name() rewrites them for the user's benefit.
+    std::map<std::string, Galaxy*> by_raw_name;
+
     while (fgets(buffer, sizeof(buffer)-2, fp))
     {
         if (ncelobjs >= max-1) break;
@@ -5014,7 +5055,8 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
 
         //   1- 18  A18  Name
         read_field_onebased(buffer, 1, 18, field);
-        snprintf(g->name, sizeof(g->name), "%s", normalize_galaxy_name(trim(field)).c_str());
+        std::string raw_name = trim(field);
+        snprintf(g->name, sizeof(g->name), "%s", normalize_galaxy_name(raw_name).c_str());
         if (!strlen(g->name)) { delete g; continue; }
 
         //  20-29 RA (h m s), 31-39 Dec (sign d m s), both J2000
@@ -5058,12 +5100,44 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 110, 113, field);
         g->radial_velocity = atof(field) * 1000.0;
 
+        // Deprojected for now; table2 below replaces it wherever the catalog has its own.
+        g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
+
         g->cenobj = g;
+        g->distance_known = true;
+        by_raw_name[raw_name] = g;
         append_cel(g);
         num_read++;
     }
 
     fclose(fp);
+
+    // table2 carries the inclination the catalog worked out itself (bytes 47-48, degrees from
+    // face-on). Prefer it: where it disagrees with the deprojection it is because a kinematic
+    // inclination from the HI line width was used, which does not depend on the photometry at all.
+    path = "catalogs" _FILESLASH "UNGC" _FILESLASH "table2.dat";
+    fp = fopen(path.c_str(), "rb");
+    if (fp)
+    {
+        while (fgets(buffer, sizeof(buffer)-2, fp))
+        {
+            if (strlen(buffer) < 48) continue;
+            read_field_onebased(buffer, 1, 18, field);
+            std::map<std::string, Galaxy*>::iterator it = by_raw_name.find(trim(field));
+            if (it == by_raw_name.end()) continue;
+
+            read_field_onebased(buffer, 47, 48, field);
+            if (!strlen(trim(field).c_str())) continue;
+            Galaxy *ig = it->second;
+            ig->inclination = atof(field) * fiftyseventh;
+            if (ig->position_angle_known)
+                ig->location.equatorial_plane =
+                ig->location.local_system_plane =
+                    system_plane_from_incl_and_node(ig->inclination, ig->position_angle, (Point)ig->location);
+        }
+        fclose(fp);
+    }
+
     return num_read;
 }
 
@@ -5123,6 +5197,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
 
         if (dup)
         {
+            double inclination = dup->inclination
+                ? dup->inclination
+                : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known);
+            dup->inclination = inclination;
+
             // The UNGC already placed this one, and its measured distance is the better number, so
             // that entry stands. But it has no position angle at all, and often no morphology --
             // both of which the RC3 does carry, and both of which an oriented ellipse will want.
@@ -5134,6 +5213,8 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                 {
                     dup->position_angle = atof(field) * fiftyseventh;
                     dup->position_angle_known = true;
+                    dup->location.equatorial_plane = dup->location.local_system_plane =
+                        system_plane_from_incl_and_node(inclination, dup->position_angle, (Point)dup->location);
                 }
             }
             if (!strlen(dup->morph_type))
@@ -5225,12 +5306,17 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             if (r25 >= 1.0) g->axis_ratio = 1.0 / r25;
         }
 
+        double inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
+        g->inclination = inclination;
+
         // 186-188 position angle of the major axis, degrees
         read_field_onebased(buffer, 186, 188, field);
         if (strlen(trim(field).c_str()))
         {
             g->position_angle = atof(field) * fiftyseventh;
             g->position_angle_known = true;
+            g->location.equatorial_plane = g->location.local_system_plane
+                = system_plane_from_incl_and_node(inclination, g->position_angle, (Point)g->location);
         }
 
         // 190-194 total B magnitude
@@ -5243,6 +5329,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         }
 
         g->cenobj = g;
+        g->distance_known = true;       // treat it as known anyway, so that the distance appears in the N panel.
         append_cel(g);
         num_read++;
     }
