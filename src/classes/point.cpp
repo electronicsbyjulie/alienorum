@@ -14,7 +14,19 @@ Point center(0,0,0), xaxis(1e37, 0, 0), yaxis(0, 1e37, 0), zaxis(0, 0, 1e37);
 
 Point solar_north    = Point::from_ra_dec(solar_north_RA_J2000,    solar_north_Decl_J2000,    light_year);
 Point ecliptic_north = Point::from_ra_dec(ecliptic_north_RA_J2000, ecliptic_north_Decl_J2000, light_year);
-Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, light_year);
+// Deliberately the IAU's SOUTH galactic pole, negated into this program's north.
+//
+// Astronomers picked their north galactic pole by its Earth-based declination, and the result is
+// that the Galaxy turns the wrong way round it: the Sun runs towards galactic longitude 90, so by
+// the right-hand rule the Galaxy's angular momentum points at the IAU *south* pole and the rotation
+// reads as retrograde. Every other spin axis in this program is defined by the rotation itself, so
+// following the IAU here would make the Galaxy the one object that turns backwards.
+//
+// Flipping it costs nothing and buys consistency: the Earth and the rest of the solar system simply
+// come out upside down relative to the published convention. galactic_north_RA_J2000 and
+// galactic_north_Decl_J2000 (misc.h) still hold the IAU values, for anything that has to speak to
+// the outside world in published galactic coordinates.
+Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, light_year) * -1.0;
 Point milky_way_center_Mly;
 
 Rotation ICRF_to_ecliptic = align_points_3d(ecliptic_north, yaxis, center);

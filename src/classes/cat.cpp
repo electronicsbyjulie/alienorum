@@ -5103,6 +5103,21 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         // Deprojected for now; table2 below replaces it wherever the catalog has its own.
         g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
 
+        // Our own galaxy is in here like any other (line 808), but with no axis ratio and no
+        // position angle, since neither can be measured from inside it. Without them it would fall
+        // through with no system plane at all and simply lie in the ICRF, so it gets the two
+        // constants worked out in misc.h instead.
+        if (!strcmp(g->name, "Milky Way"))
+        {
+            g->inclination = milky_way_inclination;
+            g->position_angle = milky_way_position_angle;
+            g->position_angle_known = true;
+            g->distance_known = true;
+            g->axis_ratio = 0.01;                       // ~100000 light years across, ~1000 thick
+            g->location.equatorial_plane = g->location.local_system_plane
+                = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
+        }
+
         g->cenobj = g;
         g->distance_known = true;
         by_raw_name[raw_name] = g;

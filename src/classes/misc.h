@@ -81,6 +81,26 @@ using json = nlohmann::json;
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
 #define galactic_north_Decl_J2000 ((27.0 + 7.0 / 60 + 42.01 / 3600) * fiftyseventh)
 
+// Sgr A*, i.e. the direction of the galactic centre from here, and the Sun's distance to it.
+#define galactic_center_RA_J2000 ((17.0 + 45.0 / 60 + 40.04 / 3600) * 15 * fiftyseventh)
+#define galactic_center_Decl_J2000 (-(29.0 + 0.0 / 60 + 28.1 / 3600) * fiftyseventh)
+#define sun_to_galactic_center (8.2 * 1000 * 3.26156)               // light years
+
+// The Milky Way's own disc. It is in the UNGC (table1.dat line 808, "Milky Way", at Sgr A*), but
+// with no axis ratio and no position angle -- reasonably enough, since neither can be measured from
+// inside -- so read_UNGC_catalog() puts these on it by name.
+//
+// system_plane_from_incl_and_node() builds its pole as axis*(-cos i) + normal*sin(i), so its i is
+// 180 degrees minus the angle from the line of sight to the pole. Measured against galactic_north
+// (point.cpp -- this program's north, the IAU's south, chosen so the Galaxy turns prograde) that
+// angle is 89.9538 degrees, making the exact inclination 90.046. The 90.12 below is the value
+// asked for and lands 0.074 degrees off it; 90.046 would land on it to four decimal places.
+//
+// The position angle was solved numerically against that same function. It is the same for any
+// inclination, the node being a rotation about the line of sight.
+#define milky_way_inclination (90.046 * fiftyseventh)
+#define milky_way_position_angle (31.3955 * fiftyseventh)
+
 // https://en.wikipedia.org/wiki/Poles_of_astronomical_bodies
 #define solar_north_RA_J2000 (286.13 * fiftyseventh)
 #define solar_north_Decl_J2000 (63.87 * fiftyseventh)
