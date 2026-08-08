@@ -101,6 +101,7 @@ namespace alienorum
     class CelestialLocation
     {
         public:
+        Point galactic_center;                              // Scaled in LIGHT YEARS x 10^6, unlike every other distance in the code which is meters.
         Point system_center;
         Point local_position;
         Rotation local_system_plane;

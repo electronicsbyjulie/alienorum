@@ -499,6 +499,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 }
                 else
                 {
+                    here.galactic_center = cel->location.galactic_center;
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
                     viewer_lon = cel->RA_as_radians(here, cel->timeofday()) - _pi;

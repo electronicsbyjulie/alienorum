@@ -29,7 +29,7 @@ Point::Point(double newx, double newy, double newz)
 
 Point::Point(CelestialLocation &cel)
 {
-    *this = cel.local_position + cel.system_center;
+    *this = cel.local_position + cel.system_center + cel.galactic_center * light_year * 1e+6;
 }
 
 Point Point::operator+(Point other)
@@ -594,19 +594,24 @@ bool operator==(const Point &p, const Point &q)
 
 double CelestialLocation::distance_to(CelestialLocation other)
 {
-    Point relloc = (system_center - other.system_center) + (local_position - other.local_position);
+    Point relloc = (galactic_center - other.galactic_center) * light_year * 1e+6
+    + (system_center - other.system_center)
+    + (local_position - other.local_position);
     return relloc.magnitude();
 }
 
 double CelestialLocation::squared_distance_to(CelestialLocation other)
 {
-    Point relloc = (system_center - other.system_center) + (local_position - other.local_position);
+    Point relloc = (galactic_center - other.galactic_center) * light_year * 1e+6
+    + (system_center - other.system_center)
+    + (local_position - other.local_position);
     return relloc.squared_magnitude();
 }
 
 CelestialLocation CelestialLocation::operator-(CelestialLocation other)             // it sure is nice that this fuction does its job!
 {
     CelestialLocation result = *this;
+    result.galactic_center -= other.galactic_center;
     result.system_center -= other.system_center;
     result.local_position -= other.local_position;
     return result;
@@ -614,6 +619,7 @@ CelestialLocation CelestialLocation::operator-(CelestialLocation other)         
 
 CelestialLocation &CelestialLocation::operator-=(CelestialLocation other)
 {
+    galactic_center -= other.galactic_center;
     system_center -= other.system_center;
     local_position -= other.local_position;
     return *this;
@@ -623,6 +629,7 @@ json CelestialLocation::to_json()
 {
     return
     {
+        {"galactic_center", galactic_center.to_json()},
         {"system_center", system_center.to_json()},
         {"local_position", local_position.to_json()},
         {"local_system_plane", local_system_plane.to_json()},
@@ -635,7 +642,12 @@ bool CelestialLocation::from_json(json j)
 {
     try
     {
-        json j1 = j.at("");
+        json j1 = j.at("galactic_center");
+        galactic_center.from_json(j1);
+    } catch (...) { ; }
+    try
+    {
+        json j1 = j.at("system_center");
         system_center.from_json(j1);
     } catch (...) { ; }
     try

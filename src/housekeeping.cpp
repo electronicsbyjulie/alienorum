@@ -101,6 +101,7 @@ void set_viewer_location_and_plane()
                 = cels[whereami]->orbit->center->location.local_system_plane;
             cels[whereami]->location.local_position = (Point)cels[whereami]->location - (Point)cels[whereami]->orbit->center->location;
             cels[whereami]->location.system_center = cels[whereami]->orbit->center->location.system_center;
+            cels[whereami]->location.galactic_center = cels[whereami]->orbit->center->location.galactic_center;
         }
 
         here = cels[whereami]->location;
@@ -298,12 +299,17 @@ void compute_object_draw_coordinates()
         {
             mycenobj = cels[i]->cenobj;
             CelestialLocation was_here = here;
+            here.galactic_center = cels[i]->location.galactic_center;           // TODO:
             here.system_center = cels[i]->location.system_center;
             here.local_position = Point(was_here) - here.system_center;
         }
     }
 
-    if (mycenobj) here.system_center = mycenobj->location.system_center;
+    if (mycenobj)
+    {
+        here.system_center = mycenobj->location.system_center;
+        here.galactic_center = mycenobj->location.galactic_center;
+    }
 
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();

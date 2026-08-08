@@ -520,7 +520,9 @@ void CelestialObject::Decl_from_degms(std::string decl_degms)
 
 double CelestialObject::RA_as_radians(CelestialLocation seen_from, double seen_equinox)
 {
-    Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
+    Point relloc = (location.galactic_center - seen_from.galactic_center) * light_year * 1e+6
+        + (location.system_center - seen_from.system_center)
+        + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
     double result = std::fmod(find_angle(relloc.z, -relloc.x) - seen_equinox + azimuth_correction, _pi*2);
     if (result < 0) result += _pi*2;
@@ -529,7 +531,9 @@ double CelestialObject::RA_as_radians(CelestialLocation seen_from, double seen_e
 
 double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
 {
-    Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
+    Point relloc = (location.galactic_center - seen_from.galactic_center) * light_year * 1e+6
+        + (location.system_center - seen_from.system_center)
+        + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
     double result = find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y);
     if (result > _pi/2) result -= _pi*2;
@@ -538,7 +542,9 @@ double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
 
 double alienorum::CelestialObject::Decl_as_radians_refracted(CelestialLocation seen_from)
 {
-    Point relloc = (location.system_center - seen_from.system_center) + (location.local_position - seen_from.local_position);
+    Point relloc = (location.galactic_center - seen_from.galactic_center) * light_year * 1e+6
+        + (location.system_center - seen_from.system_center)
+        + (location.local_position - seen_from.local_position);
     relloc = rotate3D(relloc, center, seen_from.equatorial_plane.v, seen_from.equatorial_plane.a);
     relloc = refract_true_point(relloc);
     double result = find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y);
@@ -717,6 +723,7 @@ bool CelestialObject::from_json(json j)
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center || !orbit->period) return;
+    location.galactic_center = orbit->center->location.galactic_center;
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
 

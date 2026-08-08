@@ -254,8 +254,8 @@ bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
     if (_is_always_visible) return true;
     double cutoff_dist = (pow(100.0, 0.2*(normal_best_mag_limit-apparent_magnitude)) * distance) * global_brightness;
-    visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + location.system_center;
-    visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + location.system_center;
+    visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + (Point)location;
+    visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + (Point)location;
     visible_area_set = true;
 
     _is_in_visible_range = visible_area.point_in_box(seen_from);
