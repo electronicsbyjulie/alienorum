@@ -816,6 +816,14 @@ void load_stuff()
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
 
+    // Galaxies were given BV_color = -bv_correction while it was being read in load_catalogs(),
+    // above, before this correction was known -- which left them stamped with 0 instead of the
+    // value that actually cancels it out. Fix them up now that bv_correction is final, or they
+    // render with whatever tint bv_correction happens to be rather than the intended neutral
+    // white/gray.
+    for (int i=0; cels[i]; i++)
+        if (cels[i]->type == galaxy) cels[i]->BV_color = -bv_correction;
+
     mtx.lock();
     loading_msg = "Done!";
     splash = false;

@@ -1452,12 +1452,13 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
             lattice[r*nseg + s] = (unsigned char)fmin(255.0, fmax(0.0, v));
         }
     }
-    #define galaxy_vtx_col(r, s) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(r)*nseg + (s)]))
+    #define galaxy_vtx_col(rho, sigma) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(rho)*nseg + (sigma)]))
 
     dl->PrimReserve(nring*nseg*6, nring*nseg*4);
     for (int r = 0; r < nring; r++)
     {
         double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
+        int r1 = r+1;
         for (int s = 0; s < nseg; s++)
         {
             int s1 = (s+1) % nseg;
@@ -1471,8 +1472,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
             unsigned int base = dl->_VtxCurrentIdx;
             dl->PrimWriteVtx(a0, uv, galaxy_vtx_col(r,   s ));
             dl->PrimWriteVtx(a1, uv, galaxy_vtx_col(r,   s1));
-            dl->PrimWriteVtx(b1, uv, galaxy_vtx_col(r+1, s1));
-            dl->PrimWriteVtx(b0, uv, galaxy_vtx_col(r+1, s ));
+            dl->PrimWriteVtx(b1, uv, galaxy_vtx_col(r1, s1));
+            dl->PrimWriteVtx(b0, uv, galaxy_vtx_col(r1, s ));
             dl->PrimWriteIdx((ImDrawIdx)(base+0));
             dl->PrimWriteIdx((ImDrawIdx)(base+1));
             dl->PrimWriteIdx((ImDrawIdx)(base+2));

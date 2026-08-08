@@ -5120,6 +5120,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
 
         g->cenobj = g;
         g->distance_known = true;
+        g->BV_color = -bv_correction;
         by_raw_name[raw_name] = g;
         append_cel(g);
         num_read++;
@@ -5342,6 +5343,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
 
         g->cenobj = g;
         g->distance_known = true;       // treat it as known anyway, so that the distance appears in the N panel.
+        g->BV_color = -bv_correction;
         append_cel(g);
         num_read++;
     }
