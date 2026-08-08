@@ -133,20 +133,15 @@ namespace alienorum
         double C2H6_portion = 0;
         double N2O_portion = 0;
         double CO_portion = 0;
-        // Argon contributes nothing to the greenhouse -- monatomic, no infrared bands, which is
-        // why atmospheric_tau() has no slot for it -- but it is 0.93% of Earth's air, and this
-        // struct describes a composition rather than just the gases tau cares about (N2 and O2
-        // are here for the same reason). Leaving it out would silently drop it on load and leave
-        // the portions summing short of 1.
         double Ar_portion = 0;
 
         void enforce_integrity();
         void generate_fictitious_gas_giant();
         void generate_fictitious_ice_giant();
-        void generate_fictitious_venusian();
+        void generate_fictitious_venusian();        // doubles as martian
         void generate_fictitious_titanean();
         void generate_fictitious_habitable();
-        void generate_fictitious_for_planet(cel_obj_type t);
+        void generate_fictitious_for_planet(cel_obj_type t);        // does not call habitable! have to call habitable separately.
 
         json to_json();
         bool from_json(json j);

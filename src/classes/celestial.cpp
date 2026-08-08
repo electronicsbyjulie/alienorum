@@ -1468,47 +1468,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->ensure_atmosphere()->surface_pressure = frand(0.1, 1) * max_atm_pressure;
     }
 
-    double unaccounted_for = 1.0;
-    double CO2_fraction = pow(frand(0, 1), 0.5);
-    // std::cout << p->name << " CO2=" << (CO2_fraction*100) << "%" << std::endl;
-    unaccounted_for -= CO2_fraction;
-    double N2_fraction = pow(frand(0, 1), 0.333) * unaccounted_for;
-    // std::cout << p->name << " N2=" << (N2_fraction*100) << "%" << std::endl;
-    unaccounted_for -= N2_fraction;
-    double H2_fraction = frand(0, unaccounted_for);
-    // std::cout << p->name << " H2=" << (H2_fraction*100) << "%" << std::endl;
-    unaccounted_for -= H2_fraction;
-    double CH4_fraction = frand(0, fmin(0.1, unaccounted_for));
-    // std::cout << p->name << " CH4=" << (CH4_fraction*100) << "%" << std::endl;
-    unaccounted_for -= CH4_fraction;
-    double H2O_fraction = frand(0, fmin(0.2, unaccounted_for));
-    // std::cout << p->name << " H2O=" << (H2O_fraction*100) << "%" << std::endl;
-    unaccounted_for -= H2O_fraction;
-    double HCN_fraction = frand(0, fmin(0.01, unaccounted_for));
-    // std::cout << p->name << " HCN=" << (HCN_fraction*100) << "%" << std::endl;
-    unaccounted_for -= HCN_fraction;
-    double SO2_fraction = frand(0, fmin(0.01, unaccounted_for));
-    // std::cout << p->name << " SO2=" << (SO2_fraction*100) << "%" << std::endl;
-    unaccounted_for -= SO2_fraction;
-    double H2S_fraction = frand(0, fmin(0.01, unaccounted_for));
-    // std::cout << p->name << " H2S=" << (H2S_fraction*100) << "%" << std::endl;
-    unaccounted_for -= H2S_fraction;
-    // std::cout << p->name << " unaccounted=" << (unaccounted_for*100) << "%" << std::endl;
-    // Store the mix before using it, then compute tau from what was stored. These fractions used
-    // to be locals that died with the function, so the edit dialog's tau panel -- which reads the
-    // planet's AtmosphereComposition -- had nothing to show for a world whose atmosphere this
-    // function had just invented. N2 is carried too even though tau ignores it: it is the inert
-    // remainder, and the composition describes the air rather than just its greenhouse part.
     AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
-    ac->CO2_portion = CO2_fraction;
-    ac->N2_portion  = N2_fraction;
-    ac->H2_portion  = H2_fraction;
-    ac->CH4_portion = CH4_fraction;
-    ac->H2O_portion = H2O_fraction;
-    ac->HCN_portion = HCN_fraction;
-    ac->SO2_portion = SO2_fraction;
-    ac->H2S_portion = H2S_fraction;
-    ac->CO_portion  = frand(0, 0.01*CO2_fraction);
+    ac->generate_fictitious_for_planet(p->type);
 
     p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
         ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
@@ -1519,31 +1480,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     if (p->is_in_con_HZ()
         && cel->mass > 0.02 * earth_mass)       // Based on Titan's mass.
     {
-        if (randomize_txgen)
-        {
-            // A habitable-zone world gets its atmosphere redrawn. Same as above: into the
-            // composition first, tau from the composition afterwards, so the two cannot disagree.
-            // N2 keeps whatever the first draw gave it -- it is the inert filler, and nothing here
-            // reconsiders it.
-            CO2_fraction = frand(0, frand(0.001, 1));
-            ac->CO2_portion  = CO2_fraction;
-            ac->CH4_portion  = frand(0, 0.01);
-            ac->H2O_portion  = frand(0, 0.05 * has_water);
-            ac->N2O_portion  = frand(0, 0.0001);
-            ac->O3_portion   = 0;
-            ac->SO2_portion  = frand(0, 0.001);
-            ac->H2S_portion  = frand(0, 0.001);
-            ac->CO_portion   = frand(0, 0.01*CO2_fraction);
-            ac->HCN_portion  = frand(0, frand(0, frand(0, 0.1)));
-            ac->H2_portion   = frand(0, 0.99);
-            ac->NH3_portion  = frand(0, frand(0, frand(0, fmin(0.1, fmax(0, cel->mass / earth_mass - 1)*0.05))));
-            ac->C2H6_portion = 0;
-
-            p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
-                ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
-                ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
-                ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
-        }
         p->temperature = 0;
         T_surf = p->estimate_surface_temperature();
         #ifdef DEBUG
@@ -1569,6 +1505,16 @@ void Map::generate_rocky_map(CelestialObject *cel)
             && T_surf > 0.9*water_freezing && T_surf < 320
             && p->get_surface_pressure() < oneatm*2000)
             life_possible = true;
+
+        if (randomize_txgen)
+        {
+            if (life_possible) ac->generate_fictitious_habitable();
+
+            p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
+                ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
+                ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
+                ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
+        }
     }
     p->temperature = 0;
     T_surf = p->estimate_surface_temperature();
@@ -2142,6 +2088,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
     RGB3Byte rgb = Color::rgb_from_color(col, p->albedo);
+
+    p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
 
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
@@ -2915,4 +2863,137 @@ alienorum::Locale::Locale(json fj)
     fj["name"].get_to(name);
     fj["latitude"].get_to(lat);
     fj["longitude"].get_to(lon);
+}
+
+void alienorum::AtmosphereComposition::enforce_integrity()
+{
+    double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
+        + CO2_portion + CH4_portion + SO2_portion + H2O_portion + H2S_portion
+        + HCN_portion + NH3_portion + C2H6_portion + N2O_portion
+        + CO_portion + Ar_portion;
+    
+    if (total > 1)
+    {
+        double multiplier = 1.0 / total;
+        H2_portion *= multiplier;
+        He_portion *= multiplier;
+        N2_portion *= multiplier;
+        O2_portion *= multiplier;
+        O3_portion *= multiplier;
+        CO2_portion *= multiplier;
+        CH4_portion *= multiplier;
+        SO2_portion *= multiplier;
+        H2O_portion *= multiplier;
+        H2S_portion *= multiplier;
+        HCN_portion *= multiplier;
+        NH3_portion *= multiplier;
+        C2H6_portion *= multiplier;
+        N2O_portion *= multiplier;
+        CO_portion *= multiplier;
+        Ar_portion *= multiplier;
+    }
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_gas_giant()
+{
+    double leftover = 1;
+    He_portion = frand(0.01, 0.2);
+    leftover -= He_portion;
+    CH4_portion = frand(0.002, 0.005);
+    leftover -= CH4_portion;
+    NH3_portion = frand(0.0001, 0.0003);
+    leftover -= NH3_portion;
+    C2H6_portion = frand(0.000005, 0.000008);
+    leftover -= C2H6_portion;
+    H2O_portion = frand(0, 0.000005);
+    leftover -= H2O_portion;
+    H2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_ice_giant()
+{
+    double leftover = 1;
+    He_portion = frand(0.1, 0.3);
+    leftover -= He_portion;
+    CH4_portion = frand(0.001, 0.003);
+    leftover -= CH4_portion;
+    NH3_portion = frand(0.0001, 0.0003);
+    leftover -= NH3_portion;
+    C2H6_portion = frand(0.000005, 0.000008);
+    leftover -= C2H6_portion;
+    H2O_portion = frand(0, 0.000005);
+    leftover -= H2O_portion;
+    H2_portion = frand(0.7, 0.85);
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_venusian()
+{
+    double leftover = 1;
+    leftover -= (N2_portion = frand(0.01, 0.1));
+    leftover -= (SO2_portion = frand(0.0001, 0.001));
+    leftover -= (Ar_portion = frand(0.00001, 0.0001));
+    leftover -= (H2O_portion = frand(0.00001, 0.0001));
+    leftover -= (H2S_portion = frand(0.000001, 0.00001));
+    leftover -= (CO_portion = frand(0.00001, 0.00003));
+    leftover -= (He_portion = frand(0.00001, 0.00002));
+    CO2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_titanean()
+{
+    double leftover = 1;
+    leftover -= (CH4_portion = frand(0.01, 0.1));
+    leftover -= (H2_portion = frand(0.001, 0.005));
+    leftover -= (C2H6_portion = frand(0.00001, 0.01));
+    N2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_habitable()
+{
+    bool has_intense_volcanism = frand(0,1) < 0.4;
+    bool has_free_oxygen = frand(0,1) < 0.03;           // yes I am an oxygen pessimist
+
+    double leftover = 1;
+    leftover -= (CH4_portion = frand(0, 0.05));
+    leftover -= (C2H6_portion = CH4_portion * frand(0.000001, 0.1));
+    leftover -= (HCN_portion = frand(0, 0.001));
+    leftover -= (NH3_portion = frand(0, 0.00001));
+    leftover -= (Ar_portion = frand(0.00001, 0.005));
+    leftover -= (CO2_portion = frand(0.00001, 0.01));
+    leftover -= (CO_portion = CO2_portion * frand(0.00001, 0.01));
+    leftover -= (H2O_portion = frand(0.001, 0.05));
+
+    if (has_intense_volcanism)
+    {
+        leftover -= (SO2_portion = frand(0.0001, 0.01));
+        leftover -= (H2S_portion = SO2_portion * frand(0.01, 0.5));
+    }
+
+    if (has_free_oxygen)
+    {
+        leftover -= (O2_portion = frand(0.0001, 0.7));
+        leftover -= (O3_portion = O2_portion * frand(0.0001, 0.01));
+        leftover -= (N2O_portion = O2_portion * frand(0.000001, 0.0001));
+    }
+
+    leftover -= (H2_portion = frand(0.001, 0.005));
+    N2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)
+{
+    if (t == gas_giant) generate_fictitious_gas_giant();
+    else if (t == ice_giant) generate_fictitious_ice_giant();
+    else if (t == rocky) generate_fictitious_venusian();
+    else if (t == icy) generate_fictitious_titanean();
 }
