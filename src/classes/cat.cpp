@@ -5114,6 +5114,18 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             g->position_angle_known = true;
             g->distance_known = true;
             g->axis_ratio = 0.01;                       // ~100000 light years across, ~1000 thick
+
+            // The distance column rounds our own to 0.01 Mpc, which is 4000 light years further out
+            // than we are. From inside, that error moves the whole sky: it is the ratio of this to
+            // the disc radius that decides how far the bright half of the band reaches. So replace
+            // it with the measured value.
+            place_galaxy(g, g->right_ascension, g->declination,
+                sun_to_galactic_center / (3.26156 * 1e+6));
+
+            // a26 is blank as well, and draw_galaxy() and the interior renderer both work the disc
+            // radius out as distance * angular_diameter / 2. Run that backwards from the radius we
+            // do know, so both get the right disc rather than nothing at all.
+            g->angular_diameter = 2.0 * milky_way_radius / sun_to_galactic_center;
         }
         g->location.equatorial_plane = g->location.local_system_plane
             = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);

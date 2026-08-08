@@ -101,6 +101,11 @@ using json = nlohmann::json;
 #define milky_way_inclination (90.046 * fiftyseventh)
 #define milky_way_position_angle (31.3955 * fiftyseventh)
 
+// The UNGC leaves the a26 column blank for the Milky Way as well, for the same reason, so there is
+// no angular size to work a disc radius out of. This is the optical disc -- what the D25 isophote
+// would enclose if it could be measured from outside -- at the usual 15 kpc.
+#define milky_way_radius (15.0 * 1000 * 3.26156)                    // light years
+
 // https://en.wikipedia.org/wiki/Poles_of_astronomical_bodies
 #define solar_north_RA_J2000 (286.13 * fiftyseventh)
 #define solar_north_Decl_J2000 (63.87 * fiftyseventh)
@@ -237,10 +242,10 @@ extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
 extern ViewMode view_mode;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, took_off_from,
-    tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat;
+    tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat, inside_galaxy_idx;
 extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_gamma;
-extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_localsys, label_galaxies,
+extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_localsys, label_galaxies, show_galaxy_band,
     is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing, generating_fic_texture, focus_findbox, whtbkgd,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood, locwnd,
     show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo, 

@@ -320,11 +320,24 @@ void compute_object_draw_coordinates()
     if (1) // viewchanged || redo_proper_motions)
     {
         luminous_flux = cels[1] ? 0 : 1e10;
+        inside_galaxy_idx = -1;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
                 = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
+
+            // Standing inside a disc, its own projected ellipse is not what is overhead: the disc
+            // wraps all the way round as a band. draw_galaxy_band() renders that instead, and this
+            // is where it finds out there is one to render. The margin lets the band take over a
+            // little before the rim is crossed, since by then it already fills most of the sky.
+            if (cels[i]->typeclass() == class_galaxy)
+            {
+                double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
+                if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
+                    inside_galaxy_idx = i;
+            }
+
             if (i == whereami) continue;
 
             // A galaxy is not inside anybody's star system, and its cenobj is itself. Casting that

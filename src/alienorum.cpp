@@ -534,6 +534,7 @@ int main (int argc, char** argv)
             {
                 is_a_locale_under_cursor = nullptr;
                 selected_locale = nullptr;
+                draw_galaxy_band();                 // behind everything: it is the backdrop
                 if (show_grid) draw_ra_dec_lines();
                 if (show_consln) draw_cons_lines();
                 draw_objects();

@@ -17,6 +17,7 @@ int draw_sphere(CelestialObject *cel, double arad);
 int draw_sphere_gpu(CelestialObject *cel, double arad);
 int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol);
 bool draw_one_object(int i); // return false if not drawn for any reason
+void draw_galaxy_band();     // the disc the viewer is standing inside, wrapped across the sky
 void draw_objects();
 void draw_sunclock();
 void find_horizon();

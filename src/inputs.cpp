@@ -300,6 +300,7 @@ void show_menu()
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Galaxy Labels", "K")) { process_key_cmd_char('k'); menu_clicked = true; }
+            if (ImGui::MenuItem("Galaxy Band", "Shift+K")) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J")) { process_key_cmd_char('j'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Objects", "Shift+V")) { process_key_cmd_char('V'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Labels", "P")) { process_key_cmd_char('p'); menu_clicked = true; }
@@ -322,6 +323,8 @@ void process_key_cmd_char(char c)
 
     // Keep this line to uncomment when testing which keystrokes ImGui recognizes.
     // std::cout << c << std::endl;
+
+    // IMPORTANT: Any keyboard shortcuts added here should also be added to show_menu().
 
     switch (c)
     {
@@ -367,6 +370,7 @@ void process_key_cmd_char(char c)
         case 'j': show_sats = !show_sats; break;
         case 'J': satview_upsidedown = !satview_upsidedown; break;
         case 'k': label_galaxies = !label_galaxies; break;
+        case 'K': show_galaxy_band = !show_galaxy_band; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = lbltype_planethz; show_labels = true; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;

@@ -54,6 +54,11 @@ bool locwnd = false;
 bool show_taucalc = false;
 bool hide_mouse = true;
 bool label_galaxies = true;
+bool show_galaxy_band = true;
+
+// Set every frame by compute_object_draw_coordinates(): the cels[] index of the galaxy whose disc
+// the viewer is standing inside, or -1. Only one galaxy can qualify, and normally it is ours.
+int inside_galaxy_idx = -1;
 bool searched = false, focus_findbox = false, whtbkgd = false;
 double mag_limit_adjusted = normal_best_mag_limit;
 const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+N)", "Bayer (Sh+F)", "Flamsteed (F)", "Gould (Sh+G)",
