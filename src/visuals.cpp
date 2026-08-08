@@ -1361,7 +1361,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 
     // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
     double area = fmax(4.0, _pi * wide * tall * 0.25);
-    double total = pow(magnbase, -appmag) * global_brightness * zoom * 1e+5;
+    double total = pow(magnbase, -appmag) * global_brightness * zoom * zoom * 1e+4;
     double peak = fmin(210.0, total / area * 255.0);
     if (peak < 2.0) return 0;
 
@@ -1450,7 +1450,7 @@ bool draw_one_object(int i)
             if (selected == i)
                 ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2,
                     rgba_apply_redlight(global_style.selected_color), 0, 2);
-            return true;
+            goto labels_step;
         }
         // Too small, too faint, or off screen: fall through to the point path below, which is the
         // right answer for a galaxy that is only a few pixels across anyway.
@@ -1582,6 +1582,7 @@ bool draw_one_object(int i)
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
     }
 
+    labels_step:
     if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
