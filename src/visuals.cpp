@@ -1315,6 +1315,52 @@ double global_magshift;
 // Brightness is per unit area rather than total: a galaxy's flux is spread over its whole disc, so
 // M31 covering three degrees has to come out far fainter per pixel than a compact one of the same
 // magnitude. Without that, every large nearby galaxy renders as a flat white blob.
+// Surface brightness at fractional radius f (0 at the nucleus, 1 at the rim) and disc-plane angle
+// t, for a galaxy of Hubble stage T. This is what turns the soft ellipse into something that reads
+// as a galaxy: a concentrated bulge, an exponential disc, and a pair of logarithmic arms wound at
+// a pitch that follows the type -- tight for an Sa, open for an Sc, which is most of what the
+// Hubble sequence actually describes.
+//
+// Everything here is in the disc's OWN polar coordinates, which is why it lands correctly on the
+// projected ellipse: the mesh's segment index is the disc angle by construction, and its ring
+// index the fractional radius, so the pattern foreshortens along with the disc instead of being
+// painted flat onto the screen.
+static double galaxy_surface_intensity(double f, double t, double T, bool barred)
+{
+    // An elliptical has no disc to put arms on -- see the inclination discussion: it is a triaxial
+    // spheroid, and its light falls off far more steeply than a disc's.
+    if (T < 0) return pow(fmax(0.0, 1.0 - f), 3.4);
+
+    // Pitch angle: about 8 degrees at S0a, opening to roughly 29 by Sd. Arms are logarithmic
+    // spirals, so a constant pitch means theta advances with the logarithm of the radius.
+    double pitch = (8.0 + 2.6 * fmin(fmax(T, 0.0), 8.0)) * fiftyseventh;
+
+    // The bulge shrinks along the sequence: prominent in an Sa, barely there in an Sd.
+    double bulge = fmax(0.05, 0.60 - 0.07 * T) * exp(-f / 0.09);
+    double disc = pow(fmax(0.0, 1.0 - f), 2.2);
+
+    double fc = fmax(f, 0.14);                      // the winding runs away as f approaches zero
+    double phi = t - log(fc) / tan(pitch);
+    double arm = pow(0.5 + 0.5 * cos(2.0 * phi), 2.0);
+
+    // Suppressed inside the bulge, and faded out towards the late types, whose arms break up into
+    // patches rather than continuing as a two-armed pattern.
+    double inner = fmin(1.0, fmax(0.0, (f - 0.10) / 0.16));
+    double late = fmin(1.0, fmax(0.0, 1.0 - (T - 6.0) / 4.0));
+    double val = bulge + disc * (0.30 + 0.95 * inner * late * arm);
+
+    if (barred)
+    {
+        // A quartic in f gives the bar a definite end rather than a fade, which is what makes it
+        // read as a bar; the width term is measured across it, hence sin(t)*f.
+        double along = exp(-pow(f / 0.34, 4.0));
+        double across = exp(-pow(sin(t) * f / 0.055, 2.0));
+        val += 0.55 * along * across;
+    }
+
+    return val;
+}
+
 static double draw_galaxy(CelestialObject* cel, double appmag)
 {
     Galaxy *g = (Galaxy*)cel;
@@ -1331,11 +1377,17 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     e1.scale(1);
     e2.scale(1);
 
-    const int nring = 10, nseg = 40;
+    // Mesh resolution follows the on-screen size: a galaxy five pixels across gains nothing from
+    // 64 segments, and at high zoom the magnitude limit lets hundreds of them through at once.
+    // Estimated analytically because the rim below cannot be built until the count is chosen.
+    const int kMaxSeg = 72;
+    double est_px = g->angular_diameter * zoom * dispcx;
+    int nseg = (int)fmin((double)kMaxSeg, fmax(12.0, est_px * 1.1));
+    int nring = (int)fmin(18.0, fmax(4.0, est_px * 0.25));
 
     // Screen extent of the rim, both to size the falloff and to reject the offscreen cheaply.
     double xmin = 1e30, xmax = -1e30, ymin = 1e30, ymax = -1e30;
-    ImVec2 rim[nseg];
+    ImVec2 rim[kMaxSeg];
     for (int s = 0; s < nseg; s++)
     {
         double t = s * (_pi * 2.0 / nseg);
@@ -1369,9 +1421,14 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     col.normalize(255);
     RGB3Byte rgb((unsigned char)col.red, (unsigned char)col.green, (unsigned char)col.blue);
 
-    // Ellipticals concentrate their light far more steeply than discs do -- the de Vaucouleurs
-    // profile against an exponential one -- so the falloff exponent follows the Hubble stage.
-    double falloff = (g->T_known && g->morphological_T < 0) ? 3.4 : 2.2;
+    // Type drives the whole pattern; an unknown one is treated as a middling spiral rather than
+    // as an elliptical, since that is the commoner shape and the safer-looking mistake.
+    double T = g->T_known ? g->morphological_T : 3.0;
+
+    // The RC3 spells the family in the third character of its type string: A unbarred, B barred,
+    // X intermediate. The UNGC's own short forms ("Im", "Sph") have nothing there, hence the
+    // length check.
+    bool barred = (strlen(g->morph_type) > 2 && g->morph_type[2] == 'B');
 
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
     ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
@@ -1383,12 +1440,24 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         mid = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
     }
 
+    // Alpha now varies with the segment as well as the ring, so it is worked out per vertex of the
+    // (nring+1) x nseg lattice once and reused by the four quads that meet at each.
+    std::vector<unsigned char> lattice((nring+1) * nseg);
+    for (int r = 0; r <= nring; r++)
+    {
+        double f = (double)r / nring;
+        for (int s = 0; s < nseg; s++)
+        {
+            double v = galaxy_surface_intensity(f, s * (_pi * 2.0 / nseg), T, barred) * peak;
+            lattice[r*nseg + s] = (unsigned char)fmin(255.0, fmax(0.0, v));
+        }
+    }
+    #define galaxy_vtx_col(r, s) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(r)*nseg + (s)]))
+
     dl->PrimReserve(nring*nseg*6, nring*nseg*4);
     for (int r = 0; r < nring; r++)
     {
         double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
-        ImU32 ca = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)(peak * pow(1.0-f0, falloff))));
-        ImU32 cb = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)(peak * pow(1.0-f1, falloff))));
         for (int s = 0; s < nseg; s++)
         {
             int s1 = (s+1) % nseg;
@@ -1400,10 +1469,10 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
             ImVec2 b1(mid.x + (rim[s1].x - mid.x)*f1, mid.y + (rim[s1].y - mid.y)*f1);
             ImVec2 b0(mid.x + (rim[s ].x - mid.x)*f1, mid.y + (rim[s ].y - mid.y)*f1);
             unsigned int base = dl->_VtxCurrentIdx;
-            dl->PrimWriteVtx(a0, uv, ca);
-            dl->PrimWriteVtx(a1, uv, ca);
-            dl->PrimWriteVtx(b1, uv, cb);
-            dl->PrimWriteVtx(b0, uv, cb);
+            dl->PrimWriteVtx(a0, uv, galaxy_vtx_col(r,   s ));
+            dl->PrimWriteVtx(a1, uv, galaxy_vtx_col(r,   s1));
+            dl->PrimWriteVtx(b1, uv, galaxy_vtx_col(r+1, s1));
+            dl->PrimWriteVtx(b0, uv, galaxy_vtx_col(r+1, s ));
             dl->PrimWriteIdx((ImDrawIdx)(base+0));
             dl->PrimWriteIdx((ImDrawIdx)(base+1));
             dl->PrimWriteIdx((ImDrawIdx)(base+2));

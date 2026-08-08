@@ -420,7 +420,7 @@ void process_key_cmd_char(char c)
         global_brightness = default_brightness;
         global_gamma = viewer_gamma;
         neighb_rthresh = 25 * light_year;
-        show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = true;
+        show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = label_galaxies = true;
         show_orbits = false;
         cbolbls_selected_idx = lbltype_brightest;
         appmagn_lblcut = 2.5;
@@ -501,7 +501,7 @@ void process_key_cmd_char(char c)
         case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '0': neighborhood = !neighborhood; break;
-        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = show_localsys = true; break;
+        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = show_localsys = label_galaxies = true; break;
         case '2': cbolbls_selected_idx = lbltype_binary; show_labels = true; break;
 
         case '3':
@@ -565,7 +565,7 @@ void process_key_cmd_char(char c)
         case '.': astwnd = !astwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
-        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
+        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = label_galaxies = false; break;
         case '%':
         zoom = 1;
         global_brightness = 1;
