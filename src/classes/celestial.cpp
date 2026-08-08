@@ -1453,19 +1453,19 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // Clausius-Clapeyron calculation
     double inv_T1 = 1.0 / Tboil;
     double gas_constant_ratio = R / DELTA_H_VAP;
-    double pressure_log = std::log(p->surface_pressure / P1);
+    double pressure_log = std::log(p->get_surface_pressure() / P1);
 
     double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
     double T_boil = 1.0 / inv_T2;
-    // std::cout << "At " << (p->surface_pressure / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
+    // std::cout << "At " << (p->get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
     bool life_possible = false;
 
-    if (!p->surface_pressure)
+    if (!p->get_surface_pressure())
     {
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
-        p->surface_pressure = frand(0.1, 1) * max_atm_pressure;
+        p->ensure_atmosphere()->surface_pressure = frand(0.1, 1) * max_atm_pressure;
     }
 
     double unaccounted_for = 1.0;
@@ -1494,47 +1494,60 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // std::cout << p->name << " H2S=" << (H2S_fraction*100) << "%" << std::endl;
     unaccounted_for -= H2S_fraction;
     // std::cout << p->name << " unaccounted=" << (unaccounted_for*100) << "%" << std::endl;
-    p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
-        CO2_fraction,                           // CO2
-        CH4_fraction,                           // CH4
-        H2O_fraction,                           // H2O
-        0,                                      // N2O
-        0,                                      // O3
-        SO2_fraction,                           // SO2
-        H2S_fraction,                           // H2S
-        frand(0, 0.01*CO2_fraction),            // CO
-        HCN_fraction,                           // HCN
-        H2_fraction,                            // H2
-        0,                                      // NH3
-        0                                       // C2H6
-        );
-    // std::cout << p->name << " tau=" << p->atmospheric_tau << std::endl;
+    // Store the mix before using it, then compute tau from what was stored. These fractions used
+    // to be locals that died with the function, so the edit dialog's tau panel -- which reads the
+    // planet's AtmosphereComposition -- had nothing to show for a world whose atmosphere this
+    // function had just invented. N2 is carried too even though tau ignores it: it is the inert
+    // remainder, and the composition describes the air rather than just its greenhouse part.
+    AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
+    ac->CO2_portion = CO2_fraction;
+    ac->N2_portion  = N2_fraction;
+    ac->H2_portion  = H2_fraction;
+    ac->CH4_portion = CH4_fraction;
+    ac->H2O_portion = H2O_fraction;
+    ac->HCN_portion = HCN_fraction;
+    ac->SO2_portion = SO2_fraction;
+    ac->H2S_portion = H2S_fraction;
+    ac->CO_portion  = frand(0, 0.01*CO2_fraction);
+
+    p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
+        ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
+        ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
+        ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
+    // std::cout << p->name << " tau=" << p->get_atmospheric_tau() << std::endl;
 
     if (p->is_in_con_HZ()
         && cel->mass > 0.02 * earth_mass)       // Based on Titan's mass.
     {
         if (randomize_txgen)
         {
+            // A habitable-zone world gets its atmosphere redrawn. Same as above: into the
+            // composition first, tau from the composition afterwards, so the two cannot disagree.
+            // N2 keeps whatever the first draw gave it -- it is the inert filler, and nothing here
+            // reconsiders it.
             CO2_fraction = frand(0, frand(0.001, 1));
-            p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
-                CO2_fraction,                           // CO2
-                frand(0, 0.01),                         // CH4
-                frand(0, 0.05 * has_water),             // H2O
-                frand(0, 0.0001),                       // N2O
-                0,                                      // O3
-                frand(0, 0.001),                        // SO2
-                frand(0, 0.001),                        // H2S
-                frand(0, 0.01*CO2_fraction),            // CO
-                frand(0, frand(0, frand(0, 0.1))),      // HCN
-                frand(0, 0.99),                         // H2
-                frand(0, frand(0, frand(0, fmin(0.1, fmax(0, cel->mass / earth_mass - 1)*0.05)))),      // NH3
-                0                                       // C2H6
-                                                );
+            ac->CO2_portion  = CO2_fraction;
+            ac->CH4_portion  = frand(0, 0.01);
+            ac->H2O_portion  = frand(0, 0.05 * has_water);
+            ac->N2O_portion  = frand(0, 0.0001);
+            ac->O3_portion   = 0;
+            ac->SO2_portion  = frand(0, 0.001);
+            ac->H2S_portion  = frand(0, 0.001);
+            ac->CO_portion   = frand(0, 0.01*CO2_fraction);
+            ac->HCN_portion  = frand(0, frand(0, frand(0, 0.1)));
+            ac->H2_portion   = frand(0, 0.99);
+            ac->NH3_portion  = frand(0, frand(0, frand(0, fmin(0.1, fmax(0, cel->mass / earth_mass - 1)*0.05))));
+            ac->C2H6_portion = 0;
+
+            p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
+                ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
+                ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
+                ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
         }
         p->temperature = 0;
         T_surf = p->estimate_surface_temperature();
         #ifdef DEBUG
-            std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
+            std::cout << "Surface pressure: " << (p->get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
         #endif
 
@@ -1552,9 +1565,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
         }
 
         if (has_water >= 0.05
-            && p->surface_pressure >= 600
+            && p->get_surface_pressure() >= 600
             && T_surf > 0.9*water_freezing && T_surf < 320
-            && p->surface_pressure < oneatm*2000)
+            && p->get_surface_pressure() < oneatm*2000)
             life_possible = true;
     }
     p->temperature = 0;
@@ -1569,7 +1582,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // flag is set, every map in the app read as blank. So just note it here and build it at the
     // very end, once the lock is long gone and this map is finished.
     bool want_overcast_sky = false;
-    if (p->surface_pressure >= 5*oneatm && T_surf >= 400)
+    if (p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
     {
         has_water = 0;
         want_overcast_sky = (p->cloud_map == nullptr);
@@ -1642,7 +1655,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && p->is_tidal_locked();
 
-    double Tswing = 256.0 / (p->surface_pressure * 3.5e-5), halfswing = Tswing*0.5;
+    double Tswing = 256.0 / (p->get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
 
     // A small per-planet palette of terrain "provinces" -- e.g. bright neutral highlands
     // vs. a darker, differently-tinted basalt or tholin-rich province -- so terrain color
@@ -1908,7 +1921,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
     double tempK = p->estimate_surface_temperature(), ltemp;
     const double glow_amt = 24.0 / blackbody_flux(tempK, R_band);
     std::cout << glow_amt << std::endl;
-    double Tswing = tempK * 0.1 / (1.0 + p->surface_pressure * 3.5e-5);
+    double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
 
     // Fill in glowing hot lava.
     int x, y, y1, idx;
@@ -1947,7 +1960,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     // Venus vs. the Moon); an extended/close-in debris disk (a Kuiper-belt analog) around
     // the host star means more large impactors are available system-wide, the opposite
     // effect. Both are just density multipliers on top of a baseline crater count.
-    double atmosphere_factor = 1.0 / (1.0 + p->surface_pressure * inv_oneatm * 3.0);
+    double atmosphere_factor = 1.0 / (1.0 + p->get_surface_pressure() * inv_oneatm * 3.0);
     double belt_factor = 1.0;
     CelestialObject *lc = p->get_light_center();
     if (lc && lc->type == star)

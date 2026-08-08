@@ -300,7 +300,7 @@ void draw_status_window(ImGuiIO& io)
             sssg << "Est. temp.:   " << std::fixed << std::setprecision(1) << ((Planet*)cels[whereami])->estimate_surface_temperature() << " K";
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
-            double bar = ((Planet*)cels[whereami])->surface_pressure / 1e5;
+            double bar = ((Planet*)cels[whereami])->get_surface_pressure() / 1e5;
             sssg << "Pressure:     " << std::fixed << std::setprecision(bar<1 ? 5 : 2) << bar << " bar";
             ImGui::Text("%s", sssg.str().c_str());
 
@@ -1521,14 +1521,14 @@ void draw_objedit_window(ImGuiIO& io)
         {
             Planet* p = (Planet*)cel;
 
-            double edit_surf_presh = p->surface_pressure / oneatm;
+            double edit_surf_presh = p->get_surface_pressure() / oneatm;
             ImGui::Text("%s", "Pressure, atm");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             bool update_taucalc = false;
             if (ImGui::InputDouble("##edtpresh", &edit_surf_presh, 0, 0, "%.3f"))
             {
-                p->surface_pressure = edit_surf_presh * oneatm;
+                p->ensure_atmosphere()->surface_pressure = edit_surf_presh * oneatm;
                 p->temperature = 0;
                 update_taucalc = true;
                 cel->user_edited = true;
@@ -1539,11 +1539,11 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine(col2);
             ImGui::Text("%s", "Total tau");
             ImGui::SameLine(col3);
-            double edit_atm_tau = p->atmospheric_tau;
+            double edit_atm_tau = p->get_atmospheric_tau();
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edttau", &edit_atm_tau, 0, 0, "%.5f"))
             {
-                p->atmospheric_tau = edit_atm_tau;
+                p->ensure_atmosphere()->tau = edit_atm_tau;
                 p->temperature = 0;
                 cel->user_edited = true;
                 if (cel->typeclass() == class_planet
@@ -1556,13 +1556,13 @@ void draw_objedit_window(ImGuiIO& io)
                 show_taucalc = !show_taucalc;
             }
 
-            double edit_particulates = p->atmospheric_particulates;
+            double edit_particulates = p->get_particulates();
             ImGui::Text("%s", "Particulates");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtpartic", &edit_particulates, 0, 0, "%.6f"))
             {
-                p->atmospheric_particulates = edit_particulates;
+                p->ensure_atmosphere()->particulates = edit_particulates;
                 viewchanged = true;
                 cel->user_edited = true;
             }
@@ -1575,21 +1575,37 @@ void draw_objedit_window(ImGuiIO& io)
 
                 // Normalize pressure relative to Earth's sea-level pressure (1 atm)
                 constexpr double P_EARTH = 101325.0;
-                double normalized_pressure = p->surface_pressure / P_EARTH;
+                double normalized_pressure = p->get_surface_pressure() / P_EARTH;
 
                 ImGui::Text("%s", "Use this tool to calculate total tau from atmospheric pressure and composition.");
                 ImGui::Text("%s", "We ignore gases like nitrogen, oxygen, argon that do not contribute to the greenhouse effect.");
-                static double co2_percent=(p->is_in_con_HZ()?0.04:90),
-                    ch4_percent=(p->is_in_con_HZ()?0.0002:0),
-                    h2o_percent=(p->is_in_con_HZ()?1:0),
-                    n2o_percent = 0, o3_percent = 0, so2_percent = 0, h2s_percent = 0, co_percent = 0,
-                    hcn_percent = 0, h2_percent = 0, nh3_percent = 0, c2h6_percent = 0;
+                // Backed by the planet's own AtmosphereComposition rather than by statics. Statics
+                // survived a change of selection, so opening this panel on a second planet showed
+                // the first one's gases and silently recomputed its tau from them.
+                //
+                // The composition is only created once the user actually edits a field: merely
+                // looking at a body must not give it an atmosphere. Until then the fields show
+                // starting suggestions, which is what the old initializers were for.
+                AtmosphereComposition *comp = (p->atm && p->atm->comp) ? p->atm->comp : nullptr;
+                double co2_percent  = comp ? comp->CO2_portion  * 100 : (p->is_in_con_HZ() ? 0.04 : 90),
+                       ch4_percent  = comp ? comp->CH4_portion  * 100 : (p->is_in_con_HZ() ? 0.0002 : 0),
+                       h2o_percent  = comp ? comp->H2O_portion  * 100 : (p->is_in_con_HZ() ? 1 : 0),
+                       n2o_percent  = comp ? comp->N2O_portion  * 100 : 0,
+                       o3_percent   = comp ? comp->O3_portion   * 100 : 0,
+                       so2_percent  = comp ? comp->SO2_portion  * 100 : 0,
+                       h2s_percent  = comp ? comp->H2S_portion  * 100 : 0,
+                       co_percent   = comp ? comp->CO_portion   * 100 : 0,
+                       hcn_percent  = comp ? comp->HCN_portion  * 100 : 0,
+                       h2_percent   = comp ? comp->H2_portion   * 100 : 0,
+                       nh3_percent  = comp ? comp->NH3_portion  * 100 : 0,
+                       c2h6_percent = comp ? comp->C2H6_portion * 100 : 0;
 
                 ImGui::Text("%s", "Carbon dioxide %");
                 ImGui::SameLine(col15);
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtc02", &co2_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->CO2_portion = co2_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1607,6 +1623,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtch4", &ch4_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->CH4_portion = ch4_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1626,6 +1643,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edth2o", &h2o_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->H2O_portion = h2o_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1645,6 +1663,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtn2o", &n2o_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->N2O_portion = n2o_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1664,6 +1683,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->O3_portion = o3_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1683,6 +1703,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->SO2_portion = so2_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1702,6 +1723,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->H2S_portion = h2s_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1721,6 +1743,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtco", &co_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->CO_portion = co_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1729,6 +1752,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edthcn", &hcn_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->HCN_portion = hcn_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1737,6 +1761,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edth2", &h2_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->H2_portion = h2_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1745,6 +1770,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtnh3", &nh3_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->NH3_portion = nh3_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1753,6 +1779,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtc2h6", &c2h6_percent, 0, 0, "%.6f"))
                 {
+                    p->ensure_atmosphere()->ensure_composition()->C2H6_portion = c2h6_percent * 0.01;
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1760,12 +1787,21 @@ void draw_objedit_window(ImGuiIO& io)
                 if (update_taucalc)
                 {
                     p->temperature = 0;
-                    p->atmospheric_tau = edit_atm_tau = atmospheric_tau(normalized_pressure, co2_percent*.01, ch4_percent*.01, h2o_percent*.01, n2o_percent*.01,
-                        o3_percent*.01, so2_percent*.01, h2s_percent*.01, co_percent*.01, hcn_percent*.01, h2_percent*.01, nh3_percent*.01, c2h6_percent*.01);
+                    // Straight from the composition, not from the display variables: those two are
+                    // the same number by now, but reading the stored one means the tau shown always
+                    // matches the composition that will be written to disk.
+                    AtmosphereComposition *tc = p->ensure_atmosphere()->ensure_composition();
+                    p->atm->tau = edit_atm_tau = atmospheric_tau(normalized_pressure,
+                        tc->CO2_portion, tc->CH4_portion, tc->H2O_portion, tc->N2O_portion,
+                        tc->O3_portion,  tc->SO2_portion, tc->H2S_portion, tc->CO_portion,
+                        tc->HCN_portion, tc->H2_portion,  tc->NH3_portion, tc->C2H6_portion);
                 }
                 if (ImGui::Button("Clear##atmosph_comp"))
                 {
                     co2_percent=ch4_percent=h2o_percent=n2o_percent=o3_percent=so2_percent=h2s_percent=co_percent=hcn_percent=h2_percent=nh3_percent=c2h6_percent=0;
+                    if (p->atm && p->atm->comp) *(p->atm->comp) = AtmosphereComposition();
+                    update_taucalc = true;
+                    cel->user_edited = true;
                 }
             }
 

@@ -86,10 +86,11 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
 
     if (!ck) set_color_from_type(HZ);
 
-    if (!surface_pressure && get_light_center() != cels[0])
+    if (!get_surface_pressure() && get_light_center() != cels[0])
     {
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(get_light_center()), *this);
-        surface_pressure = (shoreline<0) ? 0 : (pow(10, shoreline) * 503);
+        double p_pa = (shoreline<0) ? 0 : (pow(10, shoreline) * 503);
+        if (p_pa > 0) ensure_atmosphere()->surface_pressure = p_pa;
     }
 }
 
@@ -160,7 +161,8 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
 double Planet::estimate_bump_scale()
 {
-    return 0.001 * volumetric_mean_radius * (surface_pressure ? log(surface_pressure) : 1) / log(20);
+    double p_pa = get_surface_pressure();
+    return 0.001 * volumetric_mean_radius * (p_pa ? log(p_pa) : 1) / log(20);
 }
 
 void alienorum::Planet::incline_exo_orbit(double sys_solincl, double sys_solnode)
@@ -255,7 +257,7 @@ double Planet::estimate_surface_temperature()
 
     // 4. Apply the Eddington Gray-Atmosphere Approximation
     double empirical_tau_scale = 2.4; 
-    double greenhouse_factor = 1.0 + (0.75 * atmospheric_tau * empirical_tau_scale);
+    double greenhouse_factor = 1.0 + (0.75 * get_atmospheric_tau() * empirical_tau_scale);
 
     // 5. Calculate final surface temperature
     double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
@@ -267,7 +269,7 @@ double Planet::estimate_surface_temperature()
 double alienorum::Planet::atmospheric_refraction(double alt_rad)
 {
     temperature = estimate_surface_temperature();       // Kelvins
-    double P_hpa = surface_pressure * 0.01;             // Pascals to hPa (millibars)
+    double P_hpa = get_surface_pressure() * 0.01;       // Pascals to hPa (millibars)
     double T_c = temperature - 273.15;
 
     double h_true_deg = alt_rad * fiftyseven;
@@ -411,7 +413,7 @@ double alienorum::Planet::atmospheric_refraction(double alt_rad)
 // density_ratio 4 -- mild atmospheres (Earth included) don't show a visible "bowl".
 double alienorum::Planet::atmospheric_horizon_lift()
 {
-    double density_ratio = (surface_pressure / 101325.0) * (288.15 / estimate_surface_temperature());
+    double density_ratio = (get_surface_pressure() / 101325.0) * (288.15 / estimate_surface_temperature());
     if (density_ratio <= 4.0) return 0.0;
     double n_0 = 1.0 + (0.000293 * density_ratio);
     return std::acos(1.0 / n_0);
@@ -479,14 +481,85 @@ Planet::Planet()
     UB_color = 0.5;
 }
 
+// Only the constituents actually present are written out, so an atmosphere whose composition is
+// unknown or trivial does not carry a dozen zeroes around with it.
+json AtmosphereComposition::to_json()
+{
+    json towrite;
+    if (H2_portion  ) towrite["H2"]   = H2_portion;
+    if (He_portion  ) towrite["He"]   = He_portion;
+    if (N2_portion  ) towrite["N2"]   = N2_portion;
+    if (O2_portion  ) towrite["O2"]   = O2_portion;
+    if (O3_portion  ) towrite["O3"]   = O3_portion;
+    if (CO2_portion ) towrite["CO2"]  = CO2_portion;
+    if (CH4_portion ) towrite["CH4"]  = CH4_portion;
+    if (SO2_portion ) towrite["SO2"]  = SO2_portion;
+    if (H2O_portion ) towrite["H2O"]  = H2O_portion;
+    if (H2S_portion ) towrite["H2S"]  = H2S_portion;
+    if (HCN_portion ) towrite["HCN"]  = HCN_portion;
+    if (NH3_portion ) towrite["NH3"]  = NH3_portion;
+    if (C2H6_portion) towrite["C2H6"] = C2H6_portion;
+    if (N2O_portion ) towrite["N2O"]  = N2O_portion;
+    if (CO_portion  ) towrite["CO"]   = CO_portion;
+    if (Ar_portion  ) towrite["Ar"]   = Ar_portion;
+    return towrite;
+}
+
+bool AtmosphereComposition::from_json(json j)
+{
+    try { j.at("H2"  ).get_to(H2_portion  ); } catch (...) { ; }
+    try { j.at("He"  ).get_to(He_portion  ); } catch (...) { ; }
+    try { j.at("N2"  ).get_to(N2_portion  ); } catch (...) { ; }
+    try { j.at("O2"  ).get_to(O2_portion  ); } catch (...) { ; }
+    try { j.at("O3"  ).get_to(O3_portion  ); } catch (...) { ; }
+    try { j.at("CO2" ).get_to(CO2_portion ); } catch (...) { ; }
+    try { j.at("CH4" ).get_to(CH4_portion ); } catch (...) { ; }
+    try { j.at("SO2" ).get_to(SO2_portion ); } catch (...) { ; }
+    try { j.at("H2O" ).get_to(H2O_portion ); } catch (...) { ; }
+    try { j.at("H2S" ).get_to(H2S_portion ); } catch (...) { ; }
+    try { j.at("HCN" ).get_to(HCN_portion ); } catch (...) { ; }
+    try { j.at("NH3" ).get_to(NH3_portion ); } catch (...) { ; }
+    try { j.at("C2H6").get_to(C2H6_portion); } catch (...) { ; }
+    try { j.at("N2O" ).get_to(N2O_portion ); } catch (...) { ; }
+    try { j.at("CO"  ).get_to(CO_portion  ); } catch (...) { ; }
+    try { j.at("Ar"  ).get_to(Ar_portion  ); } catch (...) { ; }
+    return true;
+}
+
+json Atmosphere::to_json()
+{
+    json towrite;
+    towrite["surface_pressure"] = surface_pressure;
+    if (tau) towrite["tau"] = tau;
+    if (particulates) towrite["particulates"] = particulates;
+    if (comp) towrite["composition"] = comp->to_json();
+    return towrite;
+}
+
+// Accepts either spelling of every key, because the two files that carry atmospheres do not agree
+// on a convention: universe files are snake_case throughout ("surface_pressure"), while
+// catalogs/planets.json is PascalCase ("SurfacePressure"). One reader for both beats two readers
+// that have to be kept in step.
+bool Atmosphere::from_json(json j)
+{
+    try { j.at("surface_pressure").get_to(surface_pressure); } catch (...) { ; }
+    try { j.at("SurfacePressure").get_to(surface_pressure); } catch (...) { ; }
+    try { j.at("tau").get_to(tau); } catch (...) { ; }
+    try { j.at("AtmosphericTau").get_to(tau); } catch (...) { ; }
+    try { j.at("particulates").get_to(particulates); } catch (...) { ; }
+    try { j.at("Particulates").get_to(particulates); } catch (...) { ; }
+    try { json jc = j.at("composition"); ensure_composition()->from_json(jc); } catch (...) { ; }
+    try { json jc = j.at("Composition"); ensure_composition()->from_json(jc); } catch (...) { ; }
+    return true;
+}
+
 json Planet::to_json()
 {
     json towrite = CelestialObject::to_json();
 
     if (albedo) towrite["albedo"] = albedo;
-    towrite["surface_pressure"] = surface_pressure;
     towrite["opposition_surge"] = opposition_surge;
-    towrite["atmospheric_tau"] = atmospheric_tau;
+    if (atm) towrite["atmosphere"] = atm->to_json();
     if (J2) towrite["J2"] = J2;
 
     return towrite;
@@ -496,9 +569,29 @@ bool Planet::from_json(json j)
 {
     CelestialObject::from_json(j);
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
-    try { j.at("surface_pressure").get_to(surface_pressure); } catch (...) { ; }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
-    try { j.at("atmospheric_tau").get_to(atmospheric_tau); } catch (...) { ; }
+    // Fetch the node into a local FIRST. Written as ensure_atmosphere()->from_json(j.at(...)),
+    // C++17 sequences the postfix-expression before the argument, so ensure_atmosphere() runs and
+    // builds an Atmosphere before j.at() ever gets the chance to throw -- which handed an airless
+    // body a default one-atmosphere sky just for being loaded, and suppressed the legacy branch
+    // below by leaving atm non-null.
+    try { json ja = j.at("atmosphere"); ensure_atmosphere()->from_json(ja); } catch (...) { ; }
+
+    // Universe files written before the atmosphere became its own object carry these two at the
+    // top level instead. Read them only when there was no "atmosphere" block, so a current file
+    // is never second-guessed by a stale key that happens to sit alongside it.
+    if (!atm)
+    {
+        double legacy_pressure = 0, legacy_tau = 0;
+        try { j.at("surface_pressure").get_to(legacy_pressure); } catch (...) { ; }
+        try { j.at("atmospheric_tau").get_to(legacy_tau); } catch (...) { ; }
+        if (legacy_pressure > 0 || legacy_tau > 0)
+        {
+            ensure_atmosphere()->surface_pressure = legacy_pressure;
+            atm->tau = legacy_tau;
+        }
+    }
+
     try { j.at("J2").get_to(J2); } catch (...) { ; }
     return true;
 }

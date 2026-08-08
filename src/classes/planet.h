@@ -14,10 +14,21 @@ namespace alienorum
     {
         public:
         double albedo = 0;
+
+        // Null means the body genuinely has no atmosphere, which is what the three former
+        // members (surface_pressure, atmospheric_tau, atmospheric_particulates) used to say by
+        // holding zero. The accessors below preserve that reading for the many sites that only
+        // want the number, so they do not each have to null-check.
         Atmosphere *atm = nullptr;
-        double surface_pressure = 0;                        // For gas giants, pressure at the top of the cloud deck if known.
-        double atmospheric_tau  = 0;                        // Earth value. How well the atmosphere absorbs thermal infrared. Thickness dependent.
-        double atmospheric_particulates = 0;                // Colorimetric. How much of the sky color repeats the surface color vs. Rayleigh scattering.
+
+        double get_surface_pressure() const { return atm ? atm->surface_pressure : 0; }   // Pa. For gas giants, at the top of the cloud deck if known.
+        double get_atmospheric_tau() const { return atm ? atm->tau : 0; }                 // How well the atmosphere absorbs thermal infrared. Thickness dependent.
+        double get_particulates() const { return atm ? atm->particulates : 0; }           // Colorimetric: how much of the sky color repeats the surface color vs. Rayleigh scattering.
+
+        // Creates the Atmosphere on first use. Note it default-constructs, so surface_pressure
+        // starts at oneatm rather than zero -- callers are expected to set what they mean.
+        Atmosphere* ensure_atmosphere() { if (!atm) atm = new Atmosphere(); return atm; }
+
         double opposition_surge = 0;                        // TODO: A full moon is 13 times as bright, or 2.7 magnitudes brighter, compared to a quarter moon.
         double amt_lit = 0;
         double J2 = 0;
@@ -45,7 +56,7 @@ namespace alienorum
         double atmospheric_horizon_lift();
 
         Planet();
-        ~Planet() { if (orbit) delete orbit; }
+        ~Planet() { if (orbit) delete orbit; if (atm) delete atm; }
 
         json to_json();
         bool from_json(json j);

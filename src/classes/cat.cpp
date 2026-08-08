@@ -2440,7 +2440,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 else if (!strcmp(ihavetomove, "super_venus"))
                 {
                     p->type = rocky;
-                    p->surface_pressure = 100.0 * oneatm * p->estimate_surface_gravity();
+                    p->ensure_atmosphere()->surface_pressure = 100.0 * oneatm * p->estimate_surface_gravity();
                 }
                 else if (!strcmp(ihavetomove, "lavaworld")) p->type = lavaworld;
                 else if (!strcmp(ihavetomove, "ice_giant")) p->type = ice_giant;
@@ -3526,7 +3526,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
             try { pl.at("ArgPeri").get_to(p->orbit->arg_periapsis); p->orbit->arg_periapsis *= fiftyseventh; } catch (...) { ; }
             try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
-            try { pl.at("AtmosphericTau").get_to(p->atmospheric_tau); } catch (...) { ; }
+
             try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
             try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
@@ -3548,10 +3548,40 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
             try { pl.at("Obliquity").get_to(p->obliquity); p->obliquity *= fiftyseventh; } catch (...) { ; }
             try { pl.at("OrbitPeriod").get_to(p->orbit->period); } catch (...) { ; }
-            try { pl.at("Particulates").get_to(p->atmospheric_particulates); } catch (...) { ; }
             try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
             try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
-            try { pl.at("SurfacePressure").get_to(p->surface_pressure); } catch (...) { ; }
+            // Atmosphere. Read into locals first and only build the object if the record really
+            // carries something: 80 of the 90 bodies in planets.json have no atmospheric keys at
+            // all and must come out with atm == nullptr, the way zero pressure used to say so.
+            // Building it inline off pl.at() would also have handed Uranus and Neptune -- which
+            // carry Particulates but no SurfacePressure -- the struct's one-atmosphere default,
+            // where they previously read zero.
+            {
+                bool has_atm = false;
+                double a_pressure = 0, a_tau = 0, a_partic = 0;
+                try { pl.at("SurfacePressure").get_to(a_pressure); has_atm = true; } catch (...) { ; }
+                try { pl.at("AtmosphericTau").get_to(a_tau);       has_atm = true; } catch (...) { ; }
+                try { pl.at("Particulates").get_to(a_partic);      has_atm = true; } catch (...) { ; }
+                if (has_atm)
+                {
+                    Atmosphere *a = p->ensure_atmosphere();
+                    a->surface_pressure = a_pressure;
+                    a->tau = a_tau;
+                    a->particulates = a_partic;
+                }
+
+                // A composition may sit at the top level of the record, alongside the flat keys
+                // above, which is how planets.json spells it.
+                try
+                {
+                    json jc = pl.at("AtmosphereComposition");
+                    p->ensure_atmosphere()->ensure_composition()->from_json(jc);
+                } catch (...) { ; }
+
+                // Or the whole thing as one "Atmosphere" object, optionally holding a
+                // "Composition". Read last so it wins over the flatter spellings above.
+                try { json ja = pl.at("Atmosphere"); p->ensure_atmosphere()->from_json(ja); } catch (...) { ; }
+            }
             try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
             try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
             // try { pl.at("").get_to(p->); } catch (...) { ; }
