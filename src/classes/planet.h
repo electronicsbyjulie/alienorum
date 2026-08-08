@@ -14,6 +14,7 @@ namespace alienorum
     {
         public:
         double albedo = 0;
+        Atmosphere *atm = nullptr;
         double surface_pressure = 0;                        // For gas giants, pressure at the top of the cloud deck if known.
         double atmospheric_tau  = 0;                        // Earth value. How well the atmosphere absorbs thermal infrared. Thickness dependent.
         double atmospheric_particulates = 0;                // Colorimetric. How much of the sky color repeats the surface color vs. Rayleigh scattering.

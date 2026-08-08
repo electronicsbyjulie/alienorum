@@ -116,6 +116,39 @@ namespace alienorum
         double ex, ey, ez, tnx, tny, tnz;
     };
 
+    struct AtmosphereComposition
+    {
+        double H2_portion = 0;
+        double He_portion = 0;
+        double N2_portion = 0;
+        double O2_portion = 0;
+        double O3_portion = 0;
+        double CO2_portion = 0;
+        double CH4_portion = 0;
+        double SO2_portion = 0;
+        double H2O_portion = 0;
+        double H2S_portion = 0;
+        double HCN_portion = 0;
+        double NH3_portion = 0;
+        double C2H6_portion = 0;
+
+        void enforce_integrity();
+        void generate_fictitious_gas_giant();
+        void generate_fictitious_ice_giant();
+        void generate_fictitious_venusian();
+        void generate_fictitious_titanean();
+        void generate_fictitious_habitable();
+        void generate_fictitious_for_planet(cel_obj_type t);
+    };
+
+    struct Atmosphere
+    {
+        double surface_pressure = oneatm;
+        double tau = 0;
+        double particulates = 0;
+        AtmosphereComposition* comp = nullptr;
+    };
+
     class Map
     {
         protected:

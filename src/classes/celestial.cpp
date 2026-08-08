@@ -1506,7 +1506,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         HCN_fraction,                           // HCN
         H2_fraction,                            // H2
         0,                                      // NH3
-        0                                       // C2H5
+        0                                       // C2H6
         );
     // std::cout << p->name << " tau=" << p->atmospheric_tau << std::endl;
 
@@ -1528,7 +1528,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 frand(0, frand(0, frand(0, 0.1))),      // HCN
                 frand(0, 0.99),                         // H2
                 frand(0, frand(0, frand(0, fmin(0.1, fmax(0, cel->mass / earth_mass - 1)*0.05)))),      // NH3
-                0                                       // C2H5
+                0                                       // C2H6
                                                 );
         }
         p->temperature = 0;
@@ -2313,10 +2313,17 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     double zonal = frand(5.0, 9.0);
     double scale = frand(1.6, 2.6);
 
-    // Latitude-dependent longitude shear. North and south drift in opposite directions, so
-    // structures crossing the equator get swept back into the shallow V that Venus's ultraviolet
-    // images are known for.
+    // Latitude-dependent longitude shear, producing the shallow V that Venus's ultraviolet images
+    // are known for: the apex sits on the equator and both arms sweep back towards the poles.
+    //
+    // The shear has to be an EVEN function of latitude for that. An odd one -- which is what this
+    // used to be, cos_theta*fabs(cos_theta) -- shifts north and south in opposite directions,
+    // which is monotonic across the equator and just tilts every structure into one long slant
+    // that carries straight through from one hemisphere into the other. Raising |sin(latitude)| to
+    // a power keeps both hemispheres shifting the same way instead, and the exponent sets how
+    // sharp the apex is: 1 gives a clean crease at the equator, higher values round it off.
     double shear = frand(1.5, 4.0);
+    double sweep_exp = frand(1.0, 1.6);
 
     double warp_amt = frand(0.5, 1.1);
     double polar_k = frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
@@ -2344,7 +2351,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
             u = (double)x / image_width;
             phi = u * 2.0 * _pi;
 
-            phi_s = phi + shear * cos_theta * fabs(cos_theta);
+            phi_s = phi + shear * pow(fabs(cos_theta), sweep_exp);
             nx = sin_theta * cos(phi_s);
             ny = sin_theta * sin(phi_s);
             nz = cos_theta;
