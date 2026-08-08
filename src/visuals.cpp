@@ -2123,9 +2123,10 @@ void draw_sky_gradient()
     if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
     {
         Planet *p = (Planet*)cels[whereami];
-        if (p->surface_pressure)
+        if (p->get_surface_pressure())
         {
-            double Rayleigh = 1.0 - p->atmospheric_particulates;
+            double particulates = p->get_particulates();
+            double Rayleigh = 1.0 - particulates;
             Color pcol = Color::color_from_magnitude_indices(0, p->BV_color);
             pcol.normalize(1);
 
@@ -2139,10 +2140,10 @@ void draw_sky_gradient()
             int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
-            double  r = fmin(1, (Rayleigh * 0.37 + p->atmospheric_particulates * pcol.red  ) * skylight),
-                    g = fmin(1, (Rayleigh * 0.58 + p->atmospheric_particulates * pcol.green) * skylight),
-                    b = fmin(1, (Rayleigh * 0.81 + p->atmospheric_particulates * pcol.blue ) * skylight),
-                    a = fmin(1, pow(p->surface_pressure, 0.1) * skylight);
+            double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),
+                    g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
+                    b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
+                    a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
             unsigned char r255, g255, b255;
             for (int y = fmin(hz_y, dispcy*2-1); y>=0; y--)
             {

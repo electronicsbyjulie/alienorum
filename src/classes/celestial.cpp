@@ -1441,55 +1441,51 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 
     cel->randomize();
+    p->temperature = 0;
     double T_surf = p->estimate_surface_temperature();
-    const double Tboil = water_freezing+100;
+    const double Tboil = water_freezing+100;                                     // Reference pressure
+
+    // Constants for water b.p.
+    const double R = 8.314;                                         // J/(mol*K)
+    const double DELTA_H_VAP = 40660.0;                             // J/mol
+    const double P1 = 1.0e+5;  
+
+    // Clausius-Clapeyron calculation
+    double inv_T1 = 1.0 / Tboil;
+    double gas_constant_ratio = R / DELTA_H_VAP;
+    double pressure_log = std::log(p->get_surface_pressure() / P1);
+
+    double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
+    double T_boil = 1.0 / inv_T2;
+    // std::cout << "At " << (p->get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
+
     bool life_possible = false;
-    if (p->is_in_con_HZ()
-        && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
+
+    if (!p->get_surface_pressure())
     {
-        // double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
-        if (randomize_txgen && !p->surface_pressure)
-        {
-            // p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
-            p->surface_pressure = frand(0, max_atm_pressure);
+        p->ensure_atmosphere()->surface_pressure = frand(0.1, 1) * max_atm_pressure;
+    }
 
-            double CO2_fraction = frand(0, frand(0.001, 0.99));
-            p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
-                CO2_fraction,                           // CO2
-                frand(0, 0.01),                         // CH4
-                frand(0, 0.05 * has_water),             // H2O
-                frand(0, 0.0001),                       // N2O
-                0,                                      // O3
-                frand(0, 0.001),                        // SO2
-                frand(0, 0.001),                        // H2S
-                frand(0, 0.01*CO2_fraction),            // CO
-                frand(0, frand(0, frand(0, 0.1))),      // HCN
-                frand(0, 0.99),                         // H2
-                frand(0, frand(0, frand(0, fmin(0.1, fmax(0, cel->mass / earth_mass - 1)*0.05)))),      // NH3
-                0                                       // C2H5
-                                                );
-        }
+    AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
+    ac->generate_fictitious_for_planet(p->type);
+
+    p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
+        ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
+        ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
+        ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
+    // std::cout << p->name << " tau=" << p->get_atmospheric_tau() << std::endl;
+
+    if (p->is_in_con_HZ()
+        && cel->mass > 0.02 * earth_mass)       // Based on Titan's mass.
+    {
+        p->temperature = 0;
         T_surf = p->estimate_surface_temperature();
         #ifdef DEBUG
-            std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
+            std::cout << "Surface pressure: " << (p->get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
         #endif
-
-        // Constants for water b.p.
-        const double R = 8.314;                                         // J/(mol*K)
-        const double DELTA_H_VAP = 40660.0;                             // J/mol
-        const double P1 = 1.0e+5;                                       // Reference pressure
-
-        // Clausius-Clapeyron calculation
-        double inv_T1 = 1.0 / Tboil;
-        double gas_constant_ratio = R / DELTA_H_VAP;
-        double pressure_log = std::log(p->surface_pressure / P1);
-
-        double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
-        double T_boil = 1.0 / inv_T2;
-        // std::cout << "At " << (p->surface_pressure / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
         if (randomize_txgen)
         {
@@ -1502,20 +1498,41 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
                 has_water = frand(0, max_water);
             }
-            else
-            {
-                has_water = 0;
-                // TODO: Overcast Venusian-style cloud map.
-            }
         }
 
         if (has_water >= 0.05
-            && p->surface_pressure >= 600
+            && p->get_surface_pressure() >= 600
             && T_surf > 0.9*water_freezing && T_surf < 320
-            && p->surface_pressure < oneatm*2000)
+            && p->get_surface_pressure() < oneatm*2000)
             life_possible = true;
+
+        if (randomize_txgen)
+        {
+            if (life_possible) ac->generate_fictitious_habitable();
+
+            p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
+                ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
+                ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
+                ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
+        }
     }
+    p->temperature = 0;
     T_surf = p->estimate_surface_temperature();
+
+    // Too hot for surface water: the world wears a globally overcast, Venusian sky instead. The
+    // generation itself cannot happen here -- we are holding mtx (taken at the top of this
+    // function, released well below), generate_overcast_sky() opens by taking it too, and mtx is
+    // a plain std::mutex, so a nested call deadlocks the thread outright. That killed everything
+    // downstream of this point: no overcast map, no rocky fill loop, and no final
+    // generating_fic_texture = false either -- and since color_at() answers pure white while that
+    // flag is set, every map in the app read as blank. So just note it here and build it at the
+    // very end, once the lock is long gone and this map is finished.
+    bool want_overcast_sky = false;
+    if (p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
+    {
+        has_water = 0;
+        want_overcast_sky = (p->cloud_map == nullptr);
+    }
 
     int octaves = 5 + (rand() % 4);
     double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
@@ -1584,7 +1601,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && p->is_tidal_locked();
 
-    double Tswing = 256.0 / (p->surface_pressure * 3.5e-5), halfswing = Tswing*0.5;
+    double Tswing = 256.0 / (p->get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
 
     // A small per-planet palette of terrain "provinces" -- e.g. bright neutral highlands
     // vs. a darker, differently-tinted basalt or tholin-rich province -- so terrain color
@@ -1811,6 +1828,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     generating_fic_texture = false;
     touch_gen();
+
+    // Deferred from the T_surf test far above -- see its comment for why this cannot run inline.
+    // Last of all, so the surface map is complete and usable before the sky is even started.
+    if (want_overcast_sky && !p->cloud_map)
+    {
+        p->cloud_map = new Map(cel);
+        p->cloud_map->generate_overcast_sky(cel);
+    }
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -1842,7 +1867,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
     double tempK = p->estimate_surface_temperature(), ltemp;
     const double glow_amt = 24.0 / blackbody_flux(tempK, R_band);
     std::cout << glow_amt << std::endl;
-    double Tswing = tempK * 0.1 / (1.0 + p->surface_pressure * 3.5e-5);
+    double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
 
     // Fill in glowing hot lava.
     int x, y, y1, idx;
@@ -1881,7 +1906,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     // Venus vs. the Moon); an extended/close-in debris disk (a Kuiper-belt analog) around
     // the host star means more large impactors are available system-wide, the opposite
     // effect. Both are just density multipliers on top of a baseline crater count.
-    double atmosphere_factor = 1.0 / (1.0 + p->surface_pressure * inv_oneatm * 3.0);
+    double atmosphere_factor = 1.0 / (1.0 + p->get_surface_pressure() * inv_oneatm * 3.0);
     double belt_factor = 1.0;
     CelestialObject *lc = p->get_light_center();
     if (lc && lc->type == star)
@@ -2064,6 +2089,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
     RGB3Byte rgb = Color::rgb_from_color(col, p->albedo);
 
+    p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
+
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
@@ -2192,6 +2219,149 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     generating_fic_texture = false;
     touch_gen();
 }
+
+void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
+{
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
+    mtx.lock();
+    generating_fic_texture = true;
+    int lr = cel->fictitious_map_height;
+    double BV = cel->BV_color;
+    image_height = lr;
+    image_width = image_height * 2;
+
+    allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    lat_scale = image_height / _pi;
+    lon_scale = image_width / (_pi * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
+
+    Planet *p = (Planet*)cel;
+    // Calibrated against maps/Venus_clouds.jpg: its 95th-99th percentile (the polar hoods, i.e.
+    // the brightest thing on the map) sits at about (245, 239, 222), not at pure white. Drawing
+    // this any brighter left no headroom below it, and the result came out washed out -- half the
+    // luminance spread of the real thing.
+    RGB3Byte rgb( (unsigned char)frand(242, 249), (unsigned char)frand(234, 243), (unsigned char)frand(214, 228) );
+
+    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
+        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
+
+    cel->randomize();
+
+    // A globally overcast world has no weather to show, only haze -- so the whole map lives
+    // inside a narrow band of one pale hue, and every feature is a soft smear. The two colors
+    // below are the ends of that band: the near-white above is the polar hood, and a version of
+    // it with green and (much more) blue pulled down is the low-latitude deck. That contrast --
+    // near-white poles against a distinctly tawnier equatorial belt -- is the single most
+    // recognizable thing about Venus in visible light, more than any individual cloud feature.
+    // Same calibration from the other end: Venus's 1st-5th percentile is about (199, 168, 112),
+    // giving ratios against the bright end of roughly 0.81 / 0.70 / 0.50. Blue falls furthest by
+    // far, which is what turns the deck tawny rather than merely grey.
+    RGB3Byte deep((unsigned char)(rgb.r * frand(0.78, 0.86)),
+                  (unsigned char)(rgb.g * frand(0.66, 0.75)),
+                  (unsigned char)(rgb.b * frand(0.44, 0.56)));
+
+    // Zonal stretching is what makes an overcast sky read as overcast rather than as a gas
+    // giant's banding: super-rotating winds drag every structure out east-west until it is
+    // several times longer than it is tall, with no sharp edge anywhere. Sampling the noise on a
+    // longitude axis divided by this factor (and a latitude axis left alone) produces exactly
+    // that anisotropy.
+    double zonal = frand(5.0, 9.0);
+    double scale = frand(1.6, 2.6);
+
+    // Latitude-dependent longitude shear, producing the shallow V that Venus's ultraviolet images
+    // are known for: the apex sits on the equator and both arms sweep back towards the poles.
+    //
+    // The shear has to be an EVEN function of latitude for that. An odd one -- which is what this
+    // used to be, cos_theta*fabs(cos_theta) -- shifts north and south in opposite directions,
+    // which is monotonic across the equator and just tilts every structure into one long slant
+    // that carries straight through from one hemisphere into the other. Raising |sin(latitude)| to
+    // a power keeps both hemispheres shifting the same way instead, and the exponent sets how
+    // sharp the apex is: 1 gives a clean crease at the equator, higher values round it off.
+    double shear = frand(1.5, 4.0);
+    double sweep_exp = frand(1.0, 1.6);
+
+    double warp_amt = frand(0.5, 1.1);
+    double polar_k = frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
+    double contrast = frand(0.38, 0.62);            // still low -- this is haze, not weather
+
+    // A faint, very broad mottling on top of everything, to break up the smoothest areas without
+    // ever reading as a distinct cloud.
+    double mottle_scale = scale * frand(2.5, 4.5);
+    double mottle_amt = frand(0.04, 0.10);
+    mtx.unlock();
+
+    double u, v, theta, phi, phi_s, sin_theta, cos_theta, nx, ny, nz;
+    double ax, ay, az, wx, wy, n, band, t, mottle, psi;
+    unsigned int x, y, idx;
+
+    for (y = 0; y < image_height; ++y)
+    {
+        v = (double)y / image_height;
+        theta = v * _pi;
+        sin_theta = sin(theta);
+        cos_theta = cos(theta);                     // = sin(latitude), signed, +1 at the north pole
+
+        for (x = 0; x < image_width; ++x)
+        {
+            u = (double)x / image_width;
+            phi = u * 2.0 * _pi;
+
+            phi_s = phi + shear * pow(fabs(cos_theta), sweep_exp);
+            nx = sin_theta * cos(phi_s);
+            ny = sin_theta * sin(phi_s);
+            nz = cos_theta;
+
+            idx = y * image_width + x;
+            if (idx >= allocated) break;
+
+            // Anisotropic sampling: slow along longitude, ordinary along latitude.
+            ax = nx * scale / zonal;
+            ay = ny * scale / zonal;
+            az = nz * scale;
+
+            // Domain warping, itself stretched the same way, for the wispy drawn-out filaments a
+            // plain fBm never produces on its own.
+            wx = fBm(ax + 5.2, ay + 1.3, az + 2.7, 3, 2.0, 0.5) - 0.5;
+            wy = fBm(ax + 9.1, ay + 4.4, az + 7.3, 3, 2.0, 0.5) - 0.5;
+            n = fBm(ax + warp_amt * wx * 3.0, ay + warp_amt * wx * 3.0, az + warp_amt * wy * 0.8,
+                4, 2.0, 0.55);
+
+            if (tidal_locked_to_star)
+            {
+                // Tidally locked: there is no day/night cycle to drive zonal bands, so the deck
+                // organizes around the substellar point instead -- thickest and brightest where
+                // the updraft is, thinning towards the antistellar side.
+                psi = find_3D_angle(Point(nx, ny, nz), xaxis, center);
+                band = pow(fmax(0.0, cos(psi)) * 0.5 + 0.5, polar_k);
+            }
+            else
+            {
+                band = pow(fabs(cos_theta), polar_k);       // 0 at the equator, 1 at the poles
+            }
+
+            mottle = fBm(nx * mottle_scale + 31.7, ny * mottle_scale + 12.9, nz * mottle_scale + 44.1,
+                2, 2.0, 0.5) - 0.5;
+
+            t = band + contrast * (n - 0.5) + mottle_amt * mottle;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+
+            red_data[idx]   = (unsigned char)(deep.r + (rgb.r - deep.r) * t);
+            green_data[idx] = (unsigned char)(deep.g + (rgb.g - deep.g) * t);
+            blue_data[idx]  = (unsigned char)(deep.b + (rgb.b - deep.b) * t);
+        }
+    }
+
+    generating_fic_texture = false;
+    touch_gen();
+}
+
 // Fictitious "surface" map for a self-luminous body.
 // Stage 1: black body background, gravitational darkening, spots. Granulation
 // (layer 3), the network and faculae (4 and 6), the chemical spots Ap/Bp (7) and the veil of
@@ -2693,4 +2863,137 @@ alienorum::Locale::Locale(json fj)
     fj["name"].get_to(name);
     fj["latitude"].get_to(lat);
     fj["longitude"].get_to(lon);
+}
+
+void alienorum::AtmosphereComposition::enforce_integrity()
+{
+    double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
+        + CO2_portion + CH4_portion + SO2_portion + H2O_portion + H2S_portion
+        + HCN_portion + NH3_portion + C2H6_portion + N2O_portion
+        + CO_portion + Ar_portion;
+    
+    if (total > 1)
+    {
+        double multiplier = 1.0 / total;
+        H2_portion *= multiplier;
+        He_portion *= multiplier;
+        N2_portion *= multiplier;
+        O2_portion *= multiplier;
+        O3_portion *= multiplier;
+        CO2_portion *= multiplier;
+        CH4_portion *= multiplier;
+        SO2_portion *= multiplier;
+        H2O_portion *= multiplier;
+        H2S_portion *= multiplier;
+        HCN_portion *= multiplier;
+        NH3_portion *= multiplier;
+        C2H6_portion *= multiplier;
+        N2O_portion *= multiplier;
+        CO_portion *= multiplier;
+        Ar_portion *= multiplier;
+    }
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_gas_giant()
+{
+    double leftover = 1;
+    He_portion = frand(0.01, 0.2);
+    leftover -= He_portion;
+    CH4_portion = frand(0.002, 0.005);
+    leftover -= CH4_portion;
+    NH3_portion = frand(0.0001, 0.0003);
+    leftover -= NH3_portion;
+    C2H6_portion = frand(0.000005, 0.000008);
+    leftover -= C2H6_portion;
+    H2O_portion = frand(0, 0.000005);
+    leftover -= H2O_portion;
+    H2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_ice_giant()
+{
+    double leftover = 1;
+    He_portion = frand(0.1, 0.3);
+    leftover -= He_portion;
+    CH4_portion = frand(0.001, 0.003);
+    leftover -= CH4_portion;
+    NH3_portion = frand(0.0001, 0.0003);
+    leftover -= NH3_portion;
+    C2H6_portion = frand(0.000005, 0.000008);
+    leftover -= C2H6_portion;
+    H2O_portion = frand(0, 0.000005);
+    leftover -= H2O_portion;
+    H2_portion = frand(0.7, 0.85);
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_venusian()
+{
+    double leftover = 1;
+    leftover -= (N2_portion = frand(0.01, 0.1));
+    leftover -= (SO2_portion = frand(0.0001, 0.001));
+    leftover -= (Ar_portion = frand(0.00001, 0.0001));
+    leftover -= (H2O_portion = frand(0.00001, 0.0001));
+    leftover -= (H2S_portion = frand(0.000001, 0.00001));
+    leftover -= (CO_portion = frand(0.00001, 0.00003));
+    leftover -= (He_portion = frand(0.00001, 0.00002));
+    CO2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_titanean()
+{
+    double leftover = 1;
+    leftover -= (CH4_portion = frand(0.01, 0.1));
+    leftover -= (H2_portion = frand(0.001, 0.005));
+    leftover -= (C2H6_portion = frand(0.00001, 0.01));
+    N2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_habitable()
+{
+    bool has_intense_volcanism = frand(0,1) < 0.4;
+    bool has_free_oxygen = frand(0,1) < 0.03;           // yes I am an oxygen pessimist
+
+    double leftover = 1;
+    leftover -= (CH4_portion = frand(0, 0.05));
+    leftover -= (C2H6_portion = CH4_portion * frand(0.000001, 0.1));
+    leftover -= (HCN_portion = frand(0, 0.001));
+    leftover -= (NH3_portion = frand(0, 0.00001));
+    leftover -= (Ar_portion = frand(0.00001, 0.005));
+    leftover -= (CO2_portion = frand(0.00001, 0.01));
+    leftover -= (CO_portion = CO2_portion * frand(0.00001, 0.01));
+    leftover -= (H2O_portion = frand(0.001, 0.05));
+
+    if (has_intense_volcanism)
+    {
+        leftover -= (SO2_portion = frand(0.0001, 0.01));
+        leftover -= (H2S_portion = SO2_portion * frand(0.01, 0.5));
+    }
+
+    if (has_free_oxygen)
+    {
+        leftover -= (O2_portion = frand(0.0001, 0.7));
+        leftover -= (O3_portion = O2_portion * frand(0.0001, 0.01));
+        leftover -= (N2O_portion = O2_portion * frand(0.000001, 0.0001));
+    }
+
+    leftover -= (H2_portion = frand(0.001, 0.005));
+    N2_portion = leftover;
+
+    enforce_integrity();
+}
+
+void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)
+{
+    if (t == gas_giant) generate_fictitious_gas_giant();
+    else if (t == ice_giant) generate_fictitious_ice_giant();
+    else if (t == rocky) generate_fictitious_venusian();
+    else if (t == icy) generate_fictitious_titanean();
 }

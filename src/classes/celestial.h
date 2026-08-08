@@ -116,6 +116,51 @@ namespace alienorum
         double ex, ey, ez, tnx, tny, tnz;
     };
 
+    struct AtmosphereComposition
+    {
+        double H2_portion = 0;
+        double He_portion = 0;
+        double N2_portion = 0;
+        double O2_portion = 0;
+        double O3_portion = 0;
+        double CO2_portion = 0;
+        double CH4_portion = 0;
+        double SO2_portion = 0;
+        double H2O_portion = 0;
+        double H2S_portion = 0;
+        double HCN_portion = 0;
+        double NH3_portion = 0;
+        double C2H6_portion = 0;
+        double N2O_portion = 0;
+        double CO_portion = 0;
+        double Ar_portion = 0;
+
+        void enforce_integrity();
+        void generate_fictitious_gas_giant();
+        void generate_fictitious_ice_giant();
+        void generate_fictitious_venusian();        // doubles as martian
+        void generate_fictitious_titanean();
+        void generate_fictitious_habitable();
+        void generate_fictitious_for_planet(cel_obj_type t);        // does not call habitable! have to call habitable separately.
+
+        json to_json();
+        bool from_json(json j);
+    };
+
+    struct Atmosphere
+    {
+        double surface_pressure = oneatm;
+        double tau = 0;
+        double particulates = 0;
+        AtmosphereComposition* comp = nullptr;
+
+        ~Atmosphere() { if (comp) delete comp; }
+        AtmosphereComposition* ensure_composition() { if (!comp) comp = new AtmosphereComposition(); return comp; }
+
+        json to_json();
+        bool from_json(json j);
+    };
+
     class Map
     {
         protected:
@@ -174,6 +219,7 @@ namespace alienorum
         void generate_rocky_map(CelestialObject *cel);
         void generate_lava_map(CelestialObject *cel);
         void generate_gas_giant_map(CelestialObject *cel);
+        void generate_overcast_sky(CelestialObject *cel);
         void generate_stellar_map(CelestialObject *cel);
         void mark_for_map_regen(CelestialObject *cel);
 
