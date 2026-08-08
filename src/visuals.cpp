@@ -1303,6 +1303,115 @@ int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
 }
 
 double global_magshift;
+// A galaxy as a soft, oriented ellipse.
+//
+// The ellipse is not drawn as a 2D shape rotated by the catalogued position angle: instead the
+// galaxy's actual disc -- a circle of radius R lying in the plane that read_UNGC/RC3_catalog built
+// from its inclination and position angle -- is projected through the same chain everything else
+// uses. The foreshortening then produces the ellipse on its own, at the right angle, and keeps
+// producing the right one as the viewer flies around it. A rotated 2D ellipse would be correct only
+// from Earth.
+//
+// Brightness is per unit area rather than total: a galaxy's flux is spread over its whole disc, so
+// M31 covering three degrees has to come out far fainter per pixel than a compact one of the same
+// magnitude. Without that, every large nearby galaxy renders as a flat white blob.
+static double draw_galaxy(CelestialObject* cel, double appmag)
+{
+    Galaxy *g = (Galaxy*)cel;
+    if (g->angular_diameter <= 0) return 0;
+
+    double radius_m = cel->distance * g->angular_diameter * 0.5;
+    if (!(radius_m > 0)) return 0;
+
+    // In-plane basis: the disc plane's own axes, rotated out into world space. local_system_plane
+    // maps world to plane, so the inverse rotation takes the plane's x and z back out.
+    Rotation pl = cel->location.local_system_plane;
+    Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
+    Point e2 = rotate3D(zaxis, center, pl.v, -pl.a);
+
+    const int nring = 10, nseg = 40;
+
+    // Screen extent of the rim, both to size the falloff and to reject the offscreen cheaply.
+    double xmin = 1e30, xmax = -1e30, ymin = 1e30, ymax = -1e30;
+    ImVec2 rim[nseg];
+    for (int s = 0; s < nseg; s++)
+    {
+        double t = s * (_pi * 2.0 / nseg);
+        Point p = cel->tmprel + (e1 * (radius_m * cos(t))) + (e2 * (radius_m * sin(t)));
+        p = to_viewer_plane(p);
+        if (view_mode == vm_horizon) p = refract_true_point(p);
+        Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
+        if (z.x < -1e4 || z.y < -1e4) return 0;                 // behind the camera
+        rim[s] = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
+        if (rim[s].x < xmin) xmin = rim[s].x;
+        if (rim[s].x > xmax) xmax = rim[s].x;
+        if (rim[s].y < ymin) ymin = rim[s].y;
+        if (rim[s].y > ymax) ymax = rim[s].y;
+    }
+
+    double wide = xmax - xmin, tall = ymax - ymin;
+    if (wide < 1.5 && tall < 1.5) return 0;                     // smaller than a pixel: the point path has it
+    if (xmax < 0 || ymax < 0 || xmin > dispcx*2 || ymin > dispcy*2) return 0;
+
+    // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
+    double area = fmax(4.0, _pi * wide * tall * 0.25);
+    double total = pow(magnbase, -appmag) * global_brightness * 900.0;
+    double peak = fmin(210.0, total / area * 255.0);
+    if (peak < 2.0) return 0;
+
+    Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
+    col.normalize(255);
+    RGB3Byte rgb((unsigned char)col.red, (unsigned char)col.green, (unsigned char)col.blue);
+
+    // Ellipticals concentrate their light far more steeply than discs do -- the de Vaucouleurs
+    // profile against an exponential one -- so the falloff exponent follows the Hubble stage.
+    double falloff = (g->T_known && g->morphological_T < 0) ? 3.4 : 2.2;
+
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
+    ImVec2 mid(dispcx + 0, dispcy + 0);
+    {
+        Point p = to_viewer_plane(cel->tmprel);
+        if (view_mode == vm_horizon) p = refract_true_point(p);
+        Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
+        mid = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
+    }
+
+    dl->PrimReserve(nring*nseg*6, nring*nseg*4);
+    for (int r = 0; r < nring; r++)
+    {
+        double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
+        ImU32 ca = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)(peak * pow(1.0-f0, falloff))));
+        ImU32 cb = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, (int)(peak * pow(1.0-f1, falloff))));
+        for (int s = 0; s < nseg; s++)
+        {
+            int s1 = (s+1) % nseg;
+            // Each rim point scaled towards the centre gives the inner rings for free, and keeps
+            // them concentric in SCREEN space, which is what the projected disc actually is.
+            ImVec2 a0(mid.x + (rim[s ].x - mid.x)*f0, mid.y + (rim[s ].y - mid.y)*f0);
+            ImVec2 a1(mid.x + (rim[s1].x - mid.x)*f0, mid.y + (rim[s1].y - mid.y)*f0);
+            ImVec2 b1(mid.x + (rim[s1].x - mid.x)*f1, mid.y + (rim[s1].y - mid.y)*f1);
+            ImVec2 b0(mid.x + (rim[s ].x - mid.x)*f1, mid.y + (rim[s ].y - mid.y)*f1);
+            unsigned int base = dl->_VtxCurrentIdx;
+            dl->PrimWriteVtx(a0, uv, ca);
+            dl->PrimWriteVtx(a1, uv, ca);
+            dl->PrimWriteVtx(b1, uv, cb);
+            dl->PrimWriteVtx(b0, uv, cb);
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+1));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+3));
+        }
+    }
+
+    cel->drawnxmin = xmin; cel->drawnxmax = xmax;
+    cel->drawnymin = ymin; cel->drawnymax = ymax;
+    cel->onscreen = true;
+    return fmax(wide, tall) * 0.5;
+}
+
 bool draw_one_object(int i)
 {
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
@@ -1324,7 +1433,23 @@ bool draw_one_object(int i)
     double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 12.0;
     flare = fmin(max_flare, fmax(f_bloom, f_mag));
     bloomrad = fmin(max_bloomrad, bloomrad*10);
-    if (cls == class_satellite)
+    if (cls == class_galaxy)
+    {
+        double r = draw_galaxy(cels[i], appmag);
+        if (r > 0)
+        {
+            bloomrad_cache[i] = bloomrad = r;
+            discinstead[i] = false;
+            if (selected == i)
+                ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2,
+                    rgba_apply_redlight(global_style.selected_color), 0, 2);
+            return true;
+        }
+        // Too small, too faint, or off screen: fall through to the point path below, which is the
+        // right answer for a galaxy that is only a few pixels across anyway.
+        goto dot_instead;
+    }
+    else if (cls == class_satellite)
     {
         if (!show_sats) return false;
         if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
@@ -1374,6 +1499,7 @@ bool draw_one_object(int i)
     }
     else
     {
+        dot_instead:
         discinstead[i] = false;
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
@@ -1468,6 +1594,7 @@ bool draw_one_object(int i)
                 || (cels[i]->tmprel.magnitude() < AU)
                 )
             )
+        || (cels[i]->type == galaxy && label_galaxies)
         || i == selected)
     {
         const char *dispname = cels[i]->name;

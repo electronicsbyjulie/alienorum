@@ -299,6 +299,7 @@ void show_menu()
                 if (ImGui::MenuItem("Stars with Known Poles", "Shift+X")) { process_key_cmd_char('X'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
+            if (ImGui::MenuItem("Galaxy Labels", "K")) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J")) { process_key_cmd_char('j'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Objects", "Shift+V")) { process_key_cmd_char('V'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Labels", "P")) { process_key_cmd_char('p'); menu_clicked = true; }
@@ -365,6 +366,7 @@ void process_key_cmd_char(char c)
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'j': show_sats = !show_sats; break;
         case 'J': satview_upsidedown = !satview_upsidedown; break;
+        case 'k': label_galaxies = !label_galaxies; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = lbltype_planethz; show_labels = true; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;

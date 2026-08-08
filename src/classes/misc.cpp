@@ -53,6 +53,7 @@ bool neighborhood = false;
 bool locwnd = false;
 bool show_taucalc = false;
 bool hide_mouse = true;
+bool label_galaxies = false;
 bool searched = false, focus_findbox = false, whtbkgd = false;
 double mag_limit_adjusted = normal_best_mag_limit;
 const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+N)", "Bayer (Sh+F)", "Flamsteed (F)", "Gould (Sh+G)",

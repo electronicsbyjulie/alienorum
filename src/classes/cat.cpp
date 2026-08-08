@@ -5114,9 +5114,9 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             g->position_angle_known = true;
             g->distance_known = true;
             g->axis_ratio = 0.01;                       // ~100000 light years across, ~1000 thick
-            g->location.equatorial_plane = g->location.local_system_plane
-                = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
         }
+        g->location.equatorial_plane = g->location.local_system_plane
+            = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
         g->cenobj = g;
         g->distance_known = true;
@@ -5145,10 +5145,9 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             if (!strlen(trim(field).c_str())) continue;
             Galaxy *ig = it->second;
             ig->inclination = atof(field) * fiftyseventh;
-            if (ig->position_angle_known)
-                ig->location.equatorial_plane =
+            ig->location.equatorial_plane =
                 ig->location.local_system_plane =
-                    system_plane_from_incl_and_node(ig->inclination, ig->position_angle, (Point)ig->location);
+                system_plane_from_incl_and_node(ig->inclination, ig->position_angle, (Point)ig->location);
         }
         fclose(fp);
     }
@@ -5212,10 +5211,9 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
 
         if (dup)
         {
-            double inclination = dup->inclination
+            dup->inclination = dup->inclination
                 ? dup->inclination
                 : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known);
-            dup->inclination = inclination;
 
             // The UNGC already placed this one, and its measured distance is the better number, so
             // that entry stands. But it has no position angle at all, and often no morphology --
@@ -5228,10 +5226,10 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                 {
                     dup->position_angle = atof(field) * fiftyseventh;
                     dup->position_angle_known = true;
-                    dup->location.equatorial_plane = dup->location.local_system_plane =
-                        system_plane_from_incl_and_node(inclination, dup->position_angle, (Point)dup->location);
                 }
             }
+            dup->location.equatorial_plane = dup->location.local_system_plane =
+                system_plane_from_incl_and_node(dup->inclination, dup->position_angle, (Point)dup->location);
             if (!strlen(dup->morph_type))
             {
                 read_field_onebased(buffer, 118, 124, field);
@@ -5321,8 +5319,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             if (r25 >= 1.0) g->axis_ratio = 1.0 / r25;
         }
 
-        double inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
-        g->inclination = inclination;
+        g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
 
         // 186-188 position angle of the major axis, degrees
         read_field_onebased(buffer, 186, 188, field);
@@ -5330,9 +5327,9 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         {
             g->position_angle = atof(field) * fiftyseventh;
             g->position_angle_known = true;
-            g->location.equatorial_plane = g->location.local_system_plane
-                = system_plane_from_incl_and_node(inclination, g->position_angle, (Point)g->location);
         }
+        g->location.equatorial_plane = g->location.local_system_plane
+            = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
         // 190-194 total B magnitude
         read_field_onebased(buffer, 190, 194, field);
