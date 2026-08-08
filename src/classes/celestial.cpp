@@ -1441,6 +1441,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 
     cel->randomize();
+    p->temperature = 0;
     double T_surf = p->estimate_surface_temperature();
     const double Tboil = water_freezing+100;                                     // Reference pressure
 
@@ -1459,18 +1460,62 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // std::cout << "At " << (p->surface_pressure / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
     bool life_possible = false;
-    if (p->is_in_con_HZ()
-        && cel->mass > 0.02 * earth_mass)                               // Based on Titan's mass.
+
+    if (!p->surface_pressure)
     {
-        // double max_atm_pressure = cel->mass / 4.86731e+24 * 9.3e+6;     // Based on Venus.
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
-        if (randomize_txgen && !p->surface_pressure)
-        {
-            // p->surface_pressure = max_atm_pressure * pow(10, frand(-7, 0)) * pow(frand(0,1), 4);
-            p->surface_pressure = frand(0, max_atm_pressure);
+        p->surface_pressure = frand(0.1, 1) * max_atm_pressure;
+    }
 
-            double CO2_fraction = frand(0, frand(0.001, 0.99));
+    double unaccounted_for = 1.0;
+    double CO2_fraction = pow(frand(0, 1), 0.5);
+    // std::cout << p->name << " CO2=" << (CO2_fraction*100) << "%" << std::endl;
+    unaccounted_for -= CO2_fraction;
+    double N2_fraction = pow(frand(0, 1), 0.333) * unaccounted_for;
+    // std::cout << p->name << " N2=" << (N2_fraction*100) << "%" << std::endl;
+    unaccounted_for -= N2_fraction;
+    double H2_fraction = frand(0, unaccounted_for);
+    // std::cout << p->name << " H2=" << (H2_fraction*100) << "%" << std::endl;
+    unaccounted_for -= H2_fraction;
+    double CH4_fraction = frand(0, fmin(0.1, unaccounted_for));
+    // std::cout << p->name << " CH4=" << (CH4_fraction*100) << "%" << std::endl;
+    unaccounted_for -= CH4_fraction;
+    double H2O_fraction = frand(0, fmin(0.2, unaccounted_for));
+    // std::cout << p->name << " H2O=" << (H2O_fraction*100) << "%" << std::endl;
+    unaccounted_for -= H2O_fraction;
+    double HCN_fraction = frand(0, fmin(0.01, unaccounted_for));
+    // std::cout << p->name << " HCN=" << (HCN_fraction*100) << "%" << std::endl;
+    unaccounted_for -= HCN_fraction;
+    double SO2_fraction = frand(0, fmin(0.01, unaccounted_for));
+    // std::cout << p->name << " SO2=" << (SO2_fraction*100) << "%" << std::endl;
+    unaccounted_for -= SO2_fraction;
+    double H2S_fraction = frand(0, fmin(0.01, unaccounted_for));
+    // std::cout << p->name << " H2S=" << (H2S_fraction*100) << "%" << std::endl;
+    unaccounted_for -= H2S_fraction;
+    // std::cout << p->name << " unaccounted=" << (unaccounted_for*100) << "%" << std::endl;
+    p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
+        CO2_fraction,                           // CO2
+        CH4_fraction,                           // CH4
+        H2O_fraction,                           // H2O
+        0,                                      // N2O
+        0,                                      // O3
+        SO2_fraction,                           // SO2
+        H2S_fraction,                           // H2S
+        frand(0, 0.01*CO2_fraction),            // CO
+        HCN_fraction,                           // HCN
+        H2_fraction,                            // H2
+        0,                                      // NH3
+        0                                       // C2H5
+        );
+    // std::cout << p->name << " tau=" << p->atmospheric_tau << std::endl;
+
+    if (p->is_in_con_HZ()
+        && cel->mass > 0.02 * earth_mass)       // Based on Titan's mass.
+    {
+        if (randomize_txgen)
+        {
+            CO2_fraction = frand(0, frand(0.001, 1));
             p->atmospheric_tau = atmospheric_tau(p->surface_pressure*0.000009869,
                 CO2_fraction,                           // CO2
                 frand(0, 0.01),                         // CH4
@@ -1486,6 +1531,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 0                                       // C2H5
                                                 );
         }
+        p->temperature = 0;
         T_surf = p->estimate_surface_temperature();
         #ifdef DEBUG
             std::cout << "Surface pressure: " << (p->surface_pressure / 101325) << " atm." << std::endl << std::flush;
@@ -1511,6 +1557,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             && p->surface_pressure < oneatm*2000)
             life_possible = true;
     }
+    p->temperature = 0;
     T_surf = p->estimate_surface_temperature();
 
     // Too hot for surface water: the world wears a globally overcast, Venusian sky instead. The
@@ -1522,7 +1569,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // flag is set, every map in the app read as blank. So just note it here and build it at the
     // very end, once the lock is long gone and this map is finished.
     bool want_overcast_sky = false;
-    if (T_surf > T_boil * 1.1)
+    if (p->surface_pressure >= 5*oneatm && T_surf >= 400)
     {
         has_water = 0;
         want_overcast_sky = (p->cloud_map == nullptr);
@@ -1827,7 +1874,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // Last of all, so the surface map is complete and usable before the sky is even started.
     if (want_overcast_sky && !p->cloud_map)
     {
-        if (!p->surface_pressure) p->surface_pressure = 100.0 * oneatm * p->mass / earth_mass;          // Complete guess, probably way off in most cases.
         p->cloud_map = new Map(cel);
         p->cloud_map->generate_overcast_sky(cel);
     }
