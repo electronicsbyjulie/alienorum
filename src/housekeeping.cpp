@@ -285,10 +285,10 @@ void compute_object_draw_coordinates()
     for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        CelestialLocation tmp = cels[i]->location - here;
-        cels[i]->tmprel = Point(tmp);
-
         if (!compute_object_location(cels[i])) continue;
+
+        CelestialLocation tmp = cels[i]->location - here;
+        cels[i]->tmprel = Point(tmp);                           // fix race condition: tmprel must come AFTER tmp, not before.
 
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star

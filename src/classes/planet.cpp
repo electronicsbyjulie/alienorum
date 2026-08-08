@@ -482,7 +482,7 @@ Planet::Planet()
 }
 
 // Only the constituents actually present are written out, so an atmosphere whose composition is
-// unknown or trivial does not carry a dozen zeroes around with it.
+// unknown or trivial does not carry a dozen zeros around with it.
 json AtmosphereComposition::to_json()
 {
     json towrite;
