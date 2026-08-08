@@ -4912,3 +4912,299 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     return result;
 }
+// ---- Galaxies --------------------------------------------------------------------------------
+//
+// Two catalogs, read in this order and for complementary reasons.
+//
+// The UNGC (Karachentsev+ 2013, J/AJ/145/101) covers 869 galaxies of the Local Volume with
+// distances that were MEASURED, mostly by the tip of the red giant branch or by Cepheids. That
+// matters because inside ~20 Mpc a galaxy's radial velocity says almost nothing about how far away
+// it is -- peculiar motion swamps the Hubble flow, and Andromeda's velocity is outright negative.
+//
+// The RC3 (de Vaucouleurs+ 1991, VII/155) then supplies the other 23000, whose distances do come
+// from velocity. It also carries the position angle, which the UNGC does not, so a galaxy present
+// in both is worth revisiting later for its orientation even though the UNGC's distance wins.
+//
+// Deduplication is positional rather than by name: the two catalogs spell the same object
+// "UGC12894" and "UGC 12894", among many worse disagreements, whereas a coincidence within an
+// arcminute on the sky is unambiguous at these densities.
+
+// A galaxy's position goes into location.galactic_center, which is measured in MILLIONS OF LIGHT
+// YEARS rather than the metres every other distance in this program uses (see CelestialLocation).
+// Keeping the top of the hierarchy in its own coarse unit is what stops the numbers from running
+// away: a galaxy 100 Mpc out is 3e24 m, and its stars would then carry system_centers of that size
+// before their planets ever get a look in.
+static void place_galaxy(Galaxy *g, double ra, double decl, double distance_mpc)
+{
+    const double mly_per_mpc = 3.26156;                     // 1 parsec = 3.26156 light years
+    g->right_ascension = ra;
+    g->declination = decl;
+    g->epoch = J2000;
+    g->distance = distance_mpc * 1e6 * parsec;              // metres, for display
+    g->distance_known = true;
+    g->location.galactic_center = Point::from_ra_dec(ra, decl, distance_mpc * mly_per_mpc);
+    g->location.system_center = Point(0, 0, 0);
+    g->location.local_position = Point(0, 0, 0);
+}
+
+// The two catalogs spell the same designation differently: the UNGC writes "NGC0224" and the RC3
+// writes "NGC   224", which squeezes to "NGC 224". Bring the UNGC into line -- a letter run
+// followed straight away by digits gets a space, and the zero padding goes -- so that a search for
+// "NGC 224" finds Andromeda whichever catalog supplied it. Names that do not have that shape
+// ("HolmIX", "And XVIII", "[KK2000] 57") are left exactly as they are.
+static std::string normalize_galaxy_name(const std::string &raw)
+{
+    size_t letters = 0;
+    while (letters < raw.size() && isalpha((unsigned char)raw[letters])) letters++;
+    if (!letters || letters >= raw.size()) return raw;
+    if (!isdigit((unsigned char)raw[letters])) return raw;
+
+    size_t digits = letters;
+    while (digits < raw.size() && raw[digits] == '0') digits++;         // drop the padding
+    if (digits >= raw.size() || !isdigit((unsigned char)raw[digits])) digits = letters;
+
+    return raw.substr(0, letters) + " " + raw.substr(digits);
+}
+
+static double galaxy_apparent_to_absolute(double apparent, double distance_m)
+{
+    if (!(distance_m > 0)) return 0;
+    double parsecs = distance_m / parsec;
+    if (parsecs < 1) return 0;
+    return apparent - 5.0 * (log10(parsecs) - 1.0);
+}
+
+int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
+{
+    std::string path = "catalogs" _FILESLASH "UNGC" _FILESLASH "table1.dat";
+    char buffer[1024], field[64];
+    int num_read = 0, offset;
+
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+    for (offset=0; offset<max && cels[offset]; offset++);
+    if (offset >= (max-1)) return 0;
+
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp) return 0;
+
+    while (fgets(buffer, sizeof(buffer)-2, fp))
+    {
+        if (ncelobjs >= max-1) break;
+        if (strlen(buffer) < 120) continue;
+
+        //  115-119  F5.2  Mpc  Dist   Distance to galaxy
+        read_field_onebased(buffer, 115, 119, field);
+        double dist_mpc = atof(field);
+        if (!(dist_mpc > 0)) continue;              // without a distance there is nowhere to put it
+
+        Galaxy *g = new Galaxy();
+
+        //   1- 18  A18  Name
+        read_field_onebased(buffer, 1, 18, field);
+        snprintf(g->name, sizeof(g->name), "%s", normalize_galaxy_name(trim(field)).c_str());
+        if (!strlen(g->name)) { delete g; continue; }
+
+        //  20-29 RA (h m s), 31-39 Dec (sign d m s), both J2000
+        read_field_onebased(buffer, 20, 21, field); double deg = atof(field) * 15;
+        read_field_onebased(buffer, 23, 24, field); double mnt = atof(field) * 15;
+        read_field_onebased(buffer, 26, 29, field); double sec = atof(field) * 15;
+        g->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
+
+        read_field_onebased(buffer, 31, 31, field);
+        int sgn = (field[0] == '-') ? -1 : 1;
+        read_field_onebased(buffer, 32, 33, field); deg = atof(field);
+        read_field_onebased(buffer, 35, 36, field); mnt = atof(field);
+        read_field_onebased(buffer, 38, 39, field); sec = atof(field);
+        g->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgn;
+
+        place_galaxy(g, g->right_ascension, g->declination, dist_mpc);
+
+        //  41-46 a26 (arcmin), 48-51 b/a
+        read_field_onebased(buffer, 41, 46, field);
+        g->angular_diameter = atof(field) * fiftyseventh / 60.0;
+        read_field_onebased(buffer, 48, 51, field);
+        double ba = atof(field);
+        if (ba > 0 && ba <= 1) g->axis_ratio = ba;
+
+        //  66-70 Bmag
+        read_field_onebased(buffer, 66, 70, field);
+        double bt = atof(field);
+        if (bt)
+        {
+            g->apparent_magnitude = bt;
+            g->absolute_magnitude = galaxy_apparent_to_absolute(bt, g->distance);
+        }
+
+        //  99-100 T-type, 102-106 dwarf morphology
+        read_field_onebased(buffer, 99, 100, field);
+        if (strlen(trim(field).c_str())) { g->morphological_T = atof(field); g->T_known = true; }
+        read_field_onebased(buffer, 102, 106, field);
+        snprintf(g->morph_type, sizeof(g->morph_type), "%s", trim(field).c_str());
+
+        // 110-113 heliocentric radial velocity, km/s
+        read_field_onebased(buffer, 110, 113, field);
+        g->radial_velocity = atof(field) * 1000.0;
+
+        g->cenobj = g;
+        append_cel(g);
+        num_read++;
+    }
+
+    fclose(fp);
+    return num_read;
+}
+
+int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
+{
+    std::string path = "catalogs" _FILESLASH "RC3" _FILESLASH "rc3";
+    char buffer[1024], field[64];
+    int num_read = 0, offset, i;
+
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+    for (offset=0; offset<max && cels[offset]; offset++);
+    if (offset >= (max-1)) return 0;
+
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp) return 0;
+
+    // Positions of the galaxies already loaded (i.e. by the UNGC), for the duplicate test below.
+    std::vector<double> known_ra, known_decl;
+    for (i=0; cels[i] && i<max; i++)
+    {
+        if (cels[i]->typeclass() != class_galaxy) continue;
+        known_ra.push_back(cels[i]->right_ascension);
+        known_decl.push_back(cels[i]->declination);
+    }
+    const double dup_limit = fiftyseventh / 60.0;           // one arcminute
+
+    // The RC3 quotes velocity, not distance. Everything closer than this is the Local Volume,
+    // where that conversion is meaningless -- and is exactly what the UNGC already covered.
+    const double H0 = 70.0;                                 // km/s/Mpc
+    const double min_velocity = 250.0;                      // km/s, about 3.5 Mpc
+
+    while (fgets(buffer, sizeof(buffer)-2, fp))
+    {
+        if (ncelobjs >= max-1) break;
+        if (strlen(buffer) < 340) continue;
+
+        // Three velocities are on offer, and they are not equally useful for a distance.
+        // 359-363 V3K is referred to the cosmic microwave background, i.e. with our own motion
+        // already taken out, which is what the Hubble law actually wants -- and it is quoted for
+        // 16655 of the 23011 entries against only 8647 for the HI velocity this used to read.
+        // 343-347 cz is the optical heliocentric velocity, 334-338 V21 the HI one.
+        read_field_onebased(buffer, 359, 363, field);
+        double v21 = atof(field);
+        if (!v21)
+        {
+            read_field_onebased(buffer, 343, 347, field);
+            v21 = atof(field);
+        }
+        if (!v21)
+        {
+            read_field_onebased(buffer, 334, 338, field);
+            v21 = atof(field);
+        }
+        if (v21 < min_velocity) continue;
+
+        //   1-  8 RA (h m s), 10-16 Dec (sign d m s), J2000
+        read_field_onebased(buffer, 1, 2, field); double deg = atof(field) * 15;
+        read_field_onebased(buffer, 3, 4, field); double mnt = atof(field) * 15;
+        read_field_onebased(buffer, 5, 8, field); double sec = atof(field) * 15;
+        double ra = (deg + mnt/60 + sec/3600) * fiftyseventh;
+
+        read_field_onebased(buffer, 10, 10, field);
+        int sgn = (field[0] == '-') ? -1 : 1;
+        read_field_onebased(buffer, 11, 12, field); deg = atof(field);
+        read_field_onebased(buffer, 13, 14, field); mnt = atof(field);
+        read_field_onebased(buffer, 15, 16, field); sec = atof(field);
+        double decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgn;
+
+        bool already_have = false;
+        for (size_t k = 0; k < known_decl.size(); k++)
+        {
+            if (fabs(known_decl[k] - decl) > dup_limit) continue;    // cheap reject first
+            if (fabs(known_ra[k] - ra) * cos(decl) > dup_limit) continue;
+            already_have = true;
+            break;
+        }
+        if (already_have) continue;
+
+        Galaxy *g = new Galaxy();
+        g->radial_velocity = v21 * 1000.0;
+        place_galaxy(g, ra, decl, v21 / H0);
+
+        //  63- 74 name, 75- 89 alternate name. Either may be blank; prefer the first.
+        read_field_onebased(buffer, 63, 74, field);
+        std::string nm = trim(field);
+        if (!nm.size())
+        {
+            read_field_onebased(buffer, 75, 89, field);
+            nm = trim(field);
+        }
+        if (!nm.size())
+        {
+            read_field_onebased(buffer, 106, 116, field);
+            nm = trim(field);
+        }
+        if (!nm.size()) { delete g; continue; }
+        // The RC3 pads its catalog numbers out ("NGC   224"); squeeze the run of spaces so the
+        // name reads the way anyone would write it.
+        std::string squeezed;
+        for (size_t k = 0; k < nm.size(); k++)
+        {
+            if (nm[k] == ' ' && squeezed.size() && squeezed[squeezed.size()-1] == ' ') continue;
+            squeezed += nm[k];
+        }
+        snprintf(g->name, sizeof(g->name), "%s", squeezed.c_str());
+
+        // 106-116 PGC number, printed as "PGC 2557"
+        read_field_onebased(buffer, 106, 116, field);
+        {
+            const char *digits = field;
+            while (*digits && (*digits < '0' || *digits > '9')) digits++;
+            g->PGC = (uint32_t)atoi(digits);
+        }
+
+        // 118-124 type as printed, 132-135 Hubble stage T
+        read_field_onebased(buffer, 118, 124, field);
+        snprintf(g->morph_type, sizeof(g->morph_type), "%s", trim(field).c_str());
+        read_field_onebased(buffer, 132, 135, field);
+        if (strlen(trim(field).c_str())) { g->morphological_T = atof(field); g->T_known = true; }
+
+        // 152-155 log D25 and 162-165 log R25, both logarithms: D25 in units of 0.1 arcmin (so
+        // that the entries stay positive), R25 the major/minor ratio. axis_ratio is its reciprocal.
+        read_field_onebased(buffer, 152, 155, field);
+        if (strlen(trim(field).c_str()))
+            g->angular_diameter = pow(10.0, atof(field)) * 0.1 * fiftyseventh / 60.0;
+        read_field_onebased(buffer, 162, 165, field);
+        if (strlen(trim(field).c_str()))
+        {
+            double r25 = pow(10.0, atof(field));
+            if (r25 >= 1.0) g->axis_ratio = 1.0 / r25;
+        }
+
+        // 186-188 position angle of the major axis, degrees
+        read_field_onebased(buffer, 186, 188, field);
+        if (strlen(trim(field).c_str()))
+        {
+            g->position_angle = atof(field) * fiftyseventh;
+            g->position_angle_known = true;
+        }
+
+        // 190-194 total B magnitude
+        read_field_onebased(buffer, 190, 194, field);
+        double bt = atof(field);
+        if (bt)
+        {
+            g->apparent_magnitude = bt;
+            g->absolute_magnitude = galaxy_apparent_to_absolute(bt, g->distance);
+        }
+
+        g->cenobj = g;
+        append_cel(g);
+        num_read++;
+    }
+
+    fclose(fp);
+    return num_read;
+}

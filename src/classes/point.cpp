@@ -15,6 +15,7 @@ Point center(0,0,0), xaxis(1e37, 0, 0), yaxis(0, 1e37, 0), zaxis(0, 0, 1e37);
 Point solar_north    = Point::from_ra_dec(solar_north_RA_J2000,    solar_north_Decl_J2000,    light_year);
 Point ecliptic_north = Point::from_ra_dec(ecliptic_north_RA_J2000, ecliptic_north_Decl_J2000, light_year);
 Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, light_year);
+Point milky_way_center_Mly;
 
 Rotation ICRF_to_ecliptic = align_points_3d(ecliptic_north, yaxis, center);
 

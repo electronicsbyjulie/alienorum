@@ -222,7 +222,7 @@ extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, v
 extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_localsys,
     is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing, generating_fic_texture, focus_findbox, whtbkgd,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood, locwnd,
-    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo,
+    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo, have_RC3, have_UNGC,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
 extern std::string objname, objinfo, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale;
