@@ -27,6 +27,8 @@
 
 namespace fs = std::filesystem;
 
+// Important: Catalogs not listed in this array will not be seen by the app and will not be loaded!
+// Its function is to prevent miscellaneous files and folders in the catalogs/ dir from being mistaken for real catalogs.
 std::vector<std::string> known_catalog_names =
 {
     "Gliese", "GJ", "Gliese-Jahreiss",
@@ -43,6 +45,8 @@ std::vector<std::string> known_catalog_names =
     "2MASS",
     "REGALADE",
     "GALEX",
+    "UNGC",
+    "RC3",
     "astorb",
     "comets"
     // TODO: Add hundreds more...
@@ -4954,6 +4958,15 @@ static void place_galaxy(Galaxy *g, double ra, double decl, double distance_mpc)
 // ("HolmIX", "And XVIII", "[KK2000] 57") are left exactly as they are.
 static std::string normalize_galaxy_name(const std::string &raw)
 {
+    // The UNGC spells the Messier objects out in full and zero-padded ("MESSIER031"). Nobody
+    // writes them that way or searches for them that way, so these become "M31".
+    if (raw.size() > 7 && !raw.compare(0, 7, "MESSIER"))
+    {
+        size_t d = 7;
+        while (d < raw.size() && raw[d] == '0') d++;
+        if (d < raw.size()) return std::string("M") + raw.substr(d);
+    }
+
     size_t letters = 0;
     while (letters < raw.size() && isalpha((unsigned char)raw[letters])) letters++;
     if (!letters || letters >= raw.size()) return raw;
@@ -5067,13 +5080,12 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
-    // Positions of the galaxies already loaded (i.e. by the UNGC), for the duplicate test below.
-    std::vector<double> known_ra, known_decl;
+    // Galaxies already loaded (i.e. by the UNGC), for the duplicate test below.
+    std::vector<Galaxy*> known;
     for (i=0; cels[i] && i<max; i++)
     {
         if (cels[i]->typeclass() != class_galaxy) continue;
-        known_ra.push_back(cels[i]->right_ascension);
-        known_decl.push_back(cels[i]->declination);
+        known.push_back((Galaxy*)cels[i]);
     }
     const double dup_limit = fiftyseventh / 60.0;           // one arcminute
 
@@ -5086,25 +5098,6 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
     {
         if (ncelobjs >= max-1) break;
         if (strlen(buffer) < 340) continue;
-
-        // Three velocities are on offer, and they are not equally useful for a distance.
-        // 359-363 V3K is referred to the cosmic microwave background, i.e. with our own motion
-        // already taken out, which is what the Hubble law actually wants -- and it is quoted for
-        // 16655 of the 23011 entries against only 8647 for the HI velocity this used to read.
-        // 343-347 cz is the optical heliocentric velocity, 334-338 V21 the HI one.
-        read_field_onebased(buffer, 359, 363, field);
-        double v21 = atof(field);
-        if (!v21)
-        {
-            read_field_onebased(buffer, 343, 347, field);
-            v21 = atof(field);
-        }
-        if (!v21)
-        {
-            read_field_onebased(buffer, 334, 338, field);
-            v21 = atof(field);
-        }
-        if (v21 < min_velocity) continue;
 
         //   1-  8 RA (h m s), 10-16 Dec (sign d m s), J2000
         read_field_onebased(buffer, 1, 2, field); double deg = atof(field) * 15;
@@ -5119,15 +5112,64 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 15, 16, field); sec = atof(field);
         double decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgn;
 
-        bool already_have = false;
-        for (size_t k = 0; k < known_decl.size(); k++)
+        Galaxy *dup = nullptr;
+        for (size_t k = 0; k < known.size(); k++)
         {
-            if (fabs(known_decl[k] - decl) > dup_limit) continue;    // cheap reject first
-            if (fabs(known_ra[k] - ra) * cos(decl) > dup_limit) continue;
-            already_have = true;
+            if (fabs(known[k]->declination - decl) > dup_limit) continue;    // cheap reject first
+            if (fabs(known[k]->right_ascension - ra) * cos(decl) > dup_limit) continue;
+            dup = known[k];
             break;
         }
-        if (already_have) continue;
+
+        if (dup)
+        {
+            // The UNGC already placed this one, and its measured distance is the better number, so
+            // that entry stands. But it has no position angle at all, and often no morphology --
+            // both of which the RC3 does carry, and both of which an oriented ellipse will want.
+            // Fill those gaps rather than discarding the record wholesale.
+            if (!dup->position_angle_known)
+            {
+                read_field_onebased(buffer, 186, 188, field);
+                if (strlen(trim(field).c_str()))
+                {
+                    dup->position_angle = atof(field) * fiftyseventh;
+                    dup->position_angle_known = true;
+                }
+            }
+            if (!strlen(dup->morph_type))
+            {
+                read_field_onebased(buffer, 118, 124, field);
+                snprintf(dup->morph_type, sizeof(dup->morph_type), "%s", trim(field).c_str());
+            }
+            if (!dup->T_known)
+            {
+                read_field_onebased(buffer, 132, 135, field);
+                if (strlen(trim(field).c_str())) { dup->morphological_T = atof(field); dup->T_known = true; }
+            }
+            continue;
+        }
+
+        // Only now does the velocity matter. Tested earlier, it threw away the RC3 records of the
+        // very galaxies the UNGC had placed -- M31, M33, NGC 253 are all nearby and slow, some
+        // outright approaching -- before they could hand over their position angle.
+        //
+        // Three velocities are on offer and they are not equally useful. 359-363 V3K is referred to
+        // the cosmic microwave background, i.e. with our own motion already removed, which is what
+        // the Hubble law wants; it is quoted for 16655 of the 23011 entries against only 8647 for
+        // the HI velocity. 343-347 cz is the optical heliocentric velocity, 334-338 V21 the HI one.
+        read_field_onebased(buffer, 359, 363, field);
+        double v21 = atof(field);
+        if (!v21)
+        {
+            read_field_onebased(buffer, 343, 347, field);
+            v21 = atof(field);
+        }
+        if (!v21)
+        {
+            read_field_onebased(buffer, 334, 338, field);
+            v21 = atof(field);
+        }
+        if (v21 < min_velocity) continue;
 
         Galaxy *g = new Galaxy();
         g->radial_velocity = v21 * 1000.0;

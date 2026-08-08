@@ -327,16 +327,25 @@ void compute_object_draw_coordinates()
             if (isnan(cels[i]->tmprel.x)) continue;
             if (i == whereami) continue;
 
-            Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
-
-            if (cels_i_star
-                && cels_i_star->seqno
-                && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
-                && !cels_i_star->tmp_vis_flag
-                && !cels_i_star->is_universally_visible())
+            // A galaxy is not inside anybody's star system, and its cenobj is itself. Casting that
+            // to Star* and reading tmp_vis_flag off it reads past the end of the object -- Galaxy
+            // carries none of Star's fields -- so the answer was whatever happened to be in the
+            // heap there, and galaxies were being culled here before they could ever be drawn.
+            // They get their own visibility test further down, on apparent magnitude, the same way
+            // a star out of its visible box would.
+            if (cels[i]->typeclass() != class_galaxy)
             {
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
-                continue;
+                Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
+
+                if (cels_i_star
+                    && cels_i_star->seqno
+                    && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
+                    && !cels_i_star->tmp_vis_flag
+                    && !cels_i_star->is_universally_visible())
+                {
+                    cels[i]->drawnx = cels[i]->drawny = -1e9;
+                    continue;
+                }
             }
 
             Point rel = cels[i]->tmprel;
