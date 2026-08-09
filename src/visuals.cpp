@@ -1454,7 +1454,23 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     }
     #define galaxy_vtx_col(rho, sigma) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(rho)*nseg + (sigma)]))
 
-    dl->PrimReserve(nring*nseg*6, nring*nseg*4);
+    // PrimReserve commits the vertex and index counts up front, so any quad the loop below skips
+    // would leave four vertices and six indices of uninitialised buffer behind it -- stale geometry
+    // from an earlier frame, drawn with whatever colours happened to still be sitting in it. That
+    // showed up as black-and-white wedges and stray slivers over whatever else was on screen, most
+    // visibly over the bright objects, which is a long way from the galaxy that actually caused it.
+    // The test depends only on the segment, not the ring, so count the survivors once and reserve
+    // exactly those.
+    int nvalid = 0;
+    for (int s = 0; s < nseg; s++)
+    {
+        int s1 = (s+1) % nseg;
+        if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4) continue;
+        nvalid++;
+    }
+    if (!nvalid) return 0;
+
+    dl->PrimReserve(nring*nvalid*6, nring*nvalid*4);
     for (int r = 0; r < nring; r++)
     {
         double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
