@@ -5,6 +5,9 @@
 #include <vector>
 #include <chrono>
 #include <thread>
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include "png.h"
 #include "include/stb/stb_image.h"
 #include "globals.h"
@@ -889,9 +892,17 @@ int main (int argc, char** argv)
             auto now = std::chrono::system_clock::now();
             auto time_t_now = std::chrono::system_clock::to_time_t(now);
 
+            const char* snapdir = "snapshots";
+            std::filesystem::path p = snapdir;
+            if (!std::filesystem::exists(p))
+            {
+                // Create the dest folder.
+                std::filesystem::create_directories(snapdir);
+            }
+
             // Format the time into a stringstream
             std::stringstream shnapsot_fname;
-            shnapsot_fname << "snapshot." 
+            shnapsot_fname << snapdir << _FILESLASH << "snapshot." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";
 
