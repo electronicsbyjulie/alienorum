@@ -77,7 +77,7 @@ void set_viewer_location_and_plane()
     {
         view_mode = vm_skyatlas;
 
-        if (cels[whereami]->orbit->center)
+        if (vplane_mode == vplane_local && cels[whereami]->orbit->center)
         {
             here = cels[whereami]->location;
             Point me = cels[whereami]->location;
@@ -88,7 +88,7 @@ void set_viewer_location_and_plane()
         }
     }
 
-    if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+    if (vplane_mode == vplane_local && (view_mode == vm_skyatlas || view_mode == vm_skymap))
     {
         // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
         // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;
@@ -127,6 +127,21 @@ void set_viewer_location_and_plane()
         here = cels[whereami]->location;
         azimuth_correction = 0;
         npaz = 0;
+    }
+    else if (vplane_mode == vplane_ICRF)
+    {
+        here = cels[whereami]->location;
+        here.equatorial_plane.a = 0;
+    }
+    else if (vplane_mode == vplane_ecliptic)
+    {
+        here = cels[whereami]->location;
+        here.equatorial_plane = here.orbital_plane;
+    }
+    else if (vplane_mode == vplane_galactic && inside_galaxy_idx >= 0)
+    {
+        here = cels[whereami]->location;
+        here.equatorial_plane = cels[inside_galaxy_idx]->location.equatorial_plane;
     }
 }
 

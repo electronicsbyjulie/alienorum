@@ -1476,7 +1476,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
 
     AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
-    ac->generate_fictitious_for_planet(p->type);
+    if (randomize_txgen) ac->generate_fictitious_for_planet(p->type);
 
     p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
         ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,

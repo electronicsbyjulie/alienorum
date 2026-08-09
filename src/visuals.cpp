@@ -1365,6 +1365,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 {
     Galaxy *g = (Galaxy*)cel;
     if (g->angular_diameter <= 0) return 0;
+    if (inside_galaxy_idx == cel->seqno) return 0;
 
     g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
     if (!(g->volumetric_mean_radius > 0)) return 0;
@@ -1540,7 +1541,7 @@ bool draw_one_object(int i)
         }
         // Too small, too faint, or off screen: fall through to the point path below, which is the
         // right answer for a galaxy that is only a few pixels across anyway.
-        goto dot_instead;
+        if (i != inside_galaxy_idx) goto dot_instead;
     }
     else if (cls == class_satellite)
     {
@@ -1749,8 +1750,12 @@ void draw_galaxy_band()
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
 
     ImDrawList *list = ImGui::GetBackgroundDrawList();
-    ImU32 gcol = rgba_apply_redlight(IM_COL32(255, 255, 255, 64));      // TODO: Galaxy color.
+    ImU32 gcol = rgba_apply_redlight(
+        whtbkgd
+        ? IM_COL32(0, 0, 0, 64)
+        : IM_COL32(255, 255, 255, 32));      // TODO: Galaxy color.
 
+    ImGuiIO& io = ImGui::GetIO();
     for (h=0; h<2; h++)
     {
         n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
@@ -1791,7 +1796,8 @@ void draw_galaxy_band()
 
             if (prevgood && currgood)
             {
-                list->AddLine(prev, curr, gcol);
+                // list->AddLine(prev, curr, gcol);
+                wrapped_line(prev, curr, gcol, io);
             }
 
             prev = curr;

@@ -281,7 +281,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::SetNextItemWidth(123);
         if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
         {
-            for (int n = 0; n < NUM_VIEWMODES-1; n++)               // Sun clock mode is not yet implemented.
+            for (int n = 0; n < NUM_VIEWMODES-1; n++)
             {
                 const bool is_selected = (n == view_mode);
                 if (ImGui::Selectable(vmtext[n], is_selected))

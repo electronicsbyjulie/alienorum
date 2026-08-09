@@ -157,14 +157,22 @@ const std::time_t J2000_TIME_T = 946684800;
 #define circ_sz 7
 #define ln_spc 10
 
-#define NUM_VIEWMODES 3
+#define NUM_VIEWMODES 4
 enum ViewMode
 {
     vm_skyatlas = 0,
     vm_horizon = 1,
     vm_sunclock = 2,
     vm_skymap = 3,
-    vm_model = 4
+    vm_model = 4                // Not implemented yet.
+};
+
+enum ViewerPlaneMode
+{
+    vplane_local,
+    vplane_ICRF,
+    vplane_ecliptic,
+    vplane_galactic
 };
 
 extern double magnbase, invlogmagnbase;
@@ -240,6 +248,7 @@ extern std::string loading_msg, viewer_theme;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
+extern ViewerPlaneMode vplane_mode;
 extern ViewMode view_mode;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, took_off_from,
     tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat, inside_galaxy_idx;

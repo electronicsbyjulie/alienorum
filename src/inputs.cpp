@@ -194,6 +194,16 @@ void show_menu()
     menu_clicked = false;
     if (ImGui::BeginMainMenuBar())
     {
+        if (ImGui::BeginMenu("File"))
+        {
+            mouse_over_menu = true;
+            if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
+            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
+            if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
+            if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
+            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Object"))
         {
             mouse_over_menu = true;
@@ -206,11 +216,6 @@ void show_menu()
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
             if (ImGui::MenuItem("Edit Object...", "Shift+E")) { process_key_cmd_char('E'); menu_clicked = true; }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
-            if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
-            if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
-            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Spacetime"))
@@ -266,15 +271,23 @@ void show_menu()
             if (ImGui::MenuItem("Red Light Mode", "Shift+R")) { process_key_cmd_char('R'); menu_clicked = true; }
             if (ImGui::MenuItem("White Background Mode", "Shift+W")) { process_key_cmd_char('W'); menu_clicked = true; }
             if (ImGui::MenuItem("Fullscreen", "F11")) { process_key_F11(); menu_clicked = true; }
-            if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Sky Atlas Mode", "&")) { process_key_cmd_char('&'); menu_clicked = true; }
             if (ImGui::MenuItem("Horizon", "_")) { process_key_cmd_char('_'); menu_clicked = true; }
             if (ImGui::MenuItem("Sun Clock", "$")) { process_key_cmd_char('$'); menu_clicked = true; }
             if (ImGui::MenuItem("Sky Map", "\\")) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::BeginMenu("Viewer Plane"))
+            {
+                mouse_over_menu = true;
+                if (ImGui::MenuItem("Local", "Ctrl+L")) { process_key_cmd_ctrl_char('L'); menu_clicked = true; }
+                if (ImGui::MenuItem("ICRF", "Ctrl+I")) { process_key_cmd_ctrl_char('I'); menu_clicked = true; }
+                if (ImGui::MenuItem("Ecliptic", "Ctrl+E")) { process_key_cmd_ctrl_char('E'); menu_clicked = true; }
+                if (ImGui::MenuItem("Galactic", "Ctrl+G")) { process_key_cmd_ctrl_char('G'); menu_clicked = true; }
+                ImGui::EndMenu();
+            }
             if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J")) { process_key_cmd_char('J'); menu_clicked = true; }
             if (ImGui::MenuItem("Previous Theme", "#")) { process_key_cmd_char('#'); menu_clicked = true; }
-            if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }
+            if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }           
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Show"))
@@ -605,6 +618,30 @@ void process_key_cmd_char(char c)
     }
 }
 
+void process_key_cmd_ctrl_char(char c)
+{
+    // Ctrl+letter combinations to avoid, since they are claimed by the terminal, the OS,
+    // or common tools the app may be run alongside:
+    //   Ctrl+C - SIGINT (terminal interrupt)
+    //   Ctrl+D - EOF / terminal exit
+    //   Ctrl+Z - SIGTSTP (terminal suspend)
+    //   Ctrl+\ - SIGQUIT (terminal quit)
+    //   Ctrl+Q / Ctrl+S - terminal XON/XOFF flow control
+    //   Ctrl+A / Ctrl+B - tmux/screen prefix keys
+    //   Ctrl+V - system paste
+    //   Ctrl+W - window close (most OSes)
+    switch (c)
+    {
+        case 'E': vplane_mode = vplane_ecliptic; break;
+        case 'G': vplane_mode = vplane_galactic; break;
+        case 'I': vplane_mode = vplane_ICRF; break;
+        case 'L': vplane_mode = vplane_local; break;
+
+        default:
+        ;
+    }
+}
+
 double steering_rate, walk_speed;
 void process_keyboard_commands(ImGuiIO& io)
 {
@@ -630,6 +667,14 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
     if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
+
+    if (io.KeyCtrl)
+    {
+        for (i = 0; i < 26; i++)
+        {
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char('A' + i);
+        }
+    }
 }
 
 void process_key_arrowup()
