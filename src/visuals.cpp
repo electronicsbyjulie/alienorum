@@ -1772,7 +1772,14 @@ void draw_galaxy_band()
             pt = to_viewer_plane(pt, 1);
             pt = refract_true_point(pt);
 
-            Cartesian2D cart(pt, azimuth, altitude, zoom);
+            // azimuth_correction, not just azimuth: in horizon mode set_viewer_surface_location()
+            // sets it to -npaz, the azimuth of the planet's own north pole, which is what ties the
+            // horizon frame's zero of azimuth to true north. Every other projection here adds it --
+            // compute_object_draw_coordinates() adds it for every object in cels[] -- so leaving it
+            // out spun the band about the local zenith by npaz relative to the entire rest of the
+            // sky, and npaz moves with the viewer's latitude and the planet's rotation, so the band
+            // drifted rather than tracking the stars.
+            Cartesian2D cart(pt, azimuth + azimuth_correction, altitude, zoom);
             ImVec2 curr;
             bool currgood = false;
             if (cart.x > -1e4 && cart.y > -1e4)
