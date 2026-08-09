@@ -266,6 +266,7 @@ void show_menu()
             if (ImGui::MenuItem("Red Light Mode", "Shift+R")) { process_key_cmd_char('R'); menu_clicked = true; }
             if (ImGui::MenuItem("White Background Mode", "Shift+W")) { process_key_cmd_char('W'); menu_clicked = true; }
             if (ImGui::MenuItem("Fullscreen", "F11")) { process_key_F11(); menu_clicked = true; }
+            if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Sky Atlas Mode", "&")) { process_key_cmd_char('&'); menu_clicked = true; }
             if (ImGui::MenuItem("Horizon", "_")) { process_key_cmd_char('_'); menu_clicked = true; }
@@ -628,6 +629,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
 }
 
 void process_key_arrowup()
@@ -795,6 +797,7 @@ void process_key_F11()
 
 void process_key_F12()
 {
+    take_snapshot = true;
 }
 
 void do_find()
