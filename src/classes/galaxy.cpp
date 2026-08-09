@@ -81,3 +81,8 @@ int alienorum::GalaxyBand::load_dat_file(std::string fname)
 
     return num_read;
 }
+
+int alienorum::GalaxyBand::create_fictitious()
+{
+    return 0;
+}

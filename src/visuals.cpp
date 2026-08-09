@@ -1726,6 +1726,13 @@ bool draw_one_object(int i)
     return true;
 }
 
+// One horizontal crossing of the band's outline: the scanline it lands on, and where along it.
+struct BandCrossing
+{
+    int y;
+    float x;
+};
+
 void draw_galaxy_band()
 {
     if (!show_galaxy_band || inside_galaxy_idx < 0) return;
@@ -1749,28 +1756,37 @@ void draw_galaxy_band()
     Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
 
-    ImDrawList *list = ImGui::GetBackgroundDrawList();
     ImU32 gcol = rgba_apply_redlight(
         whtbkgd
         ? IM_COL32(0, 0, 0, 64)
         : IM_COL32(255, 255, 255, 32));      // TODO: Galaxy color.
+    // Flat scanline spans never overlap, so this alpha is what actually lands on screen -- unlike
+    // the earlier overlapping geometry, where it compounded well past whatever was asked for.
+    ImU32 fillcol = rgba_apply_redlight(
+        whtbkgd
+        ? IM_COL32(0, 0, 0, 20)
+        : IM_COL32(255, 255, 255, 14));      // subtle glow filling the band. TODO: Galaxy color.
 
     ImGuiIO& io = ImGui::GetIO();
+
+    // Project both boundary roads (road1 = north edge, road2 = south edge) to screen space once,
+    // up front, so the fill pass below and the outline pass further down share the same points
+    // instead of re-deriving them twice.
+    std::vector<ImVec2> screen[2];
+    std::vector<bool> good[2];
+
     for (h=0; h<2; h++)
     {
         n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
-        if (n<2) continue;
-        ImVec2 prev;
-        bool prevgood = false;
-        for (i=0; i<=n; i++)
-        {
-            j = i;
-            if (j >= n) j -= n;
+        screen[h].assign(n, ImVec2());
+        good[h].assign(n, false);
 
-            double road_dist = h ? g->band.road2_dist[j] : g->band.road1_dist[j];
+        for (i=0; i<n; i++)
+        {
+            double road_dist = h ? g->band.road2_dist[i] : g->band.road1_dist[i];
             Point pt = Point::from_ra_dec(
-                h ? g->band.road2_gra[j] : g->band.road1_gra[j],
-                h ? g->band.road2_gdecl[j] : g->band.road1_gdecl[j],
+                h ? g->band.road2_gra[i] : g->band.road1_gra[i],
+                h ? g->band.road2_gdecl[i] : g->band.road1_gdecl[i],
                 g->volumetric_mean_radius, 0);
             if (road_dist) pt.y *= road_dist / g->volumetric_mean_radius;
             pt = rotate3D(pt, center, yaxis, gyaw);
@@ -1779,8 +1795,8 @@ void draw_galaxy_band()
             if (!road_dist)
             {
                 road_dist = pt.magnitude();
-                if (h) g->band.road2_dist[j] = road_dist;
-                else g->band.road1_dist[j] = road_dist;
+                if (h) g->band.road2_dist[i] = road_dist;
+                else g->band.road1_dist[i] = road_dist;
             }
             pt = to_viewer_plane(pt, 1);
             pt = refract_true_point(pt);
@@ -1793,23 +1809,144 @@ void draw_galaxy_band()
             // sky, and npaz moves with the viewer's latitude and the planet's rotation, so the band
             // drifted rather than tracking the stars.
             Cartesian2D cart(pt, azimuth + azimuth_correction, altitude, zoom);
-            ImVec2 curr;
-            bool currgood = false;
             if (cart.x > -1e4 && cart.y > -1e4)
             {
-                curr.x = dispcx + dispcx * cart.x;
-                curr.y = dispcy + dispcx * cart.y;
-                currgood = true;
+                screen[h][i].x = dispcx + dispcx * cart.x;
+                screen[h][i].y = dispcy + dispcx * cart.y;
+                good[h][i] = true;
             }
+        }
+    }
 
-            if (prevgood && currgood)
+    // Fill, by scanline; we cannot simply stitch a ribbon of triangles between the two roads,
+    // because the band's edges are not a smooth corridor. The two roads run the full sweep of
+    // longitude from -pi to +pi as open curves whose endpoints meet on the sky, and each has
+    // deep fjord-like notches. The roads also have different point counts.
+    //
+    // Scanline conversion sidesteps the pairing question entirely by finding  where the outline
+    // crosses each row of pixels. Sort those crossings along the row and fill between alternate
+    // pairs -- the even-odd rule -- and the interior falls out correctly no matter how sinuous
+    // or notched the outline is.
+    // Also, the spans are one pixel tall and never overlap, so a translucent fill stays at
+    // exactly its own alpha.
+    int disph = (int)(dispcy*2), dispw = (int)(dispcx*2);
+    int dcx = (int)io.DisplaySize.x / 2;
+
+    // Reused across frames: this runs every frame, and the buffer is a few tens of thousands of
+    // entries, so reallocating it each time is pure churn.
+    static std::vector<BandCrossing> crossings;
+    crossings.clear();
+
+    // Walk the closed outline: road1 forward, then road2 backward. That traversal is what makes
+    // the two roads bound one region rather than two open curves -- and because road1's ends and
+    // road2's ends coincide on the sky, the joins between them are zero-length, so the ring
+    // closes without any artificial seam edge being invented.
+    int n1 = screen[0].size(), n2 = screen[1].size();
+    int total = n1 + n2;
+    if (n1 >= 2 && n2 >= 2)
+    {
+        // Accumulate every scanline this edge crosses. Sampling at pixel centres (y+0.5) with a
+        // half-open rule on the endpoints is what keeps parity exact: a vertex landing precisely
+        // on a scanline is counted by one of its two edges, never both and never neither.
+        auto emit_edge = [&](ImVec2 p, ImVec2 q)
+        {
+            if (p.y == q.y) return;
+            if (p.y > q.y) { ImVec2 t = p; p = q; q = t; }
+
+            int y0 = (int)ceil(p.y - 0.5), y1 = (int)ceil(q.y - 0.5) - 1;
+            if (y0 < 0) y0 = 0;
+            if (y1 > disph-1) y1 = disph-1;
+
+            double slope = (q.x - p.x) / (q.y - p.y);
+            for (int y = y0; y <= y1; y++)
             {
-                // list->AddLine(prev, curr, gcol);
-                wrapped_line(prev, curr, gcol, io);
+                BandCrossing c;
+                c.y = y;
+                c.x = (float)(p.x + slope * ((y + 0.5) - p.y));
+                crossings.push_back(c);
+            }
+        };
+
+        // Same seam rule as wrapped_line(): an edge that leaps the width of the sky is really the
+        // band wrapping round behind the viewer, so hand the scanline both halves of it. Their
+        // crossings sit outside the screen on one side each, which is harmless -- parity is
+        // counted over every crossing, and only the drawing is clipped to the display.
+        auto emit_wrapped = [&](ImVec2 p, ImVec2 q)
+        {
+            if ((view_mode == vm_skymap || view_mode == vm_sunclock)
+                && fabs(p.x - q.x) > zoom*dcx
+                && ((p.x < dcx && q.x > dcx) || (p.x > dcx && q.x < dcx)))
+            {
+                ImVec2 q2 = q, p2 = p;
+                q2.x += (q2.x > dcx) ? -dcx*2 : dcx*2;
+                p2.x += (p2.x > dcx) ? -dcx*2 : dcx*2;
+                emit_edge(p, q2);
+                emit_edge(p2, q);
+            }
+            else emit_edge(p, q);
+        };
+
+        for (i=0; i<total; i++)
+        {
+            // Index into the concatenated outline: road1 forward, then road2 in reverse.
+            int ha = (i < n1) ? 0 : 1, ia = (i < n1) ? i : (n2-1 - (i - n1));
+            int k = (i+1) % total;
+            int hb = (k < n1) ? 0 : 1, ib = (k < n1) ? k : (n2-1 - (k - n1));
+
+            if (good[ha][ia] && good[hb][ib])
+                emit_wrapped(screen[ha][ia], screen[hb][ib]);
+        }
+    }
+
+    if (crossings.size() >= 2)
+    {
+        std::sort(crossings.begin(), crossings.end(),
+            [](const BandCrossing& a, const BandCrossing& b)
+            { return (a.y != b.y) ? (a.y < b.y) : (a.x < b.x); });
+
+        ImDrawList *list = ImGui::GetBackgroundDrawList();
+        size_t s = 0;
+        while (s < crossings.size())
+        {
+            size_t e = s;
+            while (e < crossings.size() && crossings[e].y == crossings[s].y) e++;
+
+            // An odd count means the outline was left open on this row -- points dropped by the
+            // projection behind the viewer, most often. Parity is meaningless there, and guessing
+            // would smear fill across the whole row, so the row is simply skipped.
+            size_t cnt = e - s;
+            if (cnt >= 2 && (cnt % 2) == 0)
+            {
+                float y = (float)crossings[s].y;
+                for (size_t k = s; k + 1 < e; k += 2)
+                {
+                    float x0 = crossings[k].x, x1 = crossings[k+1].x;
+                    if (x1 <= 0 || x0 >= dispw) continue;
+                    if (x0 < 0) x0 = 0;
+                    if (x1 > dispw) x1 = (float)dispw;
+                    list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
+                }
             }
 
-            prev = curr;
-            prevgood = currgood;
+            s = e;
+        }
+    }
+
+    // Outline, reusing the same projected points computed above.
+    for (h=0; h<2; h++)
+    {
+        n = screen[h].size();
+        if (n<2) continue;
+        for (i=0; i<=n; i++)
+        {
+            j = i;
+            if (j >= n) j -= n;
+            if (i>0)
+            {
+                int prevj = i-1;
+                if (good[h][prevj] && good[h][j])
+                    wrapped_line(screen[h][prevj], screen[h][j], gcol, io);
+            }
         }
     }
 }
