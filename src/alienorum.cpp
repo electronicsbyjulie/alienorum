@@ -886,10 +886,19 @@ int main (int argc, char** argv)
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         if (take_snapshot)
         {
-            if (save_snapshot_png("snapshot.png", (int)io.DisplaySize.x, (int)io.DisplaySize.y))
-                std::cout << "Saved snapshot.png (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
+            auto now = std::chrono::system_clock::now();
+            auto time_t_now = std::chrono::system_clock::to_time_t(now);
+
+            // Format the time into a stringstream
+            std::stringstream shnapsot_fname;
+            shnapsot_fname << "snapshot." 
+                << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
+                << ".png";
+
+            if (save_snapshot_png(shnapsot_fname.str(), (int)io.DisplaySize.x, (int)io.DisplaySize.y))
+                std::cout << "Saved " << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
             else
-                std::cerr << "Failed to save snapshot.png" << std::endl;
+                std::cerr << "Failed to save " << shnapsot_fname.str() << " to disk." << std::endl;
             take_snapshot = false;
         }
         SDL_GL_SwapWindow(window);
