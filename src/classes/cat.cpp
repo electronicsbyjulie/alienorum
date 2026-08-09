@@ -4946,6 +4946,7 @@ static void place_galaxy(Galaxy *g, double ra, double decl, double distance_mpc)
     g->epoch = J2000;
     g->distance = distance_mpc * 1e6 * parsec;              // metres, for display
     g->distance_known = true;
+    g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
     g->location.galactic_center = Point::from_ra_dec(ra, decl, distance_mpc * mly_per_mpc);
     g->location.system_center = Point(0, 0, 0);
     g->location.local_position = Point(0, 0, 0);
@@ -5113,6 +5114,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             g->position_angle = milky_way_position_angle;
             g->position_angle_known = true;
             g->distance_known = true;
+            g->volumetric_mean_radius = light_year * 100000;
             g->axis_ratio = 0.01;                       // ~100000 light years across, ~1000 thick
 
             // The distance column rounds our own to 0.01 Mpc, which is 4000 light years further out
@@ -5126,12 +5128,15 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             // radius out as distance * angular_diameter / 2. Run that backwards from the radius we
             // do know, so both get the right disc rather than nothing at all.
             g->angular_diameter = 2.0 * milky_way_radius / sun_to_galactic_center;
+
+            int nbandxy = g->band.load_dat_file(std::string("catalogs") + _FILESLASH + std::string("Milky_Way.dat"));
         }
         g->location.equatorial_plane = g->location.local_system_plane
             = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
         g->cenobj = g;
         g->distance_known = true;
+        g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
         g->BV_color = -bv_correction;
         by_raw_name[raw_name] = g;
         append_cel(g);
@@ -5355,6 +5360,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
 
         g->cenobj = g;
         g->distance_known = true;       // treat it as known anyway, so that the distance appears in the N panel.
+        g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
         g->BV_color = -bv_correction;
         append_cel(g);
         num_read++;

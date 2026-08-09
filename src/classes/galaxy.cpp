@@ -48,3 +48,34 @@ bool Galaxy::from_json(json j)
 
     return true;
 }
+
+int alienorum::GalaxyBand::load_dat_file(std::string fname)
+{
+    FILE *fp = fopen(fname.c_str(), "r");
+    if (!fp) return 0;
+
+    int num_read = 0;
+    char buffer[256], northsouth = 0, *comma = nullptr;
+    while (fgets(buffer, 255, fp))
+    {
+        if (buffer[0] == '#') continue;
+        else if (buffer[0] == 'N' || buffer[0] == 'S') northsouth = buffer[0];
+        else if (comma = strchr(buffer, ','))   // conditioned on assignment
+        {
+            if (northsouth == 'N')
+            {
+                road1_gra.push_back(atof(buffer));
+                road1_gdecl.push_back(atof(&comma[1]));
+                num_read++;
+            }
+            else if (northsouth == 'S')
+            {
+                road2_gra.push_back(atof(buffer));
+                road2_gdecl.push_back(atof(&comma[1]));
+                num_read++;
+            }
+        }
+    }
+
+    return num_read;
+}

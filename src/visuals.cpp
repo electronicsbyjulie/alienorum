@@ -1366,8 +1366,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     Galaxy *g = (Galaxy*)cel;
     if (g->angular_diameter <= 0) return 0;
 
-    double radius_m = cel->distance * g->angular_diameter * 0.5;
-    if (!(radius_m > 0)) return 0;
+    g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
+    if (!(g->volumetric_mean_radius > 0)) return 0;
 
     // In-plane basis: the disc plane's own axes, rotated out into world space. local_system_plane
     // maps world to plane, so the inverse rotation takes the plane's x and z back out.
@@ -1391,7 +1391,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     for (int s = 0; s < nseg; s++)
     {
         double t = s * (_pi * 2.0 / nseg);
-        Point p = cel->tmprel + (e1 * (radius_m * cos(t))) + (e2 * (radius_m * sin(t)));
+        Point p = cel->tmprel + (e1 * (g->volumetric_mean_radius * cos(t))) + (e2 * (g->volumetric_mean_radius * sin(t)));
         p = to_viewer_plane(p);
         if (view_mode == vm_horizon) p = refract_true_point(p);
         Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
@@ -1709,386 +1709,70 @@ bool draw_one_object(int i)
     return true;
 }
 
-// ================================================================================================
-// A galaxy seen from inside it.
-//
-// draw_galaxy() projects the disc as an ellipse, which is right only while the whole of it is out
-// in front of the viewer. Standing inside one -- which is where anybody looking up from Earth is
-// standing -- the same disc wraps right round the sky as a band, and what arrives along any one
-// direction is its whole depth at once: unresolved starlight piled up along the line of sight,
-// less whatever the dust nearer than it has taken back out again.
-//
-// So this integrates along the line of sight instead of drawing a shape. The sky is cut into cells,
-// and one ray is marched out of each of them carrying the ordinary transfer equation,
-//
-//      dI = j * rho_star * exp(-tau) ds,      dtau = kappa * rho_dust * ds
-//
-// with tau accumulated from the viewer outwards, so that the dust in front dims the light behind it
-// and not the other way about. Marching each ray in one pass is both cheaper and more faithful than
-// compositing emission and dust as separate translucent blobs would be: nothing has to be sorted,
-// and the extinction is per channel, so the reddening comes out of the same arithmetic rather than
-// having to be faked with a brown tint. That is what puts the dark rift down the middle of the band
-// instead of leaving a smooth glow with a smudge painted over it.
-//
-// The catalogue stars are drawn separately and are NOT dimmed by any of this, which is correct:
-// their magnitudes were measured through that same dust already.
-//
-// Each cell then draws as one soft blob. Cells are laid out in rows of near-constant angular size --
-// fine along the plane, where all the structure is, coarsening towards the poles, where there is
-// none -- and each blob is given the radius its cell spacing calls for, with the alpha divided by
-// how much the overlapping blobs over-cover. That makes the blobs sum to very nearly a partition of
-// unity, so the band comes out smooth rather than dappled, without using any more of them.
-// ================================================================================================
-
-#define band_max_latitude   (62.0 * fiftyseventh)       // past here the disc has nothing left to show
-#define band_plane_cell     (1.25 * fiftyseventh)       // angular cell size along the plane...
-#define band_polar_cell     (6.00 * fiftyseventh)       // ...and at the latitude limit
-#define band_march_steps    96
-#define band_march_near     (40.0 * light_year)
-#define band_emit_gain      0.34
-#define band_dust_gain      2.60
-// Nearer than this the stars are resolved and drawn one at a time, so the diffuse integral fades in
-// over it rather than starting at zero and counting them twice.
-#define band_resolved       (1400.0 * light_year)
-#define band_resolved_full  (5000.0 * light_year)
-// A standard R(V)=3.1 reddening slope, normalised on V. Blue is taken out half again as fast as red,
-// which is the whole reason the band goes tawny where it is thickest rather than merely grey.
-#define band_ext_r          0.75
-#define band_ext_g          1.00
-#define band_ext_b          1.32
-#define band_fan_segments   9
-
-struct GalaxyParcel
-{
-    Point dir;                                          // unit, from the viewer this was built for
-    float ang;                                          // angular radius of the blob
-    float alpha;                                        // before global_brightness and daylight
-    unsigned char r, g, b;
-};
-
-static std::vector<GalaxyParcel> band_parcels;
-static CelestialObject *band_built_for = nullptr;
-static Point band_built_at;
-static double band_built_radius = 0;
-
-// A deterministic value noise, so the dust falls in the same places every run. PerlinNoise shuffles
-// its table from a random_device, which would move every lane about on each launch.
-static double band_hash3(int x, int y, int z)
-{
-    unsigned int h = (unsigned int)x * 374761393u + (unsigned int)y * 668265263u
-        + (unsigned int)z * 1442695041u;
-    h = (h ^ (h >> 13)) * 1274126177u;
-    return (double)(h ^ (h >> 16)) / 4294967296.0;
-}
-
-static double band_noise(double x, double y, double z)
-{
-    double fx = floor(x), fy = floor(y), fz = floor(z);
-    int ix = (int)fx, iy = (int)fy, iz = (int)fz;
-    double tx = x - fx, ty = y - fy, tz = z - fz;
-    tx = tx*tx*(3.0 - 2.0*tx); ty = ty*ty*(3.0 - 2.0*ty); tz = tz*tz*(3.0 - 2.0*tz);
-
-    double c00 = band_hash3(ix, iy,   iz  ) + tx*(band_hash3(ix+1, iy,   iz  ) - band_hash3(ix, iy,   iz  ));
-    double c10 = band_hash3(ix, iy+1, iz  ) + tx*(band_hash3(ix+1, iy+1, iz  ) - band_hash3(ix, iy+1, iz  ));
-    double c01 = band_hash3(ix, iy,   iz+1) + tx*(band_hash3(ix+1, iy,   iz+1) - band_hash3(ix, iy,   iz+1));
-    double c11 = band_hash3(ix, iy+1, iz+1) + tx*(band_hash3(ix+1, iy+1, iz+1) - band_hash3(ix, iy+1, iz+1));
-
-    double c0 = c00 + ty*(c10 - c00), c1 = c01 + ty*(c11 - c01);
-    return c0 + tz*(c1 - c0);
-}
-
-struct GalaxyDiscModel
-{
-    double R, hR, hz, hzd, tanpitch, bulge, noisescale;
-    bool barred, elliptical;
-};
-
-static void band_model(Galaxy *g, double R, GalaxyDiscModel *m)
-{
-    // The same reading of the type the face-on path takes: unknown is a middling spiral.
-    double T = g->T_known ? g->morphological_T : 3.0;
-
-    // Anchored on our own Galaxy: a 15 kpc disc with a 2.6 kpc scale length, an old-disc scale
-    // height near 300 pc, and dust in a layer well under half of that. Those ratios hold well
-    // enough along the sequence to carry over to whatever else the viewer flies into.
-    m->R = R;
-    m->hR = R * 0.20;
-    m->hz = m->hR * 0.10;
-    m->hzd = m->hR * 0.045;
-    m->noisescale = 1.0 / (R * 0.012);
-
-    double pitch = (8.0 + 2.6 * fmin(fmax(T, 0.0), 8.0)) * fiftyseventh;
-    m->tanpitch = tan(pitch);
-    m->bulge = fmax(0.05, 0.60 - 0.07 * T);
-    m->barred = (strlen(g->morph_type) > 2 && g->morph_type[2] == 'B');
-    m->elliptical = (T < 0);
-}
-
-// Emission and extinction density at a point in the disc's own coordinates, plus the B-V the
-// starlight there ought to carry. All three are shape functions of order one rather than physical
-// units; the scaling lives in the two gains.
-static void band_density(const GalaxyDiscModel *m, double x, double y, double z,
-    double *emit, double *dust, double *bv)
-{
-    double r = sqrt(x*x + y*y), az = fabs(z);
-    *dust = 0;
-
-    if (m->elliptical)
-    {
-        // No disc to put arms or lanes on, and nothing to see from inside but a smooth glow.
-        double q = sqrt(r*r + (z/0.7)*(z/0.7));
-        *emit = exp(-q / (m->R * 0.18));
-        *bv = 0.95;
-        return;
-    }
-
-    double disc = exp(-r / m->hR) * exp(-az / m->hz);
-
-    // Logarithmic arms at the pitch the type calls for, wound exactly as galaxy_surface_intensity()
-    // winds them, so a galaxy looks like the same galaxy from inside as it did on the way in. The
-    // second harmonic stands in for the minor arms a two-armed term alone cannot produce.
-    double t = atan2(y, x);
-    double phi = t - log(fmax(r, m->R * 0.04) / m->R) / m->tanpitch;
-    double two = 0.5 + 0.5*cos(2.0*phi), four = 0.5 + 0.5*cos(4.0*phi + 0.7);
-    double arm = 0.40 + 0.75*pow(two, 1.7) + 0.25*pow(four, 2.4);
-
-    double bulge = m->bulge * exp(-sqrt(r*r + (z/0.6)*(z/0.6)) / (m->R * 0.055));
-    if (m->barred)
-    {
-        double along = exp(-pow(r / (m->R * 0.34), 4.0));
-        double across = exp(-pow(y / (m->R * 0.055), 2.0));
-        bulge += 0.55 * along * across * exp(-az / m->hz);
-    }
-
-    // Star clouds. The disc is not smooth, and from inside it that lumpiness is most of the texture.
-    double eclump = 0.72 + 0.56 * band_noise(x*m->noisescale*0.6 + 40.5,
-        y*m->noisescale*0.6, z*m->noisescale*1.8);
-    *emit = disc*arm*eclump + bulge;
-
-    // The bulge is old and yellow, the arms are where the young blue stars are, and between them the
-    // disc sits at about the Sun's own colour.
-    double bfrac = bulge / fmax(1e-30, *emit);
-    *bv = 0.85*bfrac + (1.0 - bfrac) * (0.72 - 0.42*pow(two, 1.7));
-
-    // Dust: thinner than the stars, a ring rather than a central peak -- the inner kiloparsecs are
-    // swept clear -- wound tighter to the arms than the light is, and clumped hard, since it is the
-    // clumping and not the smooth part that reads as lanes.
-    double ring = exp(-r / (m->hR * 0.9)) * (1.0 - exp(-r / (m->R * 0.07)));
-    double darm = 0.12 + 0.88 * pow(0.5 + 0.5*cos(2.0*(phi + 0.30)), 3.0);
-    double n = 0.65 * band_noise(x*m->noisescale, y*m->noisescale, z*m->noisescale*3.0)
-        + 0.35 * band_noise(x*m->noisescale*2.7 + 11.3, y*m->noisescale*2.7, z*m->noisescale*8.0);
-    double clump = pow(fmax(0.0, n*1.75 - 0.28), 1.6);
-
-    *dust = ring * exp(-az / m->hzd) * darm * clump;
-}
-
-static void build_galaxy_band(Galaxy *g, double R, Point tmprel)
-{
-    GalaxyDiscModel m;
-    band_model(g, R, &m);
-
-    // The disc's own axes taken back out into world space, the way draw_galaxy() gets them. e3 is
-    // the pole: local_system_plane maps it onto yaxis, so the inverse rotation returns it.
-    Rotation pl = g->location.local_system_plane;
-    Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
-    Point e2 = rotate3D(zaxis, center, pl.v, -pl.a);
-    Point e3 = rotate3D(yaxis, center, pl.v, -pl.a);
-    e1.scale(1); e2.scale(1); e3.scale(1);
-
-    double dmax = (tmprel.magnitude() + R) * 2.0;       // far enough to be out the other side
-    double dlnd = log(dmax / band_march_near) / band_march_steps;
-
-    // The emission colour only ever depends on B-V, and the march asks for it a few hundred thousand
-    // times, so the two pow()s per call are worth doing once into a table instead.
-    const int ncol = 48;
-    float coltab[ncol][3];
-    for (int c = 0; c < ncol; c++)
-    {
-        Color col = Color::color_from_magnitude_indices(0, 0.20 + 0.80 * c / (ncol - 1.0));
-        col.normalize(1.0);
-        coltab[c][0] = (float)col.red; coltab[c][1] = (float)col.green; coltab[c][2] = (float)col.blue;
-    }
-
-    band_parcels.clear();
-
-    // Rows of cells, spaced finely along the plane and coarsely away from it. lat = bmax*(a*t +
-    // (1-a)*t^3) over t in [-1,1]; the cubic does the crowding and `a` keeps its derivative -- and
-    // so the row spacing -- from collapsing to nothing at the plane, which is what would happen with
-    // a plain power law and would cost thousands of cells to no purpose.
-    double bmax = band_max_latitude;
-    double aa = band_plane_cell / (band_plane_cell*2.0 + band_polar_cell);
-    int nrow = (int)ceil(2.0 * bmax * aa / (band_plane_cell * 0.5));
-    if (nrow < 8) nrow = 8;
-    if (nrow & 1) nrow++;
-
-    for (int j = 0; j < nrow; j++)
-    {
-        double t = -1.0 + (j + 0.5) * (2.0 / nrow);
-        double lat = bmax * (aa*t + (1.0 - aa)*t*t*t);
-        double dlatdt = bmax * (aa + 3.0*(1.0 - aa)*t*t);
-        double hlat = dlatdt * (2.0 / nrow);            // this row's angular height
-
-        double cl = cos(lat), sl = sin(lat);
-        int ncol_row = (int)ceil(2.0 * _pi * cl / hlat);
-        if (ncol_row < 4) ncol_row = 4;
-        double hlon = 2.0 * _pi * cl / ncol_row;        // ...and the width of its cells
-
-        // One blob per cell, sized to the cell, with the alpha divided by how far the overlapping
-        // blobs over-cover: a cone of radius q integrates to pi*q*q/3, so that over the cell area is
-        // exactly the factor by which neighbours would otherwise double-count each other.
-        double q = 1.20 * fmax(hlat, hlon);
-        double cover = (_pi * q * q / 3.0) / fmax(1e-12, hlat * hlon);
-
-        for (int i = 0; i < ncol_row; i++)
-        {
-            double lon = (i + 0.5) * (2.0 * _pi / ncol_row);
-            Point dir = e1*(cl*cos(lon)) + e2*(cl*sin(lon)) + e3*sl;
-
-            // March it. tau runs from the viewer outwards, so exp(-tau) is always the extinction
-            // between here and the step being added -- which is what makes the ordering come out
-            // right without anything having to be sorted afterwards.
-            double ir = 0, ig = 0, ib = 0, tr = 0, tg = 0, tb = 0;
-            for (int s = 0; s < band_march_steps; s++)
-            {
-                double d = band_march_near * exp(dlnd * (s + 0.5));
-                double ds = d * dlnd;
-
-                Point v = dir*d - tmprel;               // and now measured from the disc's centre
-                double x = v.x*e1.x + v.y*e1.y + v.z*e1.z;
-                double y = v.x*e2.x + v.y*e2.y + v.z*e2.z;
-                double z = v.x*e3.x + v.y*e3.y + v.z*e3.z;
-
-                double emit, dust, bv;
-                band_density(&m, x, y, z, &emit, &dust, &bv);
-
-                if (emit > 0)
-                {
-                    // Fade the diffuse light in across the distance where the stars stop being
-                    // drawn one by one, so that the near ones are not counted twice over.
-                    double resolved = (d - band_resolved) / (band_resolved_full - band_resolved);
-                    if (resolved > 0)
-                    {
-                        double w = emit * ds / m.hR * fmin(1.0, resolved);
-                        int c = (int)((bv - 0.20) * (ncol - 1) / 0.80 + 0.5);
-                        if (c < 0) c = 0;
-                        if (c >= ncol) c = ncol - 1;
-                        ir += w * coltab[c][0] * exp(-tr);
-                        ig += w * coltab[c][1] * exp(-tg);
-                        ib += w * coltab[c][2] * exp(-tb);
-                    }
-                }
-
-                if (dust > 0)
-                {
-                    double dtau = band_dust_gain * dust * ds / m.hR;
-                    tr += dtau * band_ext_r;
-                    tg += dtau * band_ext_g;
-                    tb += dtau * band_ext_b;
-                    if (tr > 24.0) break;               // nothing beyond this can ever get out
-                }
-            }
-
-            ir *= band_emit_gain; ig *= band_emit_gain; ib *= band_emit_gain;
-            double peak = fmax(ir, fmax(ig, ib));
-            if (peak <= 0) continue;
-
-            double alpha = peak / cover;
-            if (alpha < 0.004) continue;                // under a level of alpha; not worth a blob
-            if (alpha > 1.0) alpha = 1.0;
-
-            GalaxyParcel p;
-            p.dir = dir;
-            p.ang = (float)q;
-            p.alpha = (float)alpha;
-            p.r = (unsigned char)fmin(255.0, 255.0 * ir / peak);
-            p.g = (unsigned char)fmin(255.0, 255.0 * ig / peak);
-            p.b = (unsigned char)fmin(255.0, 255.0 * ib / peak);
-            band_parcels.push_back(p);
-        }
-    }
-}
-
 void draw_galaxy_band()
 {
-    if (!show_galaxy_band || whtbkgd || inside_galaxy_idx < 0) return;
+    if (!show_galaxy_band || inside_galaxy_idx < 0) return;
 
     CelestialObject *cel = cels[inside_galaxy_idx];
     Galaxy *g = (Galaxy*)cel;
-    double R = cel->distance * g->angular_diameter * 0.5;
-    if (!(R > 0)) return;
+    if (g->tmprel.magnitude() > g->volumetric_mean_radius) return;
 
-    // Rebuilding marches every ray again, so it happens only once the viewer has actually gone
-    // somewhere -- a couple of hundred light years, for our own Galaxy. Standing on a planet, or
-    // orbiting one, never triggers it.
-    if (band_built_for != cel || band_built_radius != R
-        || (cel->tmprel - band_built_at).squared_magnitude() > (R*0.002)*(R*0.002))
+    int h, i, j, n;
+
+    // The .dat file's longitude runs in galactic coordinates with 0 at the galactic center, so
+    // the seam at the +-pi wraparound naturally falls 180 degrees from it -- but only once the
+    // pattern is spun so that longitude 0 points where the CURRENT viewer actually sees the
+    // center, not where Sol does. local_system_plane only encodes that fixed Sol-relative
+    // orientation of the disc, so the extra spin has to be measured in the disc's own local
+    // frame (canonical zaxis = longitude 0), the same way incl_and_node_from_system_plane
+    // recovers an ascending node. Measuring it in world/ICRF coordinates instead -- as if the
+    // world's y-axis were the disc's pole -- is why the band used to fall apart for any disc
+    // whose plane sits far from the ICRF equator, the Milky Way itself very much included.
+    Rotation pl = g->location.local_system_plane;
+    Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    ImDrawList *list = ImGui::GetBackgroundDrawList();
+    ImU32 gcol = rgba_apply_redlight(IM_COL32(255, 255, 255, 64));      // TODO: Galaxy color.
+
+    for (h=0; h<2; h++)
     {
-        build_galaxy_band(g, R, cel->tmprel);
-        band_built_for = cel;
-        band_built_at = cel->tmprel;
-        band_built_radius = R;
-    }
-
-    // Daylight washes the band out through the same magnitude shift the point sources get.
-    double gain = global_brightness * pow(magnbase, sky_mag_shift);
-    if (gain < 1e-3) return;
-
-    // Radians to pixels. The sky map is equirectangular over pi radians of the display half-width;
-    // everything else is the gnomonic projection, where it is just the zoom.
-    double radtopx = (view_mode == vm_skymap) ? (zoom * dispcx / _pi) : (zoom * dispcx);
-
-    static float fan_cos[band_fan_segments], fan_sin[band_fan_segments];
-    static bool fan_ready = false;
-    if (!fan_ready)
-    {
-        for (int s = 0; s < band_fan_segments; s++)
+        n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
+        if (n<2) continue;
+        ImVec2 prev;
+        bool prevgood = false;
+        for (i=0; i<=n; i++)
         {
-            fan_cos[s] = (float)cos(s * (_pi*2.0/band_fan_segments));
-            fan_sin[s] = (float)sin(s * (_pi*2.0/band_fan_segments));
-        }
-        fan_ready = true;
-    }
+            j = i;
+            if (j >= n) j -= n;
 
-    ImDrawList* dl = ImGui::GetBackgroundDrawList();
-    ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
-    double w = dispcx*2, h = dispcy*2;
+            Point pt = Point::from_ra_dec(
+                h ? g->band.road2_gra[j] : g->band.road1_gra[j],
+                h ? g->band.road2_gdecl[j] : g->band.road1_gdecl[j],
+                g->volumetric_mean_radius, 0);
+            pt = rotate3D(pt, center, yaxis, gyaw);
+            pt = rotate3D(pt, center, pl.v, -pl.a);
+            pt += g->tmprel;
+            pt = to_viewer_plane(pt, 1);
+            pt = refract_true_point(pt);
 
-    for (size_t i = 0; i < band_parcels.size(); i++)
-    {
-        const GalaxyParcel &p = band_parcels[i];
+            Cartesian2D cart(pt, azimuth, altitude, zoom);
+            ImVec2 curr;
+            bool currgood = false;
+            if (cart.x > -1e4 && cart.y > -1e4)
+            {
+                curr.x = dispcx + dispcx * cart.x;
+                curr.y = dispcy + dispcx * cart.y;
+                currgood = true;
+            }
 
-        // No refraction: it is under a degree even at the horizon, and on a glow with no edge to it
-        // that cannot be seen, whereas the extra rotation per parcel very much can be felt.
-        Cartesian2D c = Cartesian2D(to_viewer_plane(p.dir), azimuth + azimuth_correction, altitude, zoom);
-        if (c.x < -1e4 || c.y < -1e4) continue;                     // behind the camera
+            if (prevgood && currgood)
+            {
+                list->AddLine(prev, curr, gcol);
+            }
 
-        double sx = dispcx + c.x*dispcx, sy = dispcy + c.y*dispcx;
-        double sr = p.ang * radtopx;
-        double a = p.alpha * gain;
-        if (sr < 1.2)
-        {
-            a *= (sr/1.2)*(sr/1.2);                                 // keep the flux when sub-pixel
-            sr = 1.2;
-        }
-        if (sx + sr < 0 || sx - sr > w || sy + sr < 0 || sy - sr > h) continue;
-
-        int ai = (int)(a * 255.0);
-        if (ai < 1) continue;
-        if (ai > 255) ai = 255;
-
-        ImU32 mid = rgba_apply_redlight(IM_COL32(p.r, p.g, p.b, ai));
-        ImU32 rim = rgba_apply_redlight(IM_COL32(p.r, p.g, p.b, 0));
-
-        dl->PrimReserve(band_fan_segments*3, band_fan_segments+1);
-        unsigned int base = dl->_VtxCurrentIdx;
-        dl->PrimWriteVtx(ImVec2(sx, sy), uv, mid);
-        for (int s = 0; s < band_fan_segments; s++)
-            dl->PrimWriteVtx(ImVec2(sx + fan_cos[s]*sr, sy + fan_sin[s]*sr), uv, rim);
-        for (int s = 0; s < band_fan_segments; s++)
-        {
-            dl->PrimWriteIdx((ImDrawIdx)base);
-            dl->PrimWriteIdx((ImDrawIdx)(base + 1 + s));
-            dl->PrimWriteIdx((ImDrawIdx)(base + 1 + ((s+1) % band_fan_segments)));
+            prev = curr;
+            prevgood = currgood;
         }
     }
 }

@@ -79,7 +79,8 @@ int main (int argc, char** argv)
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
     std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
-    bool argsfs = false;
+    bool argsfs = false, argsF1 = false, argsF2 = false, argsF3 = false, argsF4 = false, argsF5 = false, argsF6 = false, argsF7 = false, argsF8 = false,
+        argsF9 = false, argsF10 = false, argsF11 = false, argsF12 = false;
 
     memset(lookfor, 0, name_max_len);
     memset(edit_name, 0, name_max_len);
@@ -162,6 +163,18 @@ int main (int argc, char** argv)
         {
             nosats = true;
         }
+        else if (!strcmp(argv[l], "F1")) argsF1 = true;
+        else if (!strcmp(argv[l], "F2")) argsF2 = true;
+        else if (!strcmp(argv[l], "F3")) argsF3 = true;
+        else if (!strcmp(argv[l], "F4")) argsF4 = true;
+        else if (!strcmp(argv[l], "F5")) argsF5 = true;
+        else if (!strcmp(argv[l], "F6")) argsF6 = true;
+        else if (!strcmp(argv[l], "F7")) argsF7 = true;
+        else if (!strcmp(argv[l], "F8")) argsF8 = true;
+        else if (!strcmp(argv[l], "F9")) argsF9 = true;
+        else if (!strcmp(argv[l], "F10")) argsF10 = true;
+        else if (!strcmp(argv[l], "F11")) argsF11 = true;
+        else if (!strcmp(argv[l], "F12")) argsF12 = true;
         else if (!strcmp(argv[l], "keyprobe"))
         {
             keyprobe = true;
@@ -690,6 +703,18 @@ int main (int argc, char** argv)
                 argszoom = "";
                 viewchanged = true;
             }
+            else if (argsF1) { process_key_F1(); argsF1 = false; }
+            else if (argsF2) { process_key_F2(); argsF2 = false; }
+            else if (argsF3) { process_key_F3(); argsF3 = false; }
+            else if (argsF4) { process_key_F4(); argsF4 = false; }
+            else if (argsF5) { process_key_F5(); argsF5 = false; }
+            else if (argsF6) { process_key_F6(); argsF6 = false; }
+            else if (argsF7) { process_key_F7(); argsF7 = false; }
+            else if (argsF8) { process_key_F8(); argsF8 = false; }
+            else if (argsF9) { process_key_F9(); argsF9 = false; }
+            else if (argsF10) { process_key_F10(); argsF10 = false; }
+            else if (argsF11) { process_key_F11(); argsF11 = false; }
+            else if (argsF12) { process_key_F12(); argsF12 = false; }
             else while (args1char.size())
             {
                 char c = args1char.c_str()[0];

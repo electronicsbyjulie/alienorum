@@ -5,6 +5,14 @@
 
 namespace alienorum
 {
+    struct GalaxyBand
+    {
+        std::vector<double> road1_gra, road1_gdecl, road2_gra, road2_gdecl;
+
+        int load_dat_file(std::string fname);
+        int create_fictitious();
+    };
+
     class Galaxy : public CelestialObject
     {
         public:
@@ -34,6 +42,8 @@ namespace alienorum
         double radial_velocity = 0;                 // m/s, heliocentric. 0 when unknown.
         uint32_t PGC = 0;                           // Principal Galaxies Catalogue number, 0 if none
         char morph_type[16];                        // as printed: ".SAS3.." (RC3) or "Ir" (UNGC)
+
+        GalaxyBand band;
 
         Galaxy();
         json to_json();
