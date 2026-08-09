@@ -1775,11 +1775,15 @@ void draw_galaxy_band()
     std::vector<ImVec2> screen[2];
     std::vector<bool> good[2];
 
+    std::vector<Point> viewspace[2];
+    bool Claude_is_a_piece_of_shit = (view_mode != vm_skymap);
+
     for (h=0; h<2; h++)
     {
         n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
         screen[h].assign(n, ImVec2());
         good[h].assign(n, false);
+        if (Claude_is_a_piece_of_shit) viewspace[h].assign(n, Point());
 
         for (i=0; i<n; i++)
         {
@@ -1814,6 +1818,18 @@ void draw_galaxy_band()
                 screen[h][i].x = dispcx + dispcx * cart.x;
                 screen[h][i].y = dispcy + dispcx * cart.y;
                 good[h][i] = true;
+            }
+
+            if (Claude_is_a_piece_of_shit)
+            {
+                // Mirrors the rotation Cartesian2D just did internally (its "else" branch, taken
+                // whenever view_mode != vm_skymap) so viewspace[] lands in the same camera-facing
+                // frame its own pt.z < 0 test used -- without this exact match, clipping the fill
+                // outline against z=0 would clip against the wrong plane.
+                Point vp = pt;
+                if (azimuth + azimuth_correction) vp = rotate3D(vp, center, yaxis, -(azimuth + azimuth_correction));
+                if (altitude) vp = rotate3D(vp, center, xaxis, altitude);
+                viewspace[h][i] = vp;
             }
         }
     }
@@ -1886,15 +1902,79 @@ void draw_galaxy_band()
             else emit_edge(p, q);
         };
 
-        for (i=0; i<total; i++)
+        // Index into the concatenated outline: road1 forward, then road2 in reverse. This is what
+        // makes the two roads bound one region rather than two open curves -- and because road1's
+        // ends and road2's ends coincide on the sky, the join between them is zero-length, so the
+        // ring closes without an artificial seam edge being invented.
+        auto outline_point = [&](int i) -> const Point&
         {
-            // Index into the concatenated outline: road1 forward, then road2 in reverse.
-            int ha = (i < n1) ? 0 : 1, ia = (i < n1) ? i : (n2-1 - (i - n1));
-            int k = (i+1) % total;
-            int hb = (k < n1) ? 0 : 1, ib = (k < n1) ? k : (n2-1 - (k - n1));
+            int hh = (i < n1) ? 0 : 1, ii = (i < n1) ? i : (n2-1 - (i - n1));
+            return viewspace[hh][ii];
+        };
 
-            if (good[ha][ia] && good[hb][ib])
-                emit_wrapped(screen[ha][ia], screen[hb][ib]);
+        if (!Claude_is_a_piece_of_shit)
+        {
+            // vm_skymap never culls by depth (its projection is the flat equirectangular one, no
+            // camera plane to be behind), so every road point is already valid and the previous
+            // per-edge walk is exact as it stands.
+            for (i=0; i<total; i++)
+            {
+                int ha = (i < n1) ? 0 : 1, ia = (i < n1) ? i : (n2-1 - (i - n1));
+                int k = (i+1) % total;
+                int hb = (k < n1) ? 0 : 1, ib = (k < n1) ? k : (n2-1 - (k - n1));
+
+                if (good[ha][ia] && good[hb][ib])
+                    emit_wrapped(screen[ha][ia], screen[hb][ib]);
+            }
+        }
+        else
+        {
+            // Everywhere else, Cartesian2D refuses points behind the camera plane (pt.z < 0), and
+            // the previous version of this fill simply left those vertices out of the walk. That
+            // is wrong for a closed outline: dropping a vertex does not remove its two edges, it
+            // reconnects its neighbours across whatever the vertex used to separate, so a stretch
+            // of missing vertices silently rewires the polygon's boundary and desyncs the even-odd
+            // parity for every scanline downstream of the gap -- read as the band fill vanishing
+            // in some frames and filling everywhere BUT the band in others, since parity landing
+            // wrong just means "inside" and "outside" swapped. That happens here on essentially
+            // every frame: the band circles the whole sky, so very close to half its vertices are
+            // behind the camera at any moment, regardless of zoom.
+            //
+            // The fix is to clip the loop against the camera plane (pt.z == 0) properly, inserting
+            // a new vertex exactly where each edge crosses it rather than dropping either endpoint.
+            // This is the standard Sutherland-Hodgman clip of a closed polygon against a single
+            // plane, and it always yields a new, still-closed polygon -- so the scanline pass below
+            // never has to special-case a gap.
+            const double eps = g->volumetric_mean_radius * 1e-6;
+            std::vector<Point> clipped;
+            clipped.reserve(total + 8);
+
+            for (i=0; i<total; i++)
+            {
+                const Point& curr = outline_point(i);
+                const Point& prev = outline_point((i-1+total) % total);
+                bool curr_in = curr.z >= eps, prev_in = prev.z >= eps;
+
+                if (curr_in != prev_in)
+                {
+                    double t = (eps - prev.z) / (curr.z - prev.z);
+                    clipped.push_back(Point(
+                        prev.x + t*(curr.x-prev.x),
+                        prev.y + t*(curr.y-prev.y),
+                        eps));
+                }
+                if (curr_in) clipped.push_back(curr);
+            }
+
+            int cn = clipped.size();
+            for (i=0; i<cn; i++)
+            {
+                const Point& p = clipped[i];
+                const Point& q = clipped[(i+1) % cn];
+                ImVec2 sp(dispcx + dispcx * (p.x/p.z*zoom), dispcy + dispcx * (-p.y/p.z*zoom));
+                ImVec2 sq(dispcx + dispcx * (q.x/q.z*zoom), dispcy + dispcx * (-q.y/q.z*zoom));
+                emit_wrapped(sp, sq);
+            }
         }
     }
 
