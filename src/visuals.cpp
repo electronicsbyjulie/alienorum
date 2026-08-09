@@ -1932,6 +1932,7 @@ void draw_galaxy_band()
         }
     }
 
+    #if 0
     // Outline, reusing the same projected points computed above.
     for (h=0; h<2; h++)
     {
@@ -1949,6 +1950,7 @@ void draw_galaxy_band()
             }
         }
     }
+    #endif
 }
 
 void draw_objects()
