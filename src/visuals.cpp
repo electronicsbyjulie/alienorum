@@ -1767,13 +1767,21 @@ void draw_galaxy_band()
             j = i;
             if (j >= n) j -= n;
 
+            double road_dist = h ? g->band.road2_dist[j] : g->band.road1_dist[j];
             Point pt = Point::from_ra_dec(
                 h ? g->band.road2_gra[j] : g->band.road1_gra[j],
                 h ? g->band.road2_gdecl[j] : g->band.road1_gdecl[j],
                 g->volumetric_mean_radius, 0);
+            if (road_dist) pt.y *= road_dist / g->volumetric_mean_radius;
             pt = rotate3D(pt, center, yaxis, gyaw);
             pt = rotate3D(pt, center, pl.v, -pl.a);
             pt += g->tmprel;
+            if (!road_dist)
+            {
+                road_dist = pt.magnitude();
+                if (h) g->band.road2_dist[j] = road_dist;
+                else g->band.road1_dist[j] = road_dist;
+            }
             pt = to_viewer_plane(pt, 1);
             pt = refract_true_point(pt);
 

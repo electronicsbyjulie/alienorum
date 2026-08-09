@@ -7,7 +7,7 @@ namespace alienorum
 {
     struct GalaxyBand
     {
-        std::vector<double> road1_gra, road1_gdecl, road2_gra, road2_gdecl;
+        std::vector<double> road1_gra, road1_gdecl, road1_dist, road2_gra, road2_gdecl, road2_dist;
 
         int load_dat_file(std::string fname);
         int create_fictitious();

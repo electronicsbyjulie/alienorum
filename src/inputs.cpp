@@ -430,6 +430,7 @@ void process_key_cmd_char(char c)
         whereami = iamhome;
         trackidx = -1;
         view_mode = vm_skyatlas;
+        vplane_mode = vplane_local;
         viewer_lat = viewer_home_lat;
         viewer_lon = viewer_home_lon;
         viewer_locale = "";
@@ -438,7 +439,7 @@ void process_key_cmd_char(char c)
         global_brightness = default_brightness;
         global_gamma = viewer_gamma;
         neighb_rthresh = 25 * light_year;
-        show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = label_galaxies = true;
+        show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = label_galaxies = show_galaxy_band = true;
         show_orbits = false;
         cbolbls_selected_idx = lbltype_brightest;
         appmagn_lblcut = 2.5;

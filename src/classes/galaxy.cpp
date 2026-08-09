@@ -66,12 +66,14 @@ int alienorum::GalaxyBand::load_dat_file(std::string fname)
             {
                 road1_gra.push_back(atof(buffer));
                 road1_gdecl.push_back(atof(&comma[1]));
+                road1_dist.push_back(0);
                 num_read++;
             }
             else if (northsouth == 'S')
             {
                 road2_gra.push_back(atof(buffer));
                 road2_gdecl.push_back(atof(&comma[1]));
+                road2_dist.push_back(0);
                 num_read++;
             }
         }
