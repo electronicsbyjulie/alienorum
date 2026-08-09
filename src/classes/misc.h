@@ -167,6 +167,7 @@ enum ViewMode
     vm_model = 4                // Not implemented yet.
 };
 
+#define NUM_VPLANES 4
 enum ViewerPlaneMode
 {
     vplane_local,
@@ -248,6 +249,7 @@ extern std::string loading_msg, viewer_theme;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
+extern const char* vptext[NUM_VPLANES];
 extern ViewerPlaneMode vplane_mode;
 extern ViewMode view_mode;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, took_off_from,

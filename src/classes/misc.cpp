@@ -16,6 +16,7 @@ std::vector<std::string> themes;
 std::string viewer_theme = "Perseus";
 std::mutex mtx;
 const char* vmtext[NUM_VIEWMODES] = { "Sky Atlas", "Horizon", "Sun Clock", "Sky Map" };
+const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_skyatlas;
 int ncelobjs = 0;
