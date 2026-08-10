@@ -135,8 +135,23 @@ if(WIN32)
 		catalogs/soles_alienorum.dat
 		catalogs/mainseq.dat
 		catalogs/urls.dat
+		catalogs/Milky_Way.dat
 		DESTINATION catalogs)
 	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
+
+	# Opened by bare relative name, so they resolve against the working directory rather
+	# than catalogs/ -- consline.dat in read_cons_lines() (loaders.cpp), starname.dat in
+	# CatalogReader::read_starname_dat() and exoname.dat in cat.cpp, locales.json in
+	# CelestialObject::read_locales() as called from visuals.cpp and dialogs.cpp. Every one
+	# of those call sites treats a missing file as "nothing to load" and returns without
+	# complaining, so leaving them out costs constellation lines, star and exoplanet proper
+	# names, and place names, with no error to explain why.
+	install(FILES
+		consline.dat
+		starname.dat
+		exoname.dat
+		locales.json
+		DESTINATION .)
 
 	# Osculating elements for the local solar system (Sun<->planets, Earth-Moon, the
 	# Galilean moons). Only ever read locally (see Orbit::read_osc_elements in
