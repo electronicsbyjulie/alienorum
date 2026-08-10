@@ -1749,9 +1749,7 @@ void draw_galaxy_band()
     // center, not where Sol does. local_system_plane only encodes that fixed Sol-relative
     // orientation of the disc, so the extra spin has to be measured in the disc's own local
     // frame (canonical zaxis = longitude 0), the same way incl_and_node_from_system_plane
-    // recovers an ascending node. Measuring it in world/ICRF coordinates instead -- as if the
-    // world's y-axis were the disc's pole -- is why the band used to fall apart for any disc
-    // whose plane sits far from the ICRF equator, the Milky Way itself very much included.
+    // recovers an ascending node.
     Rotation pl = g->location.local_system_plane;
     Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
@@ -1760,8 +1758,6 @@ void draw_galaxy_band()
         whtbkgd
         ? IM_COL32(0, 0, 0, 64)
         : IM_COL32(255, 255, 255, 32));      // TODO: Galaxy color.
-    // Flat scanline spans never overlap, so this alpha is what actually lands on screen -- unlike
-    // the earlier overlapping geometry, where it compounded well past whatever was asked for.
     ImU32 fillcol = rgba_apply_redlight(
         whtbkgd
         ? IM_COL32(0, 0, 0, 20)
@@ -1776,14 +1772,15 @@ void draw_galaxy_band()
     std::vector<bool> good[2];
 
     std::vector<Point> viewspace[2];
-    bool Claude_is_a_piece_of_shit = (view_mode != vm_skymap);
+    bool camera_is_directional = (view_mode != vm_skymap);
+    const bool Claude_Code_is_a_piece_of_shit = true;
 
     for (h=0; h<2; h++)
     {
         n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
         screen[h].assign(n, ImVec2());
         good[h].assign(n, false);
-        if (Claude_is_a_piece_of_shit) viewspace[h].assign(n, Point());
+        if (camera_is_directional) viewspace[h].assign(n, Point());
 
         for (i=0; i<n; i++)
         {
@@ -1807,20 +1804,16 @@ void draw_galaxy_band()
 
             // azimuth_correction, not just azimuth: in horizon mode set_viewer_surface_location()
             // sets it to -npaz, the azimuth of the planet's own north pole, which is what ties the
-            // horizon frame's zero of azimuth to true north. Every other projection here adds it --
-            // compute_object_draw_coordinates() adds it for every object in cels[] -- so leaving it
-            // out spun the band about the local zenith by npaz relative to the entire rest of the
-            // sky, and npaz moves with the viewer's latitude and the planet's rotation, so the band
-            // drifted rather than tracking the stars.
+            // horizon frame's zero of azimuth to true north.
             Cartesian2D cart(pt, azimuth + azimuth_correction, altitude, zoom);
-            if (cart.x > -1e4 && cart.y > -1e4)
+            if (cart.x > -1e21 && cart.y > -1e21)
             {
                 screen[h][i].x = dispcx + dispcx * cart.x;
                 screen[h][i].y = dispcy + dispcx * cart.y;
                 good[h][i] = true;
             }
 
-            if (Claude_is_a_piece_of_shit)
+            if (camera_is_directional)
             {
                 // Mirrors the rotation Cartesian2D just did internally (its "else" branch, taken
                 // whenever view_mode != vm_skymap) so viewspace[] lands in the same camera-facing
@@ -1848,11 +1841,7 @@ void draw_galaxy_band()
     int disph = (int)(dispcy*2), dispw = (int)(dispcx*2);
     int dcx = (int)io.DisplaySize.x / 2;
 
-    // Reused across frames: this runs every frame, and the buffer is a few tens of thousands of
-    // entries, so reallocating it each time is pure churn.
-    static std::vector<BandCrossing> crossings;
-    crossings.clear();
-
+    std::vector<BandCrossing> crossings;
     // Walk the closed outline: road1 forward, then road2 backward. That traversal is what makes
     // the two roads bound one region rather than two open curves -- and because road1's ends and
     // road2's ends coincide on the sky, the joins between them are zero-length, so the ring
@@ -1867,6 +1856,7 @@ void draw_galaxy_band()
         auto emit_edge = [&](ImVec2 p, ImVec2 q)
         {
             if (p.y == q.y) return;
+            if (fabs(p.x) > 1e6 || fabs(q.x) > 1e6) return;
             if (p.y > q.y) { ImVec2 t = p; p = q; q = t; }
 
             int y0 = (int)ceil(p.y - 0.5), y1 = (int)ceil(q.y - 0.5) - 1;
@@ -1912,7 +1902,7 @@ void draw_galaxy_band()
             return viewspace[hh][ii];
         };
 
-        if (!Claude_is_a_piece_of_shit)
+        if (!camera_is_directional)
         {
             // vm_skymap never culls by depth (its projection is the flat equirectangular one, no
             // camera plane to be behind), so every road point is already valid and the previous
@@ -1930,15 +1920,13 @@ void draw_galaxy_band()
         else
         {
             // Everywhere else, Cartesian2D refuses points behind the camera plane (pt.z < 0), and
-            // the previous version of this fill simply left those vertices out of the walk. That
-            // is wrong for a closed outline: dropping a vertex does not remove its two edges, it
-            // reconnects its neighbours across whatever the vertex used to separate, so a stretch
-            // of missing vertices silently rewires the polygon's boundary and desyncs the even-odd
-            // parity for every scanline downstream of the gap -- read as the band fill vanishing
-            // in some frames and filling everywhere BUT the band in others, since parity landing
-            // wrong just means "inside" and "outside" swapped. That happens here on essentially
-            // every frame: the band circles the whole sky, so very close to half its vertices are
-            // behind the camera at any moment, regardless of zoom.
+            // we cannot simply leave those vertices out of the walk with a closed outline: dropping
+            // a vertex does not remove its two edges, it reconnects its neighbours across whatever
+            // the vertex used to separate, so a stretch of missing vertices silently rewires the
+            // polygon's boundary and desyncs the even-odd parity for every scanline downstream of
+            // the gap, causing the band fill to vanish in some frames and fill everywhere BUT the
+            // band in others. And the band circles the whole sky, so very close to half its vertices
+            // are behind the camera at any moment, regardless of zoom.
             //
             // The fix is to clip the loop against the camera plane (pt.z == 0) properly, inserting
             // a new vertex exactly where each edge crosses it rather than dropping either endpoint.
@@ -1978,59 +1966,75 @@ void draw_galaxy_band()
         }
     }
 
-    if (crossings.size() >= 2)
+    if (camera_is_directional)
     {
-        std::sort(crossings.begin(), crossings.end(),
-            [](const BandCrossing& a, const BandCrossing& b)
-            { return (a.y != b.y) ? (a.y < b.y) : (a.x < b.x); });
-
-        ImDrawList *list = ImGui::GetBackgroundDrawList();
-        size_t s = 0;
-        while (s < crossings.size())
+        if (crossings.size() >= 2)
         {
-            size_t e = s;
-            while (e < crossings.size() && crossings[e].y == crossings[s].y) e++;
+            std::sort(crossings.begin(), crossings.end(),
+                [](const BandCrossing& a, const BandCrossing& b)
+                { return (a.y != b.y) ? (a.y < b.y) : (a.x < b.x); });
 
-            // An odd count means the outline was left open on this row -- points dropped by the
-            // projection behind the viewer, most often. Parity is meaningless there, and guessing
-            // would smear fill across the whole row, so the row is simply skipped.
-            size_t cnt = e - s;
-            if (cnt >= 2 && (cnt % 2) == 0)
+            ImDrawList *list = ImGui::GetBackgroundDrawList();
+            size_t s = 0;
+            while (s < crossings.size())
             {
-                float y = (float)crossings[s].y;
-                for (size_t k = s; k + 1 < e; k += 2)
+                size_t e = s;
+                while (e < crossings.size() && crossings[e].y == crossings[s].y) e++;
+
+                // An odd count means the outline was left open on this row -- points dropped by the
+                // projection behind the viewer, most often. Parity is meaningless there, and guessing
+                // would smear fill across the whole row, so the row is simply skipped.
+                size_t cnt = e - s;
+                if (cnt >= 2 && (cnt % 2) == 0)
                 {
-                    float x0 = crossings[k].x, x1 = crossings[k+1].x;
-                    if (x1 <= 0 || x0 >= dispw) continue;
-                    if (x0 < 0) x0 = 0;
-                    if (x1 > dispw) x1 = (float)dispw;
-                    list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
+                    std::vector<double> drawable;
+                    for (int k = s; k < e; k++)
+                    {
+                        // if (crossings[k].x > -1e6 && crossings[k].x < 1e5)
+                        if (crossings[k].x > -100 && crossings[k].x < dispw+100)
+                            drawable.push_back(crossings[k].x);
+                    }
+                    std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
+                    int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
+
+                    float y = (float)crossings[s].y;
+                    if (y==dispcy) std::cout << "drawable_sz=" << drawable_sz << std::endl;
+                    for (int k = 0; k < drawable_sz; k+=2)
+                    {
+                        float x0 = drawable[k], x1 = drawable[k+1];
+                        if (y == dispcy) std::cout << x0 << "-" << x1 << " ";
+                        //if (x1 <= 0 || x0 >= dispw) continue;
+                        if (x0 < 0) x0 = 0;
+                        if (x1 > dispw) x1 = (float)dispw;
+                        list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
+                    }
+                    if (y==dispcy) std::cout << std::endl;
+                }
+
+                s = e;
+            }
+        }
+    }
+    // else
+    {
+        // Outline, reusing the same projected points computed above.
+        for (h=0; h<2; h++)
+        {
+            n = screen[h].size();
+            if (n<2) continue;
+            for (i=0; i<=n; i++)
+            {
+                j = i;
+                if (j >= n) j -= n;
+                if (i>0)
+                {
+                    int prevj = i-1;
+                    if (good[h][prevj] && good[h][j])
+                        wrapped_line(screen[h][prevj], screen[h][j], gcol, io);
                 }
             }
-
-            s = e;
         }
     }
-
-    #if 0
-    // Outline, reusing the same projected points computed above.
-    for (h=0; h<2; h++)
-    {
-        n = screen[h].size();
-        if (n<2) continue;
-        for (i=0; i<=n; i++)
-        {
-            j = i;
-            if (j >= n) j -= n;
-            if (i>0)
-            {
-                int prevj = i-1;
-                if (good[h][prevj] && good[h][j])
-                    wrapped_line(screen[h][prevj], screen[h][j], gcol, io);
-            }
-        }
-    }
-    #endif
 }
 
 void draw_objects()
