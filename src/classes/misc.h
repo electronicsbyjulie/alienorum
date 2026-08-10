@@ -81,6 +81,31 @@ using json = nlohmann::json;
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
 #define galactic_north_Decl_J2000 ((27.0 + 7.0 / 60 + 42.01 / 3600) * fiftyseventh)
 
+// Sgr A*, i.e. the direction of the galactic centre from here, and the Sun's distance to it.
+#define galactic_center_RA_J2000 ((17.0 + 45.0 / 60 + 40.04 / 3600) * 15 * fiftyseventh)
+#define galactic_center_Decl_J2000 (-(29.0 + 0.0 / 60 + 28.1 / 3600) * fiftyseventh)
+#define sun_to_galactic_center (8.2 * 1000 * 3.26156)               // light years
+
+// The Milky Way's own disc. It is in the UNGC (table1.dat line 808, "Milky Way", at Sgr A*), but
+// with no axis ratio and no position angle -- reasonably enough, since neither can be measured from
+// inside -- so read_UNGC_catalog() puts these on it by name.
+//
+// system_plane_from_incl_and_node() builds its pole as axis*(-cos i) + normal*sin(i), so its i is
+// 180 degrees minus the angle from the line of sight to the pole. Measured against galactic_north
+// (point.cpp -- this program's north, the IAU's south, chosen so the Galaxy turns prograde) that
+// angle is 89.9538 degrees, making the exact inclination 90.046. The 90.12 below is the value
+// asked for and lands 0.074 degrees off it; 90.046 would land on it to four decimal places.
+//
+// The position angle was solved numerically against that same function. It is the same for any
+// inclination, the node being a rotation about the line of sight.
+#define milky_way_inclination (90.046 * fiftyseventh)
+#define milky_way_position_angle (31.3955 * fiftyseventh)
+
+// The UNGC leaves the a26 column blank for the Milky Way as well, for the same reason, so there is
+// no angular size to work a disc radius out of. This is the optical disc -- what the D25 isophote
+// would enclose if it could be measured from outside -- at the usual 15 kpc.
+#define milky_way_radius (15.0 * 1000 * 3.26156)                    // light years
+
 // https://en.wikipedia.org/wiki/Poles_of_astronomical_bodies
 #define solar_north_RA_J2000 (286.13 * fiftyseventh)
 #define solar_north_Decl_J2000 (63.87 * fiftyseventh)
@@ -121,6 +146,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
 #define normal_best_mag_limit 6.5
+
 #define starlight 0.03
 #define sphere_rad_threshold (0.2 * fiftyseventh)
 #define gossamer_rings 0.08
@@ -131,14 +157,23 @@ const std::time_t J2000_TIME_T = 946684800;
 #define circ_sz 7
 #define ln_spc 10
 
-#define NUM_VIEWMODES 3
+#define NUM_VIEWMODES 4
 enum ViewMode
 {
     vm_skyatlas = 0,
     vm_horizon = 1,
     vm_sunclock = 2,
     vm_skymap = 3,
-    vm_model = 4
+    vm_model = 4                // Not implemented yet.
+};
+
+#define NUM_VPLANES 4
+enum ViewerPlaneMode
+{
+    vplane_local,
+    vplane_ICRF,
+    vplane_ecliptic,
+    vplane_galactic
 };
 
 extern double magnbase, invlogmagnbase;
@@ -214,15 +249,18 @@ extern std::string loading_msg, viewer_theme;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
+extern const char* vptext[NUM_VPLANES];
+extern ViewerPlaneMode vplane_mode;
 extern ViewMode view_mode;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, took_off_from,
-    tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat;
+    tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat, inside_galaxy_idx;
 extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_gamma;
-extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_localsys,
+extern bool show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_localsys, label_galaxies, show_galaxy_band,
     is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing, generating_fic_texture, focus_findbox, whtbkgd,
     objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, draw_actual_conslines, explorer, neighborhood, locwnd,
-    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo,
+    show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP, have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo, 
+    have_RC3, have_UNGC,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
 extern std::string objname, objinfo, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale;

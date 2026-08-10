@@ -101,6 +101,7 @@ namespace alienorum
     class CelestialLocation
     {
         public:
+        Point galactic_center;                              // Scaled in LIGHT YEARS x 10^6, unlike every other distance in the code which is meters.
         Point system_center;
         Point local_position;
         Rotation local_system_plane;
@@ -141,7 +142,7 @@ bool operator==(const Point&, const Point&);
 void convert_to_J2000(const double RA_radians, const double Decl_radians, double input_year, double &RA_J2000, double &Decl_J2000, bool is_besselian);
 
 extern Point center, xaxis, yaxis, zaxis;
-extern Point solar_north, ecliptic_north, galactic_north;
+extern Point solar_north, ecliptic_north, galactic_north, milky_way_center_Mly;
 extern Rotation ICRF_to_ecliptic;
 extern Point velocity;
 

@@ -194,6 +194,16 @@ void show_menu()
     menu_clicked = false;
     if (ImGui::BeginMainMenuBar())
     {
+        if (ImGui::BeginMenu("File"))
+        {
+            mouse_over_menu = true;
+            if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
+            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
+            if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
+            if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
+            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Object"))
         {
             mouse_over_menu = true;
@@ -206,11 +216,6 @@ void show_menu()
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
             if (ImGui::MenuItem("Edit Object...", "Shift+E")) { process_key_cmd_char('E'); menu_clicked = true; }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
-            if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
-            if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
-            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Spacetime"))
@@ -271,9 +276,18 @@ void show_menu()
             if (ImGui::MenuItem("Horizon", "_")) { process_key_cmd_char('_'); menu_clicked = true; }
             if (ImGui::MenuItem("Sun Clock", "$")) { process_key_cmd_char('$'); menu_clicked = true; }
             if (ImGui::MenuItem("Sky Map", "\\")) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::BeginMenu("Viewer Plane"))
+            {
+                mouse_over_menu = true;
+                if (ImGui::MenuItem("Local", "Ctrl+L")) { process_key_cmd_ctrl_char('L'); menu_clicked = true; }
+                if (ImGui::MenuItem("ICRF", "Ctrl+I")) { process_key_cmd_ctrl_char('I'); menu_clicked = true; }
+                if (ImGui::MenuItem("Ecliptic", "Ctrl+E")) { process_key_cmd_ctrl_char('E'); menu_clicked = true; }
+                if (ImGui::MenuItem("Galactic", "Ctrl+G")) { process_key_cmd_ctrl_char('G'); menu_clicked = true; }
+                ImGui::EndMenu();
+            }
             if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J")) { process_key_cmd_char('J'); menu_clicked = true; }
             if (ImGui::MenuItem("Previous Theme", "#")) { process_key_cmd_char('#'); menu_clicked = true; }
-            if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }
+            if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }           
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Show"))
@@ -299,6 +313,8 @@ void show_menu()
                 if (ImGui::MenuItem("Stars with Known Poles", "Shift+X")) { process_key_cmd_char('X'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
+            if (ImGui::MenuItem("Galaxy Labels", "K")) { process_key_cmd_char('k'); menu_clicked = true; }
+            if (ImGui::MenuItem("Galaxy Band", "Shift+K")) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J")) { process_key_cmd_char('j'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Objects", "Shift+V")) { process_key_cmd_char('V'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Labels", "P")) { process_key_cmd_char('p'); menu_clicked = true; }
@@ -321,6 +337,8 @@ void process_key_cmd_char(char c)
 
     // Keep this line to uncomment when testing which keystrokes ImGui recognizes.
     // std::cout << c << std::endl;
+
+    // IMPORTANT: Any keyboard shortcuts added here should also be added to show_menu().
 
     switch (c)
     {
@@ -365,6 +383,8 @@ void process_key_cmd_char(char c)
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'j': show_sats = !show_sats; break;
         case 'J': satview_upsidedown = !satview_upsidedown; break;
+        case 'k': label_galaxies = !label_galaxies; break;
+        case 'K': show_galaxy_band = !show_galaxy_band; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = lbltype_planethz; show_labels = true; break;
         case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
@@ -410,6 +430,7 @@ void process_key_cmd_char(char c)
         whereami = iamhome;
         trackidx = -1;
         view_mode = vm_skyatlas;
+        vplane_mode = vplane_local;
         viewer_lat = viewer_home_lat;
         viewer_lon = viewer_home_lon;
         viewer_locale = "";
@@ -418,7 +439,7 @@ void process_key_cmd_char(char c)
         global_brightness = default_brightness;
         global_gamma = viewer_gamma;
         neighb_rthresh = 25 * light_year;
-        show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = true;
+        show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = label_galaxies = show_galaxy_band = true;
         show_orbits = false;
         cbolbls_selected_idx = lbltype_brightest;
         appmagn_lblcut = 2.5;
@@ -499,7 +520,7 @@ void process_key_cmd_char(char c)
         case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '0': neighborhood = !neighborhood; break;
-        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = show_localsys = true; break;
+        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = show_localsys = label_galaxies = true; break;
         case '2': cbolbls_selected_idx = lbltype_binary; show_labels = true; break;
 
         case '3':
@@ -563,7 +584,7 @@ void process_key_cmd_char(char c)
         case '.': astwnd = !astwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
-        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = false; break;
+        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = label_galaxies = false; break;
         case '%':
         zoom = 1;
         global_brightness = 1;
@@ -598,6 +619,30 @@ void process_key_cmd_char(char c)
     }
 }
 
+void process_key_cmd_ctrl_char(char c)
+{
+    // Ctrl+letter combinations to avoid, since they are claimed by the terminal, the OS,
+    // or common tools the app may be run alongside:
+    //   Ctrl+C - SIGINT (terminal interrupt)
+    //   Ctrl+D - EOF / terminal exit
+    //   Ctrl+Z - SIGTSTP (terminal suspend)
+    //   Ctrl+\ - SIGQUIT (terminal quit)
+    //   Ctrl+Q / Ctrl+S - terminal XON/XOFF flow control
+    //   Ctrl+A / Ctrl+B - tmux/screen prefix keys
+    //   Ctrl+V - system paste
+    //   Ctrl+W - window close (most OSes)
+    switch (c)
+    {
+        case 'E': vplane_mode = vplane_ecliptic; break;
+        case 'G': vplane_mode = vplane_galactic; break;
+        case 'I': vplane_mode = vplane_ICRF; break;
+        case 'L': vplane_mode = vplane_local; break;
+
+        default:
+        ;
+    }
+}
+
 double steering_rate, walk_speed;
 void process_keyboard_commands(ImGuiIO& io)
 {
@@ -622,6 +667,15 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
+
+    if (io.KeyCtrl)
+    {
+        for (i = 0; i < 26; i++)
+        {
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char('A' + i);
+        }
+    }
 }
 
 void process_key_arrowup()
@@ -789,6 +843,7 @@ void process_key_F11()
 
 void process_key_F12()
 {
+    take_snapshot = true;
 }
 
 void do_find()

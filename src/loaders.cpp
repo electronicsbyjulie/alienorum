@@ -337,6 +337,8 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "CCDM")) have_CCDM = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "SB9")) have_SB9 = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "astorb")) have_astorb = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "RC3")) have_RC3 = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "UNGC")) have_UNGC = true;
     }
 
     if (have_Gliese && !ihsc)
@@ -460,6 +462,27 @@ void load_catalogs()
         mtx.unlock();
         // rename_all_from_Bayer_Flamsteed();
         cr.read_starname_dat(cels);
+    }
+
+    // Galaxies. The UNGC goes first: its distances are measured rather than inferred from
+    // velocity, and read_RC3_catalog() skips whatever it has already placed.
+    if (have_UNGC && !magnitude_test)
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading nearby galaxies...");
+        mtx.unlock();
+        cout << "Reading UNGC catalog..." << endl << flush;
+        int nUNGC = cr.read_UNGC_catalog(cels, MAX_CELOBJS);
+        cout << "Read " << nUNGC << " objects." << endl << flush;
+    }
+    if (have_RC3 && !magnitude_test)
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading bright galaxies...");
+        mtx.unlock();
+        cout << "Reading RC3 catalog..." << endl << flush;
+        int nRC3 = cr.read_RC3_catalog(cels, MAX_CELOBJS);
+        cout << "Read " << nRC3 << " objects." << endl << flush;
     }
 
     // Because of system inclinations, we will die unless we read star orbits before reading exoplanets.
@@ -792,6 +815,14 @@ void load_stuff()
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;
     std::cout << "B-V correction: " << bv_correction << std::endl;
+
+    // Galaxies were given BV_color = -bv_correction while it was being read in load_catalogs(),
+    // above, before this correction was known -- which left them stamped with 0 instead of the
+    // value that actually cancels it out. Fix them up now that bv_correction is final, or they
+    // render with whatever tint bv_correction happens to be rather than the intended neutral
+    // white/gray.
+    for (int i=0; cels[i]; i++)
+        if (cels[i]->type == galaxy) cels[i]->BV_color = -bv_correction;
 
     mtx.lock();
     loading_msg = "Done!";

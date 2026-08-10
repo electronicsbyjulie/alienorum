@@ -2,8 +2,13 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_IMPLEMENTATION
 #include <queue>
+#include <vector>
 #include <chrono>
 #include <thread>
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include "png.h"
 #include "include/stb/stb_image.h"
 #include "globals.h"
 #include "loaders.h"
@@ -15,7 +20,21 @@
 
 using namespace alienorum;
 
-// ImGui Example Code
+// Replayable command-line tokens (go/mode/track/find/zoom/F-keys/single chars), kept in a
+// single ordered queue and drained one per frame in the main loop. They used to live in
+// separate per-category variables tested in a fixed if/else-if priority order, which meant
+// e.g. an F-key on the command line could fire before an earlier "find" or single-char token
+// had actually been applied, no matter where it appeared on the line. A snapshot taken with
+// F12 has to have the state from everything typed before it already landed, so replay order
+// has to match command-line order.
+struct CliCmd
+{
+    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_fkey, k_char } kind;
+    std::string s;
+    int fkey = 0;
+    char c = 0;
+};
+
 // Simple helper function to load an image into a OpenGL texture with common settings
 bool LoadTextureFromMemory(const void* data, size_t data_size, GLuint* out_texture, int* out_width, int* out_height)
 {
@@ -67,6 +86,73 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
 }
 // End ImGui Example Code
 
+// Grabs the just-rendered back buffer and writes it out as a PNG, the same libpng plumbing as
+// Map::save_to_png (celestial.cpp) but sourced from glReadPixels instead of a stored map. OpenGL
+// hands back row 0 as the bottom of the image, so the rows are written back to front to come out
+// right-side up.
+bool save_snapshot_png(const std::string& filename, int width, int height)
+{
+    if (width <= 0 || height <= 0) return false;
+
+    std::vector<unsigned char> pixels(width * height * 3);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+
+    FILE *fp = fopen(filename.c_str(), "wb");
+    if (!fp)
+    {
+        std::cerr << "Failed to open " << filename << " for writing." << std::endl;
+        return false;
+    }
+
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr)
+    {
+        fclose(fp);
+        return false;
+    }
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr)
+    {
+        png_destroy_write_struct(&png_ptr, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr)))
+    {
+        png_destroy_write_struct(&png_ptr, &info_ptr);
+        fclose(fp);
+        return false;
+    }
+
+    png_init_io(png_ptr, fp);
+    png_set_IHDR(
+        png_ptr,
+        info_ptr,
+        width,
+        height,
+        8,                          // 8 bits per channel
+        PNG_COLOR_TYPE_RGB,
+        PNG_INTERLACE_NONE,
+        PNG_COMPRESSION_TYPE_DEFAULT,
+        PNG_FILTER_TYPE_DEFAULT
+    );
+
+    std::vector<png_bytep> row_pointers(height);
+    for (int y = 0; y < height; y++)
+        row_pointers[y] = &pixels[(size_t)(height - 1 - y) * width * 3];
+
+    png_write_info(png_ptr, info_ptr);
+    png_write_image(png_ptr, row_pointers.data());
+    png_write_end(png_ptr, NULL);
+
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    fclose(fp);
+    return true;
+}
+
 int main (int argc, char** argv)
 {
     int i, j, l, n;
@@ -78,7 +164,12 @@ int main (int argc, char** argv)
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
     bx_cache = new int[MAX_CELOBJS];
     by_cache = new int[MAX_CELOBJS];
-    std::string argsfind = "", argsgo = "", argszoom = "", argstrack = "", argsmode = "", args1char = "";
+
+    std::vector<CliCmd> cli_cmds;
+    size_t cli_cmd_pos = 0;
+    auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
+    auto push_fkey = [&](int n) { CliCmd cmd; cmd.kind = CliCmd::k_fkey; cmd.fkey = n; cli_cmds.push_back(cmd); };
+    auto push_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_char; cmd.c = c; cli_cmds.push_back(cmd); };
     bool argsfs = false;
 
     memset(lookfor, 0, name_max_len);
@@ -92,7 +183,7 @@ int main (int argc, char** argv)
         n = strlen(argv[l]);
         if (n == 1)
         {
-            args1char += std::string(argv[l]);
+            push_char(argv[l][0]);
             continue;
         }
 
@@ -115,19 +206,19 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "find"))
         {
-            argsfind = argv[++l];
+            push_str(CliCmd::k_find, argv[++l]);
         }
         else if (!strcmp(argv[l], "track"))
         {
-            argstrack = argv[++l];
+            push_str(CliCmd::k_track, argv[++l]);
         }
         else if (!strcmp(argv[l], "go"))
         {
-            argsgo = argv[++l];
+            push_str(CliCmd::k_go, argv[++l]);
         }
         else if (!strcmp(argv[l], "zoom"))
         {
-            argszoom = argv[++l];
+            push_str(CliCmd::k_zoom, argv[++l]);
         }
         else if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
         {
@@ -143,11 +234,11 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "hz") || !strcmp(argv[l], "horizon"))
         {
-            argsmode = "hz";
+            push_str(CliCmd::k_mode, "hz");
         }
         else if (!strcmp(argv[l], "sun") || !strcmp(argv[l], "sunclock"))
         {
-            argsmode = "sun";
+            push_str(CliCmd::k_mode, "sun");
         }
         else if (!strcmp(argv[l], "theme"))
         {
@@ -162,6 +253,18 @@ int main (int argc, char** argv)
         {
             nosats = true;
         }
+        else if (!strcmp(argv[l], "F1")) push_fkey(1);
+        else if (!strcmp(argv[l], "F2")) push_fkey(2);
+        else if (!strcmp(argv[l], "F3")) push_fkey(3);
+        else if (!strcmp(argv[l], "F4")) push_fkey(4);
+        else if (!strcmp(argv[l], "F5")) push_fkey(5);
+        else if (!strcmp(argv[l], "F6")) push_fkey(6);
+        else if (!strcmp(argv[l], "F7")) push_fkey(7);
+        else if (!strcmp(argv[l], "F8")) push_fkey(8);
+        else if (!strcmp(argv[l], "F9")) push_fkey(9);
+        else if (!strcmp(argv[l], "F10")) push_fkey(10);
+        else if (!strcmp(argv[l], "F11")) push_fkey(11);
+        else if (!strcmp(argv[l], "F12")) push_fkey(12);
         else if (!strcmp(argv[l], "keyprobe"))
         {
             keyprobe = true;
@@ -534,6 +637,7 @@ int main (int argc, char** argv)
             {
                 is_a_locale_under_cursor = nullptr;
                 selected_locale = nullptr;
+                draw_galaxy_band();                 // behind everything: it is the backdrop
                 if (show_grid) draw_ra_dec_lines();
                 if (show_consln) draw_cons_lines();
                 draw_objects();
@@ -644,56 +748,73 @@ int main (int argc, char** argv)
                 JDnow = atof(setjd.c_str());
                 setjd = "";
             }
-            if (argsgo.size())
+            if (cli_cmd_pos < cli_cmds.size())
             {
-                int goidx = find_object(argsgo.c_str());
-                if (goidx >= 0) whereami = goidx;
-                else std::cerr << "Not found " << argsgo << std::endl;
-                argsgo = "";
-                viewchanged = true;
-            }
-            else if (argsmode.size())
-            {
-                if (!strcmp(argsmode.c_str(), "hz")) view_mode = vm_horizon;
-                else if (!strcmp(argsmode.c_str(), "sun")) view_mode = vm_sunclock;
-                argsmode = "";
-                viewchanged = true;
-            }
-            else if (argstrack.size())
-            {
-                int findidx = find_object(argstrack.c_str());
-                if (findidx >= 0)
+                CliCmd &cmd = cli_cmds[cli_cmd_pos++];
+                switch (cmd.kind)
                 {
-                    trackidx = findidx;
-                    center_selected();
+                    case CliCmd::k_go:
+                    {
+                        int goidx = find_object(cmd.s.c_str());
+                        if (goidx >= 0) whereami = goidx;
+                        else std::cerr << "Not found " << cmd.s << std::endl;
+                        viewchanged = true;
+                        break;
+                    }
+                    case CliCmd::k_mode:
+                        if (cmd.s == "hz") view_mode = vm_horizon;
+                        else if (cmd.s == "sun") view_mode = vm_sunclock;
+                        viewchanged = true;
+                        break;
+                    case CliCmd::k_track:
+                    {
+                        int findidx = find_object(cmd.s.c_str());
+                        if (findidx >= 0)
+                        {
+                            trackidx = findidx;
+                            center_selected();
+                        }
+                        else std::cerr << "Not found " << cmd.s << std::endl;
+                        viewchanged = true;
+                        break;
+                    }
+                    case CliCmd::k_find:
+                    {
+                        int findidx = find_object(cmd.s.c_str());
+                        if (findidx >= 0)
+                        {
+                            selected = findidx;
+                            center_selected();
+                        }
+                        else std::cerr << "Not found " << cmd.s << std::endl;
+                        viewchanged = true;
+                        break;
+                    }
+                    case CliCmd::k_zoom:
+                        zoom = atof(cmd.s.c_str());
+                        viewchanged = true;
+                        break;
+                    case CliCmd::k_fkey:
+                        switch (cmd.fkey)
+                        {
+                            case 1: process_key_F1(); break;
+                            case 2: process_key_F2(); break;
+                            case 3: process_key_F3(); break;
+                            case 4: process_key_F4(); break;
+                            case 5: process_key_F5(); break;
+                            case 6: process_key_F6(); break;
+                            case 7: process_key_F7(); break;
+                            case 8: process_key_F8(); break;
+                            case 9: process_key_F9(); break;
+                            case 10: process_key_F10(); break;
+                            case 11: process_key_F11(); break;
+                            case 12: process_key_F12(); break;
+                        }
+                        break;
+                    case CliCmd::k_char:
+                        process_key_cmd_char(cmd.c);
+                        break;
                 }
-                else std::cerr << "Not found " << argstrack << std::endl;
-                argstrack = "";
-                viewchanged = true;
-            }
-            else if (argsfind.size())               // After go, wait to get new bearings then seek.
-            {
-                int findidx = find_object(argsfind.c_str());
-                if (findidx >= 0)
-                {
-                    selected = findidx;
-                    center_selected();
-                }
-                else std::cerr << "Not found " << argsfind << std::endl;
-                argsfind = "";
-                viewchanged = true;
-            }
-            else if (argszoom.size())               // Don't zoom until after go.
-            {
-                zoom = atof(argszoom.c_str());
-                argszoom = "";
-                viewchanged = true;
-            }
-            else while (args1char.size())
-            {
-                char c = args1char.c_str()[0];
-                args1char = args1char.substr(1);
-                process_key_cmd_char(c);
             }
 
             // Keyboard commands
@@ -766,6 +887,31 @@ int main (int argc, char** argv)
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (take_snapshot)
+        {
+            auto now = std::chrono::system_clock::now();
+            auto time_t_now = std::chrono::system_clock::to_time_t(now);
+
+            const char* snapdir = "snapshots";
+            std::filesystem::path p = snapdir;
+            if (!std::filesystem::exists(p))
+            {
+                // Create the dest folder.
+                std::filesystem::create_directories(snapdir);
+            }
+
+            // Format the time into a stringstream
+            std::stringstream shnapsot_fname;
+            shnapsot_fname << snapdir << _FILESLASH << "snapshot." 
+                << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
+                << ".png";
+
+            if (save_snapshot_png(shnapsot_fname.str(), (int)io.DisplaySize.x, (int)io.DisplaySize.y))
+                std::cout << "Saved " << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
+            else
+                std::cerr << "Failed to save " << shnapsot_fname.str() << " to disk." << std::endl;
+            take_snapshot = false;
+        }
         SDL_GL_SwapWindow(window);
 
         if (!splash)

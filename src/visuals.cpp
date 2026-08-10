@@ -499,6 +499,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 }
                 else
                 {
+                    here.galactic_center = cel->location.galactic_center;
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
                     viewer_lon = cel->RA_as_radians(here, cel->timeofday()) - _pi;
@@ -1302,6 +1303,209 @@ int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
 }
 
 double global_magshift;
+// A galaxy as a soft, oriented ellipse.
+//
+// The ellipse is not drawn as a 2D shape rotated by the catalogued position angle: instead the
+// galaxy's actual disc -- a circle of radius R lying in the plane that read_UNGC/RC3_catalog built
+// from its inclination and position angle -- is projected through the same chain everything else
+// uses. The foreshortening then produces the ellipse on its own, at the right angle, and keeps
+// producing the right one as the viewer flies around it. A rotated 2D ellipse would be correct only
+// from Earth.
+//
+// Brightness is per unit area rather than total: a galaxy's flux is spread over its whole disc, so
+// M31 covering three degrees has to come out far fainter per pixel than a compact one of the same
+// magnitude. Without that, every large nearby galaxy renders as a flat white blob.
+// Surface brightness at fractional radius f (0 at the nucleus, 1 at the rim) and disc-plane angle
+// t, for a galaxy of Hubble stage T. This is what turns the soft ellipse into something that reads
+// as a galaxy: a concentrated bulge, an exponential disc, and a pair of logarithmic arms wound at
+// a pitch that follows the type -- tight for an Sa, open for an Sc, which is most of what the
+// Hubble sequence actually describes.
+//
+// Everything here is in the disc's OWN polar coordinates, which is why it lands correctly on the
+// projected ellipse: the mesh's segment index is the disc angle by construction, and its ring
+// index the fractional radius, so the pattern foreshortens along with the disc instead of being
+// painted flat onto the screen.
+static double galaxy_surface_intensity(double f, double t, double T, bool barred)
+{
+    // An elliptical has no disc to put arms on -- see the inclination discussion: it is a triaxial
+    // spheroid, and its light falls off far more steeply than a disc's.
+    if (T < 0) return pow(fmax(0.0, 1.0 - f), 3.4);
+
+    // Pitch angle: about 8 degrees at S0a, opening to roughly 29 by Sd. Arms are logarithmic
+    // spirals, so a constant pitch means theta advances with the logarithm of the radius.
+    double pitch = (8.0 + 2.6 * fmin(fmax(T, 0.0), 8.0)) * fiftyseventh;
+
+    // The bulge shrinks along the sequence: prominent in an Sa, barely there in an Sd.
+    double bulge = fmax(0.05, 0.60 - 0.07 * T) * exp(-f / 0.09);
+    double disc = pow(fmax(0.0, 1.0 - f), 2.2);
+
+    double fc = fmax(f, 0.14);                      // the winding runs away as f approaches zero
+    double phi = t - log(fc) / tan(pitch);
+    double arm = pow(0.5 + 0.5 * cos(2.0 * phi), 2.0);
+
+    // Suppressed inside the bulge, and faded out towards the late types, whose arms break up into
+    // patches rather than continuing as a two-armed pattern.
+    double inner = fmin(1.0, fmax(0.0, (f - 0.10) / 0.16));
+    double late = fmin(1.0, fmax(0.0, 1.0 - (T - 6.0) / 4.0));
+    double val = bulge + disc * (0.30 + 0.95 * inner * late * arm);
+
+    if (barred)
+    {
+        // A quartic in f gives the bar a definite end rather than a fade, which is what makes it
+        // read as a bar; the width term is measured across it, hence sin(t)*f.
+        double along = exp(-pow(f / 0.34, 4.0));
+        double across = exp(-pow(sin(t) * f / 0.055, 2.0));
+        val += 0.55 * along * across;
+    }
+
+    return val;
+}
+
+static double draw_galaxy(CelestialObject* cel, double appmag)
+{
+    Galaxy *g = (Galaxy*)cel;
+    if (g->angular_diameter <= 0) return 0;
+    if (inside_galaxy_idx == cel->seqno) return 0;
+
+    g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
+    if (!(g->volumetric_mean_radius > 0)) return 0;
+
+    // In-plane basis: the disc plane's own axes, rotated out into world space. local_system_plane
+    // maps world to plane, so the inverse rotation takes the plane's x and z back out.
+    Rotation pl = cel->location.local_system_plane;
+    Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
+    Point e2 = rotate3D(zaxis, center, pl.v, -pl.a);
+    e1.scale(1);
+    e2.scale(1);
+
+    // Mesh resolution follows the on-screen size: a galaxy five pixels across gains nothing from
+    // 64 segments, and at high zoom the magnitude limit lets hundreds of them through at once.
+    // Estimated analytically because the rim below cannot be built until the count is chosen.
+    const int kMaxSeg = 72;
+    double est_px = g->angular_diameter * zoom * dispcx;
+    int nseg = (int)fmin((double)kMaxSeg, fmax(12.0, est_px * 1.1));
+    int nring = (int)fmin(18.0, fmax(4.0, est_px * 0.25));
+
+    // Screen extent of the rim, both to size the falloff and to reject the offscreen cheaply.
+    double xmin = 1e30, xmax = -1e30, ymin = 1e30, ymax = -1e30;
+    ImVec2 rim[kMaxSeg];
+    for (int s = 0; s < nseg; s++)
+    {
+        double t = s * (_pi * 2.0 / nseg);
+        Point p = cel->tmprel + (e1 * (g->volumetric_mean_radius * cos(t))) + (e2 * (g->volumetric_mean_radius * sin(t)));
+        p = to_viewer_plane(p);
+        if (view_mode == vm_horizon) p = refract_true_point(p);
+        Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
+        rim[s] = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
+        if (z.x < -1e4 || z.y < -1e4)
+        {
+            continue;                 // behind the camera
+        }
+        if (rim[s].x < xmin) xmin = rim[s].x;
+        if (rim[s].x > xmax) xmax = rim[s].x;
+        if (rim[s].y < ymin) ymin = rim[s].y;
+        if (rim[s].y > ymax) ymax = rim[s].y;
+    }
+
+    double wide = xmax - xmin, tall = ymax - ymin;
+    // std::cout << cel->name << " wide=" << wide << " tall=" << tall << std::endl;
+    if (wide < 1.5 && tall < 1.5) return 0;                     // smaller than a pixel: the point path has it
+    if (xmax < 0 || ymax < 0 || xmin > dispcx*2 || ymin > dispcy*2) return 0;
+
+    // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
+    double area = fmax(4.0, _pi * wide * tall * 0.25);
+    double total = pow(magnbase, -appmag) * global_brightness * zoom * zoom * 1e+4;
+    double peak = fmin(210.0, total / area * 255.0);
+    if (peak < 2.0) return 0;
+
+    Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
+    col.normalize(255);
+    RGB3Byte rgb((unsigned char)col.red, (unsigned char)col.green, (unsigned char)col.blue);
+
+    // Type drives the whole pattern; an unknown one is treated as a middling spiral rather than
+    // as an elliptical, since that is the commoner shape and the safer-looking mistake.
+    double T = g->T_known ? g->morphological_T : 3.0;
+
+    // The RC3 spells the family in the third character of its type string: A unbarred, B barred,
+    // X intermediate. The UNGC's own short forms ("Im", "Sph") have nothing there, hence the
+    // length check.
+    bool barred = (strlen(g->morph_type) > 2 && g->morph_type[2] == 'B');
+
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
+    ImVec2 mid(dispcx + 0, dispcy + 0);
+    {
+        Point p = to_viewer_plane(cel->tmprel);
+        if (view_mode == vm_horizon) p = refract_true_point(p);
+        Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
+        mid = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
+    }
+
+    // Alpha now varies with the segment as well as the ring, so it is worked out per vertex of the
+    // (nring+1) x nseg lattice once and reused by the four quads that meet at each.
+    std::vector<unsigned char> lattice((nring+1) * nseg);
+    for (int r = 0; r <= nring; r++)
+    {
+        double f = (double)r / nring;
+        for (int s = 0; s < nseg; s++)
+        {
+            double v = galaxy_surface_intensity(f, s * (_pi * 2.0 / nseg), T, barred) * peak;
+            lattice[r*nseg + s] = (unsigned char)fmin(255.0, fmax(0.0, v));
+        }
+    }
+    #define galaxy_vtx_col(rho, sigma) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(rho)*nseg + (sigma)]))
+
+    // PrimReserve commits the vertex and index counts up front, so any quad the loop below skips
+    // would leave four vertices and six indices of uninitialised buffer behind it -- stale geometry
+    // from an earlier frame, drawn with whatever colours happened to still be sitting in it. That
+    // showed up as black-and-white wedges and stray slivers over whatever else was on screen, most
+    // visibly over the bright objects, which is a long way from the galaxy that actually caused it.
+    // The test depends only on the segment, not the ring, so count the survivors once and reserve
+    // exactly those.
+    int nvalid = 0;
+    for (int s = 0; s < nseg; s++)
+    {
+        int s1 = (s+1) % nseg;
+        if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4) continue;
+        nvalid++;
+    }
+    if (!nvalid) return 0;
+
+    dl->PrimReserve(nring*nvalid*6, nring*nvalid*4);
+    for (int r = 0; r < nring; r++)
+    {
+        double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
+        int r1 = r+1;
+        for (int s = 0; s < nseg; s++)
+        {
+            int s1 = (s+1) % nseg;
+            if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4) continue;
+            // Each rim point scaled towards the centre gives the inner rings for free, and keeps
+            // them concentric in SCREEN space, which is what the projected disc actually is.
+            ImVec2 a0(mid.x + (rim[s ].x - mid.x)*f0, mid.y + (rim[s ].y - mid.y)*f0);
+            ImVec2 a1(mid.x + (rim[s1].x - mid.x)*f0, mid.y + (rim[s1].y - mid.y)*f0);
+            ImVec2 b1(mid.x + (rim[s1].x - mid.x)*f1, mid.y + (rim[s1].y - mid.y)*f1);
+            ImVec2 b0(mid.x + (rim[s ].x - mid.x)*f1, mid.y + (rim[s ].y - mid.y)*f1);
+            unsigned int base = dl->_VtxCurrentIdx;
+            dl->PrimWriteVtx(a0, uv, galaxy_vtx_col(r,   s ));
+            dl->PrimWriteVtx(a1, uv, galaxy_vtx_col(r,   s1));
+            dl->PrimWriteVtx(b1, uv, galaxy_vtx_col(r1, s1));
+            dl->PrimWriteVtx(b0, uv, galaxy_vtx_col(r1, s ));
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+1));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+3));
+        }
+    }
+
+    cel->drawnxmin = xmin; cel->drawnxmax = xmax;
+    cel->drawnymin = ymin; cel->drawnymax = ymax;
+    cel->onscreen = true;
+    return fmax(wide, tall) * 0.5;
+}
+
 bool draw_one_object(int i)
 {
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
@@ -1323,7 +1527,23 @@ bool draw_one_object(int i)
     double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 12.0;
     flare = fmin(max_flare, fmax(f_bloom, f_mag));
     bloomrad = fmin(max_bloomrad, bloomrad*10);
-    if (cls == class_satellite)
+    if (cls == class_galaxy)
+    {
+        double r = draw_galaxy(cels[i], appmag);
+        if (r > 0)
+        {
+            bloomrad_cache[i] = bloomrad = r;
+            discinstead[i] = false;
+            if (selected == i)
+                ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2,
+                    rgba_apply_redlight(global_style.selected_color), 0, 2);
+            goto labels_step;
+        }
+        // Too small, too faint, or off screen: fall through to the point path below, which is the
+        // right answer for a galaxy that is only a few pixels across anyway.
+        if (i != inside_galaxy_idx) goto dot_instead;
+    }
+    else if (cls == class_satellite)
     {
         if (!show_sats) return false;
         if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
@@ -1373,6 +1593,7 @@ bool draw_one_object(int i)
     }
     else
     {
+        dot_instead:
         discinstead[i] = false;
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
@@ -1448,6 +1669,7 @@ bool draw_one_object(int i)
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
     }
 
+    labels_step:
     if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
@@ -1467,6 +1689,7 @@ bool draw_one_object(int i)
                 || (cels[i]->tmprel.magnitude() < AU)
                 )
             )
+        || (cels[i]->type == galaxy && label_galaxies)
         || i == selected)
     {
         const char *dispname = cels[i]->name;
@@ -1501,6 +1724,317 @@ bool draw_one_object(int i)
             dispname);
     }
     return true;
+}
+
+// One horizontal crossing of the band's outline: the scanline it lands on, and where along it.
+struct BandCrossing
+{
+    int y;
+    float x;
+    bool dir;
+};
+
+void draw_galaxy_band()
+{
+    if (!show_galaxy_band || inside_galaxy_idx < 0) return;
+
+    CelestialObject *cel = cels[inside_galaxy_idx];
+    Galaxy *g = (Galaxy*)cel;
+    if (g->tmprel.magnitude() > g->volumetric_mean_radius) return;
+
+    int h, i, j, n;
+
+    // The .dat file's longitude runs in galactic coordinates with 0 at the galactic center, so
+    // the seam at the +-pi wraparound naturally falls 180 degrees from it -- but only once the
+    // pattern is spun so that longitude 0 points where the CURRENT viewer actually sees the
+    // center, not where Sol does. local_system_plane only encodes that fixed Sol-relative
+    // orientation of the disc, so the extra spin has to be measured in the disc's own local
+    // frame (canonical zaxis = longitude 0), the same way incl_and_node_from_system_plane
+    // recovers an ascending node.
+    Rotation pl = g->location.local_system_plane;
+    Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    ImU32 gcol = rgba_apply_redlight(
+        whtbkgd
+        ? IM_COL32(0, 0, 0, 64)
+        : IM_COL32(192, 224, 255, 32));      // TODO: Galaxy color.
+    ImU32 fillcol = rgba_apply_redlight(
+        whtbkgd
+        ? IM_COL32(0, 0, 0, 20)
+        : IM_COL32(192, 224, 255, 14));      // subtle glow filling the band. TODO: Galaxy color.
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Project both boundary roads (road1 = north edge, road2 = south edge) to screen space once,
+    // up front, so the fill pass below and the outline pass further down share the same points
+    // instead of re-deriving them twice.
+    std::vector<ImVec2> screen[2];
+    std::vector<bool> good[2];
+
+    std::vector<Point> viewspace[2];
+    bool camera_is_directional = (view_mode != vm_skymap);
+    const bool Claude_Code_is_a_piece_of_shit = true;
+
+    for (h=0; h<2; h++)
+    {
+        n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
+        screen[h].assign(n, ImVec2());
+        good[h].assign(n, false);
+        if (camera_is_directional) viewspace[h].assign(n, Point());
+
+        for (i=0; i<n; i++)
+        {
+            double road_dist = h ? g->band.road2_dist[i] : g->band.road1_dist[i];
+            Point pt = Point::from_ra_dec(
+                h ? g->band.road2_gra[i] : g->band.road1_gra[i],
+                h ? g->band.road2_gdecl[i] : g->band.road1_gdecl[i],
+                g->volumetric_mean_radius, 0);
+            if (road_dist) pt.y *= road_dist / g->volumetric_mean_radius;
+            pt = rotate3D(pt, center, yaxis, gyaw);
+            pt = rotate3D(pt, center, pl.v, -pl.a);
+            pt += g->tmprel;
+            if (!road_dist)
+            {
+                road_dist = pt.magnitude();
+                if (h) g->band.road2_dist[i] = road_dist;
+                else g->band.road1_dist[i] = road_dist;
+            }
+            pt = to_viewer_plane(pt, 1);
+            pt = refract_true_point(pt);
+
+            // azimuth_correction, not just azimuth: in horizon mode set_viewer_surface_location()
+            // sets it to -npaz, the azimuth of the planet's own north pole, which is what ties the
+            // horizon frame's zero of azimuth to true north.
+            Cartesian2D cart(pt, azimuth + azimuth_correction, altitude, zoom);
+            if (cart.x > -1e21 && cart.y > -1e21)
+            {
+                screen[h][i].x = dispcx + dispcx * cart.x;
+                screen[h][i].y = dispcy + dispcx * cart.y;
+                good[h][i] = true;
+            }
+
+            if (camera_is_directional)
+            {
+                // Mirrors the rotation Cartesian2D just did internally (its "else" branch, taken
+                // whenever view_mode != vm_skymap) so viewspace[] lands in the same camera-facing
+                // frame its own pt.z < 0 test used -- without this exact match, clipping the fill
+                // outline against z=0 would clip against the wrong plane.
+                Point vp = pt;
+                if (azimuth + azimuth_correction) vp = rotate3D(vp, center, yaxis, -(azimuth + azimuth_correction));
+                if (altitude) vp = rotate3D(vp, center, xaxis, altitude);
+                viewspace[h][i] = vp;
+            }
+        }
+    }
+
+    // Fill, by scanline; we cannot simply stitch a ribbon of triangles between the two roads,
+    // because the band's edges are not a smooth corridor. The two roads run the full sweep of
+    // longitude from -pi to +pi as open curves whose endpoints meet on the sky, and each has
+    // deep fjord-like notches. The roads also have different point counts.
+    //
+    // Scanline conversion sidesteps the pairing question entirely by finding  where the outline
+    // crosses each row of pixels. Sort those crossings along the row and fill between alternate
+    // pairs -- the even-odd rule -- and the interior falls out correctly no matter how sinuous
+    // or notched the outline is.
+    // Also, the spans are one pixel tall and never overlap, so a translucent fill stays at
+    // exactly its own alpha.
+    int disph = (int)(dispcy*2), dispw = (int)(dispcx*2);
+    int dcx = (int)io.DisplaySize.x / 2;
+
+    std::vector<BandCrossing> crossings;
+    // Walk the closed outline: road1 forward, then road2 backward. That traversal is what makes
+    // the two roads bound one region rather than two open curves -- and because road1's ends and
+    // road2's ends coincide on the sky, the joins between them are zero-length, so the ring
+    // closes without any artificial seam edge being invented.
+    int n1 = screen[0].size(), n2 = screen[1].size();
+    int total = n1 + n2;
+    if (n1 >= 2 && n2 >= 2)
+    {
+        // Accumulate every scanline this edge crosses. Sampling at pixel centres (y+0.5) with a
+        // half-open rule on the endpoints is what keeps parity exact: a vertex landing precisely
+        // on a scanline is counted by one of its two edges, never both and never neither.
+        auto emit_edge = [&](ImVec2 p, ImVec2 q)
+        {
+            if (p.y == q.y) return;
+            if (fabs(p.x) > 1e6 || fabs(q.x) > 1e6) return;
+
+            bool py_qy_dir = (p.y > q.y);
+            if (py_qy_dir) { ImVec2 t = p; p = q; q = t; }
+
+            int y0 = (int)ceil(p.y - 0.5), y1 = (int)ceil(q.y - 0.5) - 1;
+            if (y0 < 0) y0 = 0;
+            if (y1 > disph-1) y1 = disph-1;
+
+            double slope = (q.x - p.x) / (q.y - p.y);
+            for (int y = y0; y <= y1; y++)
+            {
+                BandCrossing c;
+                c.y = y;
+                c.x = (float)(p.x + slope * ((y + 0.5) - p.y));
+                c.dir = py_qy_dir;
+                crossings.push_back(c);
+            }
+        };
+
+        // Same seam rule as wrapped_line(): an edge that leaps the width of the sky is really the
+        // band wrapping round behind the viewer, so hand the scanline both halves of it. Their
+        // crossings sit outside the screen on one side each, which is harmless -- parity is
+        // counted over every crossing, and only the drawing is clipped to the display.
+        auto emit_wrapped = [&](ImVec2 p, ImVec2 q)
+        {
+            if ((view_mode == vm_skymap || view_mode == vm_sunclock)
+                && fabs(p.x - q.x) > zoom*dcx
+                && ((p.x < dcx && q.x > dcx) || (p.x > dcx && q.x < dcx)))
+            {
+                ImVec2 q2 = q, p2 = p;
+                q2.x += (q2.x > dcx) ? -dcx*2 : dcx*2;
+                p2.x += (p2.x > dcx) ? -dcx*2 : dcx*2;
+                emit_edge(p, q2);
+                emit_edge(p2, q);
+            }
+            else emit_edge(p, q);
+        };
+
+        // Index into the concatenated outline: road1 forward, then road2 in reverse. This is what
+        // makes the two roads bound one region rather than two open curves -- and because road1's
+        // ends and road2's ends coincide on the sky, the join between them is zero-length, so the
+        // ring closes without an artificial seam edge being invented.
+        auto outline_point = [&](int i) -> const Point&
+        {
+            int hh = (i < n1) ? 0 : 1, ii = (i < n1) ? i : (n2-1 - (i - n1));
+            return viewspace[hh][ii];
+        };
+
+        if (!camera_is_directional)
+        {
+            // vm_skymap never culls by depth (its projection is the flat equirectangular one, no
+            // camera plane to be behind), so every road point is already valid and the previous
+            // per-edge walk is exact as it stands.
+            for (i=0; i<total; i++)
+            {
+                int ha = (i < n1) ? 0 : 1, ia = (i < n1) ? i : (n2-1 - (i - n1));
+                int k = (i+1) % total;
+                int hb = (k < n1) ? 0 : 1, ib = (k < n1) ? k : (n2-1 - (k - n1));
+
+                if (good[ha][ia] && good[hb][ib])
+                    emit_wrapped(screen[ha][ia], screen[hb][ib]);
+            }
+        }
+        else
+        {
+            // Everywhere else, Cartesian2D refuses points behind the camera plane (pt.z < 0), and
+            // we cannot simply leave those vertices out of the walk with a closed outline: dropping
+            // a vertex does not remove its two edges, it reconnects its neighbours across whatever
+            // the vertex used to separate, so a stretch of missing vertices silently rewires the
+            // polygon's boundary and desyncs the even-odd parity for every scanline downstream of
+            // the gap, causing the band fill to vanish in some frames and fill everywhere BUT the
+            // band in others. And the band circles the whole sky, so very close to half its vertices
+            // are behind the camera at any moment, regardless of zoom.
+            //
+            // The fix is to clip the loop against the camera plane (pt.z == 0) properly, inserting
+            // a new vertex exactly where each edge crosses it rather than dropping either endpoint.
+            // This is the standard Sutherland-Hodgman clip of a closed polygon against a single
+            // plane, and it always yields a new, still-closed polygon -- so the scanline pass below
+            // never has to special-case a gap.
+            const double eps = g->volumetric_mean_radius * 1e-6;
+            std::vector<Point> clipped;
+            clipped.reserve(total + 8);
+
+            for (i=0; i<total; i++)
+            {
+                const Point& curr = outline_point(i);
+                const Point& prev = outline_point((i-1+total) % total);
+                bool curr_in = curr.z >= eps, prev_in = prev.z >= eps;
+
+                if (curr_in != prev_in)
+                {
+                    double t = (eps - prev.z) / (curr.z - prev.z);
+                    clipped.push_back(Point(
+                        prev.x + t*(curr.x-prev.x),
+                        prev.y + t*(curr.y-prev.y),
+                        eps));
+                }
+                if (curr_in) clipped.push_back(curr);
+            }
+
+            int cn = clipped.size();
+            for (i=0; i<cn; i++)
+            {
+                const Point& p = clipped[i];
+                const Point& q = clipped[(i+1) % cn];
+                ImVec2 sp(dispcx + dispcx * (p.x/p.z*zoom), dispcy + dispcx * (-p.y/p.z*zoom));
+                ImVec2 sq(dispcx + dispcx * (q.x/q.z*zoom), dispcy + dispcx * (-q.y/q.z*zoom));
+                emit_wrapped(sp, sq);
+            }
+        }
+    }
+
+    if (camera_is_directional)
+    {
+        if (crossings.size() >= 2)
+        {
+            std::sort(crossings.begin(), crossings.end(),
+                [](const BandCrossing& a, const BandCrossing& b)
+                { return (a.y != b.y) ? (a.y < b.y) : (a.x < b.x); });
+
+            ImDrawList *list = ImGui::GetBackgroundDrawList();
+            size_t s = 0;
+            while (s < crossings.size())
+            {
+                size_t e = s;
+                while (e < crossings.size() && crossings[e].y == crossings[s].y) e++;
+
+                // An odd count means the outline was left open on this row -- points dropped by the
+                // projection behind the viewer, most often. Parity is meaningless there, and guessing
+                // would smear fill across the whole row, so the row is simply skipped.
+                size_t cnt = e - s;
+                
+                std::vector<double> drawable;
+                bool first = true;
+                for (int k = s; k < e; k++)
+                {
+                    if (first && crossings[k].dir) k++;
+                    if (crossings[k].x > -1e6 && crossings[k].x < 1e6)
+                        drawable.push_back(crossings[k].x);
+                    first = false;
+                }
+                std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
+                int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
+
+                float y = (float)crossings[s].y;
+                for (int k = 0; k < drawable_sz; k+=2)
+                {
+                    float x0 = drawable[k], x1 = drawable[k+1];
+                    if (x0 < 0) x0 = 0;
+                    if (x1 > dispw) x1 = (float)dispw;
+                    list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
+                }
+
+                s = e;
+            }
+        }
+    }
+    else
+    {
+        // Outline, reusing the same projected points computed above.
+        for (h=0; h<2; h++)
+        {
+            n = screen[h].size();
+            if (n<2) continue;
+            for (i=0; i<=n; i++)
+            {
+                j = i;
+                if (j >= n) j -= n;
+                if (i>0)
+                {
+                    int prevj = i-1;
+                    if (good[h][prevj] && good[h][j])
+                        wrapped_line(screen[h][prevj], screen[h][j], gcol, io);
+                }
+            }
+        }
+    }
 }
 
 void draw_objects()

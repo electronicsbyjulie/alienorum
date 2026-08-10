@@ -123,6 +123,14 @@ void draw_status_window(ImGuiIO& io)
         ImGui::EndCombo();
     }
 
+    flagstr = (std::string)"Galaxy labels (K): "
+        + std::string(label_galaxies ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
+    flagstr = (std::string)"Galaxy band (Sh+K): "
+        + std::string(show_galaxy_band ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
     if (cbolbls_selected_idx == lbltype_brightest)
     {
         snprintf(lblcut0, sizeof(lblcut0), "%.2f", appmagn_lblcut);
@@ -273,7 +281,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::SetNextItemWidth(123);
         if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
         {
-            for (int n = 0; n < NUM_VIEWMODES-1; n++)               // Sun clock mode is not yet implemented.
+            for (int n = 0; n < NUM_VIEWMODES-1; n++)
             {
                 const bool is_selected = (n == view_mode);
                 if (ImGui::Selectable(vmtext[n], is_selected))
@@ -285,6 +293,30 @@ void draw_status_window(ImGuiIO& io)
 
                 // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
                 if (n == view_mode)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGuiComboFlags cbovp_flags = 0;
+        const char* combo_vp_value = vptext[vplane_mode];
+        ImGui::Text("%s", "View Plane:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(123);
+        if (ImGui::BeginCombo("##cbovp", combo_vp_value, cbovp_flags))
+        {
+            for (int n = 0; n < NUM_VPLANES; n++)
+            {
+                const bool is_selected = (n == vplane_mode);
+                if (ImGui::Selectable(vptext[n], is_selected))
+                {
+                    vplane_mode = (ViewerPlaneMode)n;
+                    set_viewer_location_and_plane();
+                    viewchanged = true;
+                }
+
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (n == vplane_mode)
                     ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();

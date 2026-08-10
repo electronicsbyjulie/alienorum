@@ -51,6 +51,13 @@ namespace alienorum
         int read_Tycho_catalog(CelestialObject** cels, int max);
         int read_Uranometria_catalog(CelestialObject** cels, int max);
         int read_WD_catalog(CelestialObject** cels, int max);
+
+        // Galaxies. Load UNGC first: its distances are individually measured (tip of the red
+        // giant branch, Cepheids), while RC3 only has radial velocities, which cannot be turned
+        // into distances inside the Local Volume where peculiar motion dominates. read_RC3 then
+        // skips anything already placed by the UNGC.
+        int read_UNGC_catalog(CelestialObject** cels, int max);
+        int read_RC3_catalog(CelestialObject** cels, int max);
         int read_cons_boundaries();
 
         // Binary and Multiple Systems

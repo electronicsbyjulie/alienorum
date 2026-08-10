@@ -77,7 +77,7 @@ void set_viewer_location_and_plane()
     {
         view_mode = vm_skyatlas;
 
-        if (cels[whereami]->orbit->center)
+        if (vplane_mode == vplane_local && cels[whereami]->orbit->center)
         {
             here = cels[whereami]->location;
             Point me = cels[whereami]->location;
@@ -88,7 +88,7 @@ void set_viewer_location_and_plane()
         }
     }
 
-    if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+    if (vplane_mode == vplane_local && (view_mode == vm_skyatlas || view_mode == vm_skymap))
     {
         // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
         // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;
@@ -101,6 +101,7 @@ void set_viewer_location_and_plane()
                 = cels[whereami]->orbit->center->location.local_system_plane;
             cels[whereami]->location.local_position = (Point)cels[whereami]->location - (Point)cels[whereami]->orbit->center->location;
             cels[whereami]->location.system_center = cels[whereami]->orbit->center->location.system_center;
+            cels[whereami]->location.galactic_center = cels[whereami]->orbit->center->location.galactic_center;
         }
 
         here = cels[whereami]->location;
@@ -126,6 +127,21 @@ void set_viewer_location_and_plane()
         here = cels[whereami]->location;
         azimuth_correction = 0;
         npaz = 0;
+    }
+    else if (vplane_mode == vplane_ICRF)
+    {
+        here = cels[whereami]->location;
+        here.equatorial_plane.a = 0;
+    }
+    else if (vplane_mode == vplane_ecliptic)
+    {
+        here = cels[whereami]->location;
+        here.equatorial_plane = here.orbital_plane;
+    }
+    else if (vplane_mode == vplane_galactic && inside_galaxy_idx >= 0)
+    {
+        here = cels[whereami]->location;
+        here.equatorial_plane = cels[inside_galaxy_idx]->location.equatorial_plane;
     }
 }
 
@@ -298,12 +314,17 @@ void compute_object_draw_coordinates()
         {
             mycenobj = cels[i]->cenobj;
             CelestialLocation was_here = here;
+            here.galactic_center = cels[i]->location.galactic_center;           // TODO:
             here.system_center = cels[i]->location.system_center;
             here.local_position = Point(was_here) - here.system_center;
         }
     }
 
-    if (mycenobj) here.system_center = mycenobj->location.system_center;
+    if (mycenobj)
+    {
+        here.system_center = mycenobj->location.system_center;
+        here.galactic_center = mycenobj->location.galactic_center;
+    }
 
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();
@@ -314,23 +335,45 @@ void compute_object_draw_coordinates()
     if (1) // viewchanged || redo_proper_motions)
     {
         luminous_flux = cels[1] ? 0 : 1e10;
+        inside_galaxy_idx = -1;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
                 = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
+
+            // Standing inside a disc, its own projected ellipse is not what is overhead: the disc
+            // wraps all the way round as a band. draw_galaxy_band() renders that instead, and this
+            // is where it finds out there is one to render. The margin lets the band take over a
+            // little before the rim is crossed, since by then it already fills most of the sky.
+            if (cels[i]->typeclass() == class_galaxy)
+            {
+                double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
+                if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
+                    inside_galaxy_idx = i;
+            }
+
             if (i == whereami) continue;
 
-            Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
-
-            if (cels_i_star
-                && cels_i_star->seqno
-                && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
-                && !cels_i_star->tmp_vis_flag
-                && !cels_i_star->is_universally_visible())
+            // A galaxy is not inside anybody's star system, and its cenobj is itself. Casting that
+            // to Star* and reading tmp_vis_flag off it reads past the end of the object -- Galaxy
+            // carries none of Star's fields -- so the answer was whatever happened to be in the
+            // heap there, and galaxies were being culled here before they could ever be drawn.
+            // They get their own visibility test further down, on apparent magnitude, the same way
+            // a star out of its visible box would.
+            if (cels[i]->typeclass() != class_galaxy)
             {
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
-                continue;
+                Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
+
+                if (cels_i_star
+                    && cels_i_star->seqno
+                    && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
+                    && !cels_i_star->tmp_vis_flag
+                    && !cels_i_star->is_universally_visible())
+                {
+                    cels[i]->drawnx = cels[i]->drawny = -1e9;
+                    continue;
+                }
             }
 
             Point rel = cels[i]->tmprel;
