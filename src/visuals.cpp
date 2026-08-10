@@ -1731,6 +1731,7 @@ struct BandCrossing
 {
     int y;
     float x;
+    bool dir;
 };
 
 void draw_galaxy_band()
@@ -1857,7 +1858,9 @@ void draw_galaxy_band()
         {
             if (p.y == q.y) return;
             if (fabs(p.x) > 1e6 || fabs(q.x) > 1e6) return;
-            if (p.y > q.y) { ImVec2 t = p; p = q; q = t; }
+
+            bool py_qy_dir = (p.y > q.y);
+            if (py_qy_dir) { ImVec2 t = p; p = q; q = t; }
 
             int y0 = (int)ceil(p.y - 0.5), y1 = (int)ceil(q.y - 0.5) - 1;
             if (y0 < 0) y0 = 0;
@@ -1869,6 +1872,7 @@ void draw_galaxy_band()
                 BandCrossing c;
                 c.y = y;
                 c.x = (float)(p.x + slope * ((y + 0.5) - p.y));
+                c.dir = py_qy_dir;
                 crossings.push_back(c);
             }
         };
@@ -1985,37 +1989,33 @@ void draw_galaxy_band()
                 // projection behind the viewer, most often. Parity is meaningless there, and guessing
                 // would smear fill across the whole row, so the row is simply skipped.
                 size_t cnt = e - s;
-                if (cnt >= 2 && (cnt % 2) == 0)
+                
+                std::vector<double> drawable;
+                bool first = true;
+                for (int k = s; k < e; k++)
                 {
-                    std::vector<double> drawable;
-                    for (int k = s; k < e; k++)
-                    {
-                        // if (crossings[k].x > -1e6 && crossings[k].x < 1e5)
-                        if (crossings[k].x > -100 && crossings[k].x < dispw+100)
-                            drawable.push_back(crossings[k].x);
-                    }
-                    std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
-                    int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
+                    if (first && crossings[k].dir) k++;
+                    if (crossings[k].x > -1e6 && crossings[k].x < 1e6)
+                        drawable.push_back(crossings[k].x);
+                    first = false;
+                }
+                std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
+                int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
 
-                    float y = (float)crossings[s].y;
-                    if (y==dispcy) std::cout << "drawable_sz=" << drawable_sz << std::endl;
-                    for (int k = 0; k < drawable_sz; k+=2)
-                    {
-                        float x0 = drawable[k], x1 = drawable[k+1];
-                        if (y == dispcy) std::cout << x0 << "-" << x1 << " ";
-                        //if (x1 <= 0 || x0 >= dispw) continue;
-                        if (x0 < 0) x0 = 0;
-                        if (x1 > dispw) x1 = (float)dispw;
-                        list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
-                    }
-                    if (y==dispcy) std::cout << std::endl;
+                float y = (float)crossings[s].y;
+                for (int k = 0; k < drawable_sz; k+=2)
+                {
+                    float x0 = drawable[k], x1 = drawable[k+1];
+                    if (x0 < 0) x0 = 0;
+                    if (x1 > dispw) x1 = (float)dispw;
+                    list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
                 }
 
                 s = e;
             }
         }
     }
-    // else
+    else
     {
         // Outline, reusing the same projected points computed above.
         for (h=0; h<2; h++)
