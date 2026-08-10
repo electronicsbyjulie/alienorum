@@ -1065,12 +1065,12 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
-            if (cel->typeclass() != class_satellite)
+            if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
             {
                 ImGui::SameLine();
-                if (ImGui::Button("tidal##edit_rotation"))
+                if (ImGui::Button("estimate##edit_rotation"))
                 {
-                    cel->sidereal_rotational_period = cel->orbit->period;
+                    ((Planet*)cel)->estimate_rotation();
                 }
             }
             ImGui::SameLine(col2);
