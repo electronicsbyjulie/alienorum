@@ -156,6 +156,7 @@ namespace alienorum
 
         ~Atmosphere() { if (comp) delete comp; }
         AtmosphereComposition* ensure_composition() { if (!comp) comp = new AtmosphereComposition(); return comp; }
+        void calculate_tau(double pressure);
 
         json to_json();
         bool from_json(json j);

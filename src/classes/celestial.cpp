@@ -1435,6 +1435,14 @@ double CelestialObject::get_equatorial_radius()
     return volumetric_mean_radius * pow(1.0 - oblateness, 0.333);
 }
 
+void alienorum::Atmosphere::calculate_tau(double pressure)
+{
+    tau = atmospheric_tau(pressure*0.000009869,
+        comp->CO2_portion, comp->CH4_portion, comp->H2O_portion, comp->N2O_portion,
+        comp->O3_portion,  comp->SO2_portion, comp->H2S_portion, comp->CO_portion,
+        comp->HCN_portion, comp->H2_portion,  comp->NH3_portion, comp->C2H6_portion);
+}
+
 void Map::generate_rocky_map(CelestialObject *cel)
 {
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
@@ -1445,6 +1453,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
+    if (BV < 0.8) BV = 0.8;                 // most rocks aren't blue
     if (cel->type == waterworld)
     {
         has_water = 1;
@@ -1479,20 +1488,32 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
+        if (isinf(max_atm_pressure)) max_atm_pressure = 0;
         p->ensure_atmosphere()->surface_pressure = frand(0.1, 1) * max_atm_pressure;
     }
 
     AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
-    if (randomize_txgen) ac->generate_fictitious_for_planet(p->type);
+    life_possible = (p->is_in_con_HZ() && cel->mass > 0.02 * earth_mass);       // Based on Titan's mass.
+    if (randomize_txgen)
+    {
+        if (life_possible)
+        {
+            ac->generate_fictitious_habitable();
+            p->atm->calculate_tau(p->get_surface_pressure());
+            p->temperature = 0;
+            T_surf = p->estimate_surface_temperature();
+        }
+        else ac->generate_fictitious_for_planet(p->type);
+    }
+    life_possible = (life_possible
+        && p->get_surface_pressure() >= 600
+        && T_surf > 0.9*water_freezing && T_surf < 320
+        && p->get_surface_pressure() < oneatm*2000);
 
-    p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
-        ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
-        ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
-        ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
+    p->atm->calculate_tau(p->get_surface_pressure());
     // std::cout << p->name << " tau=" << p->get_atmospheric_tau() << std::endl;
 
-    if (p->is_in_con_HZ()
-        && cel->mass > 0.02 * earth_mass)       // Based on Titan's mass.
+    if (life_possible)
     {
         p->temperature = 0;
         T_surf = p->estimate_surface_temperature();
@@ -1514,23 +1535,27 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
-        if (has_water >= 0.05
+        ac->H2O_portion = 0.014 * has_water;
+        p->temperature = 0;
+        p->atm->calculate_tau(p->get_surface_pressure());
+        T_surf = p->estimate_surface_temperature();
+
+        life_possible = (has_water >= 0.05
             && p->get_surface_pressure() >= 600
             && T_surf > 0.9*water_freezing && T_surf < 320
-            && p->get_surface_pressure() < oneatm*2000)
-            life_possible = true;
+            && p->get_surface_pressure() < oneatm*2000);
 
         if (randomize_txgen)
         {
-            if (life_possible) ac->generate_fictitious_habitable();
-
-            p->atm->tau = atmospheric_tau(p->get_surface_pressure()*0.000009869,
-                ac->CO2_portion, ac->CH4_portion, ac->H2O_portion, ac->N2O_portion,
-                ac->O3_portion,  ac->SO2_portion, ac->H2S_portion, ac->CO_portion,
-                ac->HCN_portion, ac->H2_portion,  ac->NH3_portion, ac->C2H6_portion);
+            if (life_possible)
+            {
+                ac->generate_fictitious_habitable();
+                p->atm->calculate_tau(p->get_surface_pressure());
+            }
         }
     }
     p->temperature = 0;
+    p->atm->calculate_tau(p->get_surface_pressure());
     T_surf = p->estimate_surface_temperature();
 
     // Too hot for surface water: the world wears a globally overcast, Venusian sky instead. The
@@ -1838,6 +1863,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         }
     }
 
+    cel->BV_color = 0.9 - has_water;
+
     if (create_bump) stamp_craters(cel, bump_scale);
 
     generating_fic_texture = false;
@@ -2041,31 +2068,35 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                     }
                 }
 
+                unsigned long idx = y * image_width + x;
+                if (idx >= allocated) continue;
+
                 // Rays are an ejecta phenomenon outside the crater itself, reaching much
                 // farther than the rim, and fading in gradually rather than blazing at full
                 // strength right at the rim -- real ray systems (e.g. Tycho) read as thin
                 // bright streaks, not a solid white starburst.
                 int rayr = 0, rayg = 0, rayb = 0;
-                if (c.has_rays && r > 1.0)
+                if (red_data[idx] > 0.6*blue_data[idx])                 // No rays on the ocean floor.
                 {
-                    double ray_r = (r - 1.0) / (c.ray_extent_factor - 1.0);
-                    if (ray_r <= 1.0)
+                    if (c.has_rays && r > 1.0)
                     {
-                        double comp_e = px * c.ex + py * c.ey + pz * c.ez;
-                        double comp_n = px * c.tnx + py * c.tny + pz * c.tnz;
-                        double bearing = atan2(comp_e, comp_n);
-                        double lobe = pow(fabs(cos(c.ray_freq * (bearing - c.ray_phase))), c.ray_sharpness);
-                        double ray_falloff = pow(fmax(0.0, 1.0 - ray_r), 2.0);
-                        double ray_strength = 0.35 * lobe * ray_falloff;
-                        rayr = 250 * ray_strength;
-                        rayg = 244 * ray_strength;
-                        rayb = 236 * ray_strength;
-                        color_mult *= (1.0 - ray_strength);
+                        double ray_r = (r - 1.0) / (c.ray_extent_factor - 1.0);
+                        if (ray_r <= 1.0)
+                        {
+                            double comp_e = px * c.ex + py * c.ey + pz * c.ez;
+                            double comp_n = px * c.tnx + py * c.tny + pz * c.tnz;
+                            double bearing = atan2(comp_e, comp_n);
+                            double lobe = pow(fabs(cos(c.ray_freq * (bearing - c.ray_phase))), c.ray_sharpness);
+                            double ray_falloff = pow(fmax(0.0, 1.0 - ray_r), 2.0);
+                            double ray_strength = 0.35 * lobe * ray_falloff;
+                            rayr = 250 * ray_strength;
+                            rayg = 244 * ray_strength;
+                            rayb = 236 * ray_strength;
+                            color_mult *= (1.0 - ray_strength);
+                        }
                     }
                 }
 
-                unsigned long idx = y * image_width + x;
-                if (idx >= allocated) continue;
                 bump_data[idx] += bump_delta;
                 if (color_mult != 1.0)
                 {
@@ -2976,18 +3007,18 @@ void alienorum::AtmosphereComposition::generate_fictitious_habitable()
     bool has_free_oxygen = frand(0,1) < 0.03;           // yes I am an oxygen pessimist
 
     double leftover = 1;
-    leftover -= (CH4_portion = frand(0, 0.05));
+    leftover -= (CH4_portion = frand(0, 0.0005));
     leftover -= (C2H6_portion = CH4_portion * frand(0.000001, 0.1));
     leftover -= (HCN_portion = frand(0, 0.001));
     leftover -= (NH3_portion = frand(0, 0.00001));
     leftover -= (Ar_portion = frand(0.00001, 0.005));
     leftover -= (CO2_portion = frand(0.00001, 0.01));
     leftover -= (CO_portion = CO2_portion * frand(0.00001, 0.01));
-    leftover -= (H2O_portion = frand(0.001, 0.05));
+    leftover -= (H2O_portion = frand(0.001, 0.015));
 
     if (has_intense_volcanism)
     {
-        leftover -= (SO2_portion = frand(0.0001, 0.01));
+        leftover -= (SO2_portion = frand(0.0001, 0.001));
         leftover -= (H2S_portion = SO2_portion * frand(0.01, 0.5));
     }
 

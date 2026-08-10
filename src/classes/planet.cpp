@@ -7,6 +7,7 @@
 #include "point.h"
 #include "patch.h"
 #include "shore.h"
+#include "celestial.h"
 
 using namespace alienorum;
 
@@ -90,6 +91,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     {
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(get_light_center()), *this);
         double p_pa = (shoreline<0) ? 0 : (pow(10, shoreline) * 503);
+        if (isinf(p_pa)) p_pa = 0;
         if (p_pa > 0) ensure_atmosphere()->surface_pressure = p_pa;
     }
 }
@@ -587,7 +589,7 @@ bool Planet::from_json(json j)
         try { j.at("atmospheric_tau").get_to(legacy_tau); } catch (...) { ; }
         if (legacy_pressure > 0 || legacy_tau > 0)
         {
-            ensure_atmosphere()->surface_pressure = legacy_pressure;
+            if (!isinf(legacy_pressure)) ensure_atmosphere()->surface_pressure = legacy_pressure;
             atm->tau = legacy_tau;
         }
     }

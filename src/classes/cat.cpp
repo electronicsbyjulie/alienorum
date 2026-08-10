@@ -2444,7 +2444,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 else if (!strcmp(ihavetomove, "super_venus"))
                 {
                     p->type = rocky;
-                    p->ensure_atmosphere()->surface_pressure = 100.0 * oneatm * p->estimate_surface_gravity();
+                    if (!p->volumetric_mean_radius) p->estimate_radius();
+                    double pressure = 100.0 * oneatm * p->estimate_surface_gravity();
+                    if (!isinf(pressure)) p->ensure_atmosphere()->surface_pressure = pressure;
                 }
                 else if (!strcmp(ihavetomove, "lavaworld")) p->type = lavaworld;
                 else if (!strcmp(ihavetomove, "ice_giant")) p->type = ice_giant;
@@ -3569,7 +3571,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 if (has_atm)
                 {
                     Atmosphere *a = p->ensure_atmosphere();
-                    a->surface_pressure = a_pressure;
+                    if (!isinf(a_pressure)) a->surface_pressure = a_pressure;
                     a->tau = a_tau;
                     a->particulates = a_partic;
                 }
