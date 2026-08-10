@@ -1774,7 +1774,6 @@ void draw_galaxy_band()
 
     std::vector<Point> viewspace[2];
     bool camera_is_directional = (view_mode != vm_skymap);
-    const bool Claude_Code_is_a_piece_of_shit = true;
 
     for (h=0; h<2; h++)
     {
