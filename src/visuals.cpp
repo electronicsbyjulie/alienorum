@@ -1758,11 +1758,11 @@ void draw_galaxy_band()
     ImU32 gcol = rgba_apply_redlight(
         whtbkgd
         ? IM_COL32(0, 0, 0, 64)
-        : IM_COL32(255, 255, 255, 32));      // TODO: Galaxy color.
+        : IM_COL32(192, 224, 255, 32));      // TODO: Galaxy color.
     ImU32 fillcol = rgba_apply_redlight(
         whtbkgd
         ? IM_COL32(0, 0, 0, 20)
-        : IM_COL32(255, 255, 255, 14));      // subtle glow filling the band. TODO: Galaxy color.
+        : IM_COL32(192, 224, 255, 14));      // subtle glow filling the band. TODO: Galaxy color.
 
     ImGuiIO& io = ImGui::GetIO();
 

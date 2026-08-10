@@ -85,6 +85,9 @@ int alienorum::CelestialObject::read_locales(std::string fn)
 
 int alienorum::CelestialObject::read_locales_json(json fj)
 {
+    // TODO: Since we treat Venus internally as having an obliquity near 180 degrees rather than a negative rotational period,
+    // we must invert the coordinate system of the locales.
+
     if (locales) delete[] locales;
     int i, j=0, n = fj.size();
     locales = new Locale[n];
@@ -878,6 +881,10 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     FILE * infile;
     unsigned int row_stride;
 
+    // Venus rotates retrograde, which means actually its north pole points roughly in the direction of its orbit's south pole and vice versa.
+    // But the texture maps put retrograde north at the top. We use prograde north internally, so the maps have to be inverted at load.
+    bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
+
     if ((infile = fopen(filename.c_str(), "rb")) == NULL)
     {
         fprintf(stderr, "can't open %s\n", filename.c_str());
@@ -930,31 +937,27 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
             ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
-    unsigned int i, j;
+    unsigned int i, j, i0, j0;
     while (cinfo.output_scanline < cinfo.output_height)
     {
-        j = cinfo.output_scanline * image_width;
-        assert(j >= 0);
+        j0 = cinfo.output_scanline * image_width;
+        assert(j0 >= 0);
         (void) jpeg_read_scanlines(&cinfo, jpeg_image_buffer, 1);
+        i0 = 0;
         for (i=0; i<row_stride; i+=cinfo.output_components)
         {
+            j = j0 + i0;
             assert(j < allocated);
+            if (upside_down) j = allocated-1-j;
 
-            // cinfo.output_components can be 1 (grayscale -- e.g. Moon_bump.jpg) as well as 3
-            // (RGB -- e.g. Mars_bump.jpg). This used to always read i/i+1/i+2 regardless,
-            // which for a 1-component image pulled bytes from the *next* pixel(s) in as g/b
-            // instead of using the one real channel -- running past the row buffer's own end
-            // entirely for the last pixel or two of every row. Bug: garbled/wrong bump (or
-            // color) data for any grayscale-encoded JPEG specifically, while an RGB-encoded
-            // one read correctly -- "Moon bump doesn't work, Mars bump does."
             if (as_bump)
             {
                 // Allow false color bump maps using the visual luminance as the elevation for better granularity
                 double lum = (cinfo.output_components >= 3)
-                    ? (0.001137 * jpeg_image_buffer[0][i]
+                    ? (   0.001137 * jpeg_image_buffer[0][i]
                         + 0.002196 * jpeg_image_buffer[0][i+1]
                         + 0.000588 * jpeg_image_buffer[0][i+2])
-                    : (0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
+                    : (   0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
                 bump_data[j] = bump_scale * (lum - 0.5);
             }
             else if (cinfo.output_components >= 3)
@@ -967,7 +970,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
             {
                 red_data[j] = green_data[j] = blue_data[j] = jpeg_image_buffer[0][i];
             }
-            j++;
+            i0++;
         }
     }
 
@@ -986,6 +989,8 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     png_structp png_ptr;
     png_infop info_ptr;
     FILE *fp;
+
+    bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
 
     if ((fp = fopen(filename.c_str(), "rb")) == NULL)
         return false;
@@ -1069,7 +1074,9 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         {
             for (x=0; x<image_width; x++)
             {
-                png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                png_bytep pixel;
+                if (upside_down) pixel = &(row_pointers[image_height-1-y][(image_width-1-x) * bytes_per_pixel]);
+                else pixel = &(row_pointers[y][x * bytes_per_pixel]);
 
                 if (as_bump)
                 {
