@@ -14,6 +14,7 @@ void process_key_arrowup();
 void process_key_arrowdn();
 void process_key_arrowleft();
 void process_key_arrowright();
+void process_key_delete();
 void process_key_home();
 void process_key_end();
 void process_key_F1();

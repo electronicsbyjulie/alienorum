@@ -7,7 +7,11 @@ using namespace alienorum;
 void refresh_star_visibilities()
 {
     int i;
-    for (i=0; cels[i]; i++) if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(here);
+    for (i=0; cels[i]; i++)
+    {
+        if (cels[i]->deleted) continue;
+        if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(here);
+    }
 }
 
 void set_viewer_surface_location(bool also_set_plane)
@@ -301,6 +305,7 @@ void compute_object_draw_coordinates()
     for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        if (cels[i]->deleted) continue;
         if (!compute_object_location(cels[i])) continue;
 
         CelestialLocation tmp = cels[i]->location - here;
@@ -338,6 +343,7 @@ void compute_object_draw_coordinates()
         inside_galaxy_idx = -1;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            if (cels[i]->deleted) continue;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
                 = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
@@ -456,6 +462,8 @@ void set_center_objects()
     for (i=0; i<36; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
     for (i=0; cels[i]; i++)
     {
+        if (cels[i]->deleted) continue;
+
         // Center of each star system
         if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
 

@@ -170,6 +170,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     for (i=0; cels[i]; i++)
     {
+        if (cels[i]->deleted) continue;
         if (os && (cels[i]->typeclass() != class_star)) continue;
         if (!strcmp(cels[i]->name, search_term))
         {
@@ -207,6 +208,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         // TODO: put Bayer search in here too.
         if (result < 0 && !is_Gould) for (i=0; cels[i]; i++)
         {
+            if (cels[i]->deleted) continue;
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
             if (!s) continue;
             if (!s->matches_constellation(match_cons)) continue;
@@ -223,6 +225,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         }
         if (result < 0) for (i=0; cels[i]; i++)
         {
+            if (cels[i]->deleted) continue;
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
             if (!s) continue;
             if (!s->matches_constellation(match_cons)) continue;
@@ -248,6 +251,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         int looklen = strlen(search_term);
         for (i=0; cels[i]; i++)
         {
+            if (cels[i]->deleted) continue;
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
             if (os && !s) continue;
             if (match_comp)
@@ -306,6 +310,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
         json allobjs;
         for (i=0; cels[i]; i++)
         {
+            if (cels[i]->deleted) continue;
             std::string key = "";
             key = std::string(cels[i]->name);
             CelestialObject *cursor = cels[i];
@@ -390,6 +395,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 std::cout << "Clobbering " << i << " " << cels[i]->name << " with " << name << ", originally " << origname << std::endl << std::flush;
             else std::cout << "Creating new " << i << " " << name << ", originally " << origname << std::endl << std::flush;
             #endif
+
+            if (cels[i]) cels[i]->deleted = false;
 
             switch (c)
             {

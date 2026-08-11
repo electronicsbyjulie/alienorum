@@ -2062,6 +2062,7 @@ void draw_objects()
     // Orbits
     if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        if (cels[i]->deleted) continue;
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
@@ -2126,6 +2127,7 @@ void draw_objects()
     // Faraway objects
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
+        if (cels[i]->deleted) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
         if (i == whereami) continue;
 
@@ -2717,6 +2719,8 @@ void draw_cons_lines()
             if (!constellations[i].lines[l].a || !constellations[i].lines[l].b) continue;
             if (constellations[i].lines[l].a == mycenobj) continue;
             if (constellations[i].lines[l].b == mycenobj) continue;
+            if (constellations[i].lines[l].a->deleted) continue;
+            if (constellations[i].lines[l].b->deleted) continue;
 
             int dx1, dx2, dy1, dy2;
 

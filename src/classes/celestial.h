@@ -262,6 +262,7 @@ namespace alienorum
 
         public:
         int seqno = -1;
+        bool deleted = false;
 
         double mass = 0;                            // grams
         double volumetric_mean_radius = 0;          // meters

@@ -50,6 +50,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (i == whereami) continue;
+        if (cels[i]->deleted) continue;
 
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
             && abs(io.MousePos.y - cels[i]->drawny) < threshold)
@@ -207,15 +208,16 @@ void show_menu()
         if (ImGui::BeginMenu("Object"))
         {
             mouse_over_menu = true;
+            if (ImGui::MenuItem("Search...", "F3")) { process_key_F3(); menu_clicked = true; }
             if (ImGui::MenuItem("Track Selected", "T")) { process_key_cmd_char('t'); menu_clicked = true; }
             if (ImGui::MenuItem("Clear Selection", "Shift+S")) { process_key_cmd_char('S'); menu_clicked = true; }
             if (ImGui::MenuItem("Clear Tracking", "Shift+T")) { process_key_cmd_char('T'); menu_clicked = true; }
             ImGui::Separator();
-            if (ImGui::MenuItem("Search...", "F3")) { process_key_F3(); menu_clicked = true; }
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
             if (ImGui::MenuItem("Edit Object...", "Shift+E")) { process_key_cmd_char('E'); menu_clicked = true; }
+            if (ImGui::MenuItem("Delete Object", "Del")) { process_key_delete(); menu_clicked = true; }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Spacetime"))
@@ -662,6 +664,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window) process_key_arrowright();
     if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window) process_key_arrowup();
     if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window) process_key_arrowdn();
+    if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
     if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
     if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
@@ -729,6 +732,14 @@ void process_key_arrowright()
     Point yaw = to_viewer_plane(yaxis, -1);
     velocity = rotate3D(velocity, center, yaw,  steering_rate);
     if (trackidx<0) azimuth += steering_rate;
+}
+
+void process_key_delete()
+{
+    // No deleting catalog objects, only objects added by the user, whether fictional objects or satellites.
+    // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
+    if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
+    else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
 }
 
 void process_key_home()

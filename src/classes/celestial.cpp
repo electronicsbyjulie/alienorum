@@ -726,6 +726,7 @@ bool CelestialObject::from_json(json j)
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center || !orbit->period) return;
+    if (deleted = orbit->center->deleted) return;
     location.galactic_center = orbit->center->location.galactic_center;
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;

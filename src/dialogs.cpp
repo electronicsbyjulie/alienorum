@@ -2019,6 +2019,7 @@ void draw_system_explorer(ImGuiIO& io)
         j = 0;
         for (i=0; cels[i]; i++)
         {
+            if (cels[i]->deleted) continue;
             if (cels[i]->cenobj != mycenobj) continue;
             bool is_selected = (item_selected_idx == j);
 
@@ -2277,6 +2278,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             neighb_celr.clear();
             for (i=0; cels[i]; i++)
             {
+                if (cels[i]->deleted) continue;
                 cel_obj_class cls = cels[i]->typeclass();
                 if (cls != class_star) continue;
                 r = cels[i]->tmprel.magnitude();

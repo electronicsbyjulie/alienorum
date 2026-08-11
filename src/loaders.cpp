@@ -450,6 +450,7 @@ void load_catalogs()
 
         for (i=0; cels[i]; i++)
         {
+            if (cels[i]->deleted) continue;
             if (cels[i]->type == star) num_stars++;
             if (!cels[i]->cenobj) cels[i]->cenobj = cels[i];
         }
