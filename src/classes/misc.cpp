@@ -11,6 +11,7 @@
 using namespace alienorum;
 
 // IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
+bool done = false;
 std::string loading_msg = "Loading...";
 std::vector<std::string> themes;
 std::string viewer_theme = "Perseus";

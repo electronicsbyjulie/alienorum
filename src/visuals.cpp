@@ -1754,15 +1754,17 @@ void draw_galaxy_band()
     Rotation pl = g->location.local_system_plane;
     Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+    double gbrt = (view_mode == vm_horizon) ? (16 * pow(magnbase, sky_mag_shift)) : 13;
+    if (gbrt < 2) return;
 
     ImU32 gcol = rgba_apply_redlight(
         whtbkgd
-        ? IM_COL32(0, 0, 0, 64)
-        : IM_COL32(192, 224, 255, 32));      // TODO: Galaxy color.
+        ? IM_COL32(0, 0, 0, 96)
+        : IM_COL32(192, 224, 255, 96));      // TODO: Galaxy color.
     ImU32 fillcol = rgba_apply_redlight(
         whtbkgd
         ? IM_COL32(0, 0, 0, 20)
-        : IM_COL32(192, 224, 255, 14));      // subtle glow filling the band. TODO: Galaxy color.
+        : IM_COL32(192, 224, 255, (int)gbrt));      // subtle glow filling the band. TODO: Galaxy color.
 
     ImGuiIO& io = ImGui::GetIO();
 

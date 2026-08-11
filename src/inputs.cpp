@@ -637,6 +637,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'G': vplane_mode = vplane_galactic; break;
         case 'I': vplane_mode = vplane_ICRF; break;
         case 'L': vplane_mode = vplane_local; break;
+        case 'W': done = true; break;
 
         default:
         ;

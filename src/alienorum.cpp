@@ -475,7 +475,6 @@ int main (int argc, char** argv)
     SDL_Cursor* default_cursor = SDL_GetDefaultCursor();
 
     // Main loop
-    bool done = false;
     viewchanged = true;
     ImVec2 PrevDispSize;
     view_mode = vm_skyatlas;
