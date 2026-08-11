@@ -44,7 +44,20 @@ void draw_status_window(ImGuiIO& io)
     if (ImGui::InputText("##find", lookfor, name_max_len, ImGuiInputTextFlags_CallbackEdit | ImGuiInputTextFlags_EnterReturnsTrue, lookfor_cb)) do_find();
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
     {
-        // TODO:
+        const char* clip = ImGui::GetClipboardText();
+        if (clip)
+        {
+            size_t i = 0;
+            // Names never span lines, so stop at the first newline rather than pasting garbage.
+            while (i < name_max_len - 1 && clip[i] && clip[i] != '\n' && clip[i] != '\r')
+            {
+                lookfor[i] = clip[i];
+                i++;
+            }
+            lookfor[i] = 0;
+            lookfor_notfound = false;
+            focus_findbox = true;
+        }
     }
     if (styles_to_pop) ImGui::PopStyleColor(styles_to_pop);
     ImGui::SameLine();

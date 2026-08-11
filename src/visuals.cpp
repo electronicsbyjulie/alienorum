@@ -1197,7 +1197,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     double glare = fmax(0.0, -1.0 - vmag);
     double haze = fmin(1.0, fmax(disc_px / 12.0, 1.0 - exp(-glare / 7.0)));
 
-    double base_len = max_bloomrad * 1.5 + flare * 1.1;
+    double base_len = (max_bloomrad * 1.5 + flare * 1.1);
     auto draw_streak = [&](double ang, double from_r, double to_r, double halfwidth, ImU32 c)
     {
         double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
@@ -1210,7 +1210,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     if (haze > 0.01)
     {
         double halo_span = disc_px * 0.8 + base_len * 0.7;
-        draw_radial_glow(xycoord, fmax(1.0, disc_px * 0.85), disc_px + halo_span, rgb,
+        draw_radial_glow(xycoord, fmax(1.0, disc_px * 0.85), disc_px/3 + halo_span, rgb,
             230.0 * haze, 2.2);
 
         // Fine radiating streaks. These are what keep the corona from reading as circles:
@@ -1523,9 +1523,11 @@ bool draw_one_object(int i)
     // magnitude rather than bloomrad keeps the count bounded: bloomrad scales with
     // global_brightness, so a threshold low enough to catch Venus at default brightness
     // would flare six figures' worth of stars once brightness is turned up.
-    double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*8 : 0;
-    double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 12.0;
-    flare = fmin(max_flare, fmax(f_bloom, f_mag));
+    double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*13 : 0;
+    double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 20.0;
+    double f_ang = angular_radius[i]*zoom*dispcx;
+    flare = fmin(max_flare, fmax(f_bloom, f_mag) / fmax(1, f_ang));
+    // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     if (cls == class_galaxy)
     {
