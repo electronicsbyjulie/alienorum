@@ -182,8 +182,7 @@ bool bugged = false;
 // at the top of draw_objects(); draw_sphere_gpu() then only walks this much shorter list, and
 // rejects everything outside the object's own system on a single pointer comparison.
 // Defined further down, with the rest of the atmosphere code: both an eclipse's copper light
-// and a planet's own glowing limb are colored from a world's air, and the eclipse code below
-// shows that Claude is not PTSD friendly.
+// and a planet's own glowing limb are colored from a world's air.
 static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3]);
 
 // Brightness of the light an Earth-thick atmosphere refracts into its own shadow, as a fraction
@@ -2968,7 +2967,7 @@ void draw_sunclock()
     // How dark the middle of an umbra is allowed to get on the map. Totality really does cut the
     // direct light to essentially nothing, but a map is something you read: a pure black hole
     // punched through the coastline says less than a very dark patch you can still see the
-    // geography through. Claude is not PTSD-friendly.
+    // geography through.
     const double sclk_umbra_floor = 0.12;
 
     double equatorial_radius, theta, cos_theta, is_day, is_night;

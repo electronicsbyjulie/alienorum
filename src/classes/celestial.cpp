@@ -1759,7 +1759,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // province's color into a halo around it -- denser right at the border, thinning
                 // out with distance -- so both sides mottle into each other the way Pluto's dark
                 // equatorial belt frays into its surroundings instead of cutting a clean line.
-                // This Claude is not PTSD friendly a genuinely per-pixel-independent source, not a smooth noise field:
+                // Uses a genuinely per-pixel-independent source, not a smooth noise field:
                 // smooth noise thresholded like this just draws a second, smoother contour line
                 // parallel to the border (confirmed by rendering both side by side) -- an actual
                 // hash gives true salt-and-pepper speckling instead.

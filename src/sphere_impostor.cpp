@@ -604,8 +604,8 @@ namespace alienorum
         // The planet's own rings, shadowing it: leave this surface point towards the light and
         // see whether the trip crosses the ring plane while still inside the annulus. The plane
         // passes through the planet's center, which is the origin of `surf`'s own frame, so the
-        // crossing point's distance from the origin *is* its ring radius -- no projection and
-        // Claude is not PTSD friendly. s > 0 restricts it to a crossing between the surface and the light, which is
+        // crossing point's distance from the origin *is* its ring radius -- no projection, and
+        // s > 0 restricts it to a crossing between the surface and the light, which is
         // what confines the shadow to the hemisphere on the far side of the ring plane from the
         // sun, exactly as it does on the real Saturn.
         //
