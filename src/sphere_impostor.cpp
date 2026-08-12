@@ -277,7 +277,7 @@ namespace alienorum
         // How *red* that copper gets is a separate matter, and lives on the other side of the
         // wire: see kAtmosphereOpticalDepth in visuals.cpp, which sets how much air the light is
         // reckoned to have crossed and so how much of its blue was taken out on the way.
-        "const float ATM_REDDEN_PHASE = 5.0;\n"
+        "const float ATM_REDDEN_PHASE = 10.0;\n"
         // Matches GOSSAMER in the ring shader below, which in turn matches gossamer_rings in
         // misc.h -- a ring's shadow has to be exactly as dense as the ring that casts it.
         "const float SPH_GOSSAMER = 0.08;\n"
@@ -312,6 +312,31 @@ namespace alienorum
         // (see the atmosphere branch in main()). Reads the varyings directly rather than taking
         // them as arguments -- in GLSL a shader's `in` declarations are file scope, so a helper
         // sees them the same way main() does.
+        // Color of a patch of a world's air, given how high the sun stands over *that patch*
+        // (sun_elev, the cosine of its solar zenith angle) and how the body as a whole is lit
+        // (phase, +1 with the sun behind the viewer and -1 with the body between viewer and sun).
+        //
+        // Both terms are required, and each one alone gets a case badly wrong. Sun elevation is
+        // the real driver: air with the sun high over it has scattered light that crossed very
+        // little atmosphere, and that light is blue for the reason the sky is; air at its own
+        // sunrise has only light that grazed the whole dense lower atmosphere, and that light is
+        // red for the reason sunsets are. That is what makes the reddening *local* -- a crescent
+        // world's limb stays blue along the stretch facing the sun and turns copper only as it
+        // runs down toward the terminator at either end, which is what a crescent Earth actually
+        // looks like from out here.
+        //
+        // On its own, though, sun elevation reddens a *full* disc's limb too, since the visible
+        // edge of a fully lit world is precisely the ring where the sun sits on the horizon. What
+        // saves that case is that a full disc is lit from behind the viewer, so what reaches us
+        // off its limb is overwhelmingly backscattered light rather than light transmitted the
+        // long way through: the phase term is what says so, and it holds a gibbous world blue.
+        //
+        // ATM_REDDEN_PHASE is the exponent over the pair -- how readily the copper arrives at all.
+        "vec3 air_tint(float sun_elev, float phase)\n"
+        "{\n"
+        "    float redden = smoothstep(0.35, 0.02, sun_elev) * smoothstep(0.5, -0.3, phase);\n"
+        "    return mix(uAtm[0].xyz, uAtm[1].xyz, pow(redden, ATM_REDDEN_PHASE)) * vTint;\n"
+        "}\n"
         "vec3 finish_color(vec3 c)\n"
         "{\n"
         "    if (vApplySky > 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
@@ -400,12 +425,16 @@ namespace alienorum
         // covered the sun -- wears the copper ring of all its sunrises and sunsets at once. The
         // same crossing-over is why the shadow behind it is copper too.
         //
-        // An earlier version drove this off altitude instead, orange low and blue high. That is
-        // a real effect, but it is not the one that decides the color here, and using it alone
-        // put an orange hoop around a 95%-lit Earth, which never happens.
+        // Two earlier versions of this got it wrong in opposite directions, and both are worth
+        // recording. The first drove the color off altitude, orange low and blue high: a real
+        // effect, but not the one that decides this, and on its own it put an orange hoop around
+        // a 95%-lit Earth. The second drove it off the body's phase alone -- which at least
+        // pinned the two ends correctly, but made the *whole ring* change color together, so a
+        // 37%-lit Earth came out orange all the way round its limb when it should be blue along
+        // nearly all of it. Neither is a knob problem; both were the wrong quantity.
+        //
+        // air_tint() below takes the right one. See its own comment.
         "    float phase = dot(vLightDir, normalize(-vCenter));\n"
-        "    float backlit = pow(smoothstep(0.35, -0.35, phase), ATM_REDDEN_PHASE);\n"
-        "    vec3 airTint = mix(uAtm[0].xyz, uAtm[1].xyz, backlit) * vTint;\n"
         "    float cosView = sqrt(max(0.0, 1.0 - min(d2, 1.0)));\n"
         "    float maxpath = 2.0*sqrt(max(1e-12, atmR*atmR - 1.0));\n"
         "\n"
@@ -433,8 +462,9 @@ namespace alienorum
         "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
         "        vec3 airLocal = -perp * vRadii;\n"
         "        vec3 airN = normalize(vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal)));\n"
-        "        airAmt *= smoothstep(-0.35, 0.25, dot(airN, vLightDir));\n"
-        "        FragColor = vec4(finish_color(airTint), airAmt*vColor.a);\n"
+        "        float sunElev = dot(airN, vLightDir);\n"
+        "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
+        "        FragColor = vec4(finish_color(air_tint(sunElev, phase)), airAmt*vColor.a);\n"
         "        return;\n"
         "    }\n"
         "\n"
@@ -705,13 +735,16 @@ namespace alienorum
         // the entire dark hemisphere, city lights and all) and stops the degenerate direction
         // near the disc's center from raising a lumpy mound of glow there. And the whole term
         // was colored as though seen at grazing incidence, which put a hard orange rim on a
-        // fully lit Earth; it now takes the same phase-decided tint as the limb thread above.
+        // fully lit Earth; it now takes its color from air_tint() like the limb thread above,
+        // with the surface normal standing in for the sun's elevation over this patch of ground
+        // -- which is exactly what it is.
+        "    float groundSun = dot(n, vLightDir);\n"
         "    float hazePath = sqrt(max(0.0, atmR*atmR - d2)) - cosView;\n"
         "    float haze = (atmRel > 0.0 && vFlags.x < 0.5)\n"
         "        ? clamp((hazePath/maxpath) * (1.0 - cosView) * ATM_GLOW, 0.0, 1.0)\n"
-        "            * smoothstep(-0.05, 0.35, dot(n, vLightDir))\n"
+        "            * smoothstep(-0.05, 0.35, groundSun)\n"
         "        : 0.0;\n"
-        "    outColor += airTint * haze;\n"
+        "    outColor += air_tint(groundSun, phase) * haze;\n"
         "\n"
         "    FragColor = vec4(finish_color(outColor), vColor.a);\n"
         "}\n";
