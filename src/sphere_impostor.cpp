@@ -73,6 +73,15 @@ namespace alienorum
         GLuint bump_tex;
         float bump_strength;
         float limba, limbb;
+        // Eclipse casters, laid out as the 16 floats of a column-major mat4 uniform: column i
+        // (floats 4i..4i+3) is one caster's xyz offset from this object's own center plus its
+        // radius, all scaled by 1/d exactly like ccx/radx above. An unused column is all zeros,
+        // which the shader recognizes by its w (radius) being 0. Passed as a uniform rather than
+        // as per-vertex attributes because the attribute table is full (see aBumpLimb's comment
+        // in the vertex shader) -- and mat4 is the one non-scalar uniform type this project's
+        // stripped GL loader can still set.
+        float casters[16];
+        float light_ang;    // light source's angular radius as seen from this object; 0 = no eclipse test
         float r, g, b, a;   // fallback color, used when has_tex is 0
         float lightx, lighty, lightz;   // camera space, unit length
         float tintr, tintg, tintb;
@@ -92,6 +101,7 @@ namespace alienorum
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
     static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
     static GLint s_aHasBumpTexLoc = -1, s_aBumpLimbLoc = -1;
+    static GLint s_uCastersLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -116,13 +126,17 @@ namespace alienorum
         "in float aApplySky;\n"
         "in float aHasBumpTex;\n"
         // x = bump strength; y, z = the quadratic limb-darkening coefficients (a, b), used only
-        // when self_luminous. Three unrelated scalars share one attribute on purpose: OpenGL
-        // guarantees only GL_MAX_VERTEX_ATTRIBS >= 16, this machine reports exactly 16 (Mesa,
-        // Intel HD 2000), and the list above already uses all 16. Declaring a 17th made the
-        // program fail to link, which silently killed every disc in the app -- stars and planets
-        // alike, since they all come through this one shader. Any future per-object scalar has to
-        // ride along in an existing attribute's spare components the same way.
-        "in vec3 aBumpLimb;\n"
+        // when self_luminous; w = the light source's angular radius in radians, used only for
+        // the eclipse test (0 = no eclipse on this object this frame). Four unrelated scalars
+        // share one attribute on purpose: OpenGL guarantees only GL_MAX_VERTEX_ATTRIBS >= 16,
+        // this machine reports exactly 16 (Mesa, Intel HD 2000), and the list above already uses
+        // all 16. Declaring a 17th made the program fail to link, which silently killed every
+        // disc in the app -- stars and planets alike, since they all come through this one
+        // shader. Any future per-object scalar has to ride along in an existing attribute's
+        // spare components the same way (widening one from vec3 to vec4, as the w component here
+        // did, costs no extra attribute slot at all: a slot is a whole vec4 either way). The
+        // name predates the third and fourth passengers.
+        "in vec4 aBumpLimb;\n"
         "out vec2 vRayXY;\n"
         "out float vScreenY;\n"
         "out vec3 vCenter;\n"
@@ -137,7 +151,7 @@ namespace alienorum
         "out vec4 vSky;\n"
         "out float vApplySky;\n"
         "out float vHasBumpTex;\n"
-        "out vec3 vBumpLimb;\n"
+        "out vec4 vBumpLimb;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
@@ -188,12 +202,43 @@ namespace alienorum
         "in vec4 vSky;\n"     // rgb=premultiplied sky color at sky_y, a=sky_y (screen pixels)
         "in float vApplySky;\n"
         "in float vHasBumpTex;\n"
-        "in vec3 vBumpLimb;\n"
+        "in vec4 vBumpLimb;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
         "uniform sampler2D uBumpMap;\n"
+        // Eclipse casters -- one per column: xyz = the caster's center relative to this object's
+        // own center (camera space, 1/d-scaled like vCenter), w = its radius in the same units.
+        // A zero w means the column is unused. See SphereImpostorParams::casters for why this is
+        // a mat4 uniform and not attributes.
+        "uniform mat4 uCasters;\n"
         "const float PI = 3.14159265358979;\n"
+        // Fraction of one disc hidden behind another, both measured as angles seen from the same
+        // point: R is the light source's angular radius, r the caster's, d the angular distance
+        // between their centers. This is what makes an eclipse look like an eclipse rather than a
+        // stencil: the four cases below are, in order, no eclipse, totality (the caster's disc
+        // swallows the light's), an annular eclipse (the caster sits entirely inside the light's
+        // disc and can never hide all of it -- the "ring of fire"), and the partial phase, where
+        // the two discs overlap in a lens whose area is the standard circle-circle intersection.
+        // Everything between full sun and totality falls out of this one formula, so the umbra,
+        // the penumbra, and the gradient between them are never modelled separately -- they are
+        // just where this fraction happens to reach 1, exceed 0, and travel in between.
+        //
+        // The light's disc is treated as uniformly bright. A real star is limb-darkened (this
+        // very shader gives a self-luminous one a quadratic limb-darkening law further down), so
+        // a true penumbra darkens marginally faster near totality than this says; the difference
+        // is far below what a penumbra's own softness shows on screen.
+        "float disc_overlap(float R, float r, float d)\n"
+        "{\n"
+        "    if (d >= R + r) return 0.0;\n"
+        "    if (d <= r - R) return 1.0;\n"
+        "    if (d <= R - r) return (r*r)/(R*R);\n"
+        "    float d2 = d*d, R2 = R*R, r2 = r*r;\n"
+        "    float a1 = acos(clamp((d2 + r2 - R2)/(2.0*d*r), -1.0, 1.0));\n"
+        "    float a2 = acos(clamp((d2 + R2 - r2)/(2.0*d*R), -1.0, 1.0));\n"
+        "    float lens = 0.5*sqrt(max(0.0, (R + r - d)*(d + r - R)*(d - r + R)*(d + r + R)));\n"
+        "    return clamp((r2*a1 + R2*a2 - lens)/(PI*R2), 0.0, 1.0);\n"
+        "}\n"
         "void main()\n"
         "{\n"
         "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
@@ -346,6 +391,46 @@ namespace alienorum
         "\n"
         "    float costerm = (vFlags.x > 0.5) ? dot(n, normalize(-hit)) : dot(n, vLightDir);\n"
         "    float mu = max(costerm, 0.0);\n"
+        "\n"
+        // Eclipses. Each caster hides some fraction of the light source's disc as seen from
+        // *this* surface point specifically -- not from the object's center -- which is the whole
+        // reason the shadow lands as a small dark patch that crosses the disc rather than dimming
+        // the entire body at once.
+        //
+        // The surface point is recovered from hitLocal rather than from the `hit` above, even
+        // though `hit - vCenter` is the same vector geometrically. Both terms of that difference
+        // are ~unit-magnitude (see SphereImpostorParams::ccx on the 1/d scaling), so subtracting
+        // them throws away precision in proportion to how small the object is on screen -- while
+        // hitLocal*vRadii is already the offset from the center, built from quantities that are
+        // *natively* that small, and so keeps its relative precision no matter the distance. That
+        // matters here more than anywhere else in this shader: a shadow's angular geometry is
+        // measured against the caster's own angular radius, which for a distant moon is itself
+        // only a small fraction of the object's angular size. Rotated local-to-camera, so dot
+        // products against the basis rows -- same direction (and same reason) as the shading
+        // normal just above.
+        "    float shadow = 1.0;\n"
+        "    if (vFlags.x < 0.5 && vBumpLimb.w > 0.0 && mu > 0.0)\n"
+        "    {\n"
+        "        vec3 surfLocal = hitLocal * vRadii;\n"
+        "        vec3 surf = vec3(dot(vBasisX, surfLocal), dot(vBasisY, surfLocal), dot(basisZ, surfLocal));\n"
+        "        for (int i = 0; i < 4; i++)\n"
+        "        {\n"
+        "            vec4 caster = uCasters[i];\n"
+        "            if (caster.w <= 0.0) continue;\n"
+        "            vec3 toCaster = caster.xyz - surf;\n"
+        "            float dist = length(toCaster);\n"
+        "            if (dist <= caster.w) { shadow = 0.0; break; }\n"   // surface point inside the caster
+        "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
+        "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
+        // min(), not a product: two casters overlapping the same patch of sky hide overlapping
+        // parts of the same disc, so multiplying their two fractions would darken the overlap
+        // twice over. Taking the deepest of them is exact whenever one caster's silhouette
+        // contains the other's and a slight under-estimate otherwise -- and the "otherwise" is
+        // two bodies eclipsing the same point of the same third body simultaneously, which is
+        // not a thing anyone will be waiting to see.
+        "            shadow = min(shadow, 1.0 - disc_overlap(vBumpLimb.w, casterAng, sep));\n"
+        "        }\n"
+        "    }\n"
         // A self-luminous body gets a real quadratic limb-darkening law, whose coefficients come
         // from the star's own T_eff and log g (Star::limb_darkening_coefficients). The fixed
         // pow(mu, 1/3) it used to share with the lit-by-a-star case reaches ZERO at the limb, so a
@@ -358,7 +443,12 @@ namespace alienorum
         "        float om = 1.0 - mu;\n"
         "        isDay = clamp(1.0 - vBumpLimb.y*om - vBumpLimb.z*om*om, 0.0, 1.0);\n"
         "    }\n"
-        "    else isDay = clamp(pow(mu, 0.3333) + vFlags.y, 0.0, 1.0);\n"
+        // The shadow scales the *direct* light only, leaving vFlags.y (the ambient night floor)
+        // alone: an eclipsed patch of ground falls to exactly the brightness the object's own
+        // night side has, which is what it physically is -- night, arriving early and leaving in
+        // the wrong direction. On a body with a night map that also means its city lights come up
+        // inside the umbra, for free, through the same isDay blend the terminator already uses.
+        "    else isDay = clamp(pow(mu, 0.3333)*shadow + vFlags.y, 0.0, 1.0);\n"
         "\n"
         "    vec3 baseColor = ((vHasTex > 0.5) ? texture(uDayMap, uv).rgb : vColor.rgb) * vTint;\n"
         "    vec3 outColor = (vFlags.z > 0.5)\n"
@@ -402,8 +492,9 @@ namespace alienorum
 
     // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) radii(3) basisX(3) basisY(3)
     // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) hasBumpTex(1)
-    // bumpStrength(1) = 39.
-    static const int kFloatsPerVertex = 41;
+    // bumpLimb(4) = 42. The eclipse casters are *not* here -- they ride in a mat4 uniform
+    // instead (see SphereImpostorParams::casters).
+    static const int kFloatsPerVertex = 42;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
 
     static void ensure_gl_objects()
@@ -444,6 +535,7 @@ namespace alienorum
         s_aApplySkyLoc = glGetAttribLocation(s_program, "aApplySky");
         s_aHasBumpTexLoc     = glGetAttribLocation(s_program, "aHasBumpTex");
         s_aBumpLimbLoc       = glGetAttribLocation(s_program, "aBumpLimb");
+        s_uCastersLoc  = glGetUniformLocation(s_program, "uCasters");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
         s_uBumpMapLoc  = glGetUniformLocation(s_program, "uBumpMap");
@@ -496,7 +588,7 @@ namespace alienorum
         glEnableVertexAttribArray(s_aHasBumpTexLoc);
         glVertexAttribPointer(s_aHasBumpTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 37));
         glEnableVertexAttribArray(s_aBumpLimbLoc);
-        glVertexAttribPointer(s_aBumpLimbLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
+        glVertexAttribPointer(s_aBumpLimbLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -569,9 +661,16 @@ namespace alienorum
             v[38] = p->bump_strength;
             v[39] = p->limba;
             v[40] = p->limbb;
+            v[41] = p->light_ang;
         }
 
         glUseProgram(s_program);
+        // Uniform, so unlike everything above it persists in the program between draws -- it has
+        // to be re-set on *every* draw, including the overwhelmingly common no-eclipse one, or a
+        // body drawn after an eclipsed one would inherit the previous body's casters.
+        // p->light_ang being 0 already stops the shader reading it in that case, but this keeps
+        // the program's own state honest rather than relying on that one guard alone.
+        glUniformMatrix4fv(s_uCastersLoc, 1, GL_FALSE, p->casters);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->tex);
         glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2 aren't in this stripped loader's
@@ -745,6 +844,23 @@ namespace alienorum
         p->bump_strength = (float)in.bump_strength;
         p->limba = (float)in.limb_a;
         p->limbb = (float)in.limb_b;
+
+        // Eclipse casters, scaled by the same 1/d as the center and radii above so the shader
+        // can compare them against a surface point directly. Columns past num_casters stay zero
+        // (SphereImpostorParams is value-initialized), which is how the shader knows to skip
+        // them. light_ang is left at 0 when there is nothing to cast a shadow, which is what
+        // makes the per-pixel eclipse test cost nothing at all on the ordinary draw.
+        p->light_ang = 0.0f;
+        int ncast = std::max(0, std::min(in.num_casters, max_eclipse_casters));
+        for (int i = 0; i < ncast; i++)
+        {
+            if (in.casters[i].r <= 0) continue;
+            p->casters[i*4 + 0] = (float)(in.casters[i].dx / d);
+            p->casters[i*4 + 1] = (float)(in.casters[i].dy / d);
+            p->casters[i*4 + 2] = (float)(in.casters[i].dz / d);
+            p->casters[i*4 + 3] = (float)(in.casters[i].r / d);
+            p->light_ang = (float)in.light_angular_radius;
+        }
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
         p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;

@@ -167,6 +167,148 @@ void draw_ra_dec_lines()
 double sphresolution = 0.1;
 bool bugged = false;
 
+// ---- Eclipses ------------------------------------------------------------------------------
+//
+// Any solid body between another body and their shared star throws a shadow onto it: a moon's
+// shadow crossing its planet, a planet's shadow swallowing its moon, one moon's shadow on
+// another. Which of the two is the "eclipse" and which the "transit" is only a matter of where
+// the viewer stands, so nothing here distinguishes them -- both are the same geometry, and the
+// shader (see sphere_impostor.cpp) resolves it per pixel by asking how much of the star's disc
+// the caster hides as seen from that exact point of the surface.
+//
+// The candidate list exists because the search would otherwise have to run over `cels`, which
+// holds up to MAX_CELOBJS entries (star catalogs, and with astorb loaded, a great many minor
+// planets) -- for every disc, every frame. Rebuilt once per frame by refresh_eclipse_casters()
+// at the top of draw_objects(); draw_sphere_gpu() then only walks this much shorter list, and
+// rejects everything outside the object's own system on a single pointer comparison.
+struct EclipseCandidate
+{
+    CelestialObject *obj;
+    CelestialObject *lightcen;      // resolved once per frame here rather than per receiver
+    double radius;
+};
+static std::vector<EclipseCandidate> eclipse_candidates;
+
+void refresh_eclipse_casters()
+{
+    eclipse_candidates.clear();
+#if !ALIENORUM_GPU_SPHERES
+    return;                     // only the GPU impostor path shades eclipses
+#else
+    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    {
+        CelestialObject *c = cels[i];
+        if (c->deleted) continue;
+
+        cel_obj_class cls = c->typeclass();
+        // Planets and moons only. Stars are excluded because a system's star is the light
+        // source itself, not an occluder (a companion star crossing in front of the primary is
+        // real but is its own rendering problem, not this one). Satellites are excluded on
+        // size: an object a few meters across casts a shadow a few meters across, which is
+        // below one pixel from any distance the body it orbits is still on screen.
+        if (cls != class_planet && cls != class_moon) continue;
+
+        // Minor planets are skipped for both reasons at once -- an asteroid's shadow is never
+        // resolvable, and astorb can load hundreds of thousands of them, which is exactly the
+        // cost this list is meant to avoid paying per disc per frame.
+        if (cls == class_planet && ((Planet*)c)->asteroid_no) continue;
+
+        double radius = c->get_equatorial_radius();
+        if (radius <= 0) continue;
+
+        CelestialObject *lc = c->get_light_center();
+        if (!lc || lc == c) continue;
+
+        eclipse_candidates.push_back({c, lc, radius});
+    }
+#endif
+}
+
+// Fills in->casters/num_casters/light_angular_radius for one object about to be drawn: the
+// bodies whose shadow actually reaches it, at most max_eclipse_casters of them, expressed
+// relative to its own center in camera space. camera_space is the object's true (unrefracted)
+// camera-space position, since a shadow is cast between two physical bodies and knows nothing
+// about the light path to the observer -- see draw_sphere_gpu()'s own display_space comment.
+static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *cel,
+    CelestialObject *lightcen, const Point &camera_space, double bounding_r)
+{
+    in.num_casters = 0;
+    in.light_angular_radius = 0;
+    if (!lightcen || lightcen == cel || eclipse_candidates.empty()) return;
+
+    Point to_light = lightcen->tmprel - cel->tmprel;
+    double d_light = to_light.magnitude();
+    double r_light = lightcen->get_equatorial_radius();
+    if (d_light <= 0 || r_light <= 0) return;
+
+    double light_ang = asin(fmin(1.0, r_light / d_light));
+    Point lhat = to_light * (1.0 / d_light);
+
+    // Selected casters, kept sorted by `score` (see below) so that when more than
+    // max_eclipse_casters qualify, the ones dropped are the ones grazing the object's edge
+    // rather than the one sitting squarely on it.
+    double scores[max_eclipse_casters];
+    CelestialObject *chosen[max_eclipse_casters];
+    int n = 0;
+
+    for (const EclipseCandidate &cand : eclipse_candidates)
+    {
+        if (cand.obj == cel || cand.obj == lightcen) continue;
+        if (cand.lightcen != lightcen) continue;        // different system, or a different star of this one
+
+        Point rel = cand.obj->tmprel - cel->tmprel;
+        double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
+        if (along <= 0) continue;                       // behind us with respect to the light: its shadow points away
+
+        double dist = rel.magnitude();
+        // A caster far smaller (angularly) than the star it crosses can only ever hide a sliver
+        // of the disc -- 1% of it at this cutoff -- which is a dimming no one can see, and the
+        // slot it would occupy is better kept for a caster that matters. This is what stops a
+        // distant outer moon from crowding out the inner one actually casting the shadow.
+        if (asin(fmin(1.0, cand.radius / dist)) < 0.1 * light_ang) continue;
+
+        // Perpendicular distance from this object's center to the caster's shadow axis, against
+        // how wide the shadow has spread by the time it arrives. The penumbra widens away from
+        // the caster at the light's own angular radius (that spreading *is* the penumbra), and
+        // bounding_r is added because the shadow only has to reach some part of the object, not
+        // its center.
+        Point perp = rel - lhat*along;
+        double h = perp.magnitude();
+        double reach = cand.radius + along*tan(light_ang) + bounding_r;
+        if (h >= reach) continue;
+
+        double score = h / reach;                       // 0 = dead centre, 1 = just grazing
+        int at = n;
+        while (at > 0 && scores[at-1] > score) at--;
+        if (at >= max_eclipse_casters) continue;         // full, and this one is the least central
+        // Shift the tail down one slot to open `at`, dropping the last entry if the list is
+        // already full. n is the first free slot when it isn't.
+        for (int k = (n < max_eclipse_casters) ? n : (max_eclipse_casters-1); k > at; k--)
+        {
+            scores[k] = scores[k-1];
+            chosen[k] = chosen[k-1];
+        }
+        scores[at] = score;
+        chosen[at] = cand.obj;
+        if (n < max_eclipse_casters) n++;
+    }
+
+    for (int i = 0; i < n; i++)
+    {
+        // Same transform chain the object's own center goes through, so the difference below is
+        // a genuine camera-space offset between the two bodies.
+        Point cam = rotate3D(
+            rotate3D(to_viewer_plane(chosen[i]->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+            center, xaxis, altitude);
+        in.casters[i].dx = cam.x - camera_space.x;
+        in.casters[i].dy = cam.y - camera_space.y;
+        in.casters[i].dz = cam.z - camera_space.z;
+        in.casters[i].r = chosen[i]->get_equatorial_radius();
+    }
+    in.num_casters = n;
+    if (n) in.light_angular_radius = light_ang;
+}
+
 // GPU sphere impostor path (see GPU_SPHERE_RENDERING_PLAN.md). Only reached when
 // ALIENORUM_GPU_SPHERES is 1, and only for non-wireframe, non-skymap draws (draw_sphere()
 // keeps handling wireframe mode itself in both configurations, and vm_skymap is excluded at
@@ -347,6 +489,8 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.limb_b = limb_b;
     in.night_illum = cel->night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
+    if (self_luminous) { in.num_casters = 0; in.light_angular_radius = 0; }
+    else collect_eclipse_casters(in, cel, lightcen, camera_space, bounding_r);
 
     // Matches the CPU path's sky_grad blend (see the "if (view_mode == vm_horizon)" block
     // further down in this file): in horizon mode, standing on a body with an atmosphere, the
@@ -2058,6 +2202,10 @@ void draw_objects()
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
     ImGuiIO& io = ImGui::GetIO();
+
+    // Once per frame, ahead of any disc: every disc drawn below asks this list who might be
+    // casting a shadow on it (see refresh_eclipse_casters() near draw_sphere_gpu()).
+    refresh_eclipse_casters();
 
     // Orbits
     if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)

@@ -12,6 +12,35 @@
 
 namespace alienorum
 {
+    // How many eclipse-casting bodies one impostor draw can carry (see
+    // SphereImpostorInput::casters). Four, because the shader receives them as a single mat4
+    // uniform -- one column per caster -- and mat4 is the widest uniform type this project's
+    // stripped-down GL loader can actually set (see sphere_impostor.cpp's top-of-file comment:
+    // glUniformMatrix4fv survives the stripping, glUniform3fv/4fv do not). Four is well past
+    // what any real configuration calls for anyway; a body with two other bodies' shadows on it
+    // at once is already an exotic sight.
+    const int max_eclipse_casters = 4;
+
+    // One body whose shadow can fall on the object being drawn -- i.e. one eclipse. The shader
+    // computes, per pixel, how much of the light source's *disc* this body hides as seen from
+    // that particular point on the surface, which is what gives a real eclipse its umbra and
+    // penumbra (and its annular case) instead of a hard-edged binary shadow.
+    struct EclipseCaster
+    {
+        // Caster center relative to the *center of the object being drawn* -- camera space,
+        // same units and orientation as SphereImpostorInput::cx/cy/cz, but a difference of two
+        // positions rather than a position. Deliberately relative: the object's own drawn
+        // position carries an atmospheric-refraction offset in horizon mode (see
+        // draw_sphere_gpu()'s display_space) that the shadow geometry should not see, and a
+        // difference cancels it exactly.
+        double dx, dy, dz;
+
+        // Caster radius, same units (meters). Its shadow is treated as cast by a sphere of this
+        // radius; a caster's own oblateness/triaxiality is ignored, being far below the
+        // penumbra's own softness at any distance where the shadow is visible at all.
+        double r;
+    };
+
     // All inputs describing the sphere itself, kept as plain scalars (no Point/Rotation types)
     // so this header stays free of a globals.h dependency -- see the comment above.
     struct SphereImpostorInput
@@ -103,6 +132,23 @@ namespace alienorum
         // Star::limb_darkening_coefficients() derives them from the star's own T_eff and log g.
         // Ignored when self_luminous is false. Left at 0 they give a flat, unshaded disc.
         double limb_a, limb_b;
+
+        // Eclipses: bodies that sit between this object and its light source, close enough to
+        // the line between them to throw part of their shadow onto it. num_casters entries of
+        // casters[] are read (0 disables the whole test, which is the overwhelmingly common
+        // case); the caller is expected to have already discarded casters whose shadow misses
+        // this object entirely, since only max_eclipse_casters of them fit.
+        //
+        // light_angular_radius is the angular radius (radians) of the light source's own disc
+        // as seen from this object, and is what makes the shadow soft: a shadow cast by a
+        // point-like light source would have a hard edge, but a real star has an angular size,
+        // so around the fully-shadowed umbra there is a penumbra where the caster hides only
+        // part of the star's disc. 0 (with num_casters 0) means "no eclipse this draw" and skips
+        // the per-pixel test outright. Unused when self_luminous is true -- a star's own disc
+        // isn't lit by anything, and a body transiting in front of one is simply drawn over it.
+        int num_casters;
+        EclipseCaster casters[max_eclipse_casters];
+        double light_angular_radius;
 
         // Ambient illumination level for the unlit side when no night-map texture is available
         // (matches the CPU path's `starlight` constant, used only when there's no night map to
