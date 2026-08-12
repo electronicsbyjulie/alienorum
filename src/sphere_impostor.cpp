@@ -82,6 +82,12 @@ namespace alienorum
         // stripped GL loader can still set.
         float casters[16];
         float light_ang;    // light source's angular radius as seen from this object; 0 = no eclipse test
+        // The planet's own rings shadowing it, as a second mat4 uniform (same reasoning as
+        // casters above): column 0 = ring plane normal xyz + inner radius w, column 1 = outer
+        // radius x + "has an opacity texture" y, the rest unused and zero. Both radii scaled by
+        // 1/d like everything else. An outer radius of 0 means the body has no rings.
+        float ring[16];
+        GLuint ringx_tex;
         float r, g, b, a;   // fallback color, used when has_tex is 0
         float lightx, lighty, lightz;   // camera space, unit length
         float tintr, tintg, tintb;
@@ -101,7 +107,7 @@ namespace alienorum
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
     static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
     static GLint s_aHasBumpTexLoc = -1, s_aBumpLimbLoc = -1;
-    static GLint s_uCastersLoc = -1;
+    static GLint s_uCastersLoc = -1, s_uRingLoc = -1, s_uSphRingXMapLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -212,7 +218,15 @@ namespace alienorum
         // A zero w means the column is unused. See SphereImpostorParams::casters for why this is
         // a mat4 uniform and not attributes.
         "uniform mat4 uCasters;\n"
+        // The planet's own rings, shadowing it: column 0 = ring plane normal xyz, w = inner
+        // radius; column 1 = x outer radius, y whether uSphRingXMap holds real opacity data.
+        // Both radii 1/d-scaled like vRadii. An outer radius of 0 means "no rings".
+        "uniform mat4 uRing;\n"
+        "uniform sampler2D uSphRingXMap;\n"
         "const float PI = 3.14159265358979;\n"
+        // Matches GOSSAMER in the ring shader below, which in turn matches gossamer_rings in
+        // misc.h -- a ring's shadow has to be exactly as dense as the ring that casts it.
+        "const float SPH_GOSSAMER = 0.08;\n"
         // Fraction of one disc hidden behind another, both measured as angles seen from the same
         // point: R is the light source's angular radius, r the caster's, d the angular distance
         // between their centers. This is what makes an eclipse look like an eclipse rather than a
@@ -409,17 +423,64 @@ namespace alienorum
         // products against the basis rows -- same direction (and same reason) as the shading
         // normal just above.
         "    float shadow = 1.0;\n"
-        "    if (vFlags.x < 0.5 && vBumpLimb.w > 0.0 && mu > 0.0)\n"
+        "    if (vFlags.x < 0.5 && mu > 0.0)\n"
         "    {\n"
         "        vec3 surfLocal = hitLocal * vRadii;\n"
         "        vec3 surf = vec3(dot(vBasisX, surfLocal), dot(vBasisY, surfLocal), dot(basisZ, surfLocal));\n"
+        "\n"
+        // The planet's own rings, shadowing it: leave this surface point towards the light and
+        // see whether the trip crosses the ring plane while still inside the annulus. The plane
+        // passes through the planet's center, which is the origin of `surf`'s own frame, so the
+        // crossing point's distance from the origin *is* its ring radius -- no projection
+        // needed. s > 0 restricts it to a crossing between the surface and the light, which is
+        // what confines the shadow to the hemisphere on the far side of the ring plane from the
+        // sun, exactly as it does on the real Saturn.
+        //
+        // Opacity comes from the same texture and the same curve the ring impostor shades the
+        // rings themselves with, so a ring's shadow is always as dense as the ring casting it:
+        // the Cassini division lets light through onto the cloud tops as a bright line inside
+        // the dark band, and a gossamer outer ring barely marks the planet at all.
+        "        if (uRing[1].x > 0.0)\n"
+        "        {\n"
+        "            vec3 ringN = uRing[0].xyz;\n"
+        "            float denom = dot(ringN, vLightDir);\n"
+        "            if (abs(denom) > 1e-9)\n"
+        "            {\n"
+        "                float s = -dot(ringN, surf) / denom;\n"
+        "                if (s > 0.0)\n"
+        "                {\n"
+        "                    float rr = length(surf + vLightDir*s);\n"
+        "                    if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
+        "                    {\n"
+        "                        float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
+        "                        float opacity = (uRing[1].y > 0.5)\n"
+        "                            ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
+        "                            : 0.5;\n"
+        "                        shadow *= 1.0 - pow(opacity, 0.4);\n"
+        "                    }\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "\n"
+        // Multiplied against any eclipse shadow below rather than min()'d with it, unlike two
+        // eclipse casters against each other: a ring and a moon hide unrelated parts of the
+        // star's disc, so their transmissions genuinely compound, where two moons' shadows
+        // would overlap on the same part of it.
+        //
+        // The ring's shadow edge is hard here, while a real one is softened over the star's own
+        // angular size the way an eclipse penumbra is -- roughly a thousand kilometers of blur
+        // at Saturn, against a shadow band tens of thousands wide. The ring opacity's own radial
+        // gradient covers for it nearly everywhere; the sharpness only really shows at a clean
+        // ring edge.
+        "        float eclipsed = 1.0;\n"
+        "        if (vBumpLimb.w > 0.0)\n"
         "        for (int i = 0; i < 4; i++)\n"
         "        {\n"
         "            vec4 caster = uCasters[i];\n"
         "            if (caster.w <= 0.0) continue;\n"
         "            vec3 toCaster = caster.xyz - surf;\n"
         "            float dist = length(toCaster);\n"
-        "            if (dist <= caster.w) { shadow = 0.0; break; }\n"   // surface point inside the caster
+        "            if (dist <= caster.w) { eclipsed = 0.0; break; }\n"   // surface point inside the caster
         "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
         "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
         // min(), not a product: two casters overlapping the same patch of sky hide overlapping
@@ -428,8 +489,9 @@ namespace alienorum
         // contains the other's and a slight under-estimate otherwise -- and the "otherwise" is
         // two bodies eclipsing the same point of the same third body simultaneously, which is
         // not a thing anyone will be waiting to see.
-        "            shadow = min(shadow, 1.0 - disc_overlap(vBumpLimb.w, casterAng, sep));\n"
+        "            eclipsed = min(eclipsed, 1.0 - disc_overlap(vBumpLimb.w, casterAng, sep));\n"
         "        }\n"
+        "        shadow *= eclipsed;\n"
         "    }\n"
         // A self-luminous body gets a real quadratic limb-darkening law, whose coefficients come
         // from the star's own T_eff and log g (Star::limb_darkening_coefficients). The fixed
@@ -536,18 +598,22 @@ namespace alienorum
         s_aHasBumpTexLoc     = glGetAttribLocation(s_program, "aHasBumpTex");
         s_aBumpLimbLoc       = glGetAttribLocation(s_program, "aBumpLimb");
         s_uCastersLoc  = glGetUniformLocation(s_program, "uCasters");
+        s_uRingLoc     = glGetUniformLocation(s_program, "uRing");
+        s_uSphRingXMapLoc = glGetUniformLocation(s_program, "uSphRingXMap");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
         s_uBumpMapLoc  = glGetUniformLocation(s_program, "uBumpMap");
 
-        // Texture units 0/1/2, matching the convention ImGui's own backend uses for its font/UI
-        // texture on unit 0 -- safe since our AddCallback runs between ImGui draw commands,
-        // and the paired ImDrawCallback_ResetRenderState immediately after re-establishes
-        // ImGui's own state (including its own texture bindings) before anything else draws.
+        // Texture units 0/1/2/3, matching the convention ImGui's own backend uses for its
+        // font/UI texture on unit 0 -- safe since our AddCallback runs between ImGui draw
+        // commands, and the paired ImDrawCallback_ResetRenderState immediately after
+        // re-establishes ImGui's own state (including its own texture bindings) before anything
+        // else draws.
         glUseProgram(s_program);
         glUniform1i(s_uDayMapLoc, 0);
         glUniform1i(s_uNightMapLoc, 1);
         glUniform1i(s_uBumpMapLoc, 2);
+        glUniform1i(s_uSphRingXMapLoc, 3);
 
         glGenVertexArrays(1, &s_vao);
         glGenBuffers(1, &s_vbo);
@@ -671,14 +737,17 @@ namespace alienorum
         // p->light_ang being 0 already stops the shader reading it in that case, but this keeps
         // the program's own state honest rather than relying on that one guard alone.
         glUniformMatrix4fv(s_uCastersLoc, 1, GL_FALSE, p->casters);
+        glUniformMatrix4fv(s_uRingLoc, 1, GL_FALSE, p->ring);   // same "re-set every draw" reason
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->tex);
-        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2 aren't in this stripped loader's
+        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2/3 aren't in this stripped loader's
                                              // symbol set; texture unit enums are guaranteed
                                              // sequential.
         glBindTexture(GL_TEXTURE_2D, p->night_tex);
         glActiveTexture(GL_TEXTURE0 + 2);
         glBindTexture(GL_TEXTURE_2D, p->bump_tex);
+        glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_2D, p->ringx_tex);
         glBindVertexArray(s_vao);
         glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
@@ -860,6 +929,20 @@ namespace alienorum
             p->casters[i*4 + 2] = (float)(in.casters[i].dz / d);
             p->casters[i*4 + 3] = (float)(in.casters[i].r / d);
             p->light_ang = (float)in.light_angular_radius;
+        }
+
+        // The planet's own rings shadowing it -- same 1/d scaling, same "0 means absent"
+        // convention. Left entirely zero for the ringless bodies that are nearly all of them,
+        // which is what the shader's uRing[1].x test reads.
+        if (in.ring_outer_r > in.ring_inner_r && in.ring_inner_r > 0)
+        {
+            p->ring[0] = (float)in.ring_normal[0];
+            p->ring[1] = (float)in.ring_normal[1];
+            p->ring[2] = (float)in.ring_normal[2];
+            p->ring[3] = (float)(in.ring_inner_r / d);
+            p->ring[4] = (float)(in.ring_outer_r / d);
+            p->ring[5] = in.ringx_map_texture ? 1.0f : 0.0f;
+            p->ringx_tex = (GLuint)in.ringx_map_texture;
         }
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);

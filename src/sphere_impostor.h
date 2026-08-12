@@ -150,6 +150,25 @@ namespace alienorum
         EclipseCaster casters[max_eclipse_casters];
         double light_angular_radius;
 
+        // A ringed planet's own rings, shadowing the planet itself -- the dark band Saturn
+        // wears across its northern hemisphere for half its year. This is the exact mirror of
+        // the shadow the ring impostor already casts the other way (the planet darkening the
+        // far side of its rings, see RingImpostorInput::light_dir), and it is genuinely the
+        // planet's own rings only: another body's rings are far too distant to shadow anything
+        // here.
+        //
+        // ring_normal is the ring plane's normal in camera space, unit length, computed exactly
+        // as RingImpostorInput::normal is (both call ring_plane_normal() in visuals.cpp, so the
+        // shadow can never drift out of alignment with the rings actually drawn). ring_inner_r/
+        // ring_outer_r are the same equatorial_radius/ring_radius pair the ring impostor uses,
+        // in meters. ringx_map_texture supplies the opacity, read through the identical curve
+        // the ring shader itself applies, so a gap that shows as transparent in the rings casts
+        // no shadow and a dense band casts a solid one. ring_outer_r <= ring_inner_r (the
+        // default for every ringless body) disables the whole test.
+        double ring_normal[3];
+        double ring_inner_r, ring_outer_r;
+        unsigned int ringx_map_texture;
+
         // Ambient illumination level for the unlit side when no night-map texture is available
         // (matches the CPU path's `starlight` constant, used only when there's no night map to
         // supply "city lights" detail instead).

@@ -309,6 +309,38 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
     if (n) in.light_angular_radius = light_ang;
 }
 
+// The ring plane's normal in camera space -- the planet's local +Y (polar) axis, rotated
+// forward into camera space by the *same* forward chain a position goes through (tilt, then
+// to_viewer_plane, then camera azimuth/altitude), applied to a direction instead of a position
+// (so the translation step, "+= cel->tmprel", is correctly skipped -- directions aren't
+// translated). No spin term: the CPU ring code never rotates ring geometry by timeofday() at
+// all, rings not spinning with the planet.
+//
+// Do NOT reach for draw_sphere_gpu()'s "undo_to_local" helper here, with or without its spin
+// step. That helper computes something genuinely different: applying the *inverse*-ordered
+// chain to a standard basis vector e_i returns R^-1*e_i, i.e. row i of the forward rotation
+// matrix R -- correct for its actual purpose (the sphere fragment shader reconstructs R^-1*n as
+// n.x*basisX + n.y*basisY + n.z*basisZ, which only works out because each basis vector is a
+// *row* of R used as a *column* of that reconstruction -- a transpose identity, not a literal
+// "axis expressed in camera space"). What a ring plane requires is a genuine forward transform,
+// R*(0,1,0) -- a different vector from R^-1*(0,1,0) whenever R isn't symmetric, which is
+// generally the case. An earlier version of draw_ring_gpu() used the inverse version and
+// produced a ring plane that visibly wobbled with camera azimuth/altitude (bug: rings
+// misaligned with the visible disc, plane appearing to flip depending on viewing angle), since
+// R^-1*(0,1,0) has no reason to track the camera's own orientation the way R*(0,1,0) does.
+//
+// Shared by draw_ring_gpu() (which draws the rings) and draw_sphere_gpu() (which shadows the
+// planet with them) precisely so the two can never disagree about where the ring plane is: a
+// ring shadow that does not line up with the ring casting it is worse than no shadow at all.
+static Point ring_plane_normal(CelestialObject *cel)
+{
+    return rotate3D(
+        rotate3D(
+            to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
+            center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+}
+
 // GPU sphere impostor path (see GPU_SPHERE_RENDERING_PLAN.md). Only reached when
 // ALIENORUM_GPU_SPHERES is 1, and only for non-wireframe, non-skymap draws (draw_sphere()
 // keeps handling wireframe mode itself in both configurations, and vm_skymap is excluded at
@@ -492,6 +524,25 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     if (self_luminous) { in.num_casters = 0; in.light_angular_radius = 0; }
     else collect_eclipse_casters(in, cel, lightcen, camera_space, bounding_r);
 
+    // A ringed planet shadowed by its own rings -- Saturn's dark band across the winter
+    // hemisphere. Deliberately not gated on use_gpu_ring (see its comment in draw_sphere()):
+    // that flag says whether the *rings* are drawn analytically this frame, while the shadow
+    // they throw is a property of the planet's own surface and belongs with the disc either
+    // way. Handed the same plane normal and the same opacity map the ring impostor draws with.
+    in.ring_normal[0] = in.ring_normal[1] = in.ring_normal[2] = 0;
+    in.ring_inner_r = in.ring_outer_r = 0;
+    in.ringx_map_texture = 0;
+    if (!self_luminous && cls == class_planet && ((Planet*)cel)->ring_radius > R)
+    {
+        Point ring_normal = ring_plane_normal(cel);
+        in.ring_normal[0] = ring_normal.x;
+        in.ring_normal[1] = ring_normal.y;
+        in.ring_normal[2] = ring_normal.z;
+        in.ring_inner_r = R;
+        in.ring_outer_r = ((Planet*)cel)->ring_radius;
+        in.ringx_map_texture = gputex_for(cel->ringx_map);
+    }
+
     // Matches the CPU path's sky_grad blend (see the "if (view_mode == vm_horizon)" block
     // further down in this file): in horizon mode, standing on a body with an atmosphere, the
     // sky glows near the horizon and fades with altitude above it -- read the reference
@@ -546,33 +597,10 @@ void draw_ring_gpu(CelestialObject* cel)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
-    // Ring plane normal = the object's local +Y (polar) axis, rotated forward into camera
-    // space -- the *same* forward chain camera_space itself uses just above (tilt, then
-    // to_viewer_plane, then camera azimuth/altitude), applied to a direction instead of a
-    // position (so the translation step, "+= cel->tmprel", is correctly skipped -- directions
-    // aren't translated). No spin term: the CPU ring code never rotates ring geometry by
-    // timeofday() at all (rings don't spin with the planet -- see the CPU ring loop's `dust`
-    // computation further down, which only tilts by equatorial_plane).
-    //
-    // An earlier version of this function used draw_sphere_gpu()'s "undo_to_local" helper
-    // instead (minus its spin step) -- wrong, and not just because of the spin term. That
-    // helper computes something genuinely different: applying the *inverse*-ordered chain to
-    // a standard basis vector e_i returns R^-1*e_i, i.e. row i of the forward rotation matrix
-    // R -- correct for its actual purpose (the sphere fragment shader reconstructs R^-1*n via
-    // n.x*basisX + n.y*basisY + n.z*basisZ, which only works out to R^-1*n because each basis
-    // vector is a *row* of R used as a *column* of that reconstruction -- a row/column
-    // transpose identity, not a literal "axis expressed in camera space"). What this function
-    // actually requires is a genuine forward transform, R*(0,1,0) -- a different vector from
-    // R^-1*(0,1,0) whenever R isn't symmetric, which is generally the case. Using the inverse
-    // version here produced a ring plane that visibly wobbled with camera azimuth/altitude
-    // (bug: rings misaligned with the visible disc, plane appearing to flip depending on
-    // viewing angle) since R^-1*(0,1,0) has no reason to track the camera's own orientation
-    // the way R*(0,1,0) correctly does.
-    Point normal = rotate3D(
-        rotate3D(
-            to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
-            center, yaxis, -(azimuth + azimuth_correction)),
-        center, xaxis, altitude);
+    // See ring_plane_normal() above for what this is and why it is emphatically not the same
+    // vector as the sphere impostor's own basisY. The planet's disc shader is handed the very
+    // same normal, to shadow the planet with these rings.
+    Point normal = ring_plane_normal(cel);
 
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
