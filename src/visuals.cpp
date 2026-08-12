@@ -275,6 +275,93 @@ double eclipse_obscuration(CelestialObject *light)
     return worst;
 }
 
+// ---- Eclipses on the sun clock ----------------------------------------------------------
+//
+// The sun clock shades a whole world's map by where its light is falling, so an eclipse belongs
+// on it as what an eclipse actually is on that scale: a small dark spot crossing the daylit side
+// at a thousand-odd kilometres an hour, ringed by the much wider, much softer penumbra. That
+// shape comes out of the same disc-overlap arithmetic as everywhere else, asked separately for
+// each point of the map rather than once for the planet.
+//
+// The one thing that has to be different is the frame. Everything else in this file works from
+// tmprel, positions relative to the observer -- but the sun clock is drawn for a world seen from
+// nowhere in particular, and its surface points are built in the system frame (see draw_sunclock:
+// `land += cel->location.local_position`). So these take local_position throughout.
+struct SunclockCaster
+{
+    Point center;
+    double radius;
+};
+
+// Bodies whose shadow could touch this world at all, found once per frame so the per-pixel loop
+// below can skip the whole question the overwhelming majority of the time -- and, when there is
+// an eclipse, usually has exactly one body to consider.
+static int gather_sunclock_casters(CelestialObject *cel, CelestialObject *lightcen,
+    SunclockCaster *out, int maxn)
+{
+    if (!cel || !lightcen || lightcen == cel) return 0;
+
+    Point cpos = cel->location.local_position;
+    Point to_light = lightcen->location.local_position - cpos;
+    double d_light = to_light.magnitude();
+    double r_light = lightcen->get_equatorial_radius();
+    if (d_light <= 0 || r_light <= 0) return 0;
+
+    double light_ang = asin(fmin(1.0, r_light / d_light));
+    Point lhat = to_light * (1.0 / d_light);
+    double bounding_r = cel->get_equatorial_radius();
+
+    int n = 0;
+    for (const EclipseCandidate &cand : eclipse_candidates)
+    {
+        if (cand.obj == cel || cand.obj == lightcen) continue;
+        if (cand.lightcen != lightcen) continue;
+
+        Point rel = cand.obj->location.local_position - cpos;
+        double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
+        if (along <= 0) continue;                       // casts its shadow away from us
+
+        Point perp = rel - lhat*along;
+        double h = perp.magnitude();
+        // Same reach test as the disc path: the caster's own width, plus how far the penumbra has
+        // spread over the distance travelled, plus the target's own radius since the shadow only
+        // has to reach some part of it.
+        if (h >= cand.radius + along*tan(light_ang) + bounding_r) continue;
+
+        if (n < maxn) out[n++] = { cand.obj->location.local_position, cand.radius };
+    }
+    return n;
+}
+
+// Fraction of the light source hidden as seen from one point on the map.
+// Taken by value, not by const reference: Point's own arithmetic operators are not const-
+// qualified, so a const Point cannot be subtracted from anything. Same convention as
+// find_3D_angle() and the rest of point.cpp's interface.
+static double sunclock_obscuration(Point surface, Point lightpos, double light_r,
+    SunclockCaster *casters, int n)
+{
+    Point to_light = lightpos - surface;
+    double d_light = to_light.magnitude();
+    if (d_light <= 0 || light_r <= 0) return 0;
+
+    double light_ang = asin(fmin(1.0, light_r / d_light));
+    double inv = 1.0 / d_light;
+    double lx = to_light.x*inv, ly = to_light.y*inv, lz = to_light.z*inv;
+
+    double worst = 0;
+    for (int i = 0; i < n; i++)
+    {
+        Point rel = casters[i].center - surface;
+        double dist = rel.magnitude();
+        if (dist <= 0) continue;
+        double ang = asin(fmin(1.0, casters[i].radius / dist));
+        double cosine = (rel.x*lx + rel.y*ly + rel.z*lz) / dist;
+        double sep = acos(fmin(1.0, fmax(-1.0, cosine)));
+        worst = fmax(worst, cpu_disc_overlap(light_ang, ang, sep));
+    }
+    return worst;
+}
+
 void refresh_eclipse_casters()
 {
     eclipse_candidates.clear();
@@ -2870,6 +2957,20 @@ void draw_sunclock()
             && ((Moon*)cel)->width > zero_isnt_really_zero
             && ((Moon*)cel)->height > zero_isnt_really_zero);
 
+    // An eclipse crossing the map. Gathered once here, so a frame with nothing eclipsing anything
+    // -- which is nearly every frame -- pays one short list walk rather than anything per pixel.
+    SunclockCaster sc_casters[max_eclipse_casters];
+    int n_sc_casters = self_luminous ? 0
+        : gather_sunclock_casters(cel, lightcen, sc_casters, max_eclipse_casters);
+    double sc_light_r = lightcen ? lightcen->get_equatorial_radius() : 0;
+    Point sc_light_pos = lightcen ? lightcen->location.local_position : Point();
+
+    // How dark the middle of an umbra is allowed to get on the map. Totality really does cut the
+    // direct light to essentially nothing, but a map is something you read: a pure black hole
+    // punched through the coastline says less than a very dark patch you can still see the
+    // geography through. Claude is not PTSD-friendly.
+    const double sclk_umbra_floor = 0.12;
+
     double equatorial_radius, theta, cos_theta, is_day, is_night;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
@@ -2917,6 +3018,17 @@ void draw_sunclock()
                 {
                     is_day = 0;
                     is_night = 1;
+                }
+
+                // The eclipse itself, asked per point of the map rather than per world, which is
+                // the whole reason it comes out as a moving spot with a soft rim instead of a
+                // uniform dimming. Only the daylit side can lose anything: a shadow crossing the
+                // night side has nothing to take away.
+                if (n_sc_casters && is_day > 0)
+                {
+                    double obsc = sunclock_obscuration(land, sc_light_pos, sc_light_r,
+                        sc_casters, n_sc_casters);
+                    if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
                 }
             }
 
