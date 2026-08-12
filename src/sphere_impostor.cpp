@@ -393,7 +393,7 @@ namespace alienorum
         // put an orange hoop around a 95%-lit Earth, which never happens.
         "    float phase = dot(vLightDir, normalize(-vCenter));\n"
         "    float backlit = smoothstep(0.35, -0.35, phase);\n"
-        "    vec3 airTint = mix(uAtm[0].xyz, uAtm[1].xyz, pow(backlit, 10)) * vTint;\n"
+        "    vec3 airTint = mix(uAtm[0].xyz, uAtm[1].xyz, backlit) * vTint;\n"
         "    float cosView = sqrt(max(0.0, 1.0 - min(d2, 1.0)));\n"
         "    float maxpath = 2.0*sqrt(max(1e-12, atmR*atmR - 1.0));\n"
         "\n"

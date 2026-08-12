@@ -439,15 +439,26 @@ void compute_object_draw_coordinates()
                         // it, and stars that were being drowned out clear the magnitude limit
                         // and come out, which is exactly what happens outdoors.
                         //
-                        // The floor is the corona, which is roughly a millionth of the
-                        // photosphere and is the only thing still lighting the sky at totality.
-                        // Without it the last sliver of coverage would take the sky from
-                        // daylight to a starless black in one step; with it, totality lands in
-                        // deep twilight, which is where it belongs.
+                        // The floor is what still lights the sky once the disc is gone -- the
+                        // corona, and air outside the shadow scattering light back in under it.
+                        // Its value is set by how totality should *look*, not by the photometry:
+                        // the corona really is about a millionth of the photosphere, and a
+                        // millionth put through the compression curve draw_sky_gradient() runs
+                        // luminous_flux through comes out as an essentially black sky with the
+                        // Milky Way across it, which is not what anyone standing under an
+                        // eclipse has ever seen. Totality is a deep blue twilight with the
+                        // brightest few stars and planets out, and 1e-3 is what lands there on
+                        // this particular curve.
+                        //
+                        // Turn it down for a darker totality, up for a milder one. It is a
+                        // fraction of the light the sun would be delivering uneclipsed, so it
+                        // follows the sun up and down the sky on its own.
+                        const double kTotalityFloor = 1.2e-3;
                         double obsc = eclipse_obscuration(cels[i]);
                         if (obsc > 0)
                         {
-                            add_flux *= (1.0 - obsc) + 1e-6*obsc;
+                            add_flux *= fmax(1.0 - obsc, kTotalityFloor);
+                            std::cerr << "OBSC " << obsc << " 1-obsc " << (1.0-obsc) << std::endl;
                             if (obsc > eclipsed_fraction)
                             {
                                 eclipsed_fraction = obsc;
