@@ -136,6 +136,7 @@ namespace alienorum
         double Ar_portion = 0;
 
         void enforce_integrity();
+        double mean_molar_mass();                   // kg/mol, renormalized; Earth air if empty
         void generate_fictitious_gas_giant();
         void generate_fictitious_ice_giant();
         void generate_fictitious_venusian();        // doubles as martian

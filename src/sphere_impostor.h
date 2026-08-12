@@ -39,6 +39,19 @@ namespace alienorum
         // radius; a caster's own oblateness/triaxiality is ignored, being far below the
         // penumbra's own softness at any distance where the shadow is visible at all.
         double r;
+
+        // What the umbra of *this* caster looks like from inside it. A body with an atmosphere
+        // does not cast a black shadow: sunlight grazing its limb is refracted inwards and
+        // reddened by the long slant path through the air, which is why a totally eclipsed Moon
+        // turns copper rather than going out. umbra_tint is that light's color (already
+        // normalized so its brightest channel is 1) and umbra_light how bright it is relative
+        // to direct sunlight.
+        //
+        // umbra_light 0 -- an airless caster -- gives the hard black umbra such a body really
+        // does cast, so a moon's shadow on a planet stays sharp and dark while the planet's own
+        // shadow on that moon glows.
+        double umbra_tint[3];
+        double umbra_light;
     };
 
     // All inputs describing the sphere itself, kept as plain scalars (no Point/Rotation types)
@@ -168,6 +181,27 @@ namespace alienorum
         double ring_normal[3];
         double ring_inner_r, ring_outer_r;
         unsigned int ringx_map_texture;
+
+        // The band of glowing air on the limb of a world with an atmosphere -- the thin blue
+        // arc Earth wears in every photograph taken from orbit or from the Moon, reddening to
+        // orange where it meets the terminator. Drawn as a shell outside the solid body, so the
+        // impostor's own bounding quad is grown by atmosphere_height to make room for it (the
+        // silhouette test itself is untouched: the solid body ends where it always did).
+        //
+        // atmosphere_height is how far out the glow is drawn, in meters -- a few pressure scale
+        // heights (Planet::estimate_scale_height()), since the air's density, and with it the
+        // glow, falls off exponentially rather than stopping anywhere. 0 disables the whole
+        // thing, which is every airless body and every star.
+        //
+        // atmosphere_color is the color of light scattered by the air high up, and
+        // atmosphere_low_color the redder color it takes on near the surface, where the line of
+        // sight is long enough to have lost its blue -- the glow crossfades between the two with
+        // altitude, which is what makes the arc blue at the top and sunset-orange at the bottom.
+        // Both come from the same Rayleigh/particulate mix draw_sky_gradient() colors the sky
+        // with from the ground, so a world's limb and its skies always agree.
+        double atmosphere_height;
+        double atmosphere_color[3];
+        double atmosphere_low_color[3];
 
         // Ambient illumination level for the unlit side when no night-map texture is available
         // (matches the CPU path's `starlight` constant, used only when there's no night map to

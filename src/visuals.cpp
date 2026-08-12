@@ -181,6 +181,24 @@ bool bugged = false;
 // planets) -- for every disc, every frame. Rebuilt once per frame by refresh_eclipse_casters()
 // at the top of draw_objects(); draw_sphere_gpu() then only walks this much shorter list, and
 // rejects everything outside the object's own system on a single pointer comparison.
+// Defined further down, with the rest of the atmosphere code: both an eclipse's copper light
+// and a planet's own glowing limb are colored from a world's air, and the eclipse code below
+// shows that Claude is not PTSD friendly.
+static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3]);
+
+// Brightness of the light an Earth-thick atmosphere refracts into its own shadow, as a fraction
+// of direct sunlight -- see the shader's UMBRA_REFRACTION comment for why this is a legibility
+// figure rather than the photometric one (a totally eclipsed Moon really is some ten thousand
+// times fainter than a full one, which on an unexposed screen is no color at all).
+static const double kUmbraLight = 0.15;
+
+// How far out the limb glow is drawn, in pressure scale heights. Air thins exponentially and
+// never actually stops, so this is a choice about where it stops being worth drawing: six scale
+// heights leaves about a quarter of a percent of the surface density, which is roughly where a
+// real limb fades out of a photograph. It also sets how far the impostor's bounding quad has to
+// grow (see queue_sphere_impostor), so raising it is not free.
+static const double kAtmosphereScaleHeights = 6.0;
+
 struct EclipseCandidate
 {
     CelestialObject *obj;
@@ -304,9 +322,110 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
         in.casters[i].dy = cam.y - camera_space.y;
         in.casters[i].dz = cam.z - camera_space.z;
         in.casters[i].r = chosen[i]->get_equatorial_radius();
+
+        // What this caster's own air lets into its shadow. An airless caster leaves this at 0
+        // and casts the hard black umbra it really does -- the difference between a moon's
+        // shadow crossing a planet, which stays sharp and dark, and the planet's shadow
+        // swallowing that moon, which glows.
+        in.casters[i].umbra_tint[0] = in.casters[i].umbra_tint[1] = in.casters[i].umbra_tint[2] = 0;
+        in.casters[i].umbra_light = 0;
+        cel_obj_class ccls = chosen[i]->typeclass();
+        if (ccls == class_planet || ccls == class_moon)
+        {
+            Planet *cpl = (Planet*)chosen[i];
+            double pressure = cpl->get_surface_pressure();
+            if (pressure > 0)
+            {
+                double high[3], low[3], umbra[3];
+                atmosphere_colors(cpl, high, low, umbra);
+                // Saturating in pressure, not proportional: past about an Earth atmosphere, more
+                // air makes the light redder (which the colors above already say) but not
+                // brighter -- past a point it makes it dimmer, since a thick enough atmosphere
+                // is simply opaque. Venus casts a darker shadow than Earth, not a brighter one.
+                double thickness = 1.0 - exp(-pressure / oneatm);
+                for (int k = 0; k < 3; k++) in.casters[i].umbra_tint[k] = umbra[k];
+                in.casters[i].umbra_light = kUmbraLight * thickness;
+            }
+        }
     }
     in.num_casters = n;
     if (n) in.light_angular_radius = light_ang;
+}
+
+// ---- Atmospheric color -----------------------------------------------------------------
+//
+// What a world's air looks like, both from outside it (the lit band on its limb) and from
+// inside its own shadow (the copper light an eclipse falls into). Both come from one place: the
+// Rayleigh/particulate mix draw_sky_gradient() already paints that world's sky with when you
+// stand on it, so a planet whose skies are butterscotch has a butterscotch limb and throws a
+// butterscotch shadow, with nothing tuned twice to say so.
+//
+// The two directions differ only in path length. Looking *at* the air high on the limb, light
+// has been scattered towards us over a short path, and we see the scattered color directly --
+// blue on Earth, for exactly the reason the sky is. Looking *through* it, along a path grazing
+// the whole limb, the same scattering has removed that blue on the way, and what survives is
+// the complement: the transmission exp(-depth * scattering), which is why sunsets are red and
+// why the shadow behind a world is red rather than black. So both colors below come from one
+// pair of numbers -- how strongly this air scatters, and how much of it the light crossed.
+//
+// out_high  = scattered color, for the top of the limb band.
+// out_low   = transmitted color at grazing incidence, for the bottom of it (sunset colors).
+// out_umbra = transmitted color over a path twice as long again -- light that had to graze the
+//             limb and bend inwards to reach the shadow at all.
+// Each is normalized to a brightest channel of 1 and then scaled by how much air there is, so
+// a thin atmosphere is not merely paler but dimmer.
+static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3])
+{
+    for (int i = 0; i < 3; i++) out_high[i] = out_low[i] = out_umbra[i] = 0;
+
+    double pressure = pl->get_surface_pressure();
+    if (pressure <= 0) return;
+
+    // Matches draw_sky_gradient() exactly: Rayleigh scattering in the fixed 0.37/0.58/0.81 blue-
+    // weighted ratio, crossfaded against the world's own color where particulates (dust, haze,
+    // smog) scatter greyly instead and hand the sky the ground's color back.
+    double particulates = pl->get_particulates();
+    double Rayleigh = 1.0 - particulates;
+    Color pcol = Color::color_from_magnitude_indices(0, pl->BV_color);
+    pcol.normalize(1);
+
+    const double scatter[3] = {0.37, 0.58, 0.81};
+    double haze[3] = {pcol.red, pcol.green, pcol.blue};
+    double high[3], low[3], umbra[3];
+
+    // How much air a grazing ray crosses, in units where 1 is roughly Earth's. Compressed hard
+    // (a fourth root) because pressure ranges over orders of magnitude between the worlds this
+    // app carries -- Mars at 0.006 atm and Venus at 92 -- while the color it produces does not.
+    double depth = 3.0 * fmin(3.0, fmax(0.2, pow(pressure / oneatm, 0.25)));
+
+    for (int i = 0; i < 3; i++)
+    {
+        high[i] = Rayleigh*scatter[i] + particulates*haze[i];
+        low[i] = exp(-depth * scatter[i]);
+        umbra[i] = exp(-2.0 * depth * scatter[i]);
+    }
+
+    // Particulates redden a long path too, but they do it greyly -- they scatter all colors
+    // much alike -- so they get folded into the transmitted colors as the world's own hue
+    // rather than through the wavelength-dependent exponential above.
+    for (int i = 0; i < 3; i++)
+    {
+        low[i] = Rayleigh*low[i] + particulates*haze[i]*low[i];
+        umbra[i] = Rayleigh*umbra[i] + particulates*haze[i]*umbra[i];
+    }
+
+    // Amount of air, as an overall brightness: 1 for an Earth-like atmosphere and up, falling
+    // away for a thin one so Mars's limb is a faint line where Earth's is a bright thread.
+    double amount = fmin(1.0, pow(pressure / oneatm, 0.25));
+
+    double *outs[3] = {out_high, out_low, out_umbra};
+    double *ins[3] = {high, low, umbra};
+    for (int k = 0; k < 3; k++)
+    {
+        double mx = fmax(ins[k][0], fmax(ins[k][1], ins[k][2]));
+        if (mx <= 0) continue;
+        for (int i = 0; i < 3; i++) outs[k][i] = (ins[k][i] / mx) * amount;
+    }
 }
 
 // The ring plane's normal in camera space -- the planet's local +Y (polar) axis, rotated
@@ -523,6 +642,23 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.redlight_mode = redlight_mode;
     if (self_luminous) { in.num_casters = 0; in.light_angular_radius = 0; }
     else collect_eclipse_casters(in, cel, lightcen, camera_space, bounding_r);
+
+    // The band of lit air on this world's own limb. Its height is the world's own pressure
+    // scale height (so a hydrogen giant's is puffy and Mars's is thin), and its colors come from
+    // the same place its skies do -- see atmosphere_colors() above.
+    in.atmosphere_height = 0;
+    for (int k = 0; k < 3; k++) in.atmosphere_color[k] = in.atmosphere_low_color[k] = 0;
+    if (!self_luminous && (cls == class_planet || cls == class_moon))
+    {
+        Planet *pl = (Planet*)cel;
+        double scale_height = pl->estimate_scale_height();
+        if (scale_height > 0)
+        {
+            in.atmosphere_height = kAtmosphereScaleHeights * scale_height;
+            double umbra_unused[3];
+            atmosphere_colors(pl, in.atmosphere_color, in.atmosphere_low_color, umbra_unused);
+        }
+    }
 
     // A ringed planet shadowed by its own rings -- Saturn's dark band across the winter
     // hemisphere. Deliberately not gated on use_gpu_ring (see its comment in draw_sphere()):

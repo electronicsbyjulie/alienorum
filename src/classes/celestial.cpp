@@ -2940,6 +2940,35 @@ void alienorum::AtmosphereComposition::enforce_integrity()
     }
 }
 
+// Mean molar mass of the mixture, kg/mol -- what sets how fast an atmosphere thins with
+// altitude (see Planet::estimate_scale_height()), and so how thick the glowing band of air on a
+// planet's limb looks from space. A hydrogen/helium envelope is nearly fifteen times lighter
+// than Venus's carbon dioxide, and puffs out correspondingly further.
+//
+// Portions are treated as fractions of the whole and renormalized here rather than assumed to
+// sum to 1: enforce_integrity() only scales them down when they total *more* than 1, so a
+// composition listing a single trace gas at 0.01 is left as-is, and dividing by the total is
+// what stops that from reading as an atmosphere of almost nothing. An empty composition falls
+// back to Earth air, the same "sensible default" spirit as the rest of these estimators.
+double alienorum::AtmosphereComposition::mean_molar_mass()
+{
+    const double earth_air = 0.0289644;
+    double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
+        + CO2_portion + CH4_portion + SO2_portion + H2O_portion + H2S_portion
+        + HCN_portion + NH3_portion + C2H6_portion + N2O_portion
+        + CO_portion + Ar_portion;
+    if (total <= 0) return earth_air;
+
+    double sum = H2_portion*0.002016 + He_portion*0.004003 + N2_portion*0.028014
+        + O2_portion*0.031998 + O3_portion*0.047997 + CO2_portion*0.044009
+        + CH4_portion*0.016043 + SO2_portion*0.064064 + H2O_portion*0.018015
+        + H2S_portion*0.034081 + HCN_portion*0.027025 + NH3_portion*0.017031
+        + C2H6_portion*0.030069 + N2O_portion*0.044013 + CO_portion*0.028010
+        + Ar_portion*0.039948;
+
+    return sum / total;
+}
+
 void alienorum::AtmosphereComposition::generate_fictitious_gas_giant()
 {
     double leftover = 1;
