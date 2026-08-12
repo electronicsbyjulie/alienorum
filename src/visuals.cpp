@@ -207,6 +207,64 @@ struct EclipseCandidate
 };
 static std::vector<EclipseCandidate> eclipse_candidates;
 
+CelestialObject *eclipsed_light = nullptr;
+double eclipsed_fraction = 0;
+
+// Fraction of one disc hidden behind another, both as angles seen from the same point: R is the
+// light source's angular radius, r the occulter's, d the angle between their centers. This is
+// the same circle-circle intersection the impostor's fragment shader runs per pixel (see
+// disc_overlap() in sphere_impostor.cpp) -- deliberately, since the two have to agree: the
+// shader decides how dark a patch of a distant planet goes, this decides how dark the sky goes
+// for someone standing under it, and a difference between them would show up as a shadow on the
+// ground that does not match the sky above it. The formula lives twice because one copy has to
+// be GLSL and the other C++; if either is ever corrected, correct both.
+static double cpu_disc_overlap(double R, double r, double d)
+{
+    if (R <= 0) return 0;
+    if (d >= R + r) return 0;                       // no contact
+    if (d <= r - R) return 1;                       // totality
+    if (d <= R - r) return (r*r)/(R*R);             // annular: the occulter cannot cover it all
+    double d2 = d*d, R2 = R*R, r2 = r*r;
+    double a1 = acos(fmin(1.0, fmax(-1.0, (d2 + r2 - R2)/(2*d*r))));
+    double a2 = acos(fmin(1.0, fmax(-1.0, (d2 + R2 - r2)/(2*d*R))));
+    double lens = 0.5*sqrt(fmax(0.0, (R + r - d)*(d + r - R)*(d - r + R)*(d + r + R)));
+    return fmin(1.0, fmax(0.0, (r2*a1 + R2*a2 - lens)/(_pi*R2)));
+}
+
+double eclipse_obscuration(CelestialObject *light)
+{
+    if (!light || eclipse_candidates.empty()) return 0;
+
+    double d_light = light->tmprel.magnitude();
+    double r_light = light->get_equatorial_radius();
+    if (d_light <= 0 || r_light <= 0) return 0;
+
+    double light_ang = asin(fmin(1.0, r_light / d_light));
+    Point lhat = light->tmprel * (1.0 / d_light);
+
+    double worst = 0;
+    for (const EclipseCandidate &cand : eclipse_candidates)
+    {
+        if (cand.obj == light) continue;
+        // The world under the observer's feet is skipped: it hides the sun for half of every
+        // day and that is called night, not an eclipse -- the sin(altitude) term in the
+        // daylight computation already says so, and counting it here would say it twice.
+        if (whereami >= 0 && cand.obj == cels[whereami]) continue;
+
+        double dist = cand.obj->tmprel.magnitude();
+        if (dist <= 0 || dist >= d_light) continue;         // has to be between us and the light
+
+        double ang = asin(fmin(1.0, cand.radius / dist));
+        double cosine = (cand.obj->tmprel.x*lhat.x + cand.obj->tmprel.y*lhat.y + cand.obj->tmprel.z*lhat.z) / dist;
+        double sep = acos(fmin(1.0, fmax(-1.0, cosine)));
+        // Deepest occulter rather than the sum, for the same reason the shader takes the deepest
+        // of its casters: two bodies in front of the same sun would be hiding overlapping parts
+        // of one disc, and adding them would count the overlap twice.
+        worst = fmax(worst, cpu_disc_overlap(light_ang, ang, sep));
+    }
+    return worst;
+}
+
 void refresh_eclipse_casters()
 {
     eclipse_candidates.clear();
@@ -1581,6 +1639,79 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     }
 }
 
+// The corona, and the only circumstance under which anyone has ever seen it: a star's own
+// photosphere covered by something. It is roughly a millionth as bright as the disc it
+// surrounds, so it is not that the corona appears during totality -- it is there always, and
+// totality is merely the one time the glare stops drowning it.
+//
+// Drawn before the eclipsing body's own disc, which is nearer and therefore drawn later, and so
+// paints over the inner part of this and leaves the ring. `obsc` decides everything: the ramp
+// below keeps the corona invisible until the covering is nearly complete, since even one percent
+// of the photosphere still showing is thousands of times brighter than the whole corona. That
+// same cutoff is why an annular eclipse -- which never exceeds it, the moon being too far away
+// to cover the disc at all -- correctly shows nothing.
+static void draw_corona(ImVec2 at, double sun_px, double obsc, double BV)
+{
+    if (whtbkgd) return;
+    if (!std::isfinite(sun_px) || !std::isfinite(obsc) || sun_px <= 0) return;
+
+    double strength = pow(fmax(0.0, fmin(1.0, (obsc - 0.97) / 0.03)), 1.5);
+    if (strength < 0.02) return;
+
+    // Pearl white, barely carrying the star's own hue: the corona is hot enough that its light
+    // is essentially the star's, scattered by free electrons, which is a grey process.
+    Color col = Color::color_from_magnitude_indices(0, BV);
+    col.normalize(1);
+    RGB3Byte rgb;
+    rgb.r = (int)(255 * (0.82 + 0.18*col.red));
+    rgb.g = (int)(255 * (0.82 + 0.18*col.green));
+    rgb.b = (int)(255 * (0.82 + 0.18*col.blue));
+
+    ImDrawList *dl = ImGui::GetBackgroundDrawList();
+    double r_in = fmax(2.0, sun_px);
+
+    // Two overlapping falloffs rather than one: the inner corona is bright and tight against the
+    // limb, the outer faint and reaching several radii out, and a single exponent cannot be both.
+    draw_radial_glow(at, r_in*1.01, r_in*2.2, rgb, 150.0*strength, 2.6);
+    draw_radial_glow(at, r_in*1.01, r_in*5.0, rgb, 55.0*strength, 1.7);
+
+    // Streamers. The corona is shaped by the star's magnetic field, not by gravity, which is why
+    // it is never a smooth halo: it reaches furthest along the field's open lines and leaves
+    // gaps where the field is closed. Hashed, not random, so the shape holds still from frame to
+    // frame instead of boiling.
+    const int nstream = 40;
+    for (int k = 0; k < nstream; k++)
+    {
+        double h1 = flare_hash(k*13 + 5), h2 = flare_hash(k*29 + 71), h3 = flare_hash(k*7 + 311);
+        int a = (int)(46.0 * strength * (0.3 + 0.7*h2));
+        if (a < 1) continue;
+        double ang = (k + (h3 - 0.5)*1.6) * (_pi*2.0/nstream);
+        double len = r_in * (0.8 + 4.0*pow(h1, 2.0));
+        double halfwidth = r_in * (0.06 + 0.10*h2);
+        double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
+        ImVec2 base_a(at.x + dx*r_in*0.98 + px*halfwidth, at.y + dy*r_in*0.98 + py*halfwidth);
+        ImVec2 base_b(at.x + dx*r_in*0.98 - px*halfwidth, at.y + dy*r_in*0.98 - py*halfwidth);
+        ImVec2 tip(at.x + dx*(r_in + len), at.y + dy*(r_in + len));
+        dl->AddTriangleFilled(base_a, base_b, tip, rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, a)));
+    }
+
+    // The chromosphere: a thin, fiercely red rim just above the photosphere, with a few
+    // prominences standing off it. This is hydrogen's own red line rather than anything thermal,
+    // which is why it is that specific color and not a temperature's worth of orange -- and why
+    // it stays red no matter what color the star itself is.
+    ImU32 fire = rgba_apply_redlight(IM_COL32(255, 62, 40, (int)(210*strength)));
+    dl->AddCircle(at, r_in*1.02, fire, 0, fmax(1.0, r_in*0.035));
+    for (int k = 0; k < 5; k++)
+    {
+        double h1 = flare_hash(k*97 + 17), h2 = flare_hash(k*41 + 233);
+        if (h2 < 0.35) continue;                        // not every eclipse gets five of them
+        double ang = h1 * _pi * 2.0;
+        double reach = r_in * (0.05 + 0.10*h2);
+        dl->AddCircleFilled(ImVec2(at.x + cos(ang)*(r_in + reach*0.5), at.y + sin(ang)*(r_in + reach*0.5)),
+            fmax(1.0, reach), rgba_apply_redlight(IM_COL32(255, 78, 48, (int)(190*strength))), 0);
+    }
+}
+
 int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
 {
     // Satellite icons.
@@ -1885,11 +2016,17 @@ bool draw_one_object(int i)
     }
     else if (angular_radius[i]*zoom > sphere_rad_threshold)
     {
+        // An eclipsed star loses its glare along with its light: the flare drawn here is the
+        // scatter of an overwhelming photosphere in the eye and in the air, and as the moon
+        // covers that photosphere it goes with it. What is left behind, and only then, is the
+        // corona -- a million times fainter, and invisible any other day of the century.
+        double obsc = (cels[i] == eclipsed_light) ? eclipsed_fraction : 0.0;
         if (flare)
         {
             Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
-            draw_flare(flare, col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
+            draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
         }
+        if (obsc > 0) draw_corona(xycoord, angular_radius[i]*zoom*dispcx, obsc, cels[i]->BV_color);
 
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
@@ -2368,8 +2505,9 @@ void draw_objects()
     ImGuiIO& io = ImGui::GetIO();
 
     // Once per frame, ahead of any disc: every disc drawn below asks this list who might be
-    // casting a shadow on it (see refresh_eclipse_casters() near draw_sphere_gpu()).
-    refresh_eclipse_casters();
+    // The eclipse caster list every disc below consults is rebuilt earlier than this, at the top
+    // of compute_object_draw_coordinates(), because the sky's own brightness depends on it too
+    // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
     if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)

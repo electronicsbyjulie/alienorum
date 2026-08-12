@@ -1,6 +1,7 @@
 
 #include "housekeeping.h"
 #include "inputs.h"
+#include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
 
 using namespace alienorum;
 
@@ -279,6 +280,13 @@ void compute_object_draw_coordinates()
     dispw = dispcx*2;
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
+
+    // Rebuilt here rather than at drawing time because the daylight computation further down
+    // consults it: an eclipse has to dim the sky *before* anything is drawn under that sky, not
+    // after. Everything drawn later in the frame reads the same list -- see visuals.h.
+    refresh_eclipse_casters();
+    eclipsed_light = nullptr;
+    eclipsed_fraction = 0;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_distsq = mycenobj->location.squared_distance_to(here);
     if (whereami >= 0)
@@ -422,6 +430,31 @@ void compute_object_draw_coordinates()
                         else twilight = 0;
 
                         double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
+
+                        // A solar eclipse, from underneath it. Nothing here is specific to
+                        // eclipses: the daylight this loop is accumulating is simply the light
+                        // actually arriving, and during an eclipse most of it is not arriving.
+                        // Everything the sky does about that follows on its own from
+                        // luminous_flux -- draw_sky_gradient() dims, sky_mag_shift falls with
+                        // it, and stars that were being drowned out clear the magnitude limit
+                        // and come out, which is exactly what happens outdoors.
+                        //
+                        // The floor is the corona, which is roughly a millionth of the
+                        // photosphere and is the only thing still lighting the sky at totality.
+                        // Without it the last sliver of coverage would take the sky from
+                        // daylight to a starless black in one step; with it, totality lands in
+                        // deep twilight, which is where it belongs.
+                        double obsc = eclipse_obscuration(cels[i]);
+                        if (obsc > 0)
+                        {
+                            add_flux *= (1.0 - obsc) + 1e-6*obsc;
+                            if (obsc > eclipsed_fraction)
+                            {
+                                eclipsed_fraction = obsc;
+                                eclipsed_light = cels[i];
+                            }
+                        }
+
                         if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
                     }
                 }
