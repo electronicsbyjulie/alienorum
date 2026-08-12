@@ -36,6 +36,13 @@ void draw_cloudy_sky();
 void refresh_eclipse_casters();
 double eclipse_obscuration(CelestialObject *light);
 
+// The other side of the same coin: how much of its star's light a body is receiving where it
+// actually stands, 0 to 1, given whatever else is in the way -- 1 whenever nothing is, which is
+// nearly always. Averaged over the body's whole cross-section rather than taken at its center,
+// because what this feeds is an apparent magnitude, and a magnitude is a measure of total light:
+// Earth's shadow swallows the Moon whole, while the Moon's shadow costs Earth a few percent.
+double eclipse_illumination(CelestialObject *cel);
+
 // The light source currently being eclipsed for the observer, and by how much (0-1), as found by
 // the daylight computation in compute_object_draw_coordinates(). Null and 0 the rest of the time,
 // which is very nearly always.

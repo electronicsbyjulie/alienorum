@@ -400,9 +400,24 @@ void compute_object_draw_coordinates()
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-            vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
-                ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
-                : cels[i]->viewer_magnitude(here);
+            cel_obj_class icls = cels[i]->typeclass();
+            if (icls == class_planet || icls == class_moon)
+            {
+                vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
+
+                // Standing in somebody else's shadow. viewer_reflectance_magnitude() works out how
+                // much of the body is turned our way and lit, but has no way of knowing whether
+                // the light it is counting on is arriving at all -- a full Moon in mid-eclipse is
+                // at exactly the same phase as a full Moon out of it, and some twelve magnitudes
+                // fainter. Applied to the magnitude rather than anywhere later, so that everything
+                // downstream follows on its own: the dot dims, its color shifts the way a dim
+                // object's does, the flare in draw_one_object() dies with the light that was
+                // causing it, and a moon deep in a gas giant's shadow drops under the magnitude
+                // limit and disappears, exactly as Io does.
+                double lit = eclipse_illumination(cels[i]);
+                if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
+            }
+            else vmag_cache[i] = cels[i]->viewer_magnitude(here);
 
             double brght;
 

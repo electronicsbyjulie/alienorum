@@ -274,20 +274,39 @@ double eclipse_obscuration(CelestialObject *light)
     return worst;
 }
 
-// ---- Eclipses on the sun clock ----------------------------------------------------------
-//
-// The sun clock shades a whole world's map by where its light is falling, so an eclipse belongs
-// on it as what an eclipse actually is on that scale: a small dark spot crossing the daylit side
-// at a thousand-odd kilometres an hour, ringed by the much wider, much softer penumbra. That
-// shape comes out of the same disc-overlap arithmetic as everywhere else, asked separately for
-// each point of the map rather than once for the planet.
-//
-// The one thing that has to be different is the frame. Everything else in this file works from
-// tmprel, positions relative to the observer -- but the sun clock is drawn for a world seen from
-// nowhere in particular, and its surface points are built in the system frame (see draw_sunclock:
-// `land += cel->location.local_position`). So these take local_position throughout.
-struct SunclockCaster
+// The stretch of eclipse_candidates belonging to one light source, as a half-open [begin, end).
+// The list is kept sorted by lightcen (see refresh_eclipse_casters) so that this is two binary
+// searches rather than a walk: with an exoplanet catalog loaded the candidate list runs to
+// thousands of bodies, all but a handful of them orbiting stars that have nothing to do with the
+// one being asked about, and both the per-disc caster search and the per-body magnitude test ask
+// this question for every object they touch.
+static void candidates_for_light(CelestialObject *lightcen, int &begin, int &end)
 {
+    auto lo = std::lower_bound(eclipse_candidates.begin(), eclipse_candidates.end(), lightcen,
+        [](const EclipseCandidate &a, CelestialObject *key) { return a.lightcen < key; });
+    auto hi = std::upper_bound(lo, eclipse_candidates.end(), lightcen,
+        [](CelestialObject *key, const EclipseCandidate &a) { return key < a.lightcen; });
+    begin = (int)(lo - eclipse_candidates.begin());
+    end   = (int)(hi - eclipse_candidates.begin());
+}
+
+// ---- Shadows in the system frame ---------------------------------------------------------
+//
+// Two things here have to know where a shadow falls without reference to where anyone is
+// watching from: the sun clock, which shades a whole world's map by where its light is landing,
+// and the apparent magnitude of a body too far off to be more than a dot (eclipse_illumination()
+// below). Everything else in this file works from tmprel, positions relative to the observer --
+// but a shadow is thrown between two bodies and cares nothing for who is looking, so these take
+// local_position throughout, the frame the sun clock's surface points are already built in (see
+// draw_sunclock: `land += cel->location.local_position`).
+//
+// On the sun clock's scale an eclipse gets drawn as what it actually is: a small dark spot
+// crossing the daylit side at a thousand-odd kilometres an hour, ringed by the much wider, much
+// softer penumbra. That shape comes out of the same disc-overlap arithmetic as everywhere else,
+// asked separately for each point of the map rather than once for the planet.
+struct ShadowCaster
+{
+    CelestialObject *obj;           // kept so callers can ask what the shadow is being thrown by
     Point center;
     double radius;
 };
@@ -295,8 +314,8 @@ struct SunclockCaster
 // Bodies whose shadow could touch this world at all, found once per frame so the per-pixel loop
 // below can skip the whole question the overwhelming majority of the time -- and, when there is
 // an eclipse, usually has exactly one body to consider.
-static int gather_sunclock_casters(CelestialObject *cel, CelestialObject *lightcen,
-    SunclockCaster *out, int maxn)
+static int gather_shadow_casters(CelestialObject *cel, CelestialObject *lightcen,
+    ShadowCaster *out, int maxn)
 {
     if (!cel || !lightcen || lightcen == cel) return 0;
 
@@ -310,11 +329,14 @@ static int gather_sunclock_casters(CelestialObject *cel, CelestialObject *lightc
     Point lhat = to_light * (1.0 / d_light);
     double bounding_r = cel->get_equatorial_radius();
 
+    int lo, hi;
+    candidates_for_light(lightcen, lo, hi);
+
     int n = 0;
-    for (const EclipseCandidate &cand : eclipse_candidates)
+    for (int c = lo; c < hi; c++)
     {
+        const EclipseCandidate &cand = eclipse_candidates[c];
         if (cand.obj == cel || cand.obj == lightcen) continue;
-        if (cand.lightcen != lightcen) continue;
 
         Point rel = cand.obj->location.local_position - cpos;
         double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
@@ -327,17 +349,18 @@ static int gather_sunclock_casters(CelestialObject *cel, CelestialObject *lightc
         // has to reach some part of it.
         if (h >= cand.radius + along*tan(light_ang) + bounding_r) continue;
 
-        if (n < maxn) out[n++] = { cand.obj->location.local_position, cand.radius };
+        if (n < maxn) out[n++] = { cand.obj, cand.obj->location.local_position, cand.radius };
     }
     return n;
 }
 
-// Fraction of the light source hidden as seen from one point on the map.
+// Fraction of the light source hidden as seen from one point in space -- one point of a map for
+// the sun clock, one sample of a body's cross-section for the magnitude below.
 // Taken by value, not by const reference: Point's own arithmetic operators are not const-
 // qualified, so a const Point cannot be subtracted from anything. Same convention as
 // find_3D_angle() and the rest of point.cpp's interface.
-static double sunclock_obscuration(Point surface, Point lightpos, double light_r,
-    SunclockCaster *casters, int n)
+static double point_obscuration(Point surface, Point lightpos, double light_r,
+    ShadowCaster *casters, int n)
 {
     Point to_light = lightpos - surface;
     double d_light = to_light.magnitude();
@@ -359,6 +382,121 @@ static double sunclock_obscuration(Point surface, Point lightpos, double light_r
         worst = fmax(worst, cpu_disc_overlap(light_ang, ang, sep));
     }
     return worst;
+}
+
+// ---- Eclipses seen from far off ------------------------------------------------------------
+//
+// A body small enough on screen to be a dot has no surface to shade, but it still goes dark when
+// it walks into somebody's shadow, and the only number a dot has to say so with is its apparent
+// magnitude. This is what makes a moon of Jupiter blink out as it crosses behind its planet, and
+// what takes the glare off the full Moon halfway through a lunar eclipse.
+//
+// What separates this from eclipse_obscuration(), which asks the same question on the observer's
+// behalf, is that a magnitude measures *total* light. So the answer cannot be the obscuration at
+// one point; it has to be averaged over the whole cross-section the body turns toward its star,
+// and that average is the entire difference between the two eclipses of the Earth-Moon pair.
+// Earth's shadow is far wider than the Moon and takes essentially all of its light: the Moon
+// falls from magnitude -12.7 to somewhere around zero, which is a dull copper dot with no flare
+// left on it at all. The Moon's shadow on Earth is a spot a hundred kilometres wide on a disc
+// twelve thousand across; it can never cost Earth more than the few percent of the sunbeam the
+// Moon's own disc intercepts, which is a couple hundredths of a magnitude -- nothing. Sampling
+// the cross-section rather than the center is what gets both of those right from one rule.
+
+// Sunlight that a world's own air refracts into its shadow, as a fraction of what falls outside
+// it. Unlike kUmbraLight further up -- which is a legibility figure, chosen so that an eclipsed
+// surface stays visible on a screen -- this one is meant to be the photometry, because a
+// magnitude is a measurement and reads as wrong if it is not. A totally eclipsed Moon lands
+// between about magnitude -1 and +1 against the -12.7 of a full one, so the light reaching it is
+// down by some twelve or thirteen magnitudes. This figure is scaled by how much air the caster
+// actually has (see umbra_flux below), and 1e-5 is what puts Earth's own atmosphere, at its one
+// bar, in the middle of that range. Turn it down for darker eclipses -- they genuinely vary, and
+// a stratosphere full of volcanic dust has taken the Moon to +4 -- and up for brighter ones.
+static const double kUmbraFluxFraction = 1e-5;
+
+// How the cross-section gets sampled: rings of points spread so that each stands for an equal
+// share of the area, since each equal patch of that disc intercepts an equal share of the
+// starlight and the plain average over them is therefore the fraction of the light that survives.
+// Enough points to put a smooth curve under a partial eclipse, few enough that a per-body,
+// per-frame loop costs nothing on the overwhelming majority of frames, which have no eclipse in
+// them at all and never reach the loop.
+static const int kShadowRings = 4, kShadowSpokes = 8;
+
+// What one caster's own atmosphere lets into the middle of its shadow, as a fraction of direct
+// starlight. Airless bodies return 0 and throw the hard black shadow they really do -- which is
+// why a moon vanishing behind an airless world vanishes completely, while the Moon in Earth's
+// shadow only reddens.
+static double umbra_flux(CelestialObject *caster)
+{
+    cel_obj_class cls = caster->typeclass();
+    if (cls != class_planet && cls != class_moon) return 0;
+
+    double pressure = ((Planet*)caster)->get_surface_pressure();
+    if (pressure <= 0) return 0;
+
+    // Saturating in pressure for the same reason as the shader's copy of this thought: past about
+    // an Earth atmosphere, more air does not put more light into the shadow, it puts less, a
+    // thick enough atmosphere being simply opaque.
+    return kUmbraFluxFraction * (1.0 - exp(-pressure / oneatm));
+}
+
+double eclipse_illumination(CelestialObject *cel)
+{
+    if (!cel || eclipse_candidates.empty()) return 1;
+
+    cel_obj_class cls = cel->typeclass();
+    if (cls != class_planet && cls != class_moon) return 1;     // a star is not lit by anything
+
+    CelestialObject *lightcen = cel->get_light_center();
+    if (!lightcen || lightcen == cel) return 1;
+
+    ShadowCaster casters[max_eclipse_casters];
+    int n = gather_shadow_casters(cel, lightcen, casters, max_eclipse_casters);
+    if (!n) return 1;                                           // nearly always, and nearly free
+
+    Point pos = cel->location.local_position;
+    Point light_pos = lightcen->location.local_position;
+    double light_r = lightcen->get_equatorial_radius();
+    double body_r = cel->get_equatorial_radius();
+    Point to_light = light_pos - pos;
+    double d_light = to_light.magnitude();
+    if (d_light <= 0 || light_r <= 0 || body_r <= 0) return 1;
+
+    // The most generous shadow on offer sets the floor: if two bodies are somehow both covering
+    // the star, the light refracted around the one with air still arrives.
+    double floor_flux = 0;
+    for (int i = 0; i < n; i++) floor_flux = fmax(floor_flux, umbra_flux(casters[i].obj));
+
+    // Two unit vectors across the line to the star, spanning the disc the starlight falls on.
+    // Any pair will do -- the samples are averaged, so where the pattern is clocked does not
+    // matter -- so this just crosses the light direction with whichever axis it is least parallel
+    // to, which cannot degenerate.
+    Point lhat = to_light * (1.0 / d_light);
+    Point ref = (fabs(lhat.x) < 0.9) ? Point(1, 0, 0) : Point(0, 1, 0);
+    Point u(lhat.y*ref.z - lhat.z*ref.y, lhat.z*ref.x - lhat.x*ref.z, lhat.x*ref.y - lhat.y*ref.x);
+    u.scale(1.0);
+    Point v(lhat.y*u.z - lhat.z*u.y, lhat.z*u.x - lhat.x*u.z, lhat.x*u.y - lhat.y*u.x);
+
+    double lit = 0;
+    for (int ring = 0; ring < kShadowRings; ring++)
+    {
+        // Equal-area radii: ring k of n sits at sqrt((k+0.5)/n) of the way out, which puts the
+        // same amount of cross-section behind every sample and lets them be averaged unweighted.
+        double rr = body_r * sqrt((ring + 0.5) / kShadowRings);
+        for (int spoke = 0; spoke < kShadowSpokes; spoke++)
+        {
+            // Alternate rings are clocked half a step round, so the samples do not line up into
+            // spokes that a shadow edge could cross all at once.
+            double th = 2 * _pi * (spoke + 0.5*(ring & 1)) / kShadowSpokes;
+            Point sample = pos + u*(rr*cos(th)) + v*(rr*sin(th));
+            lit += fmax(1.0 - point_obscuration(sample, light_pos, light_r, casters, n), floor_flux);
+        }
+    }
+    lit /= (kShadowRings * kShadowSpokes);
+
+    // Floored well below anything that can still be seen, purely so that an airless world's
+    // shadow -- which lets through nothing whatsoever -- turns into a large number of magnitudes
+    // rather than an infinite one.
+    return fmax(lit, 1e-12);
 }
 
 void refresh_eclipse_casters()
@@ -393,6 +531,13 @@ void refresh_eclipse_casters()
 
         eclipse_candidates.push_back({c, lc, radius});
     }
+
+    // Grouped by light source, so that everything downstream can take the slice belonging to one
+    // star instead of walking the whole list -- see candidates_for_light(). The order within a
+    // group is the pointer order of an unstable sort and so is not meaningful, which is fine:
+    // every consumer either takes the deepest shadow of the lot or ranks them itself.
+    std::sort(eclipse_candidates.begin(), eclipse_candidates.end(),
+        [](const EclipseCandidate &a, const EclipseCandidate &b) { return a.lightcen < b.lightcen; });
 #endif
 }
 
@@ -423,10 +568,15 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
     CelestialObject *chosen[max_eclipse_casters];
     int n = 0;
 
-    for (const EclipseCandidate &cand : eclipse_candidates)
+    // Only the bodies lit by this same star: a different system, or a different star of this one,
+    // cannot be throwing this shadow. That filter is the slice, not a test in the loop.
+    int lo, hi;
+    candidates_for_light(lightcen, lo, hi);
+
+    for (int c = lo; c < hi; c++)
     {
+        const EclipseCandidate &cand = eclipse_candidates[c];
         if (cand.obj == cel || cand.obj == lightcen) continue;
-        if (cand.lightcen != lightcen) continue;        // different system, or a different star of this one
 
         Point rel = cand.obj->tmprel - cel->tmprel;
         double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
@@ -2958,9 +3108,9 @@ void draw_sunclock()
 
     // An eclipse crossing the map. Gathered once here, so a frame with nothing eclipsing anything
     // -- which is nearly every frame -- pays one short list walk rather than anything per pixel.
-    SunclockCaster sc_casters[max_eclipse_casters];
+    ShadowCaster sc_casters[max_eclipse_casters];
     int n_sc_casters = self_luminous ? 0
-        : gather_sunclock_casters(cel, lightcen, sc_casters, max_eclipse_casters);
+        : gather_shadow_casters(cel, lightcen, sc_casters, max_eclipse_casters);
     double sc_light_r = lightcen ? lightcen->get_equatorial_radius() : 0;
     Point sc_light_pos = lightcen ? lightcen->location.local_position : Point();
 
@@ -3025,7 +3175,7 @@ void draw_sunclock()
                 // night side has nothing to take away.
                 if (n_sc_casters && is_day > 0)
                 {
-                    double obsc = sunclock_obscuration(land, sc_light_pos, sc_light_r,
+                    double obsc = point_obscuration(land, sc_light_pos, sc_light_r,
                         sc_casters, n_sc_casters);
                     if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
                 }
