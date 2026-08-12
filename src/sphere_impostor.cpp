@@ -266,6 +266,18 @@ namespace alienorum
         "const float RING_SHADOW_DENSITY = 0.1;\n"
         "const float UMBRA_REFRACTION = 1.0;\n"
         "const float ATM_GLOW = 1.0;\n"
+        //
+        // ATM_REDDEN_PHASE decides *when* a world's limb goes from blue to copper, as the
+        // observer crosses from the sunlit side of it to the shadowed one. It is an exponent on
+        // the crossfade, so it moves the changeover without moving its ends: at 1 the limb is
+        // half-reddened at half phase, higher values hold the blue further round and let the
+        // copper arrive only near new phase, lower values bring it on earlier. Both extremes
+        // stay pinned -- a full disc is always blue and a new one always copper.
+        //
+        // How *red* that copper gets is a separate matter, and lives on the other side of the
+        // wire: see kAtmosphereOpticalDepth in visuals.cpp, which sets how much air the light is
+        // reckoned to have crossed and so how much of its blue was taken out on the way.
+        "const float ATM_REDDEN_PHASE = 5.0;\n"
         // Matches GOSSAMER in the ring shader below, which in turn matches gossamer_rings in
         // misc.h -- a ring's shadow has to be exactly as dense as the ring that casts it.
         "const float SPH_GOSSAMER = 0.08;\n"
@@ -392,7 +404,7 @@ namespace alienorum
         // a real effect, but it is not the one that decides the color here, and using it alone
         // put an orange hoop around a 95%-lit Earth, which never happens.
         "    float phase = dot(vLightDir, normalize(-vCenter));\n"
-        "    float backlit = smoothstep(0.35, -0.35, phase);\n"
+        "    float backlit = pow(smoothstep(0.35, -0.35, phase), ATM_REDDEN_PHASE);\n"
         "    vec3 airTint = mix(uAtm[0].xyz, uAtm[1].xyz, backlit) * vTint;\n"
         "    float cosView = sqrt(max(0.0, 1.0 - min(d2, 1.0)));\n"
         "    float maxpath = 2.0*sqrt(max(1e-12, atmR*atmR - 1.0));\n"

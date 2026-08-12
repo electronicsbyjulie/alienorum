@@ -457,8 +457,13 @@ void compute_object_draw_coordinates()
                         double obsc = eclipse_obscuration(cels[i]);
                         if (obsc > 0)
                         {
+                            // fmax, not a blend: at true totality the geometry really does reach
+                            // an obscuration of exactly 1 (measured), so a floor written as a
+                            // share of the covered fraction would have nothing left to scale and
+                            // the sky would go out entirely. This way the floor is a hard limit
+                            // on how dark an eclipse can drive the daylight, whatever the
+                            // geometry does.
                             add_flux *= fmax(1.0 - obsc, kTotalityFloor);
-                            std::cerr << "OBSC " << obsc << " 1-obsc " << (1.0-obsc) << std::endl;
                             if (obsc > eclipsed_fraction)
                             {
                                 eclipsed_fraction = obsc;

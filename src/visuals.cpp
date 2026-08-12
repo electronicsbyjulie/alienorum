@@ -199,6 +199,16 @@ static const double kUmbraLight = 0.15;
 // grow (see queue_sphere_impostor), so raising it is not free.
 static const double kAtmosphereScaleHeights = 6.0;
 
+// How much air light is reckoned to have crossed when it comes to us *through* a world's
+// atmosphere rather than off the top of it -- and so how much of its blue was taken out on the
+// way, which is to say how red the copper gets. Raise it for a deeper, more saturated red on a
+// backlit limb and in an eclipse's umbra, lower it toward a pale amber. Scaled per world by its
+// own surface pressure below, so this is the figure for an Earth-thick atmosphere.
+//
+// Its companion knob is ATM_REDDEN_PHASE in sphere_impostor.cpp, which decides *when* through
+// the phases the reddening arrives rather than how far it goes.
+static const double kAtmosphereOpticalDepth = 3.0;
+
 struct EclipseCandidate
 {
     CelestialObject *obj;
@@ -454,7 +464,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     // How much air a grazing ray crosses, in units where 1 is roughly Earth's. Compressed hard
     // (a fourth root) because pressure ranges over orders of magnitude between the worlds this
     // app carries -- Mars at 0.006 atm and Venus at 92 -- while the color it produces does not.
-    double depth = 3.0 * fmin(3.0, fmax(0.2, pow(pressure / oneatm, 0.25)));
+    double depth = kAtmosphereOpticalDepth * fmin(3.0, fmax(0.2, pow(pressure / oneatm, 0.25)));
 
     for (int i = 0; i < 3; i++)
     {
@@ -3128,7 +3138,6 @@ void draw_sky_gradient()
 
             int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
-            std::cerr << "SKY flux " << luminous_flux << " skylight " << skylight << std::endl;
             sky_mag_shift = skylight * -10;
             double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
