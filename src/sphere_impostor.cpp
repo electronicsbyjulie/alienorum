@@ -296,15 +296,34 @@ namespace alienorum
         // very shader gives a self-luminous one a quadratic limb-darkening law further down), so
         // a true penumbra darkens marginally faster near totality than this says; the difference
         // is far below what a penumbra's own softness shows on screen.
+        //
+        // The two angles are taken with atan(y,x) rather than the acos() the textbook writes them
+        // with, and that is not a stylistic choice -- acos() cannot survive this in single
+        // precision. The interesting case is a huge caster in front of a tiny light: Saturn seen
+        // from one of its own moons is a third of a radian across, the sun from out there barely
+        // half a milliradian, and the entire penumbra is the sliver of d where |d - r| < R. Over
+        // that sliver the cosine acos() is handed sits within about five parts in a million of
+        // 1.0, which a float can barely tell from 1.0 at all -- and acos is vertical there, so
+        // what little is left gets multiplied by a few hundred. The answer then goes on to be
+        // scaled by r*r/(PI*R*R), some hundred thousand for these two bodies, which turned a
+        // rounding step into a swing of the whole 0..1 range: the penumbra came out as
+        // salt-and-pepper noise, every pixel independently in full sun or full shadow.
+        //
+        // atan(y,x) has none of that. The same angle written as the triangle's own area over its
+        // sides (sin) against the cosine's numerator (cos) needs neither argument to be accurate
+        // near a singularity -- both are ordinary quantities, and their ratio is the small number,
+        // computed as a ratio rather than by subtracting one from something. `lens` supplies the
+        // numerator: it is twice the area of the triangle whose sides are d, r, and R, which is
+        // exactly the sine of each angle times the two sides that meet there.
         "float disc_overlap(float R, float r, float d)\n"
         "{\n"
         "    if (d >= R + r) return 0.0;\n"
         "    if (d <= r - R) return 1.0;\n"
         "    if (d <= R - r) return (r*r)/(R*R);\n"
         "    float d2 = d*d, R2 = R*R, r2 = r*r;\n"
-        "    float a1 = acos(clamp((d2 + r2 - R2)/(2.0*d*r), -1.0, 1.0));\n"
-        "    float a2 = acos(clamp((d2 + R2 - r2)/(2.0*d*R), -1.0, 1.0));\n"
         "    float lens = 0.5*sqrt(max(0.0, (R + r - d)*(d + r - R)*(d - r + R)*(d + r + R)));\n"
+        "    float a1 = atan(2.0*lens, d2 + r2 - R2);\n"
+        "    float a2 = atan(2.0*lens, d2 + R2 - r2);\n"
         "    return clamp((r2*a1 + R2*a2 - lens)/(PI*R2), 0.0, 1.0);\n"
         "}\n"
         // The two per-pixel adjustments every fragment this shader emits has to end with, whether

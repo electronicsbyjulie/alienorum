@@ -233,10 +233,16 @@ static double cpu_disc_overlap(double R, double r, double d)
     if (d >= R + r) return 0;                       // no contact
     if (d <= r - R) return 1;                       // totality
     if (d <= R - r) return (r*r)/(R*R);             // annular: the occulter cannot cover it all
+    // atan2 rather than acos for both angles, matching the shader's copy line for line -- and for
+    // the same reason, which is spelled out there: with a caster far larger than the light source
+    // (a planet's shadow on its own moon, where the two differ by a factor of a few hundred) the
+    // cosine acos would be handed sits a few parts in a million from 1.0 across the entire
+    // penumbra, and acos is vertical there. Double precision hides that here where single does
+    // not, but the two have to agree pixel for pixel, so they are written the same way.
     double d2 = d*d, R2 = R*R, r2 = r*r;
-    double a1 = acos(fmin(1.0, fmax(-1.0, (d2 + r2 - R2)/(2*d*r))));
-    double a2 = acos(fmin(1.0, fmax(-1.0, (d2 + R2 - r2)/(2*d*R))));
     double lens = 0.5*sqrt(fmax(0.0, (R + r - d)*(d + r - R)*(d - r + R)*(d + r + R)));
+    double a1 = atan2(2*lens, d2 + r2 - R2);
+    double a2 = atan2(2*lens, d2 + R2 - r2);
     return fmin(1.0, fmax(0.0, (r2*a1 + R2*a2 - lens)/(_pi*R2)));
 }
 
