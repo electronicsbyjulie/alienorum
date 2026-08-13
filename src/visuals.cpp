@@ -21,8 +21,10 @@ void draw_ra_dec_lines()
     ImU32 gc = rgba_apply_redlight(global_style.grid_color);
     ImU32 gcb = rgba_apply_redlight(global_style.grid_color_brighter);
     ImU32 ec = rgba_apply_redlight(global_style.ecliptic_color);
-    double node = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
-    double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+    // equinox_RA, not equinox_eff: the grid is being laid out in the equatorial frame, and where
+    // 0h falls in that frame is its own quantity. See CelestialObject::equinox_RA.
+    double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
+    double myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
     bool prev_valid = false;
     int jstart = (view_mode == vm_skymap) ? -90 : -80;
