@@ -25,7 +25,8 @@ void draw_ra_dec_lines()
     double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
     bool prev_valid = false;
-    int jstart = -80; // (view_mode == vm_horizon) ? 0 : -80;
+    int jstart = (view_mode == vm_skymap) ? -90 : -80;
+    int jend = -jstart;
     bool is_sat = (whereami>0) && (cels[whereami]->typeclass() == class_satellite);
     Rotation ra_dec_plane = (whereami>0) ? (is_sat
             ? cels[whereami]->location.orbital_plane
@@ -36,7 +37,7 @@ void draw_ra_dec_lines()
     for (i=0; i<24; i++)
     {
         prev_valid = false;
-        for (j=jstart; j<=80; j+=10)
+        for (j=jstart; j<=jend; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
             if (view_mode == vm_horizon || is_sat)
@@ -77,7 +78,7 @@ void draw_ra_dec_lines()
         }
     }
 
-    for (j=jstart; j <= 80; j+=10)
+    for (j=jstart; j <= jend; j+=10)
     {
         prev_valid = false;
         for (i=0; i<=360; i++)
