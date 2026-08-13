@@ -241,10 +241,10 @@ Alp Per, Del Per, Nu  Per, Eps Per, Xi  Per, Zet Per, Omi Per
 Del Per, 48  Per, 58  Per
 48  Per, Mu  Per, Lam Per
 ~Phe, Phoenix, Phoenicis
-Alp Phe, Kap Phe, Bet Phe, Nu  Phe, Gam Phe, Del Phe
+Alp Phe, Kap Phe, Bet Phe, Nu  Phe, Gam Phe, Psi Phe, Del Phe
 Zet Phe, Eta Phe
-Bet Phe, Zet Phe, Eps Phe, Kap Phe
-Eps Phe, Iot Phe, 11G Phe, Tau Phe, 37G Phe
+Bet Phe, Zet Phe, Lam1Phe, Eps Phe, Kap Phe
+Eps Phe, Iot Phe, 11G Phe, Sig Phe, Pi  Phe
 Alp Phe, 49G Phe, 27G Phe
 ~Pic, Pictor, Pictoris
 Alp Pic, Gam Pic, Bet Pic, Del Pic, Alp Pic
@@ -299,15 +299,14 @@ Zet Tau, Alp Tau, The1Tau, Gam Tau, Del1Tau, Eps Tau, Tau Tau, Bet Tau
 Gam Tau, Lam Tau, Mu  Tau, Nu  Tau
 Eta Tau, Lam Tau, 5   Tau, Xi  Tau, Omi Tau
 ~Tel, Telescopium, Telescopii 
-Alp Tel, Del1Tel, Del2Tel, Alp Tel, Eps Tel, HD166006, HD170069, HD174387, HD179886, Alp Tel
-HD170069, HD171819, HD174387
-Zet Tel, HD171819, HD177406
+Eps Tel, Alp Tel, Del1Tel, Del2Tel, Alp Tel, Zet Tel, Rho Tel, Kap Tel, Lam Tel, Rho Tel, Eta Tel, Nu  Tel, Xi  Tel, 33G Tel, Zet Tel
+Rho Tel, Iot Tel
 ~Tri, Triangulum, Trianguli
 Alp Tri, Bet Tri, Gam Tri, Alp Tri
 ~TrA, Triangulum Australe, Trianguli Australis
 Alp TrA, Bet TrA, Gam TrA, Alp TrA
 ~Tuc, Tucana, Tucanae
-Del Tuc, Alp Tuc, Gam Tuc, Bet1Tuc, Zet Tuc, Eps Tuc, Gam Tuc
+Alp Tuc, Nu  Tuc, Del Tuc, Alp Tuc, Gam Tuc, Bet1Tuc, Zet Tuc, Eps Tuc, Gam Tuc
 ~UMa, Ursa Major, Ursae Majoris
 Eta UMa, Zet UMa, Eps UMa, Del UMa, Gam UMa, Bet UMa, Alp UMa, Del UMa
 Gam UMa, Chi UMa, Psi UMa, Mu  UMa, Lam UMa

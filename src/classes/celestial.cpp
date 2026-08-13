@@ -798,6 +798,47 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     if (!lock_equatorial_plane) location.equatorial_plane = align_points_3d(pole, yaxis, center);
 
+    // Where 0h of right ascension actually lands.
+    //
+    // equinox_eff, just above, is an angle measured in the *orbital* frame: it says which way the
+    // axis leans, and rotating the pole about that direction is what gives this body its seasons.
+    // Right ascension, though, is measured in the equatorial frame that align_points_3d() has just
+    // built -- and that rotation is the *shortest* one carrying the pole onto the reference pole,
+    // which fixes the pole and nothing else. Its zero of azimuth is therefore wherever the short
+    // way round happens to leave it, and there is no reason for that to be the equinox.
+    //
+    // The two agree in exactly one case: when the node line lies in the reference plane already,
+    // because then it is parallel to the short rotation's own axis and comes through untouched.
+    // That is the case for Earth and only for Earth, the reference frame being Earth's equator --
+    // which is why this was invisible from home and wrong everywhere else, by 22 minutes of RA on
+    // Mars, 16 on Neptune, and nearly five hours on Venus.
+    //
+    // So rather than assume the two angles are one number, find the equinox where it actually is:
+    // the ascending node of this body's orbit on its own equator, which is the two poles crossed
+    // together, measured in the frame RA is read in.
+    //
+    // Orbital pole into equatorial pole, in that order. The usual right-handed answer is the other
+    // way round, but from_ra_dec() puts x at -sin(RA), which makes this a left-handed frame and
+    // swaps which end of the node line is the ascending one. Getting it backwards is not subtle --
+    // every RA in the app comes out exactly twelve hours off.
+    Point orb_pole = rotate3D(yaxis, center, location.orbital_plane.v, -location.orbital_plane.a);
+    Point eq_pole  = rotate3D(yaxis, center, location.equatorial_plane.v, -location.equatorial_plane.a);
+    orb_pole.scale(1);
+    eq_pole.scale(1);
+    Point ascending(orb_pole.y*eq_pole.z - orb_pole.z*eq_pole.y,
+                    orb_pole.z*eq_pole.x - orb_pole.x*eq_pole.z,
+                    orb_pole.x*eq_pole.y - orb_pole.y*eq_pole.x);
+    // A body with no axial tilt at all has its equator and its orbit in one plane, so they cross
+    // nowhere and there is no equinox to find -- the seasons it doesn't have have no dates. Any
+    // direction will do for a zero point there, and the stored one is as good as any, so that
+    // degenerate case keeps the old behavior instead of reading a rounding error as an angle.
+    if (ascending.magnitude() > 1e-9)
+    {
+        ascending = rotate3D(ascending, center, location.equatorial_plane.v, location.equatorial_plane.a);
+        equinox_RA = find_angle(ascending.z, -ascending.x);
+    }
+    else equinox_RA = equinox_eff;
+
     if (_class == class_moon && !crp)
     {
         std::cerr << "CelestialObject::update_orbit_location() called on moon " << name
@@ -1759,7 +1800,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 // province's color into a halo around it -- denser right at the border, thinning
                 // out with distance -- so both sides mottle into each other the way Pluto's dark
                 // equatorial belt frays into its surroundings instead of cutting a clean line.
-                // This Claude is not PTSD friendly a genuinely per-pixel-independent source, not a smooth noise field:
+                // Uses a genuinely per-pixel-independent source, not a smooth noise field:
                 // smooth noise thresholded like this just draws a second, smoother contour line
                 // parallel to the border (confirmed by rendering both side by side) -- an actual
                 // hash gives true salt-and-pepper speckling instead.
@@ -2938,6 +2979,35 @@ void alienorum::AtmosphereComposition::enforce_integrity()
         CO_portion *= multiplier;
         Ar_portion *= multiplier;
     }
+}
+
+// Mean molar mass of the mixture, kg/mol -- what sets how fast an atmosphere thins with
+// altitude (see Planet::estimate_scale_height()), and so how thick the glowing band of air on a
+// planet's limb looks from space. A hydrogen/helium envelope is nearly fifteen times lighter
+// than Venus's carbon dioxide, and puffs out correspondingly further.
+//
+// Portions are treated as fractions of the whole and renormalized here rather than assumed to
+// sum to 1: enforce_integrity() only scales them down when they total *more* than 1, so a
+// composition listing a single trace gas at 0.01 is left as-is, and dividing by the total is
+// what stops that from reading as an atmosphere of almost nothing. An empty composition falls
+// back to Earth air, the same "sensible default" spirit as the rest of these estimators.
+double alienorum::AtmosphereComposition::mean_molar_mass()
+{
+    const double earth_air = 0.0289644;
+    double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
+        + CO2_portion + CH4_portion + SO2_portion + H2O_portion + H2S_portion
+        + HCN_portion + NH3_portion + C2H6_portion + N2O_portion
+        + CO_portion + Ar_portion;
+    if (total <= 0) return earth_air;
+
+    double sum = H2_portion*0.002016 + He_portion*0.004003 + N2_portion*0.028014
+        + O2_portion*0.031998 + O3_portion*0.047997 + CO2_portion*0.044009
+        + CH4_portion*0.016043 + SO2_portion*0.064064 + H2O_portion*0.018015
+        + H2S_portion*0.034081 + HCN_portion*0.027025 + NH3_portion*0.017031
+        + C2H6_portion*0.030069 + N2O_portion*0.044013 + CO_portion*0.028010
+        + Ar_portion*0.039948;
+
+    return sum / total;
 }
 
 void alienorum::AtmosphereComposition::generate_fictitious_gas_giant()

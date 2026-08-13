@@ -136,6 +136,7 @@ namespace alienorum
         double Ar_portion = 0;
 
         void enforce_integrity();
+        double mean_molar_mass();                   // kg/mol, renormalized; Earth air if empty
         void generate_fictitious_gas_giant();
         void generate_fictitious_ice_giant();
         void generate_fictitious_venusian();        // doubles as martian
@@ -274,6 +275,13 @@ namespace alienorum
         double obliquity = 0;                       // Equatorial inclination to orbit or to plane of Earth's sky. RADIANS!
         double equinox = 0;                         // RADIANS!
         double equinox_eff = 0;
+        // Where zero hours of right ascension falls, as an angle in this body's own equatorial
+        // frame -- which is not the same number as equinox_eff, and only coincides with it on
+        // Earth. equinox_eff says which way the axis leans, measured around the *orbit*; this says
+        // where the equinox ends up once that lean has been turned into an equatorial frame, and
+        // the two frames have different zero directions. Derived in update_orbit_location(); see
+        // the comment there. RADIANS!
+        double equinox_RA = 0;
         double precession = 0;                      // radians/second
         double distance = 0;                        // meters
         bool distance_known = false;

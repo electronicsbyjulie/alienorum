@@ -1,6 +1,7 @@
 
 #include "housekeeping.h"
 #include "inputs.h"
+#include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
 
 using namespace alienorum;
 
@@ -279,6 +280,13 @@ void compute_object_draw_coordinates()
     dispw = dispcx*2;
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
+
+    // Rebuilt here rather than at drawing time because the daylight computation further down
+    // consults it: an eclipse has to dim the sky *before* anything is drawn under that sky, not
+    // after. Everything drawn later in the frame reads the same list -- see visuals.h.
+    refresh_eclipse_casters();
+    eclipsed_light = nullptr;
+    eclipsed_fraction = 0;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
     double mycenobj_distsq = mycenobj->location.squared_distance_to(here);
     if (whereami >= 0)
@@ -392,9 +400,24 @@ void compute_object_draw_coordinates()
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-            vmag_cache[i] = (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
-                ? ((Planet*)cels[i])->viewer_reflectance_magnitude(here)
-                : cels[i]->viewer_magnitude(here);
+            cel_obj_class icls = cels[i]->typeclass();
+            if (icls == class_planet || icls == class_moon)
+            {
+                vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
+
+                // Standing in somebody else's shadow. viewer_reflectance_magnitude() works out how
+                // much of the body is turned our way and lit, but has no way of knowing whether
+                // the light it is counting on is arriving at all -- a full Moon in mid-eclipse is
+                // at exactly the same phase as a full Moon out of it, and some twelve magnitudes
+                // fainter. Applied to the magnitude rather than anywhere later, so that everything
+                // downstream follows on its own: the dot dims, its color shifts the way a dim
+                // object's does, the flare in draw_one_object() dies with the light that was
+                // causing it, and a moon deep in a gas giant's shadow drops under the magnitude
+                // limit and disappears, exactly as Io does.
+                double lit = eclipse_illumination(cels[i]);
+                if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
+            }
+            else vmag_cache[i] = cels[i]->viewer_magnitude(here);
 
             double brght;
 
@@ -422,6 +445,47 @@ void compute_object_draw_coordinates()
                         else twilight = 0;
 
                         double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
+
+                        // A solar eclipse, from underneath it. Nothing here is specific to
+                        // eclipses: the daylight this loop is accumulating is simply the light
+                        // actually arriving, and during an eclipse most of it is not arriving.
+                        // Everything the sky does about that follows on its own from
+                        // luminous_flux -- draw_sky_gradient() dims, sky_mag_shift falls with
+                        // it, and stars that were being drowned out clear the magnitude limit
+                        // and come out, which is exactly what happens outdoors.
+                        //
+                        // The floor is what still lights the sky once the disc is gone -- the
+                        // corona, and air outside the shadow scattering light back in under it.
+                        // Its value is set by how totality should *look*, not by the photometry:
+                        // the corona really is about a millionth of the photosphere, and a
+                        // millionth put through the compression curve draw_sky_gradient() runs
+                        // luminous_flux through comes out as an essentially black sky with the
+                        // Milky Way across it, which is not what anyone standing under an
+                        // eclipse has ever seen. Totality is a deep blue twilight with the
+                        // brightest few stars and planets out, and 1e-3 is what lands there on
+                        // this particular curve.
+                        //
+                        // Turn it down for a darker totality, up for a milder one. It is a
+                        // fraction of the light the sun would be delivering uneclipsed, so it
+                        // follows the sun up and down the sky on its own.
+                        const double kTotalityFloor = 1.2e-3;
+                        double obsc = eclipse_obscuration(cels[i]);
+                        if (obsc > 0)
+                        {
+                            // fmax, not a blend: at true totality the geometry really does reach
+                            // an obscuration of exactly 1 (measured), so a floor written as a
+                            // share of the covered fraction would have nothing left to scale and
+                            // the sky would go out entirely. This way the floor is a hard limit
+                            // on how dark an eclipse can drive the daylight, whatever the
+                            // geometry does.
+                            add_flux *= fmax(1.0 - obsc, kTotalityFloor);
+                            if (obsc > eclipsed_fraction)
+                            {
+                                eclipsed_fraction = obsc;
+                                eclipsed_light = cels[i];
+                            }
+                        }
+
                         if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
                     }
                 }

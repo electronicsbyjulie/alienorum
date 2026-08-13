@@ -487,7 +487,7 @@ void process_key_cmd_char(char c)
         break;
 
         case 'v': cbolbls_selected_idx = lbltype_intrinsic; show_labels = true; break;
-        case 'V': show_localsys = !show_localsys; break;
+        case 'V': show_localsys = !show_localsys; viewchanged = true; break;
 
         case 'w':
         if (velocity.magnitude())

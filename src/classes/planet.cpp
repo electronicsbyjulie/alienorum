@@ -167,6 +167,30 @@ double Planet::estimate_bump_scale()
     return 0.001 * volumetric_mean_radius * (p_pa ? log(p_pa) : 1) / log(20);
 }
 
+// Pressure scale height, meters -- the altitude over which the air thins by a factor of e,
+// H = RT/(Mg) from the barometric formula. This is the natural thickness of the bright band of
+// atmosphere seen on a planet's limb from space (the impostor shader draws the glow out to a
+// few H, see SphereImpostorInput::atmosphere_height), and it varies enormously between worlds:
+// roughly 8 km on Earth, 11 on Mars for all its thin air (cold, light gravity), 15 on Titan,
+// and 27 on Jupiter, whose hydrogen is barely a fifteenth the molar mass of Venus's CO2.
+//
+// Returns 0 for an airless body, which reads as "no glow at all" downstream.
+double Planet::estimate_scale_height()
+{
+    if (get_surface_pressure() <= 0) return 0;
+
+    double T = estimate_surface_temperature();
+    double g = estimate_surface_gravity();
+    if (T <= 0 || g <= 0) return 0;
+
+    // Falls back to Earth air when the body has a pressure but no composition listed at all,
+    // which is the common case for a world sketched in without that much detail.
+    double M = (atm && atm->comp) ? atm->comp->mean_molar_mass() : 0.0289644;
+    if (M <= 0) return 0;
+
+    return 8.314462618 * T / (M * g);
+}
+
 void alienorum::Planet::incline_exo_orbit(double sys_solincl, double sys_solnode)
 {
     // Subtract the solar inclination of the local system plane from the planetary inclination.

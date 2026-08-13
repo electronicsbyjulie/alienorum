@@ -494,7 +494,7 @@ void draw_objinf_window(ImGuiIO& io)
             }
         }
 
-        double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+        double myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
         if (view_mode == vm_skyatlas || view_mode == vm_skymap)
         {
             objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"

@@ -12,6 +12,48 @@
 
 namespace alienorum
 {
+    // How many eclipse-casting bodies one impostor draw can carry (see
+    // SphereImpostorInput::casters). Four, because the shader receives them as a single mat4
+    // uniform -- one column per caster -- and mat4 is the widest uniform type this project's
+    // stripped-down GL loader can actually set (see sphere_impostor.cpp's top-of-file comment:
+    // glUniformMatrix4fv survives the stripping, glUniform3fv/4fv do not). Four is well past
+    // what any real configuration calls for anyway; a body with two other bodies' shadows on it
+    // at once is already an exotic sight.
+    const int max_eclipse_casters = 4;
+
+    // One body whose shadow can fall on the object being drawn -- i.e. one eclipse. The shader
+    // computes, per pixel, how much of the light source's *disc* this body hides as seen from
+    // that particular point on the surface, which is what gives a real eclipse its umbra and
+    // penumbra (and its annular case) instead of a hard-edged binary shadow.
+    struct EclipseCaster
+    {
+        // Caster center relative to the *center of the object being drawn* -- camera space,
+        // same units and orientation as SphereImpostorInput::cx/cy/cz, but a difference of two
+        // positions rather than a position. Deliberately relative: the object's own drawn
+        // position carries an atmospheric-refraction offset in horizon mode (see
+        // draw_sphere_gpu()'s display_space) that the shadow geometry should not see, and a
+        // difference cancels it exactly.
+        double dx, dy, dz;
+
+        // Caster radius, same units (meters). Its shadow is treated as cast by a sphere of this
+        // radius; a caster's own oblateness/triaxiality is ignored, being far below the
+        // penumbra's own softness at any distance where the shadow is visible at all.
+        double r;
+
+        // What the umbra of *this* caster looks like from inside it. A body with an atmosphere
+        // does not cast a black shadow: sunlight grazing its limb is refracted inwards and
+        // reddened by the long slant path through the air, which is why a totally eclipsed Moon
+        // turns copper rather than going out. umbra_tint is that light's color (already
+        // normalized so its brightest channel is 1) and umbra_light how bright it is relative
+        // to direct sunlight.
+        //
+        // umbra_light 0 -- an airless caster -- gives the hard black umbra such a body really
+        // does cast, so a moon's shadow on a planet stays sharp and dark while the planet's own
+        // shadow on that moon glows.
+        double umbra_tint[3];
+        double umbra_light;
+    };
+
     // All inputs describing the sphere itself, kept as plain scalars (no Point/Rotation types)
     // so this header stays free of a globals.h dependency -- see the comment above.
     struct SphereImpostorInput
@@ -103,6 +145,63 @@ namespace alienorum
         // Star::limb_darkening_coefficients() derives them from the star's own T_eff and log g.
         // Ignored when self_luminous is false. Left at 0 they give a flat, unshaded disc.
         double limb_a, limb_b;
+
+        // Eclipses: bodies that sit between this object and its light source, close enough to
+        // the line between them to throw part of their shadow onto it. num_casters entries of
+        // casters[] are read (0 disables the whole test, which is the overwhelmingly common
+        // case); the caller is expected to have already discarded casters whose shadow misses
+        // this object entirely, since only max_eclipse_casters of them fit.
+        //
+        // light_angular_radius is the angular radius (radians) of the light source's own disc
+        // as seen from this object, and is what makes the shadow soft: a shadow cast by a
+        // point-like light source would have a hard edge, but a real star has an angular size,
+        // so around the fully-shadowed umbra there is a penumbra where the caster hides only
+        // part of the star's disc. 0 (with num_casters 0) means "no eclipse this draw" and skips
+        // the per-pixel test outright. Unused when self_luminous is true -- a star's own disc
+        // isn't lit by anything, and a body transiting in front of one is simply drawn over it.
+        int num_casters;
+        EclipseCaster casters[max_eclipse_casters];
+        double light_angular_radius;
+
+        // A ringed planet's own rings, shadowing the planet itself -- the dark band Saturn
+        // wears across its northern hemisphere for half its year. This is the exact mirror of
+        // the shadow the ring impostor already casts the other way (the planet darkening the
+        // far side of its rings, see RingImpostorInput::light_dir), and it is genuinely the
+        // planet's own rings only: another body's rings are far too distant to shadow anything
+        // here.
+        //
+        // ring_normal is the ring plane's normal in camera space, unit length, computed exactly
+        // as RingImpostorInput::normal is (both call ring_plane_normal() in visuals.cpp, so the
+        // shadow can never drift out of alignment with the rings actually drawn). ring_inner_r/
+        // ring_outer_r are the same equatorial_radius/ring_radius pair the ring impostor uses,
+        // in meters. ringx_map_texture supplies the opacity, read through the identical curve
+        // the ring shader itself applies, so a gap that shows as transparent in the rings casts
+        // no shadow and a dense band casts a solid one. ring_outer_r <= ring_inner_r (the
+        // default for every ringless body) disables the whole test.
+        double ring_normal[3];
+        double ring_inner_r, ring_outer_r;
+        unsigned int ringx_map_texture;
+
+        // The band of glowing air on the limb of a world with an atmosphere -- the thin blue
+        // arc Earth wears in every photograph taken from orbit or from the Moon, reddening to
+        // orange where it meets the terminator. Drawn as a shell outside the solid body, so the
+        // impostor's own bounding quad is grown by atmosphere_height to make room for it (the
+        // silhouette test itself is untouched: the solid body ends where it always did).
+        //
+        // atmosphere_height is how far out the glow is drawn, in meters -- a few pressure scale
+        // heights (Planet::estimate_scale_height()), since the air's density, and with it the
+        // glow, falls off exponentially rather than stopping anywhere. 0 disables the whole
+        // thing, which is every airless body and every star.
+        //
+        // atmosphere_color is the color of light scattered by the air high up, and
+        // atmosphere_low_color the redder color it takes on near the surface, where the line of
+        // sight is long enough to have lost its blue -- the glow crossfades between the two with
+        // altitude, which is what makes the arc blue at the top and sunset-orange at the bottom.
+        // Both come from the same Rayleigh/particulate mix draw_sky_gradient() colors the sky
+        // with from the ground, so a world's limb and its skies always agree.
+        double atmosphere_height;
+        double atmosphere_color[3];
+        double atmosphere_low_color[3];
 
         // Ambient illumination level for the unlit side when no night-map texture is available
         // (matches the CPU path's `starlight` constant, used only when there's no night map to

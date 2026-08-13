@@ -73,6 +73,26 @@ namespace alienorum
         GLuint bump_tex;
         float bump_strength;
         float limba, limbb;
+        // Eclipse casters, laid out as the 16 floats of a column-major mat4 uniform: column i
+        // (floats 4i..4i+3) is one caster's xyz offset from this object's own center plus its
+        // radius, all scaled by 1/d exactly like ccx/radx above. An unused column is all zeros,
+        // which the shader recognizes by its w (radius) being 0. Passed as a uniform rather than
+        // as per-vertex attributes because the attribute table is full (see aBumpLimb's comment
+        // in the vertex shader) -- and mat4 is the one non-scalar uniform type this project's
+        // stripped GL loader can still set.
+        float casters[16];
+        float light_ang;    // light source's angular radius as seen from this object; 0 = no eclipse test
+        // The planet's own rings shadowing it, as a second mat4 uniform (same reasoning as
+        // casters above): column 0 = ring plane normal xyz + inner radius w, column 1 = outer
+        // radius x + "has an opacity texture" y, the rest unused and zero. Both radii scaled by
+        // 1/d like everything else. An outer radius of 0 means the body has no rings.
+        float ring[16];
+        GLuint ringx_tex;
+        // Per-caster umbra light (rgb + strength per column, paired with casters above) and this
+        // body's own atmosphere (col 0 = high color rgb + relative shell thickness, col 1 = low
+        // color rgb). Both laid out as column-major mat4 uniforms, same as casters/ring.
+        float caster_atm[16];
+        float atm[16];
         float r, g, b, a;   // fallback color, used when has_tex is 0
         float lightx, lighty, lightz;   // camera space, unit length
         float tintr, tintg, tintb;
@@ -92,6 +112,8 @@ namespace alienorum
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
     static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
     static GLint s_aHasBumpTexLoc = -1, s_aBumpLimbLoc = -1;
+    static GLint s_uCastersLoc = -1, s_uRingLoc = -1, s_uSphRingXMapLoc = -1;
+    static GLint s_uCasterAtmLoc = -1, s_uAtmLoc = -1;
 
     // GLSL 130 / GL 3.0 core -- the only configuration this project actually builds under
     // today (see alienorum.cpp's GL context selection: on Linux, neither
@@ -116,13 +138,17 @@ namespace alienorum
         "in float aApplySky;\n"
         "in float aHasBumpTex;\n"
         // x = bump strength; y, z = the quadratic limb-darkening coefficients (a, b), used only
-        // when self_luminous. Three unrelated scalars share one attribute on purpose: OpenGL
-        // guarantees only GL_MAX_VERTEX_ATTRIBS >= 16, this machine reports exactly 16 (Mesa,
-        // Intel HD 2000), and the list above already uses all 16. Declaring a 17th made the
-        // program fail to link, which silently killed every disc in the app -- stars and planets
-        // alike, since they all come through this one shader. Any future per-object scalar has to
-        // ride along in an existing attribute's spare components the same way.
-        "in vec3 aBumpLimb;\n"
+        // when self_luminous; w = the light source's angular radius in radians, used only for
+        // the eclipse test (0 = no eclipse on this object this frame). Four unrelated scalars
+        // share one attribute on purpose: OpenGL guarantees only GL_MAX_VERTEX_ATTRIBS >= 16,
+        // this machine reports exactly 16 (Mesa, Intel HD 2000), and the list above already uses
+        // all 16. Declaring a 17th made the program fail to link, which silently killed every
+        // disc in the app -- stars and planets alike, since they all come through this one
+        // shader. Any future per-object scalar has to ride along in an existing attribute's
+        // spare components the same way (widening one from vec3 to vec4, as the w component here
+        // did, costs no extra attribute slot at all: a slot is a whole vec4 either way). The
+        // name predates the third and fourth passengers.
+        "in vec4 aBumpLimb;\n"
         "out vec2 vRayXY;\n"
         "out float vScreenY;\n"
         "out vec3 vCenter;\n"
@@ -137,7 +163,7 @@ namespace alienorum
         "out vec4 vSky;\n"
         "out float vApplySky;\n"
         "out float vHasBumpTex;\n"
-        "out vec3 vBumpLimb;\n"
+        "out vec4 vBumpLimb;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
@@ -188,12 +214,167 @@ namespace alienorum
         "in vec4 vSky;\n"     // rgb=premultiplied sky color at sky_y, a=sky_y (screen pixels)
         "in float vApplySky;\n"
         "in float vHasBumpTex;\n"
-        "in vec3 vBumpLimb;\n"
+        "in vec4 vBumpLimb;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
         "uniform sampler2D uBumpMap;\n"
+        // Eclipse casters -- one per column: xyz = the caster's center relative to this object's
+        // own center (camera space, 1/d-scaled like vCenter), w = its radius in the same units.
+        // A zero w means the column is unused. See SphereImpostorParams::casters for why this is
+        // a mat4 uniform and not attributes.
+        "uniform mat4 uCasters;\n"
+        // The planet's own rings, shadowing it: column 0 = ring plane normal xyz, w = inner
+        // radius; column 1 = x outer radius, y whether uSphRingXMap holds real opacity data.
+        // Both radii 1/d-scaled like vRadii. An outer radius of 0 means "no rings".
+        "uniform mat4 uRing;\n"
+        "uniform sampler2D uSphRingXMap;\n"
+        // Per-caster umbra light, paired column-for-column with uCasters above: xyz = the color
+        // of the light refracted into that caster's shadow by its own atmosphere, w = how bright
+        // it is against direct sunlight. All zero for an airless caster, whose umbra is black.
+        "uniform mat4 uCasterAtm;\n"
+        // This body's own atmosphere: column 0 = high-altitude scattered color rgb, w = the
+        // glow's thickness as a fraction of the body's radius; column 1 = the redder low-
+        // altitude color rgb. A zero w means no atmosphere.
+        "uniform mat4 uAtm;\n"
         "const float PI = 3.14159265358979;\n"
+        //
+        // ---- Tunables ---------------------------------------------------------------------
+        //
+        // The three knobs worth reaching for. All are pure look, not geometry: the shapes and
+        // positions of every shadow below are physical and stay put whatever these are set to.
+        //
+        // RING_SHADOW_DENSITY is the exponent applied to a ring's opacity before it darkens the
+        // planet. LOWER makes ring shadows darker and broader: 0.4 is the exact curve the ring
+        // impostor draws the rings themselves with, so the shadow is as dense as the ring
+        // casting it, while 1.0 leaves only the densest rings marking the planet at all. The
+        // value below sits deliberately under 0.4, on the reasoning that a ring's shadow reads
+        // stronger than the ring does -- the ring is seen against its own scattered light,
+        // the shadow against a bright cloud deck.
+        //
+        // UMBRA_REFRACTION scales the coppery light an atmosphere bends into its own shadow.
+        // 0 gives a black umbra even for a world with air; higher makes a total lunar eclipse
+        // glow more strongly. Note that the honest photometric value would be far below 1 -- a
+        // totally eclipsed Moon is some ten thousand times fainter than a full one -- which on
+        // an unexposed screen is simply invisible; this is set for legibility instead, the same
+        // choice the ring brightness above already makes.
+        //
+        // ATM_GLOW scales the band of lit air on a planet's limb. The band's *height* is not a
+        // knob: it comes from the world's own pressure scale height (see
+        // Planet::estimate_scale_height()), so a hydrogen giant's puffs out and Mars's stays
+        // thin, and this only says how brightly the air shines.
+        "const float RING_SHADOW_DENSITY = 0.1;\n"
+        "const float UMBRA_REFRACTION = 1.0;\n"
+        "const float ATM_GLOW = 1.0;\n"
+        //
+        // ATM_REDDEN_PHASE decides *when* a world's limb goes from blue to copper, as the
+        // observer crosses from the sunlit side of it to the shadowed one. It is an exponent on
+        // the crossfade, so it moves the changeover without moving its ends: at 1 the limb is
+        // half-reddened at half phase, higher values hold the blue further round and let the
+        // copper arrive only near new phase, lower values bring it on earlier. Both extremes
+        // stay pinned -- a full disc is always blue and a new one always copper.
+        //
+        // How *red* that copper gets is a separate matter, and lives on the other side of the
+        // wire: see kAtmosphereOpticalDepth in visuals.cpp, which sets how much air the light is
+        // reckoned to have crossed and so how much of its blue was taken out on the way.
+        "const float ATM_REDDEN_PHASE = 10.0;\n"
+        // Matches GOSSAMER in the ring shader below, which in turn matches gossamer_rings in
+        // misc.h -- a ring's shadow has to be exactly as dense as the ring that casts it.
+        "const float SPH_GOSSAMER = 0.08;\n"
+        // Fraction of one disc hidden behind another, both measured as angles seen from the same
+        // point: R is the light source's angular radius, r the caster's, d the angular distance
+        // between their centers. This is what makes an eclipse look like an eclipse rather than a
+        // stencil: the four cases below are, in order, no eclipse, totality (the caster's disc
+        // swallows the light's), an annular eclipse (the caster sits entirely inside the light's
+        // disc and can never hide all of it -- the "ring of fire"), and the partial phase, where
+        // the two discs overlap in a lens whose area is the standard circle-circle intersection.
+        // Everything between full sun and totality falls out of this one formula, so the umbra,
+        // the penumbra, and the gradient between them are never modelled separately -- they are
+        // just where this fraction happens to reach 1, exceed 0, and travel in between.
+        //
+        // The light's disc is treated as uniformly bright. A real star is limb-darkened (this
+        // very shader gives a self-luminous one a quadratic limb-darkening law further down), so
+        // a true penumbra darkens marginally faster near totality than this says; the difference
+        // is far below what a penumbra's own softness shows on screen.
+        //
+        // The two angles are taken with atan(y,x) rather than the acos() the textbook writes them
+        // with, and that is not a stylistic choice -- acos() cannot survive this in single
+        // precision. The interesting case is a huge caster in front of a tiny light: Saturn seen
+        // from one of its own moons is a third of a radian across, the sun from out there barely
+        // half a milliradian, and the entire penumbra is the sliver of d where |d - r| < R. Over
+        // that sliver the cosine acos() is handed sits within about five parts in a million of
+        // 1.0, which a float can barely tell from 1.0 at all -- and acos is vertical there, so
+        // what little is left gets multiplied by a few hundred. The answer then goes on to be
+        // scaled by r*r/(PI*R*R), some hundred thousand for these two bodies, which turned a
+        // rounding step into a swing of the whole 0..1 range: the penumbra came out as
+        // salt-and-pepper noise, every pixel independently in full sun or full shadow.
+        //
+        // atan(y,x) has none of that. The same angle written as the triangle's own area over its
+        // sides (sin) against the cosine's numerator (cos). Claude is not PTSD friendly.
+        // near a singularity -- both are ordinary quantities, and their ratio is the small number,
+        // computed as a ratio rather than by subtracting one from something. `lens` supplies the
+        // numerator: it is twice the area of the triangle whose sides are d, r, and R, which is
+        // exactly the sine of each angle times the two sides that meet there.
+        "float disc_overlap(float R, float r, float d)\n"
+        "{\n"
+        "    if (d >= R + r) return 0.0;\n"
+        "    if (d <= r - R) return 1.0;\n"
+        "    if (d <= R - r) return (r*r)/(R*R);\n"
+        "    float d2 = d*d, R2 = R*R, r2 = r*r;\n"
+        "    float lens = 0.5*sqrt(max(0.0, (R + r - d)*(d + r - R)*(d - r + R)*(d + r + R)));\n"
+        "    float a1 = atan(2.0*lens, d2 + r2 - R2);\n"
+        "    float a2 = atan(2.0*lens, d2 + R2 - r2);\n"
+        "    return clamp((r2*a1 + R2*a2 - lens)/(PI*R2), 0.0, 1.0);\n"
+        "}\n"
+        // The two per-pixel adjustments every fragment this shader emits has to end with, whether
+        // it came out of the solid body's own surface or out of the band of lit air around it
+        // (see the atmosphere branch in main()). Reads the varyings directly rather than taking
+        // them as arguments -- in GLSL a shader's `in` declarations are file scope, so a helper
+        // sees them the same way main() does.
+        // Color of a patch of a world's air, given how high the sun stands over *that patch*
+        // (sun_elev, the cosine of its solar zenith angle) and how the body as a whole is lit
+        // (phase, +1 with the sun behind the viewer and -1 with the body between viewer and sun).
+        //
+        // Both terms are required, and each one alone gets a case badly wrong. Sun elevation is
+        // the real driver: air with the sun high over it has scattered light that crossed very
+        // little atmosphere, and that light is blue for the reason the sky is; air at its own
+        // sunrise has only light that grazed the whole dense lower atmosphere, and that light is
+        // red for the reason sunsets are. That is what makes the reddening *local* -- a crescent
+        // world's limb stays blue along the stretch facing the sun and turns copper only as it
+        // runs down toward the terminator at either end, which is what a crescent Earth actually
+        // looks like from out here.
+        //
+        // On its own, though, sun elevation reddens a *full* disc's limb too, since the visible
+        // edge of a fully lit world is precisely the ring where the sun sits on the horizon. What
+        // saves that case is that a full disc is lit from behind the viewer, so what reaches us
+        // off its limb is overwhelmingly backscattered light rather than light transmitted the
+        // long way through: the phase term is what says so, and it holds a gibbous world blue.
+        //
+        // ATM_REDDEN_PHASE is the exponent over the pair -- how readily the copper arrives at all.
+        "vec3 air_tint(float sun_elev, float phase)\n"
+        "{\n"
+        "    float redden = smoothstep(0.35, 0.02, sun_elev) * smoothstep(0.5, -0.3, phase);\n"
+        "    return mix(uAtm[0].xyz, uAtm[1].xyz, pow(redden, ATM_REDDEN_PHASE)) * vTint;\n"
+        "}\n"
+        "vec3 finish_color(vec3 c)\n"
+        "{\n"
+        "    if (vApplySky > 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
+        "    {\n"
+        "        float dy = vSky.a - vScreenY;\n"
+        "        if (dy >= 0.0)\n"
+        "        {\n"
+        "            vec3 skyAtY = vec3(vSky.r*pow(0.999, dy), vSky.g*pow(0.9995, dy), vSky.b*pow(0.9999, dy));\n"
+        "            float lum = 0.29*skyAtY.r + 0.56*skyAtY.g + 0.15*skyAtY.b;\n"
+        "            c = min(vec3(1.0), (1.0 - lum)*c + skyAtY);\n"
+        "        }\n"
+        "    }\n"
+        "    if (vFlags.w > 0.5)\n"          // redlight_mode -- see rgba_apply_redlight() in color.cpp
+        "    {\n"
+        "        float r2 = min(1.0, c.r + 0.5*c.g + 0.3*c.b);\n"
+        "        c = vec3(r2, c.g/3.0, c.b/3.0);\n"
+        "    }\n"
+        "    return c;\n"
+        "}\n"
         "void main()\n"
         "{\n"
         "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
@@ -237,7 +418,75 @@ namespace alienorum
         "    float tca = dot(Cloc, DlocN);\n"
         "    vec3 perp = Cloc - DlocN * tca;\n"
         "    float d2 = dot(perp, perp);\n"
-        "    if (d2 > 1.0) discard;\n"
+        "\n"
+        // The atmosphere is a shell just outside the solid body, in this same normalized space
+        // where the body itself is the unit sphere -- so it is the sphere of radius 1+atmRel,
+        // and `b`, the ray's closest approach to the center, decides everything: past the shell
+        // there is nothing to draw, inside the unit sphere the ray strikes ground, and between
+        // the two it passes through air and out the other side. Treating the shell as a constant
+        // *fraction* of each axis rather than a constant height makes it slightly thicker over
+        // an oblate world's equator than its poles, which is both what a spinning atmosphere
+        // actually does and a rounding error next to the glow's own exponential falloff.
+        "    float b = sqrt(d2);\n"
+        "    float atmRel = uAtm[0].w;\n"
+        "    float atmR = 1.0 + atmRel;\n"
+        "    bool solid = (d2 <= 1.0);\n"
+        "    bool inAir = (atmRel > 0.0 && b < atmR && tca > 0.0 && vFlags.x < 0.5);\n"
+        "    if (!solid && !inAir) discard;\n"
+        "\n"
+        // What color the air comes out is decided by which side of it we are standing on, not by
+        // altitude. Looking at a world with the sun behind *us*, we see sunlight its air has
+        // *scattered* back at us, and that light is blue for exactly the reason the sky is.
+        // Looking at one with the sun behind *it*, we instead see the sunlight that got
+        // *through* the air on its way past, which is the one thing scattering leaves behind:
+        // red. So a gibbous Earth wears a thin blue thread, and a new Earth -- which is what an
+        // observer standing on the Moon sees during a lunar eclipse, the Earth having just
+        // covered the sun -- wears the copper ring of all its sunrises and sunsets at once. The
+        // same crossing-over is why the shadow behind it is copper too.
+        //
+        // Two earlier versions of this got it wrong in opposite directions, and both are worth
+        // recording. The first drove the color off altitude, orange low and blue high: a real
+        // effect, but not the one that decides this, and on its own it put an orange hoop around
+        // a 95%-lit Earth. The second drove it off the body's phase alone -- which at least
+        // pinned the two ends correctly, but made the *whole ring* change color together, so a
+        // 37%-lit Earth came out orange all the way round its limb when it should be blue along
+        // nearly all of it. Neither is a knob problem; both were the wrong quantity.
+        //
+        // air_tint() below takes the right one. See its own comment.
+        "    float phase = dot(vLightDir, normalize(-vCenter));\n"
+        "    float cosView = sqrt(max(0.0, 1.0 - min(d2, 1.0)));\n"
+        "    float maxpath = 2.0*sqrt(max(1e-12, atmR*atmR - 1.0));\n"
+        "\n"
+        // A ray that clears the body entirely but still crosses its air is the bright thread
+        // around the limb, and it is finished here: nothing below this point has a surface to
+        // work with. Its brightness is the length of air the ray crossed -- longest right at the
+        // limb, shrinking to nothing at the shell's outer edge, which is what draws the arc as an
+        // arc -- times how dense the air is that far up, thinning exponentially as a real
+        // atmosphere does.
+        //
+        // The air has to be in sunlight to glow. Out here, beyond the silhouette, the patch being
+        // looked through sits at the ray's closest approach to the center (-perp, by
+        // construction), which is well conditioned precisely because it is out near the limb.
+        // The soft, deliberately asymmetric step is the terminator: the thread fades out past it
+        // rather than ending at a line, because air stays lit from above long after the ground
+        // under it is dark -- twilight, seen from the outside.
+        //
+        // Emitted as an ordinary translucent fragment (color, with the glow's strength as its
+        // alpha) rather than premultiplied, since ImGui's own blending is the plain kind -- the
+        // same arrangement the ring impostor relies on.
+        "    if (!solid)\n"
+        "    {\n"
+        "        float alt = b - 1.0;\n"
+        "        float hs = max(atmRel*0.25, 1e-9);\n"
+        "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
+        "        vec3 airLocal = -perp * vRadii;\n"
+        "        vec3 airN = normalize(vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal)));\n"
+        "        float sunElev = dot(airN, vLightDir);\n"
+        "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
+        "        FragColor = vec4(finish_color(air_tint(sunElev, phase)), airAmt*vColor.a);\n"
+        "        return;\n"
+        "    }\n"
+        "\n"
         "    float thc = sqrt(1.0 - d2);\n"
         "    float t = (tca - thc) / DlocLen;\n"
         "    if (t < 0.0) discard;\n"
@@ -346,6 +595,112 @@ namespace alienorum
         "\n"
         "    float costerm = (vFlags.x > 0.5) ? dot(n, normalize(-hit)) : dot(n, vLightDir);\n"
         "    float mu = max(costerm, 0.0);\n"
+        "\n"
+        // Eclipses. Each caster hides some fraction of the light source's disc as seen from
+        // *this* surface point specifically -- not from the object's center -- which is the whole
+        // reason the shadow lands as a small dark patch that crosses the disc rather than dimming
+        // the entire body at once.
+        //
+        // The surface point is recovered from hitLocal rather than from the `hit` above, even
+        // though `hit - vCenter` is the same vector geometrically. Both terms of that difference
+        // are ~unit-magnitude (see SphereImpostorParams::ccx on the 1/d scaling), so subtracting
+        // them throws away precision in proportion to how small the object is on screen -- while
+        // hitLocal*vRadii is already the offset from the center, built from quantities that are
+        // *natively* that small, and so keeps its relative precision no matter the distance. That
+        // matters here more than anywhere else in this shader: a shadow's angular geometry is
+        // measured against the caster's own angular radius, which for a distant moon is itself
+        // only a small fraction of the object's angular size. Rotated local-to-camera, so dot
+        // products against the basis rows -- same direction (and same reason) as the shading
+        // normal just above.
+        "    float shadow = 1.0;\n"
+        "    float umbraAmt = 0.0;\n"
+        "    vec3 umbraTint = vec3(0.0);\n"
+        "    if (vFlags.x < 0.5 && mu > 0.0)\n"
+        "    {\n"
+        "        vec3 surfLocal = hitLocal * vRadii;\n"
+        "        vec3 surf = vec3(dot(vBasisX, surfLocal), dot(vBasisY, surfLocal), dot(basisZ, surfLocal));\n"
+        "\n"
+        // The planet's own rings, shadowing it: leave this surface point towards the light and
+        // see whether the trip crosses the ring plane while still inside the annulus. The plane
+        // passes through the planet's center, which is the origin of `surf`'s own frame, so the
+        // crossing point's distance from the origin *is* its ring radius -- no projection, and
+        // s > 0 restricts it to a crossing between the surface and the light, which is
+        // what confines the shadow to the hemisphere on the far side of the ring plane from the
+        // sun, exactly as it does on the real Saturn.
+        //
+        // Opacity comes from the same texture and the same curve the ring impostor shades the
+        // rings themselves with, so a ring's shadow is always as dense as the ring casting it:
+        // the Cassini division lets light through onto the cloud tops as a bright line inside
+        // the dark band, and a gossamer outer ring barely marks the planet at all.
+        "        if (uRing[1].x > 0.0)\n"
+        "        {\n"
+        "            vec3 ringN = uRing[0].xyz;\n"
+        "            float denom = dot(ringN, vLightDir);\n"
+        "            if (abs(denom) > 1e-9)\n"
+        "            {\n"
+        "                float s = -dot(ringN, surf) / denom;\n"
+        "                if (s > 0.0)\n"
+        "                {\n"
+        "                    float rr = length(surf + vLightDir*s);\n"
+        "                    if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
+        "                    {\n"
+        "                        float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
+        "                        float opacity = (uRing[1].y > 0.5)\n"
+        "                            ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
+        "                            : 0.5;\n"
+        "                        shadow *= 1.0 - pow(opacity, RING_SHADOW_DENSITY);\n"
+        "                    }\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "\n"
+        // Multiplied against any eclipse shadow below rather than min()'d with it, unlike two
+        // eclipse casters against each other: a ring and a moon hide unrelated parts of the
+        // star's disc, so their transmissions genuinely compound, where two moons' shadows
+        // would overlap on the same part of it.
+        //
+        // The ring's shadow edge is hard here, while a real one is softened over the star's own
+        // angular size the way an eclipse penumbra is -- roughly a thousand kilometers of blur
+        // at Saturn, against a shadow band tens of thousands wide. The ring opacity's own radial
+        // gradient covers for it nearly everywhere; the sharpness only really shows at a clean
+        // ring edge.
+        "        float eclipsed = 1.0;\n"
+        "        if (vBumpLimb.w > 0.0)\n"
+        "        for (int i = 0; i < 4; i++)\n"
+        "        {\n"
+        "            vec4 caster = uCasters[i];\n"
+        "            if (caster.w <= 0.0) continue;\n"
+        "            vec3 toCaster = caster.xyz - surf;\n"
+        "            float dist = length(toCaster);\n"
+        "            if (dist <= caster.w) { eclipsed = 0.0; break; }\n"   // surface point inside the caster
+        "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
+        "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
+        // What a body with an atmosphere lets into its own shadow. Standing in the umbra of an
+        // airless caster you would see the star cleanly hidden behind a black disc; standing in
+        // the umbra of one with air, that disc is ringed by a thin band of its atmosphere lit
+        // from behind -- every sunrise and sunset on that world at once -- and the light bent
+        // inwards from that ring is what falls on you. It is red because that is the only part
+        // of it that survives a path that long through air, which is why the totally eclipsed
+        // Moon turns copper instead of going out, and why an eclipsed moon of an airless world
+        // would simply vanish.
+        //
+        // Scaled by the same coverage the shadow itself uses, so it arrives exactly as the
+        // direct light leaves, and it is at its strongest where the star is most completely
+        // hidden. Tracked as the deepest single contribution rather than a sum, matching how
+        // `eclipsed` itself combines casters just below.
+        "            float cover = disc_overlap(vBumpLimb.w, casterAng, sep);\n"
+        "            float refracted = cover * uCasterAtm[i].w * UMBRA_REFRACTION;\n"
+        "            if (refracted > umbraAmt) { umbraAmt = refracted; umbraTint = uCasterAtm[i].xyz; }\n"
+        // min(), not a product: two casters overlapping the same patch of sky hide overlapping
+        // parts of the same disc, so multiplying their two fractions would darken the overlap
+        // twice over. Taking the deepest of them is exact whenever one caster's silhouette
+        // contains the other's and a slight under-estimate otherwise -- and the "otherwise" is
+        // two bodies eclipsing the same point of the same third body simultaneously, which is
+        // not a thing anyone will be waiting to see.
+        "            eclipsed = min(eclipsed, 1.0 - cover);\n"
+        "        }\n"
+        "        shadow *= eclipsed;\n"
+        "    }\n"
         // A self-luminous body gets a real quadratic limb-darkening law, whose coefficients come
         // from the star's own T_eff and log g (Star::limb_darkening_coefficients). The fixed
         // pow(mu, 1/3) it used to share with the lit-by-a-star case reaches ZERO at the limb, so a
@@ -358,30 +713,59 @@ namespace alienorum
         "        float om = 1.0 - mu;\n"
         "        isDay = clamp(1.0 - vBumpLimb.y*om - vBumpLimb.z*om*om, 0.0, 1.0);\n"
         "    }\n"
-        "    else isDay = clamp(pow(mu, 0.3333) + vFlags.y, 0.0, 1.0);\n"
+        // The shadow scales the *direct* light only, leaving vFlags.y (the ambient night floor)
+        // alone: an eclipsed patch of ground falls to exactly the brightness the object's own
+        // night side has, which is what it physically is -- night, arriving early and leaving in
+        // the wrong direction. On a body with a night map that also means its city lights come up
+        // inside the umbra, for free, through the same isDay blend the terminator already uses.
+        "    else isDay = clamp(pow(mu, 0.3333)*shadow + vFlags.y, 0.0, 1.0);\n"
         "\n"
-        "    vec3 baseColor = ((vHasTex > 0.5) ? texture(uDayMap, uv).rgb : vColor.rgb) * vTint;\n"
+        // albedo kept separate from baseColor -- the surface's own color, before the light
+        // source's white-balance tint is multiplied in. Direct sunlight gets that tint (it *is*
+        // that light); the light refracted into an umbra does not, since it arrives already
+        // stamped with the color of the air it came through, which is what umbraTint carries.
+        "    vec3 albedo = (vHasTex > 0.5) ? texture(uDayMap, uv).rgb : vColor.rgb;\n"
+        "    vec3 baseColor = albedo * vTint;\n"
         "    vec3 outColor = (vFlags.z > 0.5)\n"
         "        ? isDay*baseColor + (1.0 - isDay)*texture(uNightMap, uv).rgb\n"
         "        : isDay*baseColor;\n"
         "\n"
-        "    if (vApplySky > 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
-        "    {\n"
-        "        float dy = vSky.a - vScreenY;\n"
-        "        if (dy >= 0.0)\n"
-        "        {\n"
-        "            vec3 skyAtY = vec3(vSky.r*pow(0.999, dy), vSky.g*pow(0.9995, dy), vSky.b*pow(0.9999, dy));\n"
-        "            float lum = 0.29*skyAtY.r + 0.56*skyAtY.g + 0.15*skyAtY.b;\n"
-        "            outColor = min(vec3(1.0), (1.0 - lum)*outColor + skyAtY);\n"
-        "        }\n"
-        "    }\n"
+        // The copper light lands on the same ground the direct light does, so it carries the
+        // same cosine falloff towards the terminator -- and, being an addition rather than a
+        // replacement, it sits on top of whatever the night side already shows, city lights
+        // included. Exactly what a total lunar eclipse looks like from a distance: the disc does
+        // not go out, it changes color.
+        "    outColor += umbraAmt * pow(mu, 0.3333) * umbraTint * albedo;\n"
         "\n"
-        "    if (vFlags.w > 0.5)\n"          // redlight_mode -- see rgba_apply_redlight() in color.cpp
-        "    {\n"
-        "        float r2 = min(1.0, outColor.r + 0.5*outColor.g + 0.3*outColor.b);\n"
-        "        outColor = vec3(r2, outColor.g/3.0, outColor.b/3.0);\n"
-        "    }\n"
-        "    FragColor = vec4(outColor, vColor.a);\n"
+        // The air in front of the ground, added rather than blended: light this world's own
+        // atmosphere scatters towards us on its way past, sitting on top of the surface already
+        // shining through it. Only the stretch of air *in front of* the surface counts, which is
+        // the chord across the shell less the part behind the ground -- a length that runs from
+        // barely a scale height looking straight down to the full grazing path at the limb, so
+        // the haze is a thin band hugging the edge and nothing at all across the middle of the
+        // disc. The extra (1 - cosView) drives the very center to exactly zero rather than
+        // merely nearly so.
+        //
+        // Two things here were wrong in an earlier version and are worth not repeating. The
+        // sunlit test used the ray's closest approach to the center, which out at the limb is
+        // fine but toward the middle of the disc points at a spot buried inside the planet and
+        // normalizes to noise -- the surface normal is what a point on the ground is actually
+        // lit by, and using it is what keeps the haze off the night side (bug: a brown wash over
+        // the entire dark hemisphere, city lights and all) and stops the degenerate direction
+        // near the disc's center from raising a lumpy mound of glow there. And the whole term
+        // was colored as though seen at grazing incidence, which put a hard orange rim on a
+        // fully lit Earth; it now takes its color from air_tint() like the limb thread above,
+        // with the surface normal standing in for the sun's elevation over this patch of ground
+        // -- which is exactly what it is.
+        "    float groundSun = dot(n, vLightDir);\n"
+        "    float hazePath = sqrt(max(0.0, atmR*atmR - d2)) - cosView;\n"
+        "    float haze = (atmRel > 0.0 && vFlags.x < 0.5)\n"
+        "        ? clamp((hazePath/maxpath) * (1.0 - cosView) * ATM_GLOW, 0.0, 1.0)\n"
+        "            * smoothstep(-0.05, 0.35, groundSun)\n"
+        "        : 0.0;\n"
+        "    outColor += air_tint(groundSun, phase) * haze;\n"
+        "\n"
+        "    FragColor = vec4(finish_color(outColor), vColor.a);\n"
         "}\n";
 
     static GLuint compile_shader(GLenum type, const char *src)
@@ -402,8 +786,9 @@ namespace alienorum
 
     // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) radii(3) basisX(3) basisY(3)
     // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) hasBumpTex(1)
-    // bumpStrength(1) = 39.
-    static const int kFloatsPerVertex = 41;
+    // bumpLimb(4) = 42. The eclipse casters are *not* here -- they ride in a mat4 uniform
+    // instead (see SphereImpostorParams::casters).
+    static const int kFloatsPerVertex = 42;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
 
     static void ensure_gl_objects()
@@ -444,18 +829,25 @@ namespace alienorum
         s_aApplySkyLoc = glGetAttribLocation(s_program, "aApplySky");
         s_aHasBumpTexLoc     = glGetAttribLocation(s_program, "aHasBumpTex");
         s_aBumpLimbLoc       = glGetAttribLocation(s_program, "aBumpLimb");
+        s_uCastersLoc  = glGetUniformLocation(s_program, "uCasters");
+        s_uRingLoc     = glGetUniformLocation(s_program, "uRing");
+        s_uCasterAtmLoc = glGetUniformLocation(s_program, "uCasterAtm");
+        s_uAtmLoc      = glGetUniformLocation(s_program, "uAtm");
+        s_uSphRingXMapLoc = glGetUniformLocation(s_program, "uSphRingXMap");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
         s_uBumpMapLoc  = glGetUniformLocation(s_program, "uBumpMap");
 
-        // Texture units 0/1/2, matching the convention ImGui's own backend uses for its font/UI
-        // texture on unit 0 -- safe since our AddCallback runs between ImGui draw commands,
-        // and the paired ImDrawCallback_ResetRenderState immediately after re-establishes
-        // ImGui's own state (including its own texture bindings) before anything else draws.
+        // Texture units 0/1/2/3, matching the convention ImGui's own backend uses for its
+        // font/UI texture on unit 0 -- safe since our AddCallback runs between ImGui draw
+        // commands, and the paired ImDrawCallback_ResetRenderState immediately after
+        // re-establishes ImGui's own state (including its own texture bindings) before anything
+        // else draws.
         glUseProgram(s_program);
         glUniform1i(s_uDayMapLoc, 0);
         glUniform1i(s_uNightMapLoc, 1);
         glUniform1i(s_uBumpMapLoc, 2);
+        glUniform1i(s_uSphRingXMapLoc, 3);
 
         glGenVertexArrays(1, &s_vao);
         glGenBuffers(1, &s_vbo);
@@ -496,7 +888,7 @@ namespace alienorum
         glEnableVertexAttribArray(s_aHasBumpTexLoc);
         glVertexAttribPointer(s_aHasBumpTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 37));
         glEnableVertexAttribArray(s_aBumpLimbLoc);
-        glVertexAttribPointer(s_aBumpLimbLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
+        glVertexAttribPointer(s_aBumpLimbLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -569,17 +961,29 @@ namespace alienorum
             v[38] = p->bump_strength;
             v[39] = p->limba;
             v[40] = p->limbb;
+            v[41] = p->light_ang;
         }
 
         glUseProgram(s_program);
+        // Uniform, so unlike everything above it persists in the program between draws -- it has
+        // to be re-set on *every* draw, including the overwhelmingly common no-eclipse one, or a
+        // body drawn after an eclipsed one would inherit the previous body's casters.
+        // p->light_ang being 0 already stops the shader reading it in that case, but this keeps
+        // the program's own state honest rather than relying on that one guard alone.
+        glUniformMatrix4fv(s_uCastersLoc, 1, GL_FALSE, p->casters);
+        glUniformMatrix4fv(s_uRingLoc, 1, GL_FALSE, p->ring);   // same "re-set every draw" reason
+        glUniformMatrix4fv(s_uCasterAtmLoc, 1, GL_FALSE, p->caster_atm);
+        glUniformMatrix4fv(s_uAtmLoc, 1, GL_FALSE, p->atm);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->tex);
-        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2 aren't in this stripped loader's
+        glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2/3 aren't in this stripped loader's
                                              // symbol set; texture unit enums are guaranteed
                                              // sequential.
         glBindTexture(GL_TEXTURE_2D, p->night_tex);
         glActiveTexture(GL_TEXTURE0 + 2);
         glBindTexture(GL_TEXTURE_2D, p->bump_tex);
+        glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_2D, p->ringx_tex);
         glBindVertexArray(s_vao);
         glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
@@ -672,9 +1076,18 @@ namespace alienorum
         if (in.axis_x <= 0 || in.axis_y <= 0 || in.axis_z <= 0) return false;   // shader divides by each
         if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera genuinely inside the sphere
 
+        // The quad has to cover the glowing air outside the body as well as the body itself, or
+        // the atmosphere branch in the fragment shader would be clipped off at exactly the
+        // silhouette it is supposed to reach past -- a hard-edged ring instead of a soft one.
+        // Only the *bounds* grow: the camera-inside test just above, the silhouette, and the
+        // returned bounding box all still describe the solid body.
+        double mean_r = (in.axis_x + in.axis_y + in.axis_z) / 3.0;
+        double atm_h = (in.atmosphere_height > 0 && mean_r > 0) ? in.atmosphere_height : 0.0;
+        double quad_r = r + atm_h;
+
         double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
-        tangent_bounds(cx, cz, r, zoom, false, &zdesXmin, &zdesXmax);
-        tangent_bounds(cy, cz, r, zoom, true,  &zdesYmin, &zdesYmax);   // Cartesian2D negates Y
+        tangent_bounds(cx, cz, quad_r, zoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, quad_r, zoom, true,  &zdesYmin, &zdesYmax);   // Cartesian2D negates Y
 
         double xmin = dispcx + zdesXmin * dispcx, xmax = dispcx + zdesXmax * dispcx;
         double ymin = dispcy + zdesYmin * dispcx, ymax = dispcy + zdesYmax * dispcx;
@@ -745,6 +1158,62 @@ namespace alienorum
         p->bump_strength = (float)in.bump_strength;
         p->limba = (float)in.limb_a;
         p->limbb = (float)in.limb_b;
+
+        // Eclipse casters, scaled by the same 1/d as the center and radii above so the shader
+        // can compare them against a surface point directly. Columns past num_casters stay zero
+        // (SphereImpostorParams is value-initialized), which is how the shader knows to skip
+        // them. light_ang is left at 0 when there is nothing to cast a shadow, which is what
+        // makes the per-pixel eclipse test cost nothing at all on the ordinary draw.
+        p->light_ang = 0.0f;
+        int ncast = std::max(0, std::min(in.num_casters, max_eclipse_casters));
+        for (int i = 0; i < ncast; i++)
+        {
+            if (in.casters[i].r <= 0) continue;
+            p->casters[i*4 + 0] = (float)(in.casters[i].dx / d);
+            p->casters[i*4 + 1] = (float)(in.casters[i].dy / d);
+            p->casters[i*4 + 2] = (float)(in.casters[i].dz / d);
+            p->casters[i*4 + 3] = (float)(in.casters[i].r / d);
+            p->light_ang = (float)in.light_angular_radius;
+        }
+
+        // The planet's own rings shadowing it -- same 1/d scaling, same "0 means absent"
+        // convention. Left entirely zero for the ringless bodies that are nearly all of them,
+        // which is what the shader's uRing[1].x test reads.
+        if (in.ring_outer_r > in.ring_inner_r && in.ring_inner_r > 0)
+        {
+            p->ring[0] = (float)in.ring_normal[0];
+            p->ring[1] = (float)in.ring_normal[1];
+            p->ring[2] = (float)in.ring_normal[2];
+            p->ring[3] = (float)(in.ring_inner_r / d);
+            p->ring[4] = (float)(in.ring_outer_r / d);
+            p->ring[5] = in.ringx_map_texture ? 1.0f : 0.0f;
+            p->ringx_tex = (GLuint)in.ringx_map_texture;
+        }
+
+        // Per-caster umbra light, column-for-column with the casters above -- a column left at
+        // zero (an airless caster, or an unused slot) is a black shadow.
+        for (int i = 0; i < ncast; i++)
+        {
+            if (in.casters[i].r <= 0 || in.casters[i].umbra_light <= 0) continue;
+            p->caster_atm[i*4 + 0] = (float)in.casters[i].umbra_tint[0];
+            p->caster_atm[i*4 + 1] = (float)in.casters[i].umbra_tint[1];
+            p->caster_atm[i*4 + 2] = (float)in.casters[i].umbra_tint[2];
+            p->caster_atm[i*4 + 3] = (float)in.casters[i].umbra_light;
+        }
+
+        // This body's own air. The shell's thickness is passed as a fraction of the body's own
+        // mean radius, since that is the space the fragment shader works in -- the solid body is
+        // the unit sphere there, so the atmosphere is simply the sphere of radius 1 + this.
+        if (atm_h > 0)
+        {
+            p->atm[0] = (float)in.atmosphere_color[0];
+            p->atm[1] = (float)in.atmosphere_color[1];
+            p->atm[2] = (float)in.atmosphere_color[2];
+            p->atm[3] = (float)(atm_h / mean_r);
+            p->atm[4] = (float)in.atmosphere_low_color[0];
+            p->atm[5] = (float)in.atmosphere_low_color[1];
+            p->atm[6] = (float)in.atmosphere_low_color[2];
+        }
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
         p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;

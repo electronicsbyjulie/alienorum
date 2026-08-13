@@ -21,11 +21,14 @@ void draw_ra_dec_lines()
     ImU32 gc = rgba_apply_redlight(global_style.grid_color);
     ImU32 gcb = rgba_apply_redlight(global_style.grid_color_brighter);
     ImU32 ec = rgba_apply_redlight(global_style.ecliptic_color);
-    double node = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
-    double myeq = (whereami >= 0) ? cels[whereami]->equinox_eff : 0;
+    // equinox_RA, not equinox_eff: the grid is being laid out in the equatorial frame, and where
+    // 0h falls in that frame is its own quantity. See CelestialObject::equinox_RA.
+    double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
+    double myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
     bool prev_valid = false;
-    int jstart = -80; // (view_mode == vm_horizon) ? 0 : -80;
+    int jstart = (view_mode == vm_skymap) ? -90 : -80;
+    int jend = -jstart;
     bool is_sat = (whereami>0) && (cels[whereami]->typeclass() == class_satellite);
     Rotation ra_dec_plane = (whereami>0) ? (is_sat
             ? cels[whereami]->location.orbital_plane
@@ -36,7 +39,7 @@ void draw_ra_dec_lines()
     for (i=0; i<24; i++)
     {
         prev_valid = false;
-        for (j=jstart; j<=80; j+=10)
+        for (j=jstart; j<=jend; j+=10)
         {
             Point jadolzhnaperejexatdoma = Point::from_ra_dec(fiftyseventh * i * 15, fiftyseventh * j, 5, node);
             if (view_mode == vm_horizon || is_sat)
@@ -77,7 +80,7 @@ void draw_ra_dec_lines()
         }
     }
 
-    for (j=jstart; j <= 80; j+=10)
+    for (j=jstart; j <= jend; j+=10)
     {
         prev_valid = false;
         for (i=0; i<=360; i++)
@@ -166,6 +169,609 @@ void draw_ra_dec_lines()
 
 double sphresolution = 0.1;
 bool bugged = false;
+
+// ---- Eclipses ------------------------------------------------------------------------------
+//
+// Any solid body between another body and their shared star throws a shadow onto it: a moon's
+// shadow crossing its planet, a planet's shadow swallowing its moon, one moon's shadow on
+// another. Which of the two is the "eclipse" and which the "transit" is only a matter of where
+// the viewer stands, so nothing here distinguishes them -- both are the same geometry, and the
+// shader (see sphere_impostor.cpp) resolves it per pixel by asking how much of the star's disc
+// the caster hides as seen from that exact point of the surface.
+//
+// The candidate list exists because the search would otherwise have to run over `cels`, which
+// holds up to MAX_CELOBJS entries (star catalogs, and with astorb loaded, a great many minor
+// planets) -- for every disc, every frame. Rebuilt once per frame by refresh_eclipse_casters()
+// at the top of draw_objects(); draw_sphere_gpu() then only walks this much shorter list, and
+// rejects everything outside the object's own system on a single pointer comparison.
+// Defined further down, with the rest of the atmosphere code: both an eclipse's copper light
+// and a planet's own glowing limb are colored from a world's air.
+static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3]);
+
+// Brightness of the light an Earth-thick atmosphere refracts into its own shadow, as a fraction
+// of direct sunlight -- see the shader's UMBRA_REFRACTION comment for why this is a legibility
+// figure rather than the photometric one (a totally eclipsed Moon really is some ten thousand
+// times fainter than a full one, which on an unexposed screen is no color at all).
+static const double kUmbraLight = 0.15;
+
+// How far out the limb glow is drawn, in pressure scale heights. Air thins exponentially and
+// never actually stops, so this is a choice about where it stops being worth drawing: six scale
+// heights leaves about a quarter of a percent of the surface density, which is roughly where a
+// real limb fades out of a photograph. It also sets how far the impostor's bounding quad has to
+// grow (see queue_sphere_impostor), so raising it is not free.
+static const double kAtmosphereScaleHeights = 6.0;
+
+// How much air light is reckoned to have crossed when it comes to us *through* a world's
+// atmosphere rather than off the top of it -- and so how much of its blue was taken out on the
+// way, which is to say how red the copper gets. Raise it for a deeper, more saturated red on a
+// backlit limb and in an eclipse's umbra, lower it toward a pale amber. Scaled per world by its
+// own surface pressure below, so this is the figure for an Earth-thick atmosphere.
+//
+// Its companion knob is ATM_REDDEN_PHASE in sphere_impostor.cpp, which decides *when* through
+// the phases the reddening arrives rather than how far it goes.
+static const double kAtmosphereOpticalDepth = 3.0;
+
+struct EclipseCandidate
+{
+    CelestialObject *obj;
+    CelestialObject *lightcen;      // resolved once per frame here rather than per receiver
+    double radius;
+};
+static std::vector<EclipseCandidate> eclipse_candidates;
+
+CelestialObject *eclipsed_light = nullptr;
+double eclipsed_fraction = 0;
+
+// Fraction of one disc hidden behind another, both as angles seen from the same point: R is the
+// light source's angular radius, r the occulter's, d the angle between their centers. This is
+// the same circle-circle intersection the impostor's fragment shader runs per pixel (see
+// disc_overlap() in sphere_impostor.cpp) -- deliberately, since the two have to agree: the
+// shader decides how dark a patch of a distant planet goes, this decides how dark the sky goes
+// for someone standing under it, and a difference between them would show up as a shadow on the
+// ground that does not match the sky above it. The formula lives twice because one copy has to
+// be GLSL and the other C++; if either is ever corrected, correct both.
+static double cpu_disc_overlap(double R, double r, double d)
+{
+    if (R <= 0) return 0;
+    if (d >= R + r) return 0;                       // no contact
+    if (d <= r - R) return 1;                       // totality
+    if (d <= R - r) return (r*r)/(R*R);             // annular: the occulter cannot cover it all
+    // atan2 rather than acos for both angles, matching the shader's copy line for line -- and for
+    // the same reason, which is spelled out there: with a caster far larger than the light source
+    // (a planet's shadow on its own moon, where the two differ by a factor of a few hundred) the
+    // cosine acos would be handed sits a few parts in a million from 1.0 across the entire
+    // penumbra, and acos is vertical there. Double precision hides that here where single does
+    // not, but the two have to agree pixel for pixel, so they are written the same way.
+    double d2 = d*d, R2 = R*R, r2 = r*r;
+    double lens = 0.5*sqrt(fmax(0.0, (R + r - d)*(d + r - R)*(d - r + R)*(d + r + R)));
+    double a1 = atan2(2*lens, d2 + r2 - R2);
+    double a2 = atan2(2*lens, d2 + R2 - r2);
+    return fmin(1.0, fmax(0.0, (r2*a1 + R2*a2 - lens)/(_pi*R2)));
+}
+
+double eclipse_obscuration(CelestialObject *light)
+{
+    if (!light || eclipse_candidates.empty()) return 0;
+
+    double d_light = light->tmprel.magnitude();
+    double r_light = light->get_equatorial_radius();
+    if (d_light <= 0 || r_light <= 0) return 0;
+
+    double light_ang = asin(fmin(1.0, r_light / d_light));
+    Point lhat = light->tmprel * (1.0 / d_light);
+
+    double worst = 0;
+    for (const EclipseCandidate &cand : eclipse_candidates)
+    {
+        if (cand.obj == light) continue;
+        // The world under the observer's feet is skipped: it hides the sun for half of every
+        // day and that is called night, not an eclipse -- the sin(altitude) term in the
+        // daylight computation already says so, and counting it here would say it twice.
+        if (whereami >= 0 && cand.obj == cels[whereami]) continue;
+
+        double dist = cand.obj->tmprel.magnitude();
+        if (dist <= 0 || dist >= d_light) continue;         // has to be between us and the light
+
+        double ang = asin(fmin(1.0, cand.radius / dist));
+        double cosine = (cand.obj->tmprel.x*lhat.x + cand.obj->tmprel.y*lhat.y + cand.obj->tmprel.z*lhat.z) / dist;
+        double sep = acos(fmin(1.0, fmax(-1.0, cosine)));
+        // Deepest occulter rather than the sum, for the same reason the shader takes the deepest
+        // of its casters: two bodies in front of the same sun would be hiding overlapping parts
+        // of one disc, and adding them would count the overlap twice.
+        worst = fmax(worst, cpu_disc_overlap(light_ang, ang, sep));
+    }
+    return worst;
+}
+
+// The stretch of eclipse_candidates belonging to one light source, as a half-open [begin, end).
+// The list is kept sorted by lightcen (see refresh_eclipse_casters) so that this is two binary
+// searches rather than a walk: with an exoplanet catalog loaded the candidate list runs to
+// thousands of bodies, all but a handful of them orbiting stars that have nothing to do with the
+// one being asked about, and both the per-disc caster search and the per-body magnitude test ask
+// this question for every object they touch.
+static void candidates_for_light(CelestialObject *lightcen, int &begin, int &end)
+{
+    auto lo = std::lower_bound(eclipse_candidates.begin(), eclipse_candidates.end(), lightcen,
+        [](const EclipseCandidate &a, CelestialObject *key) { return a.lightcen < key; });
+    auto hi = std::upper_bound(lo, eclipse_candidates.end(), lightcen,
+        [](CelestialObject *key, const EclipseCandidate &a) { return key < a.lightcen; });
+    begin = (int)(lo - eclipse_candidates.begin());
+    end   = (int)(hi - eclipse_candidates.begin());
+}
+
+// ---- Shadows in the system frame ---------------------------------------------------------
+//
+// Two things here have to know where a shadow falls without reference to where anyone is
+// watching from: the sun clock, which shades a whole world's map by where its light is landing,
+// and the apparent magnitude of a body too far off to be more than a dot (eclipse_illumination()
+// below). Everything else in this file works from tmprel, positions relative to the observer --
+// but a shadow is thrown between two bodies and cares nothing for who is looking, so these take
+// local_position throughout, the frame the sun clock's surface points are already built in (see
+// draw_sunclock: `land += cel->location.local_position`).
+//
+// On the sun clock's scale an eclipse gets drawn as what it actually is: a small dark spot
+// crossing the daylit side at a thousand-odd kilometres an hour, ringed by the much wider, much
+// softer penumbra. That shape comes out of the same disc-overlap arithmetic as everywhere else,
+// asked separately for each point of the map rather than once for the planet.
+struct ShadowCaster
+{
+    CelestialObject *obj;           // kept so callers can ask what the shadow is being thrown by
+    Point center;
+    double radius;
+};
+
+// Bodies whose shadow could touch this world at all, found once per frame so the per-pixel loop
+// below can skip the whole question the overwhelming majority of the time -- and, when there is
+// an eclipse, usually has exactly one body to consider.
+static int gather_shadow_casters(CelestialObject *cel, CelestialObject *lightcen,
+    ShadowCaster *out, int maxn)
+{
+    if (!cel || !lightcen || lightcen == cel) return 0;
+
+    Point cpos = cel->location.local_position;
+    Point to_light = lightcen->location.local_position - cpos;
+    double d_light = to_light.magnitude();
+    double r_light = lightcen->get_equatorial_radius();
+    if (d_light <= 0 || r_light <= 0) return 0;
+
+    double light_ang = asin(fmin(1.0, r_light / d_light));
+    Point lhat = to_light * (1.0 / d_light);
+    double bounding_r = cel->get_equatorial_radius();
+
+    int lo, hi;
+    candidates_for_light(lightcen, lo, hi);
+
+    int n = 0;
+    for (int c = lo; c < hi; c++)
+    {
+        const EclipseCandidate &cand = eclipse_candidates[c];
+        if (cand.obj == cel || cand.obj == lightcen) continue;
+
+        Point rel = cand.obj->location.local_position - cpos;
+        double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
+        if (along <= 0) continue;                       // casts its shadow away from us
+
+        Point perp = rel - lhat*along;
+        double h = perp.magnitude();
+        // Same reach test as the disc path: the caster's own width, plus how far the penumbra has
+        // spread over the distance travelled, plus the target's own radius since the shadow only
+        // has to reach some part of it.
+        if (h >= cand.radius + along*tan(light_ang) + bounding_r) continue;
+
+        if (n < maxn) out[n++] = { cand.obj, cand.obj->location.local_position, cand.radius };
+    }
+    return n;
+}
+
+// Fraction of the light source hidden as seen from one point in space -- one point of a map for
+// the sun clock, one sample of a body's cross-section for the magnitude below.
+// Taken by value, not by const reference: Point's own arithmetic operators are not const-
+// qualified, so a const Point cannot be subtracted from anything. Same convention as
+// find_3D_angle() and the rest of point.cpp's interface.
+static double point_obscuration(Point surface, Point lightpos, double light_r,
+    ShadowCaster *casters, int n)
+{
+    Point to_light = lightpos - surface;
+    double d_light = to_light.magnitude();
+    if (d_light <= 0 || light_r <= 0) return 0;
+
+    double light_ang = asin(fmin(1.0, light_r / d_light));
+    double inv = 1.0 / d_light;
+    double lx = to_light.x*inv, ly = to_light.y*inv, lz = to_light.z*inv;
+
+    double worst = 0;
+    for (int i = 0; i < n; i++)
+    {
+        Point rel = casters[i].center - surface;
+        double dist = rel.magnitude();
+        if (dist <= 0) continue;
+        double ang = asin(fmin(1.0, casters[i].radius / dist));
+        double cosine = (rel.x*lx + rel.y*ly + rel.z*lz) / dist;
+        double sep = acos(fmin(1.0, fmax(-1.0, cosine)));
+        worst = fmax(worst, cpu_disc_overlap(light_ang, ang, sep));
+    }
+    return worst;
+}
+
+// ---- Eclipses seen from far off ------------------------------------------------------------
+//
+// A body small enough on screen to be a dot has no surface to shade, but it still goes dark when
+// it walks into somebody's shadow, and the only number a dot has to say so with is its apparent
+// magnitude. This is what makes a moon of Jupiter blink out as it crosses behind its planet, and
+// what takes the glare off the full Moon halfway through a lunar eclipse.
+//
+// What separates this from eclipse_obscuration(), which asks the same question on the observer's
+// behalf, is that a magnitude measures *total* light. So the answer cannot be the obscuration at
+// one point; it has to be averaged over the whole cross-section the body turns toward its star,
+// and that average is the entire difference between the two eclipses of the Earth-Moon pair.
+// Earth's shadow is far wider than the Moon and takes essentially all of its light: the Moon
+// falls from magnitude -12.7 to somewhere around zero, which is a dull copper dot with no flare
+// left on it at all. The Moon's shadow on Earth is a spot a hundred kilometres wide on a disc
+// twelve thousand across; it can never cost Earth more than the few percent of the sunbeam the
+// Moon's own disc intercepts, which is a couple hundredths of a magnitude -- nothing. Sampling
+// the cross-section rather than the center is what gets both of those right from one rule.
+
+// Sunlight that a world's own air refracts into its shadow, as a fraction of what falls outside
+// it. Unlike kUmbraLight further up -- which is a legibility figure, chosen so that an eclipsed
+// surface stays visible on a screen -- this one is meant to be the photometry, because a
+// magnitude is a measurement and reads as wrong if it is not. A totally eclipsed Moon lands
+// between about magnitude -1 and +1 against the -12.7 of a full one, so the light reaching it is
+// down by some twelve or thirteen magnitudes. This figure is scaled by how much air the caster
+// actually has (see umbra_flux below), and 1e-5 is what puts Earth's own atmosphere, at its one
+// bar, in the middle of that range. Turn it down for darker eclipses -- they genuinely vary, and
+// a stratosphere full of volcanic dust has taken the Moon to +4 -- and up for brighter ones.
+static const double kUmbraFluxFraction = 1e-5;
+
+// How the cross-section gets sampled: rings of points spread so that each stands for an equal
+// share of the area, since each equal patch of that disc intercepts an equal share of the
+// starlight and the plain average over them is therefore the fraction of the light that survives.
+// Enough points to put a smooth curve under a partial eclipse, few enough that a per-body,
+// per-frame loop costs nothing on the overwhelming majority of frames, which have no eclipse in
+// them at all and never reach the loop.
+static const int kShadowRings = 4, kShadowSpokes = 8;
+
+// What one caster's own atmosphere lets into the middle of its shadow, as a fraction of direct
+// starlight. Airless bodies return 0 and throw the hard black shadow they really do -- which is
+// why a moon vanishing behind an airless world vanishes completely, while the Moon in Earth's
+// shadow only reddens.
+static double umbra_flux(CelestialObject *caster)
+{
+    cel_obj_class cls = caster->typeclass();
+    if (cls != class_planet && cls != class_moon) return 0;
+
+    double pressure = ((Planet*)caster)->get_surface_pressure();
+    if (pressure <= 0) return 0;
+
+    // Saturating in pressure for the same reason as the shader's copy of this thought: past about
+    // an Earth atmosphere, more air does not put more light into the shadow, it puts less, a
+    // thick enough atmosphere being simply opaque.
+    return kUmbraFluxFraction * (1.0 - exp(-pressure / oneatm));
+}
+
+double eclipse_illumination(CelestialObject *cel)
+{
+    if (!cel || eclipse_candidates.empty()) return 1;
+
+    cel_obj_class cls = cel->typeclass();
+    if (cls != class_planet && cls != class_moon) return 1;     // a star is not lit by anything
+
+    CelestialObject *lightcen = cel->get_light_center();
+    if (!lightcen || lightcen == cel) return 1;
+
+    ShadowCaster casters[max_eclipse_casters];
+    int n = gather_shadow_casters(cel, lightcen, casters, max_eclipse_casters);
+    if (!n) return 1;                                           // nearly always, and nearly free
+
+    Point pos = cel->location.local_position;
+    Point light_pos = lightcen->location.local_position;
+    double light_r = lightcen->get_equatorial_radius();
+    double body_r = cel->get_equatorial_radius();
+    Point to_light = light_pos - pos;
+    double d_light = to_light.magnitude();
+    if (d_light <= 0 || light_r <= 0 || body_r <= 0) return 1;
+
+    // The most generous shadow on offer sets the floor: if two bodies are somehow both covering
+    // the star, the light refracted around the one with air still arrives.
+    double floor_flux = 0;
+    for (int i = 0; i < n; i++) floor_flux = fmax(floor_flux, umbra_flux(casters[i].obj));
+
+    // Two unit vectors across the line to the star, spanning the disc the starlight falls on.
+    // Any pair will do -- the samples are averaged, so where the pattern is clocked does not
+    // matter -- so this just crosses the light direction with whichever axis it is least parallel
+    // to, which cannot degenerate.
+    Point lhat = to_light * (1.0 / d_light);
+    Point ref = (fabs(lhat.x) < 0.9) ? Point(1, 0, 0) : Point(0, 1, 0);
+    Point u(lhat.y*ref.z - lhat.z*ref.y, lhat.z*ref.x - lhat.x*ref.z, lhat.x*ref.y - lhat.y*ref.x);
+    u.scale(1.0);
+    Point v(lhat.y*u.z - lhat.z*u.y, lhat.z*u.x - lhat.x*u.z, lhat.x*u.y - lhat.y*u.x);
+
+    double lit = 0;
+    for (int ring = 0; ring < kShadowRings; ring++)
+    {
+        // Equal-area radii: ring k of n sits at sqrt((k+0.5)/n) of the way out, which puts the
+        // same amount of cross-section behind every sample and lets them be averaged unweighted.
+        double rr = body_r * sqrt((ring + 0.5) / kShadowRings);
+        for (int spoke = 0; spoke < kShadowSpokes; spoke++)
+        {
+            // Alternate rings are clocked half a step round, so the samples do not line up into
+            // spokes that a shadow edge could cross all at once.
+            double th = 2 * _pi * (spoke + 0.5*(ring & 1)) / kShadowSpokes;
+            Point sample = pos + u*(rr*cos(th)) + v*(rr*sin(th));
+            lit += fmax(1.0 - point_obscuration(sample, light_pos, light_r, casters, n), floor_flux);
+        }
+    }
+    lit /= (kShadowRings * kShadowSpokes);
+
+    // Floored well below anything that can still be seen, purely so that an airless world's
+    // shadow -- which lets through nothing whatsoever -- turns into a large number of magnitudes
+    // rather than an infinite one.
+    return fmax(lit, 1e-12);
+}
+
+void refresh_eclipse_casters()
+{
+    eclipse_candidates.clear();
+#if !ALIENORUM_GPU_SPHERES
+    return;                     // only the GPU impostor path shades eclipses
+#else
+    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    {
+        CelestialObject *c = cels[i];
+        if (c->deleted) continue;
+
+        cel_obj_class cls = c->typeclass();
+        // Planets and moons only. Stars are excluded because a system's star is the light
+        // source itself, not an occluder (a companion star crossing in front of the primary is
+        // real but is its own rendering problem, not this one). Satellites are excluded on
+        // size: an object a few meters across casts a shadow a few meters across, which is
+        // below one pixel from any distance the body it orbits is still on screen.
+        if (cls != class_planet && cls != class_moon) continue;
+
+        // Minor planets are skipped for both reasons at once -- an asteroid's shadow is never
+        // resolvable, and astorb can load hundreds of thousands of them, which is exactly the
+        // cost this list is meant to avoid paying per disc per frame.
+        if (cls == class_planet && ((Planet*)c)->asteroid_no) continue;
+
+        double radius = c->get_equatorial_radius();
+        if (radius <= 0) continue;
+
+        CelestialObject *lc = c->get_light_center();
+        if (!lc || lc == c) continue;
+
+        eclipse_candidates.push_back({c, lc, radius});
+    }
+
+    // Grouped by light source, so that everything downstream can take the slice belonging to one
+    // star instead of walking the whole list -- see candidates_for_light(). The order within a
+    // group is the pointer order of an unstable sort and so is not meaningful, which is fine:
+    // every consumer either takes the deepest shadow of the lot or ranks them itself.
+    std::sort(eclipse_candidates.begin(), eclipse_candidates.end(),
+        [](const EclipseCandidate &a, const EclipseCandidate &b) { return a.lightcen < b.lightcen; });
+#endif
+}
+
+// Fills in->casters/num_casters/light_angular_radius for one object about to be drawn: the
+// bodies whose shadow actually reaches it, at most max_eclipse_casters of them, expressed
+// relative to its own center in camera space. camera_space is the object's true (unrefracted)
+// camera-space position, since a shadow is cast between two physical bodies and knows nothing
+// about the light path to the observer -- see draw_sphere_gpu()'s own display_space comment.
+static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *cel,
+    CelestialObject *lightcen, const Point &camera_space, double bounding_r)
+{
+    in.num_casters = 0;
+    in.light_angular_radius = 0;
+    if (!lightcen || lightcen == cel || eclipse_candidates.empty()) return;
+
+    Point to_light = lightcen->tmprel - cel->tmprel;
+    double d_light = to_light.magnitude();
+    double r_light = lightcen->get_equatorial_radius();
+    if (d_light <= 0 || r_light <= 0) return;
+
+    double light_ang = asin(fmin(1.0, r_light / d_light));
+    Point lhat = to_light * (1.0 / d_light);
+
+    // Selected casters, kept sorted by `score` (see below) so that when more than
+    // max_eclipse_casters qualify, the ones dropped are the ones grazing the object's edge
+    // rather than the one sitting squarely on it.
+    double scores[max_eclipse_casters];
+    CelestialObject *chosen[max_eclipse_casters];
+    int n = 0;
+
+    // Only the bodies lit by this same star: a different system, or a different star of this one,
+    // cannot be throwing this shadow. That filter is the slice, not a test in the loop.
+    int lo, hi;
+    candidates_for_light(lightcen, lo, hi);
+
+    for (int c = lo; c < hi; c++)
+    {
+        const EclipseCandidate &cand = eclipse_candidates[c];
+        if (cand.obj == cel || cand.obj == lightcen) continue;
+
+        Point rel = cand.obj->tmprel - cel->tmprel;
+        double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
+        if (along <= 0) continue;                       // behind us with respect to the light: its shadow points away
+
+        double dist = rel.magnitude();
+        // A caster far smaller (angularly) than the star it crosses can only ever hide a sliver
+        // of the disc -- 1% of it at this cutoff -- which is a dimming no one can see, and the
+        // slot it would occupy is better kept for a caster that matters. This is what stops a
+        // distant outer moon from crowding out the inner one actually casting the shadow.
+        if (asin(fmin(1.0, cand.radius / dist)) < 0.1 * light_ang) continue;
+
+        // Perpendicular distance from this object's center to the caster's shadow axis, against
+        // how wide the shadow has spread by the time it arrives. The penumbra widens away from
+        // the caster at the light's own angular radius (that spreading *is* the penumbra), and
+        // bounding_r is added because the shadow only has to reach some part of the object, not
+        // its center.
+        Point perp = rel - lhat*along;
+        double h = perp.magnitude();
+        double reach = cand.radius + along*tan(light_ang) + bounding_r;
+        if (h >= reach) continue;
+
+        double score = h / reach;                       // 0 = dead centre, 1 = just grazing
+        int at = n;
+        while (at > 0 && scores[at-1] > score) at--;
+        if (at >= max_eclipse_casters) continue;         // full, and this one is the least central
+        // Shift the tail down one slot to open `at`, dropping the last entry if the list is
+        // already full. n is the first free slot when it isn't.
+        for (int k = (n < max_eclipse_casters) ? n : (max_eclipse_casters-1); k > at; k--)
+        {
+            scores[k] = scores[k-1];
+            chosen[k] = chosen[k-1];
+        }
+        scores[at] = score;
+        chosen[at] = cand.obj;
+        if (n < max_eclipse_casters) n++;
+    }
+
+    for (int i = 0; i < n; i++)
+    {
+        // Same transform chain the object's own center goes through, so the difference below is
+        // a genuine camera-space offset between the two bodies.
+        Point cam = rotate3D(
+            rotate3D(to_viewer_plane(chosen[i]->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+            center, xaxis, altitude);
+        in.casters[i].dx = cam.x - camera_space.x;
+        in.casters[i].dy = cam.y - camera_space.y;
+        in.casters[i].dz = cam.z - camera_space.z;
+        in.casters[i].r = chosen[i]->get_equatorial_radius();
+
+        // What this caster's own air lets into its shadow. An airless caster leaves this at 0
+        // and casts the hard black umbra it really does -- the difference between a moon's
+        // shadow crossing a planet, which stays sharp and dark, and the planet's shadow
+        // swallowing that moon, which glows.
+        in.casters[i].umbra_tint[0] = in.casters[i].umbra_tint[1] = in.casters[i].umbra_tint[2] = 0;
+        in.casters[i].umbra_light = 0;
+        cel_obj_class ccls = chosen[i]->typeclass();
+        if (ccls == class_planet || ccls == class_moon)
+        {
+            Planet *cpl = (Planet*)chosen[i];
+            double pressure = cpl->get_surface_pressure();
+            if (pressure > 0)
+            {
+                double high[3], low[3], umbra[3];
+                atmosphere_colors(cpl, high, low, umbra);
+                // Saturating in pressure, not proportional: past about an Earth atmosphere, more
+                // air makes the light redder (which the colors above already say) but not
+                // brighter -- past a point it makes it dimmer, since a thick enough atmosphere
+                // is simply opaque. Venus casts a darker shadow than Earth, not a brighter one.
+                double thickness = 1.0 - exp(-pressure / oneatm);
+                for (int k = 0; k < 3; k++) in.casters[i].umbra_tint[k] = umbra[k];
+                in.casters[i].umbra_light = kUmbraLight * thickness;
+            }
+        }
+    }
+    in.num_casters = n;
+    if (n) in.light_angular_radius = light_ang;
+}
+
+// ---- Atmospheric color -----------------------------------------------------------------
+//
+// What a world's air looks like, both from outside it (the lit band on its limb) and from
+// inside its own shadow (the copper light an eclipse falls into). Both come from one place: the
+// Rayleigh/particulate mix draw_sky_gradient() already paints that world's sky with when you
+// stand on it, so a planet whose skies are butterscotch has a butterscotch limb and throws a
+// butterscotch shadow, with nothing tuned twice to say so.
+//
+// The two directions differ only in path length. Looking *at* the air high on the limb, light
+// has been scattered towards us over a short path, and we see the scattered color directly --
+// blue on Earth, for exactly the reason the sky is. Looking *through* it, along a path grazing
+// the whole limb, the same scattering has removed that blue on the way, and what survives is
+// the complement: the transmission exp(-depth * scattering), which is why sunsets are red and
+// why the shadow behind a world is red rather than black. So both colors below come from one
+// pair of numbers -- how strongly this air scatters, and how much of it the light crossed.
+//
+// out_high  = scattered color, for the top of the limb band.
+// out_low   = transmitted color at grazing incidence, for the bottom of it (sunset colors).
+// out_umbra = transmitted color over a path twice as long again -- light that had to graze the
+//             limb and bend inwards to reach the shadow at all.
+// Each is normalized to a brightest channel of 1 and then scaled by how much air there is, so
+// a thin atmosphere is not merely paler but dimmer.
+static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3])
+{
+    for (int i = 0; i < 3; i++) out_high[i] = out_low[i] = out_umbra[i] = 0;
+
+    double pressure = pl->get_surface_pressure();
+    if (pressure <= 0) return;
+
+    // Matches draw_sky_gradient() exactly: Rayleigh scattering in the fixed 0.37/0.58/0.81 blue-
+    // weighted ratio, crossfaded against the world's own color where particulates (dust, haze,
+    // smog) scatter greyly instead and hand the sky the ground's color back.
+    double particulates = pl->get_particulates();
+    double Rayleigh = 1.0 - particulates;
+    Color pcol = Color::color_from_magnitude_indices(0, pl->BV_color);
+    pcol.normalize(1);
+
+    const double scatter[3] = {0.37, 0.58, 0.81};
+    double haze[3] = {pcol.red, pcol.green, pcol.blue};
+    double high[3], low[3], umbra[3];
+
+    // How much air a grazing ray crosses, in units where 1 is roughly Earth's. Compressed hard
+    // (a fourth root) because pressure ranges over orders of magnitude between the worlds this
+    // app carries -- Mars at 0.006 atm and Venus at 92 -- while the color it produces does not.
+    double depth = kAtmosphereOpticalDepth * fmin(3.0, fmax(0.2, pow(pressure / oneatm, 0.25)));
+
+    for (int i = 0; i < 3; i++)
+    {
+        high[i] = Rayleigh*scatter[i] + particulates*haze[i];
+        low[i] = exp(-depth * scatter[i]);
+        umbra[i] = exp(-2.0 * depth * scatter[i]);
+    }
+
+    // Particulates redden a long path too, but they do it greyly -- they scatter all colors
+    // much alike -- so they get folded into the transmitted colors as the world's own hue
+    // rather than through the wavelength-dependent exponential above.
+    for (int i = 0; i < 3; i++)
+    {
+        low[i] = Rayleigh*low[i] + particulates*haze[i]*low[i];
+        umbra[i] = Rayleigh*umbra[i] + particulates*haze[i]*umbra[i];
+    }
+
+    // Amount of air, as an overall brightness: 1 for an Earth-like atmosphere and up, falling
+    // away for a thin one so Mars's limb is a faint line where Earth's is a bright thread.
+    double amount = fmin(1.0, pow(pressure / oneatm, 0.25));
+
+    double *outs[3] = {out_high, out_low, out_umbra};
+    double *ins[3] = {high, low, umbra};
+    for (int k = 0; k < 3; k++)
+    {
+        double mx = fmax(ins[k][0], fmax(ins[k][1], ins[k][2]));
+        if (mx <= 0) continue;
+        for (int i = 0; i < 3; i++) outs[k][i] = (ins[k][i] / mx) * amount;
+    }
+}
+
+// The ring plane's normal in camera space -- the planet's local +Y (polar) axis, rotated
+// forward into camera space by the *same* forward chain a position goes through (tilt, then
+// to_viewer_plane, then camera azimuth/altitude), applied to a direction instead of a position
+// (so the translation step, "+= cel->tmprel", is correctly skipped -- directions aren't
+// translated). No spin term: the CPU ring code never rotates ring geometry by timeofday() at
+// all, rings not spinning with the planet.
+//
+// Do NOT reach for draw_sphere_gpu()'s "undo_to_local" helper here, with or without its spin
+// step. That helper computes something genuinely different: applying the *inverse*-ordered
+// chain to a standard basis vector e_i returns R^-1*e_i, i.e. row i of the forward rotation
+// matrix R -- correct for its actual purpose (the sphere fragment shader reconstructs R^-1*n as
+// n.x*basisX + n.y*basisY + n.z*basisZ, which only works out because each basis vector is a
+// *row* of R used as a *column* of that reconstruction -- a transpose identity, not a literal
+// "axis expressed in camera space"). What a ring plane requires is a genuine forward transform,
+// R*(0,1,0) -- a different vector from R^-1*(0,1,0) whenever R isn't symmetric, which is
+// generally the case. An earlier version of draw_ring_gpu() used the inverse version and
+// produced a ring plane that visibly wobbled with camera azimuth/altitude (bug: rings
+// misaligned with the visible disc, plane appearing to flip depending on viewing angle), since
+// R^-1*(0,1,0) has no reason to track the camera's own orientation the way R*(0,1,0) does.
+//
+// Shared by draw_ring_gpu() (which draws the rings) and draw_sphere_gpu() (which shadows the
+// planet with them) precisely so the two can never disagree about where the ring plane is: a
+// ring shadow that does not line up with the ring casting it is worse than no shadow at all.
+static Point ring_plane_normal(CelestialObject *cel)
+{
+    return rotate3D(
+        rotate3D(
+            to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
+            center, yaxis, -(azimuth + azimuth_correction)),
+        center, xaxis, altitude);
+}
 
 // GPU sphere impostor path (see GPU_SPHERE_RENDERING_PLAN.md). Only reached when
 // ALIENORUM_GPU_SPHERES is 1, and only for non-wireframe, non-skymap draws (draw_sphere()
@@ -347,6 +953,44 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.limb_b = limb_b;
     in.night_illum = cel->night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
+    if (self_luminous) { in.num_casters = 0; in.light_angular_radius = 0; }
+    else collect_eclipse_casters(in, cel, lightcen, camera_space, bounding_r);
+
+    // The band of lit air on this world's own limb. Its height is the world's own pressure
+    // scale height (so a hydrogen giant's is puffy and Mars's is thin), and its colors come from
+    // the same place its skies do -- see atmosphere_colors() above.
+    in.atmosphere_height = 0;
+    for (int k = 0; k < 3; k++) in.atmosphere_color[k] = in.atmosphere_low_color[k] = 0;
+    if (!self_luminous && (cls == class_planet || cls == class_moon))
+    {
+        Planet *pl = (Planet*)cel;
+        double scale_height = pl->estimate_scale_height();
+        if (scale_height > 0)
+        {
+            in.atmosphere_height = kAtmosphereScaleHeights * scale_height;
+            double umbra_unused[3];
+            atmosphere_colors(pl, in.atmosphere_color, in.atmosphere_low_color, umbra_unused);
+        }
+    }
+
+    // A ringed planet shadowed by its own rings -- Saturn's dark band across the winter
+    // hemisphere. Deliberately not gated on use_gpu_ring (see its comment in draw_sphere()):
+    // that flag says whether the *rings* are drawn analytically this frame, while the shadow
+    // they throw is a property of the planet's own surface and belongs with the disc either
+    // way. Handed the same plane normal and the same opacity map the ring impostor draws with.
+    in.ring_normal[0] = in.ring_normal[1] = in.ring_normal[2] = 0;
+    in.ring_inner_r = in.ring_outer_r = 0;
+    in.ringx_map_texture = 0;
+    if (!self_luminous && cls == class_planet && ((Planet*)cel)->ring_radius > R)
+    {
+        Point ring_normal = ring_plane_normal(cel);
+        in.ring_normal[0] = ring_normal.x;
+        in.ring_normal[1] = ring_normal.y;
+        in.ring_normal[2] = ring_normal.z;
+        in.ring_inner_r = R;
+        in.ring_outer_r = ((Planet*)cel)->ring_radius;
+        in.ringx_map_texture = gputex_for(cel->ringx_map);
+    }
 
     // Matches the CPU path's sky_grad blend (see the "if (view_mode == vm_horizon)" block
     // further down in this file): in horizon mode, standing on a body with an atmosphere, the
@@ -402,33 +1046,10 @@ void draw_ring_gpu(CelestialObject* cel)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
-    // Ring plane normal = the object's local +Y (polar) axis, rotated forward into camera
-    // space -- the *same* forward chain camera_space itself uses just above (tilt, then
-    // to_viewer_plane, then camera azimuth/altitude), applied to a direction instead of a
-    // position (so the translation step, "+= cel->tmprel", is correctly skipped -- directions
-    // aren't translated). No spin term: the CPU ring code never rotates ring geometry by
-    // timeofday() at all (rings don't spin with the planet -- see the CPU ring loop's `dust`
-    // computation further down, which only tilts by equatorial_plane).
-    //
-    // An earlier version of this function used draw_sphere_gpu()'s "undo_to_local" helper
-    // instead (minus its spin step) -- wrong, and not just because of the spin term. That
-    // helper computes something genuinely different: applying the *inverse*-ordered chain to
-    // a standard basis vector e_i returns R^-1*e_i, i.e. row i of the forward rotation matrix
-    // R -- correct for its actual purpose (the sphere fragment shader reconstructs R^-1*n via
-    // n.x*basisX + n.y*basisY + n.z*basisZ, which only works out to R^-1*n because each basis
-    // vector is a *row* of R used as a *column* of that reconstruction -- a row/column
-    // transpose identity, not a literal "axis expressed in camera space"). What this function
-    // actually requires is a genuine forward transform, R*(0,1,0) -- a different vector from
-    // R^-1*(0,1,0) whenever R isn't symmetric, which is generally the case. Using the inverse
-    // version here produced a ring plane that visibly wobbled with camera azimuth/altitude
-    // (bug: rings misaligned with the visible disc, plane appearing to flip depending on
-    // viewing angle) since R^-1*(0,1,0) has no reason to track the camera's own orientation
-    // the way R*(0,1,0) correctly does.
-    Point normal = rotate3D(
-        rotate3D(
-            to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
-            center, yaxis, -(azimuth + azimuth_correction)),
-        center, xaxis, altitude);
+    // See ring_plane_normal() above for what this is and why it is emphatically not the same
+    // vector as the sphere impostor's own basisY. The planet's disc shader is handed the very
+    // same normal, to shadow the planet with these rings.
+    Point normal = ring_plane_normal(cel);
 
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
@@ -1273,6 +1894,79 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     }
 }
 
+// The corona, and the only circumstance under which anyone has ever seen it: a star's own
+// photosphere covered by something. It is roughly a millionth as bright as the disc it
+// surrounds, so it is not that the corona appears during totality -- it is there always, and
+// totality is merely the one time the glare stops drowning it.
+//
+// Drawn before the eclipsing body's own disc, which is nearer and therefore drawn later, and so
+// paints over the inner part of this and leaves the ring. `obsc` decides everything: the ramp
+// below keeps the corona invisible until the covering is nearly complete, since even one percent
+// of the photosphere still showing is thousands of times brighter than the whole corona. That
+// same cutoff is why an annular eclipse -- which never exceeds it, the moon being too far away
+// to cover the disc at all -- correctly shows nothing.
+static void draw_corona(ImVec2 at, double sun_px, double obsc, double BV)
+{
+    if (whtbkgd) return;
+    if (!std::isfinite(sun_px) || !std::isfinite(obsc) || sun_px <= 0) return;
+
+    double strength = pow(fmax(0.0, fmin(1.0, (obsc - 0.97) / 0.03)), 1.5);
+    if (strength < 0.02) return;
+
+    // Pearl white, barely carrying the star's own hue: the corona is hot enough that its light
+    // is essentially the star's, scattered by free electrons, which is a grey process.
+    Color col = Color::color_from_magnitude_indices(0, BV);
+    col.normalize(1);
+    RGB3Byte rgb;
+    rgb.r = (int)(255 * (0.82 + 0.18*col.red));
+    rgb.g = (int)(255 * (0.82 + 0.18*col.green));
+    rgb.b = (int)(255 * (0.82 + 0.18*col.blue));
+
+    ImDrawList *dl = ImGui::GetBackgroundDrawList();
+    double r_in = fmax(2.0, sun_px);
+
+    // Two overlapping falloffs rather than one: the inner corona is bright and tight against the
+    // limb, the outer faint and reaching several radii out, and a single exponent cannot be both.
+    draw_radial_glow(at, r_in*1.01, r_in*2.2, rgb, 150.0*strength, 2.6);
+    draw_radial_glow(at, r_in*1.01, r_in*5.0, rgb, 55.0*strength, 1.7);
+
+    // Streamers. The corona is shaped by the star's magnetic field, not by gravity, which is why
+    // it is never a smooth halo: it reaches furthest along the field's open lines and leaves
+    // gaps where the field is closed. Hashed, not random, so the shape holds still from frame to
+    // frame instead of boiling.
+    const int nstream = 40;
+    for (int k = 0; k < nstream; k++)
+    {
+        double h1 = flare_hash(k*13 + 5), h2 = flare_hash(k*29 + 71), h3 = flare_hash(k*7 + 311);
+        int a = (int)(46.0 * strength * (0.3 + 0.7*h2));
+        if (a < 1) continue;
+        double ang = (k + (h3 - 0.5)*1.6) * (_pi*2.0/nstream);
+        double len = r_in * (0.8 + 4.0*pow(h1, 2.0));
+        double halfwidth = r_in * (0.06 + 0.10*h2);
+        double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
+        ImVec2 base_a(at.x + dx*r_in*0.98 + px*halfwidth, at.y + dy*r_in*0.98 + py*halfwidth);
+        ImVec2 base_b(at.x + dx*r_in*0.98 - px*halfwidth, at.y + dy*r_in*0.98 - py*halfwidth);
+        ImVec2 tip(at.x + dx*(r_in + len), at.y + dy*(r_in + len));
+        dl->AddTriangleFilled(base_a, base_b, tip, rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, a)));
+    }
+
+    // The chromosphere: a thin, fiercely red rim just above the photosphere, with a few
+    // prominences standing off it. This is hydrogen's own red line rather than anything thermal,
+    // which is why it is that specific color and not a temperature's worth of orange -- and why
+    // it stays red no matter what color the star itself is.
+    ImU32 fire = rgba_apply_redlight(IM_COL32(255, 62, 40, (int)(210*strength)));
+    dl->AddCircle(at, r_in*1.02, fire, 0, fmax(1.0, r_in*0.035));
+    for (int k = 0; k < 5; k++)
+    {
+        double h1 = flare_hash(k*97 + 17), h2 = flare_hash(k*41 + 233);
+        if (h2 < 0.35) continue;                        // not every eclipse gets five of them
+        double ang = h1 * _pi * 2.0;
+        double reach = r_in * (0.05 + 0.10*h2);
+        dl->AddCircleFilled(ImVec2(at.x + cos(ang)*(r_in + reach*0.5), at.y + sin(ang)*(r_in + reach*0.5)),
+            fmax(1.0, reach), rgba_apply_redlight(IM_COL32(255, 78, 48, (int)(190*strength))), 0);
+    }
+}
+
 int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
 {
     // Satellite icons.
@@ -1577,11 +2271,17 @@ bool draw_one_object(int i)
     }
     else if (angular_radius[i]*zoom > sphere_rad_threshold)
     {
+        // An eclipsed star loses its glare along with its light: the flare drawn here is the
+        // scatter of an overwhelming photosphere in the eye and in the air, and as the moon
+        // covers that photosphere it goes with it. What is left behind, and only then, is the
+        // corona -- a million times fainter, and invisible any other day of the century.
+        double obsc = (cels[i] == eclipsed_light) ? eclipsed_fraction : 0.0;
         if (flare)
         {
             Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
-            draw_flare(flare, col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
+            draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
         }
+        if (obsc > 0) draw_corona(xycoord, angular_radius[i]*zoom*dispcx, obsc, cels[i]->BV_color);
 
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
@@ -1973,7 +2673,7 @@ void draw_galaxy_band()
         }
     }
 
-    if (camera_is_directional)
+    if (1) // camera_is_directional)
     {
         if (crossings.size() >= 2)
         {
@@ -1997,13 +2697,18 @@ void draw_galaxy_band()
                 bool first = true;
                 for (int k = s; k < e; k++)
                 {
-                    if (first && crossings[k].dir) k++;
+                    if (first && crossings[k].dir) drawable.push_back(0); // k++;
                     if (crossings[k].x > -1e6 && crossings[k].x < 1e6)
                         drawable.push_back(crossings[k].x);
                     first = false;
                 }
                 std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
                 int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
+                if (!(drawable_sz & 0x1))
+                {
+                    drawable.push_back(dispw);
+                    drawable_sz++;
+                }
 
                 float y = (float)crossings[s].y;
                 for (int k = 0; k < drawable_sz; k+=2)
@@ -2058,6 +2763,11 @@ void draw_objects()
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
     ImGuiIO& io = ImGui::GetIO();
+
+    // Once per frame, ahead of any disc: every disc drawn below asks this list who might be
+    // The eclipse caster list every disc below consults is rebuilt earlier than this, at the top
+    // of compute_object_draw_coordinates(), because the sky's own brightness depends on it too
+    // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
     if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -2410,6 +3120,20 @@ void draw_sunclock()
             && ((Moon*)cel)->width > zero_isnt_really_zero
             && ((Moon*)cel)->height > zero_isnt_really_zero);
 
+    // An eclipse crossing the map. Gathered once here, so a frame with nothing eclipsing anything
+    // -- which is nearly every frame -- pays one short list walk rather than anything per pixel.
+    ShadowCaster sc_casters[max_eclipse_casters];
+    int n_sc_casters = self_luminous ? 0
+        : gather_shadow_casters(cel, lightcen, sc_casters, max_eclipse_casters);
+    double sc_light_r = lightcen ? lightcen->get_equatorial_radius() : 0;
+    Point sc_light_pos = lightcen ? lightcen->location.local_position : Point();
+
+    // How dark the middle of an umbra is allowed to get on the map. Totality really does cut the
+    // direct light to essentially nothing, but a map is something you read: a pure black hole
+    // punched through the coastline says less than a very dark patch you can still see the
+    // geography through.
+    const double sclk_umbra_floor = 0.12;
+
     double equatorial_radius, theta, cos_theta, is_day, is_night;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
@@ -2457,6 +3181,17 @@ void draw_sunclock()
                 {
                     is_day = 0;
                     is_night = 1;
+                }
+
+                // The eclipse itself, asked per point of the map rather than per world, which is
+                // the whole reason it comes out as a moving spot with a soft rim instead of a
+                // uniform dimming. Only the daylit side can lose anything: a shadow crossing the
+                // night side has nothing to take away.
+                if (n_sc_casters && is_day > 0)
+                {
+                    double obsc = point_obscuration(land, sc_light_pos, sc_light_r,
+                        sc_casters, n_sc_casters);
+                    if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
                 }
             }
 

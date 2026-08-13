@@ -28,6 +28,27 @@ void draw_mouse_cursor(ImGuiIO &io);
 
 void draw_cloudy_sky();
 
+// Eclipses seen from the ground rather than from space. refresh_eclipse_casters() rebuilds the
+// short list of bodies able to cast a shadow (called once per frame, early, since both the sky's
+// own brightness and every disc drawn afterwards ask it); eclipse_obscuration() answers how much
+// of a light source's disc is hidden from the *observer* right now, which is what dims the
+// daylight, brings the stars out, and finally uncovers the corona.
+void refresh_eclipse_casters();
+double eclipse_obscuration(CelestialObject *light);
+
+// The other side of the same coin: how much of its star's light a body is receiving where it
+// actually stands, 0 to 1, given whatever else is in the way -- 1 whenever nothing is, which is
+// nearly always. Averaged over the body's whole cross-section rather than taken at its center,
+// because what this feeds is an apparent magnitude, and a magnitude is a measure of total light:
+// Earth's shadow swallows the Moon whole, while the Moon's shadow costs Earth a few percent.
+double eclipse_illumination(CelestialObject *cel);
+
+// The light source currently being eclipsed for the observer, and by how much (0-1), as found by
+// the daylight computation in compute_object_draw_coordinates(). Null and 0 the rest of the time,
+// which is very nearly always.
+extern CelestialObject *eclipsed_light;
+extern double eclipsed_fraction;
+
 #define max_bloomrad 10
 #define global_font_size (8.647 * 1.776)
 
