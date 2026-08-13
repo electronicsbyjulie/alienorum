@@ -2671,7 +2671,7 @@ void draw_galaxy_band()
         }
     }
 
-    if (camera_is_directional)
+    if (1) // camera_is_directional)
     {
         if (crossings.size() >= 2)
         {
@@ -2695,13 +2695,18 @@ void draw_galaxy_band()
                 bool first = true;
                 for (int k = s; k < e; k++)
                 {
-                    if (first && crossings[k].dir) k++;
+                    if (first && crossings[k].dir) drawable.push_back(0); // k++;
                     if (crossings[k].x > -1e6 && crossings[k].x < 1e6)
                         drawable.push_back(crossings[k].x);
                     first = false;
                 }
                 std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
                 int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
+                if (!(drawable_sz & 0x1))
+                {
+                    drawable.push_back(dispw);
+                    drawable_sz++;
+                }
 
                 float y = (float)crossings[s].y;
                 for (int k = 0; k < drawable_sz; k+=2)
