@@ -21,10 +21,8 @@ extern std::map<int,std::map<char,Star* > > hipcomps;
 
 namespace alienorum
 {
-    // Flattened view of one row of the NASA Exoplanet Archive TAP "pscomppars" table
-    // (or a cached line derived from it -- see load_exoplanets_from_tap). Missing
-    // numeric fields are NAN, missing strings are empty, exactly matching how the
-    // archive itself reports fields as absent.
+    // Flattened row of the NASA Exoplanet Archive TAP "pscomppars" table, or of a cache line
+    // derived from it. Absent fields are NAN / empty, matching how the archive reports them.
     struct ExoRow
     {
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
@@ -52,10 +50,8 @@ namespace alienorum
         int read_Uranometria_catalog(CelestialObject** cels, int max);
         int read_WD_catalog(CelestialObject** cels, int max);
 
-        // Galaxies. Load UNGC first: its distances are individually measured (tip of the red
-        // giant branch, Cepheids), while RC3 only has radial velocities, which cannot be turned
-        // into distances inside the Local Volume where peculiar motion dominates. read_RC3 then
-        // skips anything already placed by the UNGC.
+        // Galaxies. UNGC first, its distances being individually measured; RC3 has only radial
+        // velocities, useless inside the Local Volume, and skips whatever the UNGC already placed.
         int read_UNGC_catalog(CelestialObject** cels, int max);
         int read_RC3_catalog(CelestialObject** cels, int max);
         int read_cons_boundaries();
@@ -86,11 +82,9 @@ namespace alienorum
         bool worth_searching(std::string star_name);
         void write_condensed_star_cat_line(FILE *fp, Star *s);
 
-        // Helpers for load_exoplanets_from_tap: turn one TAP row (or one cached
-        // line derived from a TAP row) into an ExoRow, then resolve/create the
-        // host star and optionally the planet from it. Kept separate so the same
-        // derivation logic runs whether the data came fresh off the wire or from
-        // the small derived caches of just what was actually added last time.
+        // Helpers for load_exoplanets_from_tap: one TAP row (or cache line) into an ExoRow, then
+        // resolve/create the host star and the planet. Separate so that the same derivation runs
+        // whether the data came off the wire or out of the derived caches.
         static ExoRow exorow_from_json(const json& row, bool* ok);
         static void exorow_write_line(FILE* fp, const ExoRow& row);
         static bool exorow_read_line(FILE* fp, ExoRow& row);

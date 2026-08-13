@@ -14,13 +14,8 @@
 
 namespace alienorum
 {
-    // To maintain Windows compatibility, one cannot define a class called RGB.
-    // It conflicts with a macro in wingdi.h, and using a namespace does nothing.
-    // Someone raised this as an issue through Micro$oft's User Voice system
-    // (https://stackoverflow.com/questions/26719529/class-called-rgb-in-visual-c#answer-26719726)
-    // but if you click on the link now, that specific User Voice has been deleted, and the problem is still not fixed.
-    // So the class had to be renamed to something much more awkward than its original name.
-    // Yet another reason to prefer Linux/FOSS.
+    // Not named RGB: that collides with a wingdi.h macro on Windows, and a namespace does not
+    // help. https://stackoverflow.com/questions/26719529/class-called-rgb-in-visual-c
     class RGB3Byte
     {
         public:

@@ -16,10 +16,9 @@ namespace alienorum
     class Galaxy : public CelestialObject
     {
         public:
-        // Hubble stage T, on the de Vaucouleurs scale the RC3 and the UNGC both use: -6 is a
-        // compact elliptical, 0 an S0, 3 an Sb, 5 an Sc, 10 an irregular. This is to a galaxy
-        // roughly what the MK spectral type is to a star -- the one number that decides what it
-        // ought to look like -- so it is worth carrying even while galaxies still draw as points.
+        // Hubble stage T on the de Vaucouleurs scale, as used by both RC3 and UNGC: -6 compact
+        // elliptical, 0 S0, 3 Sb, 5 Sc, 10 irregular. To a galaxy roughly what the MK spectral
+        // type is to a star -- the one number deciding what it should look like.
         double morphological_T = 0;
         bool T_known = false;
 
@@ -27,9 +26,8 @@ namespace alienorum
         // to match right_ascension/declination rather than the arcminutes both catalogs print.
         double angular_diameter = 0;
 
-        // Minor/major. 1 is round or face-on, and small values are edge-on. Together with the
-        // position angle this is what will let a galaxy be drawn as an oriented ellipse instead of
-        // a flat blob: the ratio gives the inclination, the angle gives the roll.
+        // Minor/major axis ratio: 1 is round or face-on, small values edge-on. With the position
+        // angle, this is what makes an oriented ellipse -- ratio gives inclination, angle roll.
         double axis_ratio = 1;
         double position_angle = 0;                  // RADIANS, of the major axis. 0 when unknown.
         bool position_angle_known = false;

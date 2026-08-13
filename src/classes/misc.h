@@ -86,24 +86,16 @@ using json = nlohmann::json;
 #define galactic_center_Decl_J2000 (-(29.0 + 0.0 / 60 + 28.1 / 3600) * fiftyseventh)
 #define sun_to_galactic_center (8.2 * 1000 * 3.26156)               // light years
 
-// The Milky Way's own disc. It is in the UNGC (table1.dat line 808, "Milky Way", at Sgr A*), but
-// with no axis ratio and no position angle -- reasonably enough, since neither can be measured from
-// inside -- so read_UNGC_catalog() puts these on it by name.
-//
-// system_plane_from_incl_and_node() builds its pole as axis*(-cos i) + normal*sin(i), so its i is
-// 180 degrees minus the angle from the line of sight to the pole. Measured against galactic_north
-// (point.cpp -- this program's north, the IAU's south, chosen so the Galaxy turns prograde) that
-// angle is 89.9538 degrees, making the exact inclination 90.046. The 90.12 below is the value
-// asked for and lands 0.074 degrees off it; 90.046 would land on it to four decimal places.
-//
-// The position angle was solved numerically against that same function. It is the same for any
-// inclination, the node being a rotation about the line of sight.
+// The Milky Way's own disc. It is in the UNGC but with no axis ratio and no position angle,
+// neither being measurable from inside, so read_UNGC_catalog() applies these by name. The
+// inclination is 180 degrees minus the angle from the line of sight to galactic_north (point.cpp),
+// per system_plane_from_incl_and_node(); the position angle was solved numerically against that
+// same function, and is the same at any inclination.
 #define milky_way_inclination (90.046 * fiftyseventh)
 #define milky_way_position_angle (31.3955 * fiftyseventh)
 
-// The UNGC leaves the a26 column blank for the Milky Way as well, for the same reason, so there is
-// no angular size to work a disc radius out of. This is the optical disc -- what the D25 isophote
-// would enclose if it could be measured from outside -- at the usual 15 kpc.
+// The UNGC's a26 column is blank for the Milky Way too, so there is no angular size to derive a
+// disc radius from. This is the optical disc (the D25 isophote) at the usual 15 kpc.
 #define milky_way_radius (15.0 * 1000 * 3.26156)                    // light years
 
 // https://en.wikipedia.org/wiki/Poles_of_astronomical_bodies
@@ -121,9 +113,8 @@ using json = nlohmann::json;
 #define _USE_CCDM 1
 #define _ALLOW_CCDM_ADDITIONS 0
 
-// If 1, render filled (non-wireframe) planetary/lunar discs as GPU-shaded texture-mapped
-// spheres (see GPU_SPHERE_RENDERING_PLAN.md). If 0, use the original CPU lat/lon-grid
-// polygon renderer.
+// 1 renders filled planetary/lunar discs as GPU-shaded texture-mapped spheres, 0 uses the CPU
+// lat/lon-grid polygon renderer.
 #define ALIENORUM_GPU_SPHERES 1
 #define default_brightness 1.0
 #define default_gamma 1.0
@@ -211,9 +202,7 @@ double compute_time_dilation(double velocity);
 // For orbits.
 double solve_Kepler(double M, double e);
 
-// Sun clock conversions
-// Subtract dispcx or dispcy first.
-// Both functions return RADIANS!
+// Sun clock conversions; subtract dispcx or dispcy first. Both return RADIANS!
 double lon_from_x(double x);
 double lat_from_y(double y);
 void enforce_y_pan_limit();

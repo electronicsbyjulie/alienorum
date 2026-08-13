@@ -573,9 +573,8 @@ double fBm(double x, double y, double z, int octaves, double lacunarity, double 
     return (total / maxValue + 1.0) / 2.0;
 }
 
-// Ridged multifractal: folds each octave around zero, so the result has sharp,
-// high-contrast ridges and creases instead of fBm's smooth rolling hills --
-// suited to rough, weathered-looking surface texture rather than clouds.
+// Ridged multifractal: folds each octave around zero for sharp, high-contrast ridges instead of
+// fBm's rolling hills -- rough weathered surfaces rather than clouds.
 double ridged_fBm(double x, double y, double z, int octaves, double lacunarity, double gain)
 {
     double total = 0.0;

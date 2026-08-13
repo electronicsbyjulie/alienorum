@@ -20,13 +20,9 @@
 
 using namespace alienorum;
 
-// Replayable command-line tokens (go/mode/track/find/zoom/F-keys/single chars), kept in a
-// single ordered queue and drained one per frame in the main loop. They used to live in
-// separate per-category variables tested in a fixed if/else-if priority order, which meant
-// e.g. an F-key on the command line could fire before an earlier "find" or single-char token
-// had actually been applied, no matter where it appeared on the line. A snapshot taken with
-// F12 has to have the state from everything typed before it already landed, so replay order
-// has to match command-line order.
+// Replayable command-line tokens, in one ordered queue drained a token per frame by the main
+// loop. Replay order must match command-line order, so that e.g. an F12 snapshot sees the state
+// of everything typed before it.
 struct CliCmd
 {
     enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_fkey, k_char } kind;
@@ -86,10 +82,9 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
 }
 // End ImGui Example Code
 
-// Grabs the just-rendered back buffer and writes it out as a PNG, the same libpng plumbing as
-// Map::save_to_png (celestial.cpp) but sourced from glReadPixels instead of a stored map. OpenGL
-// hands back row 0 as the bottom of the image, so the rows are written back to front to come out
-// right-side up.
+// Writes the just-rendered back buffer out as a PNG (same libpng plumbing as Map::save_to_png,
+// but sourced from glReadPixels). GL's row 0 is the bottom of the image, so rows go out in
+// reverse to come out right-side up.
 bool save_snapshot_png(const std::string& filename, int width, int height)
 {
     if (width <= 0 || height <= 0) return false;
@@ -386,25 +381,7 @@ int main (int argc, char** argv)
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Load Fonts
-    // - If fonts are not explicitly loaded, ImGui will select an embedded font: either AddFontDefaultVector() or AddFontDefaultBitmap().
-    //   This selection is based on (style.FontSizeBase * style.FontScaleMain * style.FontScaleDpi) reaching a small threshold.
-    // - You can load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
-    // - If a file cannot be loaded, AddFont functions will return a nullptr. Please handle those errors in your code (e.g. use an assertion, display an error and quit).
-    // - Read 'docs/FONTS.md' for more instructions and details.
-    // - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use FreeType for higher quality font rendering.
-    // - Remember that in C/C++ if you want to include a backslash \ in a string literal you have to write a double backslash \\ !
-    // - Our Emscripten build process allows embedding fonts to be accessible at runtime from the "fonts/" folder. See Makefile.emscripten for details.
-    //style.FontSizeBase = 20.0f;
-    //io.Fonts->AddFontDefaultVector();
-    //io.Fonts->AddFontDefaultBitmap();
-    //io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf");
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf");
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf");
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf");
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf");
-    //IM_ASSERT(font != nullptr);
-
+    // Load Fonts. AddFont* returns nullptr on failure; see imgui's docs/FONTS.md.
     global_font = io.Fonts->AddFontFromFileTTF("assets" _FILESLASH "LiberationMono" _FILESLASH "LiberationMono-Regular.ttf");
     Greek_font = io.Fonts->AddFontFromFileTTF("assets" _FILESLASH "LiberationSerif" _FILESLASH "LiberationSerif-GreekSymbol.ttf");                    // really craving a gyro right now
 
@@ -491,11 +468,8 @@ int main (int argc, char** argv)
         }
         else SDL_SetCursor(default_cursor);
 
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
-        // Generally you may always pass all inputs to imgui, and hide them from your application based on those two flags.
+        // Poll and handle events. io.WantCaptureMouse/WantCaptureKeyboard say when ImGui has
+        // claimed the input and the app should ignore its own copy of it.
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {

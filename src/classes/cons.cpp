@@ -200,9 +200,8 @@ ConsBins fill_alienorum_ids()
 {
     ConsBins bins;
 
-    // Serpens Caput/Cauda are two disjoint boundary regions (SER1/SER2 in the IAU
-    // boundary catalog) but a single constellation; unify them under the plain "Ser"
-    // entry so alienorumids count through Serpens as one sequence instead of two.
+    // Serpens Caput/Cauda are two disjoint boundary regions (SER1/SER2) but one constellation:
+    // unify them under plain "Ser" so alienorumids count through Serpens as a single sequence.
     Constellation *ser = nullptr;
     for (auto& c : constellations)
     {

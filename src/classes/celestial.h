@@ -100,10 +100,9 @@ namespace alienorum
         bool from_json(json j);
     };
 
-    // A single impact crater: a bowl-with-rim (and, above a size threshold, a central peak)
-    // stamped into the bump map, plus optional bright rays and rim brightening in the color
-    // data. Center is a unit vector on the sphere; sizes are angular (radians), since that's
-    // resolution- and radius-independent.
+    // One impact crater: a bowl with a rim (and a central peak above a size threshold) stamped
+    // into the bump map, plus optional rays and rim brightening in the color data. Center is a
+    // unit vector on the sphere; sizes are angular, so resolution- and radius-independent.
     struct Crater
     {
         double cx, cy, cz;                  // unit vector, crater center
@@ -180,26 +179,17 @@ namespace alienorum
         unsigned int idx_of(double latitude, double longitude);
         void stamp_craters(CelestialObject *cel, double bump_scale);
 
-        // Globally-unique (never reused, even across a delete+new at the same address --
-        // see mark_for_map_regen()'s `delete this`) version stamp for this Map's RGB pixel
-        // data. Bumped by touch_gen() whenever red_data/green_data/blue_data change, so the
-        // GPU texture cache (see gputex.h) can tell a stale upload from a fresh one just by
-        // comparing this number, with no chance of confusing two different Map objects that
-        // happen to share an address. next_gen() never returns 0, which is reserved to mean
-        // "touch_gen() hasn't run yet" -- see gen's own comment below for why that matters.
+        // Globally unique version stamp for this Map's RGB pixels, never reused even across a
+        // delete+new at the same address. touch_gen() bumps it on every change, so the GPU
+        // texture cache (gputex.h) can spot a stale upload by comparison alone. Never 0, which
+        // is reserved for "touch_gen() hasn't run yet" -- see gen below.
         static unsigned int next_gen();
 
         public:
-        // Starts at 0 rather than a real generation number on purpose: red_data/green_data/
-        // blue_data become non-null (has_rgb_data() true) as soon as they're allocated, well
-        // before load_from_jpeg/_png or generate_rocky_map/generate_gas_giant_map's fill loop
-        // actually finishes writing real pixels into them (each of those releases mtx, or in
-        // the generate_* case never takes it during the fill loop at all, right after
-        // allocating). touch_gen() only runs once the fill is actually done. If gputex_for()
-        // (gputex.h) went by has_rgb_data() alone, it could -- and did -- upload a texture
-        // that's still mid-fill: real data whatever the background thread had gotten to,
-        // uninitialized heap bytes for the rest. Treating gen==0 as "not ready" closes that
-        // window; gputex_for() should check it in addition to has_rgb_data().
+        // 0 until the pixels are actually written. has_rgb_data() goes true the moment the three
+        // channel arrays are allocated, long before any loader or generator has filled them, so a
+        // consumer going by that alone uploads real data as far as the background thread got and
+        // uninitialized heap after it. gputex_for() must check gen != 0 as well.
         unsigned int gen = 0;
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
@@ -225,16 +215,15 @@ namespace alienorum
         void generate_stellar_map(CelestialObject *cel);
         void mark_for_map_regen(CelestialObject *cel);
 
-        // For the GPU texture cache (src/gputex.h): dimensions of the equirectangular pixel
-        // grid, and a bulk RGBA8 export (out must be get_width()*get_height()*4 bytes,
-        // caller-allocated) -- keeps red_data/green_data/blue_data themselves unexposed.
+        // For the GPU texture cache (gputex.h): size of the equirectangular grid, and a bulk
+        // RGBA8 export into a caller-allocated width*height*4 buffer, so the channel arrays
+        // themselves stay private.
         inline unsigned long get_width() const { return image_width; }
         inline unsigned long get_height() const { return image_height; }
         void export_rgba(unsigned char *out) const;
 
-        // Same idea as export_rgba(), for bump_data instead -- out must be
-        // get_width()*get_height() floats, caller-allocated. Real-world units (meters), same
-        // as elevation_at(); 0 wherever bump_data itself is null (has_bump_data() false).
+        // As export_rgba(), for bump_data: width*height caller-allocated floats, in metres like
+        // elevation_at(), all 0 when there is no bump data.
         void export_bump(float *out) const;
     };
 
@@ -275,12 +264,10 @@ namespace alienorum
         double obliquity = 0;                       // Equatorial inclination to orbit or to plane of Earth's sky. RADIANS!
         double equinox = 0;                         // RADIANS!
         double equinox_eff = 0;
-        // Where zero hours of right ascension falls, as an angle in this body's own equatorial
-        // frame -- which is not the same number as equinox_eff, and only coincides with it on
-        // Earth. equinox_eff says which way the axis leans, measured around the *orbit*; this says
-        // where the equinox ends up once that lean has been turned into an equatorial frame, and
-        // the two frames have different zero directions. Derived in update_orbit_location(); see
-        // the comment there. RADIANS!
+        // Where zero hours of right ascension falls, in this body's own equatorial frame. Not the
+        // same number as equinox_eff, which measures the axis's lean around the *orbit*; the two
+        // frames have different zero directions and coincide only on Earth. Derived in
+        // update_orbit_location(). RADIANS!
         double equinox_RA = 0;
         double precession = 0;                      // radians/second
         double distance = 0;                        // meters

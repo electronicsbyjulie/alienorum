@@ -17,12 +17,9 @@
 #include "cons.h"
 #include "shore.h"
 
-// Zeta 1,2 Reticuli make for a good case study in the program correctly identifying binary systems,
-// since they have a decent separation both in actual physical distance and in angular position from the solar system.
-// They are close enough to Earth that differences in parallax might not be within margins of error, allowing a
-// decent estimation of the parallax tolerances for stars in the same system, and the system's inclination is likely to be near edge-on.
-// They also are not identified in the catalogs as stars A and B of a binary, which also makes them a great test
-// since we can't just lazily require all binary systems to be marked this way.
+// Zeta 1,2 Reticuli is the test case for binary detection: well separated in distance and angle,
+// near edge-on, close enough to calibrate parallax tolerances, and NOT flagged as an A/B pair in
+// the catalogs -- so the detection cannot lazily rely on that flag.
 #define _debug_sbinaries_zetret 0
 
 namespace fs = std::filesystem;
@@ -244,14 +241,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             if (field[6] == '.')
                 build_name += std::string(&field[6]);
         }
-
-        /* if (j == 3785)                  // Alcor.
-        {
-            int i;
-            for (i = ncelobjs-1; atoi(&((Star*)cels[i])->Gliese[2]) != 3784; i--);
-            StarMulti *sm = ((Star*)cels[i])->multisys;
-            sm->add_member(s, 'E');
-        } */
 
         //   9- 10  A2     ---     Comp     Components (A,B,C,... )
         read_field_onebased(buffer, 9, 10, field);
@@ -495,17 +484,8 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         Star *s = nullptr;
         for (j=0; !s && j<ncelobjs; j++) if (!strcmp(Gliese.c_str(), ((Star*)cels[j])->Gliese)) s = (Star*)cels[j];
 
-        // CNS5 could have been a wonderful update to the earlier CNS3 with thousands of
-        // new stars, but the team had to go and ruin it by removing data that were useful
-        // and critically important like spectral type and B-V color. They replaced the color
-        // indices with some bizarre format that would require complex temperature estimation
-        // to convert, and while it may be possible to estimate spectral types from temperature
-        // and absolute magnitude, there would undoubtedly be errors in the estimates.
-        // So unfortunately we cannot load any new stars from CNS5 not already in CNS3,
-        // and the new updated catalog is relegated to being mostly a cross reference with
-        // a few data like radial velocity that can be updated.
-        // What a sad waste of all the work they put into it to have so many of its rows end
-        // up completely unusable.
+        // CNS5 drops spectral type and B-V, so its new stars are unusable here: it serves only
+        // as a cross reference updating a few fields (radial velocity) on CNS3 stars.
         if (!s) continue;
 
         //  48- 53  I6    ---       HIP     ?=- Hipparcos identifier (hip_id)
@@ -2067,9 +2047,8 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             * f
             * B->orbit->period;
 
-        // Since we are keeping star A stationary and orbiting star B around it
-        // (an imperfect simulation) we must sum the two semimajor axes in order to
-        // get the distance between stars.
+        // Star A is held stationary with B orbiting it, so the two semimajor axes are summed to
+        // get the distance between the stars.
         // 148-157  E10.5 km/s    K2      ? Velocity amplitude of secondary
         read_field_onebased(buffer, 148, 157, field);
         f = atof(field);
@@ -3557,11 +3536,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
             try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
             // Atmosphere. Read into locals first and only build the object if the record really
-            // carries something: 80 of the 90 bodies in planets.json have no atmospheric keys at
-            // all and must come out with atm == nullptr, the way zero pressure used to say so.
-            // Building it inline off pl.at() would also have handed Uranus and Neptune -- which
-            // carry Particulates but no SurfacePressure -- the struct's one-atmosphere default,
-            // where they previously read zero.
+            // carries something: most bodies in planets.json have no atmospheric keys at all and
+            // must come out with atm == nullptr rather than the struct's one-atmosphere default.
             {
                 bool has_atm = false;
                 double a_pressure = 0, a_tau = 0, a_partic = 0;
@@ -3808,60 +3784,6 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     }
     l += 11;
     line << std::string(l - line.str().size(), ' ');
-
-    /*
-    line << (s->has_disk ? "D" : " ");
-    line << (s->rot_axis_known ? "R" : " ");
-    line << (s->known_poles ? "N" : (s->estimated_poles ? "E" : " "));
-    l += 4;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->rot_heliocen_incl)
-    {
-        double theta = s->rot_heliocen_incl * fiftyseven;
-        if (theta < 0) theta += 360;
-        if (theta < 100) line << "0";
-        if (theta < 10) line << "0";
-        line << std::fixed << std::setprecision(3) << theta << std::flush;
-    }
-    l += 8;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->rot_heliocen_node)
-    {
-        double theta = s->rot_heliocen_node * fiftyseven;
-        if (theta < 0) theta += 360;
-        if (theta < 100) line << "0";
-        if (theta < 10) line << "0";
-        line << std::fixed << std::setprecision(3) << theta << std::flush;
-    }
-    l += 8;
-    line << std::string(l - line.str().size(), ' ');
-
-    double inclination = s->disk_heliocen_inclination; // ? s->disk_heliocen_inclination : s->planets_heliocen_inclination;
-    if (inclination)
-    {
-        double theta = inclination * fiftyseven;
-        if (theta < 0) theta += 360;
-        if (theta < 100) line << "0";
-        if (theta < 10) line << "0";
-        line << std::fixed << std::setprecision(3) << theta << std::flush;
-    }
-    l += 8;
-    line << std::string(l - line.str().size(), ' ');
-
-    double node = s->disk_heliocen_node ? s->disk_heliocen_node : s->planets_heliocen_node;
-    if (node)
-    {
-        double theta = node * fiftyseven;
-        if (theta < 0) theta += 360;
-        if (theta < 100) line << "0";
-        if (theta < 10) line << "0";
-        line << std::fixed << std::setprecision(3) << theta << std::flush;
-    }
-    l += 8;
-    line << std::string(l - line.str().size(), ' ');
-    */
 
     if (s->orbit && s->orbit->center) line << ((Star*)s->orbit->center)->alienorumid;
     l += 15;
@@ -4144,35 +4066,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
             int offset = -36;
-            /*
-            if (buffer[282] == 'D') s->has_disk = true;
-            if (buffer[283] == 'R') s->rot_axis_known = true;
-            if (buffer[284] == 'N') s->known_poles = true;
-            else if (buffer[284] == 'E') s->estimated_poles = true;
-
-            read_field_onebased(buffer, 287, 293, field);
-            s->rot_heliocen_incl = atof(field) * fiftyseventh;
-
-            read_field_onebased(buffer, 295, 301, field);
-            s->rot_heliocen_node = atof(field) * fiftyseventh;
-
-            read_field_onebased(buffer, 303, 309, field);
-            s->disk_heliocen_inclination = s->planets_heliocen_inclination = atof(field) * fiftyseventh;
-
-            read_field_onebased(buffer, 311, 317, field);
-            s->disk_heliocen_node = s->planets_heliocen_node = atof(field) * fiftyseventh;
-
-            s->location.local_system_plane = system_plane_from_incl_and_node( s->disk_heliocen_inclination ?: half_pi, s->disk_heliocen_node );
-            s->lock_system_plane = true;
-            if (s->rot_heliocen_incl)
-            {
-                s->location.equatorial_plane = system_plane_from_incl_and_node( s->rot_heliocen_incl, s->rot_heliocen_node );
-                s->lock_equatorial_plane = true;
-            }
-
-            offset = 0;
-            */
-
             read_field_onebased(buffer, 319+offset, 332+offset, field);
             str = trim(field);
             if (str.size())
@@ -4509,22 +4402,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             double lum = pow(10, st_lum);
             if (lum)
             {
-                // st_lum is the BOLOMETRIC luminosity (log10 L/Lsol) as defined in the NASA archive,
-                // so 4.74 - 2.5 log10(L) yields the absolute bolometric magnitude. However,
-                // absolute_magnitude refers to a VISUAL magnitude everywhere else in the
-                // program; storing M_bol there as-is caused a bolometric correction to be
-                // applied—via est_bolometric_flux()—to a value that was already bolometric. 
-                // This double counting was invisible for a G-type star (BC_V ~ -0.1) but
-                // catastrophic for an M-dwarf: TRAPPIST-1 appeared 42 times too luminous,
-                // pushing its habitable zone beyond planets e, f, and g to land on h. 
-                //
-                // We therefore subtract the correction that est_bolometric_flux() will
-                // subsequently add. The intrinsic error of the BC formula does not matter:
-                // it is the same on both sides, so the round-trip restores the catalog
-                // luminosity exactly. 
-                //
-                // The old value of 4.85 also conflated the two conventions—it is roughly
-                // the Sun's absolute VISUAL magnitude applied to a bolometric luminosity.
+                // st_lum is BOLOMETRIC (log10 L/Lsol), but absolute_magnitude is VISUAL
+                // everywhere else in the program. Subtract the correction est_bolometric_flux()
+                // will add back, or the bolometric correction gets counted twice (harmless for a
+                // G star, a factor of 42 for an M dwarf).
                 double m_bol = 4.74 - log(lum) / log(magnbase);
                 host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
             }
@@ -4690,14 +4571,10 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     new_planet->orbit = orb;
     new_planet->update_location(simnow);
 
-    // 4. Run automated estimation/classification fallbacks provided in class declarations
-    // Decide whether the reported "true" mass can be trusted, or whether it should be
-    // recomputed from msini using the star's own disk/rotation inclination instead.
-    // With pl_orbincl known, pl_mass should equal msini/sin(pl_orbincl) if the two were
-    // derived together; a value that doesn't match came from an independent method (or a
-    // stale/default pl_orbincl) and is left alone. With pl_orbincl unknown, a pl_mass that
-    // matches msini is almost certainly just msini relabeled by the archive rather than a
-    // real independent measurement, so that's the case worth recomputing.
+    // 4. Run automated estimation/classification fallbacks provided in class declarations.
+    // Can the reported "true" mass be trusted, or should it be recomputed from msini using the
+    // star's own disk/rotation inclination? A pl_mass that just equals msini (or msini/sin i) is
+    // the archive relabelling msini rather than an independent measurement -- recompute those.
     const double mass_consistency_tolerance = 0.10;
     bool mass_untrustworthy = false;
     if (pl_msini_known)
@@ -4757,10 +4634,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     static bool loaded_starsonly = false;
 
     const char* exocache = "catalogs/exoplanets.json";
-    // Derived caches holding only what actually had to be added last time: new host
-    // stars from the stars_only pass, and the planets themselves from the full pass.
-    // As long as these are at least as fresh as exocache, they let us skip parsing
-    // the (much larger, mostly-redundant) raw TAP dump on both passes entirely.
+    // Derived caches holding only what each pass actually added last time (new host stars, then
+    // the planets). While at least as fresh as exocache, they let both passes skip parsing the
+    // much larger raw TAP dump entirely.
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
 
     std::stringstream lmss;
@@ -4920,26 +4796,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 }
 // ---- Galaxies --------------------------------------------------------------------------------
 //
-// Two catalogs, read in this order and for complementary reasons.
-//
-// The UNGC (Karachentsev+ 2013, J/AJ/145/101) covers 869 galaxies of the Local Volume with
-// distances that were MEASURED, mostly by the tip of the red giant branch or by Cepheids. That
-// matters because inside ~20 Mpc a galaxy's radial velocity says almost nothing about how far away
-// it is -- peculiar motion swamps the Hubble flow, and Andromeda's velocity is outright negative.
-//
-// The RC3 (de Vaucouleurs+ 1991, VII/155) then supplies the other 23000, whose distances do come
-// from velocity. It also carries the position angle, which the UNGC does not, so a galaxy present
-// in both is worth revisiting later for its orientation even though the UNGC's distance wins.
-//
-// Deduplication is positional rather than by name: the two catalogs spell the same object
-// "UGC12894" and "UGC 12894", among many worse disagreements, whereas a coincidence within an
-// arcminute on the sky is unambiguous at these densities.
+// UNGC (Karachentsev+ 2013, J/AJ/145/101) first: 869 Local Volume galaxies with MEASURED distances
+// (TRGB, Cepheids), which inside ~20 Mpc is the only kind worth having -- peculiar motion swamps
+// the Hubble flow there, and Andromeda's velocity is outright negative. RC3 (de Vaucouleurs+ 1991,
+// VII/155) then supplies the other 23000 by velocity, plus the position angles the UNGC lacks.
+// Deduplication is positional (within an arcminute), the two catalogs' spellings being hopeless.
 
-// A galaxy's position goes into location.galactic_center, which is measured in MILLIONS OF LIGHT
-// YEARS rather than the metres every other distance in this program uses (see CelestialLocation).
-// Keeping the top of the hierarchy in its own coarse unit is what stops the numbers from running
-// away: a galaxy 100 Mpc out is 3e24 m, and its stars would then carry system_centers of that size
-// before their planets ever get a look in.
+// A galaxy's position goes into location.galactic_center, in MILLIONS OF LIGHT YEARS rather than
+// the metres everything else uses (see CelestialLocation) -- a coarse unit at the top of the
+// hierarchy is what stops a 3e24 m distance leaking down into every star's system_center.
 static void place_galaxy(Galaxy *g, double ra, double decl, double distance_mpc)
 {
     const double mly_per_mpc = 3.26156;                     // 1 parsec = 3.26156 light years
@@ -4954,11 +4819,9 @@ static void place_galaxy(Galaxy *g, double ra, double decl, double distance_mpc)
     g->location.local_position = Point(0, 0, 0);
 }
 
-// The two catalogs spell the same designation differently: the UNGC writes "NGC0224" and the RC3
-// writes "NGC   224", which squeezes to "NGC 224". Bring the UNGC into line -- a letter run
-// followed straight away by digits gets a space, and the zero padding goes -- so that a search for
-// "NGC 224" finds Andromeda whichever catalog supplied it. Names that do not have that shape
-// ("HolmIX", "And XVIII", "[KK2000] 57") are left exactly as they are.
+// Bring the UNGC's "NGC0224" into line with the RC3's "NGC 224" -- letters followed straight away
+// by digits get a space, and the zero padding goes -- so one search finds Andromeda from either
+// catalog. Names of any other shape ("HolmIX", "[KK2000] 57") are left exactly as they are.
 static std::string normalize_galaxy_name(const std::string &raw)
 {
     // The UNGC spells the Messier objects out in full and zero-padded ("MESSIER031"). Nobody
@@ -4983,21 +4846,11 @@ static std::string normalize_galaxy_name(const std::string &raw)
 }
 
 // Deprojected inclination, by the Hubble relation as refined by Holmberg:
-//
 //     cos^2(i) = ((b/a)^2 - q0^2) / (1 - q0^2)
-//
-// q0 is the axis ratio a disc still shows when seen exactly edge-on, i.e. its thickness. Without
-// that term every flattened galaxy comes out at 90 degrees and everything in between is wrong.
-//
-// The q0 values below were fitted against the UNGC's own inclination column over its 861 galaxies
-// that have both. That fit reproduces the catalog to better than a degree for late spirals -- which
-// is not a measure of how right the physics is, but of the fact that the UNGC computed its
-// inclinations this same way. Matching its q0 is still the useful thing to do: it keeps the 16000
-// RC3 galaxies on the same convention as the 869 that came with a number.
-//
-// Ellipticals are a different shape of problem. A triaxial spheroid's apparent flattening describes
-// its intrinsic shape, not its orientation, so there is nothing to deproject -- the fitted q0 of
-// 0.44 for T<0 is just the formula being used outside its domain. They take a flat 90 degrees.
+// q0 is a disc's thickness -- the axis ratio it still shows seen exactly edge-on. The values below
+// are fitted against the UNGC's own inclination column, which keeps the RC3 galaxies on the same
+// convention. Ellipticals have nothing to deproject (apparent flattening is intrinsic shape, not
+// orientation), so they take a flat 90 degrees.
 static double galaxy_inclination(double axis_ratio, double T, bool T_known)
 {
     if (T_known && T < 0) return half_pi;               // elliptical or S0: see above
@@ -5106,10 +4959,9 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         // Deprojected for now; table2 below replaces it wherever the catalog has its own.
         g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
 
-        // Our own galaxy is in here like any other (line 808), but with no axis ratio and no
-        // position angle, since neither can be measured from inside it. Without them it would fall
-        // through with no system plane at all and simply lie in the ICRF, so it gets the two
-        // constants worked out in misc.h instead.
+        // Our own galaxy is in the catalog like any other, but with no axis ratio and no position
+        // angle -- neither is measurable from inside -- which would leave it with no system plane
+        // at all, lying flat in the ICRF. It gets the constants worked out in misc.h instead.
         if (!strcmp(g->name, "Milky Way"))
         {
             g->inclination = milky_way_inclination;
@@ -5119,16 +4971,14 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             g->volumetric_mean_radius = light_year * 100000;
             g->axis_ratio = 0.01;                       // ~100000 light years across, ~1000 thick
 
-            // The distance column rounds our own to 0.01 Mpc, which is 4000 light years further out
-            // than we are. From inside, that error moves the whole sky: it is the ratio of this to
-            // the disc radius that decides how far the bright half of the band reaches. So replace
-            // it with the measured value.
+            // The catalog rounds our own distance to 0.01 Mpc, 4000 light years off. Seen from
+            // inside, its ratio to the disc radius sets how far the bright half of the band
+            // reaches, so that error moves the whole sky: use the measured value.
             place_galaxy(g, g->right_ascension, g->declination,
                 sun_to_galactic_center / (3.26156 * 1e+6));
 
-            // a26 is blank as well, and draw_galaxy() and the interior renderer both work the disc
-            // radius out as distance * angular_diameter / 2. Run that backwards from the radius we
-            // do know, so both get the right disc rather than nothing at all.
+            // a26 is blank too, and both renderers take the disc radius as
+            // distance * angular_diameter / 2 -- so run that backwards from the radius we know.
             g->angular_diameter = 2.0 * milky_way_radius / sun_to_galactic_center;
 
             int nbandxy = g->band.load_dat_file(std::string("catalogs") + _FILESLASH + std::string("Milky_Way.dat"));
@@ -5147,9 +4997,9 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
 
     fclose(fp);
 
-    // table2 carries the inclination the catalog worked out itself (bytes 47-48, degrees from
-    // face-on). Prefer it: where it disagrees with the deprojection it is because a kinematic
-    // inclination from the HI line width was used, which does not depend on the photometry at all.
+    // table2 carries the catalog's own inclination (bytes 47-48, degrees from face-on). Preferred
+    // over the deprojection: where they disagree it is a kinematic inclination from the HI line
+    // width, which owes nothing to the photometry.
     path = "catalogs" _FILESLASH "UNGC" _FILESLASH "table2.dat";
     fp = fopen(path.c_str(), "rb");
     if (fp)
@@ -5235,10 +5085,9 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                 ? dup->inclination
                 : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known);
 
-            // The UNGC already placed this one, and its measured distance is the better number, so
-            // that entry stands. But it has no position angle at all, and often no morphology --
-            // both of which the RC3 does carry, and both of which an oriented ellipse will want.
-            // Fill those gaps rather than discarding the record wholesale.
+            // The UNGC entry stands, its measured distance being the better number -- but it has
+            // no position angle and often no morphology, both of which the RC3 carries and an
+            // oriented ellipse wants. Fill the gaps rather than discard the record.
             if (!dup->position_angle_known)
             {
                 read_field_onebased(buffer, 186, 188, field);
@@ -5263,14 +5112,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             continue;
         }
 
-        // Only now does the velocity matter. Tested earlier, it threw away the RC3 records of the
-        // very galaxies the UNGC had placed -- M31, M33, NGC 253 are all nearby and slow, some
-        // outright approaching -- before they could hand over their position angle.
-        //
-        // Three velocities are on offer and they are not equally useful. 359-363 V3K is referred to
-        // the cosmic microwave background, i.e. with our own motion already removed, which is what
-        // the Hubble law wants; it is quoted for 16655 of the 23011 entries against only 8647 for
-        // the HI velocity. 343-347 cz is the optical heliocentric velocity, 334-338 V21 the HI one.
+        // Velocity is tested only here, after the duplicates above have handed over their position
+        // angles -- the nearby galaxies the UNGC placed are slow, some outright approaching.
+        // Preference order: 359-363 V3K (referred to the CMB, so our own motion is already out,
+        // which is what the Hubble law wants, and much the best populated), then 343-347 cz
+        // (optical heliocentric), then 334-338 V21 (HI).
         read_field_onebased(buffer, 359, 363, field);
         double v21 = atof(field);
         if (!v21)
