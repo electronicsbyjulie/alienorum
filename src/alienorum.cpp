@@ -235,6 +235,10 @@ int main (int argc, char** argv)
         {
             push_str(CliCmd::k_mode, "sun");
         }
+        else if (!strcmp(argv[l], "lblmag"))
+        {
+            appmagn_lblcut = atof(argv[++l]);
+        }
         else if (!strcmp(argv[l], "theme"))
         {
             std::string theme = argv[++l];

@@ -94,8 +94,7 @@ Cartesian2D::Cartesian2D(Point pt, double az, double alt, double m)
 {
     if (view_mode == vm_skymap)
     {
-        // Don't know yet if we're going to die without scene esquilax and hazard mouth connection.
-        double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi /* - seen_equinox + azimuth_correction */ + az, _pi*2);
+        double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi - myeq + az, _pi*2);
         if (ra < 0) ra += _pi*2;
         double decl = std::fmod(find_angle(sqrt(pt.x*pt.x+pt.z*pt.z), pt.y) - alt, _pi*2);
         if (decl > _pi/2) decl -= _pi*2;

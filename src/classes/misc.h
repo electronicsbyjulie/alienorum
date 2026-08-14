@@ -252,7 +252,7 @@ extern bool done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, 
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo, have_RC3, have_UNGC, have_GCVS,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
 extern std::string objname, objinfo, viewer_locale;
-extern double simnow, npaz, luminous_flux, sclk_scale;
+extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern float has_water, veg_min_temp, veg_max_temp;
 extern int menu_ht, vegetation_r, vegetation_g, vegetation_b;

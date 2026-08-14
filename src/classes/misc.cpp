@@ -58,6 +58,7 @@ bool show_taucalc = false;
 bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;
+double myeq = 0;
 
 double dev_dial = 1.0;
 bool show_dev_dial = false;

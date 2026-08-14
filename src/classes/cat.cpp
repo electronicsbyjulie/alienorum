@@ -3329,6 +3329,9 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     if (!fp) return 0;
 
     Star *A, *s;
+    std::string str;
+    int l;
+    char last, nxtlast;
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     while (fgets(buffer, 1020, fp))
@@ -3402,14 +3405,27 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A->disk_heliocen_node = ascending_node;
 
             read_field_onebased(buffer, 101, 111, field);
-            double disk_sma = atof(field);
+            str = trim(field);
+            last = '\0';
+            l = str.size();
+            if (l) last = str.c_str()[l-1];
+            if (l>1) nxtlast = str.c_str()[l-2];
+            double disk_sma;
+            if (nxtlast == 'A' && last == 'U') disk_sma = atof(field) * AU;
+            else disk_sma = atof(field);
             if (disk_sma) A->disk_inner_edge_sma = disk_sma;
         }
 
         if (!strcmp(bdystr, "(stellar rotation)"))
         {
             read_field_onebased(buffer, 49, 63, field);
-            A->sidereal_rotational_period = atof(field);
+            str = trim(field);
+            last = '\0';
+            l = str.size();
+            if (l) last = str.c_str()[l-1];
+            if (last == 'y') A->sidereal_rotational_period = atof(field) * oneyear;
+            else if (last == 'd') A->sidereal_rotational_period = atof(field) * oneday;
+            else A->sidereal_rotational_period = atof(field);
             A->rot_heliocen_incl = inclination;
             A->rot_heliocen_node = ascending_node;
         }
@@ -3581,7 +3597,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         s->make_companion_of(A, comp);
 
         read_field_onebased(buffer, 49, 63, field);
-        f = atof(field);
+        str = trim(field);
+        last = '\0';
+        l = str.size();
+        if (l) last = str.c_str()[l-1];
+        if (last == 'y') f = atof(field) * oneyear;
+        else if (last == 'd') f = atof(field) * oneday;
+        else f = atof(field);
         if (f) s->orbit->period = f;
 
         read_field_onebased(buffer, 89, 99, field);
@@ -3589,7 +3611,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (f) s->orbit->arg_periapsis = f;
 
         read_field_onebased(buffer, 101, 111, field);
-        f = atof(field);
+        str = trim(field);
+        last = '\0';
+        l = str.size();
+        if (l) last = str.c_str()[l-1];
+        if (l>1) nxtlast = str.c_str()[l-2];
+        if (nxtlast == 'A' && last == 'U') f = atof(field) * AU;
+        else f = atof(field);
         if (f) s->orbit->semimajor_axis = f;
 
         read_field_onebased(buffer, 113, 123, field);
@@ -3601,8 +3629,14 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (f) s->orbit->mean_anomaly = f;
 
         read_field_onebased(buffer, 145, 155, field);
-        f = atof(field) * fiftyseventh;
-        if (f) s->orbit->epoch = (f-2000) * 365.2422 + J2000;
+        str = trim(field);
+        l = str.size();
+        if (l)
+        {
+            if (str.c_str()[0] == 'J' && str.c_str()[1] == 'D') f = atof(&field[2]);
+            else f = (atof(field)-2000) * oneyear + J2000;
+            if (f) s->orbit->epoch = f;
+        }
 
         if (inclination || ascending_node)
         {

@@ -808,12 +808,14 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
                     orb_pole.x*eq_pole.y - orb_pole.y*eq_pole.x);
     // With no axial tilt the equator and the orbit are one plane, meeting nowhere: no equinox to
     // find, and no seasons to date by it. Fall back rather than read a rounding error as an angle.
+    double l_equinox_RA;
     if (ascending.magnitude() > 1e-9)
     {
         ascending = rotate3D(ascending, center, location.equatorial_plane.v, location.equatorial_plane.a);
-        equinox_RA = find_angle(ascending.z, -ascending.x);
+        l_equinox_RA = find_angle(ascending.z, -ascending.x);
     }
-    else equinox_RA = equinox_eff;
+    else l_equinox_RA = equinox_eff;
+    if (fabs(equinox_RA - l_equinox_RA) > 0.01 * fiftyseventh) equinox_RA = l_equinox_RA;           // cache it so ra/dec lines don't jiggle in sky map mode.
 
     if (_class == class_moon && !crp)
     {

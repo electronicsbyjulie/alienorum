@@ -24,7 +24,7 @@ void draw_ra_dec_lines()
     // equinox_RA, not equinox_eff: the grid is being laid out in the equatorial frame, and where
     // 0h falls in that frame is its own quantity. See CelestialObject::equinox_RA.
     double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
-    double myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
+    myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
     bool prev_valid = false;
     int jstart = (view_mode == vm_skymap) ? -90 : -80;
@@ -2762,6 +2762,7 @@ void draw_objects()
     lmasslim = lbllsys_mass_lim*1000;
     std::vector<CelestialObject*> to_draw_layered;
     global_magshift = -log(global_brightness) * invlogmagnbase;
+    myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
 
     double mycensq = mycenobj->tmprel.squared_magnitude();
     double layer_cutoff = mycensq * 1.1 * zoom * zoom;
