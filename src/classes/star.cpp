@@ -109,6 +109,21 @@ void Star::update_location(double tmnow)
             location.equatorial_plane = align_points_3d(my_eq_pole, yaxis, center);
         }
     }
+
+    // Variability
+    if (variability_period)
+    {
+        elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness) + (tmprel.magnitude() / speed_of_light);
+        double phase = elapsed / variability_period;
+        double min_lum = pow(magnbase, -maxmag), max_lum = pow(magnbase, -minmag);
+        double local_lum = min_lum + 0.5 * (max_lum - min_lum) * cos(phase * _pi * 2);
+        double local_mag = -log(local_lum) * invlogmagnbase;
+        apparent_magnitude = local_mag;
+
+        // TODO: make these next two lines their own fuction.
+        double intrinsic_brightness = pow(magnbase, -apparent_magnitude) * pow(fmax(AU, distance) / parsec / 10, 2);
+        absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+    }
 }
 
 void Star::rename_from_Bayer_Flamsteed()

@@ -485,7 +485,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         for (j=0; !s && j<ncelobjs; j++) if (!strcmp(Gliese.c_str(), ((Star*)cels[j])->Gliese)) s = (Star*)cels[j];
 
         // CNS5 drops spectral type and B-V, so its new stars are unusable here: it serves only
-        // as a cross reference updating a few fields (radial velocity) on CNS3 stars.
+        // to update a few fields (radial velocity) on stars CNS3 already supplied.
         if (!s) continue;
 
         //  48- 53  I6    ---       HIP     ?=- Hipparcos identifier (hip_id)
@@ -1069,6 +1069,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         mtx.unlock();
     }
 
+    fclose(fp);
     mtx.lock();
     loading_msg = "Building Hipparcos-CCDM Cross Reference...";
     mtx.unlock();
@@ -1124,6 +1125,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         num_read++;
     }
 
+    fclose(fp);
     mtx.lock();
     loading_msg = "Loading Hipparcos Binary Star Orbits...";
     mtx.unlock();
@@ -1198,6 +1200,58 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         num_read++;
         if (num_read >= max-4) return num_read;
+    }
+
+    fclose(fp);
+    mtx.lock();
+    loading_msg = "Loading Hipparcos Variable Star Orbits...";
+    mtx.unlock();
+    path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_va_1.dat";
+    fp = fopen(path.c_str(), "rb");
+    double maxlum, minlum, avglum, avgmag, mag_error;
+    while (fgets(buffer, 1020, fp))
+    {
+        //   1-  6  I6    ---   HIP         Identifier (HIP)
+        read_field_onebased(buffer, 1, 6, field);
+        HIP = atoi(field);
+        if (!HIP) continue;
+        Star *s = hipcache[HIP];
+
+        //      23  A1    ---   HvarType   *[CDMPRU] Variability type (1-letter)
+        read_field_onebased(buffer, 23, 23, field);
+        // TODO: Skip Algol-type.
+
+        //  34- 39  F6.3  mag   maxMag      Magnitude at max from curve fitting
+        read_field_onebased(buffer, 34, 39, field);
+        s->minmag = atof(field);
+
+        //  43- 48  F6.3  mag   minMag      Magnitude at min from curve fitting
+        read_field_onebased(buffer, 43, 48, field);
+        s->maxmag = atof(field);
+
+        // Fit apparent magnitude using an offset from mean luminosities, e.g. if Vmag = 5 but max and min mag are <3 then compensate.
+        maxlum = pow(magnbase, -s->minmag);
+        minlum = pow(magnbase, -s->maxmag);
+        avglum = (maxlum+minlum)/2;
+        avgmag = -log(avglum) * invlogmagnbase;
+        // If the brightness is measured in some other band than V, we adjust the entire variable range to center it on the Vmag.
+        mag_error = avgmag - s->apparent_magnitude;
+        s->maxmag -= mag_error;
+        s->minmag -= mag_error;
+
+        //  57- 68  F12.7 d     Period      ? Mean period in days
+        read_field_onebased(buffer, 57, 68, field);
+        s->variability_period = atof(field) * oneday;
+
+        //  77- 85  F9.4  d     Ep-2440000  ? Epoch (JD-2440000) of zero phase
+        read_field_onebased(buffer, 77, 85, field);
+        s->epoch_max_brightness = atof(field) + 2440000 - (s->distance / oneday);               // Compensate for light travel time. We'll add this back later.
+
+        //  93-104  A12   ---   VarName     Variable star name
+        read_field_onebased(buffer, 93, 104, field);
+        std::string sname = trim(field);
+        std::replace(sname.begin(), sname.end(), '_', ' ');
+        strcpy(s->name, sname.c_str());
     }
 
     fclose(fp);
@@ -3850,7 +3904,34 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 9;
     line << std::string(l - line.str().size(), ' ');
 
+    // Variability
     // TODO:
+    if (s->variability_period) line << std::scientific << s->variability_period;
+    l += 13;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->minmag)
+    {
+        line << ((s->minmag >= 0) ? "+" : "-");
+        if (fabs(s->minmag) < 10) line << "0";
+        line << std::fixed << std::setprecision(2) << fabs(s->minmag) << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->maxmag)
+    {
+        line << ((s->maxmag >= 0) ? "+" : "-");
+        if (fabs(s->maxmag) < 10) line << "0";
+        line << std::fixed << std::setprecision(2) << fabs(s->maxmag) << std::flush;
+    }
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->variability_period && s->epoch_max_brightness)
+        line << std::fixed << std::setprecision(6) << s->epoch_max_brightness;
+    l += 15;
+    line << std::string(l - line.str().size(), ' ');
 
     // std::cout << line << std::endl;
     line << std::string("\n");

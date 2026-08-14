@@ -19,6 +19,11 @@ namespace alienorum
         double apparent_magnitude;                  // visual/550nm
         double parallax = 0;                        // radians
 
+        double minmag = 0;                          // apparent V mag
+        double maxmag = 0;                          // apparent V mag
+        double variability_period = 0;              // seconds
+        double epoch_max_brightness = 2451544.5;    // JD
+
         char spectral_type[32];
         char Bayer[32];
         char Flamsteed[32];

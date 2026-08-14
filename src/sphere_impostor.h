@@ -2,54 +2,39 @@
 #ifndef _AlienorumSphereImpostor
 #define _AlienorumSphereImpostor
 
-// Deliberately does not include globals.h (which pulls SDL_opengl.h): sphere_impostor.cpp
-// includes imgui's own bundled GL loader for its raw shader/VAO/VBO calls, and that loader
-// conflicts (duplicate/incompatible PFNGL...PROC typedefs) with SDL_opengl.h in the same
-// translation unit -- see imgui_impl_opengl3_loader.h's own comment about this. Keeping this
-// header's dependency down to just imgui.h (for ImVec2/ImU32) means any file including it
-// (e.g. visuals.cpp, which does include globals.h/SDL_opengl.h) never pulls the loader in.
+// Deliberately does not include globals.h, which pulls SDL_opengl.h: sphere_impostor.cpp uses
+// imgui's bundled GL loader, whose PFNGL...PROC typedefs clash with SDL_opengl.h's in one
+// translation unit. Depending on imgui.h alone (for ImVec2/ImU32) keeps that loader out of every
+// file that includes this one.
 #include "imgui.h"
 
 namespace alienorum
 {
-    // How many eclipse-casting bodies one impostor draw can carry (see
-    // SphereImpostorInput::casters). Four, because the shader receives them as a single mat4
-    // uniform -- one column per caster -- and mat4 is the widest uniform type this project's
-    // stripped-down GL loader can actually set (see sphere_impostor.cpp's top-of-file comment:
-    // glUniformMatrix4fv survives the stripping, glUniform3fv/4fv do not). Four is well past
-    // what any real configuration calls for anyway; a body with two other bodies' shadows on it
-    // at once is already an exotic sight.
+    // Eclipse casters per impostor draw. Four, since the shader takes them as one mat4 uniform,
+    // a column each, and mat4 is the widest uniform this project's stripped GL loader can set.
+    // Well past anything real: two shadows on one body at once is already an exotic sight.
     const int max_eclipse_casters = 4;
 
-    // One body whose shadow can fall on the object being drawn -- i.e. one eclipse. The shader
-    // computes, per pixel, how much of the light source's *disc* this body hides as seen from
-    // that particular point on the surface, which is what gives a real eclipse its umbra and
-    // penumbra (and its annular case) instead of a hard-edged binary shadow.
+    // One body whose shadow can fall on the object being drawn. The shader works out per pixel
+    // how much of the light source's *disc* it hides as seen from that point of the surface,
+    // which is what gives a real eclipse its umbra, penumbra, and annular case.
     struct EclipseCaster
     {
-        // Caster center relative to the *center of the object being drawn* -- camera space,
-        // same units and orientation as SphereImpostorInput::cx/cy/cz, but a difference of two
-        // positions rather than a position. Deliberately relative: the object's own drawn
-        // position carries an atmospheric-refraction offset in horizon mode (see
-        // draw_sphere_gpu()'s display_space) that the shadow geometry should not see, and a
-        // difference cancels it exactly.
+        // Caster center relative to the center of the object being drawn: camera space, same
+        // units as cx/cy/cz, but a difference of two positions. Relative on purpose -- the drawn
+        // position carries a refraction offset in horizon mode that the shadow geometry must not
+        // see, and a difference cancels it exactly.
         double dx, dy, dz;
 
-        // Caster radius, same units (meters). Its shadow is treated as cast by a sphere of this
-        // radius; a caster's own oblateness/triaxiality is ignored, being far below the
-        // penumbra's own softness at any distance where the shadow is visible at all.
+        // Caster radius, in metres. The shadow is treated as cast by a sphere: a caster's own
+        // oblateness sits far below the penumbra's softness at any visible distance.
         double r;
 
-        // What the umbra of *this* caster looks like from inside it. A body with an atmosphere
-        // does not cast a black shadow: sunlight grazing its limb is refracted inwards and
-        // reddened by the long slant path through the air, which is why a totally eclipsed Moon
-        // turns copper rather than going out. umbra_tint is that light's color (already
-        // normalized so its brightest channel is 1) and umbra_light how bright it is relative
-        // to direct sunlight.
-        //
-        // umbra_light 0 -- an airless caster -- gives the hard black umbra such a body really
-        // does cast, so a moon's shadow on a planet stays sharp and dark while the planet's own
-        // shadow on that moon glows.
+        // What this caster's umbra looks like from inside. A body with air casts no black shadow:
+        // sunlight grazing its limb is refracted inwards and reddened by the long slant path,
+        // which is why a totally eclipsed Moon turns copper. umbra_tint is that light's color
+        // (brightest channel normalized to 1), umbra_light its brightness against direct
+        // sunlight. 0 gives the hard black umbra an airless caster really does throw.
         double umbra_tint[3];
         double umbra_light;
     };
@@ -58,44 +43,31 @@ namespace alienorum
     // so this header stays free of a globals.h dependency -- see the comment above.
     struct SphereImpostorInput
     {
-        // Center in the app's existing "camera space" -- i.e. after to_viewer_plane() and the
-        // azimuth/altitude rotation Cartesian2D itself applies, but before its perspective
-        // divide (see point.cpp) -- in the same distance units as everything else in the app
-        // (meters).
+        // Center in the app's "camera space": after to_viewer_plane() and Cartesian2D's
+        // azimuth/altitude rotation, before its perspective divide. Metres, like everything else.
         double cx, cy, cz;
 
-        // r is the overall bounding radius (max(axis_x,axis_y,axis_z)) used for the impostor's
-        // screen-space bounding quad (see tangent_bounds()) and lent to the ring impostor's own
-        // occlusion test -- for a non-spherical body this is a conservative over-estimate of
-        // the true (smaller, direction-dependent) silhouette, same "slack costs some cheap
-        // discards" tradeoff already used for the ring's own bounding quad.
+        // r is the bounding radius, max of the three axes, used for the screen-space bounding
+        // quad (tangent_bounds()) and lent to the ring impostor's occlusion test. For a
+        // non-spherical body it over-estimates the true silhouette, which only costs some cheap
+        // discarded fragments.
         //
-        // axis_x/axis_y/axis_z are the true semi-axes along the local +X/+Y/+Z directions (see
-        // basisX/basisY below; +Z is their cross product) -- equal to r on all three for a
-        // plain sphere, the common case. Two real shapes reuse this:
-        //   - An oblate planet: axis_x=axis_z=equatorial_radius, axis_y=equatorial_radius*
-        //     (1-oblateness) (flattened at the poles, matching the CPU path's own "obl"
-        //     factor).
-        //   - A moon with known depth/width/height (tidally locked, generally triaxial):
-        //     axis_x=width/2 (orbit-direction), axis_y=height/2 (polar),
-        //     axis_z=depth/2 (the axis pointing at the host planet -- lon=0 in
-        //     Point::from_ra_dec's convention, matching the CPU path's own dwh scaling).
+        // axis_x/axis_y/axis_z are the semi-axes along local +X/+Y/+Z (+Z being the vector
+        // product of the other two), all equal to r for a plain sphere. Two real shapes use them:
+        //   - Oblate planet: axis_x=axis_z=equatorial_radius, axis_y scaled by (1-oblateness).
+        //   - Triaxial tidally-locked moon: axis_x=width/2 (orbit-direction), axis_y=height/2
+        //     (polar), axis_z=depth/2 (pointing at the host planet, lon=0).
         double r, axis_x, axis_y, axis_z;
 
-        // The object's local +X and +Y axes (as used by Point::from_ra_dec: x=-sin(lon)cos(lat),
-        // y=sin(lat)), expressed in the same camera space as cx,cy,cz above -- i.e. these are
-        // the local frame's basis vectors run through the same to_viewer_plane + spin + tilt +
-        // camera rotation chain used to place the center. The shader uses them (plus their
-        // cross product for local +Z) to rotate each pixel's camera-space surface normal back
-        // into the object's own frame and recover lat/lon for texture sampling. Only used when
-        // day_map_texture is nonzero.
+        // The object's local +X and +Y axes (Point::from_ra_dec's convention: x=-sin(lon)cos(lat),
+        // y=sin(lat)) in the same camera space as cx,cy,cz -- the local basis run through the same
+        // placement chain as the center. With their vector product for +Z, the shader uses them to
+        // rotate a surface normal back into the object's frame and recover lat/lon for sampling.
         double basisX[3], basisY[3];
 
-        // GL texture names (as produced by gputex_for() in gputex.h) for the day/surface and
-        // night maps, or 0 if not available (e.g. still loading asynchronously, or the object
-        // simply has no night map). day_map_texture==0 falls back to fallback_color, unlit;
-        // night_map_texture==0 falls back to a flat night_illum ambient level instead of a
-        // "city lights" texture on the unlit side.
+        // GL texture names from gputex_for(), or 0 when unavailable (still loading, or no night
+        // map at all). Without a day map the disc is fallback_color, unlit; without a night map
+        // the unlit side gets a flat night_illum ambient level instead of city lights.
         unsigned int day_map_texture;
         unsigned int night_map_texture;
         ImU32 fallback_color;

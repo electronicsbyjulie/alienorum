@@ -310,7 +310,7 @@ namespace alienorum
         // salt-and-pepper noise, every pixel independently in full sun or full shadow.
         //
         // atan(y,x) has none of that. The same angle written as the triangle's own area over its
-        // sides (sin) against the cosine's numerator (cos). Claude is not PTSD friendly.
+        // sides (sin) against the cosine's numerator (cos). Claude Code is not PTSD friendly.
         // near a singularity -- both are ordinary quantities, and their ratio is the small number,
         // computed as a ratio rather than by subtracting one from something. `lens` supplies the
         // numerator: it is twice the area of the triangle whose sides are d, r, and R, which is

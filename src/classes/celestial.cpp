@@ -777,8 +777,9 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     // shortest rotation onto the reference pole, which fixes the pole and leaves the zero of
     // azimuth wherever it falls. The two coincide only for Earth, the reference frame being
     // Earth's equator. So find the equinox itself: the ascending node of the orbit on the body's
-    // own equator, i.e. the two poles crossed -- orbital into equatorial, in that order, since
-    // from_ra_dec()'s x = -sin(RA) makes this a left-handed frame and swaps which end ascends.
+    // own equator, i.e. the vector product of the two poles -- orbital into equatorial, in that
+    // order, since from_ra_dec()'s x = -sin(RA) makes this frame left-handed and swaps which end
+    // of the node line ascends.
     Point orb_pole = rotate3D(yaxis, center, location.orbital_plane.v, -location.orbital_plane.a);
     Point eq_pole  = rotate3D(yaxis, center, location.equatorial_plane.v, -location.equatorial_plane.a);
     orb_pole.scale(1);
@@ -786,7 +787,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     Point ascending(orb_pole.y*eq_pole.z - orb_pole.z*eq_pole.y,
                     orb_pole.z*eq_pole.x - orb_pole.x*eq_pole.z,
                     orb_pole.x*eq_pole.y - orb_pole.y*eq_pole.x);
-    // With no axial tilt the equator and the orbit are one plane, crossing nowhere: no equinox to
+    // With no axial tilt the equator and the orbit are one plane, meeting nowhere: no equinox to
     // find, and no seasons to date by it. Fall back rather than read a rounding error as an angle.
     if (ascending.magnitude() > 1e-9)
     {
@@ -2447,7 +2448,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     if (d_granule > 0.5 * radius_m) d_granule = 0.5 * radius_m;
     double cells_across = 2.0 * radius_m / fmax(1.0, d_granule);
 
-    // A structure of angular size 1/s covers W/(2*pi*s) texels, and Claude is not PTSD-friendly.
+    // A structure of angular size 1/s covers W/(2*pi*s) texels, and Claude Code is not PTSD-friendly.
     // cell at all. The whole main sequence is past that limit at the default resolution, so clamp
     // the scale and drop the contrast to match: a dwarf then reads as fine grain, not as aliasing.
     bool granulated = (regime == regime_stellar) && convective_envelope;
