@@ -110,15 +110,11 @@ void Star::update_location(double tmnow)
         }
     }
 
-    // Variability. epoch_max_brightness is an Earth-observed date, so the phase has to be measured
-    // in observed time -- but tmnow already arrives retarded by the viewer's FULL light travel
-    // time (compute_object_location() passes simnow - viewer_distance/c). Adding Sol's own light
-    // time back leaves exactly the (viewer - Sol) difference the catalog epoch does not cover: nil
-    // from Earth, and right from anywhere else. Seconds throughout, like elapsed itself.
     if (variability_period)
     {
-        elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness)
-            + distance / speed_of_light;
+        // tmnow already includes the light travel time.
+        elapsed = simnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness)
+            - (tmprel.magnitude() - l_dist) / speed_of_light;
         double phase = elapsed / variability_period;
         double min_lum = pow(magnbase, -maxmag), max_lum = pow(magnbase, -minmag);
         double local_lum = (max_lum + min_lum) * 0.5 + (max_lum - min_lum) * 0.5 * cos(phase * _pi * 2);
@@ -128,6 +124,8 @@ void Star::update_location(double tmnow)
         // TODO: make these next two lines their own fuction.
         double intrinsic_brightness = pow(magnbase, -apparent_magnitude) * pow(fmax(AU, distance) / parsec / 10, 2);
         absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+
+        volumetric_mean_radius = estimate_radius(true);
     }
 }
 
@@ -672,11 +670,13 @@ double alienorum::Star::interpolate_mseq_BV(double mseqidx)
     return coeff0 * msq_BV[i] + coeff1 * msq_BV[i+1];
 }
 
-double Star::estimate_radius()
+double Star::estimate_radius(bool sms)
 {
-    // double msqi = get_mseqidx_from_sptyp(spectral_type);
-    double msqi = get_mseqidx_from_BV(BV_color);
-    if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
+    if (!sms)
+    {
+        double msqi = get_mseqidx_from_BV(BV_color);
+        if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
+    }
 
     if (!cels[0])
     {

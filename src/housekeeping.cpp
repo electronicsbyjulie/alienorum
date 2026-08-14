@@ -184,7 +184,7 @@ bool compute_object_location(CelestialObject* cel)
                     cel->drawnx = cel->drawny = -1e9;
                     return false;
                 }
-                if (!redo_proper_motions && !cel->orbit) return false;
+                if (!redo_proper_motions && !cel->orbit && !((Star*)cel)->variability_period) return false;
                 if (cel->orbit && cel->orbit->center && (whereami < 0 || cel->orbit->center != cels[whereami])
                     && (cel->orbit->center->drawnx < 0 || cel->orbit->center->drawny < 0
                         || cel->orbit->center->drawnx > dispw || cel->orbit->center->drawny > disph
