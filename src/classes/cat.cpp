@@ -24,6 +24,24 @@
 
 namespace fs = std::filesystem;
 
+// True for the GCVS eclipsing-binary codes E, EA, EB, EW and their subtypes, in any position of a
+// compound type. ELL is ellipsoidal and EP a planetary transit, so neither answers true.
+static bool is_eclipsing_type(const char *gcvs_vartype)
+{
+    std::string t = trim(gcvs_vartype);
+    for (size_t start = 0; start <= t.size(); )
+    {
+        size_t end = t.find_first_of("/+", start);
+        std::string tok = t.substr(start, (end == std::string::npos) ? std::string::npos : end - start);
+        size_t flag = tok.find_first_of(":?");
+        if (flag != std::string::npos) tok.resize(flag);
+        if (tok == "E" || tok == "EA" || tok == "EB" || tok == "EW") return true;
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return false;
+}
+
 // Important: Catalogs not listed in this array will not be seen by the app and will not be loaded!
 // Its function is to prevent miscellaneous files and folders in the catalogs/ dir from being mistaken for real catalogs.
 std::vector<std::string> known_catalog_names =
@@ -1218,9 +1236,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (!HIP) continue;
         Star *s = hipcache[HIP];
 
-        //      23  A1    ---   HvarType   *[CDMPRU] Variability type (1-letter)
-        read_field_onebased(buffer, 23, 23, field);
-        // TODO: Skip Algol-type.
+        //  25- 30  A6    ---   VarType    *Variability type as in GCVS/NSV
+        read_field_onebased(buffer, 25, 30, field);
+        s->is_eclipsing_binary = is_eclipsing_type(field);
 
         //  34- 39  F6.3  mag   maxMag      Magnitude at max from curve fitting
         read_field_onebased(buffer, 34, 39, field);
@@ -1331,9 +1349,11 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
         // of maximum for everything else; half a period turns the one into the other.
         read_field_onebased(buffer, 42, 51, field);
         std::string vartype = trim(field);
-        size_t vtlen = vartype.find_first_of("/+:");
-        if (vtlen != std::string::npos) vartype.resize(vtlen);
-        if (vartype[0] == 'E' || vartype == "RS" || !vartype.compare(0, 2, "RV")) epoch += period / 2;
+        bool eclipsing = is_eclipsing_type(vartype.c_str());
+        std::string primary = vartype;
+        size_t vtlen = primary.find_first_of("/+:");
+        if (vtlen != std::string::npos) primary.resize(vtlen);
+        if (primary[0] == 'E' || primary == "RS" || !primary.compare(0, 2, "RV")) epoch += period / 2;
 
         //      53  A1    ---   l_magMax  [<>(] Limit or amplitude symbol on magMax
         //  54- 59  F6.3  mag   magMax    ? Magnitude at maximum brightness
@@ -1370,6 +1390,7 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
         s->maxmag = min1;
         s->variability_period = period * oneday;
         s->epoch_max_brightness = epoch;
+        s->is_eclipsing_binary = eclipsing;
         num_read++;
     }
 
@@ -4050,6 +4071,10 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     if (s->variability_period && s->epoch_max_brightness)
         line << std::fixed << std::setprecision(4) << s->epoch_max_brightness;
     l += 18;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->variability_period && s->is_eclipsing_binary) line << "E";
+    l += 2;
     line << std::string(l - line.str().size(), ' ');
 
     // std::cout << line << std::endl;

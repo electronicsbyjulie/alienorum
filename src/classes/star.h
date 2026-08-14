@@ -23,6 +23,7 @@ namespace alienorum
         double maxmag = 0;                          // apparent V mag
         double variability_period = 0;              // seconds
         double epoch_max_brightness = 2451544.5;    // JD
+        double is_eclipsing_binary = false;
 
         char spectral_type[32];
         char Bayer[32];

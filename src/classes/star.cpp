@@ -110,7 +110,7 @@ void Star::update_location(double tmnow)
         }
     }
 
-    if (variability_period)
+    if (variability_period && !is_eclipsing_binary)
     {
         // tmnow already includes the light travel time.
         elapsed = simnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness)
