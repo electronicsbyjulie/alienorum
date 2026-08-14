@@ -2395,6 +2395,14 @@ bool draw_one_object(int i)
         || i == selected)
     {
         const char *dispname = cels[i]->name;
+        int l = strlen(dispname);
+        if (!l) return true;
+        std::string lopped;
+        if (dispname[l-1] == 'A' && cels[i] != mycenobj)
+        {
+            lopped = lop_component(dispname);
+            dispname = lopped.c_str();
+        }
         ImFont *font = global_font;
         std::string str;
         cel_obj_class cls = cels[i]->typeclass();
