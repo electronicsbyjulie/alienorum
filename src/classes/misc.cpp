@@ -59,6 +59,9 @@ bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;
 
+double dev_dial = 1.0;
+bool show_dev_dial = false;
+
 // Set every frame by compute_object_draw_coordinates(): the cels[] index of the galaxy whose disc
 // the viewer is standing inside, or -1. Only one galaxy can qualify, and normally it is ours.
 int inside_galaxy_idx = -1;

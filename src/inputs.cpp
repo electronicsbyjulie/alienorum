@@ -421,8 +421,8 @@ void process_key_cmd_char(char c)
         case 'O': show_orbits = !show_orbits; break;
         case 'p': lbl_localsys = !lbl_localsys; break;
         case 'P': cbolbls_selected_idx = lbltype_planets; show_labels = true; break;
-        case 'q': sphere_quality *= 1.3; viewchanged=true; break;
-        case 'Q': sphere_quality *= 0.7; viewchanged=true; break;
+        case 'q': dev_dial *= 1.3; viewchanged=true; break;
+        case 'Q': dev_dial *= 0.7; viewchanged=true; break;
 
         case 'r':
         velocity = center;
@@ -451,7 +451,6 @@ void process_key_cmd_char(char c)
         [[fallthrough]];
         case '@':
         viewchanged = true;
-        sphere_quality = 1;
         simnow = std::time(nullptr);
         JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
         refresh_star_visibilities();
@@ -591,7 +590,6 @@ void process_key_cmd_char(char c)
         zoom = 1;
         global_brightness = 1;
         viewchanged = true;
-        sphere_quality = 1;
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;

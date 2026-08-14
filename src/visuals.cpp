@@ -3426,16 +3426,37 @@ void draw_sky_gradient()
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
                     a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
+
+            double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
+            if (mycenobj)
+            {
+                double atm_high_unused[3], atm_low[3], atm_umbra_unused[3];
+                atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
+
+                double sun_elev = sin(mycenobj->Decl_as_radians(here));
+                double redden_t = fmin(1.0, fmax(0.0, (0.35 - sun_elev) / (0.35 - 0.02)));
+                redden = redden_t * redden_t * (3.0 - 2.0 * redden_t);
+
+                sunset_r = fmin(1, atm_low[0] * skylight);
+                sunset_g = fmin(1, atm_low[1] * skylight);
+                sunset_b = fmin(1, atm_low[2] * skylight);
+            }
+            const double kSkyReddenVerticalFalloff = 0.99;
+
             unsigned char r255, g255, b255;
             for (int y = fmin(hz_y, dispcy*2-1); y>=0; y--)
             {
-                r255 = r*255; g255 = g*255; b255 = b*255;
+                double rr = r * (1 - redden) + sunset_r * redden;
+                double gg = g * (1 - redden) + sunset_g * redden;
+                double bb = b * (1 - redden) + sunset_b * redden;
+                r255 = rr*255; g255 = gg*255; b255 = bb*255;
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
                     rgba_apply_redlight(IM_COL32( (int)(r255), (int)(g255), (int)(b255), (int)(a*255) ) ));
 
                 r *= 0.999;
                 g *= 0.9995;
                 b *= 0.9999;
+                redden *= kSkyReddenVerticalFalloff;
 
                 sky_grad[y] = RGB3Byte(r255*a, g255*a, b255*a);
             }

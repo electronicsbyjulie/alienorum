@@ -283,6 +283,11 @@ void draw_status_window(ImGuiIO& io)
     float frame_rate = 1.0 / frame_dur;
     ImGui::Text("%.1f frames/s", frame_rate);
 
+    if (show_dev_dial)
+    {
+        ImGui::Text("Dev Dial: %.5f", dev_dial);
+    }
+
     ImGui::Separator();
 
     if (whereami >= 0 && cels[whereami]->typeclass() != class_satellite)
