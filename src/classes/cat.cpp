@@ -4334,8 +4334,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 408, 413, field);
             s->maxmag = atof(field);
 
-            read_field_onebased(buffer, 415, 430, field);
+            read_field_onebased(buffer, 415, 431, field);
             s->epoch_max_brightness = atof(field);
+
+            read_field_onebased(buffer, 433, 433, field);
+            if (buffer[0] == 'E') s->is_eclipsing_binary = true;
 
             append_cel(s);
             num_read++;

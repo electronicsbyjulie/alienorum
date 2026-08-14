@@ -27,7 +27,7 @@ void Satellite::update_location(double tmnow)
     Rotation center_equator = orbit->center->location.equatorial_plane;
     if (!orbit->center->onscreen && angular_radius[orbit->center->seqno] <= 1)
         angular_radius[orbit->center->seqno] = 1.1;                             // just enough to get it going without slowing down the render.
-    if (orbit->period) update_orbit_location(tmnow, &center_equator);
+    update_orbit_location(tmnow, &center_equator);
 }
 
 json Satellite::to_json()

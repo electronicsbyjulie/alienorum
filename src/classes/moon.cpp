@@ -61,7 +61,7 @@ Moon::Moon()
 
 void Moon::update_location(double tmnow)
 {
-    if (orbit && orbit->period) update_orbit_location(tmnow);
+    if (orbit) update_orbit_location(tmnow);
 }
 
 json Moon::to_json()

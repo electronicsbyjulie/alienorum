@@ -699,16 +699,35 @@ bool CelestialObject::from_json(json j)
 
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
-    if (!orbit || !orbit->center || !orbit->period) return;
+    if (!orbit || !orbit->center) return;
     if (deleted = orbit->center->deleted) return;
     location.galactic_center = orbit->center->location.galactic_center;
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
 
+    if (!orbit->period && !orbit->num_osc)
+    {
+        if (!orbit->center->mass)
+        {
+            cel_obj_class cls = orbit->center->typeclass();
+            if (cls == class_star) orbit->center->mass = ((Star*)orbit->center)->estimate_mass();
+            if (cls == class_planet || cls == class_moon)
+            {
+                ((Planet*)orbit->center)->estimate_radius();
+                orbit->center->mass = pow(volumetric_mean_radius / earth_radius, 3) * earth_mass;
+            }
+        }
+
+        if (!orbit->semimajor_axis) orbit->semimajor_axis = location.distance_to(orbit->center->location);
+        if (!orbit->semimajor_axis) orbit->semimajor_axis = AU * 10;
+
+        orbit->period = oneyear * sqrt(pow(orbit->semimajor_axis/AU, 3)) / (orbit->center->mass / solar_mass);
+        // std::cout << name << " estimated orbit period=" << (orbit->period / oneday) << " days." << std::endl;
+    }
+
     double tmnow_as_epoch = (tmnow - J2000_TIME_T)/oneday + J2000;
     double N, I, W, A, e, m, P, PN, PW, EFFE;
     orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, e, m, P, PN, PW, EFFE);
-
 
     double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
     double seconds_since_epoch = (tmnow_as_epoch - EFFE)*oneday;

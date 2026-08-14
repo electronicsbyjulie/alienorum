@@ -234,7 +234,7 @@ void Planet::estimate_albedo_and_absmagn()
 
 void Planet::update_location(double tmnow)
 {
-    if (orbit && orbit->period) update_orbit_location(tmnow);
+    if (orbit) update_orbit_location(tmnow);
 }
 
 double Planet::est_bolometric_flux(double t_eff)

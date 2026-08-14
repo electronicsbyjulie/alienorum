@@ -73,40 +73,42 @@ StarMulti::~StarMulti()
 
 void Star::update_location(double tmnow)
 {
-    if (orbit && orbit->period)
+    double elapsed, l_dist;
+    if (orbit)
     {
         update_orbit_location(tmnow);
-        return;
     }
-
-    // How many seconds since star's epoch
-    double elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch);
-
-    // Estimate RA and Decl using proper motion
-    double l_RA = right_ascension + proper_motion_RA * elapsed;
-    double l_Decl = declination + proper_motion_decl * elapsed;
-
-    // Estimate distance using radial velocity
-    double l_dist = distance + radial_velocity * elapsed;
-
-    // Compute new location
-    Point newloc = Point::from_ra_dec(l_RA, l_Decl, l_dist);
-
-    // Set system location
-    location.system_center = newloc;
-
-    if (!estimated_poles)
+    else
     {
-        if (!lock_system_plane) location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (_pi/2), equinox,
-            Point::from_ra_dec(right_ascension, declination, distance));
-        if ((mycenobj == this) && !lock_equatorial_plane)
-        {
-            location.orbital_plane = location.local_system_plane;
+        // How many seconds since star's epoch
+        elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch);
 
-            Point eqaxis(sin(equinox), 0, cos(equinox));
-            Point my_eq_pole = rotate3D(yaxis, center, eqaxis, obliquity);
-            my_eq_pole = rotate3D(my_eq_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
-            location.equatorial_plane = align_points_3d(my_eq_pole, yaxis, center);
+        // Estimate RA and Decl using proper motion
+        double l_RA = right_ascension + proper_motion_RA * elapsed;
+        double l_Decl = declination + proper_motion_decl * elapsed;
+
+        // Estimate distance using radial velocity
+        l_dist = distance + radial_velocity * elapsed;
+
+        // Compute new location
+        Point newloc = Point::from_ra_dec(l_RA, l_Decl, l_dist);
+
+        // Set system location
+        location.system_center = newloc;
+
+        if (!estimated_poles)
+        {
+            if (!lock_system_plane) location.local_system_plane = system_plane_from_incl_and_node(known_poles ? obliquity : (_pi/2), equinox,
+                Point::from_ra_dec(right_ascension, declination, distance));
+            if ((mycenobj == this) && !lock_equatorial_plane)
+            {
+                location.orbital_plane = location.local_system_plane;
+
+                Point eqaxis(sin(equinox), 0, cos(equinox));
+                Point my_eq_pole = rotate3D(yaxis, center, eqaxis, obliquity);
+                my_eq_pole = rotate3D(my_eq_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+                location.equatorial_plane = align_points_3d(my_eq_pole, yaxis, center);
+            }
         }
     }
 
