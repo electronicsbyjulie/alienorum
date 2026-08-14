@@ -2204,6 +2204,7 @@ bool draw_one_object(int i)
 {
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
+    if (i == whereami) return false;
 
     int j;
     cel_obj_class cls = cels[i]->typeclass();
