@@ -274,7 +274,7 @@ ConsBins fill_alienorum_ids()
                     Star *s = val3[i];
                     if (s->seqno == 0) s->alienorumid = std::to_string(m);          // Sun has no fixed RA/dec and is the only -26 mag star from Earth.
                     else s->alienorumid =
-                        std::to_string(m)
+                        ((s->variability_period && fabs(s->maxmag-s->minmag) > 0.5) ? std::string("V") : std::to_string(m))
                         + std::string(1, cc)
                         + std::string(" ")
                         + cs->abbrev

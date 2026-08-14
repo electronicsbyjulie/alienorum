@@ -113,7 +113,8 @@ void Star::update_location(double tmnow)
     // Variability
     if (variability_period)
     {
-        elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness) + (tmprel.magnitude() / speed_of_light);
+        elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness)
+            - ((distance - tmprel.magnitude()) / speed_of_light / oneday);
         double phase = elapsed / variability_period;
         double min_lum = pow(magnbase, -maxmag), max_lum = pow(magnbase, -minmag);
         double local_lum = min_lum + 0.5 * (max_lum - min_lum) * cos(phase * _pi * 2);
@@ -165,6 +166,7 @@ void Star::rename_from_Bayer_Flamsteed()
         return;
     }
 
+    if (BayerGrkno > 23) BayerGrkno = -1;
     if (BayerGrkno >= 0)
     {
         int BayerGrkIdx = BayerGrkno;
@@ -268,7 +270,8 @@ bool Star::is_in_visible_box(Point seen_from)
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
     if (_is_always_visible) return true;
-    double cutoff_dist = (pow(100.0, 0.2*(normal_best_mag_limit-apparent_magnitude)) * distance) * global_brightness;
+    double effmag = variability_period ? minmag : apparent_magnitude;
+    double cutoff_dist = (pow(100.0, 0.2*(normal_best_mag_limit-effmag)) * distance) * global_brightness;
     visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + (Point)location;
     visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + (Point)location;
     visible_area_set = true;

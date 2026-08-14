@@ -1204,7 +1204,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
     fclose(fp);
     mtx.lock();
-    loading_msg = "Loading Hipparcos Variable Star Orbits...";
+    loading_msg = "Loading Hipparcos Variable Stars...";
     mtx.unlock();
     path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_va_1.dat";
     fp = fopen(path.c_str(), "rb");
@@ -1234,10 +1234,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         minlum = pow(magnbase, -s->maxmag);
         avglum = (maxlum+minlum)/2;
         avgmag = -log(avglum) * invlogmagnbase;
-        // If the brightness is measured in some other band than V, we adjust the entire variable range to center it on the Vmag.
-        mag_error = avgmag - s->apparent_magnitude;
-        s->maxmag -= mag_error;
-        s->minmag -= mag_error;
 
         //  57- 68  F12.7 d     Period      ? Mean period in days
         read_field_onebased(buffer, 57, 68, field);
@@ -1245,7 +1241,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  77- 85  F9.4  d     Ep-2440000  ? Epoch (JD-2440000) of zero phase
         read_field_onebased(buffer, 77, 85, field);
-        s->epoch_max_brightness = atof(field) + 2440000 - (s->distance / oneday);               // Compensate for light travel time. We'll add this back later.
+        s->epoch_max_brightness = atof(field) + 2440000;
 
         //  93-104  A12   ---   VarName     Variable star name
         read_field_onebased(buffer, 93, 104, field);
@@ -3906,7 +3902,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 
     // Variability
     // TODO:
-    if (s->variability_period) line << std::scientific << s->variability_period;
+    if (s->variability_period) line << std::scientific << (s->variability_period / oneday);
     l += 13;
     line << std::string(l - line.str().size(), ' ');
 
@@ -3929,8 +3925,8 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     line << std::string(l - line.str().size(), ' ');
 
     if (s->variability_period && s->epoch_max_brightness)
-        line << std::fixed << std::setprecision(6) << s->epoch_max_brightness;
-    l += 15;
+        line << std::fixed << std::setprecision(4) << s->epoch_max_brightness;
+    l += 18;
     line << std::string(l - line.str().size(), ' ');
 
     // std::cout << line << std::endl;
@@ -4147,7 +4143,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
             int offset = -36;
-            read_field_onebased(buffer, 319+offset, 332+offset, field);
+            read_field_onebased(buffer, 319-36, 332-36, field);
             str = trim(field);
             if (str.size())
             {
@@ -4155,31 +4151,43 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 s->orbit->center_name = str;
             }
 
-            read_field_onebased(buffer, 334+offset, 344+offset, field);
+            read_field_onebased(buffer, 334-36, 344-36, field);
             if (s->orbit) s->orbit->period = atof(field) * oneday;
 
-            read_field_onebased(buffer, 347+offset, 358+offset, field);
+            read_field_onebased(buffer, 347-36, 358-36, field);
             if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
 
-            read_field_onebased(buffer, 360+offset, 366+offset, field);
+            read_field_onebased(buffer, 360-36, 366-36, field);
             if (s->orbit) s->orbit->eccentricity = atof(field);
 
-            read_field_onebased(buffer, 373+offset, 380+offset, field);
+            read_field_onebased(buffer, 373-36, 380-36, field);
             if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
 
-            read_field_onebased(buffer, 382+offset, 389+offset, field);
+            read_field_onebased(buffer, 382-36, 389-36, field);
             if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-            read_field_onebased(buffer, 391+offset, 404+offset, field);
+            read_field_onebased(buffer, 391-36, 404-36, field);
             if (s->orbit) s->orbit->epoch = atof(field);
 
-            read_field_onebased(buffer, 406+offset, 413+offset, field);
+            read_field_onebased(buffer, 406-36, 413-36, field);
             f = atof(field) * fiftyseventh;
             if (s->orbit) s->orbit->heliocentric_inclination = f;
 
-            read_field_onebased(buffer, 415+offset, 422+offset, field);
+            read_field_onebased(buffer, 415-36, 422-36, field);
             f = atof(field) * fiftyseventh;
             if (s->orbit) s->orbit->heliocentric_node = f;
+
+            read_field_onebased(buffer, 388, 399, field);
+            s->variability_period = atof(field) * oneday;
+
+            read_field_onebased(buffer, 401, 406, field);
+            s->minmag = atof(field);
+
+            read_field_onebased(buffer, 408, 413, field);
+            s->minmag = atof(field);
+            
+            read_field_onebased(buffer, 415, 430, field);
+            s->epoch_max_brightness = atof(field);
 
             append_cel(s);
             num_read++;
@@ -4525,7 +4533,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         {
             host_star->estimate_BV(row.st_teff);
         }
-        else host_star->apparent_magnitude = 10;
+        else host_star->apparent_magnitude = 11;
 
         if (isinf(host_star->absolute_magnitude))
         {
