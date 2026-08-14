@@ -39,6 +39,7 @@ std::vector<std::string> known_catalog_names =
     "CCDM",
     #endif
     "SB9",
+    "GCVS",
     "2MASS",
     "REGALADE",
     "GALEX",
@@ -1248,6 +1249,128 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         std::string sname = trim(field);
         std::replace(sname.begin(), sname.end(), '_', ' ');
         strcpy(s->name, sname.c_str());
+    }
+
+    fclose(fp);
+    return num_read;
+}
+
+// Collapses runs of whitespace, so gcvs_cat's padded "T     And" matches crossid's "T And".
+static std::string squeeze_spaces(const char *s)
+{
+    std::string out;
+    bool gap = false;
+    for (; *s; s++)
+    {
+        if (isspace((unsigned char)*s)) { gap = !out.empty(); continue; }
+        if (gap) out += ' ';
+        gap = false;
+        out += *s;
+    }
+    return out;
+}
+
+// GCVS 5.1, for the variables Hipparcos never fitted. It carries no HIP or HD column of its own,
+// so stars are matched through the cross-identifications in crossid.dat.
+int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
+{
+    if (!hipcache || !hdcache) return 0;
+
+    char buffer[1024], field[256];
+    std::string path = "catalogs" _FILESLASH "GCVS" _FILESLASH "crossid.dat";
+    FILE *fp = fopen(path.c_str(), "rb");
+    if (!fp) return 0;
+
+    std::map<std::string, int> desig_HIP, desig_HD;
+    while (fgets(buffer, 1020, fp))
+    {
+        //   1- 32  A32   ---   Name      Alternative name
+        //      33  A1    ---   ---       [=]
+        //  34- 59  A26   ---   VarName   Designation in the GCVS
+        if (strlen(buffer) < 34 || buffer[32] != '=') continue;
+
+        read_field_onebased(buffer, 34, 59, field);
+        std::string var = squeeze_spaces(field);
+        if (!var.size()) continue;
+
+        read_field_onebased(buffer, 1, 32, field);
+        std::string alt = squeeze_spaces(field);
+        if (!alt.compare(0, 4, "Hip ")) desig_HIP[var] = atoi(alt.c_str() + 4);
+        else if (!alt.compare(0, 3, "HD ")) desig_HD[var] = atoi(alt.c_str() + 3);
+    }
+    fclose(fp);
+
+    path = "catalogs" _FILESLASH "GCVS" _FILESLASH "gcvs_cat.dat";
+    fp = fopen(path.c_str(), "rb");
+    if (!fp) return 0;
+
+    int num_read = 0;
+    while (fgets(buffer, 1020, fp))
+    {
+        if (strlen(buffer) < 127) continue;
+
+        //  89- 90  A2    ---   flt       The photometric system for magnitudes
+        read_field_onebased(buffer, 89, 90, field);
+        // if (trim(field) != "V") continue;                   // minmag/maxmag are visual everywhere else
+
+        //     111  A1    ---   l_Period  [<>(] Code for upper or lower limits
+        // 112-127  F16.10 d    Period    ? Period of the variable star
+        if (strchr("<>(", buffer[110])) continue;           // a limit, or a mean cycle time
+        read_field_onebased(buffer, 112, 127, field);
+        double period = atof(field);
+        if (period <= 0) continue;
+
+        //  92-102  F11.5 d     Epoch     ? Epoch for maximum light, Julian days
+        read_field_onebased(buffer, 92, 102, field);
+        double epoch = atof(field);
+        if (epoch <= 0) continue;                           // no phase to be had without one
+        epoch += 2400000;                                   // the GCVS omits the leading 24
+
+        //  42- 51  A10   ---   VarType   Type of variability
+        // The epoch is of MINIMUM light for eclipsing, ellipsoidal, RV Tau, and RS CVn types, and
+        // of maximum for everything else; half a period turns the one into the other.
+        read_field_onebased(buffer, 42, 51, field);
+        std::string vartype = trim(field);
+        size_t vtlen = vartype.find_first_of("/+:");
+        if (vtlen != std::string::npos) vartype.resize(vtlen);
+        if (vartype[0] == 'E' || vartype == "RS" || !vartype.compare(0, 2, "RV")) epoch += period / 2;
+
+        //      53  A1    ---   l_magMax  [<>(] Limit or amplitude symbol on magMax
+        //  54- 59  F6.3  mag   magMax    ? Magnitude at maximum brightness
+        if (strchr("<>(", buffer[52])) continue;
+        read_field_onebased(buffer, 54, 59, field);
+        if (!trim(field).size()) continue;
+        double magmax = atof(field);
+
+        //  63- 64  A2    ---   l_Min1    [< (]  Limit or amplitude symbol on Min1
+        //  65- 70  F6.3  mag   Min1      ? Minimum I magnitude or amplitude
+        //      74  A1    ---   ---       [)] ) if Min1 is an amplitude
+        read_field_onebased(buffer, 65, 70, field);
+        if (!trim(field).size()) continue;
+        double min1 = atof(field);
+        read_field_onebased(buffer, 63, 64, field);
+        if (strchr(field, '<')) continue;                   // a faintest-seen limit, not a minimum
+        if (strchr(field, '(') || buffer[73] == ')') min1 += magmax;    // Min1 is the amplitude
+
+        //   9- 18  A10   ---   GCVS      Variable star designation
+        read_field_onebased(buffer, 9, 18, field);
+        std::string desig = squeeze_spaces(field);
+
+        Star *s = nullptr;
+        std::map<std::string, int>::iterator it = desig_HIP.find(desig);
+        if (it != desig_HIP.end() && it->second > 0 && it->second <= MAX_HIP) s = hipcache[it->second];
+        if (!s)
+        {
+            it = desig_HD.find(desig);
+            if (it != desig_HD.end() && it->second > 0 && it->second <= MAX_HD) s = hdcache[it->second];
+        }
+        if (!s || s->variability_period) continue;          // Hipparcos fitted this one already
+
+        s->minmag = magmax;
+        s->maxmag = min1;
+        s->variability_period = period * oneday;
+        s->epoch_max_brightness = epoch;
+        num_read++;
     }
 
     fclose(fp);

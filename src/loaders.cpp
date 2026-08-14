@@ -339,6 +339,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "astorb")) have_astorb = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "RC3")) have_RC3 = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "UNGC")) have_UNGC = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "GCVS")) have_GCVS = true;
     }
 
     if (have_Gliese && !ihsc)
@@ -393,6 +394,16 @@ void load_catalogs()
         cout << "Reading Hipparcos catalog..." << endl << flush;
         int nHIP = cr.read_Hipparcos_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nHIP << " objects." << endl << flush;
+        Gliese_doubles_fix();
+    }
+    if (have_GCVS)
+    {
+        mtx.lock();
+        loading_msg = std::string("Loading GCVS Catalog...");
+        mtx.unlock();
+        cout << "Reading GCVS catalog..." << endl << flush;
+        int nGCVS = cr.read_GCVS_catalog(cels);
+        cout << "Read " << nGCVS << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
     if (have_Uranio && !ihsc)

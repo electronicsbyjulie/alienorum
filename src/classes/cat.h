@@ -49,6 +49,7 @@ namespace alienorum
         int read_Tycho_catalog(CelestialObject** cels, int max);
         int read_Uranometria_catalog(CelestialObject** cels, int max);
         int read_WD_catalog(CelestialObject** cels, int max);
+        int read_GCVS_catalog(CelestialObject** cels);          // Variability only; adds no stars, so no max.
 
         // Galaxies. UNGC first, its distances being individually measured; RC3 has only radial
         // velocities, useless inside the Local Volume, and skips whatever the UNGC already placed.

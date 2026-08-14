@@ -69,7 +69,7 @@ const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
-    have_astorb = false, have_exo = false, have_RC3 = false, have_UNGC = false,
+    have_astorb = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
     noexo = false, nosats = false, radio_silence = false, keyprobe = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = 0;
