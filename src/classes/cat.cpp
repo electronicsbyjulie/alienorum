@@ -4184,8 +4184,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->minmag = atof(field);
 
             read_field_onebased(buffer, 408, 413, field);
-            s->minmag = atof(field);
-            
+            s->maxmag = atof(field);
+
             read_field_onebased(buffer, 415, 430, field);
             s->epoch_max_brightness = atof(field);
 

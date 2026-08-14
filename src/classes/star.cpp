@@ -110,14 +110,18 @@ void Star::update_location(double tmnow)
         }
     }
 
-    // Variability
+    // Variability. epoch_max_brightness is an Earth-observed date, so the phase has to be measured
+    // in observed time -- but tmnow already arrives retarded by the viewer's FULL light travel
+    // time (compute_object_location() passes simnow - viewer_distance/c). Adding Sol's own light
+    // time back leaves exactly the (viewer - Sol) difference the catalog epoch does not cover: nil
+    // from Earth, and right from anywhere else. Seconds throughout, like elapsed itself.
     if (variability_period)
     {
         elapsed = tmnow - J2000_TIME_T + oneday * (J2000 - epoch_max_brightness)
-            - ((distance - tmprel.magnitude()) / speed_of_light / oneday);
+            + distance / speed_of_light;
         double phase = elapsed / variability_period;
         double min_lum = pow(magnbase, -maxmag), max_lum = pow(magnbase, -minmag);
-        double local_lum = min_lum + 0.5 * (max_lum - min_lum) * cos(phase * _pi * 2);
+        double local_lum = (max_lum + min_lum) * 0.5 + (max_lum - min_lum) * 0.5 * cos(phase * _pi * 2);
         double local_mag = -log(local_lum) * invlogmagnbase;
         apparent_magnitude = local_mag;
 
