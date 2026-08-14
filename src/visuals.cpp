@@ -3085,7 +3085,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     }
 }
 
-ViewMode last_vmode = vm_skyatlas;
+ViewMode last_vmode = vm_spaceship;
 void draw_sunclock()
 {
     if (whereami < 0) return;

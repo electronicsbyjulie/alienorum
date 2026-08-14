@@ -30,7 +30,7 @@ has incomplete support for gzip, Alienorum will require 7zip (https://www.7-zip.
 ## Features
 
 * OpenGL rendering;
-* Sky atlas with pan and zoom, RA/dec grid, and constellation lines;
+* Spaceship mode with pan and zoom, RA/dec grid, and constellation lines;
 * Automatic downloading and use of professional star catalogs;
 * Spaceflight feature with time dilation and warp speed capability;
 * View space from any vantage point;

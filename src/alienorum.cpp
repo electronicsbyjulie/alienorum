@@ -454,7 +454,7 @@ int main (int argc, char** argv)
     // Main loop
     viewchanged = true;
     ImVec2 PrevDispSize;
-    view_mode = vm_skyatlas;
+    view_mode = vm_spaceship;
     bool is_mouse_down = false, was_mouse_down = false;
     double last_click = 0;
     ImVec2 last_click_pos;

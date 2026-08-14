@@ -20,7 +20,7 @@ void set_viewer_surface_location(bool also_set_plane)
     CelestialObject *cel = cels[whereami];
     if (cel->typeclass() == class_star)
     {
-        view_mode = vm_skyatlas;
+        view_mode = vm_spaceship;
         here = cels[whereami]->location;
         azimuth_correction = 0;
         npaz = 0;
@@ -73,14 +73,14 @@ void set_viewer_location_and_plane()
 {
     if (whereami < 0)
     {
-        view_mode = vm_skyatlas;
+        view_mode = vm_spaceship;
         save_viewer_latlon = true;
         return;
     }
 
     if (whereami >= 0 && cels[whereami]->typeclass() == class_satellite)
     {
-        view_mode = vm_skyatlas;
+        view_mode = vm_spaceship;
 
         if (vplane_mode == vplane_local && cels[whereami]->orbit->center)
         {
@@ -93,7 +93,7 @@ void set_viewer_location_and_plane()
         }
     }
 
-    if (vplane_mode == vplane_local && (view_mode == vm_skyatlas || view_mode == vm_skymap))
+    if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
     {
         // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
         // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;

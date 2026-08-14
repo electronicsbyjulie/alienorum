@@ -274,10 +274,10 @@ void show_menu()
             if (ImGui::MenuItem("White Background Mode", "Shift+W")) { process_key_cmd_char('W'); menu_clicked = true; }
             if (ImGui::MenuItem("Fullscreen", "F11")) { process_key_F11(); menu_clicked = true; }
             ImGui::Separator();
-            if (ImGui::MenuItem("Sky Atlas Mode", "&")) { process_key_cmd_char('&'); menu_clicked = true; }
-            if (ImGui::MenuItem("Horizon", "_")) { process_key_cmd_char('_'); menu_clicked = true; }
-            if (ImGui::MenuItem("Sun Clock", "$")) { process_key_cmd_char('$'); menu_clicked = true; }
-            if (ImGui::MenuItem("Sky Map", "\\")) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[0], "&")) { process_key_cmd_char('&'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[1], "_")) { process_key_cmd_char('_'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[2], "$")) { process_key_cmd_char('$'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[3], "\\")) { process_key_cmd_char('\\'); menu_clicked = true; }
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
@@ -431,7 +431,7 @@ void process_key_cmd_char(char c)
         spin = 0;
         whereami = iamhome;
         trackidx = -1;
-        view_mode = vm_skyatlas;
+        view_mode = vm_spaceship;
         vplane_mode = vplane_local;
         viewer_lat = viewer_home_lat;
         viewer_lon = viewer_home_lon;
@@ -569,7 +569,7 @@ void process_key_cmd_char(char c)
             velocity = to_viewer_plane(velocity, -1);
             if (whereami >= 0)
             {
-                if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+                if (view_mode == vm_spaceship || view_mode == vm_skymap)
                 {
                     Point fromsurf = velocity;
                     fromsurf.scale(velocity.magnitude() + cels[whereami]->get_equatorial_radius());
@@ -610,7 +610,7 @@ void process_key_cmd_char(char c)
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
 
-        case '&': view_mode = vm_skyatlas; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
+        case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
         case '$': view_mode = vm_sunclock; zoom=1; altitude=0; azimuth=0; viewchanged = true; break;
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
@@ -863,7 +863,7 @@ void do_find()
     int i = find_object(lookfor, false, 9e+29, 6);
     if (i>=0)
     {
-        if (view_mode == vm_sunclock) view_mode = vm_skyatlas;
+        if (view_mode == vm_sunclock) view_mode = vm_spaceship;
         selected = i;
         trackidx = -1;
         center_selected();

@@ -294,7 +294,7 @@ void draw_status_window(ImGuiIO& io)
         ImGui::SetNextItemWidth(123);
         if (ImGui::BeginCombo("##cbovm", combo_vm_value, cbovm_flags))
         {
-            for (int n = 0; n < NUM_VIEWMODES-1; n++)
+            for (int n = 0; n < NUM_VIEWMODES; n++)
             {
                 const bool is_selected = (n == view_mode);
                 if (ImGui::Selectable(vmtext[n], is_selected))
@@ -495,7 +495,7 @@ void draw_objinf_window(ImGuiIO& io)
         }
 
         double myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
-        if (view_mode == vm_skyatlas || view_mode == vm_skymap)
+        if (view_mode == vm_spaceship || view_mode == vm_skymap)
         {
             objinfo += (std::string)"RA:       " + cels[i]->RA_as_hms(here, myeq) + (std::string)"\n"
                     +  (std::string)"Decl:     " + cels[i]->Decl_as_degms(here) + (std::string)"\n";

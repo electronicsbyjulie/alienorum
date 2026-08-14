@@ -151,7 +151,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define NUM_VIEWMODES 4
 enum ViewMode
 {
-    vm_skyatlas = 0,
+    vm_spaceship = 0,
     vm_horizon = 1,
     vm_sunclock = 2,
     vm_skymap = 3,
