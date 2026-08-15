@@ -978,7 +978,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##obliquity"))
             {
                 mtx.lock();
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 mtx.unlock();
                 cel->obliquity = frand(0, frand(0, frand(0, _pi)));
             }
@@ -1004,7 +1004,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##equinox"))
             {
                 mtx.lock();
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 mtx.unlock();
                 cel->equinox = frand(0, _pi*2);
             }
@@ -1435,7 +1435,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##orbincl"))
             {
                 mtx.lock();
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 mtx.unlock();
                 orb->inclination = pow(frand(0, half_pi), 3);
                 if (frand(0,1) < 0.03) orb->inclination = _pi - orb->inclination;
@@ -1460,7 +1460,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##node&argperi&manom"))
             {
                 mtx.lock();
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 mtx.unlock();
                 cel->orbit->ascending_node = frand(0, _pi*2);
                 cel->orbit->arg_periapsis = frand(0, _pi*2);
@@ -1485,7 +1485,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##ecce"))
             {
                 mtx.lock();
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 mtx.unlock();
                 cel->orbit->eccentricity = pow(frand(0, 0.999), 10);
             }
@@ -1860,7 +1860,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (ImGui::Button("Clear##atmosph_comp"))
                 {
                     co2_percent=ch4_percent=h2o_percent=n2o_percent=o3_percent=so2_percent=h2s_percent=co_percent=hcn_percent=h2_percent=nh3_percent=c2h6_percent=0;
-                    if (p->atm && p->atm->comp) *(p->atm->comp) = AtmosphereComposition();
+                    if (p->atm && p->atm->comp) *(p->atm->comp) = AtmosphereComposition(cel);
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
@@ -1899,7 +1899,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
                 mtx.lock();
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
                 mtx.unlock();
                 cel->rnd_seed = std::rand();
                 cel->looked_for_maps = false;

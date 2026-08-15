@@ -115,8 +115,9 @@ namespace alienorum
         double ex, ey, ez, tnx, tny, tnz;
     };
 
-    struct AtmosphereComposition
+    class AtmosphereComposition
     {
+        public:
         double H2_portion = 0;
         double He_portion = 0;
         double N2_portion = 0;
@@ -134,6 +135,9 @@ namespace alienorum
         double CO_portion = 0;
         double Ar_portion = 0;
 
+        CelestialObject *cel = nullptr;
+        AtmosphereComposition(CelestialObject *obj) { cel = obj; }
+
         void enforce_integrity();
         double mean_molar_mass();                   // kg/mol, renormalized; Earth air if empty
         void generate_fictitious_gas_giant();
@@ -147,15 +151,19 @@ namespace alienorum
         bool from_json(json j);
     };
 
-    struct Atmosphere
+    class Atmosphere
     {
+        public:
         double surface_pressure = oneatm;
         double tau = 0;
         double particulates = 0;
+        CelestialObject *cel = nullptr;
         AtmosphereComposition* comp = nullptr;
 
+        Atmosphere(CelestialObject *obj) { cel = obj; }
         ~Atmosphere() { if (comp) delete comp; }
-        AtmosphereComposition* ensure_composition() { if (!comp) comp = new AtmosphereComposition(); return comp; }
+
+        AtmosphereComposition* ensure_composition() { if (!comp) comp = new AtmosphereComposition(cel); return comp; }
         void calculate_tau(double pressure);
 
         json to_json();
@@ -276,6 +284,8 @@ namespace alienorum
         bool estimated_poles = false;
         double lon_J2000_offset = 0;
         int rnd_seed = 0;
+        std::mt19937 rng;
+        double cel_frand(double min, double max);
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;

@@ -25,6 +25,12 @@ double azimuth_correction = 0;
 typedef struct my_jpeg_error_mgr * my_error_ptr;
 Locale *is_a_locale_under_cursor = nullptr, *selected_locale = nullptr;
 
+double alienorum::CelestialObject::cel_frand(double min, double max)
+{
+    std::uniform_real_distribution<double> dist(min, max);
+    return dist(rng); 
+}
+
 CelestialObject::CelestialObject()
 {
     memset(name, 0, 32*sizeof(char));
@@ -597,8 +603,7 @@ void alienorum::CelestialObject::randomize()
         if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
         rnd_seed = seed;
     }
-    std::srand(rnd_seed);
-    std::cout << "retarded seed " << rnd_seed << std::endl;
+    rng.seed(rnd_seed);
 }
 
 json CelestialObject::to_json()
@@ -1502,7 +1507,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
         if (isinf(max_atm_pressure)) max_atm_pressure = 0;
-        p->ensure_atmosphere()->surface_pressure = frand(0.1, 1) * max_atm_pressure;
+        p->ensure_atmosphere()->surface_pressure = p->cel_frand(0.1, 1) * max_atm_pressure;
     }
 
     AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
@@ -1544,7 +1549,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             else if (T_surf < T_boil * 1.1)
             {
                 double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
-                has_water = frand(0, max_water);
+                has_water = p->cel_frand(0, max_water);
             }
         }
 
@@ -1583,9 +1588,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     int octaves = 5 + (rand() % 4);
     double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
-    double lacunarity = frand(0.51*lacbase, 0.53*lacbase);
+    double lacunarity = p->cel_frand(0.51*lacbase, 0.53*lacbase);
     double gain = has_water ? 0.5 : 2.5;
-    double scale = frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
+    double scale = p->cel_frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
 
     Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
     RGB3Byte rgb = Color::rgb_from_color(col, -1);
@@ -1653,13 +1658,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // than one continuous gradient.
     const bool enable_provinces = true;
     int num_provinces = 2 + (rand() % 3);                                    // 2-4 provinces
-    double border_roughness = frand(1.3, 2.9);                               // how jagged the border itself is
-    double border_noise_scale = province_scale * frand(3.5, 7.0);
-    double mottle_zone = frand(0.64, 1.3);                                   // how far the speckling reaches into each province
+    double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
+    double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
+    double mottle_zone = p->cel_frand(0.64, 1.3);                                   // how far the speckling reaches into each province
     unsigned int dither_seed = (unsigned int)rand();                         // per-planet salt for the per-pixel mottle hash
-    double hue_scale = province_scale * frand(2.0, 4.0);                     // sub-regions within a single province
-    double hue_amount = frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
-    double province_variability = frand(0.1, 0.25);
+    double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
+    double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
+    double province_variability = p->cel_frand(0.1, 0.25);
     double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
     double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
     double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
@@ -1669,7 +1674,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         if (p_i == tholin_province)
         {
             // Reddish-brown tholin staining: red retained, blue heavily suppressed.
-            double stain = frand(0.5, 0.85);
+            double stain = p->cel_frand(0.5, 0.85);
             province_rmult[p_i] = 1.0 - stain * 0.25;
             province_gmult[p_i] = 1.0 - stain * 0.55;
             province_bmult[p_i] = 1.0 - stain * 0.85;
@@ -1677,19 +1682,19 @@ void Map::generate_rocky_map(CelestialObject *cel)
         else if (cold_icy_world)
         {
             // Otherwise just brightness variation across the icy background -- no hue shift.
-            double p_mult = 0.9 - frand(0, 0.2);
+            double p_mult = 0.9 - p->cel_frand(0, 0.2);
             province_rmult[p_i] = p_mult;
             province_gmult[p_i] = p_mult;
             province_bmult[p_i] = p_mult;
         }
         else
         {
-            double p_rmult = fmax(0.05, 0.8 + frand(-province_variability, province_variability));
-            double p_bmult = fmax(0.05, 0.8 + frand(-province_variability, province_variability));
+            double p_rmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
+            double p_bmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
             // Green biased low, not drawn freely between red and blue: real regolith is grey,
             // tan, or rust-red, never green, and a high green channel reads as olive.
             double lo = fmin(p_rmult, p_bmult), hi = fmax(p_rmult, p_bmult);
-            double p_gmult = frand(lo, lo + 0.5 * (hi - lo));
+            double p_gmult = p->cel_frand(lo, lo + 0.5 * (hi - lo));
             province_rmult[p_i] = p_rmult;
             province_gmult[p_i] = p_gmult;
             province_bmult[p_i] = p_bmult;
@@ -1967,28 +1972,28 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
         // Uniform point on the unit sphere (Archimedes' method -- picking theta/phi
         // uniformly would bunch craters up at the poles).
-        double z = frand(-1, 1), phi = frand(0, 2 * _pi), r = sqrt(fmax(0.0, 1 - z * z));
+        double z = cel->cel_frand(-1, 1), phi = cel->cel_frand(0, 2 * _pi), r = sqrt(fmax(0.0, 1 - z * z));
         c.cx = r * cos(phi);
         c.cy = r * sin(phi);
         c.cz = z;
 
         // Heavily skewed toward small craters, like real crater size-frequency distributions.
-        double diam = min_diam + (max_diam - min_diam) * pow(frand(0, 1), 5);
+        double diam = min_diam + (max_diam - min_diam) * pow(cel->cel_frand(0, 1), 5);
         c.angular_radius = fmax(1e-4, (diam * 0.5) / planet_radius);
 
-        c.depth = bump_scale * frand(0.3, 0.9);
-        c.rim_height = c.depth * frand(0.15, 0.35);
-        c.rim_width = frand(0.15, 0.3);
+        c.depth = bump_scale * cel->cel_frand(0.3, 0.9);
+        c.rim_height = c.depth * cel->cel_frand(0.15, 0.35);
+        c.rim_width = cel->cel_frand(0.15, 0.3);
         c.reach_factor = 1.0 + 3.0 * c.rim_width;
-        c.central_peak = (diam > max_diam * 0.5) ? c.depth * frand(0.2, 0.4) : 0.0;
+        c.central_peak = (diam > max_diam * 0.5) ? c.depth * cel->cel_frand(0.2, 0.4) : 0.0;
 
         // Ray systems only for the larger, fresher craters, and only where bombardment_factor
         // says fresh terrain persists at all.
-        c.has_rays = (diam > max_diam * 0.67) && (frand(0, 1) < 0.01 * fmin(1.0, bombardment_factor));
-        c.ray_freq = frand(5, 10);
-        c.ray_phase = frand(0, 2 * _pi);
-        c.ray_sharpness = frand(6, 14);
-        c.ray_extent_factor = c.reach_factor + frand(3.0, 7.0);        // rays reach much farther than the rim/ejecta blanket
+        c.has_rays = (diam > max_diam * 0.67) && (cel->cel_frand(0, 1) < 0.01 * fmin(1.0, bombardment_factor));
+        c.ray_freq = cel->cel_frand(5, 10);
+        c.ray_phase = cel->cel_frand(0, 2 * _pi);
+        c.ray_sharpness = cel->cel_frand(6, 14);
+        c.ray_extent_factor = c.reach_factor + cel->cel_frand(3.0, 7.0);        // rays reach much farther than the rim/ejecta blanket
 
         // Tangent-plane basis (east, north) at the crater center, for measuring the bearing to a
         // nearby pixel. The reference "up" axis is chosen away from the crater so the cross
@@ -2127,7 +2132,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
     cel->randomize();
-    double variability = frand(0, 0.666);
+    double variability = cel->cel_frand(0, 0.666);
     int num_bands = rand() % 9 + 7, i;
     if (cel->type == ice_giant)
     {
@@ -2136,20 +2141,20 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
     auto bands = std::make_unique<RGB3Byte[]>(num_bands);
 
-    bool add_storm = !tidal_locked_to_star && (frand(0, 1) < 0.2);
-    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29, stormSize = frand(0.29, 0.71);
+    bool add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
+    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29, stormSize = cel->cel_frand(0.29, 0.71);
 
-    stormlat = frand(0.3, 0.7);
-    stormlon = frand(0, 1);
+    stormlat = cel->cel_frand(0.3, 0.7);
+    stormlon = cel->cel_frand(0, 1);
     mtx.unlock();
 
     for (i=0; i<num_bands; i++)
     {
         double rmult, gmult, bmult;
 
-        rmult = 1.0 - frand(0, variability);
-        bmult = 1.0 - frand(0, variability);
-        gmult = frand(fmin(rmult, bmult), fmax(rmult, bmult));
+        rmult = 1.0 - cel->cel_frand(0, variability);
+        bmult = 1.0 - cel->cel_frand(0, variability);
+        gmult = cel->cel_frand(fmin(rmult, bmult), fmax(rmult, bmult));
 
         bands[i].r = rgb.r * rmult;
         bands[i].g = rgb.g * gmult;
@@ -2277,7 +2282,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     // Calibrated against maps/Venus_clouds.jpg, whose brightest feature (the polar hoods) sits at
     // about (245, 239, 222) rather than pure white. Anything brighter leaves no headroom below and
     // washes the map out to half the real luminance spread.
-    RGB3Byte rgb( (unsigned char)frand(242, 249), (unsigned char)frand(234, 243), (unsigned char)frand(214, 228) );
+    RGB3Byte rgb( (unsigned char)cel->cel_frand(242, 249), (unsigned char)cel->cel_frand(234, 243), (unsigned char)cel->cel_frand(214, 228) );
 
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
@@ -2288,31 +2293,31 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     // pale hue. The two colors below are its ends -- near-white polar hood above, and the tawnier
     // low-latitude deck (green and especially blue pulled down, ratios 0.81/0.70/0.50 measured
     // from Venus). That pole-to-equator contrast is the most recognizable thing about Venus.
-    RGB3Byte deep((unsigned char)(rgb.r * frand(0.78, 0.86)),
-                  (unsigned char)(rgb.g * frand(0.66, 0.75)),
-                  (unsigned char)(rgb.b * frand(0.44, 0.56)));
+    RGB3Byte deep((unsigned char)(rgb.r * cel->cel_frand(0.78, 0.86)),
+                  (unsigned char)(rgb.g * cel->cel_frand(0.66, 0.75)),
+                  (unsigned char)(rgb.b * cel->cel_frand(0.44, 0.56)));
 
     // Zonal stretching, which is what separates an overcast sky from a gas giant's banding:
     // super-rotating winds drag structures out east-west with no sharp edge anywhere. Dividing
     // only the longitude axis of the noise sample gives that anisotropy.
-    double zonal = frand(5.0, 9.0);
-    double scale = frand(1.6, 2.6);
+    double zonal = cel->cel_frand(5.0, 9.0);
+    double scale = cel->cel_frand(1.6, 2.6);
 
     // Latitude-dependent longitude shear: the shallow V of Venus's ultraviolet images, apex on the
     // equator and both arms sweeping back towards the poles. The shear must be an EVEN function of
     // latitude, or the hemispheres shift opposite ways and every structure just slants through the
     // equator. The exponent on |sin(lat)| sets how sharp the apex is; 1 gives a clean crease.
-    double shear = frand(1.5, 4.0);
-    double sweep_exp = frand(1.0, 1.6);
+    double shear = cel->cel_frand(1.5, 4.0);
+    double sweep_exp = cel->cel_frand(1.0, 1.6);
 
-    double warp_amt = frand(0.5, 1.1);
-    double polar_k = frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
-    double contrast = frand(0.38, 0.62);            // still low -- this is haze, not weather
+    double warp_amt = cel->cel_frand(0.5, 1.1);
+    double polar_k = cel->cel_frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
+    double contrast = cel->cel_frand(0.38, 0.62);            // still low -- this is haze, not weather
 
     // A faint, very broad mottling on top of everything, to break up the smoothest areas without
     // ever reading as a distinct cloud.
-    double mottle_scale = scale * frand(2.5, 4.5);
-    double mottle_amt = frand(0.04, 0.10);
+    double mottle_scale = scale * cel->cel_frand(2.5, 4.5);
+    double mottle_amt = cel->cel_frand(0.04, 0.10);
     mtx.unlock();
 
     double u, v, theta, phi, phi_s, sin_theta, cos_theta, nx, ny, nz;
@@ -2440,7 +2445,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     // angular momentum and turns in hundreds of days. Giving one a young dwarf's activity covers
     // Aldebaran, Betelgeuse, and Antares in spots, when in fact they are magnetically calm.
     double rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days)
-                                     : ((logg_cgs < 3.5) ? frand(2.5, 9.0) : frand(0.4, 3.0));
+                                     : ((logg_cgs < 3.5) ? cel->cel_frand(2.5, 9.0) : cel->cel_frand(0.4, 3.0));
     double activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
 
     // Spot thermal contrast, rising with T_eff: a few hundred K on an M (large, dark red, soft
@@ -2495,7 +2500,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     // angular radius from the star's centre; a saturated M dwarf runs far higher, with observed
     // coverage of 20-40% of the surface.
     double spot_base_deg = 0.35 + 7.0 * activity;
-    int num_groups = spotted ? (int)(activity * 7.0 + frand(0.8, 1.5)) : 0;
+    int num_groups = spotted ? (int)(activity * 7.0 + cel->cel_frand(0.8, 1.5)) : 0;
     bool polar_regime = (rossby < 0.12);
 
     std::vector<Point> spot_axis;
@@ -2503,27 +2508,27 @@ void Map::generate_stellar_map(CelestialObject *cel)
     for (int gi = 0; gi < num_groups; gi++)
     {
         double glat;
-        if (polar_regime && frand(0, 1) < 0.55)
-            glat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 55, half_pi);
+        if (polar_regime && cel->cel_frand(0, 1) < 0.55)
+            glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 55, half_pi);
         else if (fully_convective)
-            glat = asin(frand(-1, 1));                          // uniform in area, not in latitude
+            glat = asin(cel->cel_frand(-1, 1));                          // uniform in area, not in latitude
         else
-            glat = (frand(0, 1) < 0.5 ? 1 : -1) * frand(fiftyseventh * 5, fiftyseventh * 35);
+            glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 5, fiftyseventh * 35);
 
-        double glon = frand(0, _pi * 2);
-        double spread = fiftyseventh * spot_base_deg * frand(2.0, 5.0);
+        double glon = cel->cel_frand(0, _pi * 2);
+        double spread = fiftyseventh * spot_base_deg * cel->cel_frand(2.0, 5.0);
         int members = 2 + (rand() % 4);
 
         for (int mi = 0; mi < members; mi++)
         {
             // A group is much wider than it is tall: the spread in longitude dominates.
-            double slat = fmax(-half_pi, fmin(half_pi, glat + frand(-0.4, 0.4) * spread));
-            double slon = glon + frand(-1.0, 1.0) * spread * 2.2 / fmax(0.25, cos(glat));
+            double slat = fmax(-half_pi, fmin(half_pi, glat + cel->cel_frand(-0.4, 0.4) * spread));
+            double slon = glon + cel->cel_frand(-1.0, 1.0) * spread * 2.2 / fmax(0.25, cos(glat));
             double cos_slat = cos(slat);
             spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
 
             // The head of the group is the main spot; the rest are subordinate to it.
-            double rad_deg = spot_base_deg * (mi == 0 ? frand(0.8, 1.6) : frand(0.25, 0.7));
+            double rad_deg = spot_base_deg * (mi == 0 ? cel->cel_frand(0.8, 1.6) : cel->cel_frand(0.25, 0.7));
             spot_radius.push_back(fiftyseventh * rad_deg);
         }
     }
@@ -2566,7 +2571,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     // deliberately strong, so a real group comes out ragged.
     double mean_spot_rad = fiftyseventh * fmax(0.2, spot_base_deg);
     double edge_scale = fmax(4.0, 2.5 / mean_spot_rad);
-    double edge_amount = frand(0.45, 0.7);
+    double edge_amount = cel->cel_frand(0.45, 0.7);
     double fil_scale = edge_scale * 3.5;                         // penumbral filaments
 
     // Blackbody B-V, to vary the hue according to local temperature.
@@ -2914,15 +2919,15 @@ double alienorum::AtmosphereComposition::mean_molar_mass()
 void alienorum::AtmosphereComposition::generate_fictitious_gas_giant()
 {
     double leftover = 1;
-    He_portion = frand(0.01, 0.2);
+    He_portion = cel->cel_frand(0.01, 0.2);
     leftover -= He_portion;
-    CH4_portion = frand(0.002, 0.005);
+    CH4_portion = cel->cel_frand(0.002, 0.005);
     leftover -= CH4_portion;
-    NH3_portion = frand(0.0001, 0.0003);
+    NH3_portion = cel->cel_frand(0.0001, 0.0003);
     leftover -= NH3_portion;
-    C2H6_portion = frand(0.000005, 0.000008);
+    C2H6_portion = cel->cel_frand(0.000005, 0.000008);
     leftover -= C2H6_portion;
-    H2O_portion = frand(0, 0.000005);
+    H2O_portion = cel->cel_frand(0, 0.000005);
     leftover -= H2O_portion;
     H2_portion = leftover;
 
@@ -2932,17 +2937,17 @@ void alienorum::AtmosphereComposition::generate_fictitious_gas_giant()
 void alienorum::AtmosphereComposition::generate_fictitious_ice_giant()
 {
     double leftover = 1;
-    He_portion = frand(0.1, 0.3);
+    He_portion = cel->cel_frand(0.1, 0.3);
     leftover -= He_portion;
-    CH4_portion = frand(0.001, 0.003);
+    CH4_portion = cel->cel_frand(0.001, 0.003);
     leftover -= CH4_portion;
-    NH3_portion = frand(0.0001, 0.0003);
+    NH3_portion = cel->cel_frand(0.0001, 0.0003);
     leftover -= NH3_portion;
-    C2H6_portion = frand(0.000005, 0.000008);
+    C2H6_portion = cel->cel_frand(0.000005, 0.000008);
     leftover -= C2H6_portion;
-    H2O_portion = frand(0, 0.000005);
+    H2O_portion = cel->cel_frand(0, 0.000005);
     leftover -= H2O_portion;
-    H2_portion = frand(0.7, 0.85);
+    H2_portion = cel->cel_frand(0.7, 0.85);
 
     enforce_integrity();
 }
@@ -2950,13 +2955,13 @@ void alienorum::AtmosphereComposition::generate_fictitious_ice_giant()
 void alienorum::AtmosphereComposition::generate_fictitious_venusian()
 {
     double leftover = 1;
-    leftover -= (N2_portion = frand(0.01, 0.1));
-    leftover -= (SO2_portion = frand(0.0001, 0.001));
-    leftover -= (Ar_portion = frand(0.00001, 0.0001));
-    leftover -= (H2O_portion = frand(0.00001, 0.0001));
-    leftover -= (H2S_portion = frand(0.000001, 0.00001));
-    leftover -= (CO_portion = frand(0.00001, 0.00003));
-    leftover -= (He_portion = frand(0.00001, 0.00002));
+    leftover -= (N2_portion = cel->cel_frand(0.01, 0.1));
+    leftover -= (SO2_portion = cel->cel_frand(0.0001, 0.001));
+    leftover -= (Ar_portion = cel->cel_frand(0.00001, 0.0001));
+    leftover -= (H2O_portion = cel->cel_frand(0.00001, 0.0001));
+    leftover -= (H2S_portion = cel->cel_frand(0.000001, 0.00001));
+    leftover -= (CO_portion = cel->cel_frand(0.00001, 0.00003));
+    leftover -= (He_portion = cel->cel_frand(0.00001, 0.00002));
     CO2_portion = leftover;
 
     enforce_integrity();
@@ -2965,9 +2970,9 @@ void alienorum::AtmosphereComposition::generate_fictitious_venusian()
 void alienorum::AtmosphereComposition::generate_fictitious_titanean()
 {
     double leftover = 1;
-    leftover -= (CH4_portion = frand(0.01, 0.1));
-    leftover -= (H2_portion = frand(0.001, 0.005));
-    leftover -= (C2H6_portion = frand(0.00001, 0.01));
+    leftover -= (CH4_portion = cel->cel_frand(0.01, 0.1));
+    leftover -= (H2_portion = cel->cel_frand(0.001, 0.005));
+    leftover -= (C2H6_portion = cel->cel_frand(0.00001, 0.01));
     N2_portion = leftover;
 
     enforce_integrity();
@@ -2975,33 +2980,33 @@ void alienorum::AtmosphereComposition::generate_fictitious_titanean()
 
 void alienorum::AtmosphereComposition::generate_fictitious_habitable()
 {
-    bool has_intense_volcanism = frand(0,1) < 0.4;
-    bool has_free_oxygen = frand(0,1) < 0.03;           // yes I am an oxygen pessimist
+    bool has_intense_volcanism = cel->cel_frand(0,1) < 0.4;
+    bool has_free_oxygen = cel->cel_frand(0,1) < 0.03;           // yes I am an oxygen pessimist
 
     double leftover = 1;
-    leftover -= (CH4_portion = frand(0, 0.0005));
-    leftover -= (C2H6_portion = CH4_portion * frand(0.000001, 0.1));
-    leftover -= (HCN_portion = frand(0, 0.001));
-    leftover -= (NH3_portion = frand(0, 0.00001));
-    leftover -= (Ar_portion = frand(0.00001, 0.005));
-    leftover -= (CO2_portion = frand(0.00001, 0.01));
-    leftover -= (CO_portion = CO2_portion * frand(0.00001, 0.01));
-    leftover -= (H2O_portion = frand(0.001, 0.015));
+    leftover -= (CH4_portion = cel->cel_frand(0, 0.0005));
+    leftover -= (C2H6_portion = CH4_portion * cel->cel_frand(0.000001, 0.1));
+    leftover -= (HCN_portion = cel->cel_frand(0, 0.001));
+    leftover -= (NH3_portion = cel->cel_frand(0, 0.00001));
+    leftover -= (Ar_portion = cel->cel_frand(0.00001, 0.005));
+    leftover -= (CO2_portion = cel->cel_frand(0.00001, 0.01));
+    leftover -= (CO_portion = CO2_portion * cel->cel_frand(0.00001, 0.01));
+    leftover -= (H2O_portion = cel->cel_frand(0.001, 0.015));
 
     if (has_intense_volcanism)
     {
-        leftover -= (SO2_portion = frand(0.0001, 0.001));
-        leftover -= (H2S_portion = SO2_portion * frand(0.01, 0.5));
+        leftover -= (SO2_portion = cel->cel_frand(0.0001, 0.001));
+        leftover -= (H2S_portion = SO2_portion * cel->cel_frand(0.01, 0.5));
     }
 
     if (has_free_oxygen)
     {
-        leftover -= (O2_portion = frand(0.0001, 0.7));
-        leftover -= (O3_portion = O2_portion * frand(0.0001, 0.01));
-        leftover -= (N2O_portion = O2_portion * frand(0.000001, 0.0001));
+        leftover -= (O2_portion = cel->cel_frand(0.0001, 0.7));
+        leftover -= (O3_portion = O2_portion * cel->cel_frand(0.0001, 0.01));
+        leftover -= (N2O_portion = O2_portion * cel->cel_frand(0.000001, 0.0001));
     }
 
-    leftover -= (H2_portion = frand(0.001, 0.005));
+    leftover -= (H2_portion = cel->cel_frand(0.001, 0.005));
     N2_portion = leftover;
 
     enforce_integrity();

@@ -27,7 +27,7 @@ namespace alienorum
 
         // Creates the Atmosphere on first use. Note it default-constructs, so surface_pressure
         // starts at oneatm rather than zero -- callers are expected to set what they mean.
-        Atmosphere* ensure_atmosphere() { if (!atm) atm = new Atmosphere(); return atm; }
+        Atmosphere* ensure_atmosphere() { if (!atm) atm = new Atmosphere(this); return atm; }
 
         double opposition_surge = 0;                        // TODO: A full moon is 13 times as bright, or 2.7 magnitudes brighter, compared to a quarter moon.
         double amt_lit = 0;

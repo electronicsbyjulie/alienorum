@@ -420,7 +420,7 @@ int main (int argc, char** argv)
         screen_y = dm.h;
     }
 
-    srand(std::time(nullptr));
+    // std::srand(std::time(nullptr));
     for (i=0; i<MAX_SPLASH_STARS; i++)
     {
         splash_star_positions[i] = ImVec2(frand(0, screen_x), frand(0, screen_y));

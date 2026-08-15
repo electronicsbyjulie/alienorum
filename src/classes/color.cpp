@@ -511,7 +511,7 @@ void alienorum::Cloud::draw(double planet_radius)
 
     // Seed pseudo-randomness based on position so the cloud shape is stable across frames
     mtx.lock();
-    srand(seed);
+    // std::srand(seed);
     mtx.unlock();
 
     std::vector<CloudParticle> base_layer;
