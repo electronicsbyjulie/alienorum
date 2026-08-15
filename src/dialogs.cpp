@@ -1898,10 +1898,8 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
-                mtx.lock();
-                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                mtx.unlock();
-                cel->rnd_seed = std::rand();
+                cel->rnd_seed = rand();
+                if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
                 cel->looked_for_maps = false;
                 cel->ignore_map_files = true;
                 if (cel->surf_map)

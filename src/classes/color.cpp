@@ -264,6 +264,12 @@ double col_frand(std::mt19937 *rng, double min, double max)
     return dist(*rng);
 }
 
+int col_rand(std::mt19937 *rng)
+{
+    std::uniform_int_distribution<int> dist;
+    return dist(*rng);
+}
+
 RGB3Byte generate_vegetation_color(std::mt19937 *rng)
 {
     // Don't assume alien vegetation is green!
@@ -272,7 +278,7 @@ RGB3Byte generate_vegetation_color(std::mt19937 *rng)
     double lp = col_frand(rng, 300, 490);
 
     // Define up to 4 absorption bands (Earth vegetation has two, red and blue)
-    int nbands = 1 + (rand()%3);
+    int nbands = 1 + (col_rand(rng)%3);
     #if _dbg_veg_color
     std::cout << "Generating vegetation color from longpass " << lp << " plus " << nbands << " absorption bands." << std::endl;
     #endif

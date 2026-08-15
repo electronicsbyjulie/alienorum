@@ -27,6 +27,14 @@ namespace alienorum
         artificial = 0xf00
     };
 
+    // Which body types get their surface from generate_rocky_map(), and therefore carry bump
+    // data worth reusing. Kept in one place because load_textures() and mark_for_map_regen()
+    // both branch on it, and the two lists had drifted apart.
+    inline bool uses_rocky_map(cel_obj_type type)
+    {
+        return type == rocky || type == icy || type == waterworld || type == lavaworld;
+    }
+
     enum cel_obj_class
     {
         class_unknown,
@@ -285,6 +293,7 @@ namespace alienorum
         double lon_J2000_offset = 0;
         int rnd_seed = 0;
         std::mt19937 rng;
+        int cel_rand();
         double cel_frand(double min, double max);
 
         double epoch = J2000;                       // JD

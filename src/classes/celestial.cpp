@@ -25,10 +25,16 @@ double azimuth_correction = 0;
 typedef struct my_jpeg_error_mgr * my_error_ptr;
 Locale *is_a_locale_under_cursor = nullptr, *selected_locale = nullptr;
 
+int alienorum::CelestialObject::cel_rand()
+{
+    std::uniform_int_distribution<int> dist;
+    return dist(rng);
+}
+
 double alienorum::CelestialObject::cel_frand(double min, double max)
 {
     std::uniform_real_distribution<double> dist(min, max);
-    return dist(rng); 
+    return dist(rng);
 }
 
 CelestialObject::CelestialObject()
@@ -596,14 +602,14 @@ void alienorum::CelestialObject::randomize()
         unsigned int seed;
     };
 
-    if (rnd_seed) seed = rnd_seed;
-    else
+    if (!rnd_seed)
     {
         hash = 0xb0ad * log(mass) + 0x1cea * log(volumetric_mean_radius);
         if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
         rnd_seed = seed;
     }
     rng.seed(rnd_seed);
+    std::cout << "Can't trust github: " << rnd_seed << std::endl;
 }
 
 json CelestialObject::to_json()
@@ -1477,7 +1483,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         has_water = 1;
     }
-    if (randomize_txgen)
+    else if (randomize_txgen)
     {
         has_water = 0;
     }
@@ -1586,7 +1592,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         want_overcast_sky = (p->cloud_map == nullptr);
     }
 
-    int octaves = 5 + (rand() % 4);
+    int octaves = 5 + (cel->cel_rand() % 4);
     double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
     double lacunarity = p->cel_frand(0.51*lacbase, 0.53*lacbase);
     double gain = has_water ? 0.5 : 2.5;
@@ -1646,7 +1652,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         vegetation_g = veg_color.g;
         vegetation_b = veg_color.b;
     }
-    inv_h2o_level = 1.0 / has_water;
+    if (has_water) inv_h2o_level = 1.0 / has_water;
 
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && p->is_tidal_locked();
@@ -1657,11 +1663,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
     // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
     // than one continuous gradient.
     const bool enable_provinces = true;
-    int num_provinces = 2 + (rand() % 3);                                    // 2-4 provinces
+    int num_provinces = 2 + (cel->cel_rand() % 3);                                    // 2-4 provinces
     double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
     double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
     double mottle_zone = p->cel_frand(0.64, 1.3);                                   // how far the speckling reaches into each province
-    unsigned int dither_seed = (unsigned int)rand();                         // per-planet salt for the per-pixel mottle hash
+    unsigned int dither_seed = (unsigned int)cel->cel_rand();                         // per-planet salt for the per-pixel mottle hash
     double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
     double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
     double province_variability = p->cel_frand(0.1, 0.25);
@@ -2133,7 +2139,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
     cel->randomize();
     double variability = cel->cel_frand(0, 0.666);
-    int num_bands = rand() % 9 + 7, i;
+    int num_bands = cel->cel_rand() % 9 + 7, i;
     if (cel->type == ice_giant)
     {
         num_bands = std::max(2, num_bands/4);
@@ -2517,7 +2523,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
         double glon = cel->cel_frand(0, _pi * 2);
         double spread = fiftyseventh * spot_base_deg * cel->cel_frand(2.0, 5.0);
-        int members = 2 + (rand() % 4);
+        int members = 2 + (cel->cel_rand() % 4);
 
         for (int mi = 0; mi < members; mi++)
         {
