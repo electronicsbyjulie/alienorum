@@ -2223,6 +2223,7 @@ bool draw_one_object(int i)
     double f_ang = angular_radius[i]*zoom*dispcx;
     flare = fmin(max_flare, fmax(f_bloom, f_mag) / fmax(1, f_ang));
     // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
+    if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < -angular_radius[i]) flare = 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     if (cls == class_galaxy)
     {
