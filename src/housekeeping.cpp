@@ -351,15 +351,14 @@ void compute_object_draw_coordinates()
         inside_galaxy_idx = -1;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
             if (cels[i]->deleted) continue;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
                 = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
 
-            // Standing inside a disc, its own projected ellipse is not what is overhead: the disc
-            // wraps all the way round as a band. draw_galaxy_band() renders that instead, and this
-            // is where it finds out there is one to render. The margin lets the band take over a
-            // little before the rim is crossed, since by then it already fills most of the sky.
+            // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
+            // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
             if (cels[i]->typeclass() == class_galaxy)
             {
                 double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
@@ -369,11 +368,7 @@ void compute_object_draw_coordinates()
 
             if (i == whereami) continue;
 
-            // A galaxy is not inside anybody's star system, and its cenobj is itself. Casting that
-            // to Star* and reading tmp_vis_flag off it reads past the end of the object -- Galaxy
-            // carries none of Star's fields -- so the answer was whatever happened to be in the
-            // heap there, and galaxies were being culled here before they could ever be drawn.
-            // They get their own visibility test further down, on apparent magnitude, the same way
+            // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
             // a star out of its visible box would.
             if (cels[i]->typeclass() != class_galaxy)
             {
