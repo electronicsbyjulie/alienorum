@@ -1863,8 +1863,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     generating_fic_texture = false;
     touch_gen();
 
-    // Deferred from the T_surf test far above -- see its comment for why this cannot run inline.
-    // Last of all, so the surface map is complete and usable before the sky is even started.
+    // Deferred to the end so as to avoid the mutex lock.
     if (want_overcast_sky && !p->cloud_map)
     {
         p->cloud_map = new Map(cel);
@@ -1899,7 +1898,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
 
     // Based on temperature, calculate the degree of lava glow.
     double tempK = p->estimate_surface_temperature(), ltemp;
-    const double glow_amt = 24.0 / blackbody_flux(tempK, R_band);
+    const double glow_amt = 4.0 / blackbody_flux(tempK, R_band);
     std::cout << glow_amt << std::endl;
     double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
 
@@ -1953,7 +1952,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)(10000 * bombardment_factor);
+    int num_craters = (int)(3000 * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
@@ -1973,7 +1972,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
         c.cz = z;
 
         // Heavily skewed toward small craters, like real crater size-frequency distributions.
-        double diam = min_diam + (max_diam - min_diam) * pow(frand(0, 1), 3.5);
+        double diam = min_diam + (max_diam - min_diam) * pow(frand(0, 1), 5);
         c.angular_radius = fmax(1e-4, (diam * 0.5) / planet_radius);
 
         c.depth = bump_scale * frand(0.3, 0.9);
@@ -1984,7 +1983,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
         // Ray systems only for the larger, fresher craters, and only where bombardment_factor
         // says fresh terrain persists at all.
-        c.has_rays = (diam > max_diam * 0.67) && (frand(0, 1) < 0.3 * fmin(1.0, bombardment_factor));
+        c.has_rays = (diam > max_diam * 0.67) && (frand(0, 1) < 0.01 * fmin(1.0, bombardment_factor));
         c.ray_freq = frand(5, 10);
         c.ray_phase = frand(0, 2 * _pi);
         c.ray_sharpness = frand(6, 14);
