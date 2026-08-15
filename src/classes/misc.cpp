@@ -85,7 +85,7 @@ double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
 float has_water, veg_min_temp = 278, veg_max_temp = 310;
-int vegetation_r, vegetation_g, vegetation_b;
+int vegetation_r=0, vegetation_g=0, vegetation_b=0;
 
 double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,

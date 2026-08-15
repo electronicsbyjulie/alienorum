@@ -1639,7 +1639,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double edge_dist, mottle_strength, mottle_noise, hue_noise;
     unsigned int x, y;
     int idx, province_idx, neighbor_province_idx, mottled_idx;
-    if (has_water && randomize_txgen)
+    if (has_water && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
     {
         RGB3Byte veg_color = generate_vegetation_color(&cel->rng);
         vegetation_r = veg_color.r;

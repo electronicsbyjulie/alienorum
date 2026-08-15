@@ -2186,7 +2186,8 @@ void draw_system_explorer(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("Gen. Fic. Moons##explored"))
             {
-                cel->randomize();
+                cel->rnd_seed = 0;          // force rerandomization.
+                vegetation_r = vegetation_g = vegetation_b = 0;
                 double A = sqrt(cel->orbit->period / oneday) / 4;
                 double B = sqrt(cel->mass / earth_mass);
                 double C = sqrt(A*B);
