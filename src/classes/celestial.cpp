@@ -1641,7 +1641,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     int idx, province_idx, neighbor_province_idx, mottled_idx;
     if (has_water && randomize_txgen)
     {
-        RGB3Byte veg_color = generate_vegetation_color();
+        RGB3Byte veg_color = generate_vegetation_color(&cel->rng);
         vegetation_r = veg_color.r;
         vegetation_g = veg_color.g;
         vegetation_b = veg_color.b;

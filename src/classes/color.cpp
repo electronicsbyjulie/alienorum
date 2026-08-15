@@ -257,13 +257,19 @@ void apply_default_style()
 }
 
 #define _dbg_veg_color 0
-RGB3Byte generate_vegetation_color()
+
+double col_frand(std::mt19937 *rng, double min, double max)
+{
+    std::uniform_real_distribution<double> dist(min, max);
+    return dist(*rng);
+}
+
+RGB3Byte generate_vegetation_color(std::mt19937 *rng)
 {
     // Don't assume alien vegetation is green!
-    // Don't seed random value here; we do that in the Map class.
 
     // Define a longpass wavelength somewhere in the UV or blue
-    double lp = frand(300, 490);
+    double lp = col_frand(rng, 300, 490);
 
     // Define up to 4 absorption bands (Earth vegetation has two, red and blue)
     int nbands = 1 + (rand()%3);
@@ -277,8 +283,8 @@ RGB3Byte generate_vegetation_color()
     {
         // Favor shorter wavelengths, but allow up to near infrared.
         // Make the longest band the most intense to allow for a strong red edge.
-        bandl[i] = (i?bandl[i-1]:lp)*1.03 + frand(5, frand(50, 250));
-        bandi[i] = frand(i?bandi[i-1]:0.1, 1);
+        bandl[i] = (i?bandl[i-1]:lp)*1.03 + col_frand(rng, 5, col_frand(rng, 50, 250));
+        bandi[i] = col_frand(rng, i?bandi[i-1]:0.1, 1);
         if (bandi[i] > maxband) maxband = bandi[i];
 
         #if _dbg_veg_color
@@ -289,7 +295,7 @@ RGB3Byte generate_vegetation_color()
     // Make sure at least one of the bands is intense.
     if (maxband < 0.8)
     {
-        double normalize = frand(0.8, 1.0);
+        double normalize = col_frand(rng, 0.8, 1.0);
         double multiply = normalize / maxband;
         for (i=0; i<nbands; i++) bandi[i] *= multiply;
 
