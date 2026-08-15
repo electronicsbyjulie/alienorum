@@ -3371,6 +3371,8 @@ void draw_horizon()
         rgb.g *= is_day;
         rgb.b *= is_day;
 
+        bool is_water = (p->type == rocky) && (rgb.b > 2 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99% of the time.
+
         if (p && p->type == lavaworld && p->night_map)
         {
             RGB3Byte nrgb = p->night_map->color_at(viewer_lat, viewer_lon);
@@ -3381,7 +3383,7 @@ void draw_horizon()
         }
 
         double hzheight[hznodes];
-        if (show_terrain)
+        if (show_terrain && !is_water)
         {
             // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
             pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);

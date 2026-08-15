@@ -1510,12 +1510,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
     {
         if (life_possible)
         {
-            ac->generate_fictitious_habitable();
+            if (!show_taucalc) ac->generate_fictitious_habitable();
             p->atm->calculate_tau(p->get_surface_pressure());
             p->temperature = 0;
             T_surf = p->estimate_surface_temperature();
         }
-        else ac->generate_fictitious_for_planet(p->type);
+        else if (!show_taucalc) ac->generate_fictitious_for_planet(p->type);
     }
     life_possible = (life_possible
         && p->get_surface_pressure() >= 600
@@ -1561,7 +1561,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         {
             if (life_possible)
             {
-                ac->generate_fictitious_habitable();
+                if (!show_taucalc) ac->generate_fictitious_habitable();
                 p->atm->calculate_tau(p->get_surface_pressure());
             }
         }

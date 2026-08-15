@@ -1660,7 +1660,7 @@ void draw_objedit_window(ImGuiIO& io)
                     update_taucalc = true;
                     cel->user_edited = true;
                 }
-                if (p->type == rocky)
+                if (p->type != gas_giant && p->type != ice_giant)
                 {
                     ImGui::SameLine();
                     ImGui::Text("%s", "Randomize  ");
