@@ -1898,7 +1898,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
 
     // Based on temperature, calculate the degree of lava glow.
     double tempK = p->estimate_surface_temperature(), ltemp;
-    const double glow_amt = 4.0 / blackbody_flux(tempK, R_band);
+    const double glow_amt = 6.0 / blackbody_flux(tempK, R_band);
     std::cout << glow_amt << std::endl;
     double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
 
@@ -1952,7 +1952,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)(3000 * bombardment_factor);
+    int num_craters = (int)((p->type == lavaworld ? 3 : 3000) * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;

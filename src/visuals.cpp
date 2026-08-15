@@ -3348,11 +3348,13 @@ void find_horizon()
 void draw_horizon()
 {
     // Horizon
-    // TODO: Render according to bump map and generate a fictitious skyline.
+    // TODO: Generate a fictitious skyline.
     if (view_mode == vm_horizon)
     {
         int i, j;
         CelestialObject *cel = cels[whereami];
+        cel_obj_class cls = cel->typeclass();
+        Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
         if (!cel->looked_for_maps)
         {
@@ -3368,6 +3370,15 @@ void draw_horizon()
         rgb.r *= is_day;
         rgb.g *= is_day;
         rgb.b *= is_day;
+
+        if (p && p->type == lavaworld && p->night_map)
+        {
+            RGB3Byte nrgb = p->night_map->color_at(viewer_lat, viewer_lon);
+            double xlavabrt = 3.0 * pow(magnbase,  sky_mag_shift);
+            rgb.r = std::fmin(255, (double)rgb.r + xlavabrt * nrgb.r);
+            rgb.g = std::fmin(255, (double)rgb.g + xlavabrt * nrgb.g);
+            rgb.b = std::fmin(255, (double)rgb.b + xlavabrt * nrgb.b);
+        }
 
         double hz_fx = -1e9, hz_fy = 1e9;
         ImVec2 points[4];
