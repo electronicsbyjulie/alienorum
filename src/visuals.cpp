@@ -3351,7 +3351,7 @@ void draw_horizon()
     // TODO: Generate a fictitious skyline.
     if (view_mode == vm_horizon)
     {
-        int i, j;
+        int i, j, j1;
         CelestialObject *cel = cels[whereami];
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
@@ -3380,17 +3380,34 @@ void draw_horizon()
             rgb.b = std::fmin(255, (double)rgb.b + xlavabrt * nrgb.b);
         }
 
+        double hzheight[hznodes];
+        // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
+        pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
+        double terrain_height = dispcx * 0.1 * zoom;
+        double terrain_min = 9999;
+        for (j = 0; j < hznodes; j++)
+        {
+            double theta = _pi * 2 * j / hznodes;
+            double scale = 0.19;
+            double nx = scale * sin(theta), ny = scale * cos(theta);
+            hzheight[j] = terrain_height * fBm(nx, ny, 0, 29, 1.29, 0.8559) * 3;
+            if (hzheight[j] < terrain_min) terrain_min = hzheight[j];
+        }
+        for (j = 0; j < hznodes; j++) hzheight[j] -= terrain_min;
+        for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j] - hzheight[j];
+
         double hz_fx = -1e9, hz_fy = 1e9;
         ImVec2 points[4];
-        for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hz_dy[j%hznodes] > -1e5)              // draw_marker[j])
+        for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
         {
-            if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hz_dy[j%hznodes] > -1e4 && fabs(hz_fx-hz_dx[j%hznodes]) < dispcx * zoom)
+            j1 = j%hznodes;
+            if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
             {
-                if (altitude > (fiftyseventh * 40) && (hz_dy[j%hznodes] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
+                if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
 
                 points[0] = ImVec2(hz_fx, hz_fy);
-                points[1] = ImVec2(hz_dx[j%hznodes]+1, hz_dy[j%hznodes]);
-                points[2] = ImVec2(hz_dx[j%hznodes]+1, dispcy*2);
+                points[1] = ImVec2(hz_dx[j1]+1, hzheight[j1]);
+                points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
                 points[3] = ImVec2(hz_fx, dispcy*2);
 
                 ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4,
@@ -3398,8 +3415,8 @@ void draw_horizon()
             }
 
             _skip_hz_element:
-            hz_fx = hz_dx[j%hznodes];
-            hz_fy = hz_dy[j%hznodes];
+            hz_fx = hz_dx[j1];
+            hz_fy = hzheight[j1];
         }
 
         double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;

@@ -292,6 +292,10 @@ HD191408                HR 7703 B               591y            294.4       086.
 HD131511                HR 5553 B               125.396d        248.3       093.4       219         0.19AU      .51                                                                             0.45        0.37        .021         3596
 HD128429                HR 5455 Ab              1086d                                               1.589AU     .15                                                                             0.49
 HD90177                 HR Carinae B            4557.5d                     119.2                   18AU        .4                                                                              15          500                      3800
+GJ 791.2                GJ 791.2 B              1.47080y        282         162         009.6       0.0971s     .6232       0                   2019.1567                                       0.114
+#HD216489                (stellar rotation)      24.4936d                                                                                                                                        1.8         13.3        54           4550
+HD216489                HD216489 B              24.64877d                   065                                                                                                                 1.0         1.0         0.9          5650
+HD156190                Iot Aps B               59.32y          119.6       069.4       270.5       0.115s      .172
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK

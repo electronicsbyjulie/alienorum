@@ -3393,12 +3393,16 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A->known_poles = true;
         }
 
+        s = nullptr;
         if (!strcmp(bdystr, "(system inclination)")
             || strstr(bdystr, " disk") || strstr(bdystr, " disc")
             || strstr(bdystr, " belt")
             || !strcmp(bdystr, "(companion orbit)")
             )
+        {
             A->has_disk = A->known_poles;
+            s = A;
+        }
         if (A->has_disk)
         {
             A->disk_heliocen_inclination = inclination;
@@ -3414,6 +3418,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             if (nxtlast == 'A' && last == 'U') disk_sma = atof(field) * AU;
             else disk_sma = atof(field);
             if (disk_sma) A->disk_inner_edge_sma = disk_sma;
+            s = A;
         }
 
         if (!strcmp(bdystr, "(stellar rotation)"))
@@ -3428,6 +3433,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             else A->sidereal_rotational_period = atof(field);
             A->rot_heliocen_incl = inclination;
             A->rot_heliocen_node = ascending_node;
+            s = A;
         }
 
         if (bdystr[0] == '(') continue;
@@ -3438,8 +3444,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             continue;
         }
 
-        s = nullptr;
-        if (A->multisys)
+        if (!s && A->multisys)
         {
             char comp = bdystr[strlen(bdystr)-1];
             if (comp > 'A' && comp <= 'Z') s = A->multisys->get_member(comp);
@@ -3457,7 +3462,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         int bs = trim(buffer).size();
         if (bs >= 180)
         {
-            if (!s || s == A)
+            if (!s)
             {
                 s = new Star();
                 append_cel(s);
@@ -3617,6 +3622,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (l) last = str.c_str()[l-1];
         if (l>1) nxtlast = str.c_str()[l-2];
         if (nxtlast == 'A' && last == 'U') f = atof(field) * AU;
+        else if (last == 's') f = atof(field) * A->distance / light_year * 0.29278287 * AU;
         else f = atof(field);
         if (f) s->orbit->semimajor_axis = f;
 

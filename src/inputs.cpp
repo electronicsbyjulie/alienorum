@@ -421,8 +421,8 @@ void process_key_cmd_char(char c)
         case 'O': show_orbits = !show_orbits; break;
         case 'p': lbl_localsys = !lbl_localsys; break;
         case 'P': cbolbls_selected_idx = lbltype_planets; show_labels = true; break;
-        case 'q': dev_dial *= 1.3; viewchanged=true; break;
-        case 'Q': dev_dial *= 0.7; viewchanged=true; break;
+        case 'q': dev_dial *= (1.0 + dev_dial_step); viewchanged=true; break;
+        case 'Q': dev_dial *= (1.0 - dev_dial_step); viewchanged=true; break;
 
         case 'r':
         velocity = center;

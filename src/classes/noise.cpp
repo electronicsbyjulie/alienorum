@@ -4,10 +4,21 @@ using namespace alienorum;
 
 PerlinNoise::PerlinNoise()
 {
+    reseed(0xb0ad1cea);
+}
+
+PerlinNoise::PerlinNoise(uint32_t seed)
+{
+    reseed(seed);
+}
+
+void alienorum::PerlinNoise::reseed(uint32_t seed)
+{
     p.resize(256);
     std::iota(p.begin(), p.end(), 0);
     std::random_device rd;
     std::mt19937 g(rd());
+    g.seed(seed);
     std::shuffle(p.begin(), p.end(), g);
     p.insert(p.end(), p.begin(), p.end());
 }
