@@ -396,7 +396,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         if (trim(field).size())
         {
             absmagn = atof(field);
-            s->absolute_magnitude = absmagn;
+            if (absmagn) s->absolute_magnitude = absmagn;
             s->distance = CelestialObject::distance_from_magnitudes(s->apparent_magnitude, absmagn);
             s->distance_known = true;
         }
@@ -3475,7 +3475,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             read_field_onebased(buffer, 161, 175, field);
             strcpy(s->spectral_type, trim(field).c_str());
             read_field_onebased(buffer, 177, 191, field);
-            s->absolute_magnitude = atof(field);
+            f = atof(field);
+            if (f || (field[0] == '0')) s->absolute_magnitude = f;
             double msun=0, rsun=0, lum=0, tempK=0;
             if (bs > 193)
             {
@@ -4293,7 +4294,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
             if (mycons && s->BayerGrkno >= 0) mycons->Bayer_stars[s->BayerGrkno] = s;
             if (mycons && s->GouldNo > 0) mycons->Gould_stars[s->GouldNo] = s;
-
 
             read_field_onebased(buffer, 174, 184, field);
             s->proper_motion_RA = atof(field);

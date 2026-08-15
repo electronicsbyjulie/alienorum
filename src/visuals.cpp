@@ -2393,7 +2393,7 @@ bool draw_one_object(int i)
                 || (cels[i]->tmprel.magnitude() < AU)
                 )
             )
-        || (cels[i]->type == galaxy && label_galaxies)
+        || (cels[i]->type == galaxy && label_galaxies && vmag_cache[i] < (mag_limit_adjusted))
         || i == selected)
     {
         const char *dispname = cels[i]->name;
