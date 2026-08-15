@@ -595,8 +595,10 @@ void alienorum::CelestialObject::randomize()
     {
         hash = 0xb0ad * log(mass) + 0x1cea * log(volumetric_mean_radius);
         if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
-        std::srand(seed);
+        rnd_seed = seed;
     }
+    std::srand(rnd_seed);
+    std::cout << "retarded seed " << rnd_seed << std::endl;
 }
 
 json CelestialObject::to_json()
@@ -1459,7 +1461,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 {
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
     mtx.lock();
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    cel->randomize();
     generating_fic_texture = true;
 
     Planet *p = (Planet*)cel;
@@ -1475,7 +1477,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
         has_water = 0;
     }
 
-    cel->randomize();
     p->temperature = 0;
     double T_surf = p->estimate_surface_temperature();
     const double Tboil = water_freezing+100;                                     // Reference pressure
@@ -1626,7 +1627,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     inv_lon_scale = 1.0 / lon_scale;
     double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
     std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
-    mtx.unlock();
 
     double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
     double province_scale = scale * 0.4, albedo_value, grain_value, border_noise;
@@ -1860,6 +1860,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     if (create_bump) stamp_craters(cel, bump_scale);
 
+    mtx.unlock();
     generating_fic_texture = false;
     touch_gen();
 
@@ -2097,7 +2098,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
 {
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    cel->randomize();
 
     mtx.lock();
     generating_fic_texture = true;
@@ -2253,7 +2254,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
 void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 {
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    cel->randomize();
 
     mtx.lock();
     generating_fic_texture = true;
@@ -2387,7 +2388,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 void Map::generate_stellar_map(CelestialObject *cel)
 {
     assert(cel->typeclass() == class_star);
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    cel->randomize();
 
     mtx.lock();
     generating_fic_texture = true;

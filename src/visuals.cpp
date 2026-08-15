@@ -3677,7 +3677,9 @@ void draw_cloudy_sky()
     if (view_mode != vm_horizon) return;
 
     unsigned int seed = 65536 * (viewer_lat + _pi);
+    mtx.lock();
     srand(seed);
+    mtx.unlock();
     seed = (rand() % 65536) + (65536 * fabs(viewer_lon));
 
     CelestialObject *cel = cels[whereami];

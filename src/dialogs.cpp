@@ -977,7 +977,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##obliquity"))
             {
+                mtx.lock();
                 std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                mtx.unlock();
                 cel->obliquity = frand(0, frand(0, frand(0, _pi)));
             }
             ImGui::SameLine(col2);
@@ -1001,7 +1003,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##equinox"))
             {
+                mtx.lock();
                 std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                mtx.unlock();
                 cel->equinox = frand(0, _pi*2);
             }
 
@@ -1430,7 +1434,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##orbincl"))
             {
+                mtx.lock();
                 std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                mtx.unlock();
                 orb->inclination = pow(frand(0, half_pi), 3);
                 if (frand(0,1) < 0.03) orb->inclination = _pi - orb->inclination;
             }
@@ -1453,7 +1459,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##node&argperi&manom"))
             {
+                mtx.lock();
                 std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                mtx.unlock();
                 cel->orbit->ascending_node = frand(0, _pi*2);
                 cel->orbit->arg_periapsis = frand(0, _pi*2);
                 cel->orbit->mean_anomaly = frand(0, _pi*2);
@@ -1476,7 +1484,9 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##ecce"))
             {
+                mtx.lock();
                 std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                mtx.unlock();
                 cel->orbit->eccentricity = pow(frand(0, 0.999), 10);
             }
             ImGui::SameLine(col2);
@@ -1866,10 +1876,8 @@ void draw_objedit_window(ImGuiIO& io)
                 save_tex.detach();
             }
             ImGui::SameLine();
-            if (!generating_fic_texture && ImGui::Button("Refresh"))
+            if (!generating_fic_texture && ImGui::Button("Update"))
             {
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                cel->rnd_seed = std::rand();
                 if (cel->surf_map)
                 {
                     delete cel->surf_map;
@@ -1890,7 +1898,10 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
-                cel->fictitious_map_height = 5000;          // World-building resolution.
+                mtx.lock();
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                mtx.unlock();
+                cel->rnd_seed = std::rand();
                 cel->looked_for_maps = false;
                 cel->ignore_map_files = true;
                 if (cel->surf_map)
@@ -1906,6 +1917,11 @@ void draw_objedit_window(ImGuiIO& io)
                     cel->night_map->mark_for_map_regen(cel);
                 }
             }
+            ImGui::SameLine();
+            ImGui::Text("Map Height");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(txtwid);
+            ImGui::InputInt("px##edit_map_ht", (int*)&cel->fictitious_map_height, 0, 0);
 
             if (!cel->looked_for_maps)
             {

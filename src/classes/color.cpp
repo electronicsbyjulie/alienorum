@@ -510,7 +510,9 @@ void alienorum::Cloud::draw(double planet_radius)
     double dw = width / distance * io.DisplaySize.x * zoom, dh = height / distance * io.DisplaySize.x * zoom;
 
     // Seed pseudo-randomness based on position so the cloud shape is stable across frames
+    mtx.lock();
     srand(seed);
+    mtx.unlock();
 
     std::vector<CloudParticle> base_layer;
     std::vector<CloudParticle> core_layer;
