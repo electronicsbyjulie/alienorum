@@ -55,6 +55,7 @@ bool explorer = false;
 bool neighborhood = false;
 bool locwnd = false;
 bool show_taucalc = false;
+bool show_terrain = true;
 bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;

@@ -262,32 +262,30 @@ void show_menu()
             if (ImGui::MenuItem("Zoom In", "*")) { process_key_cmd_char('*'); menu_clicked = true; }
             if (ImGui::MenuItem("Zoom Out", "/")) { process_key_cmd_char('/'); menu_clicked = true; }
             if (ImGui::MenuItem("Reset Brightness and Zoom", "%")) { process_key_cmd_char('%'); menu_clicked = true; }
-            if (ImGui::MenuItem("Increase Texture Quality", "Q")) { process_key_cmd_char('q'); menu_clicked = true; }
-            if (ImGui::MenuItem("Increase Texture Speed", "Shift+Q")) { process_key_cmd_char('Q'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Azimuth zero", "5", nullptr, (trackidx < 0))) { process_key_cmd_char('5'); menu_clicked = true; }
             if (ImGui::MenuItem("Azimuth 90deg", "6", nullptr, (trackidx < 0))) { process_key_cmd_char('6'); menu_clicked = true; }
             if (ImGui::MenuItem("Azimuth 180deg", "8", nullptr, (trackidx < 0))) { process_key_cmd_char('8'); menu_clicked = true; }
             if (ImGui::MenuItem("Azimuth 270deg", "4", nullptr, (trackidx < 0))) { process_key_cmd_char('4'); menu_clicked = true; }
             ImGui::Separator();
-            if (ImGui::MenuItem("Red Light Mode", "Shift+R")) { process_key_cmd_char('R'); menu_clicked = true; }
-            if (ImGui::MenuItem("White Background Mode", "Shift+W")) { process_key_cmd_char('W'); menu_clicked = true; }
-            if (ImGui::MenuItem("Fullscreen", "F11")) { process_key_F11(); menu_clicked = true; }
+            if (ImGui::MenuItem("Red Light Mode", "Shift+R", redlight_mode)) { process_key_cmd_char('R'); menu_clicked = true; }
+            if (ImGui::MenuItem("White Background Mode", "Shift+W", whtbkgd)) { process_key_cmd_char('W'); menu_clicked = true; }
+            if (ImGui::MenuItem("Fullscreen", "F11", fullscreen)) { process_key_F11(); menu_clicked = true; }
             ImGui::Separator();
-            if (ImGui::MenuItem(vmtext[0], "&")) { process_key_cmd_char('&'); menu_clicked = true; }
-            if (ImGui::MenuItem(vmtext[1], "_")) { process_key_cmd_char('_'); menu_clicked = true; }
-            if (ImGui::MenuItem(vmtext[2], "$")) { process_key_cmd_char('$'); menu_clicked = true; }
-            if (ImGui::MenuItem(vmtext[3], "\\")) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[0], "&", view_mode == vm_spaceship)) { process_key_cmd_char('&'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[1], "_", view_mode == vm_horizon)) { process_key_cmd_char('_'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[2], "$", view_mode == vm_sunclock)) { process_key_cmd_char('$'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[3], "\\", view_mode == vm_skymap)) { process_key_cmd_char('\\'); menu_clicked = true; }
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
-                if (ImGui::MenuItem("Local", "Ctrl+L")) { process_key_cmd_ctrl_char('L'); menu_clicked = true; }
-                if (ImGui::MenuItem("ICRF", "Ctrl+I")) { process_key_cmd_ctrl_char('I'); menu_clicked = true; }
-                if (ImGui::MenuItem("Ecliptic", "Ctrl+E")) { process_key_cmd_ctrl_char('E'); menu_clicked = true; }
-                if (ImGui::MenuItem("Galactic", "Ctrl+G")) { process_key_cmd_ctrl_char('G'); menu_clicked = true; }
+                if (ImGui::MenuItem("Local", "Ctrl+L", vplane_mode == vplane_local)) { process_key_cmd_ctrl_char('L'); menu_clicked = true; }
+                if (ImGui::MenuItem("ICRF", "Ctrl+I", vplane_mode == vplane_ICRF)) { process_key_cmd_ctrl_char('I'); menu_clicked = true; }
+                if (ImGui::MenuItem("Ecliptic", "Ctrl+E", vplane_mode == vplane_ecliptic)) { process_key_cmd_ctrl_char('E'); menu_clicked = true; }
+                if (ImGui::MenuItem("Galactic", "Ctrl+G", vplane_mode == vplane_galactic)) { process_key_cmd_ctrl_char('G'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J")) { process_key_cmd_char('J'); menu_clicked = true; }
+            if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J", satview_upsidedown)) { process_key_cmd_char('J'); menu_clicked = true; }
             if (ImGui::MenuItem("Previous Theme", "#")) { process_key_cmd_char('#'); menu_clicked = true; }
             if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }           
             ImGui::EndMenu();
@@ -295,35 +293,36 @@ void show_menu()
         if (ImGui::BeginMenu("Show"))
         {
             mouse_over_menu = true;
-            if (ImGui::MenuItem("Info Panel", "N")) { process_key_cmd_char('n'); menu_clicked = true; }
-            if (ImGui::MenuItem("Status Panel", "S")) { process_key_cmd_char('s'); menu_clicked = true; }
-            if (ImGui::MenuItem("System Explorer", "E")) { process_key_cmd_char('e'); menu_clicked = true; }
-            if (ImGui::MenuItem("Stellar Neighborhood", "0")) { process_key_cmd_char('0'); menu_clicked = true; }
+            if (ImGui::MenuItem("Info Panel", "N", objinfwnd)) { process_key_cmd_char('n'); menu_clicked = true; }
+            if (ImGui::MenuItem("Status Panel", "S", statuswnd)) { process_key_cmd_char('s'); menu_clicked = true; }
+            if (ImGui::MenuItem("System Explorer", "E", explorer)) { process_key_cmd_char('e'); menu_clicked = true; }
+            if (ImGui::MenuItem("Stellar Neighborhood", "0", neighborhood)) { process_key_cmd_char('0'); menu_clicked = true; }
             ImGui::Separator();
-            if (ImGui::MenuItem("Constellations", "C")) { process_key_cmd_char('c'); menu_clicked = true; }
-            if (ImGui::MenuItem("RA/Dec Grid", "G")) { process_key_cmd_char('g'); menu_clicked = true; }
-            if (ImGui::MenuItem("Star Labels", "L")) { process_key_cmd_char('l'); menu_clicked = true; }
+            if (ImGui::MenuItem("Constellations", "C", show_consln)) { process_key_cmd_char('c'); menu_clicked = true; }
+            if (ImGui::MenuItem("RA/Dec Grid", "G", show_grid)) { process_key_cmd_char('g'); menu_clicked = true; }
+            if (ImGui::MenuItem("Star Labels", "L", show_labels)) { process_key_cmd_char('l'); menu_clicked = true; }
             if (ImGui::BeginMenu("Label Stars By"))
             {
                 mouse_over_menu = true;
-                if (ImGui::MenuItem("Bayer Designations", "Shift+F")) { process_key_cmd_char('F'); menu_clicked = true; }
-                if (ImGui::MenuItem("Flamsteed Numbers", "F")) { process_key_cmd_char('f'); menu_clicked = true; }
-                if (ImGui::MenuItem("Gould Uranometria Numbers", "Shift+G")) { process_key_cmd_char('G'); menu_clicked = true; }
-                if (ImGui::MenuItem("Sunlike Stars", "Shift+C")) { process_key_cmd_char('C'); menu_clicked = true; }
-                if (ImGui::MenuItem("Stars with Planets", "Shift+P")) { process_key_cmd_char('P'); menu_clicked = true; }
-                if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L")) { process_key_cmd_char('L'); menu_clicked = true; }
-                if (ImGui::MenuItem("Stars with Known Poles", "Shift+X")) { process_key_cmd_char('X'); menu_clicked = true; }
+                if (ImGui::MenuItem("Bayer Designations", "Shift+F", cbolbls_selected_idx == lbltype_Bayer)) { process_key_cmd_char('F'); menu_clicked = true; }
+                if (ImGui::MenuItem("Flamsteed Numbers", "F", cbolbls_selected_idx == lbltype_Flamsteed)) { process_key_cmd_char('f'); menu_clicked = true; }
+                if (ImGui::MenuItem("Gould Uranometria Numbers", "Shift+G", cbolbls_selected_idx == lbltype_Gould)) { process_key_cmd_char('G'); menu_clicked = true; }
+                if (ImGui::MenuItem("Sunlike Stars", "Shift+C", cbolbls_selected_idx == lbltype_sunlike)) { process_key_cmd_char('C'); menu_clicked = true; }
+                if (ImGui::MenuItem("Stars with Planets", "Shift+P", cbolbls_selected_idx == lbltype_planets)) { process_key_cmd_char('P'); menu_clicked = true; }
+                if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L", cbolbls_selected_idx == lbltype_planethz)) { process_key_cmd_char('L'); menu_clicked = true; }
+                if (ImGui::MenuItem("Stars with Known Poles", "Shift+X", cbolbls_selected_idx == lbltype_knpole)) { process_key_cmd_char('X'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Galaxy Labels", "K")) { process_key_cmd_char('k'); menu_clicked = true; }
-            if (ImGui::MenuItem("Galaxy Band", "Shift+K")) { process_key_cmd_char('K'); menu_clicked = true; }
-            if (ImGui::MenuItem("Satellites", "J")) { process_key_cmd_char('j'); menu_clicked = true; }
-            if (ImGui::MenuItem("Local System Objects", "Shift+V")) { process_key_cmd_char('V'); menu_clicked = true; }
-            if (ImGui::MenuItem("Local System Labels", "P")) { process_key_cmd_char('p'); menu_clicked = true; }
-            if (ImGui::MenuItem("Orbits", "Shift+O")) { process_key_cmd_char('o'); menu_clicked = true; }
+            if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
+            if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
+            if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
+            if (ImGui::MenuItem("Local System Objects", "Shift+V", show_localsys)) { process_key_cmd_char('V'); menu_clicked = true; }
+            if (ImGui::MenuItem("Local System Labels", "P", lbl_localsys)) { process_key_cmd_char('p'); menu_clicked = true; }
+            if (ImGui::MenuItem("Orbits", "Shift+O", show_orbits)) { process_key_cmd_char('O'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); menu_clicked = true; }
             if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); menu_clicked = true; }
+            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain)) { process_key_cmd_ctrl_char('T'); menu_clicked = true; }
             if (ImGui::MenuItem("Hide Mouse Cursor", ",")) { process_key_cmd_char(','); menu_clicked = true; }
             ImGui::EndMenu();
         }
@@ -637,6 +636,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'G': vplane_mode = vplane_galactic; break;
         case 'I': vplane_mode = vplane_ICRF; break;
         case 'L': vplane_mode = vplane_local; break;
+        case 'T': show_terrain = !show_terrain; viewchanged = true; break;
         case 'W': done = true; break;
 
         default:

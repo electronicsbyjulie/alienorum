@@ -3381,20 +3381,24 @@ void draw_horizon()
         }
 
         double hzheight[hznodes];
-        // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
-        pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
-        double terrain_height = dispcx * 0.1 * zoom;
-        double terrain_min = 9999;
-        for (j = 0; j < hznodes; j++)
+        if (show_terrain)
         {
-            double theta = _pi * 2 * j / hznodes;
-            double scale = 0.19;
-            double nx = scale * sin(theta), ny = scale * cos(theta);
-            hzheight[j] = terrain_height * fBm(nx, ny, 0, 29, 1.29, 0.8559) * 3;
-            if (hzheight[j] < terrain_min) terrain_min = hzheight[j];
+            // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
+            pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
+            double terrain_height = dispcx * 0.1 * zoom;
+            double terrain_min = 9999;
+            for (j = 0; j < hznodes; j++)
+            {
+                double theta = _pi * 2 * j / hznodes;
+                double scale = 0.19;
+                double nx = scale * sin(theta), ny = scale * cos(theta);
+                hzheight[j] = terrain_height * fBm(nx, ny, 0, 29, 1.29, 0.8559) * 3;
+                if (hzheight[j] < terrain_min) terrain_min = hzheight[j];
+            }
+            for (j = 0; j < hznodes; j++) hzheight[j] -= terrain_min;
+            for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j] - hzheight[j];
         }
-        for (j = 0; j < hznodes; j++) hzheight[j] -= terrain_min;
-        for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j] - hzheight[j];
+        else for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j];
 
         double hz_fx = -1e9, hz_fy = 1e9;
         ImVec2 points[4];
