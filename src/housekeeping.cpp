@@ -267,6 +267,10 @@ bool compute_object_location(CelestialObject* cel)
         ((Moon*)cel)->update_location(simnow - light_travel_time);
         break;
 
+        case class_comet:
+        ((Comet*)cel)->update_location(simnow - light_travel_time);
+        break;
+
         case class_satellite:
         ((Satellite*)cel)->update_location(simnow - light_travel_time);
 
@@ -420,6 +424,11 @@ void compute_object_draw_coordinates()
                 double lit = eclipse_illumination(cels[i]);
                 if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
             }
+            // A comet is not a disc reflecting sunlight but a cloud of ice being boiled off one,
+            // so its brightness answers to how hard it is being boiled and not to how much of it
+            // is turned our way. Its own light curve, which is far steeper in solar distance than
+            // any inverse square, does the whole job -- see Comet::viewer_comet_magnitude().
+            else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
             else vmag_cache[i] = cels[i]->viewer_magnitude(here);
 
             double brght;

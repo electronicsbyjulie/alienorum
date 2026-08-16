@@ -149,7 +149,7 @@ CelestialObject *CelestialObject::get_light_center()
     {
         cel_obj_class cls = light_center->typeclass();
         if (cls == class_star) break;
-        if (cls == class_planet || cls == class_moon || cls == class_satellite)
+        if (cls == class_planet || cls == class_moon || cls == class_satellite || cls == class_comet)
         {
             light_center = light_center->orbit->center;
             if (!light_center)
@@ -292,6 +292,7 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
 void Orbit::compute_period(double mm)
 {
     if (!center) return;
+    if (is_open()) { period = 0; return; }               // Nothing to compute: it never comes back.
     if (!center->mass)
     {
         switch (center->type)
@@ -343,6 +344,7 @@ void Orbit::compute_period(double mm)
 void Orbit::compute_semimajor_axis(double mm)
 {
     if (!center) return;
+    if (is_open()) return;                               // An open orbit's scale is its perihelion, set where it is read.
     if (!center->mass)
     {
         switch (center->type)
@@ -731,7 +733,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
 
-    if (!orbit->period && !orbit->num_osc)
+    if (!orbit->period && !orbit->num_osc && !orbit->is_open())
     {
         if (!orbit->center->mass)
         {
@@ -770,7 +772,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     _currTOD = fmod(_currTOD, _pi*2);
     if (_currTOD < 0) _currTOD += _pi*2;
 
-    rads_sec = (_pi * 2) / P;
+    rads_sec = P ? ((_pi * 2) / P) : 0;
 
     // Precess the ascending node and process the arg peri
     double node_adjustment = seconds_since_epoch * -PN;
@@ -778,16 +780,57 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double node = N + node_adjustment;
     double argperi = W + peri_adjustment;
 
-    // Calculate current Mean Anomaly
-    _currM = m + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
-    _currM = std::fmod(_currM, 2.0 * _pi);
+    // Position in the orbital plane, periapsis on the +x axis and motion towards +y. All three
+    // conics land in the same frame, so everything downstream of here is shared.
+    double x_plane, y_plane;
 
-    // Solve for Eccentric Anomaly
-    double E = solve_Kepler(_currM, e);
+    if (e < 1)
+    {
+        // Calculate current Mean Anomaly
+        _currM = m + rads_sec * seconds_since_epoch - node_adjustment - peri_adjustment;
+        _currM = std::fmod(_currM, 2.0 * _pi);
 
-    // Calculate position in orbital plane (x', y')
-    double x_plane = A * (std::cos(E) - e);
-    double y_plane = A * std::sqrt(1.0 - e * e) * std::sin(E);
+        // Solve for Eccentric Anomaly
+        double E = solve_Kepler(_currM, e);
+
+        x_plane = A * (std::cos(E) - e);
+        y_plane = A * std::sqrt(1.0 - e * e) * std::sin(E);
+    }
+    else
+    {
+        // An open orbit: the body falls in once, rounds the star, and leaves. There is no mean
+        // anomaly running round a circle to interpolate, so time is counted from the perihelion
+        // passage itself, and the size of the thing is its perihelion distance q.
+        double mu = G * (orbit->center->mass ? orbit->center->mass : solar_mass);
+        double q = orbit->periapsis_distance;
+        if (q <= 0) q = A * std::abs(1.0 - e);
+        if (q <= 0) q = AU;
+
+        double T0 = orbit->T_periapsis ? orbit->T_periapsis : EFFE;
+        double dt = (tmnow_as_epoch - T0) * oneday;
+
+        if (e > 1)
+        {
+            double a = q / (e - 1.0);
+            double n = std::sqrt(mu / (a*a*a));
+            double H = solve_Kepler_hyperbolic(n * dt, e);
+            _currM = n * dt;
+
+            x_plane = a * (e - std::cosh(H));
+            y_plane = a * std::sqrt(e*e - 1.0) * std::sinh(H);
+        }
+        else
+        {
+            // Exactly parabolic. Barker's equation rather than Kepler's, since a is infinite and
+            // every formula above it divides by one power of a or another.
+            double n = std::sqrt(mu / (2.0*q*q*q));
+            double D = solve_Barker(n * dt);
+            _currM = n * dt;
+
+            x_plane = q * (1.0 - D*D);
+            y_plane = 2.0 * q * D;
+        }
+    }
 
     // Rotate to 3D Heliocentric Coordinates
     double cosO = std::cos(node);
@@ -878,6 +921,8 @@ json Orbit::to_json()
         {"mean_anomaly", mean_anomaly*fiftyseven},
         {"epoch", epoch},
         {"period", period/oneday},
+        {"periapsis_distance", periapsis_distance},
+        {"T_periapsis", T_periapsis},
         {"laplace", laplace.to_json()}
     };
 }
@@ -893,6 +938,8 @@ bool Orbit::from_json(json j)
     try { j.at("mean_anomaly").get_to(mean_anomaly); mean_anomaly *= fiftyseventh; } catch (...) { ; }
     try { j.at("epoch").get_to(epoch); } catch (...) { ; }
     try { j.at("period").get_to(period); period *= oneday; } catch (...) { ; }
+    try { j.at("periapsis_distance").get_to(periapsis_distance); } catch (...) { ; }
+    try { j.at("T_periapsis").get_to(T_periapsis); } catch (...) { ; }
     try { j.at("prec_node").get_to(prec_node); prec_node *= fiftyseventh / oneyear; } catch (...) { ; }
     try { j.at("proc_argperi").get_to(proc_argperi); proc_argperi *= fiftyseventh / oneyear; } catch (...) { ; }
     try

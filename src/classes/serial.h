@@ -6,6 +6,7 @@
 #include "star.h"
 #include "planet.h"
 #include "moon.h"
+#include "comet.h"
 #include "satellite.h"
 
 namespace alienorum

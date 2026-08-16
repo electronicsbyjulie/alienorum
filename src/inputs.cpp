@@ -216,6 +216,7 @@ void show_menu()
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
+            if (ImGui::MenuItem("Add Comet...", ";")) { process_key_cmd_char(';'); menu_clicked = true; }
             if (ImGui::MenuItem("Edit Object...", "Shift+E")) { process_key_cmd_char('E'); menu_clicked = true; }
             if (ImGui::MenuItem("Delete Object", "Del")) { process_key_delete(); menu_clicked = true; }
             ImGui::EndMenu();
@@ -582,6 +583,7 @@ void process_key_cmd_char(char c)
         break;
 
         case '.': astwnd = !astwnd; break;
+        case ';': cometwnd = !cometwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
         case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = label_galaxies = false; break;
@@ -611,7 +613,7 @@ void process_key_cmd_char(char c)
         case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
         case '$': view_mode = vm_sunclock; zoom=1; altitude=0; azimuth=0; viewchanged = true; break;
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
-        case ';': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
+        case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
         default:
         ;

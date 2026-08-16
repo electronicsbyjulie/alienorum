@@ -568,6 +568,26 @@ void draw_objinf_window(ImGuiIO& io)
                     << std::endl;
             else oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
         }
+        else if (cels[i]->typeclass() == class_comet)
+        {
+            // Kept out of the branch below, which reads Planet members a Comet does not have. The
+            // lit fraction would be meaningless here in any case: what is seen is a coma, lit
+            // right through rather than lit on one side, and the numbers worth reading off a
+            // comet are the shape of its orbit -- how close it comes, and whether it is coming
+            // back at all.
+            Comet *cm = (Comet*)cels[i];
+            oss << "Dist:     " << cels[i]->scaled_distance(here) << std::endl;
+            if (cm->orbit)
+            {
+                double q = cm->orbit->periapsis_distance;
+                if (!q) q = cm->orbit->semimajor_axis * fabs(1.0 - cm->orbit->eccentricity);
+                oss << "Perih.:   " << std::setprecision(4) << (q / AU) << " AU" << std::endl;
+                oss << "Ecc.:     " << std::setprecision(6) << cm->orbit->eccentricity << std::endl;
+                if (cm->orbit->period)
+                    oss << "Period:   " << std::setprecision(2) << (cm->orbit->period / oneyear) << " yr" << std::endl;
+                else oss << "          Unbound; will not return" << std::endl;
+            }
+        }
         else
         {
             oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit) << std::endl;
@@ -2882,3 +2902,154 @@ void draw_app_window_template(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 #endif
+
+// Companion to draw_ast_window(), and built the same way: the catalog holds every comet the IMCCE
+// knows of, four of them are in the sky already, and this is where the other seventeen hundred are
+// picked from. Perihelion distance and eccentricity take the place of the asteroid list's
+// semimajor axis and diameter -- e being the column that actually tells you something here, since
+// 0.96 is a comet that will be back and 1.00003 is one leaving for good.
+void draw_comet_window(ImGuiIO & io)
+{
+    if (!cels[1]) return;
+    static std::vector<std::string> cometlistlines;
+    ImGui::Begin("Add Comets", &cometwnd, 0);
+
+    static std::string mesg = "";
+    ImGui::Text("%s", "Search:");
+    ImGui::SameLine();
+    if (ImGui::InputText("##lookcomet", lookcomet, name_max_len, 0)) cometlistlines.clear();
+
+    int i, l, looklen = strlen(lookcomet);
+    unsigned int n=0, ncomet = comets.size();
+    static unsigned int item_selected_idx = 0;
+    int item_highlighted_idx = -1;
+    ImGui::Text(" Name                             Perihelion    Ecc.          Incl.");
+    if (ImGui::BeginListBox("##cometlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        i=0;
+        if (cometlistlines.size())
+        {
+            ncomet = cometlistlines.size();
+            for (n=0; n<ncomet; n++)
+            {
+                bool is_selected = (item_selected_idx == n);
+
+                ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
+                if (ImGui::Selectable(cometlistlines[n].c_str(), is_selected, flags))
+                    item_selected_idx = n;
+
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+        }
+        else for (n=0; n<ncomet; n++)
+        {
+            stringstream line;
+            line << comets[n].name;
+
+            l = 34 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            if (looklen && !strcasestr(line.str().c_str(), lookcomet)) continue;
+
+            line << comets[n].q;
+
+            l = 48 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            line << comets[n].e;
+
+            l = 62 - line.str().size();
+            if (l > 0) line << std::string(l, ' ');
+
+            line << comets[n].incl;
+            line << " ##" << n;
+            cometlistlines.push_back(line.str());
+
+            bool is_selected = ((int64_t)item_selected_idx == (int64_t)i);
+
+            ImGuiSelectableFlags flags = (item_highlighted_idx == i) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+                item_selected_idx = i;
+
+            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+
+            i++;
+            if (i >= 25) break;
+        }
+
+        ImGui::EndListBox();
+    }
+
+    static ImVec4 msg_color = ImVec4(255, 255, 255, 255);
+
+    if (item_selected_idx < cometlistlines.size())
+    {
+        n = item_selected_idx;
+        const char *hashmarks = strstr(cometlistlines[n].c_str(), "##");
+        i = atoi(&hashmarks[2]);
+    }
+    else
+    {
+        item_selected_idx = 0;
+        i = -1;
+    }
+
+    if (i >= 0 && i < (int)comets.size())
+    {
+        if (comets[i].cel)
+        {
+            if (ImGui::Button("Find##comet"))
+            {
+                selected = comets[i].cel->seqno;
+                center_selected();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Track##comet"))
+            {
+                trackidx = comets[i].cel->seqno;
+                center_tracked();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Go##comet"))
+            {
+                whereami = comets[i].cel->seqno;
+                viewchanged = true;
+            }
+        }
+        else if (ImGui::Button("Add Selected##comet"))
+        {
+            mesg = "";
+            for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
+
+            if (!CatalogReader::load_comet(&comets[i]))
+            {
+                mesg = "ERROR - Comet failed to load.";
+                msg_color = ImVec4(255, 0, 0, 255);
+            }
+            else
+            {
+                selected = ncelobjs-1;
+                num_comets++;
+                compute_object_location(comets[i].cel);
+                compute_object_draw_coordinates();
+                center_selected();
+                viewchanged = true;
+                cometwnd = false;
+            }
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextColored(redlight_mode ? ImVec4(255, 24, 0, 255) : msg_color, "%s", mesg.c_str());
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 cpos = ImGui::GetWindowPos(), csiz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
+        is_mouse_over_window = true;
+}

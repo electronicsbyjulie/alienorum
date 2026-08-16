@@ -2791,11 +2791,19 @@ void draw_objects()
         Color col = Color::color_from_magnitude_indices(vmag_cache[i] + 5, cels[i]->BV_color);
         RGB3Byte rgb = Color::rgb_from_color(col, 1);
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
-        step = cels[i]->orbit->period / orbseg;
         CelestialLocation was = cels[i]->location;
         bool is_star = (cels[i]->typeclass() == class_star),
             is_moon = (cels[i]->typeclass() == class_moon),
-            is_sat = (cels[i]->typeclass() == class_satellite);
+            is_sat = (cels[i]->typeclass() == class_satellite),
+            is_comet = (cels[i]->typeclass() == class_comet);
+
+        // One period covers a closed orbit exactly once. An open one has no period to cover, so
+        // trace a human span of it instead: the loop below runs forward from now, so give it a
+        // hundred and twenty years of the comet's path rather than pretend to draw a curve that
+        // in truth runs to infinity at both ends.
+        step = cels[i]->orbit->period
+            ? (cels[i]->orbit->period / orbseg)
+            : (120 * oneyear / orbseg);
 
         double viewer_distance = cels[i]->tmprel.magnitude();
         double light_travel_time = viewer_distance / speed_of_light;
@@ -2817,6 +2825,8 @@ void draw_objects()
                 ((Moon*)cels[i])->update_location(simnow + step*j - light_travel_time);
             else if (is_sat)
                 ((Satellite*)cels[i])->update_location(simnow + step*j - light_travel_time);
+            else if (is_comet)
+                ((Comet*)cels[i])->update_location(simnow + step*j - light_travel_time);
             else
                 ((Planet*)cels[i])->update_location(simnow + step*j - light_travel_time);
 

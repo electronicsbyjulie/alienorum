@@ -12,6 +12,7 @@
 #include "cons.h"
 #include "planet.h"
 #include "moon.h"
+#include "comet.h"
 
 extern std::vector<std::string> known_catalog_names;
 extern Star **hdcache, **hipcache;
@@ -64,6 +65,8 @@ namespace alienorum
         // Planets, Minor Planets, Comets
         static bool load_asteroid(AstorbRow *r, char *buffer = nullptr);        // If buffer is null, open astorb.dat and search for the astroid matching the row object.
         int read_astorb_catalog(CelestialObject** cels, int max);
+        static bool load_comet(CometRow *r, char *buffer = nullptr);            // Same bargain as load_asteroid: pass the line if you already have it, or let it go find the line itself.
+        int read_comets_catalog(CelestialObject** cels, int max);
         unsigned int load_exoplanets_from_tap(bool stars_only = false);         // If stars_only, just verify stars/add new stars don't attempt planets.
         int read_exoplanets_catalog(CelestialObject** cels, int max);           // Old method requiring manual download
 

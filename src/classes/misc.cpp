@@ -4,6 +4,7 @@
 #include <chrono>
 #include <algorithm>
 #include <math.h>
+#include <cmath>
 #include <fstream>
 #include <ctime>
 #include <curl/curl.h>
@@ -50,6 +51,7 @@ bool statuswnd = true;
 bool objedtwnd = false;
 bool satwnd = false;
 bool astwnd = false;
+bool cometwnd = false;
 bool addcelwnd = false;
 bool explorer = false;
 bool neighborhood = false;
@@ -77,7 +79,7 @@ const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
-    have_astorb = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
+    have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
     noexo = false, nosats = false, radio_silence = false, keyprobe = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = 0;
@@ -149,14 +151,83 @@ double compute_time_dilation(double velocity)
 // Solve Kepler's Equation: M = E - e*sin(E) using Newton's Method
 double solve_Kepler(double M, double e)
 {
-    double E = M; // Initial guess
+    // Newton-Raphson on M = E - e sin E. The starter matters once the orbit stops being roughly
+    // circular: from E = M a comet at e = 0.999 can crawl for hundreds of steps near perihelion,
+    // where the equation is at its stiffest, so start from Danby's guess instead, which sits
+    // close to the root at any eccentricity. The iteration count is capped because this is now
+    // reachable with catalog data of any quality, and an orbit that will not converge must not be
+    // allowed to hang the frame.
+    M = std::fmod(M, _pi*2);
+    double E = M + 0.85 * e * ((std::sin(M) < 0) ? -1 : 1);
     double delta;
-    do
+    for (int i=0; i<64; i++)
     {
         delta = E - e * std::sin(E) - M;
-        E = E - delta / (1.0 - e * std::cos(E));
-    } while (std::abs(delta) > 1e-10);
+        if (std::abs(delta) <= 1e-11) break;
+        double slope = 1.0 - e * std::cos(E);
+        if (std::abs(slope) < 1e-14) break;
+        E -= delta / slope;
+    }
     return E;
+}
+
+// sinh(H) - H, without the cancellation. Straight subtraction throws away most of the significant
+// digits for small H -- at H = 0.01 the two terms agree to five places and the difference is what
+// is left over -- and small H is precisely where a near-parabolic comet spends the years around
+// its perihelion, so the series is not a nicety here.
+static double sinh_minus_linear(double H)
+{
+    if (std::abs(H) > 0.5) return std::sinh(H) - H;
+
+    double h2 = H*H, term = H*h2/6.0, sum = term;
+    for (int k=2; k<12; k++)
+    {
+        term *= h2 / ((2.0*k) * (2.0*k+1.0));
+        sum += term;
+    }
+    return sum;
+}
+
+double solve_Kepler_hyperbolic(double M, double e)
+{
+    if (e <= 1) return 0;
+
+    double s = (M < 0) ? -1.0 : 1.0;
+    double a = std::abs(M);
+
+    // f(H) = e sinh H - H - M is increasing and convex on H > 0, so Newton started anywhere above
+    // the root walks down to it monotonically and cannot overshoot into the flat part. Both of
+    // these sit above it: e sinh H - H >= (e-1) sinh H, and >= H^3/6. Take whichever is tighter.
+    double H = std::cbrt(6.0 * a);
+    if (e - 1 > 1e-12)
+    {
+        double alt = std::asinh(a / (e - 1));
+        if (alt < H) H = alt;
+    }
+
+    for (int i=0; i<128; i++)
+    {
+        double delta = (e - 1) * std::sinh(H) + sinh_minus_linear(H) - a;
+        if (std::abs(delta) <= 1e-11 * (1 + a)) break;
+        double slope = e * std::cosh(H) - 1.0;
+        if (slope < 1e-14) break;
+        H -= delta / slope;
+        if (H < 0) H = 0;
+    }
+
+    return s * H;
+}
+
+double solve_Barker(double Mp)
+{
+    // Cardano's solution of D^3 + 3D = 3Mp, exact and iteration-free. Written as A - 1/A rather
+    // than as the textbook difference of two cube roots, because the second root is 1/A exactly
+    // and computing it separately would subtract two nearly equal numbers for large Mp -- a comet
+    // far from its perihelion, which is most of the time.
+    double s = (Mp < 0) ? -1.0 : 1.0;
+    double w = 1.5 * std::abs(Mp);
+    double A = std::cbrt(w + std::sqrt(w*w + 1.0));
+    return s * (A - 1.0/A);
 }
 
 double lon_from_x(double x)

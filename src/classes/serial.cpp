@@ -422,6 +422,11 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 ((Moon*)cels[i])->orbit_type = ot_equatorial;
                 break;
 
+                case class_comet:
+                if (!cels[i]) cels[i] = new Comet();
+                ((Comet*)cels[i])->from_json(js);
+                break;
+
                 case class_satellite:
                 if (!cels[i]) cels[i] = new Satellite();
                 ((Satellite*)cels[i])->from_json(js);

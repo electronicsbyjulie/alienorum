@@ -379,6 +379,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "CCDM")) have_CCDM = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "SB9")) have_SB9 = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "astorb")) have_astorb = true;
+        if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "comets")) have_comets = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "RC3")) have_RC3 = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "UNGC")) have_UNGC = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "GCVS")) have_GCVS = true;
@@ -410,6 +411,14 @@ void load_catalogs()
         cout << "Reading astorb catalog..." << endl << flush;
         nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nastorb << " objects." << endl << flush;
+    }
+
+    if (have_comets)
+    {
+        cout << "Reading comet catalog..." << endl << flush;
+        int ncomets = cr.read_comets_catalog(cels, MAX_CELOBJS);
+        num_comets += ncomets;
+        cout << "Read " << ncomets << " objects, " << comets.size() << " catalogued." << endl << flush;
     }
 
     cout << "Reading local moons..." << endl << flush;

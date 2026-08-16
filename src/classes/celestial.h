@@ -24,6 +24,7 @@ namespace alienorum
         icy = 0x402,
         rocky = 0x403,
         lavaworld = 0x404,
+        icy_tailed = 0x412,
         artificial = 0xf00
     };
 
@@ -42,6 +43,7 @@ namespace alienorum
         class_star,
         class_planet,
         class_moon,
+        class_comet,
         class_satellite
     };
 
@@ -85,7 +87,17 @@ namespace alienorum
 
         double mean_anomaly = 0;                    // RADIANS!
         double epoch = J2000;                       // JD
-        double period = 0;                          // seconds
+        double period = 0;                          // seconds. Zero on an open orbit, which has none.
+
+        // An escaping body -- a comet on a parabola or a hyperbola -- has no semimajor axis worth
+        // the name and no mean anomaly to run round it, so it is anchored on the one point it does
+        // have: its perihelion, and the moment it passes through it. semimajor_axis then holds the
+        // *magnitude* |q/(1-e)| purely as a scale length for the code that culls distant objects by
+        // orbit size, and is a placeholder on a parabola, where the true value is infinite.
+        double periapsis_distance = 0;              // meters. Zero means "closed orbit, read semimajor_axis".
+        double T_periapsis = 0;                     // JD of perihelion passage.
+
+        bool is_open() const { return eccentricity >= 1; }
 
         double heliocentric_inclination = 0;
         double heliocentric_node = 0;

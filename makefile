@@ -40,8 +40,9 @@ IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgu
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/serial.cpp \
-			$(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp $(CLASSES_DIR)/cons.cpp
+            $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
+			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
+			$(CLASSES_DIR)/cons.cpp
 
 BIN = bin
 OBJ = obj
@@ -152,6 +153,9 @@ $(OBJ)/celestial.o: $(CLASSES_DIR)/celestial.cpp makefile
 
 $(OBJ)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp makefile
 	$(CPP) $(CLASSES_DIR)/galaxy.cpp $(CPPFLAGS) -c -o $(OBJ)/galaxy.o
+
+$(OBJ)/comet.o: $(CLASSES_DIR)/comet.cpp makefile
+	$(CPP) $(CLASSES_DIR)/comet.cpp $(CPPFLAGS) -c -o $(OBJ)/comet.o
 
 $(OBJ)/star.o: $(CLASSES_DIR)/star.cpp makefile
 	$(CPP) $(CLASSES_DIR)/star.cpp $(CPPFLAGS) -c -o $(OBJ)/star.o

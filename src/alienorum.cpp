@@ -171,6 +171,7 @@ int main (int argc, char** argv)
     memset(edit_name, 0, name_max_len);
     memset(looksat, 0, name_max_len);
     memset(lookast, 0, name_max_len);
+    memset(lookcomet, 0, name_max_len);
     memset(lookloc, 0, name_max_len);
 
     for (l=1; l<argc; l++)
@@ -641,6 +642,7 @@ int main (int argc, char** argv)
             if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);
             if (astwnd) draw_ast_window(io);
+            if (cometwnd) draw_comet_window(io);
             if (satwnd) draw_sat_window(io);
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);

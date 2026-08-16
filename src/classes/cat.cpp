@@ -2501,6 +2501,220 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+// The IMCCE catalog names a comet twice: an IAU code ("1P", "C/1995 O1") and a discoverer's name
+// that repeats the code's own letter ("P/Halley", "McNaught"). Put the two together the way the
+// IAU writes them, so that a numbered periodic comet reads 1P/Halley and a one-visit comet reads
+// C/1995 O1 (Hale-Bopp). Necessary and not merely tidy: there are sixty-odd comets in this file
+// whose discoverer's name is nothing but "McNaught", and a picker full of them would be useless.
+static std::string comet_display_name(std::string code, std::string name)
+{
+    // Drop the leading "P/", "C/", "D/" or "A/" the name field repeats from the code.
+    size_t slash = name.find('/');
+    if (slash != std::string::npos && slash <= 2)
+    {
+        bool letters = true;
+        for (size_t i=0; i<slash; i++) if (!isalpha((unsigned char)name[i])) letters = false;
+        if (letters) name = name.substr(slash+1);
+    }
+
+    if (!code.size()) return name;
+    if (!name.size()) return code;
+
+    // A bare number-and-letter code is the front half of the comet's name; a full provisional
+    // designation is the whole of it, and the discoverer goes in brackets after.
+    if (code.find('/') == std::string::npos) return code + "/" + name;
+    return code + " (" + name + ")";
+}
+
+bool CatalogReader::load_comet(CometRow *r, char *buffer)
+{
+    std::string path = "catalogs" _FILESLASH "comets" _FILESLASH "comets.dat";
+    char field[64];
+    bool delete_buffer = false;
+
+    if (!buffer)
+    {
+        FILE* fp = fopen(path.c_str(), "rb");
+        if (!fp) return false;
+        buffer = new char[1024];
+        delete_buffer = true;
+
+        bool found = false;
+        while (fgets(buffer, 1020, fp))
+        {
+            //  18- 29  A12   ---        Code    IAU code for the comet
+            read_field_onebased(buffer, 18, 29, field);
+            if (r->code.size() && r->code == trim(field)) found = true;
+            if (found) break;
+        }
+        fclose(fp);
+        if (!found)
+        {
+            delete[] buffer;
+            return false;
+        }
+    }
+
+    Comet *c = new Comet();
+    r->cel = c;
+    c->location = cels[0]->location;
+    c->cenobj = cels[0];
+    c->orbit = new Orbit();
+    c->orbit->center = cels[0];
+
+    read_field_onebased(buffer, 18, 29, field);
+    c->designation = trim(field);
+    read_field_onebased(buffer, 39, 66, field);
+    std::string dispname = comet_display_name(c->designation, trim(field));
+    memset(c->name, 0, name_max_len);
+    strncpy(c->name, dispname.c_str(), name_max_len-1);
+
+    // 343-365 E23.15 d          T0      Date of perihelion (3)
+    read_field_onebased(buffer, 343, 365, field);
+    double T0 = atof(field);
+
+    // 367-389 E23.15 AU         q       Perihelion distance (3)
+    read_field_onebased(buffer, 367, 389, field);
+    double q_au = atof(field);
+
+    // 391-413 E23.15 ---        e       Orbit eccentricity (3)
+    read_field_onebased(buffer, 391, 413, field);
+    double e = atof(field);
+
+    // 415-437 E23.15 deg        omega   Argument of perihelion (3)
+    read_field_onebased(buffer, 415, 437, field);
+    c->orbit->arg_periapsis = atof(field) * fiftyseventh;
+
+    // 439-461 E23.15 deg        Omega   Longitude of orbital node (3)
+    read_field_onebased(buffer, 439, 461, field);
+    c->orbit->ascending_node = atof(field) * fiftyseventh;
+
+    // 463-485 E23.15 deg        i       Inclination of the orbit (3)
+    read_field_onebased(buffer, 463, 485, field);
+    c->orbit->inclination = atof(field) * fiftyseventh;
+
+    // 487-521: the two light curves, total and nucleus.
+    read_field_onebased(buffer, 487, 491, field); c->H1 = atof(field);
+    read_field_onebased(buffer, 493, 497, field); c->R1 = atof(field);
+    read_field_onebased(buffer, 499, 503, field); c->D1 = atof(field);
+    read_field_onebased(buffer, 505, 509, field); c->H2 = atof(field);
+    read_field_onebased(buffer, 511, 515, field); c->R2 = atof(field);
+    read_field_onebased(buffer, 517, 521, field); c->D2 = atof(field);
+
+    if (q_au <= 0) q_au = 1;
+    c->orbit->eccentricity = e;
+    c->orbit->periapsis_distance = q_au * AU;
+    c->orbit->T_periapsis = T0;
+
+    // Anchoring the epoch on the perihelion passage lets the mean anomaly be exactly zero, which
+    // is the one value it is known to take, and spares the closed-orbit path any conversion at
+    // all: it counts from the epoch, and the epoch is now the moment the comet rounded the Sun.
+    c->epoch = c->orbit->epoch = T0;
+    c->orbit->mean_anomaly = 0;
+
+    if (e < 1)
+    {
+        double a_au = q_au / (1.0 - e);
+        c->orbit->semimajor_axis = a_au * AU;
+        c->orbit->period = sqrt(a_au*a_au*a_au) * oneyear;
+    }
+    else
+    {
+        // No period, and no semimajor axis either -- but the culling code measures objects against
+        // orbit->semimajor_axis to decide whether they are worth drawing, so give it the size of
+        // the hyperbola rather than a zero that would read as "sitting on top of its star". A
+        // parabola has no such size at all, hence the ceiling, which is far enough out that
+        // nothing is ever culled by it.
+        c->orbit->period = 0;
+        double scale = (e > 1) ? (q_au / (e - 1.0)) : 0;
+        if (!(scale > 0) || scale > 1e+7) scale = 1e+7;
+        c->orbit->semimajor_axis = scale * AU;
+    }
+
+    // Nothing in the catalog says how big the nucleus is, so read it off the nucleus magnitude by
+    // the usual diameter-albedo relation, at the 4% albedo of cometary ice and soot -- among the
+    // darkest surfaces in the solar system. Halley comes out near 12 km against a measured 5.5,
+    // which is the right order for a body the relation assumes is a sphere and which is in fact a
+    // 15-by-8-kilometer peanut.
+    double h_nucleus = c->H2 ? c->H2 : 14.0;
+    c->volumetric_mean_radius = 0.5 * 1329000.0 / sqrt(0.04) * pow(10, -0.2 * h_nucleus);
+    if (c->volumetric_mean_radius < 100) c->volumetric_mean_radius = 100;
+    assert(!isinf(c->volumetric_mean_radius));
+
+    c->mass = sphere_volume(c->volumetric_mean_radius) * 600;       // Nuclei are porous ice: about six tenths the density of water.
+    c->absolute_magnitude = c->H1 ? c->H1 : h_nucleus;
+    c->BV_color = 0.65;                                             // Sunlight, near enough: a coma is dust and gas scattering it back at us.
+
+    append_cel(c);
+    if (delete_buffer) delete[] buffer;
+    return true;
+}
+
+int CatalogReader::read_comets_catalog(CelestialObject **cels, int max)
+{
+    std::string path = "catalogs" _FILESLASH "comets" _FILESLASH "comets.dat";
+    char buffer[1024];
+    char field[64];
+    int num_read = 0, offset;
+    CometRow row;
+
+    // The four that get a cels[] slot without being asked for: the one everybody can name, and
+    // the three great comets of living memory. Keyed on the IAU code because the discoverers'
+    // names are not unique -- "McNaught" alone would match sixty-odd comets, nearly all of them
+    // faint short-period ones, and not the Great Comet of 2007 that is meant here.
+    static const char *default_comets[] = { "1P", "C/1995 O1", "C/1996 B2", "C/2006 P1", nullptr };
+
+    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+
+    FILE* fp = fopen(path.c_str(), "rb");
+    if (!fp) return 0;
+
+    for (offset=0; offset<max && cels[offset]; offset++);
+    if (offset >= (max-1)) { fclose(fp); return 0; }
+
+    while (fgets(buffer, 1020, fp))
+    {
+        row.cel = nullptr;
+
+        read_field_onebased(buffer, 18, 29, field);
+        row.code = trim(field);
+        read_field_onebased(buffer, 39, 66, field);
+        row.name = comet_display_name(row.code, trim(field));
+
+        read_field_onebased(buffer, 343, 365, field);
+        row.T_peri = atof(field);
+        read_field_onebased(buffer, 367, 389, field);
+        row.q = atof(field);
+        read_field_onebased(buffer, 391, 413, field);
+        row.e = atof(field);
+        read_field_onebased(buffer, 463, 485, field);
+        row.incl = atof(field);
+
+        if (!row.code.size() && !row.name.size()) continue;
+
+        bool wanted = false;
+        for (int k=0; default_comets[k]; k++) if (row.code == default_comets[k]) wanted = true;
+
+        if (wanted)
+        {
+            load_comet(&row, buffer);
+            num_read++;
+            offset++;
+            if (offset >= (max-1))
+            {
+                comets.push_back(row);
+                fclose(fp);
+                return num_read;
+            }
+        }
+
+        comets.push_back(row);
+    }
+
+    fclose(fp);
+    return num_read;
+}
+
 #define _debug_exoplanet_inclinations 0
 void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids)
 {
@@ -3497,12 +3711,17 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 lum = atof(field);
                 if (!s->absolute_magnitude)
                 {
+                    // The unconditional "= 11" used to run whether or not lum was actually given,
+                    // discarding the just-computed magnitude for every star that did carry one
+                    // (57 lines in this catalog, including Proxima Centauri: 4.5 magnitudes too
+                    // bright at a flat 11 instead of its real ~15.6). 11 is meant only as the
+                    // fallback guess for a star with no luminosity column at all.
                     if (lum)
                     {
                         double magshift = log(lum)/log(magnbase);
                         s->absolute_magnitude = 4.85 - magshift;
                     }
-                    s->absolute_magnitude = 11;
+                    else s->absolute_magnitude = 11;
                 }
             }
             if (bs > 229)
@@ -3512,9 +3731,15 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 // if (A->HD == 47152) std::cout << s->name << " tempK=" << tempK << std::endl;
                 if (tempK)
                 {
-                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
+                    // BV_color has to be set from the real temperature before estimate_luminosity()
+                    // reads it: that call looks up the main-sequence entry via
+                    // get_mseqidx_from_BV(BV_color), and a newly-made star's BV_color is still its
+                    // construction default of 0 -- the B-V of an A0V star -- until estimate_BV()
+                    // runs. Called in the old order, a cool star (e.g. an M dwarf at ~3500K) got
+                    // priced as an A0V (38 Lsun instead of ~0.03), several magnitudes too bright.
                     s->estimate_BV(tempK);
                     s->estimate_UB(tempK);
+                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
                 }
             }
 

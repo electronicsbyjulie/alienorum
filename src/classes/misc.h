@@ -201,8 +201,12 @@ std::string Roman(int num);
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);
 
-// For orbits.
-double solve_Kepler(double M, double e);
+// For orbits. Three conics, three equations: an ellipse closes and has a mean anomaly that runs
+// round and round, while a comet on a parabola or a hyperbola passes once and never returns, so
+// its anomaly is counted from perihelion outwards and has no period to wrap.
+double solve_Kepler(double M, double e);                    // M = E - e sin E, returns eccentric anomaly E. e < 1.
+double solve_Kepler_hyperbolic(double M, double e);         // M = e sinh H - H, returns hyperbolic anomaly H. e > 1.
+double solve_Barker(double Mp);                             // Mp = D + D^3/3, returns D = tan(nu/2). e == 1.
 
 // Sun clock conversions; subtract dispcx or dispcy first. Both return RADIANS!
 double lon_from_x(double x);
@@ -249,9 +253,9 @@ extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, v
     neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_gamma, dev_dial, dev_dial_step;
 extern bool done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing, 
-    generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
+    generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
-    have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_exo, have_RC3, have_UNGC, have_GCVS,
+    have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
 extern std::string objname, objinfo, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
