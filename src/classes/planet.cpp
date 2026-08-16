@@ -329,7 +329,6 @@ double Planet::est_bolometric_flux(double t_eff)
     if (!lc || lc->typeclass() != class_star) return 0;
     Star *s = (Star*)lc;
     if (!t_eff) t_eff = s->estimate_temperature();
-    double t_star = t_eff - sun_temp;
 
     // See Star::bolometric_correction(), where this calculation now resides: the exostar loader
     // must apply exactly the same correction in reverse (cat.cpp,

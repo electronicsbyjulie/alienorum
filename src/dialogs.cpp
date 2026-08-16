@@ -144,32 +144,38 @@ void draw_status_window(ImGuiIO& io)
         + std::string(show_galaxy_band ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
+    // These three were InputText over a char buffer that was rewritten from the variable with
+    // snprintf every frame, before the widget read it, and parsed back with atof after -- so
+    // every intermediate state a user has to type through (a lone "-", a trailing ".", a
+    // half-typed number) was round-tripped through "%.2f" and destroyed on the next frame.
+    // InputDouble edits the variable itself and is what the rest of this file already uses; the
+    // format string moves into the call, and the buffer, the snprintf and the atof all go.
+    // The two step arguments are the +/- button increments, zero meaning no buttons -- which is
+    // what these had, having had no buttons at all before.
     if (cbolbls_selected_idx == lbltype_brightest)
     {
-        snprintf(lblcut0, sizeof(lblcut0), "%.2f", appmagn_lblcut);
         ImGui::Text("%s", "Mag limit:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
-        ImGui::InputText("##appmaglim", lblcut0, 255);
-        appmagn_lblcut = atof(lblcut0);
+        ImGui::InputDouble("##appmaglim", &appmagn_lblcut, 0, 0, "%.2f");
     }
     else if (cbolbls_selected_idx == lbltype_intrinsic)
     {
-        snprintf(lblcut1, sizeof(lblcut1), "%.2f", absmagn_lblcut);
         ImGui::Text("%s", "Mag limit:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
-        ImGui::InputText("##absmaglim", lblcut1, 255);
-        absmagn_lblcut = atof(lblcut1);
+        ImGui::InputDouble("##absmaglim", &absmagn_lblcut, 0, 0, "%.2f");
     }
     else if (cbolbls_selected_idx == lbltype_nearby)
     {
-        snprintf(lblcut2, sizeof(lblcut2), "%.2f", distance_lblcut/light_year);
+        // Held in metres, shown in light years, so this one still needs a variable of its own to
+        // edit -- but it is a double throughout now rather than a round trip through text.
+        double dist_ly = distance_lblcut / light_year;
         ImGui::Text("%s", "Dist. l.y.:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
-        ImGui::InputText("##distlim", lblcut2, 255);
-        distance_lblcut = atof(lblcut2)*light_year;
+        if (ImGui::InputDouble("##distlim", &dist_ly, 0, 0, "%.2f"))
+            distance_lblcut = dist_ly * light_year;
     }
     else if (cbolbls_selected_idx == lbltype_planets)
     {
@@ -1017,9 +1023,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##obliquity"))
             {
-                mtx.lock();
-                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                mtx.unlock();
                 cel->obliquity = frand(0, frand(0, frand(0, _pi)));
             }
             ImGui::SameLine(col2);
@@ -1043,9 +1046,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##equinox"))
             {
-                mtx.lock();
-                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                mtx.unlock();
                 cel->equinox = frand(0, _pi*2);
             }
 
@@ -1479,9 +1479,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##orbincl"))
             {
-                mtx.lock();
-                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                mtx.unlock();
                 orb->inclination = pow(frand(0, half_pi), 3);
                 if (frand(0,1) < 0.03) orb->inclination = _pi - orb->inclination;
             }
@@ -1504,9 +1501,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##node&argperi&manom"))
             {
-                mtx.lock();
-                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                mtx.unlock();
                 cel->orbit->ascending_node = frand(0, _pi*2);
                 cel->orbit->arg_periapsis = frand(0, _pi*2);
                 cel->orbit->mean_anomaly = frand(0, _pi*2);
@@ -1529,9 +1523,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##ecce"))
             {
-                mtx.lock();
-                // std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                mtx.unlock();
                 cel->orbit->eccentricity = pow(frand(0, 0.999), 10);
             }
             ImGui::SameLine(col2);
@@ -2270,7 +2261,7 @@ void draw_system_explorer(ImGuiIO& io)
                     strcpy(m->name, mname.c_str());
                     m->user_added = true;
                     m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;
-                    m->volumetric_mean_radius = pow(m->mass / earth_mass, 0.333) * frand(0.9, 1.5) * earth_radius;
+                    m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * frand(0.9, 1.5) * earth_radius;
                     m->albedo = frand(0.1, 0.6);
                     m->BV_color = frand(0.8, 1.8);
                     m->cenobj = cel->cenobj;

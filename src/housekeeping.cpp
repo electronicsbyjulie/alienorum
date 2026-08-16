@@ -575,7 +575,7 @@ void set_center_objects()
         if (cls == class_moon && cels[i]->volumetric_mean_radius < 0.1*((Moon*)cels[i])->height)
         {
             Moon *m = (Moon*)cels[i];
-            m->volumetric_mean_radius = 0.5 * pow(m->depth * m->width * m->height, 0.333);
+            m->volumetric_mean_radius = 0.5 * pow(m->depth * m->width * m->height, 1.0/3.0);
         }
 
         // Multiple star integrity

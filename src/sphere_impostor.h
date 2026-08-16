@@ -216,6 +216,17 @@ namespace alienorum
         double dispcx, double dispcy,
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax);
 
+    // Releases the per-draw payloads the two queue_* functions handed out last frame. Call once
+    // per frame, after the previous frame's draw lists have been rendered (which is when the
+    // callbacks read those payloads) and before anything queues an impostor for the new one --
+    // immediately after ImGui::NewFrame() satisfies both.
+    //
+    // The payloads used to be new'd per draw and deleted by the callback, which leaks any frame
+    // whose draw list is discarded rather than rendered, since a discarded list never runs its
+    // callbacks. Owning them here means a dropped frame costs nothing and steady state does no
+    // allocation at all.
+    void impostor_begin_frame();
+
     // All inputs describing a planet's ring system, analogous to SphereImpostorInput -- see
     // queue_ring_impostor() below and the comment there for why this exists as a real
     // ray/plane-intersection shader rather than the CPU path's polygon-mesh annulus.

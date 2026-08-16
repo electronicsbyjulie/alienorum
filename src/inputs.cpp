@@ -305,6 +305,9 @@ void show_menu()
             if (ImGui::BeginMenu("Label Stars By"))
             {
                 mouse_over_menu = true;
+                if (ImGui::MenuItem("Brightest Stars", "A", cbolbls_selected_idx == lbltype_brightest)) { process_key_cmd_char('a'); menu_clicked = true; }
+                if (ImGui::MenuItem("Intrinsically Brightest", "V", cbolbls_selected_idx == lbltype_intrinsic)) { process_key_cmd_char('v'); menu_clicked = true; }
+                if (ImGui::MenuItem("Nearest Stars", "Shift+N", cbolbls_selected_idx == lbltype_nearby)) { process_key_cmd_char('N'); menu_clicked = true; }
                 if (ImGui::MenuItem("Bayer Designations", "Shift+F", cbolbls_selected_idx == lbltype_Bayer)) { process_key_cmd_char('F'); menu_clicked = true; }
                 if (ImGui::MenuItem("Flamsteed Numbers", "F", cbolbls_selected_idx == lbltype_Flamsteed)) { process_key_cmd_char('f'); menu_clicked = true; }
                 if (ImGui::MenuItem("Gould Uranometria Numbers", "Shift+G", cbolbls_selected_idx == lbltype_Gould)) { process_key_cmd_char('G'); menu_clicked = true; }
@@ -312,6 +315,7 @@ void show_menu()
                 if (ImGui::MenuItem("Stars with Planets", "Shift+P", cbolbls_selected_idx == lbltype_planets)) { process_key_cmd_char('P'); menu_clicked = true; }
                 if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L", cbolbls_selected_idx == lbltype_planethz)) { process_key_cmd_char('L'); menu_clicked = true; }
                 if (ImGui::MenuItem("Stars with Known Poles", "Shift+X", cbolbls_selected_idx == lbltype_knpole)) { process_key_cmd_char('X'); menu_clicked = true; }
+                if (ImGui::MenuItem("Binary Systems", "2", cbolbls_selected_idx == lbltype_binary)) { process_key_cmd_char('2'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
@@ -320,6 +324,7 @@ void show_menu()
             if (ImGui::MenuItem("Local System Objects", "Shift+V", show_localsys)) { process_key_cmd_char('V'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Labels", "P", lbl_localsys)) { process_key_cmd_char('p'); menu_clicked = true; }
             if (ImGui::MenuItem("Orbits", "Shift+O", show_orbits)) { process_key_cmd_char('O'); menu_clicked = true; }
+            if (ImGui::MenuItem("Coordinate Axes", "|", show_axes)) { process_key_cmd_char('|'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); menu_clicked = true; }
             if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); menu_clicked = true; }
@@ -341,6 +346,10 @@ void process_key_cmd_char(char c)
     // std::cout << c << std::endl;
 
     // IMPORTANT: Any keyboard shortcuts added here should also be added to show_menu().
+    //
+    // Three are deliberately absent from the menu and should stay that way: 'q' and 'Q' drive the
+    // dev dial, which is a development aid the end user has no business finding, and ':' is a
+    // placeholder for the unimplemented vm_model view mode.
 
     switch (c)
     {

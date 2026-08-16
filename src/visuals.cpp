@@ -927,9 +927,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         daylight.red /= dmax; daylight.green /= dmax; daylight.blue /= dmax;
     }
     // Compensate for the eye's white balance adjustment (matches the CPU path exactly).
-    daylight.red = pow(daylight.red, 0.333);
-    daylight.green = pow(daylight.green, 0.333);
-    daylight.blue = pow(daylight.blue, 0.333);
+    daylight.red = pow(daylight.red, 1.0/3.0);
+    daylight.green = pow(daylight.green, 1.0/3.0);
+    daylight.blue = pow(daylight.blue, 1.0/3.0);
 
     SphereImpostorInput in;
     in.cx = display_space.x; in.cy = display_space.y; in.cz = display_space.z; in.r = bounding_r;
@@ -1302,9 +1302,9 @@ int draw_sphere(CelestialObject* cel, double arad)
     daylight.blue /= f;
 
     // Compensate for the eye's white balance adjustment
-    daylight.red = pow(daylight.red, 0.333);
-    daylight.green = pow(daylight.green, 0.333);
-    daylight.blue = pow(daylight.blue, 0.333);
+    daylight.red = pow(daylight.red, 1.0/3.0);
+    daylight.green = pow(daylight.green, 1.0/3.0);
+    daylight.blue = pow(daylight.blue, 1.0/3.0);
 
     if (wireframe)
     {
@@ -1573,7 +1573,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 if (fabs(theta) < half_pi)
                                 {
                                     cos_theta = cos(theta);
-                                    is_day = fmin(1, pow(cos_theta, 0.333) + night_illum);
+                                    is_day = fmin(1, pow(cos_theta, 1.0/3.0) + night_illum);
                                 }
                                 else is_day = night_illum;
                             }
@@ -3030,7 +3030,7 @@ void draw_galaxy_band()
     Galaxy *g = (Galaxy*)cel;
     if (g->tmprel.magnitude() > g->volumetric_mean_radius) return;
 
-    int h, i, j, n;
+    int h, i, n;
 
     // The .dat file's longitude runs in galactic coordinates with 0 at the galactic center, so
     // the seam at the +-pi wraparound naturally falls 180 degrees from it -- but only once the
@@ -3045,10 +3045,8 @@ void draw_galaxy_band()
     double gbrt = (view_mode == vm_horizon) ? (16 * pow(magnbase, sky_mag_shift)) : 13;
     if (gbrt < 2) return;
 
-    ImU32 gcol = rgba_apply_redlight(
-        whtbkgd
-        ? IM_COL32(0, 0, 0, 96)
-        : IM_COL32(192, 224, 255, 96));      // TODO: Galaxy color.
+    // gcol, the band's outline colour, went with the outline pass that used to sit at the bottom
+    // of this function behind an "if (1)" that made it unreachable.
     ImU32 fillcol = rgba_apply_redlight(
         whtbkgd
         ? IM_COL32(0, 0, 0, 20)
@@ -3259,7 +3257,11 @@ void draw_galaxy_band()
         }
     }
 
-    if (1) // camera_is_directional)
+    // The scanline fill, unconditionally. This used to be "if (1) // camera_is_directional)" with
+    // an else that drew the band as a pair of outlines instead -- unreachable as written, and
+    // superseded: the fill covers both projections now that the vm_skymap case is handled by
+    // emit_wrapped() and the directional case by the polygon clip above. The outline pass is in
+    // the history if it is ever wanted back.
     {
         if (crossings.size() >= 2)
         {
@@ -3274,11 +3276,12 @@ void draw_galaxy_band()
                 size_t e = s;
                 while (e < crossings.size() && crossings[e].y == crossings[s].y) e++;
 
-                // An odd count means the outline was left open on this row -- points dropped by the
-                // projection behind the viewer, most often. Parity is meaningless there, and guessing
-                // would smear fill across the whole row, so the row is simply skipped.
-                size_t cnt = e - s;
-                
+                // An odd number of crossings means the outline was left open on this row -- points
+                // dropped by the projection behind the viewer, most often. That used to be
+                // described here as a reason to skip the row, and a count was taken for it, but
+                // the skip itself was never written and the count went unread. What actually
+                // happens is below: drawable is padded out to an even length with the right-hand
+                // edge of the screen, so an open row fills to the edge rather than being dropped.
                 std::vector<double> drawable;
                 bool first = true;
                 for (int k = s; k < e; k++)
@@ -3306,26 +3309,6 @@ void draw_galaxy_band()
                 }
 
                 s = e;
-            }
-        }
-    }
-    else
-    {
-        // Outline, reusing the same projected points computed above.
-        for (h=0; h<2; h++)
-        {
-            n = screen[h].size();
-            if (n<2) continue;
-            for (i=0; i<=n; i++)
-            {
-                j = i;
-                if (j >= n) j -= n;
-                if (i>0)
-                {
-                    int prevj = i-1;
-                    if (good[h][prevj] && good[h][j])
-                        wrapped_line(screen[h][prevj], screen[h][j], gcol, io);
-                }
             }
         }
     }
@@ -3488,31 +3471,27 @@ void draw_objects()
         if (mycensq < light_year_sq
             && cels[i]->tmprel.squared_magnitude() < layer_cutoff)
         {
+            // Insertion sort by horizon distance, nearest last. discinstead[i] was being used as
+            // the "did it go in" scratch flag and then overwritten with true on every path
+            // regardless, which made the branch that read it unable to change anything. A local
+            // says what it means and leaves the array to its own purpose.
             n = to_draw_layered.size();
-            if (!n)
+            bool inserted = false;
+            if (n)
             {
-                to_draw_layered.push_back(cels[i]);
-                discinstead[i] = true;
-            }
-            else
-            {
-                discinstead[i] = false;
                 double trm = cels[i]->get_horizon_distance();
                 for (j=0; j<n; j++)
                 {
                     if (to_draw_layered[j]->get_horizon_distance() < trm)
                     {
                         to_draw_layered.insert(to_draw_layered.begin()+j, cels[i]);
-                        discinstead[i] = true;
+                        inserted = true;
                         break;
                     }
                 }
-                if (!discinstead[i])
-                {
-                    to_draw_layered.push_back(cels[i]);
-                }
-                discinstead[i] = true;
             }
+            if (!inserted) to_draw_layered.push_back(cels[i]);
+            discinstead[i] = true;
         }
         else draw_one_object(i);
         if (!cels[1]) return;
@@ -3783,7 +3762,7 @@ void draw_sunclock()
                 if (fabs(theta) < half_pi)
                 {
                     cos_theta = cos(theta);
-                    is_day = fmin(1, pow(cos_theta, 0.333));
+                    is_day = fmin(1, pow(cos_theta, 1.0/3.0));
                     is_night = 0;
                 }
                 // TODO: Twilight
@@ -4274,11 +4253,10 @@ void draw_cloudy_sky()
 {
     if (view_mode != vm_horizon) return;
 
-    unsigned int seed = 65536 * (viewer_lat + _pi);
-    mtx.lock();
-    // std::srand(seed);
-    mtx.unlock();
-    seed = (rand() % 65536) + (65536 * fabs(viewer_lon));
+    // A seed was derived here from the viewer's latitude and longitude, assigned twice and never
+    // read, around a commented-out std::srand that the mutex pair existed to protect. Nothing in
+    // this function is random any more, so all of it is gone. The seeding belongs back here if
+    // the sky ever grows the individual clouds sketched out at the bottom of the function.
 
     // See find_horizon(): horizon mode does not imply a world underfoot.
     if (whereami < 0) return;

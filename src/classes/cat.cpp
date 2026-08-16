@@ -4037,7 +4037,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 if (!m->orbit) std::cout << "WARNING: " << m->name << " has no orbit." << std::endl << std::flush;
                 if (m->orbit && !m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
                 if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
-                    m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 0.333333333) * 0.5;
+                    m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 1.0/3.0) * 0.5;
                 assert(!isinf(m->volumetric_mean_radius));
             }
 

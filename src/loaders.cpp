@@ -319,7 +319,7 @@ bool save_universe()
     return false;
 }
 
-bool load_universe(std::string universe_fname = "universe.json")
+bool load_universe(std::string universe_fname)          // default is on the declaration, in loaders.h
 {
     int i;
     fstream fs;

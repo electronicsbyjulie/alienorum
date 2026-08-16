@@ -1,6 +1,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <deque>
 #include <iostream>
 #include "sphere_impostor.h"
 // Declarations only (does not define IMGL3W_IMPL), so this resolves against the same
@@ -25,11 +26,15 @@ using namespace alienorum;
 
 namespace alienorum
 {
-    // Per-draw payload for the AddCallback below. Allocated with `new` at queue time (ImGui's
-    // draw list only stores the pointer, not the data -- the callback doesn't actually run
-    // until end-of-frame rendering, well after queue_sphere_impostor() returns), and freed by
-    // the callback itself once consumed. Standard idiom for ImGui AddCallback with per-draw
-    // userdata.
+    // Per-draw payload for the AddCallback below. ImGui's draw list only stores the pointer, not
+    // the data -- the callback does not run until end-of-frame rendering, well after
+    // queue_sphere_impostor() returns -- so the payload has to outlive the queueing call.
+    //
+    // This used to be a `new` here and a `delete` in the callback, which is the standard idiom
+    // and leaks whenever the draw list is discarded instead of rendered: the callback is the only
+    // thing that frees it, and a discarded list never runs its callbacks. It comes from a pool
+    // owned by this file instead (see impostor_begin_frame), so the lifetime no longer depends on
+    // anything downstream actually happening.
     struct SphereImpostorParams
     {
         // Quad corners, NDC.
@@ -104,6 +109,14 @@ namespace alienorum
         float skyr, skyg, skyb, sky_y;
         float apply_sky;   // 0 or 1
     };
+
+    // Payload pools, one entry per impostor queued this frame, handed out by the queue_*
+    // functions and reset by impostor_begin_frame(). std::deque rather than std::vector because
+    // the draw list is holding raw pointers into this for the rest of the frame, and a deque
+    // never moves the elements it already has when it grows. Both keep whatever high-water mark
+    // the busiest frame reached, so steady state does no allocation at all.
+    static std::deque<SphereImpostorParams> s_sphere_pool;
+    static size_t s_sphere_used = 0;
 
     static GLuint s_program = 0;
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
@@ -718,7 +731,7 @@ namespace alienorum
         // night side has, which is what it physically is -- night, arriving early and leaving in
         // the wrong direction. On a body with a night map that also means its city lights come up
         // inside the umbra, for free, through the same isDay blend the terminator already uses.
-        "    else isDay = clamp(pow(mu, 0.3333)*shadow + vFlags.y, 0.0, 1.0);\n"
+        "    else isDay = clamp(pow(mu, 1.0/3.0)*shadow + vFlags.y, 0.0, 1.0);\n"
         "\n"
         // albedo kept separate from baseColor -- the surface's own color, before the light
         // source's white-balance tint is multiplied in. Direct sunlight gets that tint (it *is*
@@ -735,7 +748,7 @@ namespace alienorum
         // replacement, it sits on top of whatever the night side already shows, city lights
         // included. Exactly what a total lunar eclipse looks like from a distance: the disc does
         // not go out, it changes color.
-        "    outColor += umbraAmt * pow(mu, 0.3333) * umbraTint * albedo;\n"
+        "    outColor += umbraAmt * pow(mu, 1.0/3.0) * umbraTint * albedo;\n"
         "\n"
         // The air in front of the ground, added rather than blended: light this world's own
         // atmosphere scatters towards us on its way past, sitting on top of the surface already
@@ -996,7 +1009,8 @@ namespace alienorum
         // text rendering as boxes).
         glActiveTexture(GL_TEXTURE0);
 
-        delete p;
+        // Not deleted: p belongs to the frame pool (see impostor_begin_frame), which is
+        // reset once per frame rather than freed per callback.
     }
 
     // Exact tangent-line bound for one axis pair (u,w) where w is the camera-space Z (forward)
@@ -1117,7 +1131,9 @@ namespace alienorum
         if (out_xmax) *out_xmax = xmax;
         if (out_ymax) *out_ymax = ymax;
 
-        SphereImpostorParams *p = new SphereImpostorParams();
+        if (s_sphere_used == s_sphere_pool.size()) s_sphere_pool.emplace_back();
+        SphereImpostorParams *p = &s_sphere_pool[s_sphere_used++];
+        *p = SphereImpostorParams();        // as value-initialized as the `new` it replaces
         p->ndc_x0 = (float)((xmin / W) * 2.0 - 1.0);
         p->ndc_x1 = (float)((xmax / W) * 2.0 - 1.0);
         // Screen Y grows downward; NDC Y grows upward -- ymin (smaller pixel Y, higher on
@@ -1285,6 +1301,10 @@ namespace alienorum
         float self_luminous;
         float redlight;
     };
+
+    // See s_sphere_pool: same arrangement, same reason.
+    static std::deque<RingImpostorParams> s_ring_pool;
+    static size_t s_ring_used = 0;
 
     static GLuint s_ring_program = 0;
     static GLuint s_ring_vao = 0, s_ring_vbo = 0, s_ring_ebo = 0;
@@ -1599,7 +1619,8 @@ namespace alienorum
         // 1 here would corrupt every ImGui draw after this one.
         glActiveTexture(GL_TEXTURE0);
 
-        delete p;
+        // Not deleted: p belongs to the frame pool (see impostor_begin_frame), which is
+        // reset once per frame rather than freed per callback.
     }
 
     bool queue_ring_impostor(const RingImpostorInput &in, double zoom, double dispcx, double dispcy)
@@ -1642,7 +1663,9 @@ namespace alienorum
         zdesXmin = (xmin - dispcx) / dispcx; zdesXmax = (xmax - dispcx) / dispcx;
         zdesYmin = (ymin - dispcy) / dispcx; zdesYmax = (ymax - dispcy) / dispcx;
 
-        RingImpostorParams *p = new RingImpostorParams();
+        if (s_ring_used == s_ring_pool.size()) s_ring_pool.emplace_back();
+        RingImpostorParams *p = &s_ring_pool[s_ring_used++];
+        *p = RingImpostorParams();
         p->ndc_x0 = (float)((xmin / W) * 2.0 - 1.0);
         p->ndc_x1 = (float)((xmax / W) * 2.0 - 1.0);
         p->ndc_y0 = (float)(1.0 - (ymax / H) * 2.0);
@@ -1683,5 +1706,12 @@ namespace alienorum
         dl->AddCallback(render_ring_impostor, p);
         dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
         return true;
+    }
+
+    void impostor_begin_frame()
+    {
+        // Only the high-water marks are reset; the storage stays for the next frame to reuse.
+        s_sphere_used = 0;
+        s_ring_used = 0;
     }
 }

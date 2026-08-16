@@ -1034,13 +1034,19 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     while (cinfo.output_scanline < cinfo.output_height)
     {
         j0 = cinfo.output_scanline * image_width;
-        assert(j0 >= 0);
+        // "assert(j0 >= 0)" stood here on an unsigned value, so it was true by construction and
+        // the compiler said so (-Wtype-limits). Dropped rather than corrected: there is nothing
+        // it could have caught.
         (void) jpeg_read_scanlines(&cinfo, jpeg_image_buffer, 1);
         i0 = 0;
         for (i=0; i<row_stride; i+=cinfo.output_components)
         {
             j = j0 + i0;
-            assert(j < allocated);
+            // A real bounds check, not an assert: the row count and the width come from the JPEG
+            // header and the allocation was sized from them, so a file whose scanlines do not
+            // match its declared dimensions writes past the end of the channel arrays -- and
+            // under NDEBUG the assert that used to stand here was not present to stop it.
+            if (j >= allocated) break;
             if (upside_down) j = allocated-1-j;
 
             if (as_bump)
@@ -1357,16 +1363,29 @@ unsigned int Map::idx_of(double lat, double lon)
     if (lat < -half_pi) lat = -half_pi;
     else if (lat > half_pi) lat = half_pi;
 
+    // A map with geometry but no pixels yet has nothing to index into, and the row clamp below
+    // cannot express that: allocated - image_width would wrap.
+    if (!image_width || allocated < image_width) return idx_not_ready;
+
     double xf = lon * lon_scale, yf = (half_pi-lat) * lat_scale;
-    unsigned int x0 = floor(xf), y1 = ceil(yf);
-    long y0idx = image_width * y1;
 
-    if (y0idx < 0) y0idx = 0;
-    if (y0idx > allocated-image_width) y0idx = allocated-image_width;
-    if (x0 < 0) x0 = 0;
-    if (x0 >= image_width) x0 = image_width-1;
+    // Clamped as doubles, before the conversion to an integer type rather than after. The
+    // previous version converted first and then tested the results, which could not work: x0 was
+    // unsigned, so "x0 < 0" was dead (the compiler said so) and a negative xf had already wrapped
+    // to something enormous; and y0idx was a long compared against an unsigned long, which
+    // converts the long to unsigned and makes "y0idx < 0" equally dead. Both were saved only by
+    // the upper-bound tests that followed, and only by accident.
+    if (!(xf >= 0)) xf = 0;                 // also catches NaN, which every comparison would fail
+    if (!(yf >= 0)) yf = 0;
 
-    return y0idx+x0;
+    unsigned long x0 = (unsigned long)floor(xf);
+    unsigned long y1 = (unsigned long)ceil(yf);
+    if (x0 >= image_width) x0 = image_width - 1;
+
+    unsigned long last_row = (allocated - image_width) / image_width;
+    if (y1 > last_row) y1 = last_row;
+
+    return (unsigned int)(y1 * image_width + x0);
 }
 
 void alienorum::Map::resample_bump_data(unsigned int new_resolution)
@@ -1561,7 +1580,7 @@ double CelestialObject::get_equatorial_radius()
 
 void alienorum::Atmosphere::calculate_tau(double pressure)
 {
-    if (!comp) return 0;
+    if (!comp) return;                      // void function: nothing to return but control
     tau = atmospheric_tau(pressure*0.000009869,
         comp->CO2_portion, comp->CH4_portion, comp->H2O_portion, comp->N2O_portion,
         comp->O3_portion,  comp->SO2_portion, comp->H2S_portion, comp->CO_portion,

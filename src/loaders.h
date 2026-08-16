@@ -14,7 +14,9 @@ void spawn_texture_load(CelestialObject *cel);
 void save_textures(CelestialObject *cel);
 bool look_for_catalogs();
 bool save_universe();
-bool load_universe(std::string universe_fname);
+// The default belongs here rather than on the definition in loaders.cpp: put there, it is only
+// visible to code below that point in that one file, so alienorum.cpp could not use it.
+bool load_universe(std::string universe_fname = "universe.json");
 void load_catalogs();
 void read_cons_lines();
 void cache_cons_lines();
