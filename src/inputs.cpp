@@ -161,23 +161,23 @@ void pan_with_crosshairs(ImGuiIO& io)
         return;
     }
 
-    if (io.MouseDelta.x < 0 && io.MousePos.x < -3*io.MouseDelta.x)
+    if (io.MouseDelta.x < 0 && io.MousePos.x < -mouse_drag_threshold*2*io.MouseDelta.x)
     {
         io.MousePos = ImVec2(dispcx*2, io.MousePos.y);
         io.WantSetMousePos = true;
     }
-    else if (io.MouseDelta.x > 0 && io.MousePos.x > dispcx*2 - 3*io.MouseDelta.x)
+    else if (io.MouseDelta.x > 0 && io.MousePos.x > dispcx*2 - mouse_drag_threshold*2*io.MouseDelta.x)
     {
         io.MousePos = ImVec2(0, io.MousePos.y);
         io.WantSetMousePos = true;
     }
 
-    if (io.MouseDelta.y < 0 && io.MousePos.y < -3*io.MouseDelta.y)
+    if (io.MouseDelta.y < 0 && io.MousePos.y < -mouse_drag_threshold*2*io.MouseDelta.y)
     {
         io.MousePos = ImVec2(io.MousePos.x, dispcy*2);
         io.WantSetMousePos = true;
     }
-    else if (io.MouseDelta.y > 0 && io.MousePos.y > dispcy*2 - 3*io.MouseDelta.y)
+    else if (io.MouseDelta.y > 0 && io.MousePos.y > dispcy*2 - mouse_drag_threshold*2*io.MouseDelta.y)
     {
         io.MousePos = ImVec2(io.MousePos.x, 0);
         io.WantSetMousePos = true;

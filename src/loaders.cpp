@@ -928,8 +928,8 @@ bool save_user_json()
     {
         json j;
 
-        j["Latitude"] = viewer_home_lat * fiftyseven;
-        j["Longitude"] = viewer_home_lon * fiftyseven;
+        j["Latitude"] = viewer_lat * fiftyseven;
+        j["Longitude"] = viewer_lon * fiftyseven;
         j["Theme"] = viewer_theme;
         j["Gamma"] = global_gamma;
 

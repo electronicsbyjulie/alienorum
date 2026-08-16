@@ -77,6 +77,7 @@ double alienorum::CelestialObject::timeofday()
 
 int alienorum::CelestialObject::read_locales(std::string fn)
 {
+    bool upside_down = !strcmp(name, "Venus");          // kludge
     std::fstream fs(fn, std::ios::in);
     if (fs)
     {
@@ -88,7 +89,19 @@ int alienorum::CelestialObject::read_locales(std::string fn)
         {
             if (!strcmp(planet.c_str(), name))
             {
-                return read_locales_json(plocs);
+                int result = read_locales_json(plocs);
+
+                if (upside_down)
+                {
+                    for (int i=0; i<result; i++)
+                    {
+                        locales[i].lat = -locales[i].lat;
+                        if (locales[i].lon < 0) locales[i].lon += _pi*2;
+                        locales[i].lon = _pi*2 - locales[i].lon;
+                    }
+                }
+
+                return result;
             }
         }
     }

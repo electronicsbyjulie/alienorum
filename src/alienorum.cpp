@@ -687,7 +687,7 @@ int main (int argc, char** argv)
             else if (is_mouse_down && !is_mouse_over_window && !was_mouse_down) draggable = true;
             else if (!is_mouse_down) dragging = draggable = false;
 
-            if (draggable && (fabs(io.MousePos.x - lmx) >= 3 || fabs(io.MousePos.y - lmy) >= 3)) dragging = true;
+            if (draggable && (fabs(io.MousePos.x - lmx) >= mouse_drag_threshold || fabs(io.MousePos.y - lmy) >= mouse_drag_threshold)) dragging = true;
             if (!draggable) dragging = false;
             if (dragging) pan_with_crosshairs(io);
 

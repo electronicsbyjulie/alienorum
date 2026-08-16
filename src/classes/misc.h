@@ -148,6 +148,8 @@ const std::time_t J2000_TIME_T = 946684800;
 #define circ_sz 7
 #define ln_spc 10
 
+#define mouse_drag_threshold 3
+
 #define NUM_VIEWMODES 4
 enum ViewMode
 {
