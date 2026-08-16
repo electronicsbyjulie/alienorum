@@ -728,7 +728,7 @@ bool CelestialObject::from_json(json j)
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center) return;
-    if (deleted = orbit->center->deleted) return;
+    if (deleted = orbit->center->deleted) return;           // assignment not comparison.
     location.galactic_center = orbit->center->location.galactic_center;
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
@@ -1336,7 +1336,21 @@ unsigned int Map::next_gen()
 
 unsigned int Map::idx_of(double lat, double lon)
 {
-    while (!lat_scale) std::this_thread::sleep_for(std::chrono::milliseconds(29));
+    // A Map exists from the moment its owner asks for one, but its geometry is only filled in
+    // once a loader or generator knows the image dimensions -- so there is a window in which
+    // there is no pixel here to name. This used to be "while (!lat_scale) sleep(29ms)", waiting
+    // for a background load with no bound and no way out: idx_of() is reached from color_at()
+    // and elevation_at(), and both of those run on the render thread inside draw_sphere(),
+    // draw_sunclock(), draw_horizon(), draw_sky_gradient() and draw_cloudy_sky(), so a load that
+    // failed or never started hung the whole app silently.
+    //
+    // Not replaced with a bounded wait, which would be no better here: these are called per
+    // pixel -- draw_sunclock()'s own loop runs the width of the screen times its height -- so
+    // any per-call sleep is multiplied by tens of thousands within a single frame, and a wait
+    // short enough to survive that multiplication is too short to be worth taking. Reporting
+    // "not ready" costs nothing, both callers already have a sensible answer for it, and the map
+    // will be ready on a later frame.
+    if (!lat_scale) return idx_not_ready;
 
     lon = fmod(lon+_pi, _pi*2);
     if (lon < 0) lon += _pi*2;
@@ -1491,6 +1505,15 @@ RGB3Byte Map::color_at(double lat, double lon)
     else
     {
         unsigned int idx = idx_of(lat, lon);
+        // White is this Map's standing answer for "nothing to read here" -- it is already what an
+        // unallocated channel returns below. Clamping the not-ready case into range instead would
+        // smear whichever pixel it landed on across the whole body.
+        if (idx == idx_not_ready || !allocated)
+        {
+            result.r = result.g = result.b = 255;
+            return result;
+        }
+        if (idx >= allocated) idx = allocated - 1;
         result.r = red_data   ? red_data[idx]   : 255;
         result.g = green_data ? green_data[idx] : 255;
         result.b = blue_data  ? blue_data[idx]  : 255;
@@ -1515,13 +1538,30 @@ double CelestialObject::estimate_surface_gravity()
 }
 
 // TODO: Make this also work with Moon class width/depth somehow.
+//
+// For an oblate spheroid of equatorial radius a and polar radius c = a(1-f), the volumetric mean
+// radius is R = (a*a*c)^(1/3) = a*(1-f)^(1/3). Recovering a therefore DIVIDES by that cube root:
+// the equatorial radius is always the larger of the two, never the smaller.
+//
+// This used to multiply by it instead, returning roughly the polar radius: for Saturn (f = 0.098)
+// it came out 3.4% below the volumetric mean where the true equatorial radius is 3.5% above it,
+// a 7% discrepancy in a figure that feeds the sphere impostor's bounding radius, every angular
+// radius in the eclipse geometry, and the Roche limit shown in the object editor. Moon::
+// get_Laplace_plane() worked around it by open-coding its own version -- with the division the
+// right way round but an exponent of 2/3 -- and now calls this instead, so there is one formula.
 double CelestialObject::get_equatorial_radius()
 {
-    return volumetric_mean_radius * pow(1.0 - oblateness, 0.333);
+    double polar_ratio = 1.0 - oblateness;
+    // Oblateness is user-editable and arrives from catalogs, so it can be >= 1 or NaN. There is
+    // no flattening to undo in that case, and pow() of a non-positive base to a fractional
+    // exponent is NaN, which would spread into everything downstream.
+    if (!(polar_ratio > 0)) return volumetric_mean_radius;
+    return volumetric_mean_radius / pow(polar_ratio, 1.0/3.0);
 }
 
 void alienorum::Atmosphere::calculate_tau(double pressure)
 {
+    if (!comp) return 0;
     tau = atmospheric_tau(pressure*0.000009869,
         comp->CO2_portion, comp->CH4_portion, comp->H2O_portion, comp->N2O_portion,
         comp->O3_portion,  comp->SO2_portion, comp->H2S_portion, comp->CO_portion,
@@ -2860,9 +2900,24 @@ double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
     return constant * volumetric_mean_radius * std::cbrt(primary_density / orbiter_density);
 }
 
-void append_cel(CelestialObject *cel)
+// Returns false when the array is full, which used to be a silent no-op: the caller went on
+// believing the object was in `cels`, so it leaked, and the dialog paths then set selected or
+// editidx from ncelobjs-1 -- an index naming whatever was already there. Not marked [[nodiscard]]
+// because the catalog readers in cat.cpp call this a dozen times in bulk loops where running out
+// of room means the same thing for all of them and the message below is the whole of the report;
+// the callers that go on to *use* the object are the ones that check.
+bool append_cel(CelestialObject *cel)
 {
-    if (ncelobjs >= MAX_CELOBJS-1) return;
+    if (ncelobjs >= MAX_CELOBJS-1)
+    {
+        static bool complained = false;
+        if (!complained)
+        {
+            std::cerr << "Object limit (" << MAX_CELOBJS << ") reached; no more can be added." << std::endl;
+            complained = true;
+        }
+        return false;
+    }
 
     cel->origname = cel->name;
     if (cel->orbit && cel->orbit->center) cel->origcenname = cel->orbit->center->name;
@@ -2873,6 +2928,7 @@ void append_cel(CelestialObject *cel)
     cel->seqno = ncelobjs;
     ncelobjs++;
     cels[ncelobjs] = 0;
+    return true;
 }
 
 Point to_viewer_plane(Point pt, int sign)

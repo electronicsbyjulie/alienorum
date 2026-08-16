@@ -16,7 +16,6 @@
 
 extern std::vector<std::string> known_catalog_names;
 extern Star **hdcache, **hipcache;
-extern std::map<int,std::map<char,Star* > > hipcomps;
 
 #define auto_match_multiples 0
 

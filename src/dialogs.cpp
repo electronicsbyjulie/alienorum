@@ -412,6 +412,17 @@ void draw_status_window(ImGuiIO& io)
             }
         }
     }
+    if (themes_selected_idx < 0)
+    {
+        for (int n = 0; n < th; n++)
+        {
+            if (!strcmp(themes[n].c_str(), default_theme.c_str()))
+            {
+                themes_selected_idx = n;
+                break;
+            }
+        }
+    }
 
     ImGuiComboFlags cbothemes_flags = 0;
     const char* combo_theme_value = themes[themes_selected_idx].c_str();
@@ -703,20 +714,29 @@ void draw_addcel_window(ImGuiIO& io)
             CelestialObject *cel = nullptr;
             switch (cboceltyp_selected_idx)
             {
-                case 0: cel = new Galaxy();     append_cel(cel); cel->type = galaxy;        break;
-                case 1: cel = new Star();       append_cel(cel); cel->type = star;          break;
-                case 2: cel = new Planet();     append_cel(cel); cel->type = rocky;         break;
+                case 0: cel = new Galaxy();     cel->type = galaxy;        break;
+                case 1: cel = new Star();       cel->type = star;          break;
+                case 2: cel = new Planet();     cel->type = rocky;         break;
                 case 3:
                     cel = new Moon();
-                    append_cel(cel);
                     cel->type = rocky;
                     ((Moon*)cel)->orbit_type = ot_equatorial;
                     break;
-                case 4: cel = new Satellite();  append_cel(cel); cel->type = artificial;    break;
+                case 4: cel = new Satellite();  cel->type = artificial;    break;
 
                 default:
                 std::cerr << "Unimplemented object type" << std::endl;
                 break;
+            }
+
+            // Appended once, after the type is set, and only kept if it actually went in. The
+            // append used to sit inside each case and its result was ignored, so a full array
+            // left the object out of `cels` while everything below carried on configuring it and
+            // handed editidx an index belonging to something else.
+            if (cel && !append_cel(cel))
+            {
+                delete cel;
+                cel = nullptr;
             }
 
             if (cel)
@@ -1141,12 +1161,17 @@ void draw_objedit_window(ImGuiIO& io)
         {
             Star* s = (Star*)cels[editidx];
 
-            char edit_ra[20];
-            strcpy(edit_ra, s->RA_as_hms(0).c_str());
+            // snprintf, not strcpy: RA_as_hms() and Decl_as_degms() build their output with
+            // std::to_string on values this dialog lets the user set directly, so neither has a
+            // length these fixed buffers can rely on -- a declination of a few thousand degrees
+            // is enough to run past 20 characters. Sized from the buffer itself throughout, so
+            // the widget below and the copy above cannot disagree about it.
+            char edit_ra[32];
+            snprintf(edit_ra, sizeof(edit_ra), "%s", s->RA_as_hms(0).c_str());
             ImGui::Text("%s", "R.Ascension");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputText("##edtra", edit_ra, 20))
+            if (ImGui::InputText("##edtra", edit_ra, sizeof(edit_ra)))
             {
                 s->RA_from_hms(edit_ra);
                 s->update_location(simnow);
@@ -1155,12 +1180,12 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             }
             ImGui::SameLine(col2);
-            char edit_decl[20];
-            strcpy(edit_decl, s->Decl_as_degms().c_str());
+            char edit_decl[32];
+            snprintf(edit_decl, sizeof(edit_decl), "%s", s->Decl_as_degms().c_str());
             ImGui::Text("%s", "Declination");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputText("##edtdecl", edit_decl, 20))
+            if (ImGui::InputText("##edtdecl", edit_decl, sizeof(edit_decl)))
             {
                 s->Decl_from_degms(edit_decl);
                 s->update_location(simnow);
@@ -1966,14 +1991,11 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("Map Height");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(txtwid);
-            ImGui::InputInt("px##edit_map_ht", (int*)&cel->fictitious_map_height, 0, 0);
+            int edt_map_ht = (int)std::min<unsigned int>(cel->fictitious_map_height, 8388608);        // limit imposed by long index for height*width.
+            ImGui::InputInt("px##edit_map_ht", &edt_map_ht, 0, 0);
+            cel->fictitious_map_height = (unsigned int)std::max(50, edt_map_ht);
 
-            if (!cel->looked_for_maps)
-            {
-                cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
-                std::thread ttex(load_textures, cel);
-                ttex.detach();
-            }
+            spawn_texture_load(cel);
 
             Map *celmaps[3];
             celmaps[0] = cel->surf_map;
@@ -2298,7 +2320,11 @@ void draw_system_explorer(ImGuiIO& io)
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
 
-                    append_cel(m);
+                    if (!append_cel(m))
+                    {
+                        delete m;               // ~Moon takes the orbit with it
+                        break;
+                    }
                     P = m->orbit->period;
                 }
             }
@@ -2430,6 +2456,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     else if (l > 200 && (neighb_rthresh > 25 * light_year)) neighb_rthresh *= 0.9;
     else last_neighb_cen = mycenobj;
 
+    if (item_selected_idx >= neighb_celids.size()) item_selected_idx = 0;
     if (ImGui::Button("Select##neighbors"))
     {
         selected = neighb_celids[item_selected_idx];
@@ -2678,17 +2705,23 @@ void draw_ast_window(ImGuiIO & io)
         {
             mesg = "";
             for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
-            Planet *ast = new Planet();
 
-            if (!CatalogReader::load_asteroid(&astorb[i]))
+            // load_asteroid() builds and appends the object itself, and leaves it in
+            // astorb[i].cel -- which is how the Find/Track/Go branch just above finds it. This
+            // used to allocate a Planet of its own here as well, hand *that* one to
+            // compute_object_location() and then drop it on the floor: the object whose position
+            // got computed was a default-constructed body at the origin, not the asteroid that
+            // had just been loaded, and the real one was left for the next frame to place. The
+            // comet path a few hundred lines down already does it this way.
+            if (!CatalogReader::load_asteroid(&astorb[i]) || !astorb[i].cel)
             {
                 mesg = "ERROR - Asteroid failed to load.";
                 msg_color = ImVec4(255, 0, 0, 255);
             }
             else
             {
-                selected = ncelobjs-1;
-                compute_object_location(ast);
+                selected = astorb[i].cel->seqno;
+                compute_object_location(astorb[i].cel);
                 compute_object_draw_coordinates();
                 center_selected();
                 viewchanged = true;
@@ -2772,29 +2805,39 @@ void draw_sat_window(ImGuiIO& io)
             mesg = "";
             for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
             Satellite *sat = new Satellite();
-            append_cel(sat);
-            n = item_selected_idx;
-
-            char buffer[256];
-            strcpy(buffer, listlines[n].c_str());
-            char *hashmarks = strstr(buffer, "##");
-            i = atoi(&hashmarks[2]);
-
-            if (SatSource::populate(sat, i))
+            // The append can refuse, and everything below assumes it did not: `sat` would be
+            // configured, counted and selected without ever being in `cels`.
+            if (!append_cel(sat))
             {
-                selected = ncelobjs-1;
-                compute_object_location(sat);
-                compute_object_draw_coordinates();
-                center_selected();
-                viewchanged = true;
-                satwnd = false;
+                delete sat;
+                mesg = "ERROR - Object limit reached.";
+                msg_color = ImVec4(255, 0, 0, 255);
             }
             else
             {
-                ncelobjs--;
-                cels[ncelobjs] = 0;
-                mesg = "ERROR - Satellite failed to load.";
-                msg_color = ImVec4(255, 0, 0, 255);
+                n = item_selected_idx;
+
+                char buffer[1024];
+                if (n < listlines.size()) strcpy(buffer, listlines[n].c_str());
+                char *hashmarks = strstr(buffer, "##");
+                i = hashmarks ? atoi(&hashmarks[2]) : 0;
+
+                if (SatSource::populate(sat, i))
+                {
+                    selected = ncelobjs-1;
+                    compute_object_location(sat);
+                    compute_object_draw_coordinates();
+                    center_selected();
+                    viewchanged = true;
+                    satwnd = false;
+                }
+                else
+                {
+                    ncelobjs--;
+                    cels[ncelobjs] = 0;
+                    mesg = "ERROR - Satellite failed to load.";
+                    msg_color = ImVec4(255, 0, 0, 255);
+                }
             }
         }
 
@@ -2804,39 +2847,62 @@ void draw_sat_window(ImGuiIO& io)
             mesg = "";
             for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
             Satellite *sat = new Satellite();
-            append_cel(sat);
-            n = item_selected_idx;
-
-            char buffer[256];
-            strcpy(buffer, listlines[n].c_str());
-            char *hashmarks = strstr(buffer, "##");
-            i = atoi(&hashmarks[2]);
-
-            if (SatSource::populate(sat, i))
+            // See the Add Selected button above -- same check, same reason.
+            if (!append_cel(sat))
             {
-                selected = ncelobjs-1;
-                compute_object_location(sat);
-                compute_object_draw_coordinates();
-                center_selected();
-                viewchanged = true;
+                delete sat;
+                mesg = "ERROR - Object limit reached.";
+                msg_color = ImVec4(255, 0, 0, 255);
             }
             else
             {
-                ncelobjs--;
-                cels[ncelobjs] = 0;
-                mesg = "ERROR - Satellite failed to load.";
-                msg_color = ImVec4(255, 0, 0, 255);
+                n = item_selected_idx;
+
+                char buffer[1024];
+                if (n < listlines.size()) strcpy(buffer, listlines[n].c_str());
+                char *hashmarks = strstr(buffer, "##");
+                i = hashmarks ? atoi(&hashmarks[2]) : 0;
+
+                if (SatSource::populate(sat, i))
+                {
+                    selected = ncelobjs-1;
+                    compute_object_location(sat);
+                    compute_object_draw_coordinates();
+                    center_selected();
+                    viewchanged = true;
+                }
+                else
+                {
+                    ncelobjs--;
+                    cels[ncelobjs] = 0;
+                    mesg = "ERROR - Satellite failed to load.";
+                    msg_color = ImVec4(255, 0, 0, 255);
+                }
             }
         }
 
+        // The counters this reports are written by a worker thread, so they cannot be read on the
+        // frame that starts it: sats_added and sat_errors were still whatever the *previous*
+        // batch left there (zero on the first run), which is what the message showed. Kick the
+        // job off here, then report on whichever later frame finds it finished. awaiting_batch
+        // distinguishes "just finished" from "never started", so an idle window does not keep
+        // rewriting the message.
+        static bool awaiting_batch = false;
         ImGui::SameLine();
-        if (ImGui::Button("Add All Shown##satellites"))
+        if (ImGui::Button("Add All Shown##satellites") && !batch_sats_running)
         {
-            mesg = "";
+            mesg = "Adding satellites...";
+            msg_color = ImVec4(255, 224, 0, 255);
+            batch_sats_running = true;
+            awaiting_batch = true;
 
             std::thread tsat(add_batch_satellites, listlines);
             tsat.detach();
+        }
 
+        if (awaiting_batch && !batch_sats_running)
+        {
+            awaiting_batch = false;
             if (sats_added)
             {
                 if (sat_errors)

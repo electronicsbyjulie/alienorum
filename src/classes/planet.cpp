@@ -67,7 +67,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         else type = rocky;
     }
     else if (mass < giant_mass_cutoff               // Mass cutoff between ice giants and gas giants
-        && (!mnrk || mnrk > giant_density_cutoff))
+        && (!mnrk || density > giant_density_cutoff))
     {
         if (HZ)
         {
@@ -78,7 +78,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         }
         else type = ice_giant;
     }
-    else if (orbit->period < oneday*10)
+    else if (orbit && orbit->period < oneday*10)
     {
         type = hot_jupiter;
         if (s) s->has_hot_jupiter = true;
@@ -106,10 +106,19 @@ void Planet::estimate_radius()
     else if (type == hot_jupiter)
     {
         double volume = mass / hot_jupiter_density;
-        volumetric_mean_radius = pow(volume*3 / _pi*4, 1.0/3);
+        volumetric_mean_radius = pow(volume*3 / (_pi*4), 1.0/3);
     }
     else volumetric_mean_radius = 18.6 * earth_radius;
-    assert(!isinf(volumetric_mean_radius));
+    // An infinite or NaN radius comes from an infinite or NaN mass, which is catalog data rather
+    // than a mistake here -- so it has to be handled in release builds too, where the assert this
+    // replaces did not exist. Anything downstream that divides by the radius (density, surface
+    // gravity, the impostor's bounding box) would spread the poison rather than stop on it.
+    if (!std::isfinite(volumetric_mean_radius))
+    {
+        std::cerr << "Warning: could not estimate a radius for " << name << " (mass "
+            << mass << "); leaving it at Earth's." << std::endl;
+        volumetric_mean_radius = earth_radius;
+    }
 }
 
 void Planet::estimate_rotation()
@@ -267,8 +276,8 @@ double Planet::estimate_scale_height()
 void alienorum::Planet::incline_exo_orbit(double sys_solincl, double sys_solnode)
 {
     // Subtract the solar inclination of the local system plane from the planetary inclination.
-    if (orbit && orbit->inclination) orbit->inclination -= sys_solincl;
-    else orbit->inclination = 0;             // If unknown, assume system plane.
+    if (!orbit) return;
+    orbit->inclination = orbit->inclination ? (orbit->inclination - sys_solincl) : 0;            // If unknown, assume system plane.
 
     // The planetary node will be 90 degrees west of the Sun.
     orbit->ascending_node = sys_solnode - half_pi;
@@ -312,8 +321,13 @@ void Planet::update_location(double tmnow)
 
 double Planet::est_bolometric_flux(double t_eff)
 {
-    Star *s = (Star*)get_light_center();
-    assert(s->typeclass() == class_star);
+    // get_light_center() answers with whatever the orbital hierarchy leads to, which is not
+    // always a star -- a moon of a rogue planet, an object whose center was never resolved. The
+    // assert this replaces vanished under NDEBUG and left the Star members below being read off
+    // an object of another class.
+    CelestialObject *lc = get_light_center();
+    if (!lc || lc->typeclass() != class_star) return 0;
+    Star *s = (Star*)lc;
     if (!t_eff) t_eff = s->estimate_temperature();
     double t_star = t_eff - sun_temp;
 
@@ -523,8 +537,11 @@ bool Planet::is_in_con_HZ()
     if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;
 
     if (!orbit || !orbit->center) return false;
-    Star *s = (Star*)get_light_center();
-    assert(s->typeclass() == class_star);
+    // See est_bolometric_flux(): the light center is not guaranteed to be a star, and nothing
+    // without one has a habitable zone to be in.
+    CelestialObject *lc = get_light_center();
+    if (!lc || lc->typeclass() != class_star) return false;
+    Star *s = (Star*)lc;
 
     // Mathematical model to approximate this chart: https://personal.ems.psu.edu/~jfk4/ruk15/planets/T_Seff_HZ_plusTRAPPIST_ALL__MM_10202020v2.jpg
     double t_eff = s->estimate_temperature();

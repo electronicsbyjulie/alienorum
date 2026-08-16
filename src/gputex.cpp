@@ -59,8 +59,6 @@ namespace alienorum
             double scale = std::min((double)max_tex_size / w, (double)max_tex_size / h);
             unsigned long nw = std::max(1UL, (unsigned long)(w * scale));
             unsigned long nh = std::max(1UL, (unsigned long)(h * scale));
-            std::cerr << "gputex_for: downsampling " << w << "x" << h << " map to "
-                << nw << "x" << nh << " (GL_MAX_TEXTURE_SIZE=" << max_tex_size << ")" << std::endl;
 
             std::vector<unsigned char> down(nw * nh * 4);
             for (unsigned long y = 0; y < nh; y++)

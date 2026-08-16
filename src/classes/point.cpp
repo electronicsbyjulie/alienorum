@@ -208,10 +208,14 @@ double find_3D_angle(Point A, Point B, Point source)
     if (param < -1) param = -1;
     if (param >  1) param =  1;
     double retval = acos(param);
+    // param is clamped to [-1, 1] just above, so acos can only return NaN if one of the distances
+    // was already NaN -- which means a position was, and that comes from data. The assert this
+    // replaces did nothing in a release build except let the NaN through into the caller's
+    // geometry; returning zero at least keeps it local to the object that caused it.
     if (isnan(retval))
     {
-        std::cerr << "P12 " << P12 << " P13 " << P13 << " P23 " << P23 << std::endl;
-        assert(!isnan(retval));
+        std::cerr << "Warning: NaN angle from P12 " << P12 << " P13 " << P13 << " P23 " << P23 << std::endl;
+        return 0;
     }
     return retval;
 }

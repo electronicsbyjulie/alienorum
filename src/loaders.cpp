@@ -8,8 +8,51 @@ using namespace alienorum;
 
 int sats_added = 0, sat_errors = 0;
 
+// True from the moment draw_sat_window() decides to start a batch until add_batch_satellites()
+// has finished writing sats_added and sat_errors. Set by the caller rather than at the top of the
+// worker, so there is no window in which the batch is running but the flag says otherwise -- the
+// dialog reads those two counters the moment this goes false, and would otherwise read them
+// mid-update. Same reasoning as texture_loads_pending, above.
+std::atomic<bool> batch_sats_running{false};
+
+namespace
+{
+    // Drops this load's entry from texture_loads_pending however load_textures() leaves --
+    // normally, or by an exception out of one of the map loaders or generators. Anything that
+    // frees CelestialObjects while the app is running waits on that count first (see
+    // release_universe_objects() in visuals.cpp), so a count that never came back down would
+    // wedge that teardown permanently rather than merely delaying it.
+    struct TextureLoadTicket
+    {
+        ~TextureLoadTicket() { texture_loads_pending--; }
+    };
+
+    // As above, for the satellite batch: clears batch_sats_running however the worker leaves, so
+    // a throw out of new Satellite() or SatSource::populate() cannot leave the dialog waiting on
+    // a result that will never be announced.
+    struct BatchSatTicket
+    {
+        ~BatchSatTicket() { batch_sats_running = false; }
+    };
+}
+
+// The one way to start a background texture load. Kept in one place because the accounting has to
+// happen in the *spawning* thread: incrementing inside load_textures() would leave a window
+// between std::thread construction and the thread body actually running, during which a load is
+// pending but uncounted, and a teardown landing in that window would free the object out from
+// under it.
+void spawn_texture_load(CelestialObject *cel)
+{
+    if (!cel || cel->looked_for_maps) return;
+    cel->looked_for_maps = true;            // Prevent spawning infinite threads and crashing the system.
+    texture_loads_pending++;
+    std::thread ttex(load_textures, cel);
+    ttex.detach();
+}
+
 void load_textures(CelestialObject* cel)
 {
+    TextureLoadTicket ticket;
     std::string filename;
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.
@@ -212,7 +255,7 @@ void save_textures(CelestialObject* cel)
     if (cel->night_map)
     {
         mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_night.png");
-        cel->cloud_map->save_to_png(mapfname);
+        cel->night_map->save_to_png(mapfname);
     }
 }
 
@@ -306,7 +349,7 @@ bool load_universe(std::string universe_fname = "universe.json")
                 cr.read_star_orbits_dat(cels);
                 resave_json = true;
             }
-            if (resave_json) save_universe();
+            if (resave_json) save_universe();           // We deliberately write back to universe.json, not to the loaded file. This is by design.
             set_center_objects();
             refresh_star_visibilities();
 
@@ -321,6 +364,20 @@ bool load_universe(std::string universe_fname = "universe.json")
     else return false;
 }
 
+// Shutdown checkpoint for the loading thread. The catalog readers below each run for anywhere
+// from milliseconds to several seconds, so a quit request is honoured between them rather than
+// part-way through one: abort latency is one catalog read, which is bounded and leaves `cels` in
+// a consistent state for main() to tear down. This replaces the previous arrangement, in which
+// the Escape handler nulled `cels` out from under this thread on purpose so that it would fault.
+static bool load_aborted()
+{
+    if (!abort_load) return false;
+    mtx.lock();
+    loading_msg = "Stopping...";
+    mtx.unlock();
+    return true;
+}
+
 void load_catalogs()
 {
     int i, j, m, n;
@@ -329,6 +386,7 @@ void load_catalogs()
     cels[0] = nullptr;
 
     CatalogReader cr;
+    if (load_aborted()) return;
     std::string ihcfn = cr.get_condensed_starcat_name();
     bool ihsc = false;
     if (!file_exists(ihcfn.c_str()))
@@ -355,6 +413,7 @@ void load_catalogs()
     }
 
     // TODO: Read data from more star catalogs.
+    if (load_aborted()) return;
     cr.download_catalogs();
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
@@ -376,6 +435,7 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "GCVS")) have_GCVS = true;
     }
 
+    if (load_aborted()) return;
     if (have_Gliese && !ihsc)
     {
         mtx.lock();
@@ -386,6 +446,7 @@ void load_catalogs()
         cout << "Read " << nGliese << " objects." << endl << flush;
     }
 
+    if (load_aborted()) return;
     mtx.lock();
     loading_msg = std::string("Loading solar system...");
     mtx.unlock();
@@ -396,6 +457,7 @@ void load_catalogs()
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
+    if (load_aborted()) return;
     int nastorb = 0;
     if (have_astorb)
     {
@@ -404,6 +466,7 @@ void load_catalogs()
         cout << "Read " << nastorb << " objects." << endl << flush;
     }
 
+    if (load_aborted()) return;
     if (have_comets)
     {
         cout << "Reading comet catalog..." << endl << flush;
@@ -412,12 +475,14 @@ void load_catalogs()
         cout << "Read " << ncomets << " objects, " << comets.size() << " catalogued." << endl << flush;
     }
 
+    if (load_aborted()) return;
     cout << "Reading local moons..." << endl << flush;
     npl = cr.read_local_planets(cels, MAX_CELOBJS, nullptr, cels[0]);
     num_planets += npl;
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
+    if (load_aborted()) return;
     if (have_BSC && !ihsc)
     {
         mtx.lock();
@@ -428,6 +493,7 @@ void load_catalogs()
         cout << "Read " << nBSC << " objects." << endl << flush;
     }
     Gliese_doubles_fix();
+    if (load_aborted()) return;
     if (have_HIP && !ihsc && !magnitude_test)
     {
         mtx.lock();
@@ -438,6 +504,7 @@ void load_catalogs()
         cout << "Read " << nHIP << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
+    if (load_aborted()) return;
     if (have_GCVS)
     {
         mtx.lock();
@@ -448,6 +515,7 @@ void load_catalogs()
         cout << "Read " << nGCVS << " objects." << endl << flush;
         Gliese_doubles_fix();
     }
+    if (load_aborted()) return;
     if (have_Uranio && !ihsc)
     {
         mtx.lock();
@@ -468,6 +536,7 @@ void load_catalogs()
         Gliese_doubles_fix();
     }
 
+    if (load_aborted()) return;
     mtx.lock();
     loading_msg = std::string("Naming stars...");
     mtx.unlock();
@@ -477,6 +546,7 @@ void load_catalogs()
         cr.read_starname_dat(cels);
     }
 
+    if (load_aborted()) return;
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
         #if _USE_CCDM
@@ -520,6 +590,7 @@ void load_catalogs()
 
     // Galaxies. The UNGC goes first: its distances are measured rather than inferred from
     // velocity, and read_RC3_catalog() skips whatever it has already placed.
+    if (load_aborted()) return;
     if (have_UNGC && !magnitude_test)
     {
         mtx.lock();
@@ -529,6 +600,7 @@ void load_catalogs()
         int nUNGC = cr.read_UNGC_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nUNGC << " objects." << endl << flush;
     }
+    if (load_aborted()) return;
     if (have_RC3 && !magnitude_test)
     {
         mtx.lock();
@@ -542,6 +614,7 @@ void load_catalogs()
     // Because of system inclinations, we will die unless we read star orbits before reading exoplanets.
     // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
     // What to do, oh what to do...
+    if (load_aborted()) return;
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
     mtx.lock();
@@ -550,17 +623,7 @@ void load_catalogs()
     if (!magnitude_test) cr.read_star_orbits_dat(cels);
     else splash = false;
 
-    {
-        int probeidx = find_object("HD196885 B", true);
-        std::cerr << "PROBE-D find_object(\"HD196885 B\", true) after star_orbits.dat = " << probeidx;
-        if (probeidx >= 0) std::cerr << " -> name=" << cels[probeidx]->name << " absmag=" << ((Star*)cels[probeidx])->absolute_magnitude;
-        std::cerr << std::endl;
-        int probeidxA = find_object("HD196885", true);
-        std::cerr << "PROBE-D find_object(\"HD196885\", true) = " << probeidxA;
-        if (probeidxA >= 0) std::cerr << " -> name=" << cels[probeidxA]->name;
-        std::cerr << std::endl;
-    }
-
+    if (load_aborted()) return;
     if (!noexo)
     {
         cout << "Reading exoplanets..." << endl << flush;
@@ -623,12 +686,13 @@ void load_catalogs()
 
         for (i=0; i<n; i++)
         {
+            if (load_aborted()) return;
             // std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
             if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
             mtx.lock();
             loading_msg = std::string("Loading ") + sat_sources[sources_sorted[i]].local_name + std::string(" satellite data...");
             mtx.unlock();
-            sat_sources[i].read_csv_data();
+            sat_sources[sources_sorted[i]].read_csv_data();
         }
     }
 
@@ -784,20 +848,27 @@ void cache_cons_lines()
             if (founda < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
             if (foundb < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
 
-            constellations[i].lines[l].a = (Star*)cels[founda];
-            constellations[i].lines[l].b = (Star*)cels[foundb];
-            if (founda >= 0) ((Star*)cels[founda])->make_universally_visible();
-            if (foundb >= 0) ((Star*)cels[foundb])->make_universally_visible();
+            if (founda >= 0)
+            {
+                constellations[i].lines[l].a = (Star*)cels[founda];
+                ((Star*)cels[founda])->make_universally_visible();
+            }
+            if (foundb >= 0)
+            {
+                constellations[i].lines[l].b = (Star*)cels[foundb];
+                ((Star*)cels[foundb])->make_universally_visible();
+            }
         }
     }
 }
 
 void add_batch_satellites(std::vector<std::string> listlines)
 {
+    BatchSatTicket ticket;
     int i;
     for (i=0; cels[i]; i++);               // get count
     ncelobjs = i;
-    char buffer[256];
+    char buffer[1024];
 
     int m = listlines.size();
     sats_added = sat_errors = 0;
@@ -805,11 +876,19 @@ void add_batch_satellites(std::vector<std::string> listlines)
     {
         mtx.lock();
         Satellite *sat = new Satellite();
-        append_cel(sat);
+        if (!append_cel(sat))
+        {
+            // Array full. Nothing later in the list will fit either, so stop rather than
+            // allocating and discarding one object per remaining row.
+            delete sat;
+            sat_errors++;
+            mtx.unlock();
+            break;
+        }
 
-        strcpy(buffer, listlines[n].c_str());
+        if (n < listlines.size()) strcpy(buffer, listlines[n].c_str());
         char *hashmarks = strstr(buffer, "##");
-        i = atoi(&hashmarks[2]);
+        i = hashmarks ? atoi(&hashmarks[2]) : 0;
 
         if (SatSource::populate(sat, i, 24))
         {
@@ -851,22 +930,28 @@ void load_stuff()
         viewer_lon = 44.421111 * fiftyseventh;
     }
 
+    if (load_aborted()) return;
     mtx.lock();
     loading_msg = "Reading constellations...";
     mtx.unlock();
     read_cons_lines();
 
+    if (load_aborted()) return;
     mtx.lock();
     loading_msg = "Reading constellation boundaries...";
     mtx.unlock();
     CatalogReader cr;
     cr.read_cons_boundaries();
 
+    if (load_aborted()) return;
     mtx.lock();
     loading_msg = "Loading star data...";
     mtx.unlock();
     load_catalogs();
 
+    // load_catalogs() returns early on abort, so cels[0] may not exist -- everything below here
+    // assumes the Sun is loaded (see the bv_correction line, which reads cels[0] directly).
+    if (load_aborted() || !cels[0]) return;
     mtx.lock();
     loading_msg = "Assigning constellations...";
     mtx.unlock();

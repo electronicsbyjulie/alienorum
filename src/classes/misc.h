@@ -8,6 +8,7 @@
 #include <ctime>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <cURLpp_single/cURLpp.hpp>
 #include "imgui/imgui.h"
 #include "nlohmann/json.hpp"
@@ -34,7 +35,17 @@ using json = nlohmann::json;
 #define AU 149597870700.0
 #define invAU (1.0 / AU)
 #define oneday 86400
-#define oneyear (365 * oneday + 5 * 3600 + 48 * 60 + 45)
+// The tropical year, written as whole days plus the odd 5h48m45s -- which is what those three
+// trailing terms are. 365.0, not 365: the point of the decimal is to make the whole expression
+// double, so that "120 * oneyear" in draw_objects() does not overflow int (it did, and the comet
+// orbit trace ran backwards as a result) and so that "oneyear/oneday" is a real division rather
+// than an integer one that truncates 365.2422 to 365.
+//
+// Writing the leading term as 365.2422 instead would do both of those too, but counts the
+// fraction twice -- 365.2422 days *plus* another 5h48m45s -- giving a year of 365.4844 days,
+// 0.24 days long, which propagates into every proper motion, orbital period, precession rate and
+// epoch conversion that reads this.
+#define oneyear (365.0 * oneday + 5 * 3600 + 48 * 60 + 45)
 #define sidereal_year (365.256363004 * oneday)
 #define J2000 2451544.5
 #define speed_of_light 299792458.0
@@ -240,7 +251,7 @@ extern double bv_correction;
 long long micronow();
 
 // APP STATUS AND SETTINGS
-extern std::string loading_msg, viewer_theme;
+extern std::string loading_msg, default_theme, viewer_theme;
 extern std::vector<std::string> themes;
 extern std::mutex mtx;
 extern const char* vmtext[NUM_VIEWMODES];
@@ -257,6 +268,8 @@ extern bool done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, 
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
+extern std::atomic<bool> abort_load;
+extern std::atomic<int> texture_loads_pending;
 extern std::string objname, objinfo, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

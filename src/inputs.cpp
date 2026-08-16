@@ -609,9 +609,43 @@ void process_key_cmd_char(char c)
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
 
-        case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_home_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
-        case '_': view_mode = vm_horizon; viewchanged = true; altitude = 0; break;
-        case '$': view_mode = vm_sunclock; zoom=1; altitude=0; azimuth=0; viewchanged = true; break;
+        case '_':
+        if (whereami >= 0)
+        {
+            cel_obj_class cls = cels[whereami]->typeclass();
+            // TODO: The below if block allows standing on the surfaces of planets, moons, asteroids, and KBOs.
+            // It is a goal to allow standing on a comet, but this will involve significant changes to the code
+            // that currently relies on cels[whereami] to be an instance of Planet or a derived class. Attempting
+            // with the code as-is causes a segfault. Further, a comet's coma is a greenish haze, and we are going
+            // to want that haze to be displayed either as an atmosphere in draw_sky_gradient() or as a GPU effect.
+            // So comet surface standing is turned off for the time being.
+            if (cls == class_planet || cls == class_moon)
+            {
+                view_mode = vm_horizon;
+                viewchanged = true;
+                altitude = 0;
+            }
+        }
+        break;
+
+        case '$':
+        if (whereami >= 0)
+        {
+            cel_obj_class cls = cels[whereami]->typeclass();
+            // Galaxies, comets, and satellites do not currently have texture map behavior defined so there's nothing
+            // to show in a sun clock, and trying to show a galactic sun clock results in a crash.
+            if (cls == class_star || cls == class_planet || cls == class_moon)
+            {
+                view_mode = vm_sunclock;
+                zoom=1;
+                altitude=0;
+                azimuth=0;
+                viewchanged = true;
+            }
+        }
+        break;
+    
+        case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
         case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
@@ -745,7 +779,10 @@ void process_key_delete()
 void process_key_home()
 {
         double vmag;
-        if (view_mode == vm_horizon)
+        // whereami >= 0 as well as the view mode: walking is only meaningful with a world
+        // underfoot, and 'w' (warp) sets whereami to -1 without changing view_mode, so horizon
+        // mode alone does not guarantee one. See find_horizon() in visuals.cpp for the same test.
+        if (view_mode == vm_horizon && whereami >= 0 && cels[whereami])
         {
             if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
             if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
@@ -772,7 +809,8 @@ void process_key_home()
 void process_key_end()
 {
         double vmag;
-        if (view_mode == vm_horizon)
+        // See process_key_home(): same test, same reason.
+        if (view_mode == vm_horizon && whereami >= 0 && cels[whereami])
         {
             if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
             if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;

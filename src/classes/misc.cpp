@@ -13,9 +13,23 @@ using namespace alienorum;
 
 // IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
 bool done = false;
+
+// Set when the app is shutting down while the catalog loader may still be running -- the loading
+// thread polls it between catalog reads and returns early, so main() can join it in bounded time
+// instead of tearing `cels` down underneath it. See load_catalogs() and the Escape handler in
+// alienorum.cpp.
+std::atomic<bool> abort_load{false};
+
+// How many detached load_textures() threads are currently running. Only spawn_texture_load()
+// increments it (before the thread starts, so there is no window in which a load is pending but
+// uncounted) and only load_textures() decrements it, on the way out. Anything that wants to free
+// a CelestialObject while the app is running has to know whether a background thread is still
+// writing into it -- see release_universe_objects() in visuals.cpp.
+std::atomic<int> texture_loads_pending{0};
 std::string loading_msg = "Loading...";
 std::vector<std::string> themes;
-std::string viewer_theme = "Perseus";
+std::string default_theme = "Perseus";
+std::string viewer_theme = default_theme;
 std::mutex mtx;
 const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas" };
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };

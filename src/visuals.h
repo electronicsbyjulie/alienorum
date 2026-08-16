@@ -28,6 +28,13 @@ void draw_mouse_cursor(ImGuiIO &io);
 
 void draw_cloudy_sky();
 
+// Unlinking the universe (the star-collision branch of draw_sphere()) hands the objects to the
+// first of these; the second actually frees them, and has to be called once a frame from the main
+// loop because it can only do so after any background texture loads have finished. See their
+// definitions in visuals.cpp for the whole story.
+void release_universe_objects();
+void reap_released_objects();
+
 // Eclipses seen from the ground rather than from space. refresh_eclipse_casters() rebuilds the
 // short list of bodies able to cast a shadow (called once per frame, early, since both the sky's
 // own brightness and every disc drawn afterwards ask it); eclipse_obscuration() answers how much

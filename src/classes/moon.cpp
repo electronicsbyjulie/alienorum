@@ -7,20 +7,27 @@ using namespace alienorum;
 
 Rotation Moon::get_Laplace_plane()
 {
+    if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
     if (orbit_type == ot_equatorial) return orbit->center->location.equatorial_plane;
     else if (orbit_type == ot_ecliptic) return orbit->center->location.orbital_plane;
     if (Laplace_set && frand(0,1) > 0.25) return Laplace_plane;
-    if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
 
     // Fix for minor planets tidally locked to their moons.
     if (fabs(1.0 - (orbit->center->sidereal_rotational_period / orbit->period)) < 0.01) return orbit->center->location.equatorial_plane;
 
     CelestialObject *myplanet = orbit->center, *mystar = orbit->center->orbit->center;
-    assert(myplanet->mass > 0);
+    // Masses arrive from catalogs and from the object editor, so either can be zero or missing.
+    // pmu divides n_ecl below and smu is cubed under a square root, so without this the Laplace
+    // plane comes out infinite or NaN and takes the moon's orientation with it. Falling back to
+    // the orbital plane is what the guard at the top of this function already does for the other
+    // cases where there is not enough information to solve for one.
+    if (!(myplanet->mass > 0) || !(mystar->mass > 0)) return location.orbital_plane;
 
     double pmu = myplanet->mass * G, smu = mystar->mass * G;
     double n = std::sqrt(pmu / std::pow(smu, 3));
-    double eqr = myplanet->volumetric_mean_radius / std::pow(1.0-myplanet->oblateness, 2.0/3);
+    // Was open-coded here as vmr / pow(1-oblateness, 2.0/3) -- the division the right way round
+    // but the wrong exponent, and a second copy of a formula that belongs in one place.
+    double eqr = myplanet->get_equatorial_radius();
     double n_eq = n * ((Planet*)myplanet)->J2 * std::pow(eqr / orbit->semimajor_axis, 2);
     double n_ecl = n * smu / pmu * std::pow(orbit->semimajor_axis / myplanet->orbit->semimajor_axis, 3);
 

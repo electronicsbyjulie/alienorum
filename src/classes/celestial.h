@@ -201,8 +201,17 @@ namespace alienorum
         unsigned long image_height = 0;                             // Number of rows in image
         unsigned long image_width = 0;                              // Number of columns in image
         unsigned long allocated = 0;
-        double lat_scale, lon_scale, inv_lat_scale, inv_lon_scale;
+        // Zero until a loader or generator establishes the image geometry. These were previously
+        // left uninitialized, which made idx_of()'s "is this map ready yet" test read an
+        // indeterminate value: whether a fresh Map looked ready was whatever happened to be on
+        // the heap.
+        double lat_scale = 0, lon_scale = 0, inv_lat_scale = 0, inv_lon_scale = 0;
         CelestialObject *mcel = nullptr;
+
+        // What idx_of() returns when the geometry above is not established yet, so there is no
+        // meaningful pixel to point at. Deliberately past any real index, so the range check
+        // elevation_at() already performs rejects it without needing a second test.
+        static constexpr unsigned int idx_not_ready = 0xFFFFFFFFu;
 
         unsigned int idx_of(double latitude, double longitude);
         void stamp_craters(CelestialObject *cel, double bump_scale);
@@ -383,7 +392,7 @@ namespace alienorum
 extern CelestialObject **cels, *mycenobj;
 extern std::vector<std::vector<CelestialObject*>> first_letter_index;
 extern std::map<std::string,std::vector<CelestialObject*>> constellation_index;
-void append_cel(CelestialObject* cel);          // maintain indices
+bool append_cel(CelestialObject* cel);          // maintain indices; false if the array is full
 
 Point to_viewer_plane(Point pt, int sign = 1);
 

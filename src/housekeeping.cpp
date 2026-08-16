@@ -27,7 +27,13 @@ void set_viewer_surface_location(bool also_set_plane)
         return;
     }
     here = cel->location;
-    assert(cel->sidereal_rotational_period != 0);
+    // A zero rotation period comes from catalog data, not from a mistake in this file, so it is
+    // not something an assert can be responsible for: NDEBUG removes it and the division inside
+    // timeofday() runs anyway. A body that does not rotate simply keeps longitude zero facing
+    // where it started, which is the sensible reading of "no rotation" and what the rest of this
+    // function then works from.
+    if (!cel->sidereal_rotational_period)
+        std::cerr << "Warning: " << cel->name << " has no rotation period; treating it as fixed." << std::endl;
 
     bool dwh = false;
     if (cel->typeclass() == class_moon)
@@ -165,10 +171,13 @@ bool compute_object_location(CelestialObject* cel)
     switch (cel->typeclass())
     {
         case class_star:
+        // ((Star*)cel), not ((Star*)cels[i]): the two are the same object -- i is cel->seqno --
+        // but only the first is guaranteed a Star by the case label we are standing in, and the
+        // second form is what made the identical test in draw_objects() a genuine bad cast.
         if ((star_in_box = (i
             ? (((Star*)cel)->is_in_visible_box(Point(here))
-                || (cbolbls_selected_idx == lbltype_planets && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-                || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cels[i])->has_hz_planets) )
+                || (cbolbls_selected_idx == lbltype_planets && (((Star*)cel)->has_planets >= planets_lblcut) )
+                || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cel)->has_hz_planets) )
                 )
             : true))) num_stars_in_box++;              // ANC
         if (i > 0)
@@ -177,8 +186,8 @@ bool compute_object_location(CelestialObject* cel)
             if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj)
             {
                 if (!star_in_box && !((Star*)cel)->is_universally_visible()
-                    && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
-                    && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) )
+                    && (cbolbls_selected_idx != lbltype_planets  || (((Star*)cel)->has_planets < planets_lblcut) )
+                    && (cbolbls_selected_idx != lbltype_planethz || !(((Star*)cel)->has_hz_planets) )
                     )
                 {
                     cel->drawnx = cel->drawny = -1e9;
@@ -300,7 +309,10 @@ void compute_object_draw_coordinates()
     eclipsed_light = nullptr;
     eclipsed_fraction = 0;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
-    double mycenobj_distsq = mycenobj->location.squared_distance_to(here);
+    double mycenobj_distsq = mycenobj ? mycenobj->location.squared_distance_to(here) : 0;
+    // The bounding-cube pre-filter in the loop below compares against a length, not a squared
+    // one, so take the root once here rather than per object.
+    double mycenobj_dist = sqrt(mycenobj_distsq);
     if (whereami >= 0)
     {
         std::vector<CelestialObject*> have_to_know;
@@ -333,8 +345,16 @@ void compute_object_draw_coordinates()
 
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star
-            // .magnitude() is more expensive than simple xyz comparisons, and the distance sphere will always fit in the dimension cube.
-            && cels[i]->tmprel.x < mycenobj_distsq && cels[i]->tmprel.y < mycenobj_distsq && cels[i]->tmprel.z < mycenobj_distsq
+            // squared_magnitude() is more expensive than three comparisons, and the distance
+            // sphere always fits inside the cube that bounds it -- so anything the cube rejects
+            // the sphere would have rejected too, and the exact test below only runs for the few
+            // that survive. It has to be the absolute value of each component against a LENGTH:
+            // the components are signed lengths, mycenobj_distsq is an area, and comparing the
+            // two directly made the test both dimensionally meaningless and one-sided (any
+            // negative component passed, however distant).
+            && fabs(cels[i]->tmprel.x) < mycenobj_dist
+            && fabs(cels[i]->tmprel.y) < mycenobj_dist
+            && fabs(cels[i]->tmprel.z) < mycenobj_dist
             && cels[i]->tmprel.squared_magnitude() < mycenobj_distsq)
         {
             mycenobj = cels[i]->cenobj;
@@ -580,12 +600,20 @@ void set_center_objects()
         }
 
         // System center integrity
+        int hops = 0;
         while (cels[i]->cenobj->orbit && cels[i]->cenobj->orbit->center && cels[i]->cenobj->orbit->center->typeclass() != class_galaxy)
         {
             // Detect circular references.
             if (cels[i]->cenobj->orbit->center == cels[i])
             {
-                bool cels_i_is_true_center;
+                hops++;
+                if (hops > MAX_CELOBJS)
+                {
+                    cels[i]->cenobj = cels[i];
+                    std::cerr << "Circular cenobj refrence for " << cels[i]->name << std::endl;
+                    break;
+                }
+                bool cels_i_is_true_center = (cels[i]->seqno < cels[i]->cenobj->seqno);
                 if (cels[i]->type < cels[i]->cenobj->type) cels_i_is_true_center = true;
                 else if (cels[i]->type > cels[i]->cenobj->type) cels_i_is_true_center = false;
                 else if (cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude) cels_i_is_true_center = true;
@@ -624,7 +652,14 @@ void set_center_objects()
 
         // Name and constellation indices
         char c = cels[i]->name[0];
-        if (c != 'H' || cels[i]->name[1] != 'D')
+        bool is_HD;
+        if (c == 'H' && cels[i]->name[1] == 'D')
+        {
+            int hdno = atoi(&cels[i]->name[2]);
+            is_HD = (hdno && hdcache[hdno]);
+        }
+        else is_HD = false;
+        if (!is_HD)
         {
             if (c >= '0' && c <= '9') c -= '0';
             else if (c >= 'A' && c <= 'Z') c = c - 'A' + 10;

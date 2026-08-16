@@ -71,7 +71,10 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
     if (file_size == -1L)
+    {
+        fclose(f);
         return false;
+    }
     fseek(f, 0, SEEK_SET);
     void* file_data = IM_ALLOC(file_size);
     fread(file_data, 1, file_size, f);
@@ -165,6 +168,26 @@ int main (int argc, char** argv)
     auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
     auto push_fkey = [&](int n) { CliCmd cmd; cmd.kind = CliCmd::k_fkey; cmd.fkey = n; cli_cmds.push_back(cmd); };
     auto push_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_char; cmd.c = c; cli_cmds.push_back(cmd); };
+
+    // Fetches and consumes the value belonging to an option that takes one. Returns nullptr at
+    // the end of the command line -- the case that used to read argv[argc], which the standard
+    // guarantees is null, so std::string(nullptr) was undefined and atof(nullptr) a fault.
+    //
+    // Only the options that actually take a value go through this. A single "l+1 >= argc" test
+    // ahead of the whole chain looks equivalent but is not: it also swallows the flags that take
+    // no value, so a last argument of noexo, nosats, fs, magtest, keyprobe, sizeof, F1..F12 or
+    // JD<number> would be dropped for being last -- and "alienorum noexo nosats", the usual way
+    // to start it quickly, ends in exactly such a flag.
+    auto next_arg = [&](const char* opt) -> const char*
+    {
+        if (l+1 >= argc)
+        {
+            std::cerr << "Option '" << opt << "' takes a value, and none was given." << std::endl;
+            return nullptr;
+        }
+        return argv[++l];
+    };
+
     bool argsfs = false;
 
     memset(lookfor, 0, name_max_len);
@@ -198,23 +221,23 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "load"))
         {
-            load_univ = argv[++l];
+            if (const char* a = next_arg("load")) load_univ = a;
         }
         else if (!strcmp(argv[l], "find"))
         {
-            push_str(CliCmd::k_find, argv[++l]);
+            if (const char* a = next_arg("find")) push_str(CliCmd::k_find, a);
         }
         else if (!strcmp(argv[l], "track"))
         {
-            push_str(CliCmd::k_track, argv[++l]);
+            if (const char* a = next_arg("track")) push_str(CliCmd::k_track, a);
         }
         else if (!strcmp(argv[l], "go"))
         {
-            push_str(CliCmd::k_go, argv[++l]);
+            if (const char* a = next_arg("go")) push_str(CliCmd::k_go, a);
         }
         else if (!strcmp(argv[l], "zoom"))
         {
-            push_str(CliCmd::k_zoom, argv[++l]);
+            if (const char* a = next_arg("zoom")) push_str(CliCmd::k_zoom, a);
         }
         else if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
         {
@@ -222,7 +245,7 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "jd") || !strcmp(argv[l], "JD"))
         {
-            setjd = argv[++l];
+            if (const char* a = next_arg("jd")) setjd = a;
         }
         else if (argv[l][0] == 'J' && argv[l][1] == 'D' && argv[l][2] >= '0' && argv[l][2] <= '9')
         {
@@ -238,12 +261,11 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "lblmag"))
         {
-            appmagn_lblcut = atof(argv[++l]);
+            if (const char* a = next_arg("lblmag")) appmagn_lblcut = atof(a);
         }
         else if (!strcmp(argv[l], "theme"))
         {
-            std::string theme = argv[++l];
-            global_style.load(theme);
+            if (const char* a = next_arg("theme")) global_style.load(std::string(a));
         }
         else if (!strcmp(argv[l], "noexo"))
         {
@@ -398,8 +420,10 @@ int main (int argc, char** argv)
     ImVec4 background = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
     set_gamma(global_gamma);
 
+    // Kept joinable rather than detached: everything below the main loop frees `cels` and the
+    // objects in it, so the loader has to be known to have stopped first. See the join after the
+    // loop, and load_aborted() in loaders.cpp for where it stops.
     std::thread t1(load_stuff);
-    t1.detach();
 
     int splash_image_width = 0;
     int splash_image_height = 0;
@@ -519,10 +543,10 @@ int main (int argc, char** argv)
                 b *= 1.0037;
             }
 
-            Color col(192, 225, 255);
             double jay;
             for (i=0; i<MAX_SPLASH_STARS; i++)
             {
+                Color col(192, 225, 255);
                 for (jay=splash_star_brghtness[i]; jay>=0; jay-=0.5)
                 {
                     RGB3Byte rgb = Color::rgb_from_color(col, 1);
@@ -568,9 +592,18 @@ int main (int argc, char** argv)
             else std::cout << "ImGui::Begin() failed." << std::endl;
             ImGui::End();
 
+            // Escape during the splash screen quits. This used to be done by assigning
+            // cels = nullptr, on purpose, so that the loading thread would fault and take the
+            // process down with it -- which was neither reliable (the loader can sit in a
+            // filesystem call or a libcurl transfer for a long time before it next touches cels,
+            // and the render thread reads cels every frame meanwhile, so whichever got there
+            // first decided what the crash looked like) nor clean, since it left a core dump
+            // instead of an exit. abort_load asks the loader to stop at its next checkpoint; the
+            // join below waits for it before anything is torn down.
             if (ImGui::IsKeyPressed(ImGuiKey_Escape))
             {
-                cels = nullptr;                 // generate a segfault in the loading thread and kill the app.
+                abort_load = true;
+                done = true;
             }
         }
         else
@@ -626,6 +659,9 @@ int main (int argc, char** argv)
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
 
+            // Because the windows are dynamically sized, we can never know if the mouse is over a window in the *current* frame until
+            // after the windows are drawn, which is too late for the info that populates the N panel. So we depend on the *previous*
+            // frame's answer to "is the mouse over a window" and so far this has been good enough.
             is_mouse_over_window = false;
 
             // Status window
@@ -893,6 +929,12 @@ int main (int argc, char** argv)
         }
         SDL_GL_SwapWindow(window);
 
+        // Frees whatever flying into a star unlinked, once no background texture load is still
+        // writing into it. Returns immediately on every ordinary frame -- there is nothing
+        // waiting to be released, which is the overwhelmingly common case. Placed after the swap
+        // so the frame that triggered it has already been presented.
+        reap_released_objects();
+
         if (!splash)
         {
             if (io.MousePos.x != lmx || io.MousePos.y != lmy) frames_without_mousemove = 0;
@@ -914,7 +956,8 @@ int main (int argc, char** argv)
 
             hide_mouse = !splash && !fdlg_shown
                 && !mouse_over_menu
-                && (frame_dur < 0.2 || abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4)
+                && (frame_dur < 0.2 || /* yes this is an or */                       // Bring back the standard mouse pointer if the frame rate is low enough
+                    abs(lmx - io.MousePos.x) <= 4 || abs(lmy - io.MousePos.y) <= 4)  // so the user doesn't get impatient waiting for the annoying red blob to follow.
                 && cels[1];
 
             lmx = io.MousePos.x;
@@ -926,7 +969,7 @@ int main (int argc, char** argv)
             auto frame_finished = std::chrono::high_resolution_clock::now();
             auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
             frame_dur = frame_elapsed.count() * 1e-6;
-            if (frame_dur < 0.0666) std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(frame_dur * 1e6 - 66666));
+            std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(66666 - frame_dur * 1e6));
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
             io.DeltaTime = frame_dur;
             is_click = is_dbl_click = false;
@@ -947,7 +990,13 @@ int main (int argc, char** argv)
         }
     }
 
-    save_universe();
+    // Stop the loader and wait for it before touching anything it writes to. This has to come
+    // ahead of save_universe() as well as ahead of the deletes: the loader appends to `cels` as
+    // it goes, and Serialization::save_all() walks that same array.
+    abort_load = true;
+    if (t1.joinable()) t1.join();
+
+    if (cels[1]) save_universe();
 
     for (i=0; cels[i]; i++)
     {

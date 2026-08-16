@@ -834,12 +834,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     }
     double bounding_r = fmax(axis_x, fmax(axis_y, axis_z));
 
-    if (!cel->looked_for_maps)
-    {
-        cel->looked_for_maps = true;
-        std::thread ttex(load_textures, cel);
-        ttex.detach();
-    }
+    spawn_texture_load(cel);
 
     // The object's local +X/+Y axes (Point::from_ra_dec's convention: x=-sin(lon)cos(lat),
     // y=sin(lat)), expressed in camera space -- i.e. run through the exact inverse of the
@@ -1079,6 +1074,118 @@ void draw_ring_gpu(CelestialObject* cel)
     queue_ring_impostor(in, zoom, dispcx, dispcy);
 }
 
+// ---- Releasing the universe --------------------------------------------------------------
+//
+// Flying into a star unlinks every object but the Sun from `cels` (see draw_sphere() below) and
+// leaves the app in its "no universe" state. That unlinking used to be the whole of it, which
+// orphaned the objects rather than freeing them: half a million CelestialObjects, their Orbits,
+// their Locale arrays, and their Maps -- and the Maps are the part that matters, since a single
+// 10000x5000 surface map is 150 MB of channel data against a few hundred bytes for the object
+// that owns it.
+//
+// It cannot simply delete them on the spot, for two reasons, and the pair of functions below is
+// what each of them costs:
+//
+//   * Other things hold raw pointers into those objects -- hdcache, hipcache, the
+//     constellation and first-letter indices, the constellation line endpoints, the astorb and
+//     comet catalog rows, mycenobj. A dangling entry there is strictly worse than the leak being
+//     fixed: find_object() would go on handing back seqno values whose cels[] slot is now null,
+//     and whereami/selected get set straight from those. So the forgetting is not separable from
+//     the freeing, and release_universe_objects() does both halves at once.
+//
+//   * A detached load_textures() thread writes into the object it was handed -- its maps, its
+//     has_real_maps flag -- for as long as it runs, and generating a procedural map can run for
+//     minutes (hence the "this may take a few minutes" notice in the map editor). Freeing an
+//     object while one of those is in flight turns a leak into a use-after-free. So the objects
+//     are handed to reap_released_objects(), which the main loop calls once a frame and which
+//     does nothing until texture_loads_pending has come back down. Waiting by returning rather
+//     than by sleeping is what keeps the render thread out of it.
+static std::vector<CelestialObject*> released_objects;
+
+void release_universe_objects()
+{
+    // Collected before the caller unlinks them -- afterwards there is no way left to find them.
+    for (int i = 1; cels[i] && i < MAX_CELOBJS; i++)
+        if (cels[i] != cels[0]) released_objects.push_back(cels[i]);
+
+    if (hdcache)  memset(hdcache,  0, sizeof(Star*) * (MAX_HD+1));
+    if (hipcache) memset(hipcache, 0, sizeof(Star*) * (MAX_HIP+1));
+    constellation_index.clear();
+    first_letter_index.clear();
+    for (Constellation &c : constellations)
+        for (ConsLine &ln : c.lines) ln.a = ln.b = nullptr;
+    for (AstorbRow &row : astorb) row.cel = nullptr;
+    for (CometRow &row : comets) row.cel = nullptr;
+
+    // Rebuilt from scratch by refresh_eclipse_casters() at the top of every
+    // compute_object_draw_coordinates(), but it is holding pointers right now -- this runs
+    // mid-frame, from inside draw_objects().
+    eclipse_candidates.clear();
+
+    last_xplored_cen = last_neighb_cen = nullptr;
+
+    // compute_object_draw_coordinates() only reassigns mycenobj when whereami >= 0, and the
+    // caller has just set whereami to -1, so this would otherwise keep pointing at a released
+    // object -- and it is dereferenced unguarded on the next frame.
+    mycenobj = cels[0];
+}
+
+void reap_released_objects()
+{
+    if (released_objects.empty()) return;
+    if (texture_loads_pending > 0) return;      // try again next frame
+
+    // Keyed on Map*, and every Map below is about to stop existing. Left alone, a later Map
+    // allocated at the same address would collide with the stale entry and draw its texture.
+    gputex_clear_cache();
+
+    // StarMulti objects are shared between the members of a multiple system, so unlink() -- which
+    // nulls the pointer in every member -- is what stops the second member of a pair from
+    // deleting one the first already did. Same order, and the same reasoning, as main()'s own
+    // teardown on the way out.
+    for (CelestialObject *c : released_objects)
+    {
+        if (c->typeclass() == class_star && ((Star*)c)->multisys)
+        {
+            StarMulti *sm = ((Star*)c)->multisys;
+            sm->unlink();
+            delete sm;
+        }
+    }
+
+    for (CelestialObject *c : released_objects)
+    {
+        // Nulled after deleting rather than left to the destructors: ~Star, ~Planet and ~Comet
+        // each free the orbit, but ~Galaxy and ~Satellite do not exist and ~CelestialObject is
+        // defaulted, so doing it here is the only way to cover all five without knowing which is
+        // which. The destructors that do free it then see nullptr and leave it alone.
+        delete c->orbit;
+        c->orbit = nullptr;
+
+        // Nothing frees the maps or the locales at all -- not any destructor, not main(). The
+        // aliasing pass is defensive: nothing currently points two of these at one Map, and a
+        // double delete would be a far worse regression than the leak being fixed here.
+        Map *maps[5] = { c->surf_map, c->cloud_map, c->night_map, c->ring_map, c->ringx_map };
+        for (int m = 0; m < 5; m++)
+        {
+            if (!maps[m]) continue;
+            for (int n = m+1; n < 5; n++) if (maps[n] == maps[m]) maps[n] = nullptr;
+            delete maps[m];
+        }
+        c->surf_map = c->cloud_map = c->night_map = c->ring_map = c->ringx_map = nullptr;
+
+        delete[] c->locales;
+        c->locales = nullptr;
+        c->nlocales = 0;
+
+        delete c;
+    }
+
+    released_objects.clear();
+    released_objects.shrink_to_fit();
+    std::cout << "Released destroyed universe." << std::endl;
+}
+
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (cel->seqno == whereami) return 0;
@@ -1109,7 +1216,12 @@ int draw_sphere(CelestialObject* cel, double arad)
                     here = cels[0]->location;
                     here.local_position.y -= AU;
                     velocity = Point(0,0,0);
-                    memset( &cels[1], 0, MAX_CELOBJS-2);
+                    // Take ownership of everything about to be unlinked, and drop every cached
+                    // pointer into it, before the wipe below makes it unreachable. The wipe
+                    // itself, and everything else this branch does, is unchanged -- see
+                    // release_universe_objects() for why the actual freeing happens later.
+                    release_universe_objects();
+                    memset( &cels[1], 0, (MAX_CELOBJS-2) * sizeof(CelestialObject*) );
                     return 0;
                 }
                 else if (cls == class_satellite)
@@ -1168,7 +1280,14 @@ int draw_sphere(CelestialObject* cel, double arad)
     // to borrow the disc's.
     use_gpu_ring = (!dragging && view_mode != vm_skymap);
 #endif
-    int i, j, l, m, lastm, n, result=0;
+    // lastm carries the previous iteration's m across the mesh loop, and the gap-filling quad
+    // below reads it before anything has written it: the block that assigns it is gated on
+    // perline, which is zero for the whole of the first latitude band, so the first iteration of
+    // the second band read an indeterminate value. Zero is the conservative start -- the gap fill
+    // it guards is bounds-checked independently ("m > 1 && m < l"), so the worst a stale compare
+    // can now do on that one iteration is paint a redundant quad over vertices that are really
+    // there, instead of branching on stack garbage.
+    int i, j, l, m, lastm = 0, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
     std::vector<Point> tdland;
@@ -1202,7 +1321,13 @@ int draw_sphere(CelestialObject* cel, double arad)
             && ((Moon*)cel)->width > zero_isnt_really_zero
             && ((Moon*)cel)->height > zero_isnt_really_zero);
 
-    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day, is_night;
+    // is_day and is_night are read after the mesh loop, by the polar-cap fill, which the comment
+    // there describes as relying on "values left over from the last iteration" -- but the loop
+    // can finish without ever reaching the branch that assigns them, and both are read again by
+    // the sky blend inside it. Starting from full daylight is the neutral choice: it is what a
+    // body with no light center already gets, and it keeps the cap the same colour as the disc it
+    // sits on rather than whatever was on the stack.
+    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day = 1, is_night = 0;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -1210,12 +1335,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     double lat, lon, z_cutoff = d + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
 
-    if (!wireframe && !cel->looked_for_maps)
-    {
-        cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
-        std::thread ttex(load_textures, cel);
-        ttex.detach();
-    }
+    if (!wireframe) spawn_texture_load(cel);
 
     horizon_angle = cel->get_horizon_angle();
     bool worth_using_map = (bloomrad_cache[cel->seqno] > 5);                // Only if the disc will be big enouh to see any details.
@@ -1312,7 +1432,7 @@ int draw_sphere(CelestialObject* cel, double arad)
               ),
         stepcoslat, invlaststepcoslat = 1.0 / step;
     int perline=0, dx1, dy1, dx2, dy2;
-    double polyr, polyg, polyb, lum, lum1;
+    double polyr = 0, polyg = 0, polyb = 0, lum, lum1;
     l = 0;
 
     bool lonmin_crosses_zero = (lonmin <= 0 && lonmax < 180), filter_longitudes = ((lonmax - lonmin) <= 180);
@@ -1334,7 +1454,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         stepcoslat = step / (cos(lat) + 0.1);
         for (lon=0; lon<=_pi*2; lon+=stepcoslat)
         {
-            lon360 = lonmin_crosses_zero ? (lonmin_rad - _pi*2) : lonmin_rad;
+            lon360 = lonmin_crosses_zero && lon > _pi ? (lon - _pi*2) : lon;
             if (filter_longitudes && (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat))) continue;
             n++;
             elevation = (map && bs) ? (map->elevation_at(lat, lon)) : 0;
@@ -1487,23 +1607,22 @@ int draw_sphere(CelestialObject* cel, double arad)
                             rgblit.g *= daylight.green;
                             rgblit.b *= daylight.blue;
 
-                            if (nmap && worth_using_map)
+                            // The daylit contribution unconditionally, then the night map on top
+                            // of it where there is any night to show. Written as an if/else
+                            // before, which left polyr/g/b unassigned in one reachable case --
+                            // a body that has a night map on a patch that is fully lit, where
+                            // "is_night = 1.0 - is_day" comes out zero and the inner branch is
+                            // skipped -- and the sky blend below then read them.
+                            is_night = nmap ? (1.0 - is_day) : 0;
+                            polyr = is_day*rgblit.r;
+                            polyg = is_day*rgblit.g;
+                            polyb = is_day*rgblit.b;
+                            if (nmap && worth_using_map && is_night > 0)
                             {
-                                is_night = 1.0 - is_day;
-                                if (is_night)
-                                {
-                                    nrgb = nmap->color_at(maplat, maplon-_pi);
-
-                                    polyr = is_day*rgblit.r + is_night*nrgb.r;
-                                    polyg = is_day*rgblit.g + is_night*nrgb.g;
-                                    polyb = is_day*rgblit.b + is_night*nrgb.b;
-                                }
-                            }
-                            else
-                            {
-                                polyr = is_day*rgblit.r;
-                                polyg = is_day*rgblit.g;
-                                polyb = is_day*rgblit.b;
+                                nrgb = nmap->color_at(maplat, maplon-_pi);
+                                polyr += is_night*nrgb.r;
+                                polyg += is_night*nrgb.g;
+                                polyb += is_night*nrgb.b;
                             }
 
                             if (view_mode == vm_horizon)
@@ -2664,8 +2783,8 @@ bool draw_one_object(int i)
     }
     else if (cls == class_satellite)
     {
-        if (!show_sats) return false;
-        if (cels[i]->orbit && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6))
+        if (!show_sats || !cels[i]->orbit || !cels[i]->orbit->center) return false;
+        if (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6)
         {
             cels[i]->drawnx = cels[i]->drawny = -1e9;
             return false;
@@ -2783,7 +2902,7 @@ bool draw_one_object(int i)
         }
         bloomrad_cache[i] = fmin(1.414, bloomrad);
 
-        double divisor = 1.0 / fmin(col.red, col.blue);
+        double divisor = 1.0 / fmax(.00392, fmin(col.red, col.blue));
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         int n = circradii.size();
         // if (i == 1075) std::cout << n << " radii:" << std::endl;
@@ -3349,9 +3468,18 @@ void draw_objects()
 
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         appmag = vmag_cache[i] - sky_mag_shift;
+
+        // Only a Star has has_planets/has_hz_planets, and this loop walks every object there is.
+        // The two clauses below used to cast cels[i] to Star* whatever it actually was: the
+        // short-circuit reads as a guard but is not one, because when cbolbls_selected_idx IS
+        // lbltype_planets or lbltype_planethz -- exactly when the user has asked to label stars
+        // by their planets -- the member read runs against every planet, satellite, comet and
+        // galaxy in the array, at whatever offset Star::has_planets happens to fall. A non-star
+        // gets no exemption from the magnitude cut, which is what !istar says here.
+        Star *istar = (cels[i]->typeclass() == class_star) ? (Star*)cels[i] : nullptr;
         if (appmag > mag_limit_adjusted && i
-            && (cbolbls_selected_idx != 6 || (((Star*)cels[i])->has_planets < planets_lblcut) )
-            && (cbolbls_selected_idx != 7 || !(((Star*)cels[i])->has_hz_planets) )) continue;
+            && (cbolbls_selected_idx != lbltype_planets  || !istar || istar->has_planets < planets_lblcut)
+            && (cbolbls_selected_idx != lbltype_planethz || !istar || !istar->has_hz_planets)) continue;
 
         bloomrad = fabs(bloomrad_cache[i]);
         bloomrad = fmin(max_bloomrad, bloomrad);
@@ -3455,12 +3583,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     }
     else if (cls == class_planet || cls == class_moon)
     {
-        if (!obj->looked_for_maps)
-        {
-            obj->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
-            std::thread ttex(load_textures, obj);
-            ttex.detach();
-        }
+        spawn_texture_load(obj);
 
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
         objcol.normalize(255);
@@ -3584,12 +3707,7 @@ void draw_sunclock()
 
     if (!cel->nlocales) cel->read_locales("locales.json");
 
-    if (!cel->looked_for_maps)
-    {
-        cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
-        std::thread ttex(load_textures, cel);
-        ttex.detach();
-    }
+    spawn_texture_load(cel);
 
     Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
     Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
@@ -3623,7 +3741,7 @@ void draw_sunclock()
     // geography through.
     const double sclk_umbra_floor = 0.12;
 
-    double equatorial_radius, theta, cos_theta, is_day, is_night;
+    double equatorial_radius, theta, cos_theta, is_day = 1, is_night = 0;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -3655,7 +3773,10 @@ void draw_sunclock()
             land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 
             land += cel->location.local_position;
-            if (self_luminous) is_day = 1;
+            // is_night was left alone on this branch, so a star's own sun clock read whatever the
+            // previous pixel -- or, on the first pixel, the stack -- had put there, and then
+            // blended the night map by it.
+            if (self_luminous) { is_day = 1; is_night = 0; }
             else
             {
                 theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
@@ -3776,16 +3897,15 @@ double hz_dx[hznodes], hz_dy[hznodes];
 void find_horizon()
 {
     hz_y = dispcy*29;
-    if (view_mode == vm_horizon)
+    // whereami >= 0, not just view_mode: nothing keeps the two in step. process_key_cmd_char()
+    // sets whereami to -1 on 'w' (warp) and on '+' from a standing start, neither of which
+    // touches view_mode -- so warping away while standing on a surface leaves horizon mode with
+    // no world under it, and cels[-1] is read before any null check can help.
+    if (view_mode == vm_horizon && whereami >= 0)
     {
         int j;
         CelestialObject *cel = cels[whereami];
-        if (!cel->looked_for_maps)
-        {
-            cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
-            std::thread ttex(load_textures, cel);
-            ttex.detach();
-        }
+        spawn_texture_load(cel);
 
         Planet *p;
         double horizon_lift_rad = 0;
@@ -3827,19 +3947,16 @@ void draw_horizon()
 {
     // Horizon
     // TODO: Generate a fictitious skyline.
-    if (view_mode == vm_horizon)
+    // See find_horizon() for why the whereami test has to be here as well as the view_mode one.
+    if (view_mode == vm_horizon && whereami >= 0)
     {
         int i, j, j1;
         CelestialObject *cel = cels[whereami];
+        if (!cel) return;
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
-        if (!cel->looked_for_maps)
-        {
-            cel->looked_for_maps = true;                // Prevent spawning infinite threads and crashing the system.
-            std::thread ttex(load_textures, cel);
-            ttex.detach();
-        }
+        spawn_texture_load(cel);
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
@@ -3903,12 +4020,12 @@ void draw_horizon()
             hz_fy = hzheight[j1];
         }
 
-        double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g * _lum_b_comp*rgb.b;
-        ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 176) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
+        double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g + _lum_b_comp*rgb.b;
+        ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 144) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
         if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*64])
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
-            if (hzbrt >= 176) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
+            if (hzbrt >= 144) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
         }
     }
 }
@@ -3917,6 +4034,9 @@ void draw_sky_gradient()
 {
     sky_grad.clear();
     if (whtbkgd) return;
+    // See find_horizon(): this is only ever called in horizon mode, which does not by itself
+    // guarantee there is a world underfoot.
+    if (whereami < 0 || !cels[whereami]) return;
     if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
     {
         Planet *p = (Planet*)cels[whereami];
@@ -4021,7 +4141,7 @@ void draw_cons_lines()
     // Constellation labels
     n = constellations.size();
     ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.2));
-    if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<=n; l++)
+    if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
         Point lconsdir;
 
@@ -4160,8 +4280,10 @@ void draw_cloudy_sky()
     mtx.unlock();
     seed = (rand() % 65536) + (65536 * fabs(viewer_lon));
 
+    // See find_horizon(): horizon mode does not imply a world underfoot.
+    if (whereami < 0) return;
     CelestialObject *cel = cels[whereami];
-    if (!cel->cloud_map) return;
+    if (!cel || !cel->cloud_map) return;
 
     RGB3Byte rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
     double cloudiness = sqrt(fmin(1,rgb.luminance()/192));
