@@ -99,6 +99,16 @@ ImU32 Color::black_to_transparent(ImU32 input)
     else
     {
         double highest = fmax(fmax(r,g),b);
+
+        // Black has no channel to normalize against, and turning black into nothing is the whole
+        // job of this function, so answer that directly. Left to the arithmetic below it divides
+        // 255 by zero, and the infinity that comes back multiplies a zero channel into a NaN --
+        // which is not clamped by the cast to int, it becomes INT_MIN, and INT_MIN packs itself
+        // back into the returned color as a half-opaque black. That is a hole rather than a
+        // colour: alpha 128 with no light in it, painted over whatever was behind it and
+        // interpolated across every triangle the vertex belongs to.
+        if (!(highest > 0)) return 0;
+
         if (highest < 255)
         {
             double normalize = 255.0 / highest;
