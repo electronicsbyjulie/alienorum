@@ -224,7 +224,13 @@ bool compute_object_location(CelestialObject* cel)
                         ((cel->mass < celmasslim)
                         && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
                     ))
-                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > mag_limit_adjusted))
+                    // Second argument is a phase angle in radians, so zero is opposition, the
+                    // body at its very brightest -- which is the right question to ask here,
+                    // where all we want to know is whether it could ever be worth drawing. The
+                    // old 1 was a radian, 57 degrees of gibbous, and phase_brightness() puts a
+                    // world there at 0.23 of full where the old linear ramp claimed 0.68: left
+                    // alone it would have quietly culled bodies that used to make the cut.
+                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 0, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > mag_limit_adjusted))
                 {
                     cel->drawnx = cel->drawny = -1e9;
                     return false;
@@ -249,7 +255,9 @@ bool compute_object_location(CelestialObject* cel)
                             ((cel->mass >= celmasslim)
                         && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
                     ))
-                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 1, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > mag_limit_adjusted))
+                    // Zero phase angle, i.e. the moon at opposition and fully lit -- see the
+                    // matching test in the class_planet case above.
+                    && (((Planet*)cel)->viewer_reflectance_magnitude(here, 0, mycenobj->absolute_magnitude, cel->orbit->semimajor_axis) > mag_limit_adjusted))
                 {
                     cel->drawnx = cel->drawny = -1e9;
                     return false;

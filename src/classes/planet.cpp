@@ -133,6 +133,78 @@ void Planet::estimate_rotation()
     else sidereal_rotational_period = 2.38e+6 / log(mass);                              // rocky, icy, or lava world.
 }
 
+// The IAU slope parameter G, which sets how steeply a body with a solid surface fades as it
+// leaves opposition. Bright surfaces scatter light around inside the regolith and partly fill
+// their own shadows back in, so they fade slowly (large G); dark ones hide their shadows
+// completely and fall off fast (small G). Anchored on the Moon, whose albedo works out around
+// 0.09 here and which has to lose 2.7 magnitudes between full and quarter -- the eleven-to-one
+// ratio that is the whole point of this exercise.
+double Planet::phase_slope_parameter()
+{
+    if (albedo <= 0 && volumetric_mean_radius > 0 && absolute_magnitude) estimate_albedo();
+    double a = (albedo > 0) ? fmin(1.0, albedo) : 0.1;      // Middling and dark, for want of anything better.
+    return fmin(0.65, fmax(0.15, 0.35 + 0.3 * a));
+}
+
+// How much of what we see off this world is cloud rather than ground, 0 to 1. Air thick enough to
+// matter starts around a millibar and owns the view by the time it reaches Earth's pressure; a
+// giant is all weather and nothing else. Mars lands near a quarter, which is about right for a
+// world whose dust does soften its phase curve without hiding the ground.
+double Planet::cloud_deck_fraction()
+{
+    if (type == gas_giant || type == ice_giant || type == hot_jupiter) return 1;
+
+    double p_pa = get_surface_pressure();
+    if (p_pa <= 100) return 0;
+    return fmin(1.0, (log10(p_pa) - 2) / 3);
+}
+
+// The phase function: what fraction of its opposition brightness the body still shows at phase
+// angle alpha, the Sun-body-viewer angle. Returns 1 at opposition and 0 at conjunction, so an
+// absolute magnitude quoted the usual way -- V(1,0), the body at 1 AU from both its star and its
+// viewer, fully face-on -- stays exactly what it was.
+//
+// The old linear ramp made brightness proportional to elongation, which is far too generous away
+// from full: it said a half Moon was half a full Moon, when it is nearer a tenth. Two laws replace
+// it, blended by how much air the world has:
+//
+//   * Bare ground gets the IAU H-G function (Bowell et al. 1989, Asteroids II, 524-556), the
+//     standard two-term fit used for every numbered minor planet. Its first term is the
+//     opposition surge itself -- a cusp with infinite slope at zero phase, the signature of
+//     shadow-hiding, where every pit in the regolith conceals its own shadow behind the grain
+//     that cast it just as the light comes back over the viewer's shoulder. That cusp is worth
+//     about 0.4 magnitudes in the last five degrees, which is why the full Moon so outruns any
+//     smooth extrapolation from the phases either side of it.
+//
+//   * Cloud gets the Lambert sphere instead, [sin a + (pi-a) cos a] / pi. Multiple scattering in
+//     a deck of cloud fills the shadows in as fast as they form, so Venus and the giants have
+//     essentially no surge, only the geometry of a diffusing ball.
+double Planet::phase_brightness(double alpha)
+{
+    double a = fabs(fmod(alpha, _pi*2));
+    if (a > _pi) a = _pi*2 - a;                             // Waxing and waning at equal width are equally bright.
+
+    double lambert = (sin(a) + (_pi - a) * cos(a)) / _pi;
+
+    double t = tan(a * 0.5);
+    double g = phase_slope_parameter();
+    double hg = (1-g) * exp(-3.33 * pow(t, 0.63)) + g * exp(-1.87 * pow(t, 1.22));
+
+    double w = cloud_deck_fraction();
+    double phi = (1-w) * hg + w * lambert;
+
+    // A world may be given a sharper surge than its surface type would imply. The extra dies off
+    // over a couple of degrees, so it is a brightening at opposition rather than a dimming
+    // everywhere else: the value at zero phase is left alone and the rest of the curve drops.
+    if (opposition_surge > 0)
+    {
+        const double surge_width = 0.035;                   // radians, about two degrees.
+        phi *= pow(magnbase, -opposition_surge * (1.0 - surge_width / (surge_width + a)));
+    }
+
+    return isnan(phi) ? 0 : fmax(0.0, phi);
+}
+
 double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double phase, double sourcemagn, double sourcedist)
 {
     if (!orbit)
@@ -149,10 +221,11 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
     if (phase<0) phase = find_3D_angle(seen_from.local_position, light_center->location.local_position, location.local_position);
     double phabs = fabs(phase);
-    amt_lit = fabs(_pi - fmin(phabs, _pi*2-phabs)) / _pi;
+    double alpha = fmin(phabs, _pi*2-phabs);                // Phase angle proper: 0 at full, pi at new.
+    amt_lit = (1 + cos(alpha)) * 0.5;                       // Geometry only -- the lit part of the disc, not its brightness.
 
     double reflectivity = pow(magnbase, -absolute_magnitude);
-    double apparent = reflectivity * amt_lit / rsq;
+    double apparent = reflectivity * phase_brightness(alpha) / rsq;
 
     /*std::cout << name << ": " << (phase*fiftyseven) << ", " << amt_lit << ", " << reflectivity << ", " << rsq 
         << " = " << (-log(apparent) * invlogmagnbase) << std::endl;*/

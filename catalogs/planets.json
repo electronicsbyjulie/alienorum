@@ -470,7 +470,7 @@
         "Width": 98
     },
     {
-        "ABSMG": 1.71,
+        "ABSMG": -1.71,
         "ArgPeri": 263.604,
         "AscNode": 46.636,
         "BODYNAME": "Io",
@@ -490,7 +490,7 @@
         "VolMeanRad": 1821600.1426
     },
     {
-        "ABSMG": 1.48,
+        "ABSMG": -1.48,
         "ArgPeri": 22.486,
         "AscNode": 129.499,
         "BODYNAME": "Europa",
@@ -510,7 +510,7 @@
         "VolMeanRad": 1560800.0721
     },
     {
-        "ABSMG": 2.14,
+        "ABSMG": -2.14,
         "ArgPeri": 230.87,
         "AscNode": 46.591,
         "BODYNAME": "Ganymede",
@@ -530,7 +530,7 @@
         "VolMeanRad": 2631200.0644
     },
     {
-        "ABSMG": 1.03,
+        "ABSMG": -1.03,
         "ArgPeri": 56.322,
         "AscNode": 300.268,
         "BODYNAME": "Callisto",
@@ -963,7 +963,7 @@
         "Width": 1526
     },
     {
-        "ABSMG": 1.34,
+        "ABSMG": -1.34,
         "ArgPeri": 173.749,
         "AscNode": 161.046,
         "AtmosphereComposition":
@@ -1504,7 +1504,7 @@
         "VolMeanRad": "209000.0179  ."
     },
     {
-        "ABSMG": 1.3,
+        "ABSMG": -1.3,
         "ArgPeri": 344.046,
         "AscNode": 172.431,
         "BODYNAME": "Triton",

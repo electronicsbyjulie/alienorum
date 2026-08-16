@@ -29,8 +29,14 @@ namespace alienorum
         // starts at oneatm rather than zero -- callers are expected to set what they mean.
         Atmosphere* ensure_atmosphere() { if (!atm) atm = new Atmosphere(this); return atm; }
 
-        double opposition_surge = 0;                        // TODO: A full moon is 13 times as bright, or 2.7 magnitudes brighter, compared to a quarter moon.
-        double amt_lit = 0;
+        // Extra opposition brightening, in magnitudes, over and above what phase_brightness()
+        // already gives the body from its own surface type. Zero -- the value every world saved
+        // so far carries -- means "no extra", not "no surge". Give it a positive value for a
+        // surface that backscatters unusually hard: fresh, porous, deeply shadowed frost of the
+        // Enceladus sort, whose last two degrees before opposition are worth most of a magnitude
+        // on their own.
+        double opposition_surge = 0;
+        double amt_lit = 0;                                 // Geometric: the fraction of the disc we see lit, 1 at full and 0 at new.
         double J2 = 0;
         double ring_radius = 0;
         int asteroid_no = 0;                                // Zero if major planet or moon.
@@ -43,6 +49,9 @@ namespace alienorum
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets
         double viewer_reflectance_magnitude(CelestialLocation seen_from, double phase = -1, double sourceabsmagn = -1e9, double sourcedist = 0);
+        double phase_brightness(double alpha);              // Fraction of the body's opposition brightness left at phase angle alpha (radians).
+        double phase_slope_parameter();                     // The IAU G, governing how fast a regolith world dims off opposition.
+        double cloud_deck_fraction();                       // 0 for bare ground, 1 for a world we only ever see the top of the weather of.
         void estimate_albedo();                             // if radius and abs mag known
         void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
         void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
@@ -62,7 +71,7 @@ namespace alienorum
         json to_json();
         bool from_json(json j);
 
-    protected:
+        protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;
     };
