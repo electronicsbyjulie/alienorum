@@ -93,22 +93,30 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     if (is_hd && is_hd < MAX_HD && hdcache && hdcache[is_hd] && (os || (match_comp < 'a')))   // if comp is lower case and a star is not required, we might be looking for a planet.
     {
         s = hdcache[is_hd];
-        if (match_comp && s->multisys)
+        if (match_comp)
         {
-            Star *b = s->multisys->get_member(match_comp);
-            if (b) s = b;
+            // A component letter was explicitly asked for. Only ever return it if it actually
+            // exists as its own registered member -- falling through to "return s->seqno" here
+            // used to hand back the PRIMARY star whenever the named companion had no Star object
+            // of its own (e.g. a component too faint for its own HD/HIP entry, so CCDM never
+            // built it). A caller that asked for "HD196885 B" then silently got HD196885 A back
+            // under B's name, which is worse than reporting not-found: read_star_orbits_dat()
+            // took that as an existing star to update, and renamed the primary into the
+            // companion while grafting the companion's mass and radius onto it.
+            Star *b = s->multisys ? s->multisys->get_member(match_comp) : nullptr;
+            if (b) return b->seqno;
         }
-        return s->seqno;
+        else return s->seqno;
     }
     if (is_hip && hipcache && hipcache[is_hip] && (os || (match_comp < 'a')))
     {
         s = hipcache[is_hip];
-        if (match_comp && s->multisys)
+        if (match_comp)
         {
-            Star *b = s->multisys->get_member(match_comp);
-            if (b) s = b;
+            Star *b = s->multisys ? s->multisys->get_member(match_comp) : nullptr;
+            if (b) return b->seqno;
         }
-        return s->seqno;
+        else return s->seqno;
     }
     if ((is_hd || is_hip) && os) return -1;
 

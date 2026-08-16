@@ -312,5 +312,5 @@ HD81009                 KU Hya B                52.98y          202.4       068.
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
 
 # Unresolved WD multiples
-WD2058+342              WD2058+342.1
+# WD2058+342              WD2058+342.1
 

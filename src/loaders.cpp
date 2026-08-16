@@ -559,6 +559,17 @@ void load_catalogs()
     if (!magnitude_test) cr.read_star_orbits_dat(cels);
     else splash = false;
 
+    {
+        int probeidx = find_object("HD196885 B", true);
+        std::cerr << "PROBE-D find_object(\"HD196885 B\", true) after star_orbits.dat = " << probeidx;
+        if (probeidx >= 0) std::cerr << " -> name=" << cels[probeidx]->name << " absmag=" << ((Star*)cels[probeidx])->absolute_magnitude;
+        std::cerr << std::endl;
+        int probeidxA = find_object("HD196885", true);
+        std::cerr << "PROBE-D find_object(\"HD196885\", true) = " << probeidxA;
+        if (probeidxA >= 0) std::cerr << " -> name=" << cels[probeidxA]->name;
+        std::cerr << std::endl;
+    }
+
     if (!noexo)
     {
         cout << "Reading exoplanets..." << endl << flush;
