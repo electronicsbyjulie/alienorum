@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(alienorum VERSION 0.1.3 LANGUAGES CXX)
+# Single source of truth for the version number: the "version" field of vcpkg.json.
+# Bumping it there is enough -- PROJECT_VERSION, and through it CPACK_PACKAGE_VERSION
+# (see the NSIS section at the bottom), follow along. string(JSON) wants CMake 3.19+,
+# which the minimum above already guarantees.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg.json" ALIENORUM_VCPKG_MANIFEST)
+string(JSON ALIENORUM_VERSION GET "${ALIENORUM_VCPKG_MANIFEST}" "version")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg.json")
+
+project(alienorum VERSION ${ALIENORUM_VERSION} LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 	set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
