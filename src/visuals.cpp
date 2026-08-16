@@ -2741,10 +2741,10 @@ static double draw_comet(CelestialObject *cel, double appmag)
 
 bool draw_one_object(int i)
 {
-    bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
+        bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
     if (i == whereami) return false;
-
+    
     int j;
     double coma_px = 0;
     cel_obj_class cls = cels[i]->typeclass();
@@ -2765,7 +2765,7 @@ bool draw_one_object(int i)
     // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
     if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < -angular_radius[i]) flare = 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
-    if (cls == class_galaxy)
+        if (cls == class_galaxy)
     {
         double r = draw_galaxy(cels[i], appmag);
         if (r > 0)
@@ -2784,7 +2784,9 @@ bool draw_one_object(int i)
     else if (cls == class_satellite)
     {
         if (!show_sats || !cels[i]->orbit || !cels[i]->orbit->center) return false;
-        if (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6)
+        if ((cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6)
+            && (angular_radius[i] < 0.01*fiftyseventh)
+            )
         {
             cels[i]->drawnx = cels[i]->drawny = -1e9;
             return false;
@@ -2825,7 +2827,7 @@ bool draw_one_object(int i)
     }
     else if (angular_radius[i]*zoom > sphere_rad_threshold)
     {
-        // An eclipsed star loses its glare along with its light: the flare drawn here is the
+                // An eclipsed star loses its glare along with its light: the flare drawn here is the
         // scatter of an overwhelming photosphere in the eye and in the air, and as the moon
         // covers that photosphere it goes with it. What is left behind, and only then, is the
         // corona -- a million times fainter, and invisible any other day of the century.
@@ -2841,7 +2843,7 @@ bool draw_one_object(int i)
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
         discinstead[i] = false;
         if (!cels[1]) return false;
-
+        
         if (selected == i)
         {
             ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
@@ -2849,7 +2851,7 @@ bool draw_one_object(int i)
     }
     else
     {
-        dot_instead:
+                dot_instead:
         discinstead[i] = false;
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
@@ -2862,7 +2864,7 @@ bool draw_one_object(int i)
             col.red = effect*0.5*col.green + effect1*col.red;
             col.blue = effect*col.green + effect1*col.blue;
         }
-
+        
         if (flare) draw_flare(flare, col, vmag_cache[i], 0);
 
         brght = pow(magnbase, -appmag) * global_brightness * 50;
@@ -2901,7 +2903,7 @@ bool draw_one_object(int i)
             if (lpxval < 0.03) break;
         }
         bloomrad_cache[i] = fmin(1.414, bloomrad);
-
+        
         double divisor = 1.0 / fmax(.00392, fmin(col.red, col.blue));
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         int n = circradii.size();
@@ -2920,6 +2922,7 @@ bool draw_one_object(int i)
             if (rgb.r == 255 && rgb.b == 255) break;
         }
     }
+    
     // A comet drawn as a comet is far larger than the condensation the point path just finished
     // with, and the label and the selection ring belong outside the coma rather than buried in it.
     // The cache goes with it so the layering in draw_objects() puts a comet in front of the field
@@ -2933,21 +2936,7 @@ bool draw_one_object(int i)
     {
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
     }
-
-    // TEMPORARY DIAGNOSTIC -- which object lands on the stray lozenges.
-    if (getenv("ALIENORUM_WHERE"))
-    {
-        double px = cels[i]->drawnx, py = cels[i]->drawny;
-        if (px > 600 && px < 760 && py > 410 && py < 530)
-            std::cerr << "AT (" << px << "," << py << ") cls=" << (int)cls
-                << " type=" << (int)cels[i]->type
-                << " name=\"" << cels[i]->name << "\""
-                << " vmag=" << vmag_cache[i] << " appmag=" << appmag
-                << " bloomrad=" << bloomrad << " arad=" << angular_radius[i]
-                << " aradzoom=" << (angular_radius[i]*zoom)
-                << " thresh=" << sphere_rad_threshold
-                << " flare=" << flare << std::endl << std::flush;
-    }
+    
 
     labels_step:
     if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
@@ -3461,6 +3450,7 @@ void draw_objects()
         // gets no exemption from the magnitude cut, which is what !istar says here.
         Star *istar = (cels[i]->typeclass() == class_star) ? (Star*)cels[i] : nullptr;
         if (appmag > mag_limit_adjusted && i
+            && (angular_radius[i] < 0.01*fiftyseventh)
             && (cbolbls_selected_idx != lbltype_planets  || !istar || istar->has_planets < planets_lblcut)
             && (cbolbls_selected_idx != lbltype_planethz || !istar || !istar->has_hz_planets)) continue;
 

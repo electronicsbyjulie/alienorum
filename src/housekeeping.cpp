@@ -302,9 +302,6 @@ void compute_object_draw_coordinates()
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
 
-    // Rebuilt here rather than at drawing time because the daylight computation further down
-    // consults it: an eclipse has to dim the sky *before* anything is drawn under that sky, not
-    // after. Everything drawn later in the frame reads the same list -- see visuals.h.
     refresh_eclipse_casters();
     eclipsed_light = nullptr;
     eclipsed_fraction = 0;
@@ -345,13 +342,6 @@ void compute_object_draw_coordinates()
 
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star
-            // squared_magnitude() is more expensive than three comparisons, and the distance
-            // sphere always fits inside the cube that bounds it -- so anything the cube rejects
-            // the sphere would have rejected too, and the exact test below only runs for the few
-            // that survive. It has to be the absolute value of each component against a LENGTH:
-            // the components are signed lengths, mycenobj_distsq is an area, and comparing the
-            // two directly made the test both dimensionally meaningless and one-sided (any
-            // negative component passed, however distant).
             && fabs(cels[i]->tmprel.x) < mycenobj_dist
             && fabs(cels[i]->tmprel.y) < mycenobj_dist
             && fabs(cels[i]->tmprel.z) < mycenobj_dist
@@ -383,12 +373,13 @@ void compute_object_draw_coordinates()
         inside_galaxy_idx = -1;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
+            
             vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
             if (cels[i]->deleted) continue;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
                 = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
             if (isnan(cels[i]->tmprel.x)) continue;
-
+            
             // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
             // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
             if (cels[i]->typeclass() == class_galaxy)
@@ -399,12 +390,12 @@ void compute_object_draw_coordinates()
             }
 
             if (i == whereami) continue;
-
+            
             // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
             // a star out of its visible box would.
-            if (cels[i]->typeclass() != class_galaxy)
+            if (cels[i]->typeclass() == class_star)
             {
-                Star* cels_i_star = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : ((Star*)cels[i]->cenobj);
+                Star* cels_i_star = ((Star*)cels[i]);
 
                 if (cels_i_star
                     && cels_i_star->seqno
@@ -418,11 +409,17 @@ void compute_object_draw_coordinates()
             }
 
             Point rel = cels[i]->tmprel;
+            double relm = rel.magnitude();
 
-            if (cels[i]->orbit && rel.squared_magnitude() > 1e6 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
+            if (cels[i]->orbit
+                && relm > 1e4 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
             {
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
-                continue;
+                angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+                if (angular_radius[i] < 0.01*fiftyseventh)
+                {
+                    cels[i]->drawnx = cels[i]->drawny = -1e9;
+                    continue;
+                }
             }
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
@@ -432,22 +429,9 @@ void compute_object_draw_coordinates()
             {
                 vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
 
-                // Standing in somebody else's shadow. viewer_reflectance_magnitude() works out how
-                // much of the body is turned our way and lit, but has no way of knowing whether
-                // the light it is counting on is arriving at all -- a full Moon in mid-eclipse is
-                // at exactly the same phase as a full Moon out of it, and some twelve magnitudes
-                // fainter. Applied to the magnitude rather than anywhere later, so that everything
-                // downstream follows on its own: the dot dims, its color shifts the way a dim
-                // object's does, the flare in draw_one_object() dies with the light that was
-                // causing it, and a moon deep in a gas giant's shadow drops under the magnitude
-                // limit and disappears, exactly as Io does.
                 double lit = eclipse_illumination(cels[i]);
                 if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
             }
-            // A comet is not a disc reflecting sunlight but a cloud of ice being boiled off one,
-            // so its brightness answers to how hard it is being boiled and not to how much of it
-            // is turned our way. Its own light curve, which is far steeper in solar distance than
-            // any inverse square, does the whole job -- see Comet::viewer_comet_magnitude().
             else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
             else vmag_cache[i] = cels[i]->viewer_magnitude(here);
 
@@ -524,7 +508,7 @@ void compute_object_draw_coordinates()
             }
 
             cels[i]->viewrel = rel;
-
+            
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
             float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
@@ -532,7 +516,7 @@ void compute_object_draw_coordinates()
 
             if (dx < 0 || dx >= dispw) continue;
             if (dy < 0 || dy >= disph) continue;
-
+            
             bx = dx*drawblxscalex;
             by = dy*drawblxscaley;
             if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
@@ -541,7 +525,7 @@ void compute_object_draw_coordinates()
             by_cache[i] = by;
 
             angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
-        }
+                    }
     }
 
     redo_proper_motions = false;

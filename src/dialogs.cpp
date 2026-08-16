@@ -2075,7 +2075,7 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::SameLine();
     ImGui::InputText("##xplorsearch", xplorfor, name_max_len, 0);
 
-    static bool list_planets = true, list_moons = true, list_asteroids = false, list_kbos = true, list_sats = false;
+    static bool list_planets = true, list_moons = true, list_asteroids = false, list_comets = false, list_kbos = true, list_sats = false;
     ImGui::Text("%s", "Include:");
     ImGui::SameLine();
     ImGui::Checkbox("Planets##xplorr", &list_planets);
@@ -2085,6 +2085,8 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::Checkbox("Asteroids##xplorr", &list_asteroids);
     ImGui::SameLine();
     ImGui::Checkbox("KBOs##xplorr", &list_kbos);
+    ImGui::SameLine();
+    ImGui::Checkbox("Comets##xplorr", &list_comets);
     ImGui::SameLine();
     ImGui::Checkbox("Sats##xplorr", &list_sats);
 
@@ -2126,6 +2128,7 @@ void draw_system_explorer(ImGuiIO& io)
                     }
                 }
             }
+            if (cls == class_comet && !list_comets) continue;
 
             std::string line = std::string(cels[i]->name).substr(0, 20);
             l = 36 - line.size();

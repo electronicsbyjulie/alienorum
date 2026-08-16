@@ -7,40 +7,21 @@
 using namespace alienorum;
 
 int sats_added = 0, sat_errors = 0;
-
-// True from the moment draw_sat_window() decides to start a batch until add_batch_satellites()
-// has finished writing sats_added and sat_errors. Set by the caller rather than at the top of the
-// worker, so there is no window in which the batch is running but the flag says otherwise -- the
-// dialog reads those two counters the moment this goes false, and would otherwise read them
-// mid-update. Same reasoning as texture_loads_pending, above.
 std::atomic<bool> batch_sats_running{false};
 
 namespace
 {
-    // Drops this load's entry from texture_loads_pending however load_textures() leaves --
-    // normally, or by an exception out of one of the map loaders or generators. Anything that
-    // frees CelestialObjects while the app is running waits on that count first (see
-    // release_universe_objects() in visuals.cpp), so a count that never came back down would
-    // wedge that teardown permanently rather than merely delaying it.
     struct TextureLoadTicket
     {
         ~TextureLoadTicket() { texture_loads_pending--; }
     };
 
-    // As above, for the satellite batch: clears batch_sats_running however the worker leaves, so
-    // a throw out of new Satellite() or SatSource::populate() cannot leave the dialog waiting on
-    // a result that will never be announced.
     struct BatchSatTicket
     {
         ~BatchSatTicket() { batch_sats_running = false; }
     };
 }
 
-// The one way to start a background texture load. Kept in one place because the accounting has to
-// happen in the *spawning* thread: incrementing inside load_textures() would leave a window
-// between std::thread construction and the thread body actually running, during which a load is
-// pending but uncounted, and a teardown landing in that window would free the object out from
-// under it.
 void spawn_texture_load(CelestialObject *cel)
 {
     if (!cel || cel->looked_for_maps) return;
