@@ -26,6 +26,13 @@ namespace alienorum
         double H1 = 0, R1 = 0, D1 = 0;
         double H2 = 0, R2 = 0, D2 = 0;
 
+        // The three constants actually in play once the fallbacks above have been applied. Kept
+        // apart from the magnitude itself because the drawing code sizes the coma and the tail
+        // from the same numbers the photometry runs on, and the two must not drift apart: a comet
+        // that the light curve says is bright and the picture says is a bare dot is worse than
+        // either mistake on its own.
+        void light_curve_parameters(double &h, double &slope_r, double &slope_d) const;
+
         double viewer_comet_magnitude(CelestialLocation seen_from);
         void update_location(double tmnow);
 

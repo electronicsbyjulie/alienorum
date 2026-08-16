@@ -2200,6 +2200,426 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     return fmax(wide, tall) * 0.5;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Comets.
+//
+// There is no body here to draw. The nucleus is a few kilometers of dirty ice and is below a pixel
+// from any distance a comet has ever been looked at from, and none of what is actually seen
+// belongs to it: a coma a hundred thousand kilometers wide boiled off it by the sun, and a tail
+// blown out of that coma by the solar wind and by sunlight. So a comet is drawn as what it looks
+// like -- a fuzzy ball with a streamer off it -- and never goes near draw_sphere().
+//
+// Two things follow from the tail being blown rather than dragged, and both of them show. It
+// points away from the SUN and not backwards along the orbit, so an outbound comet flies
+// tail-first. And its length is a distance in space rather than an angle in the sky, so it
+// foreshortens: a comet seen from nearly along its own tail shows a stub, or a round halo with no
+// tail at all. That is why everything below is built in space and projected point by point,
+// instead of being drawn as a screen-space wedge off the head.
+
+// How a comet's light is divided between the three things drawn from it. The condensation is the
+// point path's business further down draw_one_object(), so what it gets is not passed to anything
+// here -- it is simply what these two do not take.
+static const double kComaShare = 0.45, kTailShare = 0.30;
+
+static Point comet_cross(Point a, Point b)
+{
+    return Point(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
+}
+
+// The same camera chain that fixes drawnx/drawny in compute_object_draw_coordinates(), for one
+// point given relative to the viewer the way tmprel is -- so feeding it tmprel itself lands
+// exactly on the head's drawn position, and the coma, the label, and the selection ring cannot
+// disagree about where the comet is.
+static bool comet_project(Point rel, const Rotation &viewer_plane, ImVec2 &out)
+{
+    Point p = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
+    if (view_mode == vm_horizon) p = refract_true_point(p);
+    Cartesian2D c(p, azimuth + azimuth_correction, altitude, zoom);
+    if (c.x < -1e4 || c.y < -1e4) return false;                 // behind the camera
+    out = ImVec2(dispcx + c.x * dispcx, dispcy + c.y * dispcx);
+    return true;
+}
+
+// One vertex color of the coma or the tail: an emission tint carried at some surface brightness.
+// A comet is not a blackbody and has no business being colored from one -- the green of a coma is
+// C2 fluorescing in sunlight and the blue of an ion tail is CO+ doing the same -- so the tint is
+// fixed and only its brightness varies. Put through black_to_transparent() so a dim value comes
+// out as a faint wash of the full color rather than as a muddy dark one, and so it composites over
+// a white background as well as over a black one; that is the road the point path's bloom circles
+// take too.
+static ImU32 comet_vtx(int r, int g, int b, double value)
+{
+    if (!(value > (1.0/255.0))) return IM_COL32(r, g, b, 0);
+    if (value > 1.0) value = 1.0;
+
+    // Whatever gets near the top of the scale comes out white, in an eye as on a plate: the tint
+    // is what colors the faint parts, and the blazing middle of a coma is white in every
+    // photograph ever taken of one. Left out, the core is a flat lime disc with a hard edge, which
+    // is the one thing a coma never looks like.
+    const double kWhiten = 0.5;
+    if (value > kWhiten)
+    {
+        double w = (value - kWhiten) / (1.0 - kWhiten);
+        r += (int)((255 - r) * w);
+        g += (int)((255 - g) * w);
+        b += (int)((255 - b) * w);
+    }
+
+    return rgba_apply_redlight(Color::black_to_transparent(
+        IM_COL32((int)(r*value), (int)(g*value), (int)(b*value), 255)));
+}
+
+// Surface brightness down the axis of the tail, t running from the head to the tip. Steep, and it
+// has to be: what a tail actually looks like is a blaze coming out of the coma that is half gone
+// within a tenth of its length and a faint streamer for the rest, and a profile gentle enough to
+// still be worth something at the far end reads as a searchlight beam instead. The divisor does
+// that near work and the power closes the tail off at its end.
+static double comet_tail_axial(double t)
+{
+    return pow(1.0 - t, 1.2) / (1.0 + t/0.12);
+}
+
+// Along the tail the color walks from the near-white green it leaves the coma with into the blue
+// of the ion tail proper, t running from the head to the tip.
+static ImU32 comet_tail_vtx(double t, double value)
+{
+    return comet_vtx((int)(152 - 47*t), (int)(212 - 72*t), (int)(246 + 9*t), value);
+}
+
+// Draws the coma and the tail, and returns the coma's radius on screen in pixels -- or zero if
+// this comet has no coma worth drawing, in which case the caller falls back to the plain point
+// path. The head itself is left to that path in either case: the condensation at the middle of a
+// coma is a point source, and the code that draws point sources already draws it correctly.
+static double draw_comet(CelestialObject *cel, double appmag)
+{
+    Comet *cm = (Comet*)cel;
+    CelestialObject *light = cel->get_light_center();
+    if (!light) return 0;
+
+    double dist_m = cel->tmprel.magnitude();
+    if (!(dist_m > 0)) return 0;
+
+    double r_AU = cel->location.distance_to(light->location) * invAU;
+    if (r_AU < 0.01) r_AU = 0.01;
+
+    // Nothing is boiling off out at Jupiter. Water ice starts to sublimate in earnest around three
+    // AU and is the whole show inside it; further out only the more volatile ices do anything at
+    // all, and by five the comet is a bare rock with a magnitude and no picture. Faded rather than
+    // switched, so that a comet does not sprout a tail between one frame and the next.
+    const double kActivityFull = 3.0, kActivityNone = 5.0;
+    double activity = (kActivityNone - r_AU) / (kActivityNone - kActivityFull);
+    if (activity <= 0) return 0;
+    if (activity > 1) activity = 1;
+
+    double h, slope_r, slope_d;
+    cm->light_curve_parameters(h, slope_r, slope_d);
+
+    // How big a comet this is. No catalog states a coma diameter or a tail length, so both are
+    // inferred from the one number that does say how much gas the thing is throwing off: the
+    // absolute magnitude of its total light curve, referred here to H1 = 8, an unremarkable comet.
+    // The tenth-power exponent is gentle on purpose. H1 runs across some fourteen magnitudes in
+    // the catalog, and the straight 10^(0.2 dH) that the magnitudes themselves are built on would
+    // hand Hale-Bopp a tail several AU long.
+    double scale = pow(10.0, 0.1 * (8.0 - h));
+    if (scale < 0.2) scale = 0.2;
+    if (scale > 10.0) scale = 10.0;
+
+    // A hundred thousand kilometers of coma and a tenth of an AU of tail for that unremarkable
+    // comet at one AU, both growing as it comes in. Those are the middle of the observed ranges --
+    // comas run from a few thousand kilometers to something over a million, tails from nothing to
+    // about an AU, which is where the clamps sit. Against the three comets in the catalog anyone
+    // has seen: Hyakutake's coma comes out a degree and a half across for the week it hung over
+    // the Plough, Halley gets three tenths of an AU of tail and Hale-Bopp a quarter, all of which
+    // is the right size for what was photographed.
+    //
+    // How fast they grow on the way in is the other thing the light curve knows. R1 is the slope
+    // that separates a comet from a rock -- ten of it means the brightness going as the fourth
+    // power of the solar distance -- and what is steepening is the outgassing, so the tail follows
+    // it rather than a made-up exponent of its own. Clamped either side because a few hundred
+    // rows of the catalog carry slopes that no comet has ever obeyed.
+    double ramp = slope_r / 10.0;
+    if (ramp < 0.4) ramp = 0.4;
+    if (ramp > 2.0) ramp = 2.0;
+
+    double coma_m = 1.0e8 * scale * pow(r_AU, -0.5);
+    if (coma_m > 1.5e9) coma_m = 1.5e9;
+    double tail_m = 1.5e10 * scale * pow(r_AU, -ramp);
+    if (tail_m > 1.5 * AU) tail_m = 1.5 * AU;
+    if (tail_m < coma_m * 4) tail_m = coma_m * 4;
+    coma_m *= activity;
+    tail_m *= activity;
+
+    double coma_px = fabs(std::atan2(coma_m, dist_m)) * zoom * dispcx;
+    if (!(coma_px >= 1.2)) return 0;                    // smaller than the bloom that would surround it: leave this one to the point path
+
+    // Flux, in the units draw_galaxy() works in and for the same reason it does: the zoom squared
+    // is what keeps an extended object's surface brightness the same as the view is magnified,
+    // where a point source's bloom rightly stays the size it was. Divided by an area in pixels it
+    // gives a pixel value, 255 being full.
+    double total = pow(magnbase, -appmag) * global_brightness * zoom * zoom * 1e+4;
+    if (!(total > 0)) return 0;
+
+    Rotation viewer_plane = align_points_3d(to_viewer_plane(yaxis), yaxis, center);
+    ImVec2 head;
+    if (!comet_project(cel->tmprel, viewer_plane, head)) return 0;
+
+    // The tail points away from the sun, and that is the whole of it: the gas is pushed out by the
+    // solar wind and the dust by the pressure of sunlight, and neither has anything to do with
+    // which way the comet happens to be travelling.
+    Point antisun = cel->tmprel - light->tmprel;
+    if (!(antisun.squared_magnitude() > 0)) return 0;
+    antisun.scale(1);
+
+    // The dust half of it does lag, though. A grain leaves the nucleus carrying the comet's own
+    // orbital velocity and keeps it, so the further back down the tail it is, the further behind
+    // the comet's present line of flight it has fallen -- and that is what curves a comet's tail,
+    // growing as the square of the distance back. Only the part of the lag lying across the tail
+    // is worth anything here; the part along it would just make the tail longer. Nothing stores a
+    // velocity, so it is read off the orbit six hours either side of now and the comet put back,
+    // the same trick the orbit tracer in draw_objects() uses.
+    const double kBend = 0.22;
+    Point lag;
+    bool bent = false;
+    if (cel->orbit && cel->orbit->center)
+    {
+        CelestialLocation was = cel->location;
+        cm->update_location(simnow - 6 * 3600.0);
+        CelestialLocation before = cel->location - here;
+        cm->update_location(simnow + 6 * 3600.0);
+        CelestialLocation after = cel->location - here;
+        cel->location = was;
+
+        Point v = Point(after) - Point(before);
+        double along = v.x*antisun.x + v.y*antisun.y + v.z*antisun.z;
+        Point across(antisun.x*along - v.x, antisun.y*along - v.y, antisun.z*along - v.z);
+        if (across.squared_magnitude() > 0)
+        {
+            across.scale(1);
+            lag = across;
+            bent = true;
+        }
+    }
+
+    ImDrawList *dl = ImGui::GetBackgroundDrawList();
+    ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
+    double dispw = dispcx*2, disph = dispcy*2;
+
+    // Surface brightness of the coma goes as one over the distance from the nucleus, which is not
+    // a fudge: gas leaving the nucleus at a steady rate in every direction thins as the square of
+    // the radius, and the column an observer looks down is longer towards the middle in exactly
+    // the same proportion, so the two conspire and leave 1/rho. It is why a coma has a blazing
+    // middle and no edge to speak of. Softened at both ends -- kCore keeps the singularity at the
+    // origin from running away, where the condensation the point path draws is sitting anyway, and
+    // the exponential is the molecules being broken up by sunlight faster than they can get any
+    // further out, which is what really ends a coma. The 0.824 is what x/(x + kCore) e^-x
+    // integrates to over the disc, and is there so the profile adds up to the coma's share.
+    const double kCore = 0.08;
+    double k_bright = total * kComaShare / (2.0 * _pi * 0.824 * coma_px);
+
+    // How much of that is worth drawing, and the answer is not "the coma": a coma has no edge, and
+    // what an observer sees the size of is however much of it stands above the faintest thing the
+    // eye or the plate can pick out. So a bright comet shows a big coma and a faint one a small
+    // coma out of the very same cloud, which is exactly what the records of any one comet across
+    // an apparition show. Solving (x + kCore) e^x = k/(R*floor) for where the profile crosses that
+    // floor, by Newton from a guess of one coma radius; it converges in a few passes across the
+    // whole range of brightnesses in play here.
+    const double kFloor = 1.5 / 255.0;
+    double spread = 1.0;
+    {
+        double A = k_bright / (coma_px * kFloor);
+        for (int it = 0; it < 12; it++)
+        {
+            double e = exp(spread);
+            double f = (spread + kCore) * e - A;
+            double step = f / ((spread + kCore + 1.0) * e);
+            spread -= step;
+            if (spread < 0.15) { spread = 0.15; break; }
+            if (fabs(step) < 1e-4) break;
+        }
+        if (!(spread > 1.0)) spread = 1.0;              // never smaller than the coma itself, NaN included
+        if (spread > 5.0) spread = 5.0;
+    }
+    double draw_px = coma_px * spread;
+
+    // The tail comes out of the coma at the width of the coma it is coming out of, so it is sized
+    // from what is actually visible of that rather than from the nominal radius underneath it.
+    double coma_seen_m = coma_m * spread;
+
+    // ---------------------------------------------------------------------------------- the tail
+    const int kTailSeg = 40;                            // steps down the spine
+    const int kTailLane = 7;                            // lanes across it, edge to edge through the axis
+    ImVec2 spine[kTailSeg+1], ofs_u[kTailSeg+1], ofs_v[kTailSeg+1], nrm[kTailSeg+1];
+    float half[kTailSeg+1];
+    int last = -1;
+
+    {
+        // Two directions across the tail's axis, to measure its thickness with. Which two does not
+        // matter; what they are for is projecting a real width in space, so that a tail pointed at
+        // the viewer opens out into a fan instead of collapsing onto a line.
+        Point u = comet_cross(antisun, xaxis);
+        if (!(u.squared_magnitude() > 1e-6)) u = comet_cross(antisun, yaxis);
+        u.scale(1);
+        Point v = comet_cross(antisun, u);
+        v.scale(1);
+
+        for (int k = 0; k <= kTailSeg; k++)
+        {
+            double t = (double)k / kTailSeg;
+            Point sp = cel->tmprel + antisun * (tail_m * t);
+            if (bent) sp += lag * (tail_m * kBend * t * t);
+
+            // sp is in viewer-relative coordinates, so its own magnitude is its distance from the
+            // camera -- and a tail up to 1.5 AU long can run straight through that distance when
+            // the comet itself is much closer than that, which happens: Earth passed within 0.1 AU
+            // of Hyakutake days either side of the date this code is tested against, well inside
+            // the length of the tail this loop was drawing it. Nothing at that range projects
+            // sanely -- the perspective divide the Cartesian2D constructor does is blowing up
+            // toward the camera plane, and comet_project()'s "behind camera" guard only catches
+            // pt.z actually negative, not the near-zero positive values just before it, so a run of
+            // samples on the approach can land at wildly wrong but still finite screen coordinates,
+            // each too close to its neighbor to trip the jump check below, folding the ribbon back
+            // on itself into a solid wedge instead of a break in the line. There is nothing
+            // meaningful to draw that close in anyway -- the true sky there is full of tail in
+            // every direction, not a thin ribbon a screen quad can stand in for -- so stop short of
+            // the region where the projection degenerates rather than pushing a sample into it.
+            if (sp.squared_magnitude() < dist_m*dist_m*0.01) break;
+
+            ImVec2 sc, pu, pv;
+            if (!comet_project(sp, viewer_plane, sc)) break;
+            if (sc.x < -8*dispw || sc.x > 9*dispw || sc.y < -8*disph || sc.y > 9*disph) break;
+            // vm_skymap is a whole sky flattened onto a rectangle, and a tail running off one edge
+            // of it reappears at the other. Stop at the seam rather than drawing a band across the
+            // entire map to get there.
+            if (k && distance(sc, spine[k-1]) > dispw) break;
+
+            double w_m = coma_seen_m * (0.55 + 2.0 * t);
+            if (!comet_project(sp + u * w_m, viewer_plane, pu)) break;
+            if (!comet_project(sp + v * w_m, viewer_plane, pv)) break;
+
+            spine[k] = sc;
+            ofs_u[k] = ImVec2(pu.x - sc.x, pu.y - sc.y);
+            ofs_v[k] = ImVec2(pv.x - sc.x, pv.y - sc.y);
+            last = k;
+        }
+    }
+
+    if (last >= 2)
+    {
+        // Half-width of the tail at each sample, measured across whichever way the spine is
+        // running on screen there. The tail's cross-section is a circle in space, so on screen it
+        // is an ellipse whose axes are the two projected offsets worked out above, and an
+        // ellipse's reach in a given direction is the root of the sum of the squares of its axes'
+        // components along it.
+        for (int k = 0; k <= last; k++)
+        {
+            ImVec2 a = spine[k > 0 ? k-1 : 0], b = spine[k < last ? k+1 : last];
+            double dx = b.x - a.x, dy = b.y - a.y, dl2 = sqrt(dx*dx + dy*dy);
+            nrm[k] = (dl2 > 1e-6) ? ImVec2(-dy/dl2, dx/dl2) : ImVec2(0, 1);
+            double cu = ofs_u[k].x*nrm[k].x + ofs_u[k].y*nrm[k].y;
+            double cv = ofs_v[k].x*nrm[k].x + ofs_v[k].y*nrm[k].y;
+            half[k] = (float)fmax(0.8, sqrt(cu*cu + cv*cv));
+        }
+
+        // Across the tail: a rounded profile rather than a slab, since what is being looked
+        // through is a cone of thin gas and there is far more of it to look through down the
+        // middle than at the edge. Seven lanes, because five left the edges looking cut.
+        static const double lane_at[kTailLane]  = { -1.0, -0.62, -0.3, 0.0, 0.3, 0.62, 1.0 };
+        static const double lane_val[kTailLane] = {  0.0,  0.28,  0.72, 1.0, 0.72, 0.28, 0.0 };
+
+        // Spread the tail's share of the comet's light over exactly what is about to be drawn,
+        // summed rather than integrated because the projection can do anything it likes to the
+        // spacing of the samples. That lane profile comes to about 0.94 half-widths integrated
+        // across the tail; the rest of each term is the length of that step of spine.
+        double sum = 0;
+        for (int k = 0; k < last; k++)
+            sum += comet_tail_axial((double)k/kTailSeg) * half[k] * 0.94 * distance(spine[k], spine[k+1]);
+        double amp = (sum > 0) ? (total * kTailShare / sum) : 0;
+
+        if (amp > 0)
+        {
+            dl->PrimReserve(last*(kTailLane-1)*6, last*(kTailLane-1)*4);
+            for (int k = 0; k < last; k++)
+            {
+                double t0 = (double)k / kTailSeg, t1 = (double)(k+1) / kTailSeg;
+                double a0 = amp * comet_tail_axial(t0), a1 = amp * comet_tail_axial(t1);
+                for (int l = 0; l < kTailLane-1; l++)
+                {
+                    float o0 = half[k]   * (float)lane_at[l],   o1 = half[k+1] * (float)lane_at[l];
+                    float p0 = half[k]   * (float)lane_at[l+1], p1 = half[k+1] * (float)lane_at[l+1];
+                    unsigned int base = dl->_VtxCurrentIdx;
+                    dl->PrimWriteVtx(ImVec2(spine[k  ].x + nrm[k  ].x*o0, spine[k  ].y + nrm[k  ].y*o0), uv, comet_tail_vtx(t0, a0*lane_val[l]));
+                    dl->PrimWriteVtx(ImVec2(spine[k+1].x + nrm[k+1].x*o1, spine[k+1].y + nrm[k+1].y*o1), uv, comet_tail_vtx(t1, a1*lane_val[l]));
+                    dl->PrimWriteVtx(ImVec2(spine[k+1].x + nrm[k+1].x*p1, spine[k+1].y + nrm[k+1].y*p1), uv, comet_tail_vtx(t1, a1*lane_val[l+1]));
+                    dl->PrimWriteVtx(ImVec2(spine[k  ].x + nrm[k  ].x*p0, spine[k  ].y + nrm[k  ].y*p0), uv, comet_tail_vtx(t0, a0*lane_val[l+1]));
+                    dl->PrimWriteIdx((ImDrawIdx)(base+0));
+                    dl->PrimWriteIdx((ImDrawIdx)(base+1));
+                    dl->PrimWriteIdx((ImDrawIdx)(base+2));
+                    dl->PrimWriteIdx((ImDrawIdx)(base+0));
+                    dl->PrimWriteIdx((ImDrawIdx)(base+2));
+                    dl->PrimWriteIdx((ImDrawIdx)(base+3));
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------- the coma
+    const int kMaxComaSeg = 56;
+    int nseg = (int)fmin((double)kMaxComaSeg, fmax(14.0, draw_px * 1.2));
+    int nring = (int)fmin(18.0, fmax(5.0, draw_px * 0.45));
+
+    // A coma is not quite round. The sunward side is pressed in against the outflow and the far
+    // side is drawn out into the tail, so the whole thing is stretched a little the way the tail
+    // goes -- the "hood" that makes a bright comet look like a paintbrush rather than a ball.
+    const double kHood = 0.28;
+    double hood_x = 0, hood_y = 0;
+    if (last >= 1)
+    {
+        double dx = spine[1].x - spine[0].x, dy = spine[1].y - spine[0].y, dl2 = sqrt(dx*dx + dy*dy);
+        if (dl2 > 1e-6) { hood_x = dx/dl2; hood_y = dy/dl2; }
+    }
+
+    ImVec2 rim[kMaxComaSeg];
+    for (int s = 0; s < nseg; s++)
+    {
+        double t = s * (_pi * 2.0 / nseg), ct = cos(t), st = sin(t);
+        double stretch = draw_px * (1.0 + kHood * (ct*hood_x + st*hood_y));
+        rim[s] = ImVec2(head.x + ct*stretch, head.y + st*stretch);
+    }
+
+    #define coma_vtx_col(rho) comet_vtx(150, 255, 205, \
+        k_bright * exp(-(double)(rho)/nring*spread) / (coma_px * ((double)(rho)/nring*spread + kCore)))
+
+    dl->PrimReserve(nring*nseg*6, nring*nseg*4);
+    for (int r = 0; r < nring; r++)
+    {
+        double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
+        for (int s = 0; s < nseg; s++)
+        {
+            int s1 = (s+1) % nseg;
+            unsigned int base = dl->_VtxCurrentIdx;
+            dl->PrimWriteVtx(ImVec2(head.x + (rim[s ].x - head.x)*f0, head.y + (rim[s ].y - head.y)*f0), uv, coma_vtx_col(r));
+            dl->PrimWriteVtx(ImVec2(head.x + (rim[s1].x - head.x)*f0, head.y + (rim[s1].y - head.y)*f0), uv, coma_vtx_col(r));
+            dl->PrimWriteVtx(ImVec2(head.x + (rim[s1].x - head.x)*f1, head.y + (rim[s1].y - head.y)*f1), uv, coma_vtx_col(r+1));
+            dl->PrimWriteVtx(ImVec2(head.x + (rim[s ].x - head.x)*f1, head.y + (rim[s ].y - head.y)*f1), uv, coma_vtx_col(r+1));
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+1));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+0));
+            dl->PrimWriteIdx((ImDrawIdx)(base+2));
+            dl->PrimWriteIdx((ImDrawIdx)(base+3));
+        }
+    }
+    #undef coma_vtx_col
+
+    // The coma is the part of a comet big enough to aim a mouse at, so it is what the picking in
+    // inputs.cpp gets told about. The tail is deliberately left out of it: a box around a tail
+    // forty degrees long would swallow half the sky and everything in it.
+    cel->drawnxmin = head.x - draw_px; cel->drawnxmax = head.x + draw_px;
+    cel->drawnymin = head.y - draw_px; cel->drawnymax = head.y + draw_px;
+    cel->onscreen = true;
+    return draw_px;
+}
+
 bool draw_one_object(int i)
 {
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
@@ -2207,6 +2627,7 @@ bool draw_one_object(int i)
     if (i == whereami) return false;
 
     int j;
+    double coma_px = 0;
     cel_obj_class cls = cels[i]->typeclass();
     xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
     appmag = vmag_cache[i] - sky_mag_shift;
@@ -2270,6 +2691,18 @@ bool draw_one_object(int i)
             ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, 1, satcol);
             bloomrad_cache[i] = bloomrad = 1;
         }
+    }
+    else if (cls == class_comet)
+    {
+        coma_px = draw_comet(cels[i], appmag);
+        if (coma_px > 0)
+        {
+            // What the coma and the tail did not take is the condensation at the head, and the
+            // point path below draws it: it is a point source, and that code already knows how to
+            // draw one. Handed over as a magnitude, since that is the currency it works in.
+            appmag -= log(1.0 - kComaShare - kTailShare) * invlogmagnbase;
+        }
+        goto dot_instead;
     }
     else if (angular_radius[i]*zoom > sphere_rad_threshold)
     {
@@ -2367,6 +2800,15 @@ bool draw_one_object(int i)
             }
             if (rgb.r == 255 && rgb.b == 255) break;
         }
+    }
+    // A comet drawn as a comet is far larger than the condensation the point path just finished
+    // with, and the label and the selection ring belong outside the coma rather than buried in it.
+    // The cache goes with it so the layering in draw_objects() puts a comet in front of the field
+    // stars it is drifting over, and not behind them.
+    if (coma_px > bloomrad)
+    {
+        bloomrad = coma_px;
+        bloomrad_cache[i] = coma_px;
     }
     if (selected == i && cels[1])
     {
@@ -2865,7 +3307,18 @@ void draw_objects()
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
 
-        if (angular_radius[i]*zoom < sphere_rad_threshold)
+        // A comet is drawn far larger than the head this test is looking at: the tail can lie
+        // across the whole screen with the nucleus itself well off the edge of it, and those are
+        // precisely the passes worth watching. angular_radius[] knows only about the nucleus and
+        // would throw the comet away here, so give it a wide berth of screens instead and let
+        // draw_comet() clip its own geometry. A comet behind the camera still fails this: the
+        // sentinel for that is -1e29, several orders past the window below.
+        if (cels[i]->typeclass() == class_comet)
+        {
+            if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw) continue;
+            if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph) continue;
+        }
+        else if (angular_radius[i]*zoom < sphere_rad_threshold)
         {
             if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
             if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;

@@ -15,10 +15,19 @@ void alienorum::Comet::update_location(double tmnow)
     if (orbit) update_orbit_location(tmnow);
 }
 
+// Falls back to the nucleus parameters for a comet the catalog has no total light curve for, and
+// to a middling made-up comet for one it has neither set for, of which there are a few hundred in
+// the file.
+void alienorum::Comet::light_curve_parameters(double &h, double &slope_r, double &slope_d) const
+{
+    h = H1; slope_r = R1; slope_d = D1;
+    if (!h && !slope_r) { h = H2; slope_r = R2; slope_d = D2; }
+    if (!h && !slope_r) { h = 8.0; slope_r = 10.0; slope_d = 5.0; }
+    if (!slope_d) slope_d = 5.0;                        // Inverse square in the viewer's distance, the one part of this that is pure geometry.
+}
+
 // The comet's total magnitude -- nucleus and coma together, which is what an eye or a wide-field
-// photograph sees and what the catalog's H1/R1/D1 describe. Falls back to the nucleus parameters
-// for a comet the catalog has no total light curve for, and to a middling made-up comet for one
-// it has neither set for, of which there are a few hundred in the file.
+// photograph sees and what the catalog's H1/R1/D1 describe.
 double alienorum::Comet::viewer_comet_magnitude(CelestialLocation seen_from)
 {
     CelestialObject *light_center = get_light_center();
@@ -32,10 +41,8 @@ double alienorum::Comet::viewer_comet_magnitude(CelestialLocation seen_from)
     if (r < 0.01) r = 0.01;
     if (d < 0.01) d = 0.01;
 
-    double h = H1, sr = R1, sd = D1;
-    if (!h && !sr) { h = H2; sr = R2; sd = D2; }
-    if (!h && !sr) { h = 8.0; sr = 10.0; sd = 5.0; }
-    if (!sd) sd = 5.0;                                  // Inverse square in the viewer's distance, the one part of this that is pure geometry.
+    double h, sr, sd;
+    light_curve_parameters(h, sr, sd);
 
     return h + sr * std::log10(r) + sd * std::log10(d);
 }
