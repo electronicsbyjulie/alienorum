@@ -2,7 +2,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "classes/cons.h"
-#include <cstdlib>              // std::getenv, pour ALIENORUM_HOME dans establish_project_root()
+#include <cstdlib>
 
 using namespace alienorum;
 
@@ -225,7 +225,7 @@ static bool establish_project_root()
     if (char *base = SDL_GetBasePath())
     {
         candidates.push_back(base);
-        SDL_free(base);                                 // le tampon appartient a SDL
+        SDL_free(base);
     }
     candidates.push_back(fs::current_path());
 
@@ -242,7 +242,7 @@ static bool establish_project_root()
                 fs::current_path(dir, ec);
                 return !ec;
             }
-            if (dir == dir.parent_path()) break;         // racine reelle, pas une longueur de chaine
+            if (dir == dir.parent_path()) break;
             dir = dir.parent_path();
         }
     }
@@ -254,15 +254,6 @@ bool look_for_catalogs()
 {
     catalogs_found = establish_project_root();
 
-    // radio_silence se decide depuis la racine *resolue*, d'ou sa place apres la recherche et non
-    // avant : le fichier appartient au projet, pas au repertoire d'ou l'on a lance la commande.
-    // Si la racine n'a pas pu etre etablie, on ignore si `nonet` s'y trouve -- le drapeau echoue
-    // donc du cote ferme plutot que d'accorder la permission par defaut. std::filesystem::exists()
-    // plutot que file_exists() : ce dernier ouvre le fichier, donc un `nonet` present mais illisible
-    // ne comptait pas.
-    // On accumule au lieu d'affecter : le drapeau s'enclenche et ne se relache plus. Il existe un
-    // second controle du meme fichier dans main() (alienorum.cpp, juste apres l'appel a cette
-    // fonction) ; une affectation seche ici l'ecraserait si l'ordre des deux venait a s'inverser.
     radio_silence = radio_silence || !catalogs_found || std::filesystem::exists("nonet");
 
     if (!catalogs_found)

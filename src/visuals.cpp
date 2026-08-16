@@ -2535,7 +2535,44 @@ static double draw_comet(CelestialObject *cel, double appmag)
             sum += comet_tail_axial((double)k/kTailSeg) * half[k] * 0.94 * distance(spine[k], spine[k+1]);
         double amp = (sum > 0) ? (total * kTailShare / sum) : 0;
 
-        if (amp > 0)
+        // TEMPORARY DIAGNOSTIC -- remove once the stray-lozenge hunt is done.
+        if (getenv("ALIENORUM_COMET_DEBUG"))
+        {
+            bool odd = !(sum > 0) || !(amp > 0) || !std::isfinite(amp);
+            for (int k = 0; k <= last && !odd; k++)
+            {
+                if (!std::isfinite(spine[k].x) || !std::isfinite(spine[k].y)) odd = true;
+                if (!std::isfinite(half[k]) || half[k] > 400) odd = true;
+                if (k && distance(spine[k], spine[k-1]) > 300) odd = true;
+                // The ribbon's orientation comes from the projected spine direction, so a step
+                // that barely moves on screen, or one that doubles back, is what folds it over.
+                if (k && k < last)
+                {
+                    double ax = spine[k].x-spine[k-1].x, ay = spine[k].y-spine[k-1].y;
+                    double bx = spine[k+1].x-spine[k].x, by = spine[k+1].y-spine[k].y;
+                    double la = sqrt(ax*ax+ay*ay), lb = sqrt(bx*bx+by*by);
+                    if (la < 0.05 || lb < 0.05) odd = true;
+                    else if ((ax*bx + ay*by)/(la*lb) < 0.0) odd = true;
+                }
+                if (k && (nrm[k].x*nrm[k-1].x + nrm[k].y*nrm[k-1].y) < 0.0) odd = true;
+            }
+            std::cerr << "COMET " << cel->name << " last=" << last
+                << " coma_px=" << coma_px << " draw_px=" << draw_px
+                << " spread=" << spread << " total=" << total
+                << " sum=" << sum << " amp=" << amp
+                << (odd ? "  <<< ODD" : "") << std::endl;
+            if (odd) for (int k = 0; k <= last; k++)
+                std::cerr << "   k=" << k
+                    << " spine=(" << spine[k].x << "," << spine[k].y << ")"
+                    << " step=" << (k ? distance(spine[k], spine[k-1]) : 0.0)
+                    << " half=" << half[k]
+                    << " nrm=(" << nrm[k].x << "," << nrm[k].y << ")"
+                    << " turn=" << (k ? (nrm[k].x*nrm[k-1].x + nrm[k].y*nrm[k-1].y) : 1.0)
+                    << " a=" << (amp * comet_tail_axial((double)k/kTailSeg)) << std::endl;
+            std::cerr << std::flush;
+        }
+
+        if (amp > 0 && !getenv("ALIENORUM_NO_TAIL"))            // TEMPORARY bisect switch
         {
             dl->PrimReserve(last*(kTailLane-1)*6, last*(kTailLane-1)*4);
             for (int k = 0; k < last; k++)
@@ -2589,6 +2626,8 @@ static double draw_comet(CelestialObject *cel, double appmag)
     #define coma_vtx_col(rho) comet_vtx(150, 255, 205, \
         k_bright * exp(-(double)(rho)/nring*spread) / (coma_px * ((double)(rho)/nring*spread + kCore)))
 
+    if (!getenv("ALIENORUM_NO_COMA"))                           // TEMPORARY bisect switch
+    {
     dl->PrimReserve(nring*nseg*6, nring*nseg*4);
     for (int r = 0; r < nring; r++)
     {
@@ -2608,6 +2647,7 @@ static double draw_comet(CelestialObject *cel, double appmag)
             dl->PrimWriteIdx((ImDrawIdx)(base+2));
             dl->PrimWriteIdx((ImDrawIdx)(base+3));
         }
+    }
     }
     #undef coma_vtx_col
 
@@ -2813,6 +2853,21 @@ bool draw_one_object(int i)
     if (selected == i && cels[1])
     {
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+    }
+
+    // TEMPORARY DIAGNOSTIC -- which object lands on the stray lozenges.
+    if (getenv("ALIENORUM_WHERE"))
+    {
+        double px = cels[i]->drawnx, py = cels[i]->drawny;
+        if (px > 600 && px < 760 && py > 410 && py < 530)
+            std::cerr << "AT (" << px << "," << py << ") cls=" << (int)cls
+                << " type=" << (int)cels[i]->type
+                << " name=\"" << cels[i]->name << "\""
+                << " vmag=" << vmag_cache[i] << " appmag=" << appmag
+                << " bloomrad=" << bloomrad << " arad=" << angular_radius[i]
+                << " aradzoom=" << (angular_radius[i]*zoom)
+                << " thresh=" << sphere_rad_threshold
+                << " flare=" << flare << std::endl << std::flush;
     }
 
     labels_step:
