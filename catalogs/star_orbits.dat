@@ -112,17 +112,17 @@ HD3651                  (stellar rotation)                                  083
 HD43834                 (stellar rotation)                      250.87?     021
 
 # https://doi.org/10.3847/1538-4357/ac1269
-HD43834                 Alp Men B              5.9e+9?          250.87?     021?                    4.5e+12                                                     M3.5-6.5V       +12.415         0.169       0.19                     3054
+HD43834                 Alp Men B               5.9e+9?         250.87?     021?                    4.5e+12                                                     M3.5-6.5V       +12.415         0.169       0.19                     3054
 
 # https://en.wikipedia.org
 HD61421                 (companion orbit)                       100.683     031.408
 HD201092                (companion orbit)                       355.73      052.99
-HD209100                Eps Ind Ba             2.0e+12?         148?        102?                    2.2e+14                                                                                     0.06386     0.081       2.04e-5      1312
-Eps Ind Ba              Eps Ind Bb             3.5e+8           147.959     077.082     328.27      3.5990e+11  .54042                                                                          0.05081     0.083       5.97e-6       972
+HD209100                Eps Ind Ba              2.0e+12?        148?        102?                    2.2e+14                                                                                     0.06386     0.081       2.04e-5      1312
+Eps Ind Ba              Eps Ind Bb              3.5e+8          147.959     077.082     328.27      3.5990e+11  .54042                                                                          0.05081     0.083       5.97e-6       972
 Gliese 866 AB           (companion orbit)                       162.1       112.4
 HD1326                  (companion orbit)                       254.77      036.7
 Gliese 273              (companion orbit)                       ?           072
-HD239960                (companion orbit)                       152.6       165.41
+HD239960                Kruger 60 B             45.13y          152.6       165.41      208.2       9.82AU      .4131       0                   JD2456944                                       0.176       0.209       .00393       3097
 Gliese 234 A            (companion orbit)                       210.385     052.918
 Gliese 473 A            (companion orbit)                       143.2       102.8
 HD8890                  (companion orbit)                       201.28      127.57
@@ -296,6 +296,17 @@ GJ 791.2                GJ 791.2 B              1.47080y        282         162 
 #HD216489                (stellar rotation)      24.4936d                                                                                                                                        1.8         13.3        54           4550
 HD216489                HD216489 B              24.64877d                   065                                                                                                                 1.0         1.0         0.9          5650
 HD156190                Iot Aps B               59.32y          119.6       069.4       270.5       0.115s      .172
+HD99028                 Iot Leo B               189.561y        056.178     127.249     145.345     1.926s      .550        0                   1948.86                                         1.183
+HD178475                Iot Lyr B               216.93y         171.4       145.5       201.2       0.172s      .637        0                   1997.28
+K2-288                  K2-288 B                                                                    55AU        
+HD124674                HD124675                6306y           234.1       099.2       208.0       11.10s      .44         0                   6515
+HD124674                HD124674 Ab             4.904y          251         109         082         3.56AU      .53         0                   2010.917                                        0.48
+HD77327                 Kap UMa B               13007.2d        105.641     109.410     355.63      0.18194s    .5584       0                   50404
+HD493                   Kap1 Scl B              616.04y         081.75      098.98      256.86      1.500s      .103        0                   2095.68                                         1.8         2.3         12.2         7111
+HD193807                Kap2 Sgr B              700y            040.7       080         177.3       2.032s      .401        0                   1912.00
+Kelu-1                  Kelu-1 B                24.98y          044.78      082.35      003.7       4.75AU      .709        0                   JD2460410
+HD81009                 KU Hya B                52.98y          202.4       068.5       058.7       0.169s      .074        0                   2020.20                                         2.05
+
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
