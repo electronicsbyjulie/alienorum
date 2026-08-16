@@ -1876,8 +1876,11 @@ void draw_objedit_window(ImGuiIO& io)
                 save_tex.detach();
             }
             ImGui::SameLine();
-            if (!generating_fic_texture && ImGui::Button("Update"))
+            if (!generating_fic_texture && cel->has_real_maps && ImGui::Button("Reload"))
             {
+                // Back to whatever sits in maps/ on disk. The only route by which real map
+                // files return once Regenerate has replaced them with fictional ones, since
+                // both of the buttons below suppress the file loader.
                 if (cel->surf_map)
                 {
                     delete cel->surf_map;
@@ -1893,13 +1896,15 @@ void draw_objedit_window(ImGuiIO& io)
                     delete cel->night_map;
                     cel->night_map = nullptr;
                 }
+                cel->ignore_map_files = false;
                 cel->looked_for_maps = false;
             }
             ImGui::SameLine();
-            if (!generating_fic_texture && ImGui::Button("Regenerate"))
+            if (!generating_fic_texture && ImGui::Button("Update"))
             {
-                cel->rnd_seed = rand();
-                if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
+                // Repaint from the settings above while keeping the geography already in hand,
+                // whether that is real topography loaded from a bump file or a fictional relief
+                // generated earlier. This is what puts oceans and forests on the real Mars.
                 cel->looked_for_maps = false;
                 cel->ignore_map_files = true;
                 if (cel->surf_map)
@@ -1913,6 +1918,28 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->night_map)
                 {
                     cel->night_map->mark_for_map_regen(cel);
+                }
+            }
+            ImGui::SameLine();
+            if (!generating_fic_texture && ImGui::Button("Regenerate"))
+            {
+                // A whole new world: the fresh seed has to draw a new bump field, so the old
+                // geography goes regardless of where it came from.
+                cel->rnd_seed = rand();
+                if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
+                cel->looked_for_maps = false;
+                cel->ignore_map_files = true;
+                if (cel->surf_map)
+                {
+                    cel->surf_map->mark_for_map_regen(cel, true);
+                }
+                if (cel->cloud_map)
+                {
+                    cel->cloud_map->mark_for_map_regen(cel, true);
+                }
+                if (cel->night_map)
+                {
+                    cel->night_map->mark_for_map_regen(cel, true);
                 }
             }
             ImGui::SameLine();

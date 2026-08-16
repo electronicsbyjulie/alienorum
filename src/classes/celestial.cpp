@@ -2731,9 +2731,18 @@ void _resample_bump_regen_rocky(Map *map, CelestialObject *cel)
     map->_map_resample_bump_regen_rocky(cel);
 }
 
-void alienorum::Map::mark_for_map_regen(CelestialObject *cel)
+void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
 {
-    if (bump_data && cel->type == rocky)
+    // Later on, generate_rocky_map() checks if bump_data == nullptr and either resamples the
+    // existing relief or draws a brand new fBm field from the seed, building fresh geography from scratch.
+    if (discard_bump && bump_data)
+    {
+        double *old_bump = bump_data;
+        bump_data = nullptr;
+        delete[] old_bump;
+    }
+
+    if (bump_data && uses_rocky_map(cel->type))
     {
         mcel = cel;
         std::thread tregen(_resample_bump_regen_rocky, this, cel);

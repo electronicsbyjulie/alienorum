@@ -229,7 +229,7 @@ namespace alienorum
         void generate_gas_giant_map(CelestialObject *cel);
         void generate_overcast_sky(CelestialObject *cel);
         void generate_stellar_map(CelestialObject *cel);
-        void mark_for_map_regen(CelestialObject *cel);
+        void mark_for_map_regen(CelestialObject *cel, bool discard_bump = false);
 
         // For the GPU texture cache (gputex.h): size of the equirectangular grid, and a bulk
         // RGBA8 export into a caller-allocated width*height*4 buffer, so the channel arrays
@@ -312,6 +312,7 @@ namespace alienorum
 
         Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,
             *ring_map = nullptr, *ringx_map = nullptr;
+        bool has_real_maps = false;
         Locale *locales = nullptr;
         int nlocales = 0;
         float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;

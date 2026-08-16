@@ -18,7 +18,11 @@ void load_textures(CelestialObject* cel)
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map(cel);
-            if (map->load_from_jpeg(filename)) cel->cloud_map = map;
+            if (map->load_from_jpeg(filename))
+            {
+                cel->cloud_map = map;
+                cel->has_real_maps = true;
+            }
         }
         else
         {
@@ -26,7 +30,11 @@ void load_textures(CelestialObject* cel)
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_png(filename)) cel->cloud_map = map;
+                if (map->load_from_png(filename))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
 
@@ -34,7 +42,11 @@ void load_textures(CelestialObject* cel)
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map(cel);
-            if (map->load_from_jpeg(filename)) cel->surf_map = map;
+            if (map->load_from_jpeg(filename))
+            {
+                cel->surf_map = map;
+                cel->has_real_maps = true;
+            }
         }
         else
         {
@@ -42,7 +54,11 @@ void load_textures(CelestialObject* cel)
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_png(filename)) cel->surf_map = map;
+                if (map->load_from_png(filename))
+                {
+                    cel->surf_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
 
@@ -56,6 +72,7 @@ void load_textures(CelestialObject* cel)
                 if (file_exists(filename.c_str()))
                 {
                     cel->surf_map->load_from_jpeg(filename, true, p->estimate_bump_scale());
+                    cel->has_real_maps = true;
                 }
                 else
                 {
@@ -63,6 +80,7 @@ void load_textures(CelestialObject* cel)
                     if (file_exists(filename.c_str()))
                     {
                         cel->surf_map->load_from_png(filename, true, p->estimate_bump_scale());
+                        cel->has_real_maps = true;
                     }
                 }
             }
@@ -72,7 +90,11 @@ void load_textures(CelestialObject* cel)
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->night_map = map;
+            if (map->load_from_jpeg(filename))
+            {
+                cel->night_map = map;
+                cel->has_real_maps = true;
+            }
         }
         else
         {
@@ -80,7 +102,11 @@ void load_textures(CelestialObject* cel)
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
-                if (map->load_from_png(filename)) cel->night_map = map;
+                if (map->load_from_png(filename))
+                {
+                    cel->night_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
 
@@ -88,7 +114,11 @@ void load_textures(CelestialObject* cel)
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->ring_map = map;
+            if (map->load_from_jpeg(filename))
+            {
+                cel->ring_map = map;
+                cel->has_real_maps = true;
+            }
         }
         else
         {
@@ -96,7 +126,11 @@ void load_textures(CelestialObject* cel)
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
-                if (map->load_from_png(filename)) cel->ring_map = map;
+                if (map->load_from_png(filename))
+                {
+                    cel->ring_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
 
@@ -104,7 +138,11 @@ void load_textures(CelestialObject* cel)
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map();
-            if (map->load_from_jpeg(filename)) cel->ringx_map = map;
+            if (map->load_from_jpeg(filename))
+            {
+                cel->ringx_map = map;
+                cel->has_real_maps = true;
+            }
         }
         else
         {
@@ -112,7 +150,11 @@ void load_textures(CelestialObject* cel)
             if (file_exists(filename.c_str()))
             {
                 Map *map = new Map();
-                if (map->load_from_png(filename)) cel->ringx_map = map;
+                if (map->load_from_png(filename))
+                {
+                    cel->ringx_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
     }
