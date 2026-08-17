@@ -268,9 +268,10 @@ namespace alienorum
     {
         public:
         std::string name;
-        double lat, lon;
+        double lat, lon, tz;                    // radians, radians, seconds
         bool user_added = false;
         bool user_modified = false;
+        bool dst = false;
 
         Locale() {}
         Locale(json from_json);

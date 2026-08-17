@@ -1237,6 +1237,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     here.equatorial_plane = cel->location.equatorial_plane;
                     viewer_lon = cel->RA_as_radians(here, cel->timeofday()) - _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
+                    viewer_tz = 0;
                     whereami = cel->seqno;
                     velocity = Point(0,0,0);
                     view_mode = vm_horizon;

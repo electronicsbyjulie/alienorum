@@ -901,6 +901,7 @@ void load_stuff()
         double dbl;
         try { j.at("Latitude").get_to(dbl); viewer_lat = viewer_home_lat = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Longitude").get_to(dbl); viewer_lon = viewer_home_lon = dbl * fiftyseventh; } catch(...) { ; }
+        try { j.at("Timezone").get_to(dbl); viewer_tz = viewer_home_tz = dbl * 60; } catch(...) { ; }
         try { j.at("Theme").get_to(viewer_theme); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
         fs.close();
@@ -1007,6 +1008,7 @@ bool save_user_json()
 
         j["Latitude"] = viewer_lat * fiftyseven;
         j["Longitude"] = viewer_lon * fiftyseven;
+        j["Timezone"] = (int)(viewer_home_tz / 60);
         j["Theme"] = viewer_theme;
         j["Gamma"] = global_gamma;
 

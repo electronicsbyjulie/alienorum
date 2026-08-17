@@ -249,20 +249,50 @@ void draw_status_window(ImGuiIO& io)
     }
     ImGui::Text("%s", velocstr.c_str());
 
-    time_t tmpnow = simnow;
-    struct tm *utc_time = std::gmtime(&tmpnow);
-    int mon = utc_time->tm_mon + 1, mday = utc_time->tm_mday;
-    std::string datedisp = std::to_string(utc_time->tm_year + 1900)
-        + std::string("-") + std::string((mon<10)?"0":"") + std::to_string(mon)
-        + std::string("-") + std::string((mday<10)?"0":"") + std::to_string(mday);
-    // ImGui::Text("%s", datedisp.c_str());
+    time_t tmpnow = simnow + viewer_tz;
+    if (fabs(viewer_tz) > 0.5)
+    {
+        struct tm *local_time = std::gmtime(&tmpnow);
 
-    int hr = utc_time->tm_hour, mn = utc_time->tm_min, sec = utc_time->tm_sec;
-    std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
-        + std::string(":") + std::string((mn<10)?"0":"") + std::to_string(mn)
-        + std::string(":") + std::string((sec<10)?"0":"") + std::to_string(sec)
-        + std::string(" UTC");
-    ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
+        int mon = local_time->tm_mon + 1, mday = local_time->tm_mday;
+        std::string datedisp = std::to_string(local_time->tm_year + 1900)
+            + std::string("-") + std::string((mon<10)?"0":"") + std::to_string(mon)
+            + std::string("-") + std::string((mday<10)?"0":"") + std::to_string(mday);
+
+        int hr = local_time->tm_hour, mn = local_time->tm_min, sec = local_time->tm_sec;
+
+        int tzsgn = (viewer_tz < 0) ? -1 : 1;
+        int tzhr = floor(fabs(viewer_tz) / 3600);
+        int tzmin = floor(fmod(fabs(viewer_tz), 3600) / 60);
+
+        std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
+            + std::string(":") + std::string((mn<10)?"0":"") + std::to_string(mn)
+            + std::string(":") + std::string((sec<10)?"0":"") + std::to_string(sec)
+            + std::string(" ")
+            + ((tzsgn < 0) ? std::string("-") : std::string("+"))
+            + ((tzhr < 10) ? std::string("0") : std::string(""))
+            + std::to_string(tzhr)
+            + std::string(":")
+            + ((tzmin < 10) ? std::string("0") : std::string(""))
+            + std::to_string(tzmin);
+        ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
+    }
+    else
+    {
+        struct tm *utc_time = std::gmtime(&tmpnow);
+
+        int mon = utc_time->tm_mon + 1, mday = utc_time->tm_mday;
+        std::string datedisp = std::to_string(utc_time->tm_year + 1900)
+            + std::string("-") + std::string((mon<10)?"0":"") + std::to_string(mon)
+            + std::string("-") + std::string((mday<10)?"0":"") + std::to_string(mday);
+
+        int hr = utc_time->tm_hour, mn = utc_time->tm_min, sec = utc_time->tm_sec;
+        std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
+            + std::string(":") + std::string((mn<10)?"0":"") + std::to_string(mn)
+            + std::string(":") + std::string((sec<10)?"0":"") + std::to_string(sec)
+            + std::string(" UTC");
+        ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
+    }
 
     ImGui::Separator();
 
@@ -2499,7 +2529,7 @@ void draw_loc_window(ImGuiIO & io)
     unsigned int n=0;
     static unsigned int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    double sellat = viewer_lat, sellon = viewer_lon;
+    double sellat = viewer_lat, sellon = viewer_lon, seltz;
     std::string selloc = viewer_locale;
     ImGui::Begin("Locales", &locwnd, 0);
 
@@ -2552,6 +2582,7 @@ void draw_loc_window(ImGuiIO & io)
 
                 sellat = lat * fiftyseventh;
                 sellon = lon * fiftyseventh;
+                seltz = cel->locales[i].tz;
                 selloc = name;
             }
 
@@ -2565,6 +2596,7 @@ void draw_loc_window(ImGuiIO & io)
     {
         viewer_lat = sellat;
         viewer_lon = sellon;
+        viewer_tz = seltz;
         viewer_locale = selloc;
     }
 

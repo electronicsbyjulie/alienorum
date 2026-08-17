@@ -2793,6 +2793,33 @@ alienorum::Locale::Locale(json fj)
     fj["name"].get_to(name);
     fj["latitude"].get_to(lat);
     fj["longitude"].get_to(lon);
+
+    // Optional parameters do get a try block.
+    try
+    {
+        std::string tzstr;
+        fj["timezone"].get_to(tzstr);
+        const char* tzcstr = tzstr.c_str();
+        const int l = strlen(tzcstr);
+
+        const char* plusminus = strchr(tzcstr, '+');
+        if (!plusminus) plusminus = strchr(tzcstr, '-');
+        if (!plusminus) throw 0xbadda7a;
+
+        int sign = (*plusminus == '-') ? -1 : 1;
+
+        int hours = atoi(&plusminus[1]);
+        const char* colon = strchr(plusminus, ':');
+        if (!colon) throw 0xbadda7a;
+
+        int minutes = atoi(&colon[1]);
+
+        tz = (60 * minutes + 3600 * hours) * sign;
+    }
+    catch (...)
+    {
+        ;
+    }
 }
 
 void alienorum::AtmosphereComposition::enforce_integrity()

@@ -418,6 +418,7 @@ void process_key_cmd_char(char c)
         {
             viewer_lat = selected_locale->lat * fiftyseventh;
             viewer_lon = selected_locale->lon * fiftyseventh;
+            viewer_tz = selected_locale->tz;
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
         }
@@ -444,6 +445,7 @@ void process_key_cmd_char(char c)
         vplane_mode = vplane_local;
         viewer_lat = viewer_home_lat;
         viewer_lon = viewer_home_lon;
+        viewer_tz = viewer_home_tz;
         viewer_locale = "";
         save_viewer_latlon = true;
         set_viewer_location_and_plane();
@@ -654,7 +656,7 @@ void process_key_cmd_char(char c)
         }
         break;
     
-        case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_lon = viewer_home_lon; save_viewer_latlon = viewchanged = true; break;
+        case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_lon = viewer_home_lon; viewer_tz = viewer_home_tz; save_viewer_latlon = viewchanged = true; break;
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
         case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
