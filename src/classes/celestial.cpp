@@ -621,7 +621,6 @@ void alienorum::CelestialObject::randomize()
         rnd_seed = seed;
     }
     rng.seed(rnd_seed);
-    std::cout << "Can't trust github: " << rnd_seed << std::endl;
 }
 
 json CelestialObject::to_json()
@@ -1916,6 +1915,11 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
     assert(rm);
     image_height = rm->image_height;
     image_width = rm->image_width;
+
+    lat_scale = (double)image_height / _pi;
+    lon_scale = (double)image_width / (_pi * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
 
     allocated = image_height * image_width;
     assert(allocated == rm->allocated);

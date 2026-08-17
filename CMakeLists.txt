@@ -66,6 +66,7 @@ add_library(CLASSES STATIC
 	src/classes/cat.cpp
 	src/classes/celestial.cpp
 	src/classes/color.cpp
+	src/classes/comet.cpp
 	src/classes/cons.cpp
 	src/classes/galaxy.cpp
 	src/classes/misc.cpp
