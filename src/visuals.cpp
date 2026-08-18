@@ -2070,20 +2070,38 @@ static void draw_corona(ImVec2 at, double sun_px, double obsc, double BV)
         dl->AddTriangleFilled(base_a, base_b, tip, rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, a)));
     }
 
-    // The chromosphere: a thin, fiercely red rim just above the photosphere, with a few
-    // prominences standing off it. This is hydrogen's own red line rather than anything thermal,
-    // which is why it is that specific color and not a temperature's worth of orange -- and why
-    // it stays red no matter what color the star itself is.
-    ImU32 fire = rgba_apply_redlight(IM_COL32(255, 62, 40, (int)(210*strength)));
-    dl->AddCircle(at, r_in*1.02, fire, 0, fmax(1.0, r_in*0.035));
-    for (int k = 0; k < 5; k++)
+    // The chromosphere: a thin, reddish rim with a few bright prominences (Baily's beads). The color comes from
+    // lines of hydrogen and helium, not thermal blackbody, so it does not change with temperature or star color.
+    int bailyr = 255, bailyg = 62, bailyb = 40;
+    int lbr = bailyr, lbg = bailyg, lbb = bailyb;
+    float ringsz = r_in*1.02, steepness = 1.13;           // steepness must be more than 1 no matter what
+    // ImU32 fire = rgba_apply_redlight(IM_COL32(bailyr, bailyg, bailyb, (int)(210*strength)));
+    // dl->AddCircle(at, r_in*1.02, fire, 0, fmax(1.0, r_in*0.035));
+    for (; ringsz > r_in; ringsz -= 0.5)
+    {
+        ImU32 fire = rgba_apply_redlight(IM_COL32(lbr, lbg, lbb, (int)(210*strength)));
+        dl->AddCircle(at, ringsz, fire, 0);
+        // lbr starts out at 255 so don't try to increase it.
+        lbg = std::min(255, (int)(lbg*steepness));
+        lbb = std::min(255, (int)(lbb*steepness));
+    }
+    for (int k = 0; k < 10; k++)
     {
         double h1 = flare_hash(k*97 + 17), h2 = flare_hash(k*41 + 233);
         if (h2 < 0.35) continue;                        // not every eclipse gets five of them
         double ang = h1 * _pi * 2.0;
-        double reach = r_in * (0.05 + 0.10*h2);
-        dl->AddCircleFilled(ImVec2(at.x + cos(ang)*(r_in + reach*0.5), at.y + sin(ang)*(r_in + reach*0.5)),
-            fmax(1.0, reach), rgba_apply_redlight(IM_COL32(255, 78, 48, (int)(190*strength))), 0);
+        double reach = r_in * (0.019 + 0.038*h2);
+
+        lbr = bailyr; lbg = bailyg; lbb = bailyb;
+        float beadsz = fmax(1.0, reach);
+        ImVec2 bailyxy = ImVec2(at.x + cos(ang)*(r_in + reach*0.5), at.y + sin(ang)*(r_in + reach*0.5));
+        for (; beadsz > 0.5; beadsz -= 0.5)
+        {
+            dl->AddCircleFilled(bailyxy, beadsz, rgba_apply_redlight(IM_COL32(lbr, lbg, lbb, (int)(190*strength))), 0);
+            // lbr starts out at 255 so don't try to increase it.
+            lbg = std::min(255, (int)(lbg*steepness));
+            lbb = std::min(255, (int)(lbb*steepness));
+        }
     }
 }
 
@@ -2766,7 +2784,7 @@ bool draw_one_object(int i)
     // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
     if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < -angular_radius[i]) flare = 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
-        if (cls == class_galaxy)
+    if (cls == class_galaxy)
     {
         double r = draw_galaxy(cels[i], appmag);
         if (r > 0)
@@ -2828,7 +2846,7 @@ bool draw_one_object(int i)
     }
     else if (angular_radius[i]*zoom > sphere_rad_threshold)
     {
-                // An eclipsed star loses its glare along with its light: the flare drawn here is the
+        // An eclipsed star loses its glare along with its light: the flare drawn here is the
         // scatter of an overwhelming photosphere in the eye and in the air, and as the moon
         // covers that photosphere it goes with it. What is left behind, and only then, is the
         // corona -- a million times fainter, and invisible any other day of the century.
@@ -2852,7 +2870,7 @@ bool draw_one_object(int i)
     }
     else
     {
-                dot_instead:
+        dot_instead:
         discinstead[i] = false;
 
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color);
@@ -3951,7 +3969,7 @@ void draw_horizon()
         }
 
         double hzheight[hznodes];
-        if (show_terrain && !is_water)
+        if (show_terrain && (cels[whereami]->type >= (rocky & 0xfffffff0)) && !is_water)
         {
             // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
             pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);

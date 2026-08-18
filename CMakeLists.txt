@@ -25,6 +25,7 @@ find_package(OpenGL REQUIRED)
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(CURL REQUIRED)
+find_package(LibArchive REQUIRED)
 find_package(PkgConfig REQUIRED)
 
 # pkg_check_modules(CURLPP REQUIRED curlpp)
@@ -85,7 +86,7 @@ target_include_directories(CLASSES PUBLIC src/classes src/include
     ${CURL_INCLUDE_DIRS}
     ${CURLPP_INCLUDE_DIRS})
 
-target_link_libraries(CLASSES JPEG::JPEG PNG::PNG
+target_link_libraries(CLASSES JPEG::JPEG PNG::PNG LibArchive::LibArchive
     ${CURL_LIBRARIES}
     cURLpp)
 

@@ -21,10 +21,10 @@ namespace alienorum
         ice_giant = 0x301,
         hot_jupiter = 0x310,
         waterworld = 0x401,
-        icy = 0x402,
-        rocky = 0x403,
-        lavaworld = 0x404,
-        icy_tailed = 0x412,
+        icy = 0x502,
+        rocky = 0x503,
+        lavaworld = 0x504,
+        icy_tailed = 0x511,
         artificial = 0xf00
     };
 
