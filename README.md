@@ -224,7 +224,10 @@ and add the following lines, changing the numbers to your own location:
 ## Troubleshooting
 
 Some of Alienorum's status messages and error mesages are output to the terminal (the command line), so it is
-recommended to run the app in a command prompt if you notice any unexpected behavior.
+recommended to run the app in a command prompt if you notice any unexpected behavior. Note the Windows desktop app
+from the installer exe does run in a terminal every time, so you will always be able to see any error messages in
+that case. Some of the errors are normal because our source data are incomplete; if the stars and constellations
+and stuff look right on your screen, then the app is working.
 
 If a JSON file fails to load, you can use any third party JSON syntax checker to find and fix whatever might
 be wrong with it. JSON files can be edited in any text editor.

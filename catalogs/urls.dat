@@ -6,6 +6,7 @@ BSC             catalog.gz                  ftp://cdsarc.cds.unistra.fr/cats/V/5
 Hipparcos       hip_main.dat                ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_main.dat
 Hipparcos       h_dm_com.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/h_dm_com.dat.gz
 Hipparcos       hip_dm_o.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_dm_o.dat.gz
+Hipparcos       hip_va_1.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_va_1.dat.gz
 #GAIA                https://gaia.ari.uni-heidelberg.de/gaiasky/repository/catalog/dr3/014-best/v01_20250530/catalog-gaia-dr3-best.tar.gz
 GCVS            gcvs_cat.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/gcvs_cat.dat.gz
 GCVS            crossid.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/crossid.dat
