@@ -47,7 +47,7 @@ CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/sta
 BIN = bin
 OBJ = obj
 UNAME_S := $(shell uname -s)
-LIBS = -lSDL2_image -ljpeg -lpng -lcurl
+LIBS = -lSDL2_image -ljpeg -lpng -lcurl -larchive
 LINUX_GL_LIBS = -lGL
 
 # Dynamically track all object files cleanly

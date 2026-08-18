@@ -177,9 +177,8 @@ void CatalogReader::download_catalogs()
             j = i - 3;
             if (!strcmp(".tar.gz", &entry_name.c_str()[j]))
             {
-                cmd = (std::string)"tar -xvzf " + destdir + _FSSTR + entry_name;
-                std::cout << cmd << std::endl;
-                std::system(cmd.c_str());
+                std::string entry_path = destdir + _FSSTR + entry_name;
+                extract_archive(entry_path.c_str());
             }
             else if (!strcmp(".gz", &entry_name.c_str()[j]))
             {

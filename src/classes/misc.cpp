@@ -3,6 +3,7 @@
 #include <string>
 #include <chrono>
 #include <algorithm>
+#include <filesystem>
 #include <math.h>
 #include <cmath>
 #include <fstream>
@@ -743,6 +744,7 @@ bool extract_archive(const char* filename)
     // Enable support for all common compression formats (including gzip) and archives (including tar)
     archive_read_support_filter_all(a);
     archive_read_support_format_all(a);
+    archive_read_support_format_raw(a);
 
     ext = archive_write_disk_new();
     archive_write_disk_set_options(ext, flags);
@@ -751,7 +753,7 @@ bool extract_archive(const char* filename)
     // Open the .tar.gz or .gz file
     if ((r = archive_read_open_filename(a, filename, 10240)))
     {
-        std::cerr << "Failed to open: " << archive_error_string(a) << std::endl;
+        std::cerr << "Failed to open " << filename << ": " << archive_error_string(a) << std::endl;
         return false;
     }
 
@@ -766,11 +768,18 @@ bool extract_archive(const char* filename)
         if (r < ARCHIVE_WARN)
             return false; // Fatal error
 
+        std::filesystem::path source_dir = std::filesystem::path(filename).parent_path();
+        std::filesystem::path entry_path(archive_entry_pathname(entry));
+        std::filesystem::path target_path = source_dir / entry_path;
+        
+        // Update the entry with our new absolute/relative path
+        archive_entry_set_pathname(entry, target_path.string().c_str());
+
         // Extract the current file to disk
         r = archive_write_header(ext, entry);
         if (r < ARCHIVE_OK)
             std::cerr << archive_error_string(ext) << std::endl;
-        else if (archive_entry_size(entry) > 0)
+        else
         {
             // Read data from the archive and write it to disk
             const void *buff;
