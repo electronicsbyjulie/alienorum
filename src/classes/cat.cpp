@@ -184,16 +184,10 @@ void CatalogReader::download_catalogs()
             else if (!strcmp(".gz", &entry_name.c_str()[j]))
             {
                 std::string decompressed_name = entry_name.substr(0, entry_name.size()-3);
-                if (!fs::exists((destdir + _FSSTR + decompressed_name).c_str()))
+                std::string entry_path = destdir + _FSSTR + decompressed_name;
+                if (!fs::exists(entry_path.c_str()))
                 {
-                    #ifdef _WIN32
-                    cmd = (std::string)"7z e -y " + destdir + _FSSTR + entry_name
-                        + std::string(" -so > ") + destdir + _FSSTR + decompressed_name;
-                    #else
-                    cmd = (std::string)"gunzip " + destdir + _FSSTR + entry_name;
-                    #endif
-                    std::cout << cmd << std::endl;
-                    std::system(cmd.c_str());
+                    extract_archive(entry_path.c_str());
                 }
             }
         }

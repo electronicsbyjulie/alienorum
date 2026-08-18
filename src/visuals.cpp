@@ -3032,7 +3032,7 @@ void draw_galaxy_band()
     Rotation pl = g->location.local_system_plane;
     Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
-    double gbrt = (view_mode == vm_horizon) ? (16 * pow(magnbase, sky_mag_shift)) : 13;
+    double gbrt = (view_mode == vm_horizon) ? (8 * pow(magnbase, sky_mag_shift)) : 6;
     if (gbrt < 2) return;
 
     // gcol, the band's outline colour, went with the outline pass that used to sit at the bottom

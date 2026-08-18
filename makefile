@@ -2,15 +2,15 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libarchive-dev
 #
 # Mac OS:
-#   brew install sdl2 sdl2_image jpeg png curl
+#   brew install sdl2 sdl2_image jpeg png curl archive
 #
 # MSYS2 (Run in MINGW64 environment):
-#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl
+#   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl mingw-w64-x86_64-libarchive
 #
-# Claude Code has not been respecting my instructions in regards to a matter of PTSD.
+# Claude Code deletes irreplaceable files and is not PTSD friendly.
 #
 
 CPP = g++

@@ -376,13 +376,7 @@ void load_catalogs()
 
         if (file_exists(ihscgz.c_str()))
         {
-            #ifdef _WIN32
-            std::string cmd = (std::string)"7z e -y " + ihscgz + std::string(" -so > ") + ihcfn;
-            #else
-            std::string cmd = (std::string)"gunzip -k " + ihscgz;
-            #endif
-            std::cout << cmd << std::endl;
-            std::system(cmd.c_str());
+            extract_archive(ihscgz.c_str());
         }
     }
     if (file_exists(ihcfn.c_str()))

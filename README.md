@@ -15,16 +15,13 @@ Alienorum can be built and run on Linux, Mac, and Windows. Before building, plea
 all the dependency packages:
 
 Linux:
-   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev
+   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libarchive-dev
 
 Mac OS:
-   brew install sdl2 sdl2_image jpeg png
+   brew install sdl2 sdl2_image jpeg png archive
 
 MSYS2 (Run in MINGW64 environment):
-   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl
-
-Additionally, for those running Windows, since the star catalogs all download as compressed .gz files and Windows
-has incomplete support for gzip, Alienorum will require 7zip (https://www.7-zip.org/download.html) to be installed.
+   pacman -S mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-libjpeg-turbo mingw-w64-x86_64-libpng mingw-w64-x86_64-curl mingw-w64-x86_64-libarchive
 
 
 ## Features
@@ -266,8 +263,8 @@ package/build_windows_installer.sh
 ```
 
 This will:
-* Use vcpkg to fetch and build SDL2, SDL2_image, curl, libpng, and libjpeg-turbo for the `x64-mingw-static`
-  triplet (this step can take 20-40 minutes the first time; later runs are cached and fast).
+* Use vcpkg to fetch and build SDL2, SDL2_image, curl, libpng, libjpeg-turbo, and libarchive for the
+   `x64-mingw-static` triplet (this step can take 20-40 minutes the first time; later runs are cached and fast).
 * Cross-compile `alienorum.exe` with mingw-w64, statically linked, so it carries no external DLL dependencies.
 * Package it with the git-tracked contents of `assets/` and `ephemerides/`, the small tracked `catalogs/*`
   files, and a starter set of texture maps (see below) into an NSIS installer, written to

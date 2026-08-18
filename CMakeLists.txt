@@ -165,7 +165,7 @@ if(WIN32)
 	# Osculating elements for the local solar system (Sun<->planets, Earth-Moon, the
 	# Galilean moons). Only ever read locally (see Orbit::read_osc_elements in
 	# celestial.cpp) -- there's no download fallback -- so these have to ship. Only the
-	# tracked .gz files are installed; the app gunzip/7z-decompresses them to .txt itself
+	# tracked .gz files are installed; the app decompresses them to .txt itself
 	# on first use.
 	install(DIRECTORY ephemerides/ DESTINATION ephemerides FILES_MATCHING PATTERN "*.gz")
 
@@ -175,13 +175,15 @@ if(WIN32)
 
 	set(CPACK_GENERATOR "NSIS")
 	set(CPACK_PACKAGE_NAME "Alienorum")
-	set(CPACK_PACKAGE_VENDOR "Alienorum")
+	set(CPACK_PACKAGE_VENDOR "Electronics by Julie")
+	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Astronomy/planetarium software with spaceflight and worldbuilding features.")
 	set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 	set(CPACK_PACKAGE_INSTALL_DIRECTORY "Alienorum")
 	set(CPACK_PACKAGE_EXECUTABLES "alienorum" "Alienorum")
 	set(CPACK_NSIS_DISPLAY_NAME "Alienorum")
 	set(CPACK_NSIS_PACKAGE_NAME "Alienorum")
 	set(CPACK_NSIS_INSTALLED_ICON_NAME "alienorum.exe")
+	set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 	set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/assets/icon48.ico")
 	set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/assets/icon48.ico")
 	set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)

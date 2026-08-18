@@ -1,11 +1,13 @@
 {
   "name": "alienorum",
-  "version": "0.2.0",
-  "dependencies": [
+  "version": "0.2.1",
+  "dependencies":
+  [
     "sdl2",
     "sdl2-image",
     "curl",
     "libpng",
-    "libjpeg-turbo"
+    "libjpeg-turbo",
+    "libarchive"
   ]
 }
