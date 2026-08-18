@@ -2430,12 +2430,14 @@ void Map::generate_stellar_map(CelestialObject *cel)
     double scale_height = kB * T_eff / (1.3 * atomic_mass_unit * surface_g);
     double d_granule = 10.0 * scale_height;
 
+    double granule_correction = 8;
+
     if (d_granule > 0.5 * radius_m) d_granule = 0.5 * radius_m;
-    double cells_across = 2.0 * radius_m / fmax(1.0, d_granule);
+    double cells_across = 2.0 * radius_m / fmax(1.0, d_granule) * granule_correction;
 
     bool granulated = (regime == regime_stellar) && convective_envelope;
     double gran_scale = cells_across / _pi;
-    double gran_nyquist = (double)image_width / (6.0 * _pi);
+    double gran_nyquist = (double)image_width / (6.0 * _pi) * granule_correction;
     double gran_amp = 1.0;
     if (gran_scale > gran_nyquist)
     {

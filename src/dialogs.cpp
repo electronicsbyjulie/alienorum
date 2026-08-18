@@ -1643,296 +1643,299 @@ void draw_objedit_window(ImGuiIO& io)
 
             ImGui::EndTabItem();
         }
-        if ((tc == class_planet || tc == class_moon) && ImGui::BeginTabItem("Maps"))
+        if ((tc == class_star || tc == class_planet || tc == class_moon) && ImGui::BeginTabItem("Maps"))
         {
-            Planet* p = (Planet*)cel;
-
-            double edit_surf_presh = p->get_surface_pressure() / oneatm;
-            if (isinf(edit_surf_presh)) edit_surf_presh = 0;
-            ImGui::Text("%s", "Pressure, atm");
-            ImGui::SameLine(col1);
-            ImGui::SetNextItemWidth(txtwid);
-            bool update_taucalc = false;
-            if (ImGui::InputDouble("##edtpresh", &edit_surf_presh, 0, 0, "%.3f"))
+            if ((tc == class_planet || tc == class_moon))
             {
-                p->ensure_atmosphere()->surface_pressure = edit_surf_presh * oneatm;
-                p->temperature = 0;
-                update_taucalc = true;
-                cel->user_edited = true;
-                if (cel->typeclass() == class_planet
-                    || cel->typeclass() == class_moon               // See Kepler-1625b.
-                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
-            }
-            ImGui::SameLine(col2);
-            ImGui::Text("%s", "Total tau");
-            ImGui::SameLine(col3);
-            double edit_atm_tau = p->get_atmospheric_tau();
-            ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edttau", &edit_atm_tau, 0, 0, "%.5f"))
-            {
-                p->ensure_atmosphere()->tau = edit_atm_tau;
-                p->temperature = 0;
-                cel->user_edited = true;
-                if (cel->typeclass() == class_planet
-                    || cel->typeclass() == class_moon               // See Kepler-1625b.
-                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("...##tau_calculator"))
-            {
-                show_taucalc = !show_taucalc;
-            }
+                Planet* p = (Planet*)cel;
 
-            double edit_particulates = p->get_particulates();
-            ImGui::Text("%s", "Particulates");
-            ImGui::SameLine(col1);
-            ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtpartic", &edit_particulates, 0, 0, "%.6f"))
-            {
-                p->ensure_atmosphere()->particulates = edit_particulates;
-                viewchanged = true;
-                cel->user_edited = true;
-            }
-            ImGui::SameLine();
-            ImGui::Text("%s", "How much the sky color resembles the ground color.");
-
-            if (show_taucalc)
-            {
-                double col15 = col2 - 0.8*txtwid;
-
-                // Normalize pressure relative to Earth's sea-level pressure (1 atm)
-                constexpr double P_EARTH = 101325.0;
-                double normalized_pressure = p->get_surface_pressure() / P_EARTH;
-
-                ImGui::Text("%s", "Use this tool to calculate total tau from atmospheric pressure and composition.");
-                ImGui::Text("%s", "We ignore gases like nitrogen, oxygen, argon that do not contribute to the greenhouse effect.");
-                // Backed by the planet's own AtmosphereComposition rather than by statics. Statics
-                // survived a change of selection, so opening this panel on a second planet showed
-                // the first one's gases and silently recomputed its tau from them.
-                //
-                // The composition is only created once the user actually edits a field: merely
-                // looking at a body must not give it an atmosphere. Until then the fields show
-                // starting suggestions, which is what the old initializers were for.
-                AtmosphereComposition *comp = (p->atm && p->atm->comp) ? p->atm->comp : nullptr;
-                double co2_percent  = comp ? comp->CO2_portion  * 100 : (p->is_in_con_HZ() ? 0.04 : 90),
-                       ch4_percent  = comp ? comp->CH4_portion  * 100 : (p->is_in_con_HZ() ? 0.0002 : 0),
-                       h2o_percent  = comp ? comp->H2O_portion  * 100 : (p->is_in_con_HZ() ? 1 : 0),
-                       n2o_percent  = comp ? comp->N2O_portion  * 100 : 0,
-                       o3_percent   = comp ? comp->O3_portion   * 100 : 0,
-                       so2_percent  = comp ? comp->SO2_portion  * 100 : 0,
-                       h2s_percent  = comp ? comp->H2S_portion  * 100 : 0,
-                       co_percent   = comp ? comp->CO_portion   * 100 : 0,
-                       hcn_percent  = comp ? comp->HCN_portion  * 100 : 0,
-                       h2_percent   = comp ? comp->H2_portion   * 100 : 0,
-                       nh3_percent  = comp ? comp->NH3_portion  * 100 : 0,
-                       c2h6_percent = comp ? comp->C2H6_portion * 100 : 0;
-
-                ImGui::Text("%s", "Carbon dioxide %");
-                ImGui::SameLine(col15);
+                double edit_surf_presh = p->get_surface_pressure() / oneatm;
+                if (isinf(edit_surf_presh)) edit_surf_presh = 0;
+                ImGui::Text("%s", "Pressure, atm");
+                ImGui::SameLine(col1);
                 ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtc02", &co2_percent, 0, 0, "%.6f"))
+                bool update_taucalc = false;
+                if (ImGui::InputDouble("##edtpresh", &edit_surf_presh, 0, 0, "%.3f"))
                 {
-                    p->ensure_atmosphere()->ensure_composition()->CO2_portion = co2_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (p->type != gas_giant && p->type != ice_giant)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Randomize  ");
-                    ImGui::SameLine();
-                    ImGui::Checkbox("##randomize_txgen", &randomize_txgen);
-                }
-                else randomize_txgen = true;
-
-                ImGui::Text("%s", "Methane %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtch4", &ch4_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->CH4_portion = ch4_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (has_water < 0) has_water = 0;
-                if (has_water > 1) has_water = 1;
-                if (p->type == rocky && !randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Water up to:    ");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edth2olvl", &has_water);
-                }
-
-                ImGui::Text("%s", "Water vapor %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edth2o", &h2o_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->H2O_portion = h2o_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (p->type == rocky && !randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Coldest vegetation:");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edtvegcold", &veg_min_temp);
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "degK");
-                }
-
-                ImGui::Text("%s", "Nitrous oxide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtn2o", &n2o_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->N2O_portion = n2o_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (p->type == rocky && !randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Hottest vegetation:");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputFloat("##edtveghot", &veg_max_temp);
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "degK");
-                }
-
-                ImGui::Text("%s", "Ozone %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->O3_portion = o3_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (vegetation_r < 0) vegetation_r = 0;
-                if (vegetation_r > 255) vegetation_r = 255;
-                if (p->type == rocky && !randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Vegetation R:   ");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputInt("##edtvegr", &vegetation_r);
-                }
-
-                ImGui::Text("%s", "Sulfur dioxide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->SO2_portion = so2_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (vegetation_g < 0) vegetation_g = 0;
-                if (vegetation_g > 255) vegetation_g = 255;
-                if (p->type == rocky && !randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Vegetation G:   ");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputInt("##edtvegg", &vegetation_g);
-                }
-
-                ImGui::Text("%s", "Hydrogen sulfide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->H2S_portion = h2s_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                if (vegetation_b < 0) vegetation_b = 0;
-                if (vegetation_b > 255) vegetation_b = 255;
-                if (p->type == rocky && !randomize_txgen)
-                {
-                    ImGui::SameLine();
-                    ImGui::Text("%s", "Vegetation B:   ");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(txtwid*.6);
-                    ImGui::InputInt("##edtvegb", &vegetation_b);
-                }
-
-                ImGui::Text("%s", "Carbon monoxide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtco", &co_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->CO_portion = co_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                ImGui::Text("%s", "Hydrogen cyanide %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edthcn", &hcn_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->HCN_portion = hcn_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                ImGui::Text("%s", "Hydrogen %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edth2", &h2_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->H2_portion = h2_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                ImGui::Text("%s", "Ammonia %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtnh3", &nh3_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->NH3_portion = nh3_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-                ImGui::Text("%s", "Ethane %");
-                ImGui::SameLine(col15);
-                ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtc2h6", &c2h6_percent, 0, 0, "%.6f"))
-                {
-                    p->ensure_atmosphere()->ensure_composition()->C2H6_portion = c2h6_percent * 0.01;
-                    update_taucalc = true;
-                    cel->user_edited = true;
-                }
-
-                if (update_taucalc)
-                {
+                    p->ensure_atmosphere()->surface_pressure = edit_surf_presh * oneatm;
                     p->temperature = 0;
-                    // Straight from the composition, not from the display variables: those two are
-                    // the same number by now, but reading the stored one means the tau shown always
-                    // matches the composition that will be written to disk.
-                    AtmosphereComposition *tc = p->ensure_atmosphere()->ensure_composition();
-                    p->atm->tau = edit_atm_tau = atmospheric_tau(normalized_pressure,
-                        tc->CO2_portion, tc->CH4_portion, tc->H2O_portion, tc->N2O_portion,
-                        tc->O3_portion,  tc->SO2_portion, tc->H2S_portion, tc->CO_portion,
-                        tc->HCN_portion, tc->H2_portion,  tc->NH3_portion, tc->C2H6_portion);
-                }
-                if (ImGui::Button("Clear##atmosph_comp"))
-                {
-                    co2_percent=ch4_percent=h2o_percent=n2o_percent=o3_percent=so2_percent=h2s_percent=co_percent=hcn_percent=h2_percent=nh3_percent=c2h6_percent=0;
-                    if (p->atm && p->atm->comp) *(p->atm->comp) = AtmosphereComposition(cel);
                     update_taucalc = true;
                     cel->user_edited = true;
+                    if (cel->typeclass() == class_planet
+                        || cel->typeclass() == class_moon               // See Kepler-1625b.
+                        ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 }
-            }
+                ImGui::SameLine(col2);
+                ImGui::Text("%s", "Total tau");
+                ImGui::SameLine(col3);
+                double edit_atm_tau = p->get_atmospheric_tau();
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edttau", &edit_atm_tau, 0, 0, "%.5f"))
+                {
+                    p->ensure_atmosphere()->tau = edit_atm_tau;
+                    p->temperature = 0;
+                    cel->user_edited = true;
+                    if (cel->typeclass() == class_planet
+                        || cel->typeclass() == class_moon               // See Kepler-1625b.
+                        ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("...##tau_calculator"))
+                {
+                    show_taucalc = !show_taucalc;
+                }
 
-            ImGui::Text("Surface temperature: %fK", p->estimate_surface_temperature());
+                double edit_particulates = p->get_particulates();
+                ImGui::Text("%s", "Particulates");
+                ImGui::SameLine(col1);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtpartic", &edit_particulates, 0, 0, "%.6f"))
+                {
+                    p->ensure_atmosphere()->particulates = edit_particulates;
+                    viewchanged = true;
+                    cel->user_edited = true;
+                }
+                ImGui::SameLine();
+                ImGui::Text("%s", "How much the sky color resembles the ground color.");
+
+                if (show_taucalc)
+                {
+                    double col15 = col2 - 0.8*txtwid;
+
+                    // Normalize pressure relative to Earth's sea-level pressure (1 atm)
+                    constexpr double P_EARTH = 101325.0;
+                    double normalized_pressure = p->get_surface_pressure() / P_EARTH;
+
+                    ImGui::Text("%s", "Use this tool to calculate total tau from atmospheric pressure and composition.");
+                    ImGui::Text("%s", "We ignore gases like nitrogen, oxygen, argon that do not contribute to the greenhouse effect.");
+                    // Backed by the planet's own AtmosphereComposition rather than by statics. Statics
+                    // survived a change of selection, so opening this panel on a second planet showed
+                    // the first one's gases and silently recomputed its tau from them.
+                    //
+                    // The composition is only created once the user actually edits a field: merely
+                    // looking at a body must not give it an atmosphere. Until then the fields show
+                    // starting suggestions, which is what the old initializers were for.
+                    AtmosphereComposition *comp = (p->atm && p->atm->comp) ? p->atm->comp : nullptr;
+                    double co2_percent  = comp ? comp->CO2_portion  * 100 : (p->is_in_con_HZ() ? 0.04 : 90),
+                        ch4_percent  = comp ? comp->CH4_portion  * 100 : (p->is_in_con_HZ() ? 0.0002 : 0),
+                        h2o_percent  = comp ? comp->H2O_portion  * 100 : (p->is_in_con_HZ() ? 1 : 0),
+                        n2o_percent  = comp ? comp->N2O_portion  * 100 : 0,
+                        o3_percent   = comp ? comp->O3_portion   * 100 : 0,
+                        so2_percent  = comp ? comp->SO2_portion  * 100 : 0,
+                        h2s_percent  = comp ? comp->H2S_portion  * 100 : 0,
+                        co_percent   = comp ? comp->CO_portion   * 100 : 0,
+                        hcn_percent  = comp ? comp->HCN_portion  * 100 : 0,
+                        h2_percent   = comp ? comp->H2_portion   * 100 : 0,
+                        nh3_percent  = comp ? comp->NH3_portion  * 100 : 0,
+                        c2h6_percent = comp ? comp->C2H6_portion * 100 : 0;
+
+                    ImGui::Text("%s", "Carbon dioxide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtc02", &co2_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->CO2_portion = co2_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (p->type != gas_giant && p->type != ice_giant)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Randomize  ");
+                        ImGui::SameLine();
+                        ImGui::Checkbox("##randomize_txgen", &randomize_txgen);
+                    }
+                    else randomize_txgen = true;
+
+                    ImGui::Text("%s", "Methane %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtch4", &ch4_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->CH4_portion = ch4_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (has_water < 0) has_water = 0;
+                    if (has_water > 1) has_water = 1;
+                    if (p->type == rocky && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Water up to:    ");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        ImGui::InputFloat("##edth2olvl", &has_water);
+                    }
+
+                    ImGui::Text("%s", "Water vapor %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edth2o", &h2o_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->H2O_portion = h2o_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (p->type == rocky && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Coldest vegetation:");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        ImGui::InputFloat("##edtvegcold", &veg_min_temp);
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "degK");
+                    }
+
+                    ImGui::Text("%s", "Nitrous oxide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtn2o", &n2o_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->N2O_portion = n2o_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (p->type == rocky && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Hottest vegetation:");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        ImGui::InputFloat("##edtveghot", &veg_max_temp);
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "degK");
+                    }
+
+                    ImGui::Text("%s", "Ozone %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edto3", &o3_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->O3_portion = o3_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (vegetation_r < 0) vegetation_r = 0;
+                    if (vegetation_r > 255) vegetation_r = 255;
+                    if (p->type == rocky && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Vegetation R:   ");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        ImGui::InputInt("##edtvegr", &vegetation_r);
+                    }
+
+                    ImGui::Text("%s", "Sulfur dioxide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->SO2_portion = so2_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (vegetation_g < 0) vegetation_g = 0;
+                    if (vegetation_g > 255) vegetation_g = 255;
+                    if (p->type == rocky && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Vegetation G:   ");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        ImGui::InputInt("##edtvegg", &vegetation_g);
+                    }
+
+                    ImGui::Text("%s", "Hydrogen sulfide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->H2S_portion = h2s_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if (vegetation_b < 0) vegetation_b = 0;
+                    if (vegetation_b > 255) vegetation_b = 255;
+                    if (p->type == rocky && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Vegetation B:   ");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        ImGui::InputInt("##edtvegb", &vegetation_b);
+                    }
+
+                    ImGui::Text("%s", "Carbon monoxide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtco", &co_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->CO_portion = co_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    ImGui::Text("%s", "Hydrogen cyanide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edthcn", &hcn_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->HCN_portion = hcn_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    ImGui::Text("%s", "Hydrogen %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edth2", &h2_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->H2_portion = h2_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    ImGui::Text("%s", "Ammonia %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtnh3", &nh3_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->NH3_portion = nh3_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    ImGui::Text("%s", "Ethane %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtc2h6", &c2h6_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->C2H6_portion = c2h6_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+
+                    if (update_taucalc)
+                    {
+                        p->temperature = 0;
+                        // Straight from the composition, not from the display variables: those two are
+                        // the same number by now, but reading the stored one means the tau shown always
+                        // matches the composition that will be written to disk.
+                        AtmosphereComposition *tc = p->ensure_atmosphere()->ensure_composition();
+                        p->atm->tau = edit_atm_tau = atmospheric_tau(normalized_pressure,
+                            tc->CO2_portion, tc->CH4_portion, tc->H2O_portion, tc->N2O_portion,
+                            tc->O3_portion,  tc->SO2_portion, tc->H2S_portion, tc->CO_portion,
+                            tc->HCN_portion, tc->H2_portion,  tc->NH3_portion, tc->C2H6_portion);
+                    }
+                    if (ImGui::Button("Clear##atmosph_comp"))
+                    {
+                        co2_percent=ch4_percent=h2o_percent=n2o_percent=o3_percent=so2_percent=h2s_percent=co_percent=hcn_percent=h2_percent=nh3_percent=c2h6_percent=0;
+                        if (p->atm && p->atm->comp) *(p->atm->comp) = AtmosphereComposition(cel);
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                }
+
+                ImGui::Text("Surface temperature: %fK", p->estimate_surface_temperature());
+            }
 
             ImGui::Text("%s", "Texture");
             ImGui::SameLine();

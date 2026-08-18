@@ -99,7 +99,7 @@ namespace alienorum
         static double interpolate_mseq_temp(double mseqidx);
         static double interpolate_mseq_BV(double mseqidx);
 
-        double estimate_radius(bool skip_mainseq = false);
+        double estimate_radius(bool skip_mainseq = true);
 
         static double temperature_from_BV(double BV);
         static double degenerate_radius(double mass_kg);            // metere
