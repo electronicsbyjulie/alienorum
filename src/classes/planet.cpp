@@ -827,4 +827,12 @@ void Planet::generate_ring_parameters()
     meanOpacity = std::min(1.0, meanOpacity);
 
     // TODO: Generate a ring texture and a ring transparency map using innerRadius/ring_radius and meanOpacity.
+    if (ring_map) delete ring_map;
+    if (ringx_map) delete ringx_map;
+
+    ring_map = new Map(this);
+    ringx_map = new Map(this);
+
+    int ringres = ring_radius / volumetric_mean_radius * 1024;
+    ring_map->generate_ring_map(this, ringres, innerRadius/ring_radius, meanOpacity, ringx_map);
 }

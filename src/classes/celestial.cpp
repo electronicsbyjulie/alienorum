@@ -2616,6 +2616,54 @@ void Map::generate_stellar_map(CelestialObject *cel)
     touch_gen();
 }
 
+void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir, double mo, Map *xmap)
+{
+    cel_obj_class cls = cel->typeclass();
+    assert(cls == class_planet || cls == class_moon);
+    assert(xmap);
+    cel->randomize();
+
+    mtx.lock();
+    generating_fic_texture = true;
+
+    xmap->image_height = image_height = 1;
+    xmap->image_width = image_width = res;
+    xmap->allocated = allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    xmap->red_data = new unsigned char[allocated];
+    xmap->green_data = new unsigned char[allocated];
+    xmap->blue_data = new unsigned char[allocated];
+    xmap->lat_scale = lat_scale = (double)image_height / _pi;
+    xmap->lon_scale = lon_scale = (double)image_width / (_pi * 2);
+    xmap->inv_lat_scale = inv_lat_scale = 1.0 / lat_scale;
+    xmap->inv_lon_scale = inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious ring map." << std::endl;
+    mtx.unlock();
+    generating_fic_texture = false;
+
+    RGB3Byte rgb, xrgb;
+    int x, y, idx;
+    for (x=0; x<image_width; x++)
+    {
+        // TODO
+        rgb = 
+        rgbx = 
+
+        for (y=0; y<image_height; y++)
+        {
+            idx = x + y * image_width;
+            red_data[idx] = rgb.r;
+            green_data[idx] = rgb.g;
+            blue_data[idx] = rgb.b;
+            xmap->red_data[idx] = rgbx.r;
+            xmap->green_data[idx] = rgbx.g;
+            xmap->blue_data[idx] = rgbx.b;
+        }
+    }
+}
+
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 {
     unsigned char *lred = red_data, *lgreen = green_data, *lblue = blue_data;

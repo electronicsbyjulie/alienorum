@@ -250,6 +250,7 @@ namespace alienorum
         void generate_gas_giant_map(CelestialObject *cel);
         void generate_overcast_sky(CelestialObject *cel);
         void generate_stellar_map(CelestialObject *cel);
+        void generate_ring_map(CelestialObject *cel, int resolution, double rel_inner_radius, double mean_opacity, Map* transparency_map);
         void mark_for_map_regen(CelestialObject *cel, bool discard_bump = false);
 
         // For the GPU texture cache (gputex.h): size of the equirectangular grid, and a bulk
