@@ -1,0 +1,200 @@
+{
+    "Rho 1 Cancri A.Lipperhey": {
+        "!name": "Lipperhey",
+        "!origcenname": "Rho 1 Cancri A",
+        "!origname": "Lipperhey",
+        "BV_color": 0.98,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -9.536903527161773,
+        "albedo": 0.5000000000000003,
+        "atmosphere": {
+            "composition": {
+                "C2H6": 7.508418860886087e-06,
+                "CH4": 0.002701959936154058,
+                "H2": 0.8282923949699679,
+                "H2O": 3.8460447504706784e-06,
+                "He": 0.1687286786846239,
+                "NH3": 0.00026561194564275704
+            },
+            "surface_pressure": 2150786113074.4019
+        },
+        "declination": 0.0,
+        "distance": 1.000000000001057,
+        "distance_known": false,
+        "epoch": 2437909.5113125,
+        "equinox": 188.0904986840163,
+        "location": {
+            "equatorial_plane": {
+                "a": 109.90336837176437,
+                "v": {
+                    "x": 2.597481331614733e+73,
+                    "y": 0.0,
+                    "z": 9.036786126364945e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": -59184970634.50253,
+                "y": 785743484150.6206,
+                "z": -58365610803.84767
+            },
+            "local_system_plane": {
+                "a": 90.70893023869468,
+                "v": {
+                    "x": 7.135088698698914e+36,
+                    "y": 0.0,
+                    "z": 7.005369406191881e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 90.1277887442162,
+                "v": {
+                    "x": 7.266617628716025e+73,
+                    "y": 0.0,
+                    "z": 6.86991781608298e+73
+                }
+            },
+            "system_center": {
+                "x": -2.4850543161336886e+17,
+                "y": 1.8302319507639078e+17,
+                "z": -2.329930080376551e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "mass": 7.360444e+30,
+        "oblateness": 0.0,
+        "obliquity": 35.872,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": -90.0,
+            "ascending_node": 196.2343035020639,
+            "center_name": "Rho 1 Cancri A",
+            "eccentricity": 0.0913,
+            "epoch": 2437909.5113125,
+            "inclination": 1.2279999999985514,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 0.0,
+            "periapsis_distance": 0.0,
+            "period": 4799.0,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 837748075920.0
+        },
+        "precession": null,
+        "right_ascension": 0.0,
+        "sidereal_rotational_period": 0.18075922731272584,
+        "type": 768,
+        "typeclass": 3,
+        "user_added": false,
+        "volumetric_mean_radius": 81067760.0
+    },
+    "Rho 1 Cancri A.Lipperhey.Lipperhey II": {
+        "!name": "Lipperhey II",
+        "!origcenname": "Lipperhey",
+        "!origname": "Lipperhey II",
+        "BV_color": 1.0,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -1.2626908978633877,
+        "albedo": 0.19123122836054818,
+        "atmosphere": {
+            "surface_pressure": 11829.865366406173
+        },
+        "declination": 0.0,
+        "distance": 0.0,
+        "distance_known": false,
+        "epoch": 2451544.5,
+        "equinox": 215.15962666606512,
+        "location": {
+            "equatorial_plane": {
+                "a": 90.2308113987119,
+                "v": {
+                    "x": 7.698978762974395e+73,
+                    "y": 0.0,
+                    "z": 6.381543951129504e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": -59321439487.55522,
+                "y": 785513144006.5488,
+                "z": -58462755560.40397
+            },
+            "local_system_plane": {
+                "a": 90.70893023869468,
+                "v": {
+                    "x": 7.135088698698914e+36,
+                    "y": 0.0,
+                    "z": 7.005369406191881e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 90.19335449048594,
+                "v": {
+                    "x": 8.119681729613768e+73,
+                    "y": 0.0,
+                    "z": 5.836919544816696e+73
+                }
+            },
+            "system_center": {
+                "x": -2.4850543161336886e+17,
+                "y": 1.8302319507639078e+17,
+                "z": -2.329930080376551e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "mass": 4.17731061279588e+26,
+        "oblateness": 0.0,
+        "obliquity": 3.944,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 234.1394105712601,
+            "ascending_node": 223.89166037733278,
+            "center_name": "Lipperhey",
+            "eccentricity": 7.422207067053186e-13,
+            "epoch": 2451544.5,
+            "inclination": 7.681964641192467,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 14.587835788069217,
+            "periapsis_distance": 0.0,
+            "period": 0.4986944518719509,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 284811224.4117719
+        },
+        "precession": null,
+        "right_ascension": 0.0,
+        "sidereal_rotational_period": 0.4986944518719509,
+        "type": 1283,
+        "typeclass": 4,
+        "user_added": true,
+        "volumetric_mean_radius": 2902092.441385439
+    }
+}

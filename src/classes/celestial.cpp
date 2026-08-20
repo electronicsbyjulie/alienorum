@@ -2634,7 +2634,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     mtx.lock();
     generating_fic_texture = true;
 
-    xmap->image_height = image_height = 1;
+    xmap->image_height = image_height = 29;             // TODO: Decrease this for release.
     xmap->image_width = image_width = res;
     xmap->allocated = allocated = image_height * image_width;
     red_data = new unsigned char[allocated];
@@ -2660,7 +2660,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
         rgb.r = 250;
         rgb.g = 224;
         rgb.b = 208;
-        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo * sigmoid((x-inx) * 0.2 * dev_dial));
+        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo * sigmoid((double)(x-inx) * 0.05));
 
         for (y=0; y<image_height; y++)
         {

@@ -238,6 +238,16 @@ void save_textures(CelestialObject* cel)
         mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_night.png");
         cel->night_map->save_to_png(mapfname);
     }
+    if (cel->ring_map)
+    {
+        mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_ring.png");
+        cel->ring_map->save_to_png(mapfname);
+    }
+    if (cel->ringx_map)
+    {
+        mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_ringx.png");
+        cel->ringx_map->save_to_png(mapfname);
+    }
 }
 
 static bool establish_project_root()

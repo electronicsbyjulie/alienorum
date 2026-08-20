@@ -812,7 +812,7 @@ void Planet::generate_ring_parameters()
     // Generate Outer Radius
     // Must be larger than inner, and capped tightly by the Roche limit
     std::uniform_real_distribution<double> outerDist(innerRadius * 1.15, roche_limit_zero * 0.98);
-    ring_radius = outerDist(rng);
+    ring_radius = outerDist(rng) + volumetric_mean_radius;
 
     // Generate Density/Opacity
     // Wider rings or rings around more massive planets tend to be more substantial.
