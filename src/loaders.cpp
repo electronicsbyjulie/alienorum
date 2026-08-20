@@ -134,50 +134,60 @@ void load_textures(CelestialObject* cel)
             }
         }
 
-        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.jpg";
-        if (file_exists(filename.c_str()))
+        cel_obj_class cls = cel->typeclass();
+
+        if (cls == class_planet || cls == class_moon)
         {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename))
-            {
-                cel->ring_map = map;
-                cel->has_real_maps = true;
-            }
-        }
-        else
-        {
-            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.png";
+            Planet *p = (Planet*)cel;
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.jpg";
             if (file_exists(filename.c_str()))
             {
+                if (!p->ring_radius) p->guess_has_rings();
                 Map *map = new Map();
-                if (map->load_from_png(filename))
+                if (map->load_from_jpeg(filename))
                 {
                     cel->ring_map = map;
                     cel->has_real_maps = true;
                 }
             }
-        }
-
-        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.jpg";
-        if (file_exists(filename.c_str()))
-        {
-            Map *map = new Map();
-            if (map->load_from_jpeg(filename))
+            else
             {
-                cel->ringx_map = map;
-                cel->has_real_maps = true;
+                filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.png";
+                if (file_exists(filename.c_str()))
+                {
+                    if (!p->ring_radius) p->guess_has_rings();
+                    Map *map = new Map();
+                    if (map->load_from_png(filename))
+                    {
+                        cel->ring_map = map;
+                        cel->has_real_maps = true;
+                    }
+                }
             }
-        }
-        else
-        {
-            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.png";
+
+            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.jpg";
             if (file_exists(filename.c_str()))
             {
+                if (!p->ring_radius) p->guess_has_rings();
                 Map *map = new Map();
-                if (map->load_from_png(filename))
+                if (map->load_from_jpeg(filename))
                 {
                     cel->ringx_map = map;
                     cel->has_real_maps = true;
+                }
+            }
+            else
+            {
+                filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.png";
+                if (file_exists(filename.c_str()))
+                {
+                    if (!p->ring_radius) p->guess_has_rings();
+                    Map *map = new Map();
+                    if (map->load_from_png(filename))
+                    {
+                        cel->ringx_map = map;
+                        cel->has_real_maps = true;
+                    }
                 }
             }
         }
