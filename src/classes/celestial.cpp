@@ -2656,11 +2656,15 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     int inx = rir * image_width;
     for (x=0; x<image_width; x++)
     {
-        // TODO
+        // TODO: wandering drunkard on color, keep colors pale like Saturn, just do lightness and redness
         rgb.r = 250;
         rgb.g = 224;
         rgb.b = 208;
-        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo * sigmoid((double)(x-inx) * 0.05));
+        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo
+            * sigmoid((double)(x-inx) * 0.05)   // inner bound
+            * 1.0                               // TODO: taper outer bound
+            * cel->cel_frand(0,1)               // roughness - TODO: wandering drunkard on probability
+            );
 
         for (y=0; y<image_height; y++)
         {
@@ -2676,6 +2680,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
 
     generating_fic_texture = false;
     touch_gen();
+    xmap->touch_gen();
 }
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
