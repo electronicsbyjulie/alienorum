@@ -1896,6 +1896,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->cloud_map = new Map(cel);
         p->cloud_map->generate_overcast_sky(cel);
     }
+    p->generate_ring_parameters();
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -2267,6 +2268,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
     generating_fic_texture = false;
     touch_gen();
+    p->generate_ring_parameters();
 }
 
 void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
@@ -2618,8 +2620,14 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
 void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir, double mo, Map *xmap)
 {
+    assert(cel);
     cel_obj_class cls = cel->typeclass();
     assert(cls == class_planet || cls == class_moon);
+
+    cel->ring_map = this;
+    if (xmap) cel->ringx_map = xmap;
+    else xmap = cel->ringx_map;
+
     assert(xmap);
     cel->randomize();
 
@@ -2645,11 +2653,14 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
 
     RGB3Byte rgb, xrgb;
     int x, y, idx;
+    int inx = rir * image_width;
     for (x=0; x<image_width; x++)
     {
         // TODO
-        rgb = 
-        rgbx = 
+        rgb.r = 250;
+        rgb.g = 224;
+        rgb.b = 208;
+        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo * sigmoid((x-inx) * 0.2 * dev_dial));
 
         for (y=0; y<image_height; y++)
         {
@@ -2657,11 +2668,14 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
             red_data[idx] = rgb.r;
             green_data[idx] = rgb.g;
             blue_data[idx] = rgb.b;
-            xmap->red_data[idx] = rgbx.r;
-            xmap->green_data[idx] = rgbx.g;
-            xmap->blue_data[idx] = rgbx.b;
+            xmap->red_data[idx] = xrgb.r;
+            xmap->green_data[idx] = xrgb.g;
+            xmap->blue_data[idx] = xrgb.b;
         }
     }
+
+    generating_fic_texture = false;
+    touch_gen();
 }
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)

@@ -84,7 +84,7 @@ double myeq = 0;
 // Always turn off show_dev_dial before committing/merging into main (fine to leave it on in a branch that isn't ready to merge yet).
 double dev_dial = 1.0;
 double dev_dial_step = 0.01;
-bool show_dev_dial = false;
+bool show_dev_dial = true;
 
 // Set every frame by compute_object_draw_coordinates(): the cels[] index of the galaxy whose disc
 // the viewer is standing inside, or -1. Only one galaxy can qualify, and normally it is ours.
@@ -699,6 +699,11 @@ int sgn(double f)
     if (f < 0) return -1;
     else if (f > 0) return 1;
     else return 0;
+}
+
+double sigmoid(double x)
+{
+    return 1.0 / (1.0 + std::exp(-x));
 }
 
 std::string Roman(int num)
