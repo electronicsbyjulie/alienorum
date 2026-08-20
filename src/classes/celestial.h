@@ -20,9 +20,10 @@ namespace alienorum
         gas_giant = 0x300,
         ice_giant = 0x301,
         hot_jupiter = 0x310,
-        waterworld = 0x401,
+        clearskies = 0x401,
+        waterworld = 0x410,     // includes hycean
         icy = 0x502,
-        rocky = 0x503,
+        rocky = 0x503,          // includes Venusian
         lavaworld = 0x504,
         icy_tailed = 0x511,
         artificial = 0xf00
