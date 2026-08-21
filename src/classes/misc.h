@@ -207,6 +207,7 @@ double fBm(double x, double y, double z, int octaves, double lacunarity, double 
 double ridged_fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
 double probability_density_function(double x, double mean, double stddev);
 int sgn(double f);
+double sigmoid(double x);
 std::string Roman(int num);
 
 bool extract_archive(const char *filename);

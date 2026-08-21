@@ -1,6 +1,8 @@
 #include <iostream>
 #include <cmath>
 #include <iomanip>
+#include <random>
+#include <algorithm>
 
 #include "planet.h"
 #include "star.h"
@@ -360,18 +362,24 @@ double Planet::estimate_bond_albedo()
     #endif
 }
 
-double Planet::estimate_surface_temperature()
+double Planet::equilibrium_temperature()
 {
     if (temperature) return temperature;
     double Bond = estimate_bond_albedo();
     double absorbed_flux = (est_bolometric_flux() * (1.0 - Bond)) / 4.0;
     double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN_NORM, 0.25);
 
-    // 4. Apply the Eddington Gray-Atmosphere Approximation
+    return t_eq;
+}
+
+double Planet::estimate_surface_temperature()
+{
+    double t_eq = equilibrium_temperature();
+
+    // Apply the Eddington Gray-Atmosphere Approximation
     double empirical_tau_scale = 2.4; 
     double greenhouse_factor = 1.0 + (0.75 * get_atmospheric_tau() * empirical_tau_scale);
 
-    // 5. Calculate final surface temperature
     double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
 
     return t_surface;
@@ -721,4 +729,107 @@ Point refract_true_point(Point pt, double alt_rad)
 {
     Point axis = compute_normal(pt, yaxis, center);
     return rotate3D(pt, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(alt_rad));
+}
+
+// Evaluates the probability of a ring system existing based on mass and temperature.
+bool Planet::guess_has_rings()
+{
+    double probability = 0.0;
+
+    // 1. Mass factor: Jovians have a much higher capture/retention rate
+    if (mass > giant_mass_cutoff)
+    {
+        // Gas/Ice giant threshold (approx Neptune mass)
+        probability += 0.65;
+    }
+    else if (mass > rocky_mass_cutoff)
+    {
+        // Super-Earth / Sub-Neptune
+        probability += 0.15;
+    }
+    else
+    {
+        // Terrestrial
+        probability += 0.02;
+    }
+
+    // 2. Temperature factor (The Frost Line proxy)
+    // Most magnificent rings are ice. If it's a "Hot Jupiter", rings sublimate.
+    double t_eq = equilibrium_temperature();
+    if (t_eq < 170.0)
+    {
+        // Deep freeze (like Saturn/Uranus)
+        probability += 0.25;
+    }
+    else if (t_eq > 800.0)
+    {
+        // Too hot, dust is dragged and ice is gone
+        probability -= 0.60;
+    }
+    else if (t_eq > 300.0)
+    {
+        // Warm, mostly sparse rock/dust if any
+        probability -= 0.20;
+    }
+
+    // Clamp the final probability between 1% and 95%
+    probability = std::max(0.01, std::min(0.95, probability));
+
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    return dist(rng) <= probability;
+}
+
+/*
+ * Generates the physical parameters of the ring system bounded by the Roche limit.
+ * Assumes access to class members: radius, rocheLimit
+ */
+void Planet::generate_ring_parameters(bool gr)
+{
+    if (!gr && !guess_has_rings())
+    {
+        ring_radius = 0;
+        return;
+    }
+
+    // Safety constraint: If Roche limit is somehow smaller than the planet 
+    // (e.g., highly dense planet, very low density moon proxy), rings cannot form.
+    double minInnerRadius = volumetric_mean_radius * 1.1; // 10% gap from the surface/atmosphere
+    double roche_limit_zero = this->Roche_limit();
+    if (roche_limit_zero <= minInnerRadius)
+    {
+        ring_radius = 0;
+        return;
+    }
+
+    // Generate Inner Radius
+    // Favor starting relatively close to the planet
+    std::uniform_real_distribution<double> innerDist(minInnerRadius, roche_limit_zero * 0.6);
+    double innerRadius = innerDist(rng);
+
+    // Generate Outer Radius
+    // Must be larger than inner, and capped tightly by the Roche limit
+    std::uniform_real_distribution<double> outerDist(innerRadius * 1.15, roche_limit_zero * 0.98);
+    ring_radius = outerDist(rng) + volumetric_mean_radius;
+
+    // Generate Density/Opacity
+    // Wider rings or rings around more massive planets tend to be more substantial.
+    // Here we just generate a random float, slightly weighted by the size of the ring disk.
+    double ringWidthRatio = (ring_radius - innerRadius) / roche_limit_zero;
+    
+    // Base opacity between 0.1 (faint dust) and 0.8 (highly reflective ice)
+    std::uniform_real_distribution<double> opacityDist(0.1, 0.8);
+    double meanOpacity = opacityDist(rng) + (ringWidthRatio * 0.2); 
+    
+    // Clamp opacity to 1.0 max
+    meanOpacity = std::min(1.0, meanOpacity);
+
+    // Generate a ring texture and a ring transparency map using innerRadius/ring_radius and meanOpacity.
+    if (ring_map) delete ring_map;
+    if (ringx_map) delete ringx_map;
+
+    ring_map = new Map(this);
+    ringx_map = new Map(this);
+
+    int ringres = ring_radius / volumetric_mean_radius * 1024;
+    ring_map->generate_ring_map(this, ringres, innerRadius/ring_radius, meanOpacity, ringx_map);
 }

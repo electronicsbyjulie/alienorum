@@ -57,6 +57,7 @@ namespace alienorum
         void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
         double est_bolometric_flux(double t_eff = 0);
         double estimate_bond_albedo();                      // for want of an actual parameter.
+        double equilibrium_temperature();
         double estimate_surface_temperature();
         bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
         double estimate_bump_scale();
@@ -71,7 +72,10 @@ namespace alienorum
         json to_json();
         bool from_json(json j);
 
-        protected:
+        bool guess_has_rings();
+        void generate_ring_parameters(bool guarantee_rings = false);        // e.g. if we have a map file
+
+    protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;
     };

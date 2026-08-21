@@ -20,9 +20,10 @@ namespace alienorum
         gas_giant = 0x300,
         ice_giant = 0x301,
         hot_jupiter = 0x310,
-        waterworld = 0x401,
+        clearskies = 0x401,
+        waterworld = 0x410,     // includes hycean
         icy = 0x502,
-        rocky = 0x503,
+        rocky = 0x503,          // includes Venusian
         lavaworld = 0x504,
         icy_tailed = 0x511,
         artificial = 0xf00
@@ -250,6 +251,7 @@ namespace alienorum
         void generate_gas_giant_map(CelestialObject *cel);
         void generate_overcast_sky(CelestialObject *cel);
         void generate_stellar_map(CelestialObject *cel);
+        void generate_ring_map(CelestialObject *cel, int resolution, double rel_inner_radius, double mean_opacity, Map* transparency_map);
         void mark_for_map_regen(CelestialObject *cel, bool discard_bump = false);
 
         // For the GPU texture cache (gputex.h): size of the equirectangular grid, and a bulk

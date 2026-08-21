@@ -83,7 +83,7 @@ double myeq = 0;
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.
 // Always turn off show_dev_dial before committing/merging into main (fine to leave it on in a branch that isn't ready to merge yet).
 double dev_dial = 1.0;
-double dev_dial_step = 0.01;
+double dev_dial_step = 0.1;
 bool show_dev_dial = false;
 
 // Set every frame by compute_object_draw_coordinates(): the cels[] index of the galaxy whose disc
@@ -699,6 +699,11 @@ int sgn(double f)
     if (f < 0) return -1;
     else if (f > 0) return 1;
     else return 0;
+}
+
+double sigmoid(double x)
+{
+    return 1.0 / (1.0 + std::exp(-x));
 }
 
 std::string Roman(int num)

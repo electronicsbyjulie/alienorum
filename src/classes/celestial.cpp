@@ -1896,6 +1896,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->cloud_map = new Map(cel);
         p->cloud_map->generate_overcast_sky(cel);
     }
+    p->generate_ring_parameters();
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -2267,6 +2268,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
     generating_fic_texture = false;
     touch_gen();
+    p->generate_ring_parameters();
 }
 
 void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
@@ -2614,6 +2616,92 @@ void Map::generate_stellar_map(CelestialObject *cel)
     generating_fic_texture = false;
     if (fac) fac->touch_gen();
     touch_gen();
+}
+
+void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir, double mo, Map *xmap)
+{
+    assert(cel);
+    cel_obj_class cls = cel->typeclass();
+    assert(cls == class_planet || cls == class_moon);
+
+    cel->ring_map = this;
+    if (xmap) cel->ringx_map = xmap;
+    else xmap = cel->ringx_map;
+
+    assert(xmap);
+    cel->randomize();
+
+    mtx.lock();
+    generating_fic_texture = true;
+
+    xmap->image_height = image_height = 29;             // TODO: Decrease this for release.
+    xmap->image_width = image_width = res;
+    xmap->allocated = allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    xmap->red_data = new unsigned char[allocated];
+    xmap->green_data = new unsigned char[allocated];
+    xmap->blue_data = new unsigned char[allocated];
+    xmap->lat_scale = lat_scale = (double)image_height / _pi;
+    xmap->lon_scale = lon_scale = (double)image_width / (_pi * 2);
+    xmap->inv_lat_scale = inv_lat_scale = 1.0 / lat_scale;
+    xmap->inv_lon_scale = inv_lon_scale = 1.0 / lon_scale;
+    std::cout << "Allocated " << allocated << " pixels for fictitious ring map." << std::endl;
+    mtx.unlock();
+    generating_fic_texture = false;
+
+    RGB3Byte rgb, xrgb;
+    int x, y, idx;
+    int inx = rir * image_width;
+
+    double red = cel->cel_frand(15, 60), dred = 0, oe = 1, doe = 0;
+    const double redstep = 0.1, oestep = 0.00666;
+
+    double inv_img_wid = 1.0 / image_width;
+    for (x=0; x<image_width; x++)
+    {
+        double fx = inv_img_wid * x;
+
+        // keep colors pale like Saturn, just change redness
+        rgb.r = 250;
+        rgb.g = 250 - 0.5*red;
+        rgb.b = 240 - red;
+        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo
+            * sigmoid((double)(x-inx) * 0.05)       // inner bound
+            * pow(1.0-fx, 0.1)                      // taper outer bound
+            * pow(cel->cel_frand(0.4,0.6), oe)      // detail
+            );
+        
+        // wandering drunkard on color
+        red += dred;
+        dred += cel->cel_frand(-redstep,redstep);
+        if (red < 0) { red = 0; dred = fabs(dred); }
+        else if (red > 215) dred = -fabs(dred);
+        dred *= 0.97;
+
+        // wandering drunkard on opacity exponent
+        oe *= (1.0 + doe);
+        doe += cel->cel_frand(-oestep, oestep);
+        if (oe < 0.3) { oe = 0.3; doe = fabs(doe); }
+        if (oe > 3) doe = -fabs(doe);
+        doe *= 0.97;
+
+        for (y=0; y<image_height; y++)
+        {
+            idx = x + y * image_width;
+            red_data[idx] = rgb.r;
+            green_data[idx] = rgb.g;
+            blue_data[idx] = rgb.b;
+            xmap->red_data[idx] = xrgb.r;
+            xmap->green_data[idx] = xrgb.g;
+            xmap->blue_data[idx] = xrgb.b;
+        }
+    }
+
+    generating_fic_texture = false;
+    touch_gen();
+    xmap->touch_gen();
 }
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)

@@ -1054,6 +1054,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##obliquity"))
             {
                 cel->obliquity = frand(0, frand(0, frand(0, _pi)));
+                cel->user_edited = true;
             }
             ImGui::SameLine(col2);
             edit_equinox = cel->equinox * fiftyseven;
@@ -1077,6 +1078,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##equinox"))
             {
                 cel->equinox = frand(0, _pi*2);
+                cel->user_edited = true;
             }
 
             double edit_prcseq = cel->precession ? (_pi * 2 / cel->precession / oneyear) : 0;
@@ -1511,6 +1513,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 orb->inclination = pow(frand(0, half_pi), 3);
                 if (frand(0,1) < 0.03) orb->inclination = _pi - orb->inclination;
+                cel->user_edited = true;
             }
             ImGui::SameLine(col2);
             edit_node = cel->orbit->ascending_node * fiftyseven;
@@ -1534,6 +1537,7 @@ void draw_objedit_window(ImGuiIO& io)
                 cel->orbit->ascending_node = frand(0, _pi*2);
                 cel->orbit->arg_periapsis = frand(0, _pi*2);
                 cel->orbit->mean_anomaly = frand(0, _pi*2);
+                cel->user_edited = true;
             }
 
             edit_eccn = cel->orbit->eccentricity;
@@ -1554,6 +1558,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##ecce"))
             {
                 cel->orbit->eccentricity = pow(frand(0, 0.999), 10);
+                cel->user_edited = true;
             }
             ImGui::SameLine(col2);
             edit_argperi = cel->orbit->arg_periapsis * fiftyseven;
@@ -2296,6 +2301,7 @@ void draw_system_explorer(ImGuiIO& io)
                     std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
                     strcpy(m->name, mname.c_str());
                     m->user_added = true;
+                    m->user_edited = true;
                     m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;
                     m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * frand(0.9, 1.5) * earth_radius;
                     m->albedo = frand(0.1, 0.6);
