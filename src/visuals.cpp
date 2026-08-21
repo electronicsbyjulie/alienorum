@@ -3953,6 +3953,8 @@ void draw_horizon()
         if (!cel) return;
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
+    
+        if (p->ring_radius) draw_ring_gpu(cel);                     // TODO: Rings appear in front of atmosphere - bad - but if we move this to draw_sky_gradient() it cuts them off.
 
         spawn_texture_load(cel);
 

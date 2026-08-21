@@ -142,7 +142,7 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.jpg";
             if (file_exists(filename.c_str()))
             {
-                if (!p->ring_radius) p->guess_has_rings();
+                if (!p->ring_radius) p->generate_ring_parameters(true);
                 Map *map = new Map();
                 if (map->load_from_jpeg(filename))
                 {
@@ -155,7 +155,7 @@ void load_textures(CelestialObject* cel)
                 filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.png";
                 if (file_exists(filename.c_str()))
                 {
-                    if (!p->ring_radius) p->guess_has_rings();
+                    if (!p->ring_radius) p->generate_ring_parameters(true);
                     Map *map = new Map();
                     if (map->load_from_png(filename))
                     {
@@ -168,7 +168,7 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.jpg";
             if (file_exists(filename.c_str()))
             {
-                if (!p->ring_radius) p->guess_has_rings();
+                if (!p->ring_radius) p->generate_ring_parameters(true);
                 Map *map = new Map();
                 if (map->load_from_jpeg(filename))
                 {
@@ -181,7 +181,7 @@ void load_textures(CelestialObject* cel)
                 filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.png";
                 if (file_exists(filename.c_str()))
                 {
-                    if (!p->ring_radius) p->guess_has_rings();
+                    if (!p->ring_radius) p->generate_ring_parameters(true);
                     Map *map = new Map();
                     if (map->load_from_png(filename))
                     {

@@ -786,9 +786,9 @@ bool Planet::guess_has_rings()
  * Generates the physical parameters of the ring system bounded by the Roche limit.
  * Assumes access to class members: radius, rocheLimit
  */
-void Planet::generate_ring_parameters()
+void Planet::generate_ring_parameters(bool gr)
 {
-    if (!guess_has_rings())
+    if (!gr && !guess_has_rings())
     {
         ring_radius = 0;
         return;

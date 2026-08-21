@@ -73,7 +73,7 @@ namespace alienorum
         bool from_json(json j);
 
         bool guess_has_rings();
-        void generate_ring_parameters();
+        void generate_ring_parameters(bool guarantee_rings = false);        // e.g. if we have a map file
 
     protected:
         bool cache_in_cons_hz;
