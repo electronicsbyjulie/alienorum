@@ -223,6 +223,18 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
     FILE* fp = fopen(path.c_str(), "rb");
 
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
+    if (!fp) return 0;
+
     while (fgets(buffer, 300, fp))
     {
         s = new Star();
@@ -575,6 +587,18 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     }
     FILE* fp = fopen(path.c_str(), "rb");
 
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
+    if (!fp) return 0;
+
     Star *s, *A = nullptr;
     while (fgets(buffer, 65520, fp))
     {
@@ -863,6 +887,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     }
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
+    if (!fp) return 0;
+
     while (fgets(buffer, 1020, fp))
     {
         //   9- 14  I6    ---     HIP       Identifier (HIP number)
@@ -1087,6 +1124,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     mtx.unlock();
     path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "h_dm_com.dat";
     fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
+    if (!fp) return num_read;
+
     while (fgets(buffer, 1020, fp))
     {
         //  43- 48  I6     ---     HIP      HIP number                               (DC8)
@@ -1143,6 +1193,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     mtx.unlock();
     path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_dm_o.dat";
     fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
+    if (!fp) return num_read;
+
     while (fgets(buffer, 1020, fp))
     {
         //   1-  6  I6    ---      HIP      Identifier (HIP)                         (D01)
@@ -1220,6 +1283,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     mtx.unlock();
     path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_va_1.dat";
     fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
+    if (!fp) return num_read;
+
     double maxlum, minlum, avglum, avgmag, mag_error;
     while (fgets(buffer, 1020, fp))
     {
@@ -1290,6 +1366,17 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
     char buffer[1024], field[256];
     std::string path = "catalogs" _FILESLASH "GCVS" _FILESLASH "crossid.dat";
     FILE *fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     std::map<std::string, int> desig_HIP, desig_HD;
@@ -1313,6 +1400,17 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
 
     path = "catalogs" _FILESLASH "GCVS" _FILESLASH "gcvs_cat.dat";
     fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     int num_read = 0;
@@ -1402,7 +1500,19 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
     std::string TYC;
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
+
     while (fgets(buffer, 1020, fp))
     {
         //   3- 14  A12   ---     TYC      *TYC1-3 (TYC number)
@@ -1511,6 +1621,17 @@ int alienorum::CatalogReader::read_Uranometria_catalog(CelestialObject **cels, i
     Star *s;
 
     FILE* fp = fopen(catpath.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = catpath + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(catpath.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     while (fgets(buffer, 1020, fp))
@@ -1551,6 +1672,17 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
     Star *s, *A;
 
     FILE* fp = fopen(catpath.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = catpath + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(catpath.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     while (fgets(buffer, 1020, fp))
@@ -1652,6 +1784,17 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
     fclose(fp);
 
     fp = fopen(catpath.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = catpath + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(catpath.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     std::string prev_name = "kwyjibo";
@@ -1815,6 +1958,17 @@ int alienorum::CatalogReader::read_cons_boundaries()
     int i, n = constellations.size();
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     while (fgets(buffer, 1020, fp))
@@ -1867,6 +2021,17 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
     if (offset >= (max-1)) return 0;
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     while (fgets(buffer, 1020, fp))
@@ -2023,6 +2188,17 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     double f;
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
@@ -2186,7 +2362,19 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 
     path = "catalogs" _FILESLASH "SB9" _FILESLASH "orbits.dat";
     fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
+
     while (fgets(buffer, 1020, fp))
     {
         //   1-  4  I4    ---     Seq     System Number, as in "main.dat"
@@ -2413,6 +2601,17 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -2660,6 +2859,17 @@ int CatalogReader::read_comets_catalog(CelestialObject **cels, int max)
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     for (offset=0; offset<max && cels[offset]; offset++);
@@ -4407,204 +4617,215 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     std::string str, path = get_condensed_starcat_name();
     FILE *fp = fopen(path.c_str(), "r");
-    if (fp)
+
+    if (!fp)
     {
-        while (fgets(buffer, 1022, fp))
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
         {
-            Star *s = new Star();
-            read_field_onebased(buffer, 1, 14, field);
-            s->alienorumid = trim(field);
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
 
-            read_field_onebased(buffer, 16, 54, field);
+    if (!fp) return 0;
 
-            str = trim(field);
-            strcpy(s->name, str.c_str());
-            s->origname = s->name;
+    while (fgets(buffer, 1022, fp))
+    {
+        Star *s = new Star();
+        read_field_onebased(buffer, 1, 14, field);
+        s->alienorumid = trim(field);
 
-            read_field_onebased(buffer, 56, 57, field);
-            deg = atof(field) * 15;
+        read_field_onebased(buffer, 16, 54, field);
 
-            read_field_onebased(buffer, 59, 60, field);
-            mnt = atof(field) * 15;
+        str = trim(field);
+        strcpy(s->name, str.c_str());
+        s->origname = s->name;
 
-            read_field_onebased(buffer, 62, 65, field);
-            sec = atof(field) * 15;
+        read_field_onebased(buffer, 56, 57, field);
+        deg = atof(field) * 15;
 
-            s->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
+        read_field_onebased(buffer, 59, 60, field);
+        mnt = atof(field) * 15;
 
-            read_field_onebased(buffer, 67, 67, field);
-            int sgndecl = (field[0] == '-') ? -1 : 1;
+        read_field_onebased(buffer, 62, 65, field);
+        sec = atof(field) * 15;
 
-            read_field_onebased(buffer, 68, 69, field);
-            deg = atof(field);
+        s->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
 
-            read_field_onebased(buffer, 71, 72, field);
-            mnt = atof(field);
+        read_field_onebased(buffer, 67, 67, field);
+        int sgndecl = (field[0] == '-') ? -1 : 1;
 
-            read_field_onebased(buffer, 74, 75, field);
-            sec = atof(field);
+        read_field_onebased(buffer, 68, 69, field);
+        deg = atof(field);
 
-            s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
+        read_field_onebased(buffer, 71, 72, field);
+        mnt = atof(field);
 
+        read_field_onebased(buffer, 74, 75, field);
+        sec = atof(field);
 
-            read_field_onebased(buffer, 77, 82, field);
-            s->apparent_magnitude = atof(field);
-
-            read_field_onebased(buffer, 84, 98, field);
-            str = trim(field);
-            strcpy(s->spectral_type, str.c_str());
-
-            read_field_onebased(buffer, 100, 105, field);
-            s->BV_color = atof(field);
-
-            read_field_onebased(buffer, 107, 112, field);
-            s->UB_color = atof(field);
+        s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
 
 
-            read_field_onebased(buffer, 114, 119, field);
-            s->HD = atoi(field);
-            hdcache[s->HD] = s;
+        read_field_onebased(buffer, 77, 82, field);
+        s->apparent_magnitude = atof(field);
 
-            read_field_onebased(buffer, 121, 126, field);
-            s->HIP = atoi(field);
-            hipcache[s->HIP] = s;
+        read_field_onebased(buffer, 84, 98, field);
+        str = trim(field);
+        strcpy(s->spectral_type, str.c_str());
 
-            read_field_onebased(buffer, 128, 132, field);
-            s->HR = atoi(field);
+        read_field_onebased(buffer, 100, 105, field);
+        s->BV_color = atof(field);
 
-            read_field_onebased(buffer, 134, 140, field);
-            s->HR = atoi(field);
+        read_field_onebased(buffer, 107, 112, field);
+        s->UB_color = atof(field);
 
-            read_field_onebased(buffer, 142, 145, field);
-            s->FlamsteedNo = atoi(field);
 
-            read_field_onebased(buffer, 146, 152, field);
-            str = trim(field);
-            if (str.size())
-            {
-                strcpy(s->Bayer, str.c_str());
-                s->BayerGrkno = grkno_from_abbrev(s->Bayer);
-            }
+        read_field_onebased(buffer, 114, 119, field);
+        s->HD = atoi(field);
+        hdcache[s->HD] = s;
 
-            read_field_onebased(buffer, 154, 168, field);
-            str = trim(field);
-            strcpy(s->Gliese, str.c_str());
+        read_field_onebased(buffer, 121, 126, field);
+        s->HIP = atoi(field);
+        hipcache[s->HIP] = s;
 
-            read_field_onebased(buffer, 170, 172, field);
-            s->GouldNo = atoi(field);
+        read_field_onebased(buffer, 128, 132, field);
+        s->HR = atoi(field);
 
-            Constellation *mycons = nullptr;
-            if (strlen(s->Bayer) || (s->FlamsteedNo > 0) || (s->GouldNo > 0))
-            {
-                strcpy(s->constellation, cons_from_alienorumid(s->alienorumid).c_str());
-                j = constellations.size();
-                for (i=0; i<j && !mycons; i++) if (!strcmp(constellations[i].name.c_str(), s->constellation)) mycons = &constellations[i];
-            }
+        read_field_onebased(buffer, 134, 140, field);
+        s->HR = atoi(field);
 
-            if (s->FlamsteedNo > 0)
-            {
-                str = std::to_string(s->FlamsteedNo) + std::string(" ");
-                if (s->FlamsteedNo < 10) str += std::string(" ");
-                str += std::string(s->constellation);
-                strcpy(s->Flamsteed, str.c_str());
+        read_field_onebased(buffer, 142, 145, field);
+        s->FlamsteedNo = atoi(field);
 
-                if (mycons) mycons->Flamsteed_stars[s->FlamsteedNo] = s;
-            }
-
-            if (mycons && s->BayerGrkno >= 0) mycons->Bayer_stars[s->BayerGrkno] = s;
-            if (mycons && s->GouldNo > 0) mycons->Gould_stars[s->GouldNo] = s;
-
-            read_field_onebased(buffer, 174, 184, field);
-            s->proper_motion_RA = atof(field);
-
-            read_field_onebased(buffer, 186, 196, field);
-            s->proper_motion_decl = atof(field);
-
-            read_field_onebased(buffer, 198, 208, field);
-            s->radial_velocity = atof(field);
-
-            read_field_onebased(buffer, 210, 219, field);
-            s->parallax = atof(field);
-
-            read_field_onebased(buffer, 222, 231, field);
-            s->distance = atof(field) * light_year;
-            s->update_location(simnow);
-            if (s->parallax > 0) s->distance_known = true;
-
-            read_field_onebased(buffer, 234, 239, field);
-            s->absolute_magnitude = atof(field);
-
-            read_field_onebased(buffer, 241, 250, field);
-            s->mass = atof(field) * solar_mass;
-            if (s->mass < jupiter_mass) s->mass = s->estimate_mass();
-
-            read_field_onebased(buffer, 253, 262, field);
-            s->volumetric_mean_radius = atof(field) * solar_radius;
-            if (s->volumetric_mean_radius < 0.5 * jupiter_radius) s->volumetric_mean_radius = s->estimate_radius();
-
-            read_field_onebased(buffer, 264, 270, field);
-            s->temperature = atof(field);
-
-            read_field_onebased(buffer, 272, 281, field);
-            s->sidereal_rotational_period = atof(field) * oneday;
-            if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
-
-            int offset = -36;
-            read_field_onebased(buffer, 319-36, 332-36, field);
-            str = trim(field);
-            if (str.size())
-            {
-                s->orbit = new Orbit();
-                s->orbit->center_name = str;
-            }
-
-            read_field_onebased(buffer, 334-36, 344-36, field);
-            if (s->orbit) s->orbit->period = atof(field) * oneday;
-
-            read_field_onebased(buffer, 347-36, 358-36, field);
-            if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
-
-            read_field_onebased(buffer, 360-36, 366-36, field);
-            if (s->orbit) s->orbit->eccentricity = atof(field);
-
-            read_field_onebased(buffer, 373-36, 380-36, field);
-            if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
-
-            read_field_onebased(buffer, 382-36, 389-36, field);
-            if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
-
-            read_field_onebased(buffer, 391-36, 404-36, field);
-            if (s->orbit) s->orbit->epoch = atof(field);
-
-            read_field_onebased(buffer, 406-36, 413-36, field);
-            f = atof(field) * fiftyseventh;
-            if (s->orbit) s->orbit->heliocentric_inclination = f;
-
-            read_field_onebased(buffer, 415-36, 422-36, field);
-            f = atof(field) * fiftyseventh;
-            if (s->orbit) s->orbit->heliocentric_node = f;
-
-            read_field_onebased(buffer, 388, 399, field);
-            s->variability_period = atof(field) * oneday;
-
-            read_field_onebased(buffer, 401, 406, field);
-            s->minmag = atof(field);
-
-            read_field_onebased(buffer, 408, 413, field);
-            s->maxmag = atof(field);
-
-            read_field_onebased(buffer, 415, 431, field);
-            s->epoch_max_brightness = atof(field);
-
-            read_field_onebased(buffer, 433, 433, field);
-            if (field[0] == 'E') s->is_eclipsing_binary = true;
-
-            append_cel(s);
-            num_read++;
+        read_field_onebased(buffer, 146, 152, field);
+        str = trim(field);
+        if (str.size())
+        {
+            strcpy(s->Bayer, str.c_str());
+            s->BayerGrkno = grkno_from_abbrev(s->Bayer);
         }
 
-        fclose(fp);
+        read_field_onebased(buffer, 154, 168, field);
+        str = trim(field);
+        strcpy(s->Gliese, str.c_str());
+
+        read_field_onebased(buffer, 170, 172, field);
+        s->GouldNo = atoi(field);
+
+        Constellation *mycons = nullptr;
+        if (strlen(s->Bayer) || (s->FlamsteedNo > 0) || (s->GouldNo > 0))
+        {
+            strcpy(s->constellation, cons_from_alienorumid(s->alienorumid).c_str());
+            j = constellations.size();
+            for (i=0; i<j && !mycons; i++) if (!strcmp(constellations[i].name.c_str(), s->constellation)) mycons = &constellations[i];
+        }
+
+        if (s->FlamsteedNo > 0)
+        {
+            str = std::to_string(s->FlamsteedNo) + std::string(" ");
+            if (s->FlamsteedNo < 10) str += std::string(" ");
+            str += std::string(s->constellation);
+            strcpy(s->Flamsteed, str.c_str());
+
+            if (mycons) mycons->Flamsteed_stars[s->FlamsteedNo] = s;
+        }
+
+        if (mycons && s->BayerGrkno >= 0) mycons->Bayer_stars[s->BayerGrkno] = s;
+        if (mycons && s->GouldNo > 0) mycons->Gould_stars[s->GouldNo] = s;
+
+        read_field_onebased(buffer, 174, 184, field);
+        s->proper_motion_RA = atof(field);
+
+        read_field_onebased(buffer, 186, 196, field);
+        s->proper_motion_decl = atof(field);
+
+        read_field_onebased(buffer, 198, 208, field);
+        s->radial_velocity = atof(field);
+
+        read_field_onebased(buffer, 210, 219, field);
+        s->parallax = atof(field);
+
+        read_field_onebased(buffer, 222, 231, field);
+        s->distance = atof(field) * light_year;
+        s->update_location(simnow);
+        if (s->parallax > 0) s->distance_known = true;
+
+        read_field_onebased(buffer, 234, 239, field);
+        s->absolute_magnitude = atof(field);
+
+        read_field_onebased(buffer, 241, 250, field);
+        s->mass = atof(field) * solar_mass;
+        if (s->mass < jupiter_mass) s->mass = s->estimate_mass();
+
+        read_field_onebased(buffer, 253, 262, field);
+        s->volumetric_mean_radius = atof(field) * solar_radius;
+        if (s->volumetric_mean_radius < 0.5 * jupiter_radius) s->volumetric_mean_radius = s->estimate_radius();
+
+        read_field_onebased(buffer, 264, 270, field);
+        s->temperature = atof(field);
+
+        read_field_onebased(buffer, 272, 281, field);
+        s->sidereal_rotational_period = atof(field) * oneday;
+        if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
+
+        int offset = -36;
+        read_field_onebased(buffer, 319-36, 332-36, field);
+        str = trim(field);
+        if (str.size())
+        {
+            s->orbit = new Orbit();
+            s->orbit->center_name = str;
+        }
+
+        read_field_onebased(buffer, 334-36, 344-36, field);
+        if (s->orbit) s->orbit->period = atof(field) * oneday;
+
+        read_field_onebased(buffer, 347-36, 358-36, field);
+        if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
+
+        read_field_onebased(buffer, 360-36, 366-36, field);
+        if (s->orbit) s->orbit->eccentricity = atof(field);
+
+        read_field_onebased(buffer, 373-36, 380-36, field);
+        if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
+
+        read_field_onebased(buffer, 382-36, 389-36, field);
+        if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
+
+        read_field_onebased(buffer, 391-36, 404-36, field);
+        if (s->orbit) s->orbit->epoch = atof(field);
+
+        read_field_onebased(buffer, 406-36, 413-36, field);
+        f = atof(field) * fiftyseventh;
+        if (s->orbit) s->orbit->heliocentric_inclination = f;
+
+        read_field_onebased(buffer, 415-36, 422-36, field);
+        f = atof(field) * fiftyseventh;
+        if (s->orbit) s->orbit->heliocentric_node = f;
+
+        read_field_onebased(buffer, 388, 399, field);
+        s->variability_period = atof(field) * oneday;
+
+        read_field_onebased(buffer, 401, 406, field);
+        s->minmag = atof(field);
+
+        read_field_onebased(buffer, 408, 413, field);
+        s->maxmag = atof(field);
+
+        read_field_onebased(buffer, 415, 431, field);
+        s->epoch_max_brightness = atof(field);
+
+        read_field_onebased(buffer, 433, 433, field);
+        if (field[0] == 'E') s->is_eclipsing_binary = true;
+
+        append_cel(s);
+        num_read++;
     }
+
+    fclose(fp);
+
 
     ((Star*)cels[0])->distance_known = true;
 
@@ -5310,7 +5531,7 @@ static void place_galaxy(Galaxy *g, double ra, double decl, double distance_mpc)
     g->right_ascension = ra;
     g->declination = decl;
     g->epoch = J2000;
-    g->distance = distance_mpc * 1e6 * parsec;              // metres, for display
+    g->distance = distance_mpc * 1e6 * parsec;              // convert to meters
     g->distance_known = true;
     g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
     g->location.galactic_center = Point::from_ra_dec(ra, decl, distance_mpc * mly_per_mpc);
@@ -5390,6 +5611,17 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
     if (offset >= (max-1)) return 0;
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     // Keyed on the RAW catalog name, so table2 below -- which spells them the same way -- matches
@@ -5535,6 +5767,17 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
     if (offset >= (max-1)) return 0;
 
     FILE* fp = fopen(path.c_str(), "rb");
+
+    if (!fp)
+    {
+        std::string gzpath = path + ".gz";
+        if (file_exists(gzpath.c_str()))
+        {
+            extract_archive(gzpath.c_str());
+            fp = fopen(path.c_str(), "rb");
+        }
+    }
+
     if (!fp) return 0;
 
     // Galaxies already loaded (i.e. by the UNGC), for the duplicate test below.
