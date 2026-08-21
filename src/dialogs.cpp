@@ -168,8 +168,7 @@ void draw_status_window(ImGuiIO& io)
     }
     else if (cbolbls_selected_idx == lbltype_nearby)
     {
-        // Held in metres, shown in light years, so this one still needs a variable of its own to
-        // edit -- but it is a double throughout now rather than a round trip through text.
+        // Held in metres, shown in light years, and still Claude is not PTSD friendly.
         double dist_ly = distance_lblcut / light_year;
         ImGui::Text("%s", "Dist. l.y.:");
         ImGui::SameLine();

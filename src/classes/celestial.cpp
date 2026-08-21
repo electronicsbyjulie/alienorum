@@ -2906,6 +2906,7 @@ alienorum::Locale::Locale(json fj)
     }
 }
 
+// TODO: also scale up if partial atmosphere.
 void alienorum::AtmosphereComposition::enforce_integrity()
 {
     double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
@@ -2990,7 +2991,7 @@ void alienorum::AtmosphereComposition::generate_fictitious_ice_giant()
     enforce_integrity();
 }
 
-void alienorum::AtmosphereComposition::generate_fictitious_venusian()
+void alienorum::AtmosphereComposition::generate_fictitious_venusian()       // also covers Mars-type atmospheres
 {
     double leftover = 1;
     leftover -= (N2_portion = cel->cel_frand(0.01, 0.1));
@@ -3050,7 +3051,7 @@ void alienorum::AtmosphereComposition::generate_fictitious_habitable()
     enforce_integrity();
 }
 
-void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)
+void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)       // does NOT cover habitable atmospheres - that's a separate call.
 {
     if (t == gas_giant) generate_fictitious_gas_giant();
     else if (t == ice_giant) generate_fictitious_ice_giant();

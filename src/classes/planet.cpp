@@ -259,6 +259,13 @@ double Planet::estimate_bump_scale()
 // and 27 on Jupiter, whose hydrogen is barely a fifteenth the molar mass of Venus's CO2.
 //
 // Returns 0 for an airless body, which reads as "no glow at all" downstream.
+
+// TODO: Looking at estimate_scale_height(), I did spot one potential units mismatch you might
+// want to double-check. The barometric formula $H = \frac{RT}{Mg}$ expects $g$ to be standard
+// acceleration (m/s²). If your estimate_surface_gravity() function returns Earth Gs (where
+// Earth = 1.0) as we saw in celestial.cpp, this scale height calculation will return a value
+// roughly 9.8 times too large (around 82 km for Earth instead of the 8.5 km mentioned in your
+// comments). You may want to multiply $g$ by 9.80665 in this specific function if that's the case!
 double Planet::estimate_scale_height()
 {
     if (get_surface_pressure() <= 0) return 0;

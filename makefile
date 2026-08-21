@@ -2,7 +2,7 @@
 # Makefile for Linux, Windows, Mac OS. Make sure to install SDL2 (http://www.libsdl.org)
 #
 # Linux:
-#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libarchive-dev
+#   apt-get install -y libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev build-essential libcurl4-openssl-dev libarchive-dev libgtest-dev
 #
 # Mac OS:
 #   brew install sdl2 sdl2_image jpeg png curl archive
@@ -36,6 +36,7 @@ CPPFLAGS = -std=c++17 -O2 -MMD -MP -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall 
 IMGUI_DIR = src/include/imgui
 IGFD_DIR = src/include/igfd
 CLASSES_DIR = src/classes
+TESTS_DIR = src/tests
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
@@ -43,11 +44,13 @@ CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/sta
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp
+TESTS_SRC = $(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/star_test.cpp $(TESTS_DIR)/planet_test.cpp
 
 BIN = bin
 OBJ = obj
 UNAME_S := $(shell uname -s)
 LIBS = -lSDL2_image -ljpeg -lpng -lcurl -larchive
+LIBS_GTEST = -lgtest -lgtest_main -pthread
 LINUX_GL_LIBS = -lGL
 
 # Dynamically track all object files cleanly
@@ -56,6 +59,8 @@ OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
 OBJS += $(OBJ)/globals.o $(OBJ)/loaders.o $(OBJ)/housekeeping.o $(OBJ)/inputs.o $(OBJ)/dialogs.o $(OBJ)/visuals.o $(OBJ)/gputex.o $(OBJ)/sphere_impostor.o
+
+TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
@@ -84,7 +89,7 @@ ifeq ($(OS), Windows_NT)
     CFLAGS = $(CPPFLAGS)
 endif
 
-all: $(BIN) $(OBJ) objs apps
+all: $(BIN) $(OBJ) objs apps tests
 	@echo $(ECHO_MESSAGE)
 
 # Robust cross-platform directory generation
@@ -94,7 +99,7 @@ $(BIN):
 $(OBJ):
 	mkdir -p $(OBJ)
 
-clean: makefile
+clean:
 	rm -Rf $(OBJ)/*.o
 	rm -Rf $(OBJ)/*.d
 	rm -Rf $(BIN)/*
@@ -103,110 +108,121 @@ apps: alienorum
 
 objs: $(OBJS)
 
+tests: $(TESTS)
+
 alienorum: $(BIN)/alienorum
 
 
-%.o:$(IMGUI_DIR)/backends/%.cpp makefile
+%.o:$(IMGUI_DIR)/backends/%.cpp
 	$(CPP) $(CPPFLAGS) -c -o $(OBJ)/$@ $<
 
-$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp makefile
+$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp
 	$(CPP) $(IMGUI_DIR)/imgui_demo.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_demo.o
 
-$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp makefile
+$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp
 	$(CPP) $(IMGUI_DIR)/imgui_draw.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_draw.o
 
-$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp makefile
+$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp
 	$(CPP) $(IMGUI_DIR)/imgui_tables.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_tables.o
 
-$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp makefile
+$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp
 	$(CPP) $(IMGUI_DIR)/imgui_widgets.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_widgets.o
 
-$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp makefile
+$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp
 	$(CPP) $(IMGUI_DIR)/imgui.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui.o
 
-$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp makefile
+$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_opengl3.o
 
-$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp makefile
+$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp
 	$(CPP) $(IGFD_DIR)/ImGuiFileDialog.cpp $(CPPFLAGS) -c -o $(OBJ)/ImGuiFileDialog.o
 
-$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp makefile
+$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
 	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_sdl2.o
 
-$(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp makefile
+$(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp
 	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJ)/misc.o
 
-$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp makefile
+$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp
 	$(CPP) $(CLASSES_DIR)/noise.cpp $(CPPFLAGS) -c -o $(OBJ)/noise.o
 
-$(OBJ)/patch.o: $(CLASSES_DIR)/patch.cpp makefile
+$(OBJ)/patch.o: $(CLASSES_DIR)/patch.cpp
 	$(CPP) $(CLASSES_DIR)/patch.cpp $(CPPFLAGS) -c -o $(OBJ)/patch.o
 
-$(OBJ)/color.o: $(CLASSES_DIR)/color.cpp makefile
+$(OBJ)/color.o: $(CLASSES_DIR)/color.cpp
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJ)/color.o
 
-$(OBJ)/point.o: $(CLASSES_DIR)/point.cpp makefile
+$(OBJ)/point.o: $(CLASSES_DIR)/point.cpp
 	$(CPP) $(CLASSES_DIR)/point.cpp $(CPPFLAGS) -c -o $(OBJ)/point.o
 
-$(OBJ)/celestial.o: $(CLASSES_DIR)/celestial.cpp makefile
+$(OBJ)/celestial.o: $(CLASSES_DIR)/celestial.cpp
 	$(CPP) $(CLASSES_DIR)/celestial.cpp $(CPPFLAGS) -c -o $(OBJ)/celestial.o
 
-$(OBJ)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp makefile
+$(OBJ)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp
 	$(CPP) $(CLASSES_DIR)/galaxy.cpp $(CPPFLAGS) -c -o $(OBJ)/galaxy.o
 
-$(OBJ)/comet.o: $(CLASSES_DIR)/comet.cpp makefile
+$(OBJ)/comet.o: $(CLASSES_DIR)/comet.cpp
 	$(CPP) $(CLASSES_DIR)/comet.cpp $(CPPFLAGS) -c -o $(OBJ)/comet.o
 
-$(OBJ)/star.o: $(CLASSES_DIR)/star.cpp makefile
+$(OBJ)/star.o: $(CLASSES_DIR)/star.cpp
 	$(CPP) $(CLASSES_DIR)/star.cpp $(CPPFLAGS) -c -o $(OBJ)/star.o
 
-$(OBJ)/cons.o: $(CLASSES_DIR)/cons.cpp makefile
+$(OBJ)/cons.o: $(CLASSES_DIR)/cons.cpp
 	$(CPP) $(CLASSES_DIR)/cons.cpp $(CPPFLAGS) -c -o $(OBJ)/cons.o
 
-$(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp makefile
+$(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp
 	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJ)/planet.o
 
-$(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp makefile
+$(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp
 	$(CPP) $(CLASSES_DIR)/moon.cpp $(CPPFLAGS) -c -o $(OBJ)/moon.o
 
-$(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp makefile
+$(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp
 	$(CPP) $(CLASSES_DIR)/satellite.cpp $(CPPFLAGS) -c -o $(OBJ)/satellite.o
 
-$(OBJ)/shore.o: $(CLASSES_DIR)/shore.cpp makefile
+$(OBJ)/shore.o: $(CLASSES_DIR)/shore.cpp
 	$(CPP) $(CLASSES_DIR)/shore.cpp $(CPPFLAGS) -c -o $(OBJ)/shore.o
 
-$(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp makefile
+$(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o
 
-$(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp makefile
+$(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
 
-$(OBJ)/globals.o: src/globals.cpp makefile
+$(OBJ)/globals.o: src/globals.cpp
 	$(CPP) src/globals.cpp $(CPPFLAGS) -c -o $(OBJ)/globals.o
 
-$(OBJ)/loaders.o: src/loaders.cpp makefile
+$(OBJ)/loaders.o: src/loaders.cpp
 	$(CPP) src/loaders.cpp $(CPPFLAGS) -c -o $(OBJ)/loaders.o
 
-$(OBJ)/housekeeping.o: src/housekeeping.cpp makefile
+$(OBJ)/housekeeping.o: src/housekeeping.cpp
 	$(CPP) src/housekeeping.cpp $(CPPFLAGS) -c -o $(OBJ)/housekeeping.o
 
-$(OBJ)/inputs.o: src/inputs.cpp makefile
+$(OBJ)/inputs.o: src/inputs.cpp
 	$(CPP) src/inputs.cpp $(CPPFLAGS) -c -o $(OBJ)/inputs.o
 
-$(OBJ)/dialogs.o: src/dialogs.cpp makefile
+$(OBJ)/dialogs.o: src/dialogs.cpp
 	$(CPP) src/dialogs.cpp $(CPPFLAGS) -c -o $(OBJ)/dialogs.o
 
-$(OBJ)/visuals.o: src/visuals.cpp makefile
+$(OBJ)/visuals.o: src/visuals.cpp
 	$(CPP) src/visuals.cpp $(CPPFLAGS) -c -o $(OBJ)/visuals.o
 
-$(OBJ)/gputex.o: src/gputex.cpp makefile
+$(OBJ)/gputex.o: src/gputex.cpp
 	$(CPP) src/gputex.cpp $(CPPFLAGS) -c -o $(OBJ)/gputex.o
 
-$(OBJ)/sphere_impostor.o: src/sphere_impostor.cpp makefile
+$(OBJ)/sphere_impostor.o: src/sphere_impostor.cpp
 	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJ)/sphere_impostor.o
 
+$(BIN)/celestial_test: $(TESTS_DIR)/celestial_test.cpp $(CLASSES_DIR)/celestial.h $(CLASSES_DIR)/celestial.cpp
+	$(CPP) $(TESTS_DIR)/celestial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/celestial_test
+
+$(BIN)/star_test: $(TESTS_DIR)/star_test.cpp $(CLASSES_DIR)/star.h $(CLASSES_DIR)/star.cpp
+	$(CPP) $(TESTS_DIR)/star_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/star_test
+
+$(BIN)/planet_test: $(TESTS_DIR)/planet_test.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR)/planet.cpp
+	$(CPP) $(TESTS_DIR)/planet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/planet_test
+
 # gprof requires compiling and linking main code file in one unified command; do not split out.
-$(BIN)/alienorum: $(OBJS) src/alienorum.cpp makefile
+$(BIN)/alienorum: $(OBJS) src/alienorum.cpp
 	$(CPP) src/alienorum.cpp $(OBJS) $(CPPFLAGS) -o $(BIN)/alienorum $(LIBS) $(GPROF)
 
 # Auto-generated per-object header dependencies (see -MMD -MP above). The leading '-' means
