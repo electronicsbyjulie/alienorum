@@ -731,9 +731,6 @@ Point refract_true_point(Point pt, double alt_rad)
     return rotate3D(pt, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(alt_rad));
 }
 
-
-// TODO: Wire these up:
-
 // Evaluates the probability of a ring system existing based on mass and temperature.
 bool Planet::guess_has_rings()
 {
@@ -826,7 +823,7 @@ void Planet::generate_ring_parameters(bool gr)
     // Clamp opacity to 1.0 max
     meanOpacity = std::min(1.0, meanOpacity);
 
-    // TODO: Generate a ring texture and a ring transparency map using innerRadius/ring_radius and meanOpacity.
+    // Generate a ring texture and a ring transparency map using innerRadius/ring_radius and meanOpacity.
     if (ring_map) delete ring_map;
     if (ringx_map) delete ringx_map;
 
