@@ -2658,24 +2658,29 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     double red = cel->cel_frand(15, 60), dred = 0, oe = 1, doe = 0;
     const double redstep = 0.1, oestep = 0.00666;
 
+    double inv_img_wid = 1.0 / image_width;
     for (x=0; x<image_width; x++)
     {
-        // TODO: wandering drunkard on color, keep colors pale like Saturn, just do lightness and redness
+        double fx = inv_img_wid * x;
+
+        // keep colors pale like Saturn, just change redness
         rgb.r = 250;
         rgb.g = 250 - 0.5*red;
         rgb.b = 240 - red;
         xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo
-            * sigmoid((double)(x-inx) * 0.05)   // inner bound
-            * 1.0                               // TODO: taper outer bound
-            * pow(cel->cel_frand(0.4,0.6), oe)      // detail - TODO: wandering drunkard on opacity exponent
+            * sigmoid((double)(x-inx) * 0.05)       // inner bound
+            * pow(1.0-fx, 0.1)                      // taper outer bound
+            * pow(cel->cel_frand(0.4,0.6), oe)      // detail
             );
         
+        // wandering drunkard on color
         red += dred;
         dred += cel->cel_frand(-redstep,redstep);
         if (red < 0) { red = 0; dred = fabs(dred); }
         else if (red > 215) dred = -fabs(dred);
         dred *= 0.97;
 
+        // wandering drunkard on opacity exponent
         oe *= (1.0 + doe);
         doe += cel->cel_frand(-oestep, oestep);
         if (oe < 0.3) { oe = 0.3; doe = fabs(doe); }
