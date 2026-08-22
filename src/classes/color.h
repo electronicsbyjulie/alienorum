@@ -5,6 +5,7 @@
 #include <cmath>
 #include <vector>
 #include <cstdlib>
+#include "misc.h"
 #include "imgui/imgui.h"
 
 #define drawn_cache_split 25

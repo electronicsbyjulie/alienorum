@@ -727,6 +727,19 @@ void process_keyboard_commands(ImGuiIO& io)
     }
 }
 
+void steer(Point axis, double sr)
+{
+    #if 0
+    velocity = rotate3D(velocity, center, pitch, -sr);
+    #else
+    double vel = velocity.magnitude();
+    Point facing = Point::from_ra_dec(azimuth, altitude, vel, myeq);
+    facing = to_viewer_plane(facing, 1);
+    velocity += rotate3D(facing, center, axis, -sr);
+    velocity.scale(vel);
+    #endif
+}
+
 void process_key_arrowup()
 {
     if (!ImGui::IsKeyDown(ImGuiKey_End) && !ImGui::IsKeyDown(ImGuiKey_Home))
@@ -735,7 +748,7 @@ void process_key_arrowup()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    velocity = rotate3D(velocity, center, pitch, -steering_rate);
+    steer(pitch, steering_rate);
     if (trackidx<0) altitude += steering_rate;
     if (altitude > half_pi) altitude = half_pi;
     enforce_y_pan_limit();
@@ -749,7 +762,7 @@ void process_key_arrowdn()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    velocity = rotate3D(velocity, center, pitch,  steering_rate);
+    steer(pitch, steering_rate);
     if (trackidx<0) altitude -= steering_rate;
     if (altitude < -half_pi) altitude = -half_pi;
     enforce_y_pan_limit();
@@ -763,7 +776,7 @@ void process_key_arrowleft()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point yaw = to_viewer_plane(yaxis, -1);
-    velocity = rotate3D(velocity, center, yaw, -steering_rate);
+    steer(yaw, steering_rate);
     if (trackidx<0) azimuth -= steering_rate;
 }
 
@@ -775,7 +788,7 @@ void process_key_arrowright()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point yaw = to_viewer_plane(yaxis, -1);
-    velocity = rotate3D(velocity, center, yaw,  steering_rate);
+    steer(yaw, steering_rate);
     if (trackidx<0) azimuth += steering_rate;
 }
 

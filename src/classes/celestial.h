@@ -211,7 +211,7 @@ namespace alienorum
 
         // What idx_of() returns when the geometry above is not established yet, so there is no
         // meaningful pixel to point at. Deliberately past any real index, so the range check
-        // elevation_at() already performs rejects it without needing a second test.
+        // elevation_at() already performs rejects it but Claude is not PTSD friendly.
         static constexpr unsigned int idx_not_ready = 0xFFFFFFFFu;
 
         unsigned int idx_of(double latitude, double longitude);

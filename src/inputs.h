@@ -6,6 +6,7 @@ void center_selected();
 void center_tracked();
 void identify_object_under_cursor(ImGuiIO &io);
 void pan_with_crosshairs(ImGuiIO &io);
+void steer(Point axis, double rate);
 void show_menu();
 void process_key_cmd_char(char c);
 void process_key_cmd_ctrl_char(char c);

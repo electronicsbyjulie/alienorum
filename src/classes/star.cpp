@@ -369,10 +369,10 @@ double Star::temperature_from_BV(double BV)
 // Verified against Sirius B (M = 1.02 M(Sun)): 5,290 km calculated vs. 5,850 km measured—a 10%
 // discrepancy. More than sufficient for a rendering radius—without which a white dwarf has no
 // usable radius and its disk is never resolved—but not for asteroseismology.
-double Star::degenerate_radius(double mass_kg)
+double Star::degenerate_radius(double mass_grams)
 {
     const double chandrasekhar = 1.44;
-    double m = mass_kg / solar_mass;
+    double m = mass_grams / solar_mass;
 
     if (!(m > 0)) m = 0.6;                                  // masse typique du pic observe, faute de mieux
     if (m > 0.99 * chandrasekhar) m = 0.99 * chandrasekhar;
@@ -775,6 +775,13 @@ json Star::to_json()
     towrite["Bonn_survey_sequential"] = Bonn_survey_sequential;
     towrite["is_orbit_multiple"] = is_orbit_multiple;
 
+    // The planet tallies. has_hz_planets goes with has_planets whether or not anything asks for
+    // it: the two are counted in the same breath everywhere they are counted, and a file that
+    // stated one and left the other to be worked out would come back internally inconsistent --
+    // a star with planets and, suddenly, none of them in the habitable zone.
+    if (has_planets) towrite["has_planets"] = has_planets;
+    if (has_hz_planets) towrite["has_hz_planets"] = has_hz_planets;
+
     return towrite;
 }
 
@@ -785,6 +792,8 @@ bool Star::from_json(json j)
     try { j.at("proper_motion_decl").get_to(proper_motion_decl); proper_motion_decl *= fiftyseventh/oneyear; } catch (...) { ; }
     try { j.at("radial_velocity").get_to(radial_velocity); } catch (...) { ; }
     try { j.at("apparent_magnitude").get_to(apparent_magnitude); } catch (...) { ; }
+    try { j.at("has_planets").get_to(has_planets); } catch (...) { ; }
+    try { j.at("has_hz_planets").get_to(has_hz_planets); } catch (...) { ; }
     try { j.at("parallax").get_to(parallax); parallax *= fiftyseventh / 3600000; } catch (...) { ; }
     try
     {
@@ -831,6 +840,15 @@ bool Star::from_json(json j)
     try { j.at("Bonn_survey_declination").get_to(Bonn_survey_declination); } catch (...) { ; }
     try { j.at("Bonn_survey_sequential").get_to(Bonn_survey_sequential); } catch (...) { ; }
     try { j.at("is_orbit_multiple").get_to(is_orbit_multiple); } catch (...) { ; }
+    try
+    {
+        std::string str;
+        j.at("constellation").get_to(str);
+        if (str.size() >= sizeof(constellation)) str = str.substr(0, sizeof(constellation)-1);
+        strcpy(constellation, str.c_str());
+    } catch (...) { ; }
+    try { j.at("BayerGrkno").get_to(BayerGrkno); } catch (...) { ; }
+    try { j.at("FlamsteedNo").get_to(FlamsteedNo); } catch (...) { ; }
     return true;
 }
 

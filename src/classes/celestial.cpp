@@ -400,6 +400,12 @@ std::string CelestialObject::RA_as_hms(double seen_equinox)
     int minutes = floor(RA);
     double seconds = (RA-minutes) * 60;
 
+    // The stream below rounds to a tenth, so 59.97 would be printed as "60.0". Carry it here
+    // instead, where the hours can carry too.
+    if (seconds >= 59.95) { seconds = 0; minutes++; }
+    if (minutes >= 60) { minutes -= 60; hours++; }
+    if (hours >= 24) hours -= 24;
+
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << seconds;
     std::string sec = oss.str();
@@ -420,13 +426,19 @@ std::string CelestialObject::Decl_as_degms()
     decl = (decl-degrees) * 60;
     int minutes = floor(decl);
     double seconds = (decl-minutes) * 60;
+
+    // Rounded, and carried if the rounding fills the field: 59.7 seconds is a minute, not ":60".
+    int isec = (int)llround(seconds);
+    if (isec >= 60) { isec -= 60; minutes++; }
+    if (minutes >= 60) { minutes -= 60; degrees++; }
+
     return std::string( sign < 0 ? "-" : "+" )
         + std::string(degrees<10 ? "0" : "")
         + std::to_string(degrees) + std::string(":")
         + std::string(minutes<10 ? "0" : "")
         + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<9.5 ? "0" : "")
-        + std::to_string((int)seconds);
+        + std::string(isec<10 ? "0" : "")
+        + std::to_string(isec);
 }
 
 std::string CelestialObject::RA_as_hms(CelestialLocation seen_from, double seen_equinox)
@@ -436,6 +448,10 @@ std::string CelestialObject::RA_as_hms(CelestialLocation seen_from, double seen_
     relRA = (relRA-hours) * 60;
     int minutes = floor(relRA);
     double seconds = (relRA-minutes) * 60;
+
+    if (seconds >= 59.95) { seconds = 0; minutes++; }   // as above
+    if (minutes >= 60) { minutes -= 60; hours++; }
+    if (hours >= 24) hours -= 24;
 
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << seconds;
@@ -459,21 +475,27 @@ std::string CelestialObject::Decl_as_degms(CelestialLocation seen_from)
     decl = (decl-degrees) * 60;
     int minutes = floor(decl);
     double seconds = (decl-minutes) * 60;
+
+    int isec = (int)llround(seconds);                   // as above: rounded, and carried
+    if (isec >= 60) { isec -= 60; minutes++; }
+    if (minutes >= 60) { minutes -= 60; degrees++; }
+
     return std::string( sign < 0 ? "-" : "+" )
         + std::string(degrees<10 ? "0" : "")
         + std::to_string(degrees) + std::string(":")
         + std::string(minutes<10 ? "0" : "")
         + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<10 ? "0" : "")
-        + std::to_string((int)seconds);
-    return std::string();
+        + std::string(isec<10 ? "0" : "")
+        + std::to_string(isec);
 }
 
 void CelestialObject::RA_from_hms(std::string ra_hms)
 {
     const char* c = ra_hms.c_str();
     int i, j=0;
-    double h, m, s;
+    // Zero, so that a string missing a field -- "12:34", or an empty edit box -- reads as zero
+    // rather than as whatever the stack was holding.
+    double h = 0, m = 0, s = 0;
 
     for (i=0; c[i]; i++)
     {
@@ -502,8 +524,10 @@ void CelestialObject::RA_from_hms(std::string ra_hms)
 void CelestialObject::Decl_from_degms(std::string decl_degms)
 {
     const char* c = decl_degms.c_str();
-    int i, j=0, sign;
-    double d, m, s;
+    // As above, and the sign with them: a declination written without one -- which is how a
+    // northern declination is usually typed -- never assigned it at all.
+    int i, j=0, sign = 1;
+    double d = 0, m = 0, s = 0;
 
     for (i=0; c[i]; i++)
     {
@@ -640,10 +664,19 @@ json CelestialObject::to_json()
 
     towrite["oblateness"] = oblateness;
     if (orbit) towrite["orbit"] = orbit->to_json();
-    towrite["precession"] = _pi * 2 / precession / oneyear;
+    // Written as the period in years, which is how the object editor states it and how a person
+    // thinks of it -- 25,772 for Earth. Zero is not a period but the absence of one, and dividing
+    // by it produced an infinity that nlohmann writes out as a bare null; the guard is the same
+    // one dialogs.cpp and cat.cpp already put on this conversion.
+    towrite["precession"] = precession ? (_pi * 2 / precession / oneyear) : 0;
     towrite["RI_color"] = RI_color;
     towrite["right_ascension"] = right_ascension * fiftyseven;
     towrite["sidereal_rotational_period"] = sidereal_rotational_period / oneday;
+    // Kelvins. Written only when there is one, because zero is what the derivations that fill
+    // this in -- Star::estimate_temperature(), Planet::equilibrium_temperature() -- read as
+    // "nobody has established a temperature for this body, work one out". Saving a zero would
+    // say the same thing, but saving nothing keeps it out of the files of bodies that have none.
+    if (temperature) towrite["temperature"] = temperature;
     towrite["type"] = type;
     towrite["typeclass"] = typeclass();
     towrite["UB_color"] = UB_color;
@@ -693,10 +726,23 @@ bool CelestialObject::from_json(json j)
         orbit = new Orbit();
         orbit->from_json(j1);
     } catch (...) { ; }
-    try { j.at("precession").get_to(precession); precession = _pi * 2 / (precession * oneyear); } catch (...) { ; }
+    // And back, with the same guard: a stated period of zero means the body has no precession, so
+    // the rate is zero. Ungarded, it made the rate infinite, and update_orbit_location() multiplies
+    // it by the seconds since epoch to get equinox_eff -- which at the epoch itself is inf*0, a
+    // NaN that takes the body's orientation with it. Files written before this carry that zero:
+    // 37 of the 38 objects in Koora.json do.
+    try
+    {
+        j.at("precession").get_to(precession);
+        precession = precession ? (_pi * 2 / (precession * oneyear)) : 0;
+    } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
     try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
+    // A stated temperature stands: the derivations above return it unchanged rather than working
+    // one out, which is the point of saving it -- a body whose temperature was measured, edited by
+    // hand, or arrived at through a chain this session will not repeat comes back with it intact.
+    try { j.at("temperature").get_to(temperature); } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
     try { j.at("user_added").get_to(user_added); } catch (...) { ; }
@@ -1546,81 +1592,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double T_boil = 1.0 / inv_T2;
     // std::cout << "At " << (p->get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
-    bool life_possible = false;
-
-    if (!p->get_surface_pressure())
-    {
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
-        double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
-        if (isinf(max_atm_pressure)) max_atm_pressure = 0;
-        p->ensure_atmosphere()->surface_pressure = p->cel_frand(0.1, 1) * max_atm_pressure;
-    }
-
-    AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
-    life_possible = (p->is_in_con_HZ() && cel->mass > 0.02 * earth_mass);       // Based on Titan's mass.
-    if (randomize_txgen)
-    {
-        if (life_possible)
-        {
-            if (!show_taucalc) ac->generate_fictitious_habitable();
-            p->atm->calculate_tau(p->get_surface_pressure());
-            p->temperature = 0;
-            T_surf = p->estimate_surface_temperature();
-        }
-        else if (!show_taucalc) ac->generate_fictitious_for_planet(p->type);
-    }
-    life_possible = (life_possible
-        && p->get_surface_pressure() >= 600
-        && T_surf > 0.9*water_freezing && T_surf < 320
-        && p->get_surface_pressure() < oneatm*2000);
-
-    p->atm->calculate_tau(p->get_surface_pressure());
-    // std::cout << p->name << " tau=" << p->get_atmospheric_tau() << std::endl;
-
-    if (life_possible)
-    {
-        p->temperature = 0;
-        T_surf = p->estimate_surface_temperature();
-        #ifdef DEBUG
-            std::cout << "Surface pressure: " << (p->get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
-            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
-        #endif
-
-        if (randomize_txgen)
-        {
-            if (T_surf < 0.9 * water_freezing)
-            {
-                has_water = 1;
-            }
-            else if (T_surf < T_boil * 1.1)
-            {
-                double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
-                has_water = p->cel_frand(0, max_water);
-            }
-        }
-
-        ac->H2O_portion = 0.014 * has_water;
-        p->temperature = 0;
-        p->atm->calculate_tau(p->get_surface_pressure());
-        T_surf = p->estimate_surface_temperature();
-
-        life_possible = (has_water >= 0.05
-            && p->get_surface_pressure() >= 600
-            && T_surf > 0.9*water_freezing && T_surf < 320
-            && p->get_surface_pressure() < oneatm*2000);
-
-        if (randomize_txgen)
-        {
-            if (life_possible)
-            {
-                if (!show_taucalc) ac->generate_fictitious_habitable();
-                p->atm->calculate_tau(p->get_surface_pressure());
-            }
-        }
-    }
-    p->temperature = 0;
-    p->atm->calculate_tau(p->get_surface_pressure());
-    T_surf = p->estimate_surface_temperature();
+    bool life_possible = p->estimate_habitability();
 
     bool want_overcast_sky = false;
     if (p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
@@ -1897,6 +1869,19 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->cloud_map->generate_overcast_sky(cel);
     }
     p->generate_ring_parameters();
+
+    if (p->ring_radius)
+    {
+        // Generate a ring texture and a ring transparency map using ring_inner_radius/ring_radius and ring_mean_opacity.
+        if (p->ring_map) delete p->ring_map;
+        if (p->ringx_map) delete p->ringx_map;
+
+        p->ring_map = new Map(p);
+        p->ringx_map = new Map(p);
+
+        p->ring_map->generate_ring_map(p, p->ring_radius / p->volumetric_mean_radius * 1024,
+            p->ring_inner_radius/p->ring_radius, p->ring_mean_opacity, p->ringx_map);
+    }
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -2269,6 +2254,19 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     generating_fic_texture = false;
     touch_gen();
     p->generate_ring_parameters();
+
+    if (p->ring_radius)
+    {
+        // Generate a ring texture and a ring transparency map using ring_inner_radius/ring_radius and ring_mean_opacity.
+        if (p->ring_map) delete p->ring_map;
+        if (p->ringx_map) delete p->ringx_map;
+
+        p->ring_map = new Map(p);
+        p->ringx_map = new Map(p);
+
+        p->ring_map->generate_ring_map(p, p->ring_radius / p->volumetric_mean_radius * 1024,
+            p->ring_inner_radius/p->ring_radius, p->ring_mean_opacity, p->ringx_map);
+    }
 }
 
 void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
@@ -2906,8 +2904,29 @@ alienorum::Locale::Locale(json fj)
     }
 }
 
+// TODO: also scale up if partial atmosphere.
 void alienorum::AtmosphereComposition::enforce_integrity()
 {
+    // A negative portion is not a thin atmosphere but a nonsensical one, and it hides itself in
+    // the sum below: a negative and a positive can total exactly 1 while neither can exist. Floor
+    // them before anything is measured, so the normalization works on quantities that are real.
+    if (H2_portion   < 0) H2_portion   = 0;
+    if (He_portion   < 0) He_portion   = 0;
+    if (N2_portion   < 0) N2_portion   = 0;
+    if (O2_portion   < 0) O2_portion   = 0;
+    if (O3_portion   < 0) O3_portion   = 0;
+    if (CO2_portion  < 0) CO2_portion  = 0;
+    if (CH4_portion  < 0) CH4_portion  = 0;
+    if (SO2_portion  < 0) SO2_portion  = 0;
+    if (H2O_portion  < 0) H2O_portion  = 0;
+    if (H2S_portion  < 0) H2S_portion  = 0;
+    if (HCN_portion  < 0) HCN_portion  = 0;
+    if (NH3_portion  < 0) NH3_portion  = 0;
+    if (C2H6_portion < 0) C2H6_portion = 0;
+    if (N2O_portion  < 0) N2O_portion  = 0;
+    if (CO_portion   < 0) CO_portion   = 0;
+    if (Ar_portion   < 0) Ar_portion   = 0;
+
     double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
         + CO2_portion + CH4_portion + SO2_portion + H2O_portion + H2S_portion
         + HCN_portion + NH3_portion + C2H6_portion + N2O_portion
@@ -2990,7 +3009,7 @@ void alienorum::AtmosphereComposition::generate_fictitious_ice_giant()
     enforce_integrity();
 }
 
-void alienorum::AtmosphereComposition::generate_fictitious_venusian()
+void alienorum::AtmosphereComposition::generate_fictitious_venusian()       // also covers Mars-type atmospheres
 {
     double leftover = 1;
     leftover -= (N2_portion = cel->cel_frand(0.01, 0.1));
@@ -3050,7 +3069,7 @@ void alienorum::AtmosphereComposition::generate_fictitious_habitable()
     enforce_integrity();
 }
 
-void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)
+void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)       // does NOT cover habitable atmospheres - that's a separate call.
 {
     if (t == gas_giant) generate_fictitious_gas_giant();
     else if (t == ice_giant) generate_fictitious_ice_giant();

@@ -22,7 +22,7 @@ namespace alienorum
         Atmosphere *atm = nullptr;
 
         double get_surface_pressure() const { return atm ? atm->surface_pressure : 0; }   // Pa. For gas giants, at the top of the cloud deck if known.
-        double get_atmospheric_tau() const { return atm ? atm->tau : 0; }                 // How well the atmosphere absorbs thermal infrared. Thickness dependent.
+        double get_atmospheric_tau();                                                     // How well the atmosphere absorbs thermal infrared. Thickness dependent.
         double get_particulates() const { return atm ? atm->particulates : 0; }           // Colorimetric: how much of the sky color repeats the surface color vs. Rayleigh scattering.
 
         // Creates the Atmosphere on first use. Note it default-constructs, so surface_pressure
@@ -39,11 +39,16 @@ namespace alienorum
         double amt_lit = 0;                                 // Geometric: the fraction of the disc we see lit, 1 at full and 0 at new.
         double J2 = 0;
         double ring_radius = 0;
+        double ring_inner_radius = 0;
+        double ring_mean_opacity = 0;
         int asteroid_no = 0;                                // Zero if major planet or moon.
         bool lock_type = false;
 
-        void classify();
+        void setup_atm_ring_props();
+        void apply_cosmic_shoreline();
+        bool estimate_habitability();
         void set_color_from_type(bool HZ);
+        void classify();
         void classify(bool HZ, bool mass_and_rad_known = false, bool color_known = false);
                                                             // set the type, e.g. for exoplanets
         void estimate_radius();                             // if mass known

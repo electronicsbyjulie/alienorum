@@ -3632,6 +3632,9 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 // Estimate planet rotation.
                 p->estimate_rotation();
 
+                // Estimate atmosphere and rings.
+                p->setup_atm_ring_props();
+
                 // Add planet to celestial bodies array.
                 append_cel(p);
                 offset++;
@@ -4273,9 +4276,12 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
                 p->classify(p->is_in_con_HZ(), true, true);         // TODO: Verify this works for all solar system objects.
 
-                Star* s = (Star*)p->get_light_center();
+                // Checked before the cast: has_planets and has_hz_planets live past the end of
+                // any class smaller than Star, and get_light_center() does not promise a star.
+                CelestialObject* lc = p->get_light_center();
+                Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 // std::cout << p->name << " cosmic shoreline = " << CosmicShore::calculate_unified_metric(*s, *p) << std::endl;
-                if (p->orbit->center == s)
+                if (s && p->orbit->center == s)
                 {
                     s->has_planets++;
                     if (p->is_in_con_HZ()) s->has_hz_planets++;
@@ -5333,6 +5339,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     }
     new_planet->estimate_albedo_and_absmagn();
     new_planet->estimate_rotation();
+    new_planet->setup_atm_ring_props();
 
     // Append planet object to global array
     append_cel(new_planet);
@@ -5514,6 +5521,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     return result;
 }
+
 // ---- Galaxies --------------------------------------------------------------------------------
 //
 // UNGC (Karachentsev+ 2013, J/AJ/145/101) first: 869 Local Volume galaxies with MEASURED distances

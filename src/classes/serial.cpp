@@ -1,6 +1,7 @@
 
 #include <iostream>
 #include <cctype>
+#include <set>
 #include "serial.h"
 #include "cons.h"
 
@@ -349,6 +350,10 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
                 allobjs[l] = ((Moon*)cels[i])->to_json();
                 break;
 
+                case class_comet:
+                allobjs[l] = ((Comet*)cels[i])->to_json();
+                break;
+
                 case class_satellite:
                 allobjs[l] = ((Satellite*)cels[i])->to_json();
                 break;
@@ -377,6 +382,17 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         int i, j, n = allobj.size();
         for (i=0; cels[i]; i++);
         ncelobjs = i;
+
+        // Stars whose entry in the file states a planet tally of its own. Those tallies are now
+        // saved, and the pass further down counts the planets it links back up to their star as
+        // well -- do both to the same star and it ends up with twice the planets it has. The file
+        // is the better authority of the two: it was written when the count was complete, whereas
+        // counting here sees only what this file happens to carry, which for a save of just the
+        // edited objects is a fraction of the system, and it credits a star with planets a
+        // catalog already counted once. So a star that brought its own tally keeps it, and the
+        // count below is left to the stars that did not -- which is every star in a file written
+        // before these tallies were saved, so those load exactly as they always have.
+        std::set<Star*> tally_stated;
         for (auto it = allobj.begin(); it != allobj.end(); ++it)
         {
             i = ncelobjs;
@@ -416,6 +432,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 case class_star:
                 if (!cels[i]) cels[i] = new Star();
                 ((Star*)cels[i])->from_json(js);
+                if (js.contains("has_planets")) tally_stated.insert((Star*)cels[i]);
                 ((Star*)cels[i])->update_location(J2000_TIME_T);
                 break;
 
@@ -453,7 +470,19 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             loading_msg = std::string("Loaded ") + std::to_string(i+1) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
             mtx.unlock();
 
-            if (!cels[i]->orbit) continue;
+            // Nothing below this point applies to a body with no orbit -- there is no center to
+            // look up and no star to credit a planet to -- but skipping straight past the end of
+            // the loop skipped the ncelobjs++ down there as well, and a newly created object that
+            // never advanced the count was simply overwritten by the next one loaded. It went
+            // unnoticed because the orbitless objects in a universe file are nearly always stars
+            // that a catalog has already put in the array, where the count is not meant to
+            // advance; a star the catalogs do not have -- an invented one, or any star at all
+            // when the file is loaded on its own -- was dropped on the floor.
+            if (!cels[i]->orbit)
+            {
+                if (i==ncelobjs) ncelobjs++;
+                continue;
+            }
             const char* cenname = cels[i]->orbit->center_name.c_str();
             cels[i]->orbit->center = nullptr;
             for (j=0; cels[j]; j++)
@@ -471,9 +500,17 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
 
             if (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
             {
-                Star* s = (Star*) cels[i]->get_light_center();
+                // get_light_center() answers with whatever the orbital hierarchy leads to, and
+                // that is not always a star: it hands back the object itself for anything whose
+                // type is star whatever its class, and after five hops it hands back wherever it
+                // got to. Casting that to Star* and incrementing has_planets writes four bytes
+                // past the end of a smaller object -- which is how a moon left with the default
+                // type overwrote the vtable pointer of the planet allocated next to it. Same
+                // check as Planet::est_bolometric_flux().
+                CelestialObject* lc = cels[i]->get_light_center();
+                Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
-                else
+                else if (!tally_stated.count(s))
                 {
                     s->has_planets++;
                     if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
