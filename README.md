@@ -33,12 +33,19 @@ MSYS2 (Run in MINGW64 environment):
 * View space from any vantage point;
 * Time travel (in-universe only) - set the view for any date by stepping forward/backward;
 * Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
+* Asteroids and comets;
 * Realtime satellite positions;
-* Exoplanets;
+* Exoplanets including fictional texture maps, atmospheres, and rings;
+* Customizable texture generation for fictional world building;
 * Ability to select an individual star/planet/moon/satellite and teleport to its position;
+* Stellar proper motions, orbits, and variability;
 * Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
 * Custom texture map generation;
 * More coming soon...
+
+Unofficial proposed names are included for the four planets in the 82 Eridani system. These names are not in use
+by any authority at the time of this writing. The names were invented here to avoid confusion between two
+different lettering schemes for the planets in this system.
 
 
 ## Initial Run
@@ -131,13 +138,19 @@ by the target and watch it seem to roll across the background stars.
 
 ## View Modes
 
-### Horizon
+### Spaceship
 
-Horizon mode allows seeing the sky and horizon from the surface of any planet, moon, or asteroid. This mode can be
+The default mode. Simulates a view from space as if looking out from inside a spaceship. If located at a star,
+planet, moon, etc., it will look as if you were at the center of the object with the object itself invisible.
+
+
+### Planetfall
+
+Planetfall mode allows seeing the sky and horizon from the surface of any planet, moon, or asteroid. This mode can be
 accessed by selecting it from the dropdown in the status window, pressing `_` (underscore), or "crashing" into an
 object during spaceflight. (Crashing into a star will not have the same effect.)
 
-While in horizon mode, there are controls to edit the current latitude and longitude. These will be saved to your
+While in planetfall mode, there are controls to edit the current latitude and longitude. These will be saved to your
 `user.json` file if you change the theme in the themes dropdown. Next to the latitude button is an `...` button
 that produces a list of locales if any locales are known for your current location. On Earth this includes cities
 and a handful of observatories.
@@ -153,6 +166,12 @@ a total of one million times the default walking speed.
 Sun clock mode shows the entire surface of the planet or moon as a cylindrical projection lit up in areas that are
 in daylight. It is pannable and zoomable. Resolution is limited for performance reasons, but you can zoom in much
 closer than the resolution of most texture maps.
+
+
+### Sky Map
+
+A pannable, zoomable atlas of the full sky and all objects in it, arranged by right ascension (X axis) and
+declination (Y axis).
 
 
 ## Satellites
@@ -240,6 +259,35 @@ resample the `maps/Moon_bump.jpg` map up to 2048x1024 resolution.
 
 
 ## For Developers
+
+### Unit Tests
+
+Unit tests are in place; to run them, run `make tests`. The "all" target deliberately does not make `tests`
+but does build the unit tests' binary executables.
+
+Every new PR will have to pass all unit tests before merge. Recommended but not required: when adding a
+feature, it is a good idea to also add unit tests for it. The repo owner will check for testing gaps from time
+to time and fix any gaps found.
+
+### Version Numbering
+
+The current version can be found in vcpkg.json. This is the version for the Windows installer (see below) as
+well as any other releases that may be added in the future.
+
+The repo owner will try to release a new version every week, typically around Sunday night MST.
+
+Once out of version zero, the version numbering will be incremented as follows:
+- Every new release that does not increment the major or minor increments the patch number by one;
+- Every new release that introduces a significant feature increments the minor by one and resets the patch to
+   zero.
+- Every new release that breaks compatibility with any third party code or app or library, or changes the format
+   or behavior of a command line argument, or changes an existing keyboard shortcut, or changes a top level menu
+   item, shall increment the major by one and reset the minor and patch to zero.
+
+What counts as a feature? Anything significant to the user experience or anything substantial enough to warrant
+a minor version update. For example, had version 1.0 not included planetary atmospheres, the addition of that
+feature would have qualified for version 1.1, but the addition of a new text field for a previously ignored gas,
+say hydrogen chloride, would not qualify.
 
 ### Building the Windows Installer
 
