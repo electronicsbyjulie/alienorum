@@ -65,16 +65,19 @@ TEST(PlanetTest, ValidAtmosphereAccessors)
 {
     Planet world;
     Atmosphere* atm = world.ensure_atmosphere();
-    
-    // Manually set test values
-    // Assuming oneatm is defined globally as ~101325 or similar
-    // We'll set arbitrary numbers to verify the routing works
-    atm->surface_pressure = 50000.0; 
-    atm->tau = 1.5;
+
+    // get_atmospheric_tau() derives tau from the real composition rather than trusting a bare
+    // hand-set field (a zero tau from a real, mostly-inert composition has to be trusted rather
+    // than mistaken for "no data" -- see RealCompositionWithZeroTauIsTrusted), so give it a
+    // composition to derive from and check against the same formula it uses internally.
+    atm->surface_pressure = 50000.0;
     atm->particulates = 0.8;
-    
+    AtmosphereComposition* comp = atm->ensure_composition();
+    comp->CO2_portion = 1.0;
+    double expected_tau = atmospheric_tau(50000.0 * 0.000009869, 1.0, 0,0,0,0,0,0,0,0,0,0);
+
     EXPECT_DOUBLE_EQ(world.get_surface_pressure(), 50000.0);
-    EXPECT_DOUBLE_EQ(world.get_atmospheric_tau(), 1.5);
+    EXPECT_DOUBLE_EQ(world.get_atmospheric_tau(), expected_tau);
     EXPECT_DOUBLE_EQ(world.get_particulates(), 0.8);
 }
 
@@ -545,6 +548,151 @@ TEST_F(PlanetAtmosphereTest, ScaleHeightRequiresAnAtmosphere)         // Claude 
         << "and it comes back to where it was when the distance does";
     warm->mass = 5 * earth_mass;
     EXPECT_LT(warm->estimate_scale_height(), earthlike) << "stronger gravity holds it down";
+
+    delete_the_universe();
+}
+
+// get_atmospheric_tau() used to treat "computed tau of zero" as a proxy for "no composition data,"
+// and would invent a random fictitious atmosphere to replace it. But a real, fully-specified
+// atmosphere that's mostly inert gas -- Earth's N2/O2/Ar, none of which are greenhouse gases this
+// model tracks -- legitimately computes to zero tau too. That's a real answer, not a missing one,
+// and it must not get overwritten.
+TEST_F(PlanetAtmosphereTest, RealCompositionWithZeroTauIsTrusted)
+{
+    Star* sun = make_star("Sol");
+
+    Planet* earth = make_planet(sun, "Earth", AU);
+    Atmosphere* eatm = earth->ensure_atmosphere();
+    eatm->surface_pressure = oneatm;
+    AtmosphereComposition* ecomp = eatm->ensure_composition();
+    ecomp->N2_portion = 0.78;
+    ecomp->O2_portion = 0.21;
+    ecomp->Ar_portion = 0.01;
+
+    EXPECT_DOUBLE_EQ(earth->get_atmospheric_tau(), 0.0);
+
+    // The composition object itself, and the real gas fractions on it, must survive untouched --
+    // not be silently replaced by ensure_composition()->generate_fictitious_for_planet().
+    EXPECT_EQ(eatm->comp, ecomp);
+    EXPECT_DOUBLE_EQ(ecomp->N2_portion, 0.78);
+    EXPECT_DOUBLE_EQ(ecomp->O2_portion, 0.21);
+    EXPECT_DOUBLE_EQ(ecomp->Ar_portion, 0.01);
+    EXPECT_DOUBLE_EQ(ecomp->CO2_portion, 0.0) << "no fictitious greenhouse gas should have been invented";
+
+    // A planet with pressure but genuinely no composition at all is the case this fallback exists
+    // for, and should still get one invented for it.
+    Planet* sketched = make_planet(sun, "Sketched", AU);
+    sketched->ensure_atmosphere()->surface_pressure = oneatm;
+    EXPECT_EQ(sketched->atm->comp, nullptr);
+    sketched->get_atmospheric_tau();
+    EXPECT_NE(sketched->atm->comp, nullptr) << "a planet with no composition data at all should still get one made up";
+
+    delete_the_universe();
+}
+
+// Real bodies, real mass/radius/orbit/pressure/composition, checked against the estimate_
+// scale_height() formula (H = RT/(Mg), g converted from the Earth-Gs estimate_surface_gravity()
+// returns to m/s2 -- see the fix in Planet::estimate_scale_height()). Bounds are deliberately
+// loose: equilibrium_temperature() runs through a fitted Bond-albedo model and an Eddington-gray
+// greenhouse approximation, neither of which promises to land on the textbook surface temperature
+// (real scale heights: Earth ~8.5 km, Venus ~15.9 km, Mars ~11.1 km, Jupiter ~27 km). What these
+// bounds do pin down is the order of magnitude: a units bug like the one this guards against (the
+// pre-fix code was off by the 9.80665 m/s2 -> Earth-Gs conversion) inflates every one of these by
+// roughly 9.8x, which blows straight through the upper bound on all four.
+TEST_F(PlanetAtmosphereTest, ScaleHeightIsSaneForRealPlanets)
+{
+    Star* sun = make_star("Sol");
+
+    Planet* earth = make_planet(sun, "Earth", AU);
+    earth->albedo = 0.306;
+    Atmosphere* eatm = earth->ensure_atmosphere();
+    eatm->surface_pressure = oneatm;
+    AtmosphereComposition* ecomp = eatm->ensure_composition();
+    ecomp->N2_portion = 0.78;
+    ecomp->O2_portion = 0.21;
+    ecomp->Ar_portion = 0.01;
+
+    Planet* venus = make_planet(sun, "Venus", 0.723 * AU);
+    venus->mass = 0.815 * earth_mass;
+    venus->volumetric_mean_radius = 0.9499 * earth_radius;
+    venus->albedo = 0.75;
+    Atmosphere* vatm = venus->ensure_atmosphere();
+    vatm->surface_pressure = 92 * oneatm;
+    AtmosphereComposition* vcomp = vatm->ensure_composition();
+    vcomp->CO2_portion = 0.965;
+    vcomp->N2_portion = 0.035;
+
+    Planet* mars = make_planet(sun, "Mars", 1.524 * AU);
+    mars->mass = 0.1074 * earth_mass;
+    mars->volumetric_mean_radius = 0.532 * earth_radius;
+    mars->albedo = 0.25;
+    Atmosphere* matm = mars->ensure_atmosphere();
+    matm->surface_pressure = 610;
+    AtmosphereComposition* mcomp = matm->ensure_composition();
+    mcomp->CO2_portion = 0.95;
+    mcomp->N2_portion = 0.027;
+    mcomp->Ar_portion = 0.019;
+    mcomp->O2_portion = 0.0013;
+
+    Planet* jupiter = make_planet(sun, "Jupiter", 5.2 * AU);
+    jupiter->mass = jupiter_mass;
+    jupiter->volumetric_mean_radius = jupiter_radius;
+    jupiter->albedo = 0.343;
+    Atmosphere* jatm = jupiter->ensure_atmosphere();
+    jatm->surface_pressure = oneatm;
+    AtmosphereComposition* jcomp = jatm->ensure_composition();
+    jcomp->H2_portion = 0.864;
+    jcomp->He_portion = 0.136;
+
+    struct Expectation { Planet* p; double min_m; double max_m; };
+    Expectation expectations[] =
+    {
+        { earth,   2000, 30000 },
+        { venus,   2000, 40000 },
+        { mars,    2000, 30000 },
+        { jupiter, 2000, 60000 },
+    };
+
+    for (auto& e : expectations)
+    {
+        double H = e.p->estimate_scale_height();
+        EXPECT_GT(H, e.min_m) << e.p->name << ": scale height implausibly thin";
+        EXPECT_LT(H, e.max_m) << e.p->name << ": scale height implausibly puffy -- check for a units regression";
+
+        // The cap in estimate_scale_height() should never be the thing holding a normal planet
+        // down: a real world's scale height is a small fraction of its own radius.
+        EXPECT_LT(H, e.p->volumetric_mean_radius * 0.05)
+            << e.p->name << ": within the cap, but by coincidence rather than because it's tiny by nature";
+    }
+
+    delete_the_universe();
+}
+
+// A world with no measured composition or temperature -- exactly the shape of a directly-imaged,
+// wide-orbit exoplanet like COCONUTS-2 b, whose orbital archive gives a period and semimajor axis
+// but nothing about its atmosphere -- can still send T or g to extremes through the estimation
+// pipeline (a bad greenhouse tau, an underestimated gravity). Whatever the upstream cause, the
+// rendered glow must never be allowed to swallow the planet: confirm the absolute cap holds even
+// when the raw RT/(Mg) value would clearly blow past it.
+TEST_F(PlanetAtmosphereTest, ScaleHeightCapHoldsForAPathologicalPlanet)
+{
+    Star* sun = make_star("Sol");
+
+    // Cranked far hotter than any real greenhouse effect would produce, on a low-gravity world:
+    // T high and g low both push H up, so this is a stress case, not a realistic one.
+    Planet* monster = make_planet(sun, "Monster", 0.05 * AU);
+    monster->mass = 0.01 * earth_mass;
+    monster->volumetric_mean_radius = 5 * earth_radius;
+    monster->albedo = 0.0;
+    Atmosphere* matm = monster->ensure_atmosphere();
+    matm->surface_pressure = oneatm;
+    AtmosphereComposition* mcomp = matm->ensure_composition();
+    mcomp->H2_portion = 1.0;
+
+    double H = monster->estimate_scale_height();
+    EXPECT_GT(H, 0);
+    EXPECT_LE(H, monster->volumetric_mean_radius * 0.05 * 1.0000001)
+        << "the cap must hold regardless of how extreme the upstream temperature/gravity estimate gets";
 
     delete_the_universe();
 }

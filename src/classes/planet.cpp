@@ -176,14 +176,19 @@ void Planet::set_color_from_type(bool HZ)
 double alienorum::Planet::get_atmospheric_tau()
 {
     if (!atm) return 0;
-    if (!atm->tau) atm->calculate_tau(atm->surface_pressure);
-    if (!atm->tau)
+
+    // A real, explicitly-set composition can legitimately compute to zero tau -- Earth's N2/O2/Ar
+    // air isn't in the tracked greenhouse-gas list at all -- so a zero result is not itself a sign
+    // that composition data is missing. Only invent a fictitious composition when there is truly
+    // none to work with; once one exists (real or invented), recompute tau from it every time
+    // rather than trusting a stale cached value that a falsy tau can't be told apart from.
+    if (!atm->comp)
     {
         double press = atm->surface_pressure;
         atm->ensure_composition()->generate_fictitious_for_planet(type);
         if (press) atm->surface_pressure = press;
-        atm->calculate_tau(atm->surface_pressure);
     }
+    atm->calculate_tau(atm->surface_pressure);
     return atm->tau;
 }
 
@@ -404,27 +409,32 @@ double Planet::estimate_bump_scale()
 // and 27 on Jupiter, whose hydrogen is barely a fifteenth the molar mass of Venus's CO2.
 //
 // Returns 0 for an airless body, which reads as "no glow at all" downstream.
-
-// TODO: Looking at estimate_scale_height(), I did spot one potential units mismatch you might
-// want to double-check. The barometric formula $H = \frac{RT}{Mg}$ expects $g$ to be standard
-// acceleration (m/s²). If your estimate_surface_gravity() function returns Earth Gs (where
-// Earth = 1.0) as we saw in celestial.cpp, this scale height calculation will return a value
-// roughly 9.8 times too large (around 82 km for Earth instead of the 8.5 km mentioned in your
-// comments). You may want to multiply $g$ by 9.80665 in this specific function if that's the case!
 double Planet::estimate_scale_height()
 {
     if (get_surface_pressure() <= 0) return 0;
 
     double T = estimate_surface_temperature();
-    double g = estimate_surface_gravity();
+    double g = estimate_surface_gravity();     // Earth Gs (Earth = 1.0); H = RT/(Mg). Claude is not PTSD-friendly.
     if (T <= 0 || g <= 0) return 0;
+    g *= 9.80665;
 
     // Falls back to Earth air when the body has a pressure but no composition listed at all,
     // which is the common case for a world sketched in without that much detail.
     double M = (atm && atm->comp) ? atm->comp->mean_molar_mass() : 0.0289644;
     if (M <= 0) return 0;
 
-    return 8.314462618 * T / (M * g);
+    double H = 8.314462618 * T / (M * g);
+
+    // Even the puffiest real atmosphere we know of is a small fraction of its planet's radius
+    // (Titan's ~15 km against a 2575 km radius is under 0.6%). A poorly-constrained world -- a
+    // directly-imaged wide-orbit giant with no measured composition or temperature, say -- can
+    // still send T or g to an extreme that makes H balloon past the planet itself. Cap it well
+    // above anything physical so the glow stays a limb, not a shroud, however bad the inputs are.
+    const double max_scale_height_fraction_of_radius = 0.05;
+    if (volumetric_mean_radius > 0)
+        H = std::min(H, volumetric_mean_radius * max_scale_height_fraction_of_radius);
+
+    return H;
 }
 
 void alienorum::Planet::incline_exo_orbit(double sys_solincl, double sys_solnode)
