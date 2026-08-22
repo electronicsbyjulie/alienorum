@@ -350,6 +350,10 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
                 allobjs[l] = ((Moon*)cels[i])->to_json();
                 break;
 
+                case class_comet:
+                allobjs[l] = ((Comet*)cels[i])->to_json();
+                break;
+
                 case class_satellite:
                 allobjs[l] = ((Satellite*)cels[i])->to_json();
                 break;
@@ -496,7 +500,15 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
 
             if (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
             {
-                Star* s = (Star*) cels[i]->get_light_center();
+                // get_light_center() answers with whatever the orbital hierarchy leads to, and
+                // that is not always a star: it hands back the object itself for anything whose
+                // type is star whatever its class, and after five hops it hands back wherever it
+                // got to. Casting that to Star* and incrementing has_planets writes four bytes
+                // past the end of a smaller object -- which is how a moon left with the default
+                // type overwrote the vtable pointer of the planet allocated next to it. Same
+                // check as Planet::est_bolometric_flux().
+                CelestialObject* lc = cels[i]->get_light_center();
+                Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
                 else if (!tally_stated.count(s))
                 {

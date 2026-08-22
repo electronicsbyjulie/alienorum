@@ -1,6 +1,9 @@
+#include <cmath>
+#include <cstring>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/celestial.h"
+#include "../classes/planet.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -430,22 +433,334 @@ TEST_F(CelestialGlobalsTest, AppendCel_UpdatesConstellationIndex)
 
 TEST_F(CelestialGlobalsTest, AppendCel_HandlesFullCapacity)
 {
-    // If your cels array has a hard limit, you can test what happens when it fills up.
-    // (This test depends on you knowing the exact capacity limit).
-    /*
-    int MAX_CAPACITY = 10000; // Example
-    
-    // Fill the array
-    for (int i = 0; i < MAX_CAPACITY; i++)
-    {
-        CelestialObject* dummy = new CelestialObject();
-        EXPECT_TRUE(append_cel(dummy));
-    }
-    
-    // The next one should fail safely without segfaulting
+    // The limit is MAX_CELOBJS and append_cel() stops one short of it, so that cels[ncelobjs] is
+    // always a null terminator for the many loops that walk the array until they find one. Filling
+    // half a million slots with real objects would take a while and most of a gigabyte, so the
+    // count is moved instead: everything append_cel() checks is in ncelobjs.
+    CelestialObject* fits = new CelestialObject();
+    ncelobjs = MAX_CELOBJS - 2;
+    EXPECT_TRUE(append_cel(fits));
+    EXPECT_EQ(fits->seqno, MAX_CELOBJS - 2);
+    EXPECT_EQ(cels[MAX_CELOBJS - 2], fits);
+    EXPECT_EQ(cels[MAX_CELOBJS - 1], nullptr) << "the terminator has to stay inside the array";
+
+    // And the next one is refused rather than written past the end.
     CelestialObject* one_too_many = new CelestialObject();
     EXPECT_FALSE(append_cel(one_too_many));
-    
+    EXPECT_EQ(one_too_many->seqno, -1) << "a refused object should not think it was added";
+
+    delete fits;
     delete one_too_many;
-    */
+}
+
+// =====================================================================
+// Orbit: the two computations that are each other's inverse
+// =====================================================================
+
+TEST(OrbitTest, PeriodAndSemimajorAxisAreInverses)
+{
+    CelestialObject sun;
+    sun.mass = solar_mass;
+    sun.type = star;
+
+    Orbit orbit;
+    orbit.center = &sun;
+    orbit.semimajor_axis = AU;
+    orbit.compute_period();
+
+    // Kepler's third law, in the units the program keeps: one AU around one solar mass is a year.
+    EXPECT_NEAR(orbit.period, oneyear, oneyear * 0.001);
+
+    // And back again.
+    double remembered = orbit.semimajor_axis;
+    orbit.semimajor_axis = 0;
+    orbit.compute_semimajor_axis();
+    EXPECT_NEAR(orbit.semimajor_axis, remembered, remembered * 1e-9);
+
+    // Four times the distance is eight times the period.
+    orbit.semimajor_axis = 4 * AU;
+    orbit.compute_period();
+    EXPECT_NEAR(orbit.period, 8 * oneyear, oneyear * 0.01);
+}
+
+TEST(OrbitTest, AnOpenOrbitHasNoPeriod)
+{
+    CelestialObject sun;
+    sun.mass = solar_mass;
+    sun.type = star;
+
+    Orbit orbit;
+    orbit.center = &sun;
+    orbit.semimajor_axis = AU;
+    orbit.eccentricity = 1.5;                   // hyperbolic
+    orbit.period = 12345;
+    orbit.compute_period();
+    EXPECT_DOUBLE_EQ(orbit.period, 0) << "it never comes back, so there is nothing to time";
+}
+
+TEST(OrbitTest, WithoutACenterNothingIsComputed)
+{
+    Orbit orphan;
+    orphan.semimajor_axis = AU;
+    orphan.period = 0;
+    orphan.compute_period();
+    EXPECT_DOUBLE_EQ(orphan.period, 0);         // and no dereference of the null center
+}
+
+TEST(OrbitTest, JsonRoundTripKeepsTheAngles)
+{
+    // The file states angles in degrees and the program keeps them in radians, so every one of
+    // these crosses a conversion on the way out and another on the way back.
+    Orbit original;
+    original.semimajor_axis = 2.5 * AU;
+    original.eccentricity = 0.42;
+    original.inclination = 0.3;
+    original.ascending_node = 1.1;
+    original.arg_periapsis = 2.2;
+    original.mean_anomaly = 3.3;
+    original.period = 4 * oneyear;
+    original.epoch = 2451545.0;
+
+    json j = original.to_json();
+    Orbit restored;
+    EXPECT_TRUE(restored.from_json(j));
+
+    EXPECT_NEAR(restored.semimajor_axis, 2.5 * AU, 1);
+    EXPECT_NEAR(restored.eccentricity, 0.42, 1e-12);
+    EXPECT_NEAR(restored.inclination, 0.3, 1e-12);
+    EXPECT_NEAR(restored.ascending_node, 1.1, 1e-12);
+    EXPECT_NEAR(restored.arg_periapsis, 2.2, 1e-12);
+    EXPECT_NEAR(restored.mean_anomaly, 3.3, 1e-12);
+    EXPECT_NEAR(restored.period, 4 * oneyear, 1);
+    EXPECT_DOUBLE_EQ(restored.epoch, 2451545.0);
+
+    // Written in degrees, not radians -- a reader outside this program has to be able to make
+    // sense of the file.
+    EXPECT_NEAR(j["inclination"].get<double>(), 0.3 * fiftyseven, 1e-9);
+}
+
+// =====================================================================
+// Right ascension and declination, as text
+// =====================================================================
+
+TEST(CoordinateTextTest, RightAscensionRoundTrip)
+{
+    CelestialObject cel;
+
+    // Vega: 18h 36m 56.3s.
+    cel.RA_from_hms("18:36:56.3");
+    EXPECT_NEAR(cel.right_ascension, (18 + 36/60.0 + 56.3/3600.0) * 15 * fiftyseventh, 1e-9);
+    EXPECT_EQ(cel.RA_as_hms(0), "18:36:56.3");
+
+    // Zero pads to two digits in each field rather than printing "0:0:0.0".
+    cel.RA_from_hms("00:00:00.0");
+    EXPECT_DOUBLE_EQ(cel.right_ascension, 0);
+    EXPECT_EQ(cel.RA_as_hms(0), "00:00:00.0");
+
+    // A single digit in the seconds field keeps its leading zero on the way out.
+    cel.RA_from_hms("05:06:07.0");
+    EXPECT_EQ(cel.RA_as_hms(0), "05:06:07.0");
+
+    // Seconds that round up to a full minute carry, rather than printing "05:06:60.0".
+    cel.right_ascension = (5 + 6/60.0 + 59.97/3600.0) * 15 * fiftyseventh;
+    EXPECT_EQ(cel.RA_as_hms(0), "05:07:00.0");
+}
+
+TEST(CoordinateTextTest, DeclinationRoundTrip)
+{
+    CelestialObject cel;
+
+    // Vega: +38d 47' 01". The seconds are rounded on the way out, not truncated -- truncating
+    // cost a second every time a coordinate was displayed, and the object editor reads back what
+    // it displays, so a body edited a few times walked steadily south.
+    cel.Decl_from_degms("+38:47:01");
+    EXPECT_NEAR(cel.declination, (38 + 47/60.0 + 1/3600.0) * fiftyseventh, 1e-9);
+    EXPECT_EQ(cel.Decl_as_degms(), "+38:47:01");
+
+    // Rounding that fills the seconds field carries into the minutes rather than printing ":60".
+    cel.declination = (38 + 47/60.0 + 59.7/3600.0) * fiftyseventh;
+    EXPECT_EQ(cel.Decl_as_degms(), "+38:48:00");
+    cel.declination = (38 + 59/60.0 + 59.7/3600.0) * fiftyseventh;
+    EXPECT_EQ(cel.Decl_as_degms(), "+39:00:00");
+
+    // South of the equator, where the sign is the whole difference.
+    cel.Decl_from_degms("-16:42:58");
+    EXPECT_LT(cel.declination, 0);
+    EXPECT_NEAR(cel.declination, -(16 + 42/60.0 + 58/3600.0) * fiftyseventh, 1e-9);
+    EXPECT_EQ(cel.Decl_as_degms(), "-16:42:58");
+
+    // A northern declination is often typed without its plus, and used to be read with an
+    // uninitialized sign -- so it came out north or south depending on the stack.
+    cel.Decl_from_degms("38:47:01");
+    EXPECT_GT(cel.declination, 0);
+
+    // Nothing at all is zero, not garbage.
+    cel.Decl_from_degms("");
+    EXPECT_DOUBLE_EQ(cel.declination, 0);
+    cel.RA_from_hms("");
+    EXPECT_DOUBLE_EQ(cel.right_ascension, 0);
+}
+
+// =====================================================================
+// Where an orbit puts a body
+// =====================================================================
+
+TEST(OrbitLocationTest, ACircularOrbitComesBackToWhereItStarted)
+{
+    // update_orbit_location() is what every moving body's position goes through, and it is
+    // exercised here through Planet::update_location(), which is how the program calls it.
+    CelestialObject sun;
+    sun.mass = solar_mass;
+    sun.type = star;
+    sun.location.local_position = Point(0, 0, 0);
+
+    Planet world;
+    world.mass = earth_mass;
+    world.volumetric_mean_radius = earth_radius;
+    world.type = rocky;
+    world.orbit = new Orbit();
+    world.orbit->center = &sun;
+    world.orbit->semimajor_axis = AU;
+    world.orbit->eccentricity = 0;
+    world.orbit->mean_anomaly = 0;
+    world.orbit->epoch = J2000;
+    world.orbit->compute_period(world.mass);
+    double period = world.orbit->period;
+
+    world.update_location(J2000_TIME_T);
+    Point at_epoch = world.location.local_position;
+
+    // A circle of one AU: that is how far from the star it is, whenever you look.
+    EXPECT_NEAR(at_epoch.magnitude(), AU, AU * 1e-6);
+
+    world.update_location(J2000_TIME_T + period/4);
+    Point quarter = world.location.local_position;
+    EXPECT_NEAR(quarter.magnitude(), AU, AU * 1e-6);
+    EXPECT_NEAR(at_epoch.distance_to(quarter), AU * std::sqrt(2.0), AU * 1e-3)
+        << "a quarter of the way round a circle is a right angle";
+
+    world.update_location(J2000_TIME_T + period/2);
+    EXPECT_NEAR(at_epoch.distance_to(world.location.local_position), 2 * AU, AU * 1e-3)
+        << "half way round is the other side";
+
+    world.update_location(J2000_TIME_T + period);
+    EXPECT_NEAR(at_epoch.distance_to(world.location.local_position), 0, AU * 1e-3)
+        << "a whole period later it is back where it began";
+}
+
+TEST(OrbitLocationTest, AnEccentricOrbitIsNearestAtPeriapsis)
+{
+    CelestialObject sun;
+    sun.mass = solar_mass;
+    sun.type = star;
+
+    Planet world;
+    world.mass = earth_mass;
+    world.type = rocky;
+    world.orbit = new Orbit();
+    world.orbit->center = &sun;
+    world.orbit->semimajor_axis = AU;
+    world.orbit->eccentricity = 0.5;
+    world.orbit->mean_anomaly = 0;                  // at periapsis at the epoch
+    world.orbit->epoch = J2000;
+    world.orbit->compute_period(world.mass);
+
+    world.update_location(J2000_TIME_T);
+    double at_periapsis = world.location.local_position.magnitude();
+    EXPECT_NEAR(at_periapsis, AU * 0.5, AU * 1e-3);         // a(1-e)
+
+    world.update_location(J2000_TIME_T + world.orbit->period/2);
+    double at_apoapsis = world.location.local_position.magnitude();
+    EXPECT_NEAR(at_apoapsis, AU * 1.5, AU * 1e-3);          // a(1+e)
+
+    EXPECT_GT(at_apoapsis, at_periapsis);
+}
+
+TEST(OrbitLocationTest, ABodyWithNoCenterStaysPut)
+{
+    Planet rogue;
+    rogue.mass = earth_mass;
+    rogue.type = rocky;
+    rogue.location.local_position = Point(1, 2, 3);
+
+    rogue.update_location(J2000_TIME_T);                    // no orbit at all
+    EXPECT_DOUBLE_EQ(rogue.location.local_position.x, 1);
+
+    rogue.orbit = new Orbit();                              // an orbit, but around nothing
+    rogue.update_location(J2000_TIME_T);
+    EXPECT_DOUBLE_EQ(rogue.location.local_position.x, 1);
+}
+
+// =====================================================================
+// Map
+// =====================================================================
+
+TEST(MapTest, AnEmptyMapAnswersSafely)
+{
+    // Every accessor has to survive being asked before a loader or generator has established the
+    // geometry: a Map with no pixels is what a body has until its textures are made, and the
+    // drawing code asks anyway.
+    Map m;
+    EXPECT_EQ(m.get_width(), 0);
+    EXPECT_EQ(m.get_height(), 0);
+    EXPECT_FALSE(m.has_rgb_data());
+    EXPECT_FALSE(m.has_bump_data());
+
+    // No pixel to point at, so nothing is read from beyond the end. White is the deliberate
+    // answer for a map that is not ready -- it multiplies through the body's own color and
+    // leaves it as it is, where a black would blot the body out while its textures are building.
+    EXPECT_DOUBLE_EQ(m.elevation_at(0.5, 1.0), 0);
+    RGB3Byte c = m.color_at(0.5, 1.0);
+    EXPECT_EQ(c.r, 255);
+    EXPECT_EQ(c.g, 255);
+    EXPECT_EQ(c.b, 255);
+
+    // Including at the poles and the date line, where the index arithmetic wraps.
+    EXPECT_DOUBLE_EQ(m.elevation_at(_pi/2, 0), 0);
+    EXPECT_DOUBLE_EQ(m.elevation_at(-_pi/2, 0), 0);
+    EXPECT_DOUBLE_EQ(m.elevation_at(0, _pi), 0);
+    EXPECT_DOUBLE_EQ(m.elevation_at(0, -_pi), 0);
+}
+
+TEST(MapTest, ExportsNothingFromAnEmptyMap)
+{
+    // gputex asks for the pixels in bulk; from a map with none, it must get zeros rather than a
+    // read past the end of a null array.
+    Map m;
+    unsigned char rgba[16];
+    float bump[4];
+    memset(rgba, 0xAB, sizeof(rgba));
+    memset(bump, 0xAB, sizeof(bump));
+
+    m.export_rgba(rgba);
+    m.export_bump(bump);
+
+    // Nothing was written, because there is nothing to write; the point is that it did not crash
+    // and did not read from a null channel array.
+    SUCCEED();
+}
+
+TEST(MapTest, GenerationStampsAreNeverReusedAndNeverZero)
+{
+    // gputex.h tells a stale texture from a current one by this number alone, so two maps must
+    // never share one and it must never come back to the value that means "never touched".
+    Map a, b;
+    EXPECT_EQ(a.gen, 0);
+    EXPECT_EQ(b.gen, 0);
+
+    a.touch_gen();
+    b.touch_gen();
+    EXPECT_NE(a.gen, 0);
+    EXPECT_NE(b.gen, 0);
+    EXPECT_NE(a.gen, b.gen);
+
+    unsigned int previous = b.gen;
+    for (int i = 0; i < 100; i++)
+    {
+        b.touch_gen();
+        EXPECT_NE(b.gen, 0);
+        EXPECT_NE(b.gen, previous);
+        EXPECT_NE(b.gen, a.gen);
+        previous = b.gen;
+    }
 }

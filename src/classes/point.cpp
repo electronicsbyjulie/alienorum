@@ -715,8 +715,8 @@ bool Box::from_json(json j)
     } catch (...) { ; }
     try
     {
-        json j1 = j.at("corner1");
-        corner1.from_json(j1);
+        json j1 = j.at("corner2");
+        corner2.from_json(j1);
     } catch (...) { ; }
     return true;
 }

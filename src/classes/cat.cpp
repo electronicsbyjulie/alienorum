@@ -4273,9 +4273,12 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
                 p->classify(p->is_in_con_HZ(), true, true);         // TODO: Verify this works for all solar system objects.
 
-                Star* s = (Star*)p->get_light_center();
+                // Checked before the cast: has_planets and has_hz_planets live past the end of
+                // any class smaller than Star, and get_light_center() does not promise a star.
+                CelestialObject* lc = p->get_light_center();
+                Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 // std::cout << p->name << " cosmic shoreline = " << CosmicShore::calculate_unified_metric(*s, *p) << std::endl;
-                if (p->orbit->center == s)
+                if (s && p->orbit->center == s)
                 {
                     s->has_planets++;
                     if (p->is_in_con_HZ()) s->has_hz_planets++;

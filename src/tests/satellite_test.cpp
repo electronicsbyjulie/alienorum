@@ -1,10 +1,17 @@
+#include <cmath>
+#include <cstring>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
 #include "../classes/satellite.h"
+#include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+// Nothing here downloads anything. The fixture empties sat_sources and best_source, which are the
+// only two things populate() consults before deciding to fetch, and the age tests read files that
+// are already on disk.
 
 // =====================================================================
 // Satellite & SatSource Serialization
@@ -61,16 +68,176 @@ TEST(SatelliteTest, JsonSerialization)
 
 TEST(SatSourceTest, RespectsDownloadInterval)
 {
-    // Rather than calling the function that hits the network, we can verify
-    // the mathematical logic governing the interval threshold.
-    
-    // sat_download_interval is set to (3600 * 2) = 7200 seconds.
-    std::time_t age_seconds_fresh = 1 * 3600; // 1 hour old
-    std::time_t age_seconds_stale = 3 * 3600; // 3 hours old
-    
-    // This confirms the fundamental logic guarding the download_file() call
-    EXPECT_LT(age_seconds_fresh, sat_download_interval); 
-    EXPECT_GT(age_seconds_stale, sat_download_interval);
+    // This used to compare two literals against the sat_download_interval macro, which is true by
+    // arithmetic and runs none of the program. What actually guards the fetch is data_age_hours(),
+    // so that is what is tested -- against files already on disk, downloading nothing.
+    SatSource missing;
+    missing.local_name = "no_such_catalog_as_this_one";
+    EXPECT_EQ(missing.csv_fname(), std::string("catalogs") + _FSSTR + "sat" + _FSSTR
+        + "no_such_catalog_as_this_one.csv");
+
+    // A file that is not there is reported as impossibly old, so that the first run always
+    // fetches rather than deciding it already has a copy.
+    EXPECT_EQ(missing.data_age_hours(), 100000);
+    EXPECT_GE(missing.data_age_hours() * 3600, sat_download_interval);
+
+    // A real one, if this working tree has any: its age is a sane number of hours and the
+    // comparison the download is gated on can be made without going anywhere near the network.
+    SatSource active;
+    active.local_name = "active";
+    if (file_exists(active.csv_fname().c_str()))
+    {
+        int hours = active.data_age_hours();
+        EXPECT_GE(hours, 0);
+        EXPECT_LT(hours, 100000);
+    }
+
+    // data_age_hours() reports whole hours, so download_data() compares a value that has been
+    // rounded down -- a file of 1h59m counts as one hour old. That errs towards waiting longer
+    // between fetches, never shorter, which is the side to err on. Pinned here so that tidying it
+    // up later cannot quietly turn it round.
+    EXPECT_EQ(sat_download_interval % 3600, 0)
+        << "the interval is compared against a whole number of hours, so it should be whole hours";
+}
+
+// =====================================================================
+// SatSource::populate() -- the real thing, offline
+// =====================================================================
+
+class SatellitePopulateTest : public UniverseFixture
+{
+    protected:
+    // An Earth for the satellite to orbit, since populate() finds its center by name.
+    Planet* make_earth()
+    {
+        Star* sun = make_star("Sol");
+        Planet* earth = make_planet(sun, "Earth", AU);
+        earth->volumetric_mean_radius = 6378137.0;
+        earth->oblateness = 0;
+        earth->mass = earth_mass;
+        earth->J2 = 0.00108262545;
+        return earth;
+    }
+
+    // One line of the catalog, as an ISS-like record.
+    SatRecord iss_record()
+    {
+        SatRecord record;
+        record.OBJECT_NAME = "ISS (ZARYA)";
+        record.NORAD_CAT_ID = 25544;
+        record.ORBIT_CENTER = "EA";
+        record.EPOCH = "2023-01-01T00:00:00";
+        record.MEAN_MOTION = 15.5;               // revolutions per day
+        record.ECCENTRICITY = 0.00045;
+        record.INCLINATION = 51.64;
+        record.RA_OF_ASC_NODE = 100.0;
+        record.ARG_OF_PERICENTER = 50.0;
+        record.MEAN_ANOMALY = 20.0;
+        record.PERIOD = 92.0;                    // minutes
+        record.BSTAR = 0.0001234;
+        return record;
+    }
+};
+
+TEST_F(SatellitePopulateTest, FillsInTheOrbitFromTheCatalogRecord)
+{
+    make_earth();
+    sat_data.push_back(iss_record());
+
+    Satellite sat;
+    ASSERT_TRUE(SatSource::populate(&sat, 0));
+
+    EXPECT_STREQ(sat.name, "ISS (ZARYA)");
+    ASSERT_NE(sat.orbit, nullptr);
+    ASSERT_NE(sat.orbit->center, nullptr);
+    EXPECT_STREQ(sat.orbit->center->name, "Earth");
+
+    // Degrees in the file, radians in the program.
+    EXPECT_NEAR(sat.orbit->inclination, 51.64 * fiftyseventh, 1e-12);
+    EXPECT_NEAR(sat.orbit->ascending_node, 100.0 * fiftyseventh, 1e-12);
+    EXPECT_NEAR(sat.orbit->arg_periapsis, 50.0 * fiftyseventh, 1e-12);
+    EXPECT_NEAR(sat.orbit->mean_anomaly, 20.0 * fiftyseventh, 1e-12);
+    EXPECT_DOUBLE_EQ(sat.orbit->eccentricity, 0.00045);
+
+    // Minutes in the file, seconds in the program; revolutions a day become radians a second.
+    EXPECT_DOUBLE_EQ(sat.orbit->period, 92.0 * 60);
+    EXPECT_NEAR(sat.mean_motion, 15.5 * 2 * _pi / oneday, 1e-15);
+    EXPECT_DOUBLE_EQ(sat.bstar, 0.0001234);
+
+    // The epoch is a Julian date, taken from the ISO string in UTC.
+    EXPECT_NEAR(sat.epoch, (double)(from_iso_string("2023-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
+        - J2000_TIME_T) / oneday + J2000, 1e-9);
+
+    // A low orbit around the Earth: a few hundred kilometres up, not a few million.
+    EXPECT_GT(sat.orbit->semimajor_axis, 6.6e6);
+    EXPECT_LT(sat.orbit->semimajor_axis, 7.2e6);
+
+    delete_the_universe();
+}
+
+TEST_F(SatellitePopulateTest, ComputesTheNodalPrecession)
+{
+    // The formula lives in populate(); this calls it rather than restating it, so that changing
+    // the code changes the test's answer. (The previous version recomputed the whole expression
+    // in the test, which would have gone on passing had populate() been rewritten wrongly.)
+    make_earth();
+    sat_data.push_back(iss_record());
+
+    Satellite sat;
+    ASSERT_TRUE(SatSource::populate(&sat, 0));
+    ASSERT_NE(sat.orbit, nullptr);
+
+    // prec_node is stored unsigned-by-convention: update_orbit_location() applies it as
+    //     node_adjustment = seconds_since_epoch * -prec_node,
+    // so a positive value IS the westward regression of the node. For the ISS's 51.6 degree
+    // prograde orbit that is about five degrees a day, which is why its ground track repeats
+    // against a slowly turning orbital plane.
+    EXPECT_GT(sat.orbit->prec_node, 0);
+    EXPECT_NEAR(sat.orbit->prec_node * oneday * fiftyseven, 5.0, 1.0);
+
+    // The apsides turn too, and more slowly.
+    EXPECT_NE(sat.orbit->proc_argperi, 0);
+    EXPECT_LT(std::fabs(sat.orbit->proc_argperi), std::fabs(sat.orbit->prec_node));
+
+    // A polar orbit has no nodal regression at all: cos(90 degrees) is zero, which is what makes
+    // a sun-synchronous orbit possible just off the pole.
+    sat_data[0].INCLINATION = 90.0;
+    Satellite polar;
+    ASSERT_TRUE(SatSource::populate(&polar, 0));
+    EXPECT_NEAR(polar.orbit->prec_node, 0, 1e-18);
+
+    // And past the pole it turns the other way.
+    sat_data[0].INCLINATION = 100.0;
+    Satellite retrograde;
+    ASSERT_TRUE(SatSource::populate(&retrograde, 0));
+    EXPECT_LT(retrograde.orbit->prec_node, 0);
+
+    delete_the_universe();
+}
+
+TEST_F(SatellitePopulateTest, RefusesWhatItCannotPlace)
+{
+    make_earth();
+
+    // An index past the end of the catalog.
+    Satellite sat;
+    EXPECT_FALSE(SatSource::populate(&sat, 99));
+
+    // No satellite at all.
+    EXPECT_FALSE(SatSource::populate(nullptr, 0));
+
+    // A center this program does not know about: refused rather than orbiting nothing.
+    SatRecord elsewhere = iss_record();
+    elsewhere.ORBIT_CENTER = "XX";
+    sat_data.push_back(elsewhere);
+    Satellite stray;
+    EXPECT_FALSE(SatSource::populate(&stray, 0));
+
+    // And something that is not a satellite.
+    Planet not_a_satellite;
+    EXPECT_FALSE(SatSource::populate((Satellite*)&not_a_satellite, 0));
+
+    delete_the_universe();
 }
 
 // =====================================================================

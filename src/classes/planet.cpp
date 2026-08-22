@@ -89,9 +89,12 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
 
     if (!ck) set_color_from_type(HZ);
 
-    if (!get_surface_pressure() && get_light_center() != cels[0])
+    CelestialObject *lcen = get_light_center();
+    if (!get_surface_pressure() && lcen && lcen != cels[0] && lcen->typeclass() == class_star)
     {
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(get_light_center()), *this);
+        // As above: checked before it is dereferenced, and checked to be a star before it is read
+        // as one.
+        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)lcen, *this);
         double p_pa = (shoreline<0) ? 0 : (pow(10, shoreline) * 503);
         if (isinf(p_pa)) p_pa = 0;
         if (p_pa > 0) ensure_atmosphere()->surface_pressure = p_pa;

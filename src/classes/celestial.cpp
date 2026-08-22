@@ -400,6 +400,12 @@ std::string CelestialObject::RA_as_hms(double seen_equinox)
     int minutes = floor(RA);
     double seconds = (RA-minutes) * 60;
 
+    // The stream below rounds to a tenth, so 59.97 would be printed as "60.0". Carry it here
+    // instead, where the hours can carry too.
+    if (seconds >= 59.95) { seconds = 0; minutes++; }
+    if (minutes >= 60) { minutes -= 60; hours++; }
+    if (hours >= 24) hours -= 24;
+
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << seconds;
     std::string sec = oss.str();
@@ -420,13 +426,19 @@ std::string CelestialObject::Decl_as_degms()
     decl = (decl-degrees) * 60;
     int minutes = floor(decl);
     double seconds = (decl-minutes) * 60;
+
+    // Rounded, and carried if the rounding fills the field: 59.7 seconds is a minute, not ":60".
+    int isec = (int)llround(seconds);
+    if (isec >= 60) { isec -= 60; minutes++; }
+    if (minutes >= 60) { minutes -= 60; degrees++; }
+
     return std::string( sign < 0 ? "-" : "+" )
         + std::string(degrees<10 ? "0" : "")
         + std::to_string(degrees) + std::string(":")
         + std::string(minutes<10 ? "0" : "")
         + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<9.5 ? "0" : "")
-        + std::to_string((int)seconds);
+        + std::string(isec<10 ? "0" : "")
+        + std::to_string(isec);
 }
 
 std::string CelestialObject::RA_as_hms(CelestialLocation seen_from, double seen_equinox)
@@ -436,6 +448,10 @@ std::string CelestialObject::RA_as_hms(CelestialLocation seen_from, double seen_
     relRA = (relRA-hours) * 60;
     int minutes = floor(relRA);
     double seconds = (relRA-minutes) * 60;
+
+    if (seconds >= 59.95) { seconds = 0; minutes++; }   // as above
+    if (minutes >= 60) { minutes -= 60; hours++; }
+    if (hours >= 24) hours -= 24;
 
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << seconds;
@@ -459,21 +475,27 @@ std::string CelestialObject::Decl_as_degms(CelestialLocation seen_from)
     decl = (decl-degrees) * 60;
     int minutes = floor(decl);
     double seconds = (decl-minutes) * 60;
+
+    int isec = (int)llround(seconds);                   // as above: rounded, and carried
+    if (isec >= 60) { isec -= 60; minutes++; }
+    if (minutes >= 60) { minutes -= 60; degrees++; }
+
     return std::string( sign < 0 ? "-" : "+" )
         + std::string(degrees<10 ? "0" : "")
         + std::to_string(degrees) + std::string(":")
         + std::string(minutes<10 ? "0" : "")
         + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<10 ? "0" : "")
-        + std::to_string((int)seconds);
-    return std::string();
+        + std::string(isec<10 ? "0" : "")
+        + std::to_string(isec);
 }
 
 void CelestialObject::RA_from_hms(std::string ra_hms)
 {
     const char* c = ra_hms.c_str();
     int i, j=0;
-    double h, m, s;
+    // Zero, so that a string missing a field -- "12:34", or an empty edit box -- reads as zero
+    // rather than as whatever the stack was holding.
+    double h = 0, m = 0, s = 0;
 
     for (i=0; c[i]; i++)
     {
@@ -502,8 +524,10 @@ void CelestialObject::RA_from_hms(std::string ra_hms)
 void CelestialObject::Decl_from_degms(std::string decl_degms)
 {
     const char* c = decl_degms.c_str();
-    int i, j=0, sign;
-    double d, m, s;
+    // As above, and the sign with them: a declination written without one -- which is how a
+    // northern declination is usually typed -- never assigned it at all.
+    int i, j=0, sign = 1;
+    double d = 0, m = 0, s = 0;
 
     for (i=0; c[i]; i++)
     {
@@ -640,7 +664,11 @@ json CelestialObject::to_json()
 
     towrite["oblateness"] = oblateness;
     if (orbit) towrite["orbit"] = orbit->to_json();
-    towrite["precession"] = _pi * 2 / precession / oneyear;
+    // Written as the period in years, which is how the object editor states it and how a person
+    // thinks of it -- 25,772 for Earth. Zero is not a period but the absence of one, and dividing
+    // by it produced an infinity that nlohmann writes out as a bare null; the guard is the same
+    // one dialogs.cpp and cat.cpp already put on this conversion.
+    towrite["precession"] = precession ? (_pi * 2 / precession / oneyear) : 0;
     towrite["RI_color"] = RI_color;
     towrite["right_ascension"] = right_ascension * fiftyseven;
     towrite["sidereal_rotational_period"] = sidereal_rotational_period / oneday;
@@ -698,7 +726,16 @@ bool CelestialObject::from_json(json j)
         orbit = new Orbit();
         orbit->from_json(j1);
     } catch (...) { ; }
-    try { j.at("precession").get_to(precession); precession = _pi * 2 / (precession * oneyear); } catch (...) { ; }
+    // And back, with the same guard: a stated period of zero means the body has no precession, so
+    // the rate is zero. Ungarded, it made the rate infinite, and update_orbit_location() multiplies
+    // it by the seconds since epoch to get equinox_eff -- which at the epoch itself is inf*0, a
+    // NaN that takes the body's orientation with it. Files written before this carry that zero:
+    // 37 of the 38 objects in Koora.json do.
+    try
+    {
+        j.at("precession").get_to(precession);
+        precession = precession ? (_pi * 2 / (precession * oneyear)) : 0;
+    } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
     try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
@@ -1557,9 +1594,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     bool life_possible = false;
 
-    if (!p->get_surface_pressure())
+    CelestialObject *plc = p->get_light_center();
+    if (!p->get_surface_pressure() && plc && plc->typeclass() == class_star)
     {
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)(p->get_light_center()), *p);
+        // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
+        // center is a null pointer, and a moon of one leads somewhere that is not a Star.
+        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *p);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
         if (isinf(max_atm_pressure)) max_atm_pressure = 0;
         p->ensure_atmosphere()->surface_pressure = p->cel_frand(0.1, 1) * max_atm_pressure;

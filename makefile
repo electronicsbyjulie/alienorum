@@ -47,7 +47,8 @@ CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/sta
 TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
-			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp 
+			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
+			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp 
 
 BIN = bin
 OBJ = obj
@@ -67,6 +68,12 @@ TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
+
+# Empty in an ordinary build; the tests-asan target below re-enters make with it set. Kept as its
+# own variable rather than passing CPPFLAGS on the command line, which would override every
+# accumulated -I and sdl2-config flag above rather than adding to them.
+SANFLAGS =
+CPPFLAGS += $(SANFLAGS)
 
 # Platform-specific configurations
 ifeq ($(UNAME_S), Linux)
@@ -92,7 +99,7 @@ ifeq ($(OS), Windows_NT)
     CFLAGS = $(CPPFLAGS)
 endif
 
-all: $(BIN) $(OBJ) objs apps tests
+all: $(BIN) $(OBJ) objs apps $(TESTS)
 	@echo $(ECHO_MESSAGE)
 
 # Robust cross-platform directory generation
@@ -111,17 +118,28 @@ apps: alienorum
 
 objs: $(OBJS)
 
+# Runs every test binary and does not stop at the first one that fails: a single failing suite used
+# to hide the state of every suite after it, which is exactly when you most want to see them. The
+# loop walks $(TESTS), so `make OBJ=... BIN=... tests` runs the binaries it just built rather than
+# whatever is in bin/. The exit status still reports failure, so a script or a hook can act on it.
 tests: $(TESTS)
-	bin/celestial_test
-	bin/color_test
-	bin/comet_test
-	bin/cons_test
-	bin/galaxy_test
-	bin/moon_test
-	bin/planet_test
-	bin/point_test
-	bin/satellite_test
-	bin/star_test
+	@rc=0; for t in $(TESTS); do \
+		echo "=== $$t ==="; \
+		$$t || rc=1; \
+	done; \
+	if [ $$rc -eq 0 ]; then echo "=== all test suites passed ==="; \
+	else echo "=== SOME TEST SUITES FAILED -- see above ==="; fi; \
+	exit $$rc
+
+# The same test binaries under AddressSanitizer, built into their own obj/ and bin/ so they never
+# get mixed up with the ordinary ones. Use this whenever a test crashes, or a result depends on
+# which order the tests ran in: a double free, a read past the end of an array, or a write through
+# a pointer whose object is gone gets reported where it happens instead of somewhere later. Two of
+# the bugs in these tests were found by their crash and nothing else, which is a bad way to find
+# out. Slower to build and to run, so it is not what `make tests` does.
+tests-asan:
+	mkdir -p obj-asan bin-asan
+	$(MAKE) OBJ=obj-asan BIN=bin-asan SANFLAGS="-g -O1 -fsanitize=address -fno-omit-frame-pointer" tests
 
 alienorum: $(BIN)/alienorum
 
@@ -258,6 +276,12 @@ $(BIN)/comet_test: $(OBJS) $(TESTS_DIR)/comet_test.cpp $(CLASSES_DIR)/comet.h $(
 
 $(BIN)/satellite_test: $(OBJS) $(TESTS_DIR)/satellite_test.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/satellite.cpp
 	$(CPP) $(TESTS_DIR)/satellite_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/satellite_test
+
+$(BIN)/serial_test: $(OBJS) $(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/serial.cpp
+	$(CPP) $(TESTS_DIR)/serial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/serial_test
+
+$(BIN)/misc_test: $(OBJS) $(TESTS_DIR)/misc_test.cpp $(CLASSES_DIR)/misc.h $(CLASSES_DIR)/misc.cpp
+	$(CPP) $(TESTS_DIR)/misc_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/misc_test
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp

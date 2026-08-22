@@ -840,6 +840,15 @@ bool Star::from_json(json j)
     try { j.at("Bonn_survey_declination").get_to(Bonn_survey_declination); } catch (...) { ; }
     try { j.at("Bonn_survey_sequential").get_to(Bonn_survey_sequential); } catch (...) { ; }
     try { j.at("is_orbit_multiple").get_to(is_orbit_multiple); } catch (...) { ; }
+    try
+    {
+        std::string str;
+        j.at("constellation").get_to(str);
+        if (str.size() >= sizeof(constellation)) str = str.substr(0, sizeof(constellation)-1);
+        strcpy(constellation, str.c_str());
+    } catch (...) { ; }
+    try { j.at("BayerGrkno").get_to(BayerGrkno); } catch (...) { ; }
+    try { j.at("FlamsteedNo").get_to(FlamsteedNo); } catch (...) { ; }
     return true;
 }
 
