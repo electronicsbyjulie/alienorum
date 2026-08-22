@@ -1,6 +1,9 @@
+#include <cmath>
+#include <cstring>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -312,4 +315,234 @@ TEST(AtmosphereCompositionTest, HabitableGenerationLogic)
                              comp.Ar_portion;
                              
     EXPECT_NEAR(total_habitable, 1.0, 1e-5);
+}
+// =====================================================================
+// Photometry
+// =====================================================================
+
+// Every planet in the sky is drawn at a brightness these produce, and the numbers themselves are
+// empirical fits that nobody can check by eye. What can be checked is their shape: brightest at
+// opposition, falling away either side of it, symmetric between waxing and waning, and never
+// negative or greater than one.
+
+TEST(PlanetPhotometryTest, PhaseBrightnessPeaksAtOpposition)
+{
+    Planet p;
+    p.type = rocky;
+    p.albedo = 0.3;
+
+    double full = p.phase_brightness(0);
+    EXPECT_NEAR(full, 1.0, 1e-9) << "at opposition the whole lit disc faces us";
+
+    // Falling away from opposition, all the way to new.
+    double previous = full;
+    for (double alpha = 0.1; alpha <= _pi; alpha += 0.1)
+    {
+        double here = p.phase_brightness(alpha);
+        EXPECT_LE(here, previous + 1e-12) << " at phase angle " << alpha;
+        EXPECT_GE(here, 0) << " at phase angle " << alpha;
+        EXPECT_LE(here, 1.0 + 1e-12) << " at phase angle " << alpha;
+        previous = here;
+    }
+
+    // A new planet shows us nothing at all, or as near as makes no difference.
+    EXPECT_LT(p.phase_brightness(_pi), 0.01);
+}
+
+TEST(PlanetPhotometryTest, PhaseBrightnessIsSymmetricAndWraps)
+{
+    Planet p;
+    p.type = rocky;
+    p.albedo = 0.3;
+
+    // Waxing and waning at the same width are the same brightness.
+    for (double alpha = 0.2; alpha < _pi; alpha += 0.4)
+        EXPECT_NEAR(p.phase_brightness(alpha), p.phase_brightness(-alpha), 1e-12)
+            << " at phase angle " << alpha;
+
+    // And a phase angle that has gone round the whole way is the same as one that has not.
+    EXPECT_NEAR(p.phase_brightness(0.7), p.phase_brightness(0.7 + _pi*2), 1e-12);
+    EXPECT_NEAR(p.phase_brightness(0.7), p.phase_brightness(0.7 - _pi*2), 1e-12);
+}
+
+TEST(PlanetPhotometryTest, CloudierWorldsFadeMoreGently)
+{
+    // A bare regolith world dims sharply off opposition -- the shadows between its grains open
+    // up -- while a cloud deck scatters much more like a smooth ball and holds its brightness.
+    Planet bare;
+    bare.type = rocky;
+    bare.albedo = 0.15;
+
+    Planet shrouded;
+    shrouded.type = gas_giant;
+    shrouded.albedo = 0.5;
+
+    EXPECT_LE(bare.cloud_deck_fraction(), shrouded.cloud_deck_fraction());
+
+    double half_phase = _pi/2;
+    EXPECT_LE(bare.phase_brightness(half_phase), shrouded.phase_brightness(half_phase));
+
+    // The slope parameter is the IAU G, which lives between 0 and 1.
+    EXPECT_GE(bare.phase_slope_parameter(), 0.0);
+    EXPECT_LE(bare.phase_slope_parameter(), 1.0);
+    EXPECT_GE(shrouded.cloud_deck_fraction(), 0.0);
+    EXPECT_LE(shrouded.cloud_deck_fraction(), 1.0);
+}
+
+// =====================================================================
+// The habitable zone
+// =====================================================================
+
+class PlanetHabitabilityTest : public UniverseFixture {};
+
+TEST_F(PlanetHabitabilityTest, EarthIsInTheZoneAndItsNeighboursAreNot)
+{
+    Star* sun = make_star("Sol");
+
+    Planet* earth = make_planet(sun, "Earth", AU);
+    EXPECT_TRUE(earth->is_in_con_HZ()) << "one AU from a G2V star is the definition of the zone";
+
+    Planet* mercury = make_planet(sun, "Too Close", 0.387 * AU);
+    EXPECT_FALSE(mercury->is_in_con_HZ());
+
+    Planet* jupiter = make_planet(sun, "Too Far", 5.2 * AU);
+    EXPECT_FALSE(jupiter->is_in_con_HZ());
+
+    // A planet in orbit around nothing has no zone to be in, rather than an answer by accident.
+    Planet rogue;
+    rogue.mass = earth_mass;
+    EXPECT_FALSE(rogue.is_in_con_HZ());
+
+    delete_the_universe();
+}
+
+TEST_F(PlanetHabitabilityTest, TheZoneFollowsTheStar)
+{
+    // A cooler star's zone is closer in. Rather than assert where it is -- which is a claim about
+    // the Kopparapu coefficients, not about this code -- walk a planet outwards from each star
+    // and find the band, then compare the two bands.
+    auto find_zone = [this](Star* s, double& inner, double& outer)
+    {
+        Planet* wanderer = make_planet(s, "Wanderer", AU);
+        inner = outer = 0;
+        for (double au = 0.02; au < 10.0; au *= 1.05)
+        {
+            wanderer->orbit->semimajor_axis = au * AU;
+            if (wanderer->is_in_con_HZ())
+            {
+                if (!inner) inner = au;
+                outer = au;
+            }
+        }
+    };
+
+    Star* sun = make_star("Sol");
+    double sun_inner = 0, sun_outer = 0;
+    find_zone(sun, sun_inner, sun_outer);
+
+    // The conservative zone's inner edge sits almost exactly at the Earth's orbit in this model --
+    // the runaway greenhouse limit is about 0.99 AU -- so the band is checked to a step of the
+    // scan rather than to a sharp figure. That the Earth itself is inside it is asserted above,
+    // at exactly one AU, where it can be checked without any sampling at all.
+    ASSERT_GT(sun_inner, 0) << "a G2V star has a habitable zone";
+    EXPECT_LT(sun_inner, 1.1);
+    EXPECT_GT(sun_outer, 1.1) << "and it reaches out past the Earth";
+
+    Star* cool = make_star("Red Dwarf");
+    cool->temperature = 3200;
+    cool->absolute_magnitude = 11.0;
+    strcpy(cool->spectral_type, "M2V");
+    double cool_inner = 0, cool_outer = 0;
+    find_zone(cool, cool_inner, cool_outer);
+
+    ASSERT_GT(cool_inner, 0) << "a red dwarf has one too, much closer in";
+    EXPECT_LT(cool_outer, sun_inner) << "the whole of it is inside the Sun's inner edge";
+
+    delete_the_universe();
+}
+
+// =====================================================================
+// Deriving what a catalog did not state
+// =====================================================================
+
+TEST(PlanetEstimationTest, RadiusFromMass)
+{
+    // An exoplanet is often massed and not measured. One Earth mass should come back at about one
+    // Earth radius, and a heavier world should be larger -- but not proportionally so, since rock
+    // compresses under its own weight.
+    Planet earth;
+    earth.mass = earth_mass;
+    earth.type = rocky;
+    earth.estimate_radius();
+    EXPECT_NEAR(earth.volumetric_mean_radius, earth_radius, earth_radius * 0.25);
+
+    Planet heavy;
+    heavy.mass = 5 * earth_mass;
+    heavy.type = rocky;
+    heavy.estimate_radius();
+    EXPECT_GT(heavy.volumetric_mean_radius, earth.volumetric_mean_radius);
+    EXPECT_LT(heavy.volumetric_mean_radius, 5 * earth.volumetric_mean_radius);
+
+    // It is a derivation and not a fallback: it overwrites whatever radius the body had, which is
+    // why the callers check first whether they have a measured one. Worth pinning, since the name
+    // reads like it might defer to a value already there.
+    Planet measured;
+    measured.mass = earth_mass;
+    measured.type = rocky;
+    measured.volumetric_mean_radius = 1234567;
+    measured.estimate_radius();
+    EXPECT_NE(measured.volumetric_mean_radius, 1234567);
+    EXPECT_NEAR(measured.volumetric_mean_radius, earth.volumetric_mean_radius, 1);
+
+    // A mass that is not a number cannot give a radius that is; rather than pass the poison on to
+    // everything that divides by a radius, it settles for Earth's.
+    Planet nonsense;
+    nonsense.mass = INFINITY;
+    nonsense.type = gas_giant;
+    nonsense.estimate_radius();
+    EXPECT_TRUE(std::isfinite(nonsense.volumetric_mean_radius));
+}
+
+TEST(PlanetEstimationTest, ScaleHeightRequiresAnAtmosphere)         // Claude is NOT PTSD-friendly.
+{
+    // Zero for an airless world, and taller for a hotter or lighter one: the two things it is
+    // made of are the temperature and the surface gravity.
+    Planet airless;
+    airless.mass = earth_mass;
+    airless.volumetric_mean_radius = earth_radius;
+    EXPECT_DOUBLE_EQ(airless.estimate_scale_height(), 0);
+
+    Planet warm;
+    warm.mass = earth_mass;
+    warm.volumetric_mean_radius = earth_radius;
+    warm.temperature = 288;
+    warm.ensure_atmosphere()->surface_pressure = oneatm;
+    double earthlike = warm.estimate_scale_height();
+    EXPECT_GT(earthlike, 0);
+
+    warm.temperature = 500;
+    EXPECT_GT(warm.estimate_scale_height(), earthlike) << "a hotter atmosphere is puffier";
+
+    warm.temperature = 288;
+    warm.mass = 5 * earth_mass;
+    EXPECT_LT(warm.estimate_scale_height(), earthlike) << "stronger gravity holds it down";
+}
+
+TEST(PlanetEstimationTest, SurfaceGravityAndDensityAgree)
+{
+    // Two derivations of the same body from the same two numbers; they have to be consistent
+    // with each other, and with the Earth, which is where both are calibrated.
+    Planet earth;
+    earth.mass = earth_mass;
+    earth.volumetric_mean_radius = earth_radius;
+
+    EXPECT_NEAR(earth.estimate_surface_gravity(), 1.0, 1e-9);
+    EXPECT_NEAR(earth.density(), 5.51, 0.05);
+
+    // Same density, bigger world: gravity goes up with the radius.
+    Planet bigger;
+    bigger.volumetric_mean_radius = 2 * earth_radius;
+    bigger.mass = earth_mass * 8;                       // eight times the volume, same density
+    EXPECT_NEAR(bigger.density(), earth.density(), 1e-9);
+    EXPECT_NEAR(bigger.estimate_surface_gravity(), 2.0, 1e-9);
 }

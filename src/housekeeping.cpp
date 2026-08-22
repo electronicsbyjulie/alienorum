@@ -540,6 +540,12 @@ void set_center_objects()
     int i;
     first_letter_index.clear();
     for (i=0; i<36; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
+
+    // Emptied for the same reason as the letter buckets above: this pass rebuilds both indices
+    // from the whole array, and it runs more than once -- loading a universe file calls it, and
+    // then the end of the startup sequence calls it again. Left uncleared, every star in every
+    // constellation was listed twice over after a universe file was loaded on the command line.
+    constellation_index.clear();
     for (i=0; cels[i]; i++)
     {
         if (cels[i]->deleted) continue;
@@ -640,7 +646,7 @@ void set_center_objects()
         if (c == 'H' && cels[i]->name[1] == 'D')
         {
             int hdno = atoi(&cels[i]->name[2]);
-            is_HD = (hdno && hdcache[hdno]);
+            is_HD = (hdno && hdcache && hdcache[hdno]);
         }
         else is_HD = false;
         if (!is_HD)

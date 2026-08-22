@@ -48,7 +48,8 @@ TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
-			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp 
+			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
+			$(TESTS_DIR)/housekeeping_test.cpp 
 
 BIN = bin
 OBJ = obj
@@ -282,6 +283,12 @@ $(BIN)/serial_test: $(OBJS) $(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_f
 
 $(BIN)/misc_test: $(OBJS) $(TESTS_DIR)/misc_test.cpp $(CLASSES_DIR)/misc.h $(CLASSES_DIR)/misc.cpp
 	$(CPP) $(TESTS_DIR)/misc_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/misc_test
+
+$(BIN)/cat_test: $(OBJS) $(TESTS_DIR)/cat_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/cat.cpp
+	$(CPP) $(TESTS_DIR)/cat_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/cat_test
+
+$(BIN)/housekeeping_test: $(OBJS) $(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/universe_fixture.h src/housekeeping.h src/housekeeping.cpp
+	$(CPP) $(TESTS_DIR)/housekeeping_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/housekeeping_test
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp

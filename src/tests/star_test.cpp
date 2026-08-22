@@ -1,5 +1,8 @@
+#include <cstring>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp> 
+#include "../classes/galaxy.h"
+#include "../classes/planet.h"
 #include "../classes/star.h" 
 
 using namespace alienorum;
@@ -292,13 +295,136 @@ TEST(StarTest, JsonSerializationRoundTrip)
 
 TEST(StellarRegimeTest, DeterminesRegimeCorrectly)
 {
-    Star main_seq;
-    // Assuming setting m_bol and mass correctly resolves to regime_stellar
-    // You must mock the state that dictates the regime based on celestial.h
+    // What the regime decides is how a body is drawn and what radius it is given, so each of the
+    // three has to be reachable from the numbers a catalog actually supplies -- and the fourth
+    // answer, regime_none, has to come back for everything that is not a star at all.
+    //
+    // The classification deliberately avoids volumetric_mean_radius: that may have been
+    // interpolated from the main-sequence table, so a white dwarf can be carrying a perfectly
+    // stellar radius. It works from the temperature and the absolute magnitude instead.
+    Star sun;
+    sun.temperature = sun_temp;
+    sun.absolute_magnitude = 4.83;
+    sun.mass = solar_mass;
+    EXPECT_EQ(stellar_regime(&sun), regime_stellar);
 
-    EXPECT_EQ(stellar_regime(&main_seq), regime_stellar);
+    // Sirius B: hot, and four hundred times too faint for that heat to be coming off anything
+    // the size of a star. The implied radius is Earth-sized, which is the whole signature.
+    Star white_dwarf;
+    white_dwarf.temperature = 25000;
+    white_dwarf.absolute_magnitude = 11.18;
+    white_dwarf.mass = 1.02 * solar_mass;
+    EXPECT_EQ(stellar_regime(&white_dwarf), regime_degenerate);
 
-    // For a simulated white dwarf
-    // main_seq.spectral_type = "DA";
-    // EXPECT_EQ(stellar_regime(&main_seq), regime_degenerate);
+    // A brown dwarf, decided on its mass: below about 0.075 solar masses hydrogen does not burn.
+    Star brown_dwarf;
+    brown_dwarf.temperature = 1300;
+    brown_dwarf.absolute_magnitude = 19.0;
+    brown_dwarf.mass = 0.05 * solar_mass;
+    EXPECT_EQ(stellar_regime(&brown_dwarf), regime_substellar);
+
+    // And with no mass stated, on its temperature alone.
+    Star cold_and_unweighed;
+    cold_and_unweighed.temperature = 1000;
+    cold_and_unweighed.absolute_magnitude = 20.0;
+    EXPECT_EQ(stellar_regime(&cold_and_unweighed), regime_substellar);
+
+    // An M dwarf is a star, not a brown dwarf: the boundary is the bottom of the main sequence
+    // and not 2700 K, which used to put every M6 to M9 on the wrong side of it.
+    Star red_dwarf;
+    red_dwarf.temperature = 2600;
+    red_dwarf.absolute_magnitude = 16.0;
+    red_dwarf.mass = 0.1 * solar_mass;
+    EXPECT_EQ(stellar_regime(&red_dwarf), regime_stellar);
+
+    // Nothing that is not a star has a regime, including nothing at all.
+    Planet planet;
+    Galaxy galaxy_obj;
+    EXPECT_EQ(stellar_regime(&planet), regime_none);
+    EXPECT_EQ(stellar_regime(&galaxy_obj), regime_none);
+    EXPECT_EQ(stellar_regime(nullptr), regime_none);
+
+    // A star with nothing filled in at all is a star, not a crash and not a white dwarf.
+    Star unknown;
+    EXPECT_EQ(stellar_regime(&unknown), regime_stellar);
+}
+
+// =====================================================================
+// Naming and identity
+// =====================================================================
+
+TEST(StarTest, MatchesConstellationCaseInsensitively)
+{
+    Star s;
+    strcpy(s.constellation, "Ori");
+
+    EXPECT_TRUE(s.matches_constellation("Ori"));
+    EXPECT_TRUE(s.matches_constellation("ORI"));
+    EXPECT_TRUE(s.matches_constellation("ori"));
+    EXPECT_FALSE(s.matches_constellation("Tau"));
+    EXPECT_FALSE(s.matches_constellation("Or"));
+
+    // A star with no constellation matches none of them.
+    Star nowhere;
+    EXPECT_FALSE(nowhere.matches_constellation("Ori"));
+}
+
+TEST(StarTest, IsSunlikeReadsTheSpectralType)
+{
+    Star s;
+    s.absolute_magnitude = 4.83;
+
+    // The Sun itself, and the range either side of it that counts as sunlike.
+    strcpy(s.spectral_type, "G2V");
+    EXPECT_TRUE(s.is_sunlike());
+    strcpy(s.spectral_type, "F8V");
+    EXPECT_TRUE(s.is_sunlike());
+    strcpy(s.spectral_type, "K2V");
+    EXPECT_TRUE(s.is_sunlike());
+
+    // Too hot, too cool, and not on the main sequence at all.
+    strcpy(s.spectral_type, "A0V");
+    EXPECT_FALSE(s.is_sunlike());
+    strcpy(s.spectral_type, "M5V");
+    EXPECT_FALSE(s.is_sunlike());
+    strcpy(s.spectral_type, "K5V");
+    EXPECT_FALSE(s.is_sunlike());
+    strcpy(s.spectral_type, "G2III");
+    EXPECT_FALSE(s.is_sunlike()) << "a giant is not sunlike whatever its color";
+
+    // Nothing stated at all.
+    Star blank;
+    EXPECT_FALSE(blank.is_sunlike());
+}
+
+TEST(StarTest, ComponentLettersAndUnlinking)
+{
+    Star primary, secondary, tertiary;
+    primary.set_component('A', &primary);
+    secondary.make_companion_of(&primary, 'B');
+    tertiary.make_companion_of(&primary, 'C');
+
+    ASSERT_NE(primary.multisys, nullptr);
+    EXPECT_EQ(primary.multisys, secondary.multisys) << "one system, shared by its members";
+    EXPECT_EQ(primary.multisys, tertiary.multisys);
+    EXPECT_EQ(primary.get_component(), 'A');
+    EXPECT_EQ(secondary.get_component(), 'B');
+    EXPECT_EQ(tertiary.get_component(), 'C');
+    EXPECT_EQ(primary.multisys->num_members(), 3);
+    EXPECT_EQ(primary.multisys->next_available(), 'D');
+
+    // A companion is put in orbit around the primary; the primary is in orbit around nothing.
+    ASSERT_NE(secondary.orbit, nullptr);
+    EXPECT_EQ(secondary.orbit->center, &primary);
+    EXPECT_EQ(primary.orbit, nullptr);
+
+    // unlink() is what has to be called before any of them is deleted, and it has to leave every
+    // member with no pointer back to a system that is about to stop existing.
+    StarMulti* system = primary.multisys;
+    system->unlink();
+    EXPECT_EQ(primary.multisys, nullptr);
+    EXPECT_EQ(secondary.multisys, nullptr);
+    EXPECT_EQ(tertiary.multisys, nullptr);
+    EXPECT_EQ(system->num_members(), 0);
+    delete system;
 }
