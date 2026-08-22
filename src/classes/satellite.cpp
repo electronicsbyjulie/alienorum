@@ -167,7 +167,7 @@ bool SatSource::read_csv_data()
     FILE *fp = fopen(csvfname.c_str(), "r");
     if (!fp) return false;
     char buffer[16384];
-    fgets(buffer, 16382, fp);
+    char* wgaf = fgets(buffer, 16382, fp);
     std::vector<std::string> csv_header = parse_csv_row(buffer);
     bool do_exist_checks = sat_data.size();                                 // Don't bog down the initial load with expensive std::find_if() calls.
 

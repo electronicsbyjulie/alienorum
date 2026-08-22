@@ -729,8 +729,8 @@ void process_keyboard_commands(ImGuiIO& io)
 
 void steer(Point axis, double sr)
 {
-    #if 0
-    velocity = rotate3D(velocity, center, pitch, -sr);
+    #if 1
+    velocity = rotate3D(velocity, center, axis, -sr);
     #else
     double vel = velocity.magnitude();
     Point facing = Point::from_ra_dec(azimuth, altitude, vel, myeq);

@@ -43,6 +43,10 @@ MSYS2 (Run in MINGW64 environment):
 * Custom texture map generation;
 * More coming soon...
 
+Unofficial proposed names are included for the four planets in the 82 Eridani system. These names are not in use
+by any authority at the time of this writing. The names were invented here to avoid confusion between two
+different lettering schemes for the planets in this system.
+
 
 ## Initial Run
 
@@ -272,13 +276,16 @@ well as any other releases that may be added in the future.
 
 The repo owner will try to release a new version every week, typically around Sunday night MST.
 
-Once out of version zero, the version numbering will be incremented as follows:
+Version numbering shall be incremented as follows:
 - Every new release that does not increment the major or minor increments the patch number by one;
-- Every new release that introduces a significant feature increments the minor by one and resets the patch to
-   zero.
+- Every new release that introduces a significant new feature, or integrates with a new third party module,
+   increments the minor by one and resets the patch to zero.
 - Every new release that breaks compatibility with any third party code or app or library, or changes the format
    or behavior of a command line argument, or changes an existing keyboard shortcut, or changes a top level menu
    item, shall increment the major by one and reset the minor and patch to zero.
+
+Every attempt should be made to avoid breaking compatibility since we don't want the version number to skyrocket
+into the double digits in just a few years without massive enhancements to the UX.
 
 What counts as a feature? Anything significant to the user experience or anything substantial enough to warrant
 a minor version update. For example, had version 1.0 not included planetary atmospheres, the addition of that

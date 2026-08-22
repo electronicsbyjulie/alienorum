@@ -764,7 +764,7 @@ bool CelestialObject::from_json(json j)
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
     if (!orbit || !orbit->center) return;
-    if (deleted = orbit->center->deleted) return;           // assignment not comparison.
+    if ((deleted = orbit->center->deleted)) return;           // assignment not comparison.
     location.galactic_center = orbit->center->location.galactic_center;
     location.system_center = orbit->center->location.system_center;
     if (!lock_system_plane) location.local_system_plane = orbit->center->location.local_system_plane;
@@ -1588,10 +1588,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double gas_constant_ratio = R / DELTA_H_VAP;
     double pressure_log = std::log(p->get_surface_pressure() / P1);
 
-    double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
-    double T_boil = 1.0 / inv_T2;
-    // std::cout << "At " << (p->get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
-
     bool life_possible = p->estimate_habitability();
 
     bool want_overcast_sky = false;
@@ -2276,7 +2272,6 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     mtx.lock();
     generating_fic_texture = true;
     int lr = cel->fictitious_map_height;
-    double BV = cel->BV_color;
     image_height = lr;
     image_width = image_height * 2;
 
@@ -2521,18 +2516,16 @@ void Map::generate_stellar_map(CelestialObject *cel)
     double inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
     mtx.unlock();
 
-    double theta, phi, sin_theta, nx, ny, nz, lat, cos_lat;
+    double theta, phi, sin_theta, nx, ny, nz;
     double T_local, gd_factor, umbra, dist, warped;
     unsigned int x, y, idx;
 
     for (y = 0; y < image_height; ++y)
     {
         theta = ((double)y / image_height) * _pi;            // 0 at the north pole, Pi at the south pole
-        lat = half_pi - theta;
         sin_theta = sin(theta);
-        cos_lat = sin_theta;
-
-        gd_factor = pow((1.0 - 2.0 * f_obl * cos_lat * cos_lat) / gd_mean, gd_beta);
+        
+        gd_factor = pow((1.0 - 2.0 * f_obl * sin_theta * sin_theta) / gd_mean, gd_beta);
 
         for (x = 0; x < image_width; ++x)
         {
@@ -2882,7 +2875,6 @@ alienorum::Locale::Locale(json fj)
         std::string tzstr;
         fj["timezone"].get_to(tzstr);
         const char* tzcstr = tzstr.c_str();
-        const int l = strlen(tzcstr);
 
         const char* plusminus = strchr(tzcstr, '+');
         if (!plusminus) plusminus = strchr(tzcstr, '-');

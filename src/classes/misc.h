@@ -273,7 +273,7 @@ extern bool done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, 
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
 extern std::atomic<bool> abort_load;
 extern std::atomic<int> texture_loads_pending;
-extern std::string objname, objinfo, viewer_locale;
+extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern float has_water, veg_min_temp, veg_max_temp;

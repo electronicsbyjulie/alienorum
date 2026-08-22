@@ -78,7 +78,7 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
     }
     fseek(f, 0, SEEK_SET);
     void* file_data = IM_ALLOC(file_size);
-    fread(file_data, 1, file_size, f);
+    int foad = fread(file_data, 1, file_size, f);
     fclose(f);
     bool ret = LoadTextureFromMemory(file_data, file_size, out_texture, out_width, out_height);
     IM_FREE(file_data);

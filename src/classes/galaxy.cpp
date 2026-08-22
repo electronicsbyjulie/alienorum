@@ -60,7 +60,7 @@ int alienorum::GalaxyBand::load_dat_file(std::string fname)
     {
         if (buffer[0] == '#') continue;
         else if (buffer[0] == 'N' || buffer[0] == 'S') northsouth = buffer[0];
-        else if (comma = strchr(buffer, ','))   // conditioned on assignment
+        else if ((comma = strchr(buffer, ',')))   // conditioned on assignment
         {
             if (northsouth == 'N')
             {

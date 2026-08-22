@@ -1296,7 +1296,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
     if (!fp) return num_read;
 
-    double maxlum, minlum, avglum, avgmag, mag_error;
     while (fgets(buffer, 1020, fp))
     {
         //   1-  6  I6    ---   HIP         Identifier (HIP)
@@ -1316,12 +1315,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //  43- 48  F6.3  mag   minMag      Magnitude at min from curve fitting
         read_field_onebased(buffer, 43, 48, field);
         s->maxmag = atof(field);
-
-        // Fit apparent magnitude using an offset from mean luminosities, e.g. if Vmag = 5 but max and min mag are <3 then compensate.
-        maxlum = pow(magnbase, -s->minmag);
-        minlum = pow(magnbase, -s->maxmag);
-        avglum = (maxlum+minlum)/2;
-        avgmag = -log(avglum) * invlogmagnbase;
 
         //  57- 68  F12.7 d     Period      ? Mean period in days
         read_field_onebased(buffer, 57, 68, field);
@@ -1494,7 +1487,6 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
     std::string path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "tyc_main.dat";
     char buffer[1024];
     char field[32];
-    char Bonn[32], Cordoba[32], Cape[32];
     int num_read = 0;
     uint32_t HD, HIP;
     std::string TYC;
@@ -3751,7 +3743,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     Star *A, *s;
     std::string str;
     int l;
-    char last, nxtlast;
+    char last = 0, nxtlast = 0;
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
     while (fgets(buffer, 1020, fp))
@@ -4604,11 +4596,10 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
-    int num_read = 0, i, j, n;
-    char c;
+    int num_read = 0, i, j;
     char buffer[1024];
     char field[64];
-    double f, deg, mnt, sec, RA, Decl;
+    double f, deg, mnt, sec;
 
     if (!hdcache)
     {
@@ -4777,7 +4768,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
         int offset = -36;
-        read_field_onebased(buffer, 319-36, 332-36, field);
+        read_field_onebased(buffer, 319+offset, 332+offset, field);
         str = trim(field);
         if (str.size())
         {
@@ -4785,29 +4776,29 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->center_name = str;
         }
 
-        read_field_onebased(buffer, 334-36, 344-36, field);
+        read_field_onebased(buffer, 334+offset, 344+offset, field);
         if (s->orbit) s->orbit->period = atof(field) * oneday;
 
-        read_field_onebased(buffer, 347-36, 358-36, field);
+        read_field_onebased(buffer, 347+offset, 358+offset, field);
         if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
 
-        read_field_onebased(buffer, 360-36, 366-36, field);
+        read_field_onebased(buffer, 360+offset, 366+offset, field);
         if (s->orbit) s->orbit->eccentricity = atof(field);
 
-        read_field_onebased(buffer, 373-36, 380-36, field);
+        read_field_onebased(buffer, 373+offset, 380+offset, field);
         if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 382-36, 389-36, field);
+        read_field_onebased(buffer, 382+offset, 389+offset, field);
         if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 391-36, 404-36, field);
+        read_field_onebased(buffer, 391+offset, 404+offset, field);
         if (s->orbit) s->orbit->epoch = atof(field);
 
-        read_field_onebased(buffer, 406-36, 413-36, field);
+        read_field_onebased(buffer, 406+offset, 413+offset, field);
         f = atof(field) * fiftyseventh;
         if (s->orbit) s->orbit->heliocentric_inclination = f;
 
-        read_field_onebased(buffer, 415-36, 422-36, field);
+        read_field_onebased(buffer, 415+offset, 422+offset, field);
         f = atof(field) * fiftyseventh;
         if (s->orbit) s->orbit->heliocentric_node = f;
 
@@ -5719,8 +5710,6 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             // a26 is blank too, and both renderers take the disc radius as
             // distance * angular_diameter / 2 -- so run that backwards from the radius we know.
             g->angular_diameter = 2.0 * milky_way_radius / sun_to_galactic_center;
-
-            int nbandxy = g->band.load_dat_file(std::string("catalogs") + _FILESLASH + std::string("Milky_Way.dat"));
         }
         g->location.equatorial_plane = g->location.local_system_plane
             = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);

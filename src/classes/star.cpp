@@ -73,7 +73,7 @@ StarMulti::~StarMulti()
 
 void Star::update_location(double tmnow)
 {
-    double elapsed, l_dist;
+    double elapsed, l_dist=0;
     if (orbit)
     {
         update_orbit_location(tmnow);
