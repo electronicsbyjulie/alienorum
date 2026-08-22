@@ -161,5 +161,14 @@ WASP-69 b                               Makombé
 WASP-121 b                              Tylos                   hot_jupiter             2602            088.49
 WASP-166 b                              Catalineta              ice_giant                               088.0                   0
 WD 0806-661 b                           Ahra                    gas_giant                357
+# Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
 
+
+# The following names are UNOFFICIAL and are used exclusively inside Alienorum unless adopted by another organization or body.
+# Since different sources disagree on the designations (b, d, e, f or b, c, nonexistent, d) of 82 Eridani's planets, here are proposed names for them:
+# Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
+HD 20794 b                              Belcanto
+HD 20794 d                              Mosaic
+HD 20794 e                              Neverland
+HD 20794 f                              Malibuzios
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo

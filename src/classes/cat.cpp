@@ -3632,6 +3632,9 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 // Estimate planet rotation.
                 p->estimate_rotation();
 
+                // Estimate atmosphere and rings.
+                p->setup_atm_ring_props();
+
                 // Add planet to celestial bodies array.
                 append_cel(p);
                 offset++;
@@ -5336,6 +5339,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     }
     new_planet->estimate_albedo_and_absmagn();
     new_planet->estimate_rotation();
+    new_planet->setup_atm_ring_props();
 
     // Append planet object to global array
     append_cel(new_planet);
@@ -5517,6 +5521,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     return result;
 }
+
 // ---- Galaxies --------------------------------------------------------------------------------
 //
 // UNGC (Karachentsev+ 2013, J/AJ/145/101) first: 869 Local Volume galaxies with MEASURED distances

@@ -1592,84 +1592,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     double T_boil = 1.0 / inv_T2;
     // std::cout << "At " << (p->get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
-    bool life_possible = false;
-
-    CelestialObject *plc = p->get_light_center();
-    if (!p->get_surface_pressure() && plc && plc->typeclass() == class_star)
-    {
-        // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
-        // center is a null pointer, and a moon of one leads somewhere that is not a Star.
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *p);
-        double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
-        if (isinf(max_atm_pressure)) max_atm_pressure = 0;
-        p->ensure_atmosphere()->surface_pressure = p->cel_frand(0.1, 1) * max_atm_pressure;
-    }
-
-    AtmosphereComposition *ac = p->ensure_atmosphere()->ensure_composition();
-    life_possible = (p->is_in_con_HZ() && cel->mass > 0.02 * earth_mass);       // Based on Titan's mass.
-    if (randomize_txgen)
-    {
-        if (life_possible)
-        {
-            if (!show_taucalc) ac->generate_fictitious_habitable();
-            p->atm->calculate_tau(p->get_surface_pressure());
-            p->temperature = 0;
-            T_surf = p->estimate_surface_temperature();
-        }
-        else if (!show_taucalc) ac->generate_fictitious_for_planet(p->type);
-    }
-    life_possible = (life_possible
-        && p->get_surface_pressure() >= 600
-        && T_surf > 0.9*water_freezing && T_surf < 320
-        && p->get_surface_pressure() < oneatm*2000);
-
-    p->atm->calculate_tau(p->get_surface_pressure());
-    // std::cout << p->name << " tau=" << p->get_atmospheric_tau() << std::endl;
-
-    if (life_possible)
-    {
-        p->temperature = 0;
-        T_surf = p->estimate_surface_temperature();
-        #ifdef DEBUG
-            std::cout << "Surface pressure: " << (p->get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
-            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
-        #endif
-
-        if (randomize_txgen)
-        {
-            if (T_surf < 0.9 * water_freezing)
-            {
-                has_water = 1;
-            }
-            else if (T_surf < T_boil * 1.1)
-            {
-                double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
-                has_water = p->cel_frand(0, max_water);
-            }
-        }
-
-        ac->H2O_portion = 0.014 * has_water;
-        p->temperature = 0;
-        p->atm->calculate_tau(p->get_surface_pressure());
-        T_surf = p->estimate_surface_temperature();
-
-        life_possible = (has_water >= 0.05
-            && p->get_surface_pressure() >= 600
-            && T_surf > 0.9*water_freezing && T_surf < 320
-            && p->get_surface_pressure() < oneatm*2000);
-
-        if (randomize_txgen)
-        {
-            if (life_possible)
-            {
-                if (!show_taucalc) ac->generate_fictitious_habitable();
-                p->atm->calculate_tau(p->get_surface_pressure());
-            }
-        }
-    }
-    p->temperature = 0;
-    p->atm->calculate_tau(p->get_surface_pressure());
-    T_surf = p->estimate_surface_temperature();
+    bool life_possible = p->estimate_habitability();
 
     bool want_overcast_sky = false;
     if (p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
@@ -1946,6 +1869,19 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->cloud_map->generate_overcast_sky(cel);
     }
     p->generate_ring_parameters();
+
+    if (p->ring_radius)
+    {
+        // Generate a ring texture and a ring transparency map using ring_inner_radius/ring_radius and ring_mean_opacity.
+        if (p->ring_map) delete p->ring_map;
+        if (p->ringx_map) delete p->ringx_map;
+
+        p->ring_map = new Map(p);
+        p->ringx_map = new Map(p);
+
+        p->ring_map->generate_ring_map(p, p->ring_radius / p->volumetric_mean_radius * 1024,
+            p->ring_inner_radius/p->ring_radius, p->ring_mean_opacity, p->ringx_map);
+    }
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -2318,6 +2254,19 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     generating_fic_texture = false;
     touch_gen();
     p->generate_ring_parameters();
+
+    if (p->ring_radius)
+    {
+        // Generate a ring texture and a ring transparency map using ring_inner_radius/ring_radius and ring_mean_opacity.
+        if (p->ring_map) delete p->ring_map;
+        if (p->ringx_map) delete p->ringx_map;
+
+        p->ring_map = new Map(p);
+        p->ringx_map = new Map(p);
+
+        p->ring_map->generate_ring_map(p, p->ring_radius / p->volumetric_mean_radius * 1024,
+            p->ring_inner_radius/p->ring_radius, p->ring_mean_opacity, p->ringx_map);
+    }
 }
 
 void alienorum::Map::generate_overcast_sky(CelestialObject *cel)

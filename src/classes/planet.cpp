@@ -15,6 +15,134 @@ using namespace alienorum;
 
 std::vector<AstorbRow> astorb;
 
+void alienorum::Planet::setup_atm_ring_props()
+{
+    classify();
+    apply_cosmic_shoreline();
+    if (estimate_habitability()) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
+    else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
+
+    generate_ring_parameters();
+}
+
+void alienorum::Planet::apply_cosmic_shoreline()
+{
+    CelestialObject *plc = get_light_center();
+    if (plc
+        && plc->seqno                                       // solar system objects are already known to have/not have an atmosphere
+        && plc->typeclass() == class_star
+    )
+    {
+        // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
+        // center is a null pointer, and a moon of one leads somewhere that is not a Star.
+        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *this);
+        double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
+        if (isinf(max_atm_pressure)) max_atm_pressure = 0;
+        ensure_atmosphere()->surface_pressure = cel_frand(0.1, 1) * max_atm_pressure;
+    }
+}
+
+bool alienorum::Planet::estimate_habitability()
+{
+    if (type == waterworld)
+    {
+        has_water = 1;
+    }
+    else if (randomize_txgen)
+    {
+        has_water = 0;
+    }
+
+    temperature = 0;
+    double T_surf = estimate_surface_temperature();
+    const double Tboil = water_freezing+100;                                     // Reference pressure
+
+    // Constants for water b.p.
+    const double R = 8.314;                                         // J/(mol*K)
+    const double DELTA_H_VAP = 40660.0;                             // J/mol
+    const double P1 = 1.0e+5;  
+
+    // Clausius-Clapeyron calculation
+    double inv_T1 = 1.0 / Tboil;
+    double gas_constant_ratio = R / DELTA_H_VAP;
+    double pressure_log = std::log(get_surface_pressure() / P1);
+
+    double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
+    double T_boil = 1.0 / inv_T2;
+    // std::cout << "At " << (get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
+
+    bool life_possible = false;
+    if (!get_surface_pressure()) apply_cosmic_shoreline();
+
+    AtmosphereComposition *ac = ensure_atmosphere()->ensure_composition();
+    life_possible = (is_in_con_HZ() && mass > 0.02 * earth_mass);       // Based on Titan's mass.
+    if (randomize_txgen)
+    {
+        if (life_possible)
+        {
+            if (!show_taucalc) ac->generate_fictitious_habitable();
+            atm->calculate_tau(get_surface_pressure());
+            temperature = 0;
+            T_surf = estimate_surface_temperature();
+        }
+        else if (!show_taucalc) ac->generate_fictitious_for_planet(type);
+    }
+    life_possible = (life_possible
+        && get_surface_pressure() >= 600
+        && T_surf > 0.9*water_freezing && T_surf < 320
+        && get_surface_pressure() < oneatm*2000);
+
+    atm->calculate_tau(get_surface_pressure());
+
+    if (life_possible)
+    {
+        temperature = 0;
+        T_surf = estimate_surface_temperature();
+        #ifdef DEBUG
+            std::cout << "Surface pressure: " << (get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
+            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
+        #endif
+
+        if (randomize_txgen)
+        {
+            if (T_surf < 0.9 * water_freezing)
+            {
+                has_water = 1;
+            }
+            else if (T_surf < T_boil * 1.1)
+            {
+                double max_water = pow((T_boil*1.1 - T_surf) / (T_boil*1.1 - 0.9*water_freezing), 0.2);
+                has_water = cel_frand(0, max_water);
+            }
+        }
+
+        ac->H2O_portion = 0.014 * has_water;
+        temperature = 0;
+        atm->calculate_tau(get_surface_pressure());
+        T_surf = estimate_surface_temperature();
+
+        life_possible = (has_water >= 0.05
+            && get_surface_pressure() >= 600
+            && T_surf > 0.9*water_freezing && T_surf < 320
+            && get_surface_pressure() < oneatm*2000);
+
+        if (randomize_txgen)
+        {
+            if (life_possible)
+            {
+                if (!show_taucalc) ac->generate_fictitious_habitable();
+                atm->calculate_tau(get_surface_pressure());
+            }
+        }
+    }
+
+    temperature = 0;
+    atm->calculate_tau(get_surface_pressure());
+    T_surf = estimate_surface_temperature();
+
+    return life_possible;
+}
+
 void Planet::set_color_from_type(bool HZ)
 {
     if (type == gas_giant) BV_color = 0.98;         // average of Jupiter and Saturn.
@@ -43,6 +171,20 @@ void Planet::set_color_from_type(bool HZ)
     else if (type == icy) BV_color = 0.6;
     else if (type == lavaworld) BV_color = 1.3;
     else if (type == waterworld) BV_color = -0.3;
+}
+
+double alienorum::Planet::get_atmospheric_tau()
+{
+    if (!atm) return 0;
+    if (!atm->tau) atm->calculate_tau(atm->surface_pressure);
+    if (!atm->tau)
+    {
+        double press = atm->surface_pressure;
+        atm->ensure_composition()->generate_fictitious_for_planet(type);
+        if (press) atm->surface_pressure = press;
+        atm->calculate_tau(atm->surface_pressure);
+    }
+    return atm->tau;
 }
 
 void Planet::classify()
@@ -825,32 +967,22 @@ void Planet::generate_ring_parameters(bool gr)
     // Generate Inner Radius
     // Favor starting relatively close to the planet
     std::uniform_real_distribution<double> innerDist(minInnerRadius, roche_limit_zero * 0.6);
-    double innerRadius = innerDist(rng);
+    ring_inner_radius = innerDist(rng);
 
     // Generate Outer Radius
     // Must be larger than inner, and capped tightly by the Roche limit
-    std::uniform_real_distribution<double> outerDist(innerRadius * 1.15, roche_limit_zero * 0.98);
+    std::uniform_real_distribution<double> outerDist(ring_inner_radius * 1.15, roche_limit_zero * 0.98);
     ring_radius = outerDist(rng) + volumetric_mean_radius;
 
     // Generate Density/Opacity
     // Wider rings or rings around more massive planets tend to be more substantial.
     // Here we just generate a random float, slightly weighted by the size of the ring disk.
-    double ringWidthRatio = (ring_radius - innerRadius) / roche_limit_zero;
+    double ringWidthRatio = (ring_radius - ring_inner_radius) / roche_limit_zero;
     
     // Base opacity between 0.1 (faint dust) and 0.8 (highly reflective ice)
     std::uniform_real_distribution<double> opacityDist(0.1, 0.8);
-    double meanOpacity = opacityDist(rng) + (ringWidthRatio * 0.2); 
+    ring_mean_opacity = opacityDist(rng) + (ringWidthRatio * 0.2); 
     
     // Clamp opacity to 1.0 max
-    meanOpacity = std::min(1.0, meanOpacity);
-
-    // Generate a ring texture and a ring transparency map using innerRadius/ring_radius and meanOpacity.
-    if (ring_map) delete ring_map;
-    if (ringx_map) delete ringx_map;
-
-    ring_map = new Map(this);
-    ringx_map = new Map(this);
-
-    int ringres = ring_radius / volumetric_mean_radius * 1024;
-    ring_map->generate_ring_map(this, ringres, innerRadius/ring_radius, meanOpacity, ringx_map);
+    ring_mean_opacity = std::min(1.0, ring_mean_opacity);
 }
