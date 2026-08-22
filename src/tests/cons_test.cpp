@@ -175,7 +175,7 @@ TEST_F(ConstellationTest, FillAlienorumIds_FormatsCorrectly)
     
     // Setup a star right in the middle
     Star* s1 = new Star();
-    s1->_class = class_star; // Force typeclass
+    EXPECT_EQ(s1->typeclass(), class_star);
     s1->right_ascension = 0.5;
     s1->declination = 0.5;
     s1->apparent_magnitude = 2.4; 
