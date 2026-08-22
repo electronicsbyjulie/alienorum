@@ -134,3 +134,30 @@ TEST(GalaxyBandTest, LoadDatFile_HandlesMissingFile)
     EXPECT_TRUE(band.road1_gra.empty());
     EXPECT_TRUE(band.road2_gra.empty());
 }
+// The real export this feeds on (boundary_roads.dat) is whitespace-separated, not comma-separated
+// -- the parser insisted on a comma on every line, so every coordinate in the real file silently
+// failed to match and the band stayed permanently empty regardless of anything else being right.
+TEST(GalaxyBandTest, LoadDatFile_AcceptsWhitespaceSeparatedValues)
+{
+    std::string filename = "test_galaxy_band_whitespace.dat";
+    {
+        std::ofstream fs(filename);
+        fs << "N\n";
+        fs << "-3.14055 0.076969\n";
+        fs << "-3.1374 0.0764454\n";
+        fs << "S\n";
+        fs << "3.08295 -0.015708\n";
+    }
+
+    GalaxyBand band;
+    int items_read = band.load_dat_file(filename);
+    std::remove(filename.c_str());
+
+    EXPECT_EQ(items_read, 3);
+    ASSERT_EQ(band.road1_gra.size(), 2);
+    EXPECT_DOUBLE_EQ(band.road1_gra[0], -3.14055);
+    EXPECT_DOUBLE_EQ(band.road1_gdecl[0], 0.076969);
+    ASSERT_EQ(band.road2_gra.size(), 1);
+    EXPECT_DOUBLE_EQ(band.road2_gra[0], 3.08295);
+    EXPECT_DOUBLE_EQ(band.road2_gdecl[0], -0.015708);
+}

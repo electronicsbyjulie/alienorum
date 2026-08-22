@@ -55,30 +55,40 @@ int alienorum::GalaxyBand::load_dat_file(std::string fname)
     if (!fp) return 0;
 
     int num_read = 0;
-    char buffer[256], northsouth = 0, *comma = nullptr;
+    char buffer[256], northsouth = 0;
+    double ra, decl;
     while (fgets(buffer, 255, fp))
     {
         if (buffer[0] == '#') continue;
         else if (buffer[0] == 'N' || buffer[0] == 'S') northsouth = buffer[0];
-        else if ((comma = strchr(buffer, ',')))   // conditioned on assignment
+        else
         {
-            if (northsouth == 'N')
+            // The real export (boundary_roads.dat) is whitespace-separated; the comma this used
+            // to insist on never matched a single line of it, so every coordinate silently fell
+            // through and the band stayed permanently empty. Normalize any comma to a space first
+            // so a comma-delimited line -- like the ones the unit test still uses -- still works.
+            for (char *c = buffer; *c; c++) if (*c == ',') *c = ' ';
+            if (sscanf(buffer, "%lf %lf", &ra, &decl) == 2)
             {
-                road1_gra.push_back(atof(buffer));
-                road1_gdecl.push_back(atof(&comma[1]));
-                road1_dist.push_back(0);
-                num_read++;
-            }
-            else if (northsouth == 'S')
-            {
-                road2_gra.push_back(atof(buffer));
-                road2_gdecl.push_back(atof(&comma[1]));
-                road2_dist.push_back(0);
-                num_read++;
+                if (northsouth == 'N')
+                {
+                    road1_gra.push_back(ra);
+                    road1_gdecl.push_back(decl);
+                    road1_dist.push_back(0);
+                    num_read++;
+                }
+                else if (northsouth == 'S')
+                {
+                    road2_gra.push_back(ra);
+                    road2_gdecl.push_back(decl);
+                    road2_dist.push_back(0);
+                    num_read++;
+                }
             }
         }
     }
 
+    fclose(fp);
     return num_read;
 }
 

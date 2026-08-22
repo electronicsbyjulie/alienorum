@@ -5710,6 +5710,13 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             // a26 is blank too, and both renderers take the disc radius as
             // distance * angular_diameter / 2 -- so run that backwards from the radius we know.
             g->angular_diameter = 2.0 * milky_way_radius / sun_to_galactic_center;
+
+            // draw_galaxy_band() (visuals.cpp) reads g->band's two boundary roads to draw the band
+            // itself -- nothing populated it. GalaxyBand::load_dat_file() existed and was tested in
+            // isolation, but was never wired to an actual file at load time, so the band was always
+            // empty and the loop in draw_galaxy_band() drew zero points every time, regardless of
+            // inside_galaxy_idx or position math being correct.
+            g->band.load_dat_file("boundary_roads.dat");
         }
         g->location.equatorial_plane = g->location.local_system_plane
             = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);

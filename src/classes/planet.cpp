@@ -411,10 +411,22 @@ double Planet::estimate_bump_scale()
 // Returns 0 for an airless body, which reads as "no glow at all" downstream.
 double Planet::estimate_scale_height()
 {
-    if (get_surface_pressure() <= 0) return 0;
+    // get_surface_pressure() is not one consistent reference level: for a bare-ish rock we see
+    // the ground of (Mars, Earth) it is that ground, which is exactly where the visible haze
+    // starts. For a world we only ever see the top of the weather of -- Venus's permanent
+    // sulfuric-acid overcast sitting on 92 atmospheres we never render, any gas or ice giant --
+    // it can be the true deep pressure (Venus) or left at zero because there is no ground to give
+    // a value to (Uranus, Neptune, if nobody typed one in). Either way it is the wrong altitude
+    // for a glow meant to sit above the cloud deck we actually draw, so cloud_deck_fraction() (1
+    // for a world that is nothing but weather) picks the reference level instead: the
+    // conventional 1-bar cloud-top pressure astronomers already use to define a gas giant's own
+    // radius, rather than whatever get_surface_pressure() happens to hold underneath it.
+    bool at_cloud_deck = cloud_deck_fraction() >= 1.0;
+    double p_ref = at_cloud_deck ? oneatm : get_surface_pressure();
+    if (p_ref <= 0) return 0;
 
-    double T = estimate_surface_temperature();
-    double g = estimate_surface_gravity();     // Earth Gs (Earth = 1.0); H = RT/(Mg). Claude is not PTSD-friendly.
+    double T = at_cloud_deck ? temperature_at_pressure(p_ref) : estimate_surface_temperature();
+    double g = estimate_surface_gravity();     // Earth Gs (Earth = 1.0); H = RT/(Mg) requires m/s2.
     if (T <= 0 || g <= 0) return 0;
     g *= 9.80665;
 
@@ -536,15 +548,32 @@ double Planet::equilibrium_temperature()
 
 double Planet::estimate_surface_temperature()
 {
+    return temperature_at_pressure(get_surface_pressure());
+}
+
+// The equilibrium temperature warmed by the same Eddington gray-atmosphere greenhouse
+// approximation estimate_surface_temperature() uses, but evaluated at whatever pressure is
+// passed in rather than necessarily get_surface_pressure()'s. That accessor means different
+// things on different worlds -- the true ground under Venus's permanent overcast, a bare rock's
+// actual surface, an arbitrary reference level for a giant with no surface at all -- and
+// estimate_scale_height() needs the temperature where the visible haze is, which is not always
+// the same place. get_atmospheric_tau() is still called for its side effect of ensuring a
+// composition exists (real or invented) before tau is computed at the pressure asked for here.
+double Planet::temperature_at_pressure(double pressure_pa)
+{
     double t_eq = equilibrium_temperature();
 
+    get_atmospheric_tau();
+    double tau = (atm && atm->comp) ? atmospheric_tau(pressure_pa * 0.000009869,
+        atm->comp->CO2_portion, atm->comp->CH4_portion, atm->comp->H2O_portion, atm->comp->N2O_portion,
+        atm->comp->O3_portion,  atm->comp->SO2_portion, atm->comp->H2S_portion, atm->comp->CO_portion,
+        atm->comp->HCN_portion, atm->comp->H2_portion,  atm->comp->NH3_portion, atm->comp->C2H6_portion) : 0;
+
     // Apply the Eddington Gray-Atmosphere Approximation
-    double empirical_tau_scale = 2.4; 
-    double greenhouse_factor = 1.0 + (0.75 * get_atmospheric_tau() * empirical_tau_scale);
+    double empirical_tau_scale = 2.4;
+    double greenhouse_factor = 1.0 + (0.75 * tau * empirical_tau_scale);
 
-    double t_surface = t_eq * std::pow(greenhouse_factor, 0.25);
-
-    return t_surface;
+    return t_eq * std::pow(greenhouse_factor, 0.25);
 }
 
 // Convert true altitude to observed.

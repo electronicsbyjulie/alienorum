@@ -748,7 +748,7 @@ void process_key_arrowup()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, steering_rate);
+    steer(pitch, -steering_rate);
     if (trackidx<0) altitude += steering_rate;
     if (altitude > half_pi) altitude = half_pi;
     enforce_y_pan_limit();
@@ -788,7 +788,7 @@ void process_key_arrowright()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point yaw = to_viewer_plane(yaxis, -1);
-    steer(yaw, steering_rate);
+    steer(yaw, -steering_rate);
     if (trackidx<0) azimuth += steering_rate;
 }
 

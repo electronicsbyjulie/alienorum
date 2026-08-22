@@ -648,7 +648,7 @@ TEST_F(PlanetAtmosphereTest, ScaleHeightIsSaneForRealPlanets)
     Expectation expectations[] =
     {
         { earth,   2000, 30000 },
-        { venus,   2000, 40000 },
+        { venus,   1000, 30000 },   // at the cloud deck (~1 bar), not Venus's 92-atm ground -- cooler, thinner
         { mars,    2000, 30000 },
         { jupiter, 2000, 60000 },
     };
@@ -664,6 +664,39 @@ TEST_F(PlanetAtmosphereTest, ScaleHeightIsSaneForRealPlanets)
         EXPECT_LT(H, e.p->volumetric_mean_radius * 0.05)
             << e.p->name << ": within the cap, but by coincidence rather than because it's tiny by nature";
     }
+
+    delete_the_universe();
+}
+
+// Uranus and Neptune have no ground to give get_surface_pressure() a value, and it is often left
+// at the default zero for exactly that reason. That must not read as "no atmosphere": both are
+// gas/ice giants, so cloud_deck_fraction() is 1 regardless of what surface_pressure holds, and
+// estimate_scale_height() should fall back to the same 1-bar cloud-top reference a gas giant with
+// a populated pressure field gets, rather than returning 0 and rendering no haze at all.
+TEST_F(PlanetAtmosphereTest, IceGiantWithNoSurfacePressureStillGetsAHaze)
+{
+    Star* sun = make_star("Sol");
+
+    Planet* neptune = make_planet(sun, "Neptune", 30.1 * AU);
+    neptune->type = ice_giant;
+    neptune->lock_type = true;
+    neptune->mass = 17.15 * earth_mass;
+    neptune->volumetric_mean_radius = 3.865 * earth_radius;
+    neptune->albedo = 0.29;
+    Atmosphere* natm = neptune->ensure_atmosphere();
+    natm->surface_pressure = 0;                          // exactly the gap this test guards against
+    AtmosphereComposition* ncomp = natm->ensure_composition();
+    ncomp->H2_portion = 0.80;
+    ncomp->He_portion = 0.19;
+    ncomp->CH4_portion = 0.01;
+
+    EXPECT_DOUBLE_EQ(neptune->get_surface_pressure(), 0.0) << "sanity check on the test's own setup";
+    EXPECT_DOUBLE_EQ(neptune->cloud_deck_fraction(), 1.0);
+
+    double H = neptune->estimate_scale_height();
+    EXPECT_GT(H, 0) << "a gas/ice giant must get a haze from the cloud-top reference pressure "
+        "even when surface_pressure was never given a value";
+    EXPECT_LT(H, neptune->volumetric_mean_radius * 0.05 * 1.0000001);
 
     delete_the_universe();
 }
