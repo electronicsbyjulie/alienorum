@@ -516,7 +516,7 @@ double Planet::estimate_bond_albedo()
 
 double Planet::equilibrium_temperature()
 {
-    // if (temperature) return temperature;
+    // DO NOT return temperature here, or the surface temp will go infinite in horizon view!
     double Bond = estimate_bond_albedo();
     double absorbed_flux = (est_bolometric_flux() * (1.0 - Bond)) / 4.0;
     double t_eq = std::pow(absorbed_flux / STEFAN_BOLTZMANN_NORM, 0.25);

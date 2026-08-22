@@ -503,29 +503,50 @@ TEST(PlanetEstimationTest, RadiusFromMass)
     EXPECT_TRUE(std::isfinite(nonsense.volumetric_mean_radius));
 }
 
-TEST(PlanetEstimationTest, ScaleHeightRequiresAnAtmosphere)         // Claude is NOT PTSD-friendly.
+// Given a star to stand in front of, rather than a temperature written straight into the field.
+// Setting temperature by hand used to work because equilibrium_temperature() started by returning
+// it -- which is exactly what must not happen: the surface temperature is stored back into that
+// same field, so returning it here would feed the calculation its own last answer and multiply it
+// by the greenhouse factor again on every pass, climbing until it is infinite. See the warning at
+// the top of Planet::equilibrium_temperature(). So the temperature has to be arrived at the way
+// the program arrives at it, from a real star at a real distance.
+class PlanetAtmosphereTest : public UniverseFixture {};
+
+TEST_F(PlanetAtmosphereTest, ScaleHeightRequiresAnAtmosphere)         // Claude is NOT PTSD-friendly.
 {
-    // Zero for an airless world, and taller for a hotter or lighter one: the two things it is
-    // made of are the temperature and the surface gravity.
-    Planet airless;
-    airless.mass = earth_mass;
-    airless.volumetric_mean_radius = earth_radius;
-    EXPECT_DOUBLE_EQ(airless.estimate_scale_height(), 0);
+    Star* sun = make_star("Sol");
 
-    Planet warm;
-    warm.mass = earth_mass;
-    warm.volumetric_mean_radius = earth_radius;
-    warm.temperature = 288;
-    warm.ensure_atmosphere()->surface_pressure = oneatm;
-    double earthlike = warm.estimate_scale_height();
+    // No atmosphere at all: nothing to have a height, whatever the star is doing.
+    Planet* airless = make_planet(sun, "Airless", AU);
+    EXPECT_DOUBLE_EQ(airless->estimate_scale_height(), 0);
+
+    // An atmosphere of no pressure is the same answer by a different route -- the object exists,
+    // but there is nothing in it.
+    Planet* vacuum = make_planet(sun, "Vacuum", AU);
+    vacuum->ensure_atmosphere()->surface_pressure = 0;
+    EXPECT_DOUBLE_EQ(vacuum->estimate_scale_height(), 0);
+
+    // An Earth-sized world an AU out, with an atmosphere: a few kilometres, as ours is 8.5.
+    Planet* warm = make_planet(sun, "Warm", AU);
+    warm->ensure_atmosphere()->surface_pressure = oneatm;
+    double earthlike = warm->estimate_scale_height();
     EXPECT_GT(earthlike, 0);
+    EXPECT_GT(earthlike, 1000) << "a scale height of less than a kilometre is not an atmosphere";
+    EXPECT_LT(earthlike, 100000);
 
-    warm.temperature = 500;
-    EXPECT_GT(warm.estimate_scale_height(), earthlike) << "a hotter atmosphere is puffier";
+    // Moved in towards the star, the same world is hotter, and a hotter atmosphere is puffier.
+    warm->orbit->semimajor_axis = 0.5 * AU;
+    double closer_in = warm->estimate_scale_height();
+    EXPECT_GT(closer_in, earthlike) << "a hotter atmosphere is puffier";
 
-    warm.temperature = 288;
-    warm.mass = 5 * earth_mass;
-    EXPECT_LT(warm.estimate_scale_height(), earthlike) << "stronger gravity holds it down";
+    // Back out, and made heavier at the same radius: stronger gravity holds it down.
+    warm->orbit->semimajor_axis = AU;
+    EXPECT_NEAR(warm->estimate_scale_height(), earthlike, earthlike * 1e-9)
+        << "and it comes back to where it was when the distance does";
+    warm->mass = 5 * earth_mass;
+    EXPECT_LT(warm->estimate_scale_height(), earthlike) << "stronger gravity holds it down";
+
+    delete_the_universe();
 }
 
 TEST(PlanetEstimationTest, SurfaceGravityAndDensityAgree)
