@@ -692,6 +692,15 @@ json Planet::to_json()
     if (atm) towrite["atmosphere"] = atm->to_json();
     if (J2) towrite["J2"] = J2;
 
+    // Both of these come from a catalog originally -- the astorb row number, and the flag that
+    // says the catalog stated a type we are not to second-guess in classify(). They used not to
+    // be written, which left a saved asteroid without its number after a reload, and so out of
+    // the one place that number is read: the pass in visuals.cpp that keeps the asteroids out of
+    // the ordinary planet drawing. Zero and false are the "no such thing" values, so as with the
+    // fields above, they are written only when they say something.
+    if (asteroid_no) towrite["asteroid_no"] = asteroid_no;
+    if (lock_type) towrite["lock_type"] = lock_type;
+
     return towrite;
 }
 
@@ -723,6 +732,8 @@ bool Planet::from_json(json j)
     }
 
     try { j.at("J2").get_to(J2); } catch (...) { ; }
+    try { j.at("asteroid_no").get_to(asteroid_no); } catch (...) { ; }
+    try { j.at("lock_type").get_to(lock_type); } catch (...) { ; }
     return true;
 }
 

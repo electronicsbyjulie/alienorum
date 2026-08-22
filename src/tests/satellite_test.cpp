@@ -135,8 +135,16 @@ TEST(SatelliteMathTest, PopulateCalculatesPrecession)
     EXPECT_NE(expected_prec_node, 0.0);
     EXPECT_NE(expected_proc_argperi, 0.0);
     
-    // Nodal precession for ISS (51.6 deg incl) is negative (drifts west)
-    EXPECT_LT(expected_prec_node, 0.0);
+    // prec_node holds the rate unsigned-by-convention: update_orbit_location() applies it as
+    //     node_adjustment = seconds_since_epoch * -PN,
+    // so a positive prec_node IS the westward drift of the node. For the ISS (51.6 deg, prograde)
+    // cos i > 0, the stored rate is positive, and the node duly regresses about 5 degrees a day.
+    EXPECT_GT(expected_prec_node, 0.0);
+    EXPECT_NEAR(expected_prec_node * oneday * fiftyseven, 5.0, 1.0);        // degrees per day
+    
+    // Retrograde orbits (cos i < 0) turn it round and the node advances instead.
+    double retrograde_prec_node = 1.5 * common_term * cos(100.0 * fiftyseventh);
+    EXPECT_LT(retrograde_prec_node, 0.0);
 }
 
 // =====================================================================

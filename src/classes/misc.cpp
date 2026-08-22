@@ -603,24 +603,42 @@ bool download_file(std::string URL, std::string save_path)
     return true;
 }
 
+// Splits one line on its commas, honouring the quoting the CSV convention gives a field that
+// contains a comma of its own: "ISS (ZARYA)","EARTH, LOW ORBIT" is two fields, not three. The
+// surrounding quotes are not part of the value and come off; a doubled "" inside a quoted field
+// is one literal quote. Splitting on every comma regardless, as this did, tore such a field in
+// half and shifted every column after it -- which in the satellite catalog means the epoch and
+// the orbital elements are read out of the wrong columns for the whole rest of the row.
 std::vector<std::string> parse_csv_row(const char *data)
 {
     int n = strlen(data);
     if (!n) return std::vector<std::string>();
 
-    char buffer[n+1];
-    strcpy(buffer, data);
-    char *cursor = buffer, *comma;
     std::vector<std::string> result;
+    std::string value;
+    bool quoted = false;
+    int i;
 
-    do
+    for (i=0; i<n; i++)
     {
-        comma = strchr(cursor, ',');
-        if (comma) *comma = 0;
-        std::string value = cursor;
-        result.push_back(value);
-        cursor = comma+1;
-    } while (comma);
+        char c = data[i];
+
+        if (quoted)
+        {
+            if (c != '"') { value += c; continue; }
+            if (data[i+1] == '"') { value += '"'; i++; }        // "" inside quotes is one quote.
+            else quoted = false;
+        }
+        else if (c == '"' && !value.size()) quoted = true;      // Only a field that opens with one is quoted.
+        else if (c == ',')
+        {
+            result.push_back(value);
+            value.clear();
+        }
+        else value += c;
+    }
+
+    result.push_back(value);
 
     return result;
 }

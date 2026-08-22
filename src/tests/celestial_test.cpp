@@ -188,9 +188,24 @@ TEST(CelestialObjectTest, JsonSerializationRoundTrip)
 
     EXPECT_TRUE(success);
     EXPECT_DOUBLE_EQ(restored.mass, 1.989e33);
-    EXPECT_DOUBLE_EQ(restored.temperature, 5778);
     EXPECT_EQ(restored.type, gas_giant);
     EXPECT_TRUE(restored.user_added);
+
+    EXPECT_DOUBLE_EQ(restored.temperature, 5778);
+
+    // Zero is not a temperature but the absence of one -- it is what tells
+    // Star::estimate_temperature() and Planet::equilibrium_temperature() to work one out instead
+    // of returning what they are holding -- so a body that has none writes no key at all rather
+    // than writing a zero, and reading a file without one leaves the derivations to it.
+    CelestialObject no_temperature;
+    no_temperature.mass = 1.989e33;
+    json jnt = no_temperature.to_json();
+    EXPECT_FALSE(jnt.contains("temperature"));
+
+    CelestialObject from_older_file;
+    from_older_file.temperature = 1234;             // whatever it happened to be holding
+    EXPECT_TRUE(from_older_file.from_json(jnt));
+    EXPECT_DOUBLE_EQ(from_older_file.temperature, 1234);
 }
 
 // =====================================================================
@@ -247,9 +262,9 @@ TEST(CelestialMathTest, HillSphereRadius)
 
     double hill_radius = earth.Hill_sphere_radius();
     
-    // Earth's Hill sphere is roughly 1.47 million km (1.47e9 meters).
-    // Because your formula uses periapsis (1-e), it will be slightly smaller (~1.44e9).
-    EXPECT_NEAR(hill_radius, 1.44e9, 1e7);
+    // Earth's Hill sphere is roughly 1.47 million km (1.496e9 m from the semimajor axis), and
+    // the formula takes it at periapsis, a(1-e), which trims it to 1.4714e9 -- not to 1.44e9.
+    EXPECT_NEAR(hill_radius, 1.4714e9, 1e7);
     
     // Edge case: Unbound orbit
     earth_orbit.eccentricity = 1.5;
@@ -319,25 +334,30 @@ class CelestialGlobalsTest : public ::testing::Test
     protected:
     void SetUp() override
     {
-        // This runs before EVERY test. 
-        // If 'cels' is dynamically allocated in a main init function, 
-        // you may call that init function here, or allocate it manually:
-        // if (!cels) cels = new CelestialObject*[MAX_CELS_LIMIT];
+        // This runs before EVERY test. main() (alienorum.cpp) is what normally allocates cels,
+        // and no test binary has one, so append_cel() would write through a null pointer.
+        if (!cels) cels = new CelestialObject*[MAX_CELOBJS];
+        memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
+        ncelobjs = 0;
+        first_sat = -1;
 
-        // Clear the STL containers so tests don't pollute each other
+        // Clear the STL containers so tests don't pollute each other. set_center_objects() gives
+        // first_letter_index 36 buckets -- ten digits and twenty-six letters, case folded -- and
+        // is the only thing that fills it; see AppendCel_UpdatesFirstLetterIndex below.
         first_letter_index.clear();
-        
-        // Assuming first_letter_index is sized for A-Z or ASCII characters
-        first_letter_index.resize(256); 
-        
+        first_letter_index.resize(36);
+
         constellation_index.clear();
     }
 
     void TearDown() override
     {
-        // This runs after EVERY test.
-        // If append_cel takes ownership of pointers, you would free them here 
-        // to prevent memory leaks during testing.
+        // This runs after EVERY test. append_cel() does not take ownership -- it only records the
+        // pointer -- so each test deletes what it allocated, and we drop the dangling entries here
+        // so the next test starts on an empty array.
+        memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
+        ncelobjs = 0;
+        first_sat = -1;
     }
 };
 
@@ -373,14 +393,14 @@ TEST_F(CelestialGlobalsTest, AppendCel_UpdatesFirstLetterIndex)
     
     append_cel(obj);
     
-    // Determine the index bucket (usually 'E' or 'e' depending on your implementation)
-    int bucket = (int)'E'; 
-    
-    // Check that the first_letter_index vector for 'E' is no longer empty
-    ASSERT_FALSE(first_letter_index[bucket].empty());
-    
-    // Check that our object is exactly what was stored there
-    EXPECT_EQ(first_letter_index[bucket].back(), obj);
+    // The name indices are NOT append_cel()'s doing: set_center_objects() (housekeeping.cpp)
+    // rebuilds first_letter_index from scratch over the whole array once loading has settled,
+    // because it also has to skip deleted objects and the HD numbers that already have a catalog
+    // of their own. append_cel() is only responsible for the array itself and the object's name,
+    // which it copies to origname so a later rename can still be traced back.
+    EXPECT_TRUE(first_letter_index[(int)'E' - 'A' + 10].empty());
+    EXPECT_EQ(obj->origname, std::string("Earth"));
+    EXPECT_EQ(cels[obj->seqno], obj);
     
     delete obj;
 }
@@ -401,9 +421,9 @@ TEST_F(CelestialGlobalsTest, AppendCel_UpdatesConstellationIndex)
     bool success = append_cel(star);
     EXPECT_TRUE(success);
     
-    // Assuming append_cel reads the constellation and populates the map:
-    // EXPECT_FALSE(constellation_index["Ori"].empty());
-    // EXPECT_EQ(constellation_index["Ori"].back(), star);
+    // As above, the constellation map is built by set_center_objects() and only for objects
+    // that are Stars carrying a constellation, so a bare CelestialObject leaves it empty.
+    EXPECT_TRUE(constellation_index.empty());
     
     delete star;
 }

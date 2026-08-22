@@ -66,9 +66,11 @@ TEST(MoonTest, JsonSerialization_IgnoresNearZeroValues)
 {
     Moon original;
     
-    // Set to extremely small values (assuming zero_isnt_really_zero is a small epsilon like 1e-6)
+    // zero_isnt_really_zero is 9e-298 (misc.h): the threshold is there to catch a value that
+    // arithmetic has left just off zero, not a small-but-real dimension. A nanometre-wide moon is
+    // absurd, but it is a hundreds of orders of magnitude above the floor and does get written.
     original.height = 0.0;
-    original.width = 0.000000001; 
+    original.width = 1e-299; 
     original.depth = 0.0;
 
     json j = original.to_json();
@@ -100,13 +102,15 @@ TEST(MoonTest, LaplacePlane_OrbitTypeOverrides)
     Planet planet;
     Moon moon;
     
-    Orbit planet_orbit;
-    planet_orbit.center = &star;
-    planet.orbit = &planet_orbit;
+    // ~Planet and ~Moon both delete orbit: the body owns its orbit, so these must be heap
+    // allocated or the destructor frees a stack address at the end of the test.
+    Orbit* planet_orbit = new Orbit();
+    planet_orbit->center = &star;
+    planet.orbit = planet_orbit;
     
-    Orbit moon_orbit;
-    moon_orbit.center = &planet;
-    moon.orbit = &moon_orbit;
+    Orbit* moon_orbit = new Orbit();
+    moon_orbit->center = &planet;
+    moon.orbit = moon_orbit;
 
     // Distinctive mock rotations to trace
     planet.location.equatorial_plane.a = 1.23;
@@ -129,20 +133,21 @@ TEST(MoonTest, LaplacePlane_TidalLockGuard)
     Planet planet;
     Moon moon;
     
-    Orbit planet_orbit;
-    planet_orbit.center = &star;
-    planet.orbit = &planet_orbit;
+    // Heap allocated for the same reason as above: the Moon and the Planet own their orbits.
+    Orbit* planet_orbit = new Orbit();
+    planet_orbit->center = &star;
+    planet.orbit = planet_orbit;
     
-    Orbit moon_orbit;
-    moon_orbit.center = &planet;
-    moon.orbit = &moon_orbit;
+    Orbit* moon_orbit = new Orbit();
+    moon_orbit->center = &planet;
+    moon.orbit = moon_orbit;
     
     moon.orbit_type = ot_Laplace;
     planet.location.equatorial_plane.a = 7.89; 
 
     // Simulate tidal lock between planet and moon
     planet.sidereal_rotational_period = 3600.0;
-    moon_orbit.period = 3600.0;
+    moon_orbit->period = 3600.0;
     
     Rotation actual = moon.get_Laplace_plane();
     

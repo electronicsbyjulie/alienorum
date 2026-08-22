@@ -16,7 +16,7 @@ namespace alienorum
         double proper_motion_RA = 0;                // radians / second
         double proper_motion_decl = 0;              // radians / second
         double radial_velocity = 0;                 // meters / second
-        double apparent_magnitude;                  // visual/550nm
+        double apparent_magnitude = 0;              // visual/550nm
         double parallax = 0;                        // radians
 
         double minmag = 0;                          // apparent V mag
@@ -54,7 +54,7 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
-        bool tmp_vis_flag;                          // Used only for rendering.
+        bool tmp_vis_flag = false;                  // Used only for rendering.
         bool has_disk = false;                      // E.g. dust, debris, cometary, asteroid belt, etc.
         bool rot_axis_known = false;
         bool has_hot_jupiter = false;
@@ -102,7 +102,7 @@ namespace alienorum
         double estimate_radius(bool skip_mainseq = true);
 
         static double temperature_from_BV(double BV);
-        static double degenerate_radius(double mass_kg);            // metere
+        static double degenerate_radius(double mass_grams);         // meters. Grams in, like every other mass here.
         static double bolometric_correction(double t_eff);
 
         // Coefficients of the quadratic limb-darkening law,

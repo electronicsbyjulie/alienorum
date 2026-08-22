@@ -644,6 +644,11 @@ json CelestialObject::to_json()
     towrite["RI_color"] = RI_color;
     towrite["right_ascension"] = right_ascension * fiftyseven;
     towrite["sidereal_rotational_period"] = sidereal_rotational_period / oneday;
+    // Kelvins. Written only when there is one, because zero is what the derivations that fill
+    // this in -- Star::estimate_temperature(), Planet::equilibrium_temperature() -- read as
+    // "nobody has established a temperature for this body, work one out". Saving a zero would
+    // say the same thing, but saving nothing keeps it out of the files of bodies that have none.
+    if (temperature) towrite["temperature"] = temperature;
     towrite["type"] = type;
     towrite["typeclass"] = typeclass();
     towrite["UB_color"] = UB_color;
@@ -697,6 +702,10 @@ bool CelestialObject::from_json(json j)
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
     try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
+    // A stated temperature stands: the derivations above return it unchanged rather than working
+    // one out, which is the point of saving it -- a body whose temperature was measured, edited by
+    // hand, or arrived at through a chain this session will not repeat comes back with it intact.
+    try { j.at("temperature").get_to(temperature); } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
     try { j.at("user_added").get_to(user_added); } catch (...) { ; }
@@ -2909,6 +2918,26 @@ alienorum::Locale::Locale(json fj)
 // TODO: also scale up if partial atmosphere.
 void alienorum::AtmosphereComposition::enforce_integrity()
 {
+    // A negative portion is not a thin atmosphere but a nonsensical one, and it hides itself in
+    // the sum below: a negative and a positive can total exactly 1 while neither can exist. Floor
+    // them before anything is measured, so the normalization works on quantities that are real.
+    if (H2_portion   < 0) H2_portion   = 0;
+    if (He_portion   < 0) He_portion   = 0;
+    if (N2_portion   < 0) N2_portion   = 0;
+    if (O2_portion   < 0) O2_portion   = 0;
+    if (O3_portion   < 0) O3_portion   = 0;
+    if (CO2_portion  < 0) CO2_portion  = 0;
+    if (CH4_portion  < 0) CH4_portion  = 0;
+    if (SO2_portion  < 0) SO2_portion  = 0;
+    if (H2O_portion  < 0) H2O_portion  = 0;
+    if (H2S_portion  < 0) H2S_portion  = 0;
+    if (HCN_portion  < 0) HCN_portion  = 0;
+    if (NH3_portion  < 0) NH3_portion  = 0;
+    if (C2H6_portion < 0) C2H6_portion = 0;
+    if (N2O_portion  < 0) N2O_portion  = 0;
+    if (CO_portion   < 0) CO_portion   = 0;
+    if (Ar_portion   < 0) Ar_portion   = 0;
+
     double total = H2_portion + He_portion + N2_portion + O2_portion + O3_portion
         + CO2_portion + CH4_portion + SO2_portion + H2O_portion + H2S_portion
         + HCN_portion + NH3_portion + C2H6_portion + N2O_portion

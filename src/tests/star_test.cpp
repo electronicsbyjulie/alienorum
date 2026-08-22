@@ -57,11 +57,28 @@ TEST(StarTest, ConstellationMatching)
 
 TEST(StarTest, NameGeneration)
 {
+    // gotta_be_named_something() fills in name, working down the catalog designations a nameless
+    // star might carry: Bayer/Flamsteed, then HD, HIP, SAO, the Bonn survey, and SB9. It does not
+    // touch alienorumid -- that is assigned by constellation in cons.cpp, over the whole array at
+    // once, because the numbering runs in order of brightness within each constellation.
     Star s;
+    s.HD = 12345;
     s.gotta_be_named_something();
-    // Assuming this function generates a fallback name if none exists.
-    // E.g., populating s.alienorumid or similar.
-    EXPECT_FALSE(s.alienorumid.empty());
+    EXPECT_STREQ(s.name, "HD12345");
+    EXPECT_EQ(s.origname, std::string("HD12345"));
+
+    // HIP is next in line when there is no HD number.
+    Star hip_only;
+    hip_only.HIP = 67890;
+    hip_only.gotta_be_named_something();
+    EXPECT_STREQ(hip_only.name, "HIP67890");
+
+    // A star already named is left alone.
+    Star named;
+    strcpy(named.name, "Vega");
+    named.HD = 172167;
+    named.gotta_be_named_something();
+    EXPECT_STREQ(named.name, "Vega");
 }
 
 // =====================================================================
@@ -70,25 +87,59 @@ TEST(StarTest, NameGeneration)
 
 TEST(StarTest, DegenerateRadiusCalculation)
 {
-    // 1 Solar Mass in kg (approx 1.989 x 10^30)
-    double solar_mass_kg = 1.989e30;
+    // Grams, like CelestialObject::mass and the solar_mass constant it is divided by -- the one
+    // caller, in celestial.cpp, hands it cel->mass straight.
+    double one_solar_mass = 1.989e33;
 
     // White dwarf radius for 1 solar mass should be roughly Earth-sized (~6.4e6 meters)
-    double radius = Star::degenerate_radius(solar_mass_kg);
+    double radius = Star::degenerate_radius(one_solar_mass);
 
     // Using EXPECT_NEAR since astrophysical calculations are approximations
     EXPECT_NEAR(radius, 6.4e6, 1.0e6); // Tolerance of 1,000 km
+
+    // Degenerate matter runs the mass-radius relation backwards: the heavier it is, the smaller.
+    EXPECT_LT(Star::degenerate_radius(1.2 * one_solar_mass), radius);
+    EXPECT_GT(Star::degenerate_radius(0.6 * one_solar_mass), radius);
+
+    // At and past the Chandrasekhar limit the radius is pinned rather than allowed to reach zero,
+    // and a mass of zero or less falls back to the observed peak instead of dividing by it.
+    EXPECT_GT(Star::degenerate_radius(2.0 * one_solar_mass), 0.0);
+    EXPECT_DOUBLE_EQ(Star::degenerate_radius(0.0), Star::degenerate_radius(0.6 * solar_mass));
 }
 
 TEST(StarTest, TemperatureFromBV)
 {
-    // BV index of 0.0 generally correlates to ~10,000K (A0V star like Vega)
-    double temp = Star::temperature_from_BV(0.0);
-    EXPECT_NEAR(temp, 10000.0, 500.0);
+    // Both estimate_BV() and its inverse work in pure Planck colors, which sit nowhere near the
+    // photometric B-V scale until bv_correction shifts them onto it. That global is calibrated at
+    // load time against the Sun's catalog color (loaders.cpp), and is zero in a test binary, which
+    // no test can be allowed to depend on -- so do here what the loader does there.
+    Star sun;
+    sun.estimate_BV(sun_temp);                      // uncorrected, since bv_correction is still 0
+    bv_correction = sun.BV_color - 0.65;            // the Sun is B-V 0.65 by definition
 
-    // BV index of 0.65 correlates roughly to our Sun (~5,778K)
-    double l_sun_temp = Star::temperature_from_BV(0.65);
-    EXPECT_NEAR(l_sun_temp, 5778.0, 300.0);
+    // With that in place the two are exact inverses of one another, which is the contract
+    // temperature_from_BV() states and the only thing about it that does not depend on the
+    // calibration: a black body is not a stellar atmosphere, and the absolute scale it gives at
+    // the blue end is off by thousands of Kelvins (B-V 0.0 lands near 14,000 K, not Vega's 9,600).
+    EXPECT_NEAR(Star::temperature_from_BV(0.65), sun_temp, 1.0);
+
+    double T;
+    for (T = 3000; T <= 30000; T += 1000)
+    {
+        Star s;
+        s.estimate_BV(T);
+        EXPECT_NEAR(Star::temperature_from_BV(s.BV_color), T, T*1e-6) << " at T = " << T;
+    }
+
+    // And it is monotonic the right way round: bluer is hotter.
+    EXPECT_GT(Star::temperature_from_BV(0.0), Star::temperature_from_BV(0.65));
+    EXPECT_GT(Star::temperature_from_BV(0.65), Star::temperature_from_BV(1.5));
+
+    // Out past either end of the bisection's bracket it saturates instead of running away.
+    EXPECT_DOUBLE_EQ(Star::temperature_from_BV(99.0), 1000.0);
+    EXPECT_DOUBLE_EQ(Star::temperature_from_BV(-99.0), 200000.0);
+
+    bv_correction = 0;                              // leave the global as we found it
 }
 
 TEST(StarTest, LimbDarkeningCoefficients)
@@ -154,13 +205,19 @@ TEST(StarMultiTest, MergeSystems)
     sys1.add_member(&sA, 'A');
     sys1.add_member(&sB, 'B');
 
-    StarMulti sys2;
+    // merge() adopts the system it is handed -- it steals the member array and deletes the object
+    // itself on the way out -- so the argument has to be one that can be deleted. Every StarMulti
+    // in the program proper is new'd by Star::set_component().
+    StarMulti* sys2 = new StarMulti();
     Star sC;
-    sys2.add_member(&sC, 'C'); // Assuming 'C' doesn't conflict, or merge resolves it
+    sys2->add_member(&sC, 'C'); // Assuming 'C' doesn't conflict, or merge resolves it
 
-    sys1.merge(&sys2);
+    sys1.merge(sys2);
 
     EXPECT_GE(sys1.num_members(), 3);
+
+    // The merged members are packed down into consecutive slots, so a component letter survives
+    // only as far as the count of members before it does: here A, B, and C stay A, B, and C.
     EXPECT_EQ(sys1.get_member('C'), &sC);
 }
 
@@ -169,9 +226,14 @@ TEST(StarTest, MakeCompanionOf)
     Star primary;
     Star secondary;
 
+    // make_companion_of() enrolls the companion, not the primary: every caller in cat.cpp opens
+    // with this line, so the primary is 'A' of its own system before any B is hung off it. Leave
+    // it out and the system has no 'A', which gotta_be_named_something() reads as "this star is
+    // not the primary" and returns early, leaving the whole system unnamed.
+    primary.set_component('A', &primary);
+
     secondary.make_companion_of(&primary, 'B');
 
-    // Assuming make_companion_of initializes multisys on primary if necessary
     ASSERT_NE(primary.multisys, nullptr);
     EXPECT_EQ(primary.multisys->get_member('A'), &primary);
     EXPECT_EQ(primary.multisys->get_member('B'), &secondary);
@@ -189,6 +251,7 @@ TEST(StarTest, JsonSerializationRoundTrip)
     original.HIP = 67890;
     original.apparent_magnitude = 4.5;
     original.has_planets = 2;
+    strcpy(original.spectral_type, "G2V");
 
     json j = original.to_json();
 
@@ -199,8 +262,28 @@ TEST(StarTest, JsonSerializationRoundTrip)
     EXPECT_EQ(deserialized.HD, 12345);
     EXPECT_EQ(deserialized.HIP, 67890);
     EXPECT_DOUBLE_EQ(deserialized.apparent_magnitude, 4.5);
-    EXPECT_EQ(deserialized.has_planets, 2);
+
+    // is_sunlike() is read off the spectral type, which does round-trip.
+    EXPECT_STREQ(deserialized.spectral_type, "G2V");
     EXPECT_TRUE(deserialized.is_sunlike());
+
+    // The planet tallies are saved rather than counted back up from the file, so a star keeps
+    // them even when the planets themselves are not being loaded this session -- with noexo, say.
+    // Serialization::load_all() leaves the counting to the stars whose entry stated nothing.
+    EXPECT_EQ(deserialized.has_planets, 2);
+
+    Star with_hz;
+    with_hz.has_planets = 4;
+    with_hz.has_hz_planets = 1;
+    Star restored_hz;
+    EXPECT_TRUE(restored_hz.from_json(with_hz.to_json()));
+    EXPECT_EQ(restored_hz.has_planets, 4);
+    EXPECT_EQ(restored_hz.has_hz_planets, 1);
+
+    // A star with no planets writes no tally, which is what tells load_all() to do the counting
+    // for it -- as every file written before the tallies were saved does for every star in it.
+    Star planetless;
+    EXPECT_FALSE(planetless.to_json().contains("has_planets"));
 }
 
 // =====================================================================

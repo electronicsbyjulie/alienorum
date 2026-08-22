@@ -99,8 +99,15 @@ TEST(PlanetTest, JsonSerializationRoundTrip)
     EXPECT_TRUE(success);
     EXPECT_DOUBLE_EQ(restored.albedo, 0.35);
     EXPECT_DOUBLE_EQ(restored.opposition_surge, 0.5);
+
     EXPECT_EQ(restored.asteroid_no, 42);
     EXPECT_TRUE(restored.lock_type);
+
+    // Neither is written when it has nothing to say, so an ordinary planet's entry is unchanged.
+    Planet major_planet;
+    json jmp = major_planet.to_json();
+    EXPECT_FALSE(jmp.contains("asteroid_no"));
+    EXPECT_FALSE(jmp.contains("lock_type"));
     
     // Ensure the atmosphere was recreated and populated
     ASSERT_NE(restored.atm, nullptr);

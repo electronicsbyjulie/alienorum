@@ -115,6 +115,14 @@ TEST(CometMathTest, ViewerMagnitude_LogarithmicScaling)
     c.location.system_center = Point(0.0, 0.0, 0.0);
     c.location.galactic_center = Point(0.0, 0.0, 0.0);
     
+    // get_light_center() walks up the orbit chain, not cenobj -- cenobj is the system's center for
+    // grouping and drawing, and a comet that has not been placed in an orbit yet has no light
+    // source to be measured against at all (which is what ViewerMagnitude_NoLightCenter checks).
+    // The Comet owns this Orbit and its destructor deletes it, so it has to be heap allocated.
+    Orbit* sun_orbit = new Orbit();
+    sun_orbit->center = &sun;
+    c.orbit = sun_orbit;
+    
     // Set explicit parameters for easy math
     c.H1 = 5.0;
     c.R1 = 10.0;
