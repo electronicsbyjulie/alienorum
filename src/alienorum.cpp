@@ -170,15 +170,6 @@ int main (int argc, char** argv)
     auto push_fkey = [&](int n) { CliCmd cmd; cmd.kind = CliCmd::k_fkey; cmd.fkey = n; cli_cmds.push_back(cmd); };
     auto push_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_char; cmd.c = c; cli_cmds.push_back(cmd); };
 
-    // Fetches and consumes the value belonging to an option that takes one. Returns nullptr at
-    // the end of the command line -- the case that used to read argv[argc], which the standard
-    // guarantees is null, so std::string(nullptr) was undefined and atof(nullptr) a fault.
-    //
-    // Only the options that actually take a value go through this. A single "l+1 >= argc" test
-    // ahead of the whole chain looks equivalent but is not: it also swallows the flags that take
-    // no value, so a last argument of noexo, nosats, fs, magtest, keyprobe, sizeof, F1..F12 or
-    // JD<number> would be dropped for being last -- and "alienorum noexo nosats", the usual way
-    // to start it quickly, ends in exactly such a flag.
     auto next_arg = [&](const char* opt) -> const char*
     {
         if (l+1 >= argc)
@@ -421,9 +412,6 @@ int main (int argc, char** argv)
     ImVec4 background = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
     set_gamma(global_gamma);
 
-    // Kept joinable rather than detached: everything below the main loop frees `cels` and the
-    // objects in it, so the loader has to be known to have stopped first. See the join after the
-    // loop, and load_aborted() in loaders.cpp for where it stops.
     std::thread t1(load_stuff);
 
     int splash_image_width = 0;
@@ -498,8 +486,6 @@ int main (int argc, char** argv)
         }
         else SDL_SetCursor(default_cursor);
 
-        // Poll and handle events. io.WantCaptureMouse/WantCaptureKeyboard say when ImGui has
-        // claimed the input and the app should ignore its own copy of it.
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -519,9 +505,6 @@ int main (int argc, char** argv)
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-
-        // Hands back the impostor payloads the previous frame's callbacks have finished with.
-        // Here specifically: after that frame was rendered, before this one queues anything.
         impostor_begin_frame();
 
         //////////////////////////////////////////////////
@@ -597,14 +580,6 @@ int main (int argc, char** argv)
             else std::cout << "ImGui::Begin() failed." << std::endl;
             ImGui::End();
 
-            // Escape during the splash screen quits. This used to be done by assigning
-            // cels = nullptr, on purpose, so that the loading thread would fault and take the
-            // process down with it -- which was neither reliable (the loader can sit in a
-            // filesystem call or a libcurl transfer for a long time before it next touches cels,
-            // and the render thread reads cels every frame meanwhile, so whichever got there
-            // first decided what the crash looked like) nor clean, since it left a core dump
-            // instead of an exit. abort_load asks the loader to stop at its next checkpoint; the
-            // join below waits for it before anything is torn down.
             if (ImGui::IsKeyPressed(ImGuiKey_Escape))
             {
                 abort_load = true;
@@ -934,11 +909,6 @@ int main (int argc, char** argv)
             take_snapshot = false;
         }
         SDL_GL_SwapWindow(window);
-
-        // Frees whatever flying into a star unlinked, once no background texture load is still
-        // writing into it. Returns immediately on every ordinary frame -- there is nothing
-        // waiting to be released, which is the overwhelmingly common case. Placed after the swap
-        // so the frame that triggered it has already been presented.
         reap_released_objects();
 
         if (!splash)

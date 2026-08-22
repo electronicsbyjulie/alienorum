@@ -4266,7 +4266,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->location = p->orbit->center->location;           // Copy the system center and local plane. The local position will auto-fill later.
                 p->location.equatorial_plane.a = p->obliquity;
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
-                p->classify(p->is_in_con_HZ(), true, true);         // TODO: Verify this works for all solar system objects.
+                // classify() used to also assign a cosmic-shoreline atmosphere here as a side
+                // effect, which was never verified safe for every Solar System object -- it no
+                // longer touches atmosphere at all, so real bodies here stay exactly as
+                // catalogs/planets.json specified them (airless, if it said nothing).
+                p->classify(p->is_in_con_HZ(), true, true);
 
                 // Checked before the cast: has_planets and has_hz_planets live past the end of
                 // any class smaller than Star, and get_light_center() does not promise a star.
@@ -5716,7 +5720,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             // isolation, but was never wired to an actual file at load time, so the band was always
             // empty and the loop in draw_galaxy_band() drew zero points every time, regardless of
             // inside_galaxy_idx or position math being correct.
-            g->band.load_dat_file("boundary_roads.dat");
+            g->band.load_dat_file("catalogs" _FILESLASH "Milky_Way.dat");
         }
         g->location.equatorial_plane = g->location.local_system_plane
             = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);

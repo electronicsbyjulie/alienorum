@@ -72,11 +72,18 @@ bool alienorum::Planet::estimate_habitability()
     // std::cout << "At " << (get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
     bool life_possible = false;
-    if (!get_surface_pressure()) apply_cosmic_shoreline();
 
-    AtmosphereComposition *ac = ensure_atmosphere()->ensure_composition();
+    // This is a query -- "could this world support life as it stands" -- not a place to give a
+    // world an atmosphere it didn't already have. It used to reach for one unconditionally via
+    // ensure_atmosphere(), which default-constructs surface_pressure at one bar: called from
+    // generate_rocky_map() (so on every airless rock or moon the moment its texture is drawn) and
+    // from setup_atm_ring_props(), that put a full Earth atmosphere on bodies that should have
+    // stayed airless -- Solar System moons, Mercury, the asteroids -- unless catalogs/planets.json
+    // said otherwise. Only read what is already there; only apply_cosmic_shoreline() (exoplanets
+    // at load, Shift+A new bodies) and the edit dialog are allowed to create one.
+    AtmosphereComposition *ac = atm ? atm->ensure_composition() : nullptr;
     life_possible = (is_in_con_HZ() && mass > 0.02 * earth_mass);       // Based on Titan's mass.
-    if (randomize_txgen)
+    if (randomize_txgen && ac)
     {
         if (life_possible)
         {
@@ -92,7 +99,7 @@ bool alienorum::Planet::estimate_habitability()
         && T_surf > 0.9*water_freezing && T_surf < 320
         && get_surface_pressure() < oneatm*2000);
 
-    atm->calculate_tau(get_surface_pressure());
+    if (atm) atm->calculate_tau(get_surface_pressure());
 
     if (life_possible)
     {
@@ -116,9 +123,9 @@ bool alienorum::Planet::estimate_habitability()
             }
         }
 
-        ac->H2O_portion = 0.014 * has_water;
+        if (ac) ac->H2O_portion = 0.014 * has_water;
         temperature = 0;
-        atm->calculate_tau(get_surface_pressure());
+        if (atm) atm->calculate_tau(get_surface_pressure());
         T_surf = estimate_surface_temperature();
 
         life_possible = (has_water >= 0.05
@@ -126,7 +133,7 @@ bool alienorum::Planet::estimate_habitability()
             && T_surf > 0.9*water_freezing && T_surf < 320
             && get_surface_pressure() < oneatm*2000);
 
-        if (randomize_txgen)
+        if (randomize_txgen && ac)
         {
             if (life_possible)
             {
@@ -137,7 +144,7 @@ bool alienorum::Planet::estimate_habitability()
     }
 
     temperature = 0;
-    atm->calculate_tau(get_surface_pressure());
+    if (atm) atm->calculate_tau(get_surface_pressure());
     T_surf = estimate_surface_temperature();
 
     return life_possible;
@@ -236,16 +243,13 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
 
     if (!ck) set_color_from_type(HZ);
 
-    CelestialObject *lcen = get_light_center();
-    if (!get_surface_pressure() && lcen && lcen != cels[0] && lcen->typeclass() == class_star)
-    {
-        // As above: checked before it is dereferenced, and checked to be a star before it is read
-        // as one.
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)lcen, *this);
-        double p_pa = (shoreline<0) ? 0 : (pow(10, shoreline) * 503);
-        if (isinf(p_pa)) p_pa = 0;
-        if (p_pa > 0) ensure_atmosphere()->surface_pressure = p_pa;
-    }
+    // classify() used to also reach for an atmosphere here, on its own separate copy of the same
+    // cosmic-shoreline math apply_cosmic_shoreline() already does properly (randomized within its
+    // range, one shared implementation). classify() runs from far more places than just exoplanet
+    // creation -- catalog loads, the edit dialog, procedural moon generation -- so that gave any
+    // of them a side-effect atmosphere assignment classify()'s name gives no reason to expect. Only
+    // apply_cosmic_shoreline() assigns one now, called explicitly by the load/creation paths that
+    // are supposed to (setup_atm_ring_props() for exoplanets, the Shift+A dialog for new bodies).
 }
 
 void Planet::estimate_radius()
@@ -551,14 +555,7 @@ double Planet::estimate_surface_temperature()
     return temperature_at_pressure(get_surface_pressure());
 }
 
-// The equilibrium temperature warmed by the same Eddington gray-atmosphere greenhouse
-// approximation estimate_surface_temperature() uses, but evaluated at whatever pressure is
-// passed in rather than necessarily get_surface_pressure()'s. That accessor means different
-// things on different worlds -- the true ground under Venus's permanent overcast, a bare rock's
-// actual surface, an arbitrary reference level for a giant with no surface at all -- and
-// estimate_scale_height() needs the temperature where the visible haze is, which is not always
-// the same place. get_atmospheric_tau() is still called for its side effect of ensuring a
-// composition exists (real or invented) before tau is computed at the pressure asked for here.
+// Claude is not PTSD-friendly.
 double Planet::temperature_at_pressure(double pressure_pa)
 {
     double t_eq = equilibrium_temperature();

@@ -8,9 +8,6 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
-// Nothing in this file deletes a file. Each test writes to its own fixed name under the system
-// temp directory and truncates it on the way in, so a run overwrites its own leavings and never
-// touches anything it did not create.
 static std::string temp_universe(const char* stem)
 {
     return (std::filesystem::temp_directory_path() / (std::string("alienorum_") + stem + ".json")).string();
@@ -19,8 +16,6 @@ static std::string temp_universe(const char* stem)
 class SerializationTest : public UniverseFixture
 {
     protected:
-    // Saves whatever is in the universe, then empties it and loads it back from the file, so what
-    // the assertions see is what actually survived the trip through the JSON.
     bool save_and_reload(const char* stem, bool only_edited = false)
     {
         std::string path = temp_universe(stem);
@@ -36,8 +31,6 @@ class SerializationTest : public UniverseFixture
         return ok;
     }
 
-    // The file as JSON, for the assertions that are about what was written rather than what came
-    // back -- and for the tests that have to doctor a file into the shape an older version wrote.
     json read_file(const char* stem)
     {
         std::fstream in(temp_universe(stem), std::ios::in);
@@ -94,10 +87,6 @@ TEST_F(SerializationTest, RoundTripPreservesHierarchyAndFields)
     luna->mass = 7.342e25;
     luna->volumetric_mean_radius = 1.737e6;
     luna->height = 3.4e6;
-    // The type matters and is not the constructor's doing: load_all() will not place a body in
-    // orbit around anything higher up the hierarchy than itself, and a Moon left at the default
-    // type -- which is star -- outranks the planet it means to orbit and never gets linked. Every
-    // moon the program makes is given one (dialogs.cpp sets rocky when you add one by hand).
     luna->type = rocky;
     luna->orbit = new Orbit();
     luna->orbit->center = world;
@@ -147,8 +136,6 @@ TEST_F(SerializationTest, RoundTripPreservesHierarchyAndFields)
 
 TEST_F(SerializationTest, RoundTripKeepsComets)
 {
-    // save_all()'s switch had no case for a comet, so one was met with "blank or unknown type
-    // class" and left out of the file entirely -- while load_all() has read comets all along.
     Star* sun = make_star("Test Primary");
 
     Comet* c = new Comet();
@@ -183,10 +170,6 @@ TEST_F(SerializationTest, RoundTripKeepsComets)
 
 TEST_F(SerializationTest, LoadKeepsAnObjectThatHasNoOrbit)
 {
-    // A body with no orbit skips the orbit-linking half of the loop, and used to skip the
-    // ncelobjs++ at the bottom of it as well -- so a star new to the array never advanced the
-    // count and was overwritten by whatever loaded next. A star and three planets came back as
-    // three planets.
     Star* sun = make_star("Lone Star");
     make_planet(sun, "First Planet", AU);
     make_planet(sun, "Second Planet", 2*AU);
@@ -206,9 +189,6 @@ TEST_F(SerializationTest, LoadKeepsAnObjectThatHasNoOrbit)
 
 TEST_F(SerializationTest, LoadUpdatesAMatchingObjectInPlace)
 {
-    // An object whose typeclass, origname and origcenname all match one already in the array is
-    // meant to overwrite it rather than join it -- that is how an edited copy of a catalog star
-    // replaces the catalog's version instead of doubling it.
     Star* sun = make_star("Test Primary");
     sun->absolute_magnitude = 4.83;
     ASSERT_TRUE(save_and_reload("inplace"));
@@ -223,13 +203,6 @@ TEST_F(SerializationTest, LoadUpdatesAMatchingObjectInPlace)
 
 TEST_F(SerializationTest, LoadDoesNotWriteStarFieldsThroughSomethingThatIsNotAStar)
 {
-    // The tally is credited to the body's light center, which is whatever the orbit chain leads
-    // to -- and get_light_center() hands back the object itself for anything whose type is star,
-    // whatever its class actually is. A moon left at the default type is its own light center, so
-    // the tally was written at Star::has_planets' offset into a Moon: four bytes past the end of
-    // the allocation, which landed on the vtable pointer of the object allocated next to it and
-    // turned the next delete into a jump through a corrupted pointer. AddressSanitizer reports it
-    // as a heap-buffer-overflow; without it this is a crash somewhere else entirely, later.
     Star* sun = make_star("Test Primary");
     Planet* world = make_planet(sun, "Test World", AU);
 
@@ -281,8 +254,6 @@ TEST_F(SerializationTest, LoadDoesNotDoubleAStatedPlanetTally)
 
 TEST_F(SerializationTest, LoadCountsTheTallyWhenTheFileStatesNone)
 {
-    // Every universe file written before the tallies were saved is this case, so it has to keep
-    // working: no tally stated, so the load counts the planets it links back to the star.
     Star* sun = make_star("Test Primary");
     make_planet(sun, "Planet One", AU);
     make_planet(sun, "Planet Two", 2*AU);
@@ -316,10 +287,6 @@ TEST_F(SerializationTest, LoadCountsTheTallyWhenTheFileStatesNone)
 
 TEST_F(SerializationTest, ZeroPrecessionSurvivesAsZeroAndNotInfinity)
 {
-    // The file states precession as a period in years, so the conversion divides by it in both
-    // directions. Zero -- which is what a body with no precession has -- made that an infinity,
-    // written out as a bare null, and read back in as an infinite rate that update_orbit_location()
-    // multiplies by the seconds since epoch: inf*0 at the epoch itself, which is a NaN.
     Star* sun = make_star("Test Primary");
     EXPECT_DOUBLE_EQ(sun->precession, 0);
 
@@ -464,9 +431,6 @@ TEST_F(FindObjectTest, OnlyStarsSkipsThePlanets)
 
 TEST_F(FindObjectTest, ExactNameIgnoresTheMagnitudeLimit)
 {
-    // The magnitude limit filters the catalog-designation searches; a name typed in full is
-    // matched and returned before the limit is ever consulted, which is what you want when the
-    // thing you are looking for is a fourteenth-magnitude dwarf you named yourself.
     Star* faint = make_star("Faint Thing");
     faint->apparent_magnitude = 14;
 
@@ -479,17 +443,6 @@ TEST_F(FindObjectTest, ExactNameIgnoresTheMagnitudeLimit)
 // Idempotence: everything written is read back
 // =====================================================================
 
-// to_json() and from_json() are maintained by hand, in pairs, class by class, and the way they go
-// wrong is that somebody adds a field to one and not the other. Nothing catches that: the program
-// runs, the file has the field in it, and the value is quietly dropped on the next load. So round
-// the object through both and compare the two documents. A field written but never read comes
-// back at its default and the second document differs; a unit applied in one direction and not
-// the other differs by that unit. This is the test that would have caught temperature,
-// has_planets, asteroid_no and lock_type, and it will catch the next one for free.
-//
-// Note the distance: a body with no stated distance is placed a light year away on load, so that
-// it is somewhere rather than inside the viewer. That is deliberate, and it means an object with
-// no distance is not a fixed point of the round trip -- so every object here is given one.
 template <class T> static void expect_json_idempotent(T& original, const char* what)
 {
     json first = original.to_json();
@@ -498,12 +451,6 @@ template <class T> static void expect_json_idempotent(T& original, const char* w
     ASSERT_TRUE(restored.from_json(first)) << what;
     json second = restored.to_json();
 
-    // Compared key by key, so a failure names the field instead of printing two whole documents.
-    // Numbers are compared with a relative tolerance rather than by their text: an angle written
-    // in degrees is multiplied by 180/pi and divided by it again, and those two constants are
-    // exact reciprocals in arithmetic but not in binary, so a radian can come back a single unit
-    // in the last place away from where it started. Anything that actually failed to be read
-    // comes back at its default, which is nowhere near a part in a trillion of the original.
     for (auto it = first.begin(); it != first.end(); ++it)
     {
         ASSERT_TRUE(second.contains(it.key())) << what << ": " << it.key() << " was not written back";

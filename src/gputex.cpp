@@ -15,9 +15,7 @@ namespace alienorum
         unsigned int gen = 0;
     };
 
-    // Only ever touched from the thread owning the GL context (the main/render thread), same
-    // as every other GL call in the app -- see LoadTextureFromMemory() in alienorum.cpp for
-    // the existing precedent of raw GL texture upload outside of ImGui.
+    // Only ever touched from the main/render thread.
     static std::unordered_map<Map*, GpuTexEntry> gputex_cache;
 
     GLuint gputex_for(Map* map)

@@ -60,10 +60,6 @@ TEST(StarTest, ConstellationMatching)
 
 TEST(StarTest, NameGeneration)
 {
-    // gotta_be_named_something() fills in name, working down the catalog designations a nameless
-    // star might carry: Bayer/Flamsteed, then HD, HIP, SAO, the Bonn survey, and SB9. It does not
-    // touch alienorumid -- that is assigned by constellation in cons.cpp, over the whole array at
-    // once, because the numbering runs in order of brightness within each constellation.
     Star s;
     s.HD = 12345;
     s.gotta_be_named_something();
@@ -112,18 +108,10 @@ TEST(StarTest, DegenerateRadiusCalculation)
 
 TEST(StarTest, TemperatureFromBV)
 {
-    // Both estimate_BV() and its inverse work in pure Planck colors, which sit nowhere near the
-    // photometric B-V scale until bv_correction shifts them onto it. That global is calibrated at
-    // load time against the Sun's catalog color (loaders.cpp), and is zero in a test binary, which
-    // no test can be allowed to depend on -- so do here what the loader does there.
     Star sun;
     sun.estimate_BV(sun_temp);                      // uncorrected, since bv_correction is still 0
     bv_correction = sun.BV_color - 0.65;            // the Sun is B-V 0.65 by definition
 
-    // With that in place the two are exact inverses of one another, which is the contract
-    // temperature_from_BV() states and the only thing about it that does not depend on the
-    // calibration: a black body is not a stellar atmosphere, and the absolute scale it gives at
-    // the blue end is off by thousands of Kelvins (B-V 0.0 lands near 14,000 K, not Vega's 9,600).
     EXPECT_NEAR(Star::temperature_from_BV(0.65), sun_temp, 1.0);
 
     double T;
@@ -148,12 +136,9 @@ TEST(StarTest, TemperatureFromBV)
 TEST(StarTest, LimbDarkeningCoefficients)
 {
     Star s;
-    // Assuming spectral type / temperature is set prior to testing
-    // s.spectral_type = "G2V";
     double a, b;
     s.limb_darkening_coefficients(a, b);
 
-    // Verify that coefficients fall into standard expected bounds (0.0 to 1.0)
     EXPECT_GE(a, 0.0);
     EXPECT_LE(a, 1.0);
     EXPECT_GE(b, -1.0); // b can sometimes be negative in non-linear models
@@ -208,9 +193,6 @@ TEST(StarMultiTest, MergeSystems)
     sys1.add_member(&sA, 'A');
     sys1.add_member(&sB, 'B');
 
-    // merge() adopts the system it is handed -- it steals the member array and deletes the object
-    // itself on the way out -- so the argument has to be one that can be deleted. Every StarMulti
-    // in the program proper is new'd by Star::set_component().
     StarMulti* sys2 = new StarMulti();
     Star sC;
     sys2->add_member(&sC, 'C'); // Assuming 'C' doesn't conflict, or merge resolves it
@@ -219,8 +201,6 @@ TEST(StarMultiTest, MergeSystems)
 
     EXPECT_GE(sys1.num_members(), 3);
 
-    // The merged members are packed down into consecutive slots, so a component letter survives
-    // only as far as the count of members before it does: here A, B, and C stay A, B, and C.
     EXPECT_EQ(sys1.get_member('C'), &sC);
 }
 
@@ -229,10 +209,6 @@ TEST(StarTest, MakeCompanionOf)
     Star primary;
     Star secondary;
 
-    // make_companion_of() enrolls the companion, not the primary: every caller in cat.cpp opens
-    // with this line, so the primary is 'A' of its own system before any B is hung off it. Leave
-    // it out and the system has no 'A', which gotta_be_named_something() reads as "this star is
-    // not the primary" and returns early, leaving the whole system unnamed.
     primary.set_component('A', &primary);
 
     secondary.make_companion_of(&primary, 'B');
@@ -270,9 +246,6 @@ TEST(StarTest, JsonSerializationRoundTrip)
     EXPECT_STREQ(deserialized.spectral_type, "G2V");
     EXPECT_TRUE(deserialized.is_sunlike());
 
-    // The planet tallies are saved rather than counted back up from the file, so a star keeps
-    // them even when the planets themselves are not being loaded this session -- with noexo, say.
-    // Serialization::load_all() leaves the counting to the stars whose entry stated nothing.
     EXPECT_EQ(deserialized.has_planets, 2);
 
     Star with_hz;
@@ -283,8 +256,6 @@ TEST(StarTest, JsonSerializationRoundTrip)
     EXPECT_EQ(restored_hz.has_planets, 4);
     EXPECT_EQ(restored_hz.has_hz_planets, 1);
 
-    // A star with no planets writes no tally, which is what tells load_all() to do the counting
-    // for it -- as every file written before the tallies were saved does for every star in it.
     Star planetless;
     EXPECT_FALSE(planetless.to_json().contains("has_planets"));
 }
@@ -295,21 +266,12 @@ TEST(StarTest, JsonSerializationRoundTrip)
 
 TEST(StellarRegimeTest, DeterminesRegimeCorrectly)
 {
-    // What the regime decides is how a body is drawn and what radius it is given, so each of the
-    // three has to be reachable from the numbers a catalog actually supplies -- and the fourth
-    // answer, regime_none, has to come back for everything that is not a star at all.
-    //
-    // The classification deliberately avoids volumetric_mean_radius: that may have been
-    // interpolated from the main-sequence table, so a white dwarf can be carrying a perfectly
-    // stellar radius. It works from the temperature and the absolute magnitude instead.
     Star sun;
     sun.temperature = sun_temp;
     sun.absolute_magnitude = 4.83;
     sun.mass = solar_mass;
     EXPECT_EQ(stellar_regime(&sun), regime_stellar);
 
-    // Sirius B: hot, and four hundred times too faint for that heat to be coming off anything
-    // the size of a star. The implied radius is Earth-sized, which is the whole signature.
     Star white_dwarf;
     white_dwarf.temperature = 25000;
     white_dwarf.absolute_magnitude = 11.18;
@@ -329,8 +291,6 @@ TEST(StellarRegimeTest, DeterminesRegimeCorrectly)
     cold_and_unweighed.absolute_magnitude = 20.0;
     EXPECT_EQ(stellar_regime(&cold_and_unweighed), regime_substellar);
 
-    // An M dwarf is a star, not a brown dwarf: the boundary is the bottom of the main sequence
-    // and not 2700 K, which used to put every M6 to M9 on the wrong side of it.
     Star red_dwarf;
     red_dwarf.temperature = 2600;
     red_dwarf.absolute_magnitude = 16.0;
@@ -418,8 +378,6 @@ TEST(StarTest, ComponentLettersAndUnlinking)
     EXPECT_EQ(secondary.orbit->center, &primary);
     EXPECT_EQ(primary.orbit, nullptr);
 
-    // unlink() is what has to be called before any of them is deleted, and it has to leave every
-    // member with no pointer back to a system that is about to stop existing.
     StarMulti* system = primary.multisys;
     system->unlink();
     EXPECT_EQ(primary.multisys, nullptr);

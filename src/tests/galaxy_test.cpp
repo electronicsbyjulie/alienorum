@@ -134,9 +134,12 @@ TEST(GalaxyBandTest, LoadDatFile_HandlesMissingFile)
     EXPECT_TRUE(band.road1_gra.empty());
     EXPECT_TRUE(band.road2_gra.empty());
 }
-// The real export this feeds on (boundary_roads.dat) is whitespace-separated, not comma-separated
-// -- the parser insisted on a comma on every line, so every coordinate in the real file silently
-// failed to match and the band stayed permanently empty regardless of anything else being right.
+
+// catalogs/Milky_Way.dat -- the file the loader actually reads -- is comma-separated, so this
+// isn't guarding today's production format. It's here because a whitespace-separated export
+// (boundary_roads.dat, an earlier/duplicate attempt at this same data) tripped the parser's old
+// comma-only assumption in exactly this way: every coordinate silently failed to match, and the
+// band stayed permanently empty. Keeping the parser tolerant of both costs nothing.
 TEST(GalaxyBandTest, LoadDatFile_AcceptsWhitespaceSeparatedValues)
 {
     std::string filename = "test_galaxy_band_whitespace.dat";

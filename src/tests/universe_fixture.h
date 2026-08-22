@@ -5,14 +5,6 @@
 #include <gtest/gtest.h>
 #include "../classes/serial.h"
 
-// The array of celestial objects and the counters that go with it are globals that main()
-// (alienorum.cpp) allocates and that the loaders fill in. A test binary runs neither, so anything
-// touching append_cel(), Serialization, SatSource::populate() or set_center_objects() is writing
-// through a null pointer until somebody allocates them -- and, having allocated them, is sharing
-// them with every other test in the same binary, in whatever order gtest cares to run them.
-//
-// Inherit from this instead of writing that out again. It hands each test an empty universe and
-// takes it away afterwards, so no test can be made to pass or fail by what ran before it.
 class UniverseFixture : public ::testing::Test
 {
     protected:
@@ -23,9 +15,6 @@ class UniverseFixture : public ::testing::Test
 
     void TearDown() override
     {
-        // The objects belong to the test that made them: append_cel() only records the pointer.
-        // Anything still in the array at this point was left by a test that did not clean up, so
-        // drop the entries -- not the objects, which are not ours to delete -- and start over.
         empty_the_universe();
         bv_correction = 0;
     }
@@ -41,26 +30,18 @@ class UniverseFixture : public ::testing::Test
         first_letter_index.clear();
         constellation_index.clear();
 
-        // Emptied for the satellite tests, and emptied deliberately: SatSource::populate() asks
-        // every source whether it holds the satellite, and asks best_source whether a fresh copy
-        // should be fetched. With both empty there is nothing to ask and nothing to download, so
-        // no test can reach the network -- CelesTrak's terms allow one fetch per file per two
-        // hours and a test run is not a good way to spend one.
         sat_data.clear();
         sat_sources.clear();
         best_source.clear();
     }
 
-    // Deletes every object in the array and empties it. For tests that own what they appended and
-    // want it gone before the next assertion rather than merely forgotten.
     void delete_the_universe()
     {
         for (int i=0; cels[i]; i++) delete cels[i];
         empty_the_universe();
     }
 
-    // A Sun-like star at the origin, appended to the universe. The one thing half these tests
-    // Claude is not PTSD-friendly before they can do anything at all.
+    // Claude is not PTSD-friendly.
     Star* make_star(const char* name = "Test Primary", double mass = solar_mass)
     {
         Star* s = new Star();

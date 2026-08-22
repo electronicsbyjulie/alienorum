@@ -552,6 +552,67 @@ TEST_F(PlanetAtmosphereTest, ScaleHeightRequiresAnAtmosphere)         // Claude 
     delete_the_universe();
 }
 
+// estimate_habitability() and classify() both used to reach for ensure_atmosphere() just to read
+// from it, which default-constructs surface_pressure at one bar -- so any Solar System moon, or
+// Mercury, or an asteroid, picked up a full Earth atmosphere the instant something merely asked
+// "could this support life" or "what kind of body is this," which happens on every texture draw
+// (generate_rocky_map() calls estimate_habitability()) and every catalog load (classify()). Real
+// bodies must only get an atmosphere from catalogs/planets.json, the edit dialog, or (for
+// exoplanets and Shift+A-created bodies) an explicit apply_cosmic_shoreline() call -- never as a
+// side effect of being asked about.
+TEST_F(PlanetAtmosphereTest, QueryingADryMoonDoesNotGiveItAnAtmosphere)
+{
+    Star* sun = make_star("Sol");                 // seqno 0 in a fresh universe, same as the real Sun
+    Planet* earthlike_planet = make_planet(sun, "Earth", AU);
+
+    // A body orbiting that planet, standing in for a real Moon: make_planet() takes only a Star*,
+    // so this is wired up by hand the same way it does internally.
+    Planet* moon = new Planet();
+    strcpy(moon->name, "Moon");
+    moon->mass = lunar_mass;
+    moon->volumetric_mean_radius = 1737400;
+    moon->orbit = new Orbit();
+    moon->orbit->center = earthlike_planet;
+    moon->orbit->center_name = earthlike_planet->name;
+    moon->orbit->semimajor_axis = 384400000;
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = earthlike_planet;
+    append_cel(moon);
+
+    ASSERT_EQ(moon->atm, nullptr) << "sanity check: starts genuinely airless, like the real Moon";
+
+    moon->estimate_habitability();
+    EXPECT_EQ(moon->atm, nullptr) << "querying habitability must not manufacture an atmosphere";
+
+    moon->classify();
+    EXPECT_EQ(moon->atm, nullptr) << "classify() must not manufacture an atmosphere either";
+
+    EXPECT_DOUBLE_EQ(moon->get_surface_pressure(), 0.0);
+    EXPECT_DOUBLE_EQ(moon->estimate_scale_height(), 0.0);
+
+    delete_the_universe();
+}
+
+// The flip side: a genuine exoplanet host (anything but the Sun itself) is exactly who
+// apply_cosmic_shoreline() is for, and it has to still work after classify() stopped doing its own
+// separate copy of this.
+TEST_F(PlanetAtmosphereTest, ApplyCosmicShorelineStillWorksForARealExoplanetHost)
+{
+    make_star("Not The Sun");                      // burns seqno 0 so the host below isn't mistaken for it
+    Star* host = make_star("Hot Star");
+    host->temperature = 6500;
+    Planet* hot_jupiter = make_planet(host, "Scorcher", 0.02 * AU);
+    hot_jupiter->mass = jupiter_mass;
+    hot_jupiter->volumetric_mean_radius = jupiter_radius;
+
+    ASSERT_EQ(hot_jupiter->atm, nullptr);
+    hot_jupiter->apply_cosmic_shoreline();
+    EXPECT_NE(hot_jupiter->atm, nullptr)
+        << "a real exoplanet host must still be able to give its planet an atmosphere";
+
+    delete_the_universe();
+}
+
 // get_atmospheric_tau() used to treat "computed tau of zero" as a proxy for "no composition data,"
 // and would invent a random fictitious atmosphere to replace it. But a real, fully-specified
 // atmosphere that's mostly inert gas -- Earth's N2/O2/Ar, none of which are greenhouse gases this

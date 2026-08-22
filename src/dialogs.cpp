@@ -144,14 +144,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         + std::string(show_galaxy_band ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
-    // These three were InputText over a char buffer that was rewritten from the variable with
-    // snprintf every frame, before the widget read it, and parsed back with atof after -- so
-    // every intermediate state a user has to type through (a lone "-", a trailing ".", a
-    // half-typed number) was round-tripped through "%.2f" and destroyed on the next frame.
-    // InputDouble edits the variable itself and is what the rest of this file already uses; the
-    // format string moves into the call, and the buffer, the snprintf and the atof all go.
-    // The two step arguments are the +/- button increments, zero meaning no buttons -- which is
-    // what these had, having had no buttons at all before.
     if (cbolbls_selected_idx == lbltype_brightest)
     {
         ImGui::Text("%s", "Mag limit:");
@@ -568,16 +560,6 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             double shown_alt = cels[i]->Decl_as_radians_refracted(here);
             if (view_mode == vm_horizon)
             {
-                // atmospheric_refraction() (planet.cpp, step 4) est calibree pour qu'une altitude
-                // vraie de 0 tombe pile sur le bord de la cuvette dessine par find_horizon() --
-                // l'altitude vraie est donc deja la hauteur au-dessus de l'horizon visible, nulle
-                // au bord et droite au zenith. Cette ligne retranchait atmospheric_horizon_lift()
-                // a l'altitude refractee, ce qui traitait ce relevage comme constant alors qu'il
-                // decroit avec l'altitude : juste au bord, mais 39 deg trop bas au zenith sur un
-                // monde a 1000 atm. Inverser la formule du relevage ne marcherait pas davantage,
-                // refract_true_point() voyant son axe de rotation degenerer pres du zenith, ou le
-                // decalage reellement applique s'effondre vers zero quand la formule en annonce
-                // encore 13 deg ; lire l'altitude vraie rend l'affichage independant de cela.
                 shown_alt = cels[i]->Decl_as_radians(here);
             }
             ImGui::Text("Altitude: %s", std::to_string(shown_alt*fiftyseven).c_str());
@@ -626,11 +608,6 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         else if (cels[i]->typeclass() == class_comet)
         {
-            // Kept out of the branch below, which reads Planet members a Comet does not have. The
-            // lit fraction would be meaningless here in any case: what is seen is a coma, lit
-            // right through rather than lit on one side, and the numbers worth reading off a
-            // comet are the shape of its orbit -- how close it comes, and whether it is coming
-            // back at all.
             Comet *cm = (Comet*)cels[i];
             oss << "Dist:     " << cels[i]->scaled_distance(here);
             ImGui::Text("%s", oss.str().c_str());
@@ -805,10 +782,6 @@ void draw_addcel_window(ImGuiIO& io)
                 break;
             }
 
-            // Appended once, after the type is set, and only kept if it actually went in. The
-            // append used to sit inside each case and its result was ignored, so a full array
-            // left the object out of `cels` while everything below carried on configuring it and
-            // handed editidx an index belonging to something else.
             if (cel && !append_cel(cel))
             {
                 delete cel;
@@ -838,6 +811,7 @@ void draw_addcel_window(ImGuiIO& io)
                     pl->estimate_radius();
                     pl->estimate_albedo_and_absmagn();
                     pl->estimate_rotation();
+                    pl->apply_cosmic_shoreline();
                 }
                 editidx = ncelobjs-1;
                 objedtwnd = true;
@@ -1961,9 +1935,6 @@ void draw_objedit_window(ImGuiIO& io)
                     if (update_taucalc)
                     {
                         p->temperature = 0;
-                        // Straight from the composition, not from the display variables: those two are
-                        // the same number by now, but reading the stored one means the tau shown always
-                        // matches the composition that will be written to disk.
                         AtmosphereComposition *tc = p->ensure_atmosphere()->ensure_composition();
                         p->atm->tau = edit_atm_tau = atmospheric_tau(normalized_pressure,
                             tc->CO2_portion, tc->CH4_portion, tc->H2O_portion, tc->N2O_portion,
@@ -1992,9 +1963,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && cel->has_real_maps && ImGui::Button("Reload"))
             {
-                // Back to whatever sits in maps/ on disk. The only route by which real map
-                // files return once Regenerate has replaced them with fictional ones, since
-                // both of the buttons below suppress the file loader.
                 if (cel->surf_map)
                 {
                     delete cel->surf_map;
@@ -2016,9 +1984,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Update"))
             {
-                // Repaint from the settings above while keeping the geography already in hand,
-                // whether that is real topography loaded from a bump file or a fictional relief
-                // generated earlier. This is what puts oceans and forests on the real Mars.
                 cel->looked_for_maps = false;
                 cel->ignore_map_files = true;
                 if (cel->surf_map)
@@ -2037,8 +2002,6 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
-                // A whole new world: the fresh seed has to draw a new bump field, so the old
-                // geography goes regardless of where it came from.
                 cel->rnd_seed = rand();
                 if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
                 cel->looked_for_maps = false;
@@ -2781,13 +2744,6 @@ void draw_ast_window(ImGuiIO & io)
             mesg = "";
             for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
 
-            // load_asteroid() builds and appends the object itself, and leaves it in
-            // astorb[i].cel -- which is how the Find/Track/Go branch just above finds it. This
-            // used to allocate a Planet of its own here as well, hand *that* one to
-            // compute_object_location() and then drop it on the floor: the object whose position
-            // got computed was a default-constructed body at the origin, not the asteroid that
-            // had just been loaded, and the real one was left for the next frame to place. The
-            // comet path a few hundred lines down already does it this way.
             if (!CatalogReader::load_asteroid(&astorb[i]) || !astorb[i].cel)
             {
                 mesg = "ERROR - Asteroid failed to load.";
@@ -2880,8 +2836,6 @@ void draw_sat_window(ImGuiIO& io)
             mesg = "";
             for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);               // get count
             Satellite *sat = new Satellite();
-            // The append can refuse, and everything below assumes it did not: `sat` would be
-            // configured, counted and selected without ever being in `cels`.
             if (!append_cel(sat))
             {
                 delete sat;
@@ -2956,12 +2910,6 @@ void draw_sat_window(ImGuiIO& io)
             }
         }
 
-        // The counters this reports are written by a worker thread, so they cannot be read on the
-        // frame that starts it: sats_added and sat_errors were still whatever the *previous*
-        // batch left there (zero on the first run), which is what the message showed. Kick the
-        // job off here, then report on whichever later frame finds it finished. awaiting_batch
-        // distinguishes "just finished" from "never started", so an idle window does not keep
-        // rewriting the message.
         static bool awaiting_batch = false;
         ImGui::SameLine();
         if (ImGui::Button("Add All Shown##satellites") && !batch_sats_running)
@@ -3044,11 +2992,6 @@ void draw_app_window_template(ImGuiIO& io)
 }
 #endif
 
-// Companion to draw_ast_window(), and built the same way: the catalog holds every comet the IMCCE
-// knows of, four of them are in the sky already, and this is where the other seventeen hundred are
-// picked from. Perihelion distance and eccentricity take the place of the asteroid list's
-// semimajor axis and diameter -- e being the column that actually tells you something here, since
-// 0.96 is a comet that will be back and 1.00003 is one leaving for good.
 void draw_comet_window(ImGuiIO & io)
 {
     if (!cels[1]) return;
