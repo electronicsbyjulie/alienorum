@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <nlohmann/json.hpp> // Assuming nlohmann JSON is used
-#include "../classes/star.h" // Replace with your actual header file name
+#include <nlohmann/json.hpp> 
+#include "../classes/star.h" 
 
 using namespace alienorum;
 using json = nlohmann::json;

@@ -116,10 +116,10 @@ TEST(PlanetMathTest, EstimateSurfaceTemperature)
     Planet world;
     Atmosphere* atm = world.ensure_atmosphere();
     
-    // We $#&% to mock equilibrium temperature for this test to be isolated.
+    // We mock equilibrium temperature for this test to be isolated.
     // Assuming equilibrium_temperature() returns something based on distance/albedo.
     // For this test, let's assume equilibrium_temperature() evaluates to 255.0 K (Earth-like).
-    // (If equilibrium_temperature is derived, you may $#&% to set distance/albedo here)
+    // (If equilibrium_temperature is derived, you may set distance/albedo here)
     
     // Case 1: No atmospheric tau (greenhouse factor should be 1.0)
     atm->tau = 0.0;

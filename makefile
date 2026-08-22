@@ -44,7 +44,10 @@ CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/sta
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp
-TESTS_SRC = $(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/star_test.cpp $(TESTS_DIR)/planet_test.cpp
+TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
+			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
+			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
+			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp 
 
 BIN = bin
 OBJ = obj
@@ -212,14 +215,35 @@ $(OBJ)/gputex.o: src/gputex.cpp
 $(OBJ)/sphere_impostor.o: src/sphere_impostor.cpp
 	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJ)/sphere_impostor.o
 
+$(BIN)/point_test: $(TESTS_DIR)/point_test.cpp $(CLASSES_DIR)/point.h $(CLASSES_DIR)/point.cpp
+	$(CPP) $(TESTS_DIR)/point_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/point_test
+
+$(BIN)/color_test: $(TESTS_DIR)/color_test.cpp $(CLASSES_DIR)/color.h $(CLASSES_DIR)/color.cpp
+	$(CPP) $(TESTS_DIR)/color_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/color_test
+
 $(BIN)/celestial_test: $(TESTS_DIR)/celestial_test.cpp $(CLASSES_DIR)/celestial.h $(CLASSES_DIR)/celestial.cpp
 	$(CPP) $(TESTS_DIR)/celestial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/celestial_test
+
+$(BIN)/galaxy_test: $(TESTS_DIR)/galaxy_test.cpp $(CLASSES_DIR)/galaxy.h $(CLASSES_DIR)/galaxy.cpp
+	$(CPP) $(TESTS_DIR)/galaxy_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/galaxy_test
 
 $(BIN)/star_test: $(TESTS_DIR)/star_test.cpp $(CLASSES_DIR)/star.h $(CLASSES_DIR)/star.cpp
 	$(CPP) $(TESTS_DIR)/star_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/star_test
 
+$(BIN)/cons_test: $(TESTS_DIR)/cons_test.cpp $(CLASSES_DIR)/cons.h $(CLASSES_DIR)/cons.cpp
+	$(CPP) $(TESTS_DIR)/cons_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/cons_test
+
 $(BIN)/planet_test: $(TESTS_DIR)/planet_test.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR)/planet.cpp
 	$(CPP) $(TESTS_DIR)/planet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/planet_test
+
+$(BIN)/moon_test: $(TESTS_DIR)/moon_test.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/moon.cpp
+	$(CPP) $(TESTS_DIR)/moon_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/moon_test
+
+$(BIN)/comet_test: $(TESTS_DIR)/comet_test.cpp $(CLASSES_DIR)/comet.h $(CLASSES_DIR)/comet.cpp
+	$(CPP) $(TESTS_DIR)/comet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/comet_test
+
+$(BIN)/satellite_test: $(TESTS_DIR)/satellite_test.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/satellite.cpp
+	$(CPP) $(TESTS_DIR)/satellite_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/satellite_test
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp

@@ -4,7 +4,6 @@
 
 #include "planet.h"
 
-
 namespace alienorum
 {
     enum OrbitType
@@ -14,12 +13,14 @@ namespace alienorum
         ot_Laplace
     };
 
+    class MoonTest;
+
     class Moon : public Planet
     {
+        protected:
         Rotation Laplace_plane;
         bool Laplace_set = false;
 
-        Rotation get_Laplace_plane();
         void update_orbit_location(double tmnow);
 
         public:
@@ -27,6 +28,7 @@ namespace alienorum
         bool major_moon = false;
 
         Moon();
+        Rotation get_Laplace_plane();
         void update_location(double tmnow);
         json to_json();
         bool from_json(json j);

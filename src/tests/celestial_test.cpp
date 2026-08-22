@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
-#include "../classes/celestial.h" // Replace with your actual header name
+#include "../classes/celestial.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -308,4 +308,124 @@ TEST(CelestialMathTest, EstimateSurfaceGravity)
     heavy_planet.volumetric_mean_radius = earth_radius;
     
     EXPECT_DOUBLE_EQ(heavy_planet.estimate_surface_gravity(), 2.0);
+}
+
+// =====================================================================
+// Global Arrays & Indices Fixture
+// =====================================================================
+
+class CelestialGlobalsTest : public ::testing::Test
+{
+    protected:
+    void SetUp() override
+    {
+        // This runs before EVERY test. 
+        // If 'cels' is dynamically allocated in a main init function, 
+        // you may call that init function here, or allocate it manually:
+        // if (!cels) cels = new CelestialObject*[MAX_CELS_LIMIT];
+
+        // Clear the STL containers so tests don't pollute each other
+        first_letter_index.clear();
+        
+        // Assuming first_letter_index is sized for A-Z or ASCII characters
+        first_letter_index.resize(256); 
+        
+        constellation_index.clear();
+    }
+
+    void TearDown() override
+    {
+        // This runs after EVERY test.
+        // If append_cel takes ownership of pointers, you would free them here 
+        // to prevent memory leaks during testing.
+    }
+};
+
+// =====================================================================
+// append_cel() Logic Tests
+// =====================================================================
+
+// Note the use of TEST_F instead of TEST to tie it to the fixture
+TEST_F(CelestialGlobalsTest, AppendCel_AssignsSeqno)
+{
+    CelestialObject* obj = new CelestialObject();
+    
+    // Assuming seqno starts at -1 per the header
+    EXPECT_EQ(obj->seqno, -1);
+    
+    bool success = append_cel(obj);
+    
+    EXPECT_TRUE(success);
+    
+    // append_cel should assign the object its index in the cels array
+    EXPECT_GE(obj->seqno, 0);
+    EXPECT_EQ(cels[obj->seqno], obj);
+    
+    delete obj;
+}
+
+TEST_F(CelestialGlobalsTest, AppendCel_UpdatesFirstLetterIndex)
+{
+    CelestialObject* obj = new CelestialObject();
+    
+    // Set a predictable name
+    strcpy(obj->name, "Earth");
+    
+    append_cel(obj);
+    
+    // Determine the index bucket (usually 'E' or 'e' depending on your implementation)
+    int bucket = (int)'E'; 
+    
+    // Check that the first_letter_index vector for 'E' is no longer empty
+    ASSERT_FALSE(first_letter_index[bucket].empty());
+    
+    // Check that our object is exactly what was stored there
+    EXPECT_EQ(first_letter_index[bucket].back(), obj);
+    
+    delete obj;
+}
+
+TEST_F(CelestialGlobalsTest, AppendCel_UpdatesConstellationIndex)
+{
+    // Assuming constellation_index maps standard 3-letter IAU codes
+    CelestialObject* star = new CelestialObject();
+    
+    // Set whatever properties append_cel looks for to 
+    // identify the constellation. For example, if it uses a Star object:
+    // Star* star = new Star();
+    // strcpy(star->constellation, "Ori");
+    
+    // For a generic CelestialObject, maybe you map by a string property if one exists:
+    // This relies heavily on your cpp implementation!
+    
+    bool success = append_cel(star);
+    EXPECT_TRUE(success);
+    
+    // Assuming append_cel reads the constellation and populates the map:
+    // EXPECT_FALSE(constellation_index["Ori"].empty());
+    // EXPECT_EQ(constellation_index["Ori"].back(), star);
+    
+    delete star;
+}
+
+TEST_F(CelestialGlobalsTest, AppendCel_HandlesFullCapacity)
+{
+    // If your cels array has a hard limit, you can test what happens when it fills up.
+    // (This test depends on you knowing the exact capacity limit).
+    /*
+    int MAX_CAPACITY = 10000; // Example
+    
+    // Fill the array
+    for (int i = 0; i < MAX_CAPACITY; i++)
+    {
+        CelestialObject* dummy = new CelestialObject();
+        EXPECT_TRUE(append_cel(dummy));
+    }
+    
+    // The next one should fail safely without segfaulting
+    CelestialObject* one_too_many = new CelestialObject();
+    EXPECT_FALSE(append_cel(one_too_many));
+    
+    delete one_too_many;
+    */
 }
