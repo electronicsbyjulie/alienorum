@@ -978,6 +978,39 @@ alienorum_jpeg_error_exit (j_common_ptr cinfo)
   longjmp(myerr->setjmp_buffer, 1);
 }
 
+namespace
+{
+    // Bilinear-resamples an equirectangular grid of bump/elevation values from one resolution to
+    // another: longitude (x) wraps around, latitude (y) clamps at the poles rather than wrapping.
+    // Used when a bump map file's resolution doesn't match its surface map's, so the mismatched
+    // file can still be used (scaled to fit) instead of being rejected outright.
+    void resample_equirect(const std::vector<double> &src, unsigned long src_w, unsigned long src_h,
+        double *dst, unsigned long dst_w, unsigned long dst_h)
+    {
+        for (unsigned long y = 0; y < dst_h; y++)
+        {
+            double sy = (dst_h > 1) ? ((double)y * (src_h - 1) / (double)(dst_h - 1)) : 0.0;
+            unsigned long y0 = (unsigned long)sy;
+            unsigned long y1 = std::min(y0 + 1, src_h - 1);
+            double fy = sy - y0;
+
+            for (unsigned long x = 0; x < dst_w; x++)
+            {
+                double sx = (double)x * src_w / (double)dst_w;
+                unsigned long x0 = (unsigned long)sx % src_w;
+                unsigned long x1 = (x0 + 1) % src_w;
+                double fx = sx - (unsigned long)sx;
+
+                double v00 = src[y0*src_w + x0], v01 = src[y0*src_w + x1];
+                double v10 = src[y1*src_w + x0], v11 = src[y1*src_w + x1];
+                double v0 = v00 + (v01 - v00) * fx;
+                double v1 = v10 + (v11 - v10) * fx;
+                dst[y*dst_w + x] = v0 + (v1 - v0) * fy;
+            }
+        }
+    }
+}
+
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
@@ -1014,17 +1047,25 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     (void) jpeg_read_header(&cinfo, TRUE);
     (void) jpeg_start_decompress(&cinfo);
 
+    bool bump_resample = false;
+    unsigned long bump_src_w = 0, bump_src_h = 0;
+    std::vector<double> bump_src_data;
+
     if (as_bump)
     {
-        if (image_height != cinfo.image_height || image_width != cinfo.image_width)
+        bump_src_w = cinfo.image_width;
+        bump_src_h = cinfo.image_height;
+        bump_resample = (image_height != bump_src_h || image_width != bump_src_w);
+        if (bump_resample)
         {
-            std::cerr << "Bump map must have same resolution as surface map." << std::endl;
-            jpeg_destroy_decompress(&cinfo);
-            fclose(infile);
-            mtx.unlock();
-            return false;
+            std::cout << "Resampling bump map (" << bump_src_w << "x" << bump_src_h
+                << ") to match surface map (" << image_width << "x" << image_height << ")." << std::endl;
+            bump_src_data.resize((size_t)bump_src_w * bump_src_h);
         }
-        bump_data = new double[allocated];
+        else
+        {
+            bump_data = new double[allocated];
+        }
     }
     else
     {
@@ -1046,17 +1087,24 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     jpeg_image_buffer = (*cinfo.mem->alloc_sarray)
             ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
+    // While a bump map is being resampled, indices below run over its own (mismatched)
+    // resolution rather than the surface map's -- bump_src_data is sized for that geometry, and
+    // gets remapped into bump_data (sized for the surface map) only after the full image is in.
+    unsigned long bump_line_width = bump_resample ? bump_src_w : image_width;
+    unsigned long bump_limit = bump_resample ? (bump_src_w * bump_src_h) : allocated;
+
     unsigned int i, j, i0, j0;
     while (cinfo.output_scanline < cinfo.output_height)
     {
-        j0 = cinfo.output_scanline * image_width;
+        j0 = cinfo.output_scanline * (as_bump ? bump_line_width : image_width);
         (void) jpeg_read_scanlines(&cinfo, jpeg_image_buffer, 1);
         i0 = 0;
         for (i=0; i<row_stride; i+=cinfo.output_components)
         {
             j = j0 + i0;
-            if (j >= allocated) break;
-            if (upside_down) j = allocated-1-j;
+            unsigned long limit = as_bump ? bump_limit : allocated;
+            if (j >= limit) break;
+            if (upside_down) j = limit-1-j;
 
             if (as_bump)
             {
@@ -1066,7 +1114,9 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
                         + 0.002196 * jpeg_image_buffer[0][i+1]
                         + 0.000588 * jpeg_image_buffer[0][i+2])
                     : (   0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
-                bump_data[j] = bump_scale * (lum - 0.5);
+                double val = bump_scale * (lum - 0.5);
+                if (bump_resample) bump_src_data[j] = val;
+                else bump_data[j] = val;
             }
             else if (cinfo.output_components >= 3)
             {
@@ -1085,6 +1135,12 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     (void) jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
     fclose(infile);
+
+    if (as_bump && bump_resample)
+    {
+        bump_data = new double[allocated];
+        resample_equirect(bump_src_data, bump_src_w, bump_src_h, bump_data, image_width, image_height);
+    }
 
     if (!as_bump) touch_gen();
     return true;
@@ -1138,17 +1194,25 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     png_init_io(png_ptr, fp);
     png_read_png(png_ptr, info_ptr, 0, NULL);
 
+    unsigned long bump_src_w = 0, bump_src_h = 0;
+    bool bump_resample = false;
+    std::vector<double> bump_src_data;
+
     if (as_bump)
     {
-        if (image_height != png_get_image_height( png_ptr, info_ptr ) || image_width != png_get_image_width( png_ptr, info_ptr ))
+        bump_src_w = png_get_image_width(png_ptr, info_ptr);
+        bump_src_h = png_get_image_height(png_ptr, info_ptr);
+        bump_resample = (image_height != bump_src_h || image_width != bump_src_w);
+        if (bump_resample)
         {
-            std::cerr << "Bump map must have same resolution as surface map." << std::endl;
-            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-            fclose(fp);
-            mtx.unlock();
-            return false;
+            std::cout << "Resampling bump map (" << bump_src_w << "x" << bump_src_h
+                << ") to match surface map (" << image_width << "x" << image_height << ")." << std::endl;
+            bump_src_data.resize((size_t)bump_src_w * bump_src_h);
         }
-        bump_data = new double[allocated];
+        else
+        {
+            bump_data = new double[allocated];
+        }
     }
     else
     {
@@ -1173,35 +1237,42 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
     png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
 
+    // As with load_from_jpeg: while a bump map is being resampled, iteration runs over its own
+    // (mismatched) resolution rather than the surface map's, into bump_src_data, which gets
+    // remapped into bump_data (sized for the surface map) only after the full image is in.
+    unsigned long iter_w = as_bump ? bump_src_w : image_width;
+    unsigned long iter_h = as_bump ? bump_src_h : image_height;
+
     if (bytes_per_pixel == 3 || bytes_per_pixel == 4)
     {
         // RGB or RGBA
-        unsigned int x, y, i=0;
-        for (y=0; y<image_height; y++)
+        unsigned long x, y, i=0;
+        for (y=0; y<iter_h; y++)
         {
-            for (x=0; x<image_width; x++)
+            for (x=0; x<iter_w; x++)
             {
                 png_bytep pixel;
-                if (upside_down) pixel = &(row_pointers[image_height-1-y][(image_width-1-x) * bytes_per_pixel]);
+                if (upside_down) pixel = &(row_pointers[iter_h-1-y][(iter_w-1-x) * bytes_per_pixel]);
                 else pixel = &(row_pointers[y][x * bytes_per_pixel]);
 
                 if (as_bump)
                 {
                     // Allow false color bump maps using the visual luminance as the elevation for better granularity
-                    png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
-                    bump_data[i] = bump_scale *
+                    double val = bump_scale *
                             (( 0.001137 * pixel[0]
                              + 0.002196 * pixel[1]
                              + 0.000588 * pixel[2])
                              - 0.5);
+                    if (bump_resample) bump_src_data[i] = val;
+                    else bump_data[i] = val;
                 }
                 else
                 {
                     red_data[i] = pixel[0];
                     green_data[i] = pixel[1];
                     blue_data[i] = pixel[2];
-                    i++;
                 }
+                i++;
             }
         }
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
@@ -1210,17 +1281,20 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     else if (bytes_per_pixel == 1)
     {
         // Grayscale.
-        unsigned int x, y, i=0;
-        for (y=0; y<image_height; y++)
+        unsigned long x, y, i=0;
+        for (y=0; y<iter_h; y++)
         {
-            for (x=0; x<image_width; x++)
+            for (x=0; x<iter_w; x++)
             {
-                png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                png_bytep pixel;
+                if (upside_down) pixel = &(row_pointers[iter_h-1-y][(iter_w-1-x) * bytes_per_pixel]);
+                else pixel = &(row_pointers[y][x * bytes_per_pixel]);
 
                 if (as_bump)
                 {
-                    png_bytep pixel = &(row_pointers[y][x * bytes_per_pixel]);
-                    bump_data[i] = bump_scale * ( 0.00392 * pixel[0]) - 0.5;
+                    double val = bump_scale * ( 0.00392 * pixel[0]) - 0.5;
+                    if (bump_resample) bump_src_data[i] = val;
+                    else bump_data[i] = val;
                 }
                 else
                 {
@@ -1238,6 +1312,12 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
         fclose(fp);
         return false;
+    }
+
+    if (as_bump && bump_resample)
+    {
+        bump_data = new double[allocated];
+        resample_equirect(bump_src_data, bump_src_w, bump_src_h, bump_data, image_width, image_height);
     }
 
     if (!as_bump) touch_gen();
