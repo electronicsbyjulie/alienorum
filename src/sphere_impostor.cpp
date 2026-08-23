@@ -1398,10 +1398,24 @@ namespace alienorum
         "    // radius, since the ring starts exactly at the equatorial radius) -- if the ray\n"
         "    // reaches the sphere surface before it reaches this ring-plane hit, the sphere\n"
         "    // is in front of this ring point.\n"
+        "    //\n"
+        "    // Skipped whenever the camera itself is essentially sitting on that sphere\n"
+        "    // (vRhoInner near 1 -- the camera-to-center distance is normalized to 1 by\n"
+        "    // construction, so vRhoInner==1 means the sphere's own radius equals that\n"
+        "    // distance) -- exactly horizon mode, standing on the ringed body's own\n"
+        "    // surface. With the ray origin pinned to the occluder's surface, tSphereNear's\n"
+        "    // sign near the local horizon is decided by sub-ULP rounding in sin/cos rather\n"
+        "    // than real geometry, flipping at random from one frame (or pixel) to the next.\n"
+        "    // Bug: the whole visible ring winking between 'shown' and 'self-occluded' --\n"
+        "    // large contiguous regions, not fine texture noise, since the flip is on a\n"
+        "    // single shared boundary rather than per-pixel sampling. The test is also\n"
+        "    // physically moot here: standing on the surface, nothing above the local\n"
+        "    // horizon can be behind this same body, and anything below it is already\n"
+        "    // hidden by the ground polygon drawn over this impostor.\n"
         "    float tca = dot(vCenter, dirN);\n"
         "    vec3 perp = vCenter - dirN * tca;\n"
         "    float d2 = dot(perp, perp);\n"
-        "    if (d2 < vRhoInner*vRhoInner)\n"
+        "    if (vRhoInner < 0.999 && d2 < vRhoInner*vRhoInner)\n"
         "    {\n"
         "        float thc = sqrt(vRhoInner*vRhoInner - d2);\n"
         "        float tSphereNear = tca - thc;\n"
@@ -1519,10 +1533,15 @@ namespace alienorum
         "    double ringDist = length(rel);\n"
         "    if (ringDist < rhoInner || ringDist > rhoOuter) discard;\n"
         "\n"
+        "    // See the float shader's identical comment: skipped near vRhoInner==1 (camera\n"
+        "    // essentially on the occluder's own surface -- horizon mode) where this test is\n"
+        "    // both physically moot and numerically degenerate. Double precision narrows the\n"
+        "    // angular range where sin/cos rounding can flip tSphereNear's sign, but doesn't\n"
+        "    // remove it -- the ray origin is still pinned to the sphere's surface either way.\n"
         "    double tca = dot(cen, dirN);\n"
         "    dvec3 perp = cen - dirN * tca;\n"
         "    double d2 = dot(perp, perp);\n"
-        "    if (d2 < rhoInner*rhoInner)\n"
+        "    if (rhoInner < 0.999lf && d2 < rhoInner*rhoInner)\n"
         "    {\n"
         "        double thc = sqrt(rhoInner*rhoInner - d2);\n"
         "        double tSphereNear = tca - thc;\n"
@@ -1563,9 +1582,6 @@ namespace alienorum
     // hasRingTex(1) hasRingXTex(1) color(4) lightDir(3) amtLit(1) selfLuminous(1) redlight(1) = 24.
     static const int kRingFloatsPerVertex = 24;
 
-    // Tries to build s_ring_program from kRingVertexShaderSrc + the given fragment shader
-    // source. Leaves s_ring_program at 0 (its already-initialized value) on any failure, so the
-    // caller can tell a fallback attempt is needed rather than inheriting a half-built program.
     static bool try_build_ring_program(const char *fs_src)
     {
         GLuint vs = compile_shader(GL_VERTEX_SHADER, kRingVertexShaderSrc);

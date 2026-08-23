@@ -927,6 +927,28 @@ Point refract_true_point(Point pt)
 Point refract_true_point(Point pt, double alt_rad)
 {
     Point axis = compute_normal(pt, yaxis, center);
+
+    // compute_normal() reduces to cross(pt, yaxis) here, which vanishes as pt lines up with the
+    // zenith axis -- and rotate3D() rejects only an exactly-zero axis before normalizing, so a
+    // cross product that has decayed into pure rounding noise still comes back out as a full unit
+    // vector, just pointing in an arbitrary direction. The rotation then swings pt by the whole
+    // refraction angle about that arbitrary direction rather than by the vanishing amount it
+    // should.
+    //
+    // yaxis is (0,1e37,0), so the axis works out to 1e37*(-pt.z, 0, pt.x): with pt at nadir, pt.x
+    // and pt.z are the last couple of bits of the magnitude and nothing else. Bug: the ring arch
+    // seen from a ringed planet's own surface -- draw_ring_gpu() is the one caller that hands this
+    // function a nadir vector, the planet's own centre straight down underfoot -- landing somewhere
+    // different on screen every frame while the star field behind it sat perfectly still. Measured
+    // on Perennia (14.72 bar, which clamps refraction to ~11.4 degrees at that altitude):
+    // consecutive frames swung the "refracted" centre 4 to 19 degrees apart, at random.
+    //
+    // Returning pt unrotated is the physically right answer at both poles of this geometry in any
+    // case: refraction is exactly zero at the zenith, and undefined straight down, there being no
+    // direction to bend toward.
+    double pm = pt.magnitude(), ym = yaxis.magnitude();
+    if (pm <= 0 || ym <= 0 || axis.magnitude() < pm * ym * 1e-9) return pt;
+
     return rotate3D(pt, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(alt_rad));
 }
 

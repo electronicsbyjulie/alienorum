@@ -1043,7 +1043,17 @@ void draw_ring_gpu(CelestialObject* cel)
     // function -- same refraction treatment, same reason light_dir below stays on camera_space.
     Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
     Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
-    Point display_space = (view_mode == vm_horizon)
+
+    // Standing on the ringed world itself -- draw_horizon()'s call, and the usual way these rings
+    // are ever seen -- cel_azrot points from the observer straight down at the planet's own centre.
+    // That is not a body in the sky whose light bends on its way in; it is the geometric anchor of
+    // the ring plane, so refracting it models nothing. It is also exactly the degenerate input
+    // refract_true_point() now guards against (see its comment in planet.cpp): the rotation axis is
+    // a cross product that has vanished into rounding noise. Either change alone stops the ring
+    // from jumping around the screen; this one records that the question should never have been
+    // asked. Rings on a planet viewed from anywhere else still refract as before.
+    bool standing_on_it = (whereami >= 0 && cel->seqno == whereami);
+    Point display_space = (view_mode == vm_horizon && !standing_on_it)
         ? rotate3D(refract_true_point(cel_azrot), center, xaxis, altitude)
         : camera_space;
     double R = cel->get_equatorial_radius();
