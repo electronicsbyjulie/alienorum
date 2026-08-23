@@ -671,10 +671,15 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             }
         }
 
+        // A shared Durchmusterung entry does not always mean the same star. Only trust the DM match when it doesn't contradict an HD# already known to be distinct.
         if (!HDfound && dmkey.size() && dmcache.count(dmkey))
         {
-            s = dmcache[dmkey];
-            HDfound = true;
+            Star *dmcand = dmcache[dmkey];
+            if (!dmcand->HD || !HD || dmcand->HD == HD)
+            {
+                s = dmcand;
+                HDfound = true;
+            }
         }
 
         if (!HDfound)
@@ -1001,7 +1006,13 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         if (HD && hdcache && hdcache[HD]) s = (Star*)hdcache[HD];
         else if (HIP && hipcache && hipcache[HIP]) s = (Star*)hipcache[HIP];
-        else if (dmkey.size() && dmcache.count(dmkey)) s = dmcache[dmkey];
+        else if (dmkey.size() && dmcache.count(dmkey))
+        {
+            // A shared Durchmusterung entry can legitimately belong to two distinct stars; only accept the match if it doesn't contradict the HD/HIP number.
+            Star *dmcand = dmcache[dmkey];
+            if ((!dmcand->HD || !HD || dmcand->HD == HD) && (!dmcand->HIP || !HIP || dmcand->HIP == HIP))
+                s = dmcand;
+        }
         if (!s)
         {
             // There are only a handful with no V magnitude; omit them.
