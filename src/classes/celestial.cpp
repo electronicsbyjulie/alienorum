@@ -994,6 +994,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     if ((infile = fopen(filename.c_str(), "rb")) == NULL)
     {
         fprintf(stderr, "can't open %s\n", filename.c_str());
+        mtx.unlock();
         return false;
     }
 
@@ -1004,6 +1005,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     {
         jpeg_destroy_decompress(&cinfo);
         fclose(infile);
+        mtx.unlock();
         return false;
     }
 
@@ -1019,6 +1021,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
             std::cerr << "Bump map must have same resolution as surface map." << std::endl;
             jpeg_destroy_decompress(&cinfo);
             fclose(infile);
+            mtx.unlock();
             return false;
         }
         bump_data = new double[allocated];
@@ -1098,7 +1101,10 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
 
     if ((fp = fopen(filename.c_str(), "rb")) == NULL)
+    {
+        mtx.unlock();
         return false;
+    }
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING,
         nullptr, nullptr, nullptr);
@@ -1106,6 +1112,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     if (png_ptr == NULL)
     {
         fclose(fp);
+        mtx.unlock();
         return false;
     }
 
@@ -1114,6 +1121,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     {
         fclose(fp);
         png_destroy_read_struct(&png_ptr, NULL, NULL);
+        mtx.unlock();
         return false;
     }
 
@@ -1123,6 +1131,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
         fclose(fp);
         /* If we get here, we had a problem reading the file */
+        mtx.unlock();
         return false;
     }
 
@@ -1136,6 +1145,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
             std::cerr << "Bump map must have same resolution as surface map." << std::endl;
             png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
             fclose(fp);
+            mtx.unlock();
             return false;
         }
         bump_data = new double[allocated];
@@ -1729,7 +1739,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
             if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
 
             idx = y * image_width + x;
-            if (idx >= allocated) return;
+            if (idx >= allocated)
+            {
+                mtx.unlock();
+                return;
+            }
 
             // Get noise value for this point on the sphere
             height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
