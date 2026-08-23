@@ -4849,8 +4849,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         s->sidereal_rotational_period = atof(field) * oneday;
         if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
-        int offset = -36;
-        read_field_onebased(buffer, 319+offset, 332+offset, field);
+        read_field_onebased(buffer, 283, 296, field);
         str = trim(field);
         if (str.size())
         {
@@ -4858,29 +4857,29 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->center_name = str;
         }
 
-        read_field_onebased(buffer, 334+offset, 344+offset, field);
+        read_field_onebased(buffer, 298, 308, field);
         if (s->orbit) s->orbit->period = atof(field) * oneday;
 
-        read_field_onebased(buffer, 347+offset, 358+offset, field);
+        read_field_onebased(buffer, 311, 322, field);
         if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
 
-        read_field_onebased(buffer, 360+offset, 366+offset, field);
+        read_field_onebased(buffer, 324, 330, field);
         if (s->orbit) s->orbit->eccentricity = atof(field);
 
-        read_field_onebased(buffer, 373+offset, 380+offset, field);
+        read_field_onebased(buffer, 337, 344, field);
         if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 382+offset, 389+offset, field);
+        read_field_onebased(buffer, 346, 353, field);
         if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 391+offset, 404+offset, field);
+        read_field_onebased(buffer, 355, 368, field);
         if (s->orbit) s->orbit->epoch = atof(field);
 
-        read_field_onebased(buffer, 406+offset, 413+offset, field);
+        read_field_onebased(buffer, 370, 377, field);
         f = atof(field) * fiftyseventh;
         if (s->orbit) s->orbit->heliocentric_inclination = f;
 
-        read_field_onebased(buffer, 415+offset, 422+offset, field);
+        read_field_onebased(buffer, 379, 386, field);
         f = atof(field) * fiftyseventh;
         if (s->orbit) s->orbit->heliocentric_node = f;
 
