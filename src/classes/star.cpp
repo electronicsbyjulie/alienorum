@@ -322,7 +322,19 @@ double Star::estimate_luminosity(double tempK)
 {
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
-    if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_lum(msqi);
+    if (msqi >= mseqmin && msqi <= mseqmax)
+    {
+        // The main-sequence relation only holds for a star actually on the main sequence. B-V is
+        // just a color: a white dwarf can be exactly as blue/white as a normal F or A star of the
+        // same temperature (this is how Gliese 86 B, a DQ white dwarf, ended up borrowing a whole
+        // main-sequence star's luminosity -- tens of times brighter than its primary). A known
+        // radius far smaller than that relation's own prediction for this color is a compact
+        // object, not a main-sequence star of that color, so fall through to the physical estimate
+        // below instead of trusting the lookup.
+        double mseq_rad = interpolate_mseq_rad(msqi);
+        if (!(volumetric_mean_radius > 0) || !(mseq_rad > 0) || volumetric_mean_radius/solar_radius > 0.2 * mseq_rad)
+            return interpolate_mseq_lum(msqi);
+    }
 
     return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
 }
