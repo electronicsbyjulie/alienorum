@@ -39,9 +39,12 @@ MSYS2 (Run in MINGW64 environment):
 * Customizable texture generation for fictional world building;
 * Ability to select an individual star/planet/moon/satellite and teleport to its position;
 * Stellar proper motions, orbits, and variability;
+* Unified star catalog with an internal star designation system based on magnitude and color;
 * Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
 * Custom texture map generation;
 * More coming soon...
+
+Internal AlienorumIDs for stars dimmer than magnitude 8 should be considered provisional and subject to change.
 
 Unofficial proposed names are included for the four planets in the 82 Eridani system. These names are not in use
 by any authority at the time of this writing. The names were invented here to avoid confusion between two

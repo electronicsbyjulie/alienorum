@@ -225,6 +225,18 @@ ConsBins fill_alienorum_ids()
             if (A && s != A) continue;                      // Leave components out of the serial numbering.
         }
 
+        if (s->seqno == 0)
+        {
+            // The Sun sits at RA/Dec zero, which resolves to a real constellation (Pisces,
+            // currently) rather than nowhere -- but the Sun isn't actually "in" that
+            // constellation, it just has no fixed sky position of its own. Binning it there
+            // used to get it written into the condensed star catalog a second time, once here
+            // and once via the explicit cels[0] write in write_condensed_star_cat().
+            int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
+            s->alienorumid = std::to_string(m);          // The only -26 mag star from Earth, so this alone is unique.
+            continue;
+        }
+
         Constellation *cs = identify_cons_of_star(s);
         if (!cs) continue;
 
@@ -272,8 +284,7 @@ ConsBins fill_alienorum_ids()
                 for (i=0; i<n; i++)
                 {
                     Star *s = val3[i];
-                    if (s->seqno == 0) s->alienorumid = std::to_string(m);          // Sun has no fixed RA/dec and is the only -26 mag star from Earth.
-                    else s->alienorumid =
+                    s->alienorumid =
                         ((s->variability_period && !s->is_eclipsing_binary && fabs(s->maxmag-s->minmag) > 0.5)
                             ? std::string("V")
                             : std::to_string(m))

@@ -334,7 +334,7 @@ TEST_F(SerializationTest, AStatedPrecessionPeriodRoundTrips)
 TEST_F(SerializationTest, OldFileStatingZeroPrecessionLoadsAsZero)
 {
     // 37 of the 38 objects in Koora.json state exactly this, from before the guard existed.
-    Star* sun = make_star("Test Primary");
+    make_star("Test Primary");
     std::string path = temp_universe("oldprecession");
     std::fstream out(path, std::ios::out | std::ios::trunc);
     ASSERT_TRUE(Serialization::save_all(out, cels, false));
