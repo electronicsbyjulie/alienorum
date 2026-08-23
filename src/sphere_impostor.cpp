@@ -1475,31 +1475,153 @@ namespace alienorum
         "    FragColor = vec4(outColor, opacity);\n"
         "}\n";
 
+    // Double-precision variant of kRingFragmentShaderSrc above: identical in every respect
+    // except that the ray/ring-plane intersection math (the part that divides by a value which
+    // is routinely near-zero) runs in double instead of float. See ensure_ring_gl_objects()'s
+    // comment for why that matters and why this is attempted first with a fallback, not a
+    // replacement. #version bumped to 150 to match GL_ARB_gpu_shader_fp64's own dependency
+    // (GLSL 1.50/GL 3.2); the vertex shader stays at 130 and linking the two is fine -- neither
+    // stage uses anything version-specific to its own number.
+    static const char *kRingFragmentShaderSrcDouble =
+        "#version 150\n"
+        "#extension GL_ARB_gpu_shader_fp64 : require\n"
+        "in vec2 vRayXY;\n"
+        "in vec3 vCenter;\n"
+        "in vec3 vNormal;\n"
+        "in float vRhoInner;\n"
+        "in float vRhoOuter;\n"
+        "in float vHasRingTex;\n"
+        "in float vHasRingXTex;\n"
+        "in vec4 vColor;\n"
+        "in vec3 vLightDir;\n"
+        "in float vAmtLit;\n"
+        "in float vSelfLuminous;\n"
+        "in float vRedlight;\n"
+        "out vec4 FragColor;\n"
+        "uniform sampler2D uRingMap;\n"
+        "uniform sampler2D uRingXMap;\n"
+        "const float GOSSAMER = 0.08;\n"
+        "void main()\n"
+        "{\n"
+        "    dvec3 dirN = normalize(dvec3(double(vRayXY.x), double(-vRayXY.y), 1.0lf));\n"
+        "    dvec3 nrm = dvec3(vNormal);\n"
+        "    dvec3 cen = dvec3(vCenter);\n"
+        "    double rhoInner = double(vRhoInner);\n"
+        "    double rhoOuter = double(vRhoOuter);\n"
+        "\n"
+        "    double denom = dot(nrm, dirN);\n"
+        "    if (abs(denom) < 1e-12lf) discard;\n"     // ray parallel to the ring plane
+        "    double s = dot(nrm, cen) / denom;\n"
+        "    if (s <= 0.0lf) discard;\n"              // ring-plane hit is behind the camera
+        "\n"
+        "    dvec3 p = dirN * s;\n"
+        "    dvec3 rel = p - cen;\n"
+        "    double ringDist = length(rel);\n"
+        "    if (ringDist < rhoInner || ringDist > rhoOuter) discard;\n"
+        "\n"
+        "    double tca = dot(cen, dirN);\n"
+        "    dvec3 perp = cen - dirN * tca;\n"
+        "    double d2 = dot(perp, perp);\n"
+        "    if (d2 < rhoInner*rhoInner)\n"
+        "    {\n"
+        "        double thc = sqrt(rhoInner*rhoInner - d2);\n"
+        "        double tSphereNear = tca - thc;\n"
+        "        if (tSphereNear > 0.0lf && tSphereNear < s) discard;\n"
+        "    }\n"
+        "\n"
+        "    float u = float(clamp((ringDist - rhoInner) / (rhoOuter - rhoInner), 0.0lf, 1.0lf));\n"
+        "\n"
+        "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(u, 0.5)).rgb : vColor.rgb;\n"
+        "    float opacity = (vHasRingXTex > 0.5)\n"
+        "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
+        "        : 0.5;\n"
+        "    opacity = pow(opacity, 0.4);\n"
+        "\n"
+        "    float isDay;\n"
+        "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
+        "    else\n"
+        "    {\n"
+        "        dvec3 toCenter = cen - p;\n"
+        "        dvec3 lightDirD = dvec3(vLightDir);\n"
+        "        double tl = dot(toCenter, lightDirD);\n"
+        "        dvec3 perp2 = toCenter - lightDirD * tl;\n"
+        "        double d2shadow = dot(perp2, perp2);\n"
+        "        isDay = (tl > 0.0lf && d2shadow < rhoInner*rhoInner) ? 0.0 : (0.4 + 0.6*vAmtLit);\n"
+        "    }\n"
+        "\n"
+        "    vec3 outColor = ringColor * isDay;\n"
+        "\n"
+        "    if (vRedlight > 0.5)\n"
+        "    {\n"
+        "        float r2 = min(1.0, outColor.r + 0.5*outColor.g + 0.3*outColor.b);\n"
+        "        outColor = vec3(r2, outColor.g/3.0, outColor.b/3.0);\n"
+        "    }\n"
+        "    FragColor = vec4(outColor, opacity);\n"
+        "}\n";
+
     // Floats per vertex: pos(2) rayxy(2) center(3) normal(3) rhoInner(1) rhoOuter(1)
     // hasRingTex(1) hasRingXTex(1) color(4) lightDir(3) amtLit(1) selfLuminous(1) redlight(1) = 24.
     static const int kRingFloatsPerVertex = 24;
 
-    static void ensure_ring_gl_objects()
+    // Tries to build s_ring_program from kRingVertexShaderSrc + the given fragment shader
+    // source. Leaves s_ring_program at 0 (its already-initialized value) on any failure, so the
+    // caller can tell a fallback attempt is needed rather than inheriting a half-built program.
+    static bool try_build_ring_program(const char *fs_src)
     {
-        if (s_ring_program) return;
-
         GLuint vs = compile_shader(GL_VERTEX_SHADER, kRingVertexShaderSrc);
-        GLuint fs = compile_shader(GL_FRAGMENT_SHADER, kRingFragmentShaderSrc);
+        GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fs_src);
 
-        s_ring_program = glCreateProgram();
-        glAttachShader(s_ring_program, vs);
-        glAttachShader(s_ring_program, fs);
-        glLinkProgram(s_ring_program);
-        GLint ok = 0;
-        glGetProgramiv(s_ring_program, GL_LINK_STATUS, &ok);
-        if (!ok)
+        GLint vs_ok = 0, fs_ok = 0;
+        glGetShaderiv(vs, GL_COMPILE_STATUS, &vs_ok);
+        glGetShaderiv(fs, GL_COMPILE_STATUS, &fs_ok);
+        if (!vs_ok || !fs_ok)
         {
-            char log[1024];
-            glGetProgramInfoLog(s_ring_program, sizeof(log), nullptr, log);
-            std::cerr << "Ring impostor shader link error: " << log << std::endl;
+            glDeleteShader(vs);
+            glDeleteShader(fs);
+            return false;
         }
+
+        GLuint prog = glCreateProgram();
+        glAttachShader(prog, vs);
+        glAttachShader(prog, fs);
+        glLinkProgram(prog);
+        GLint ok = 0;
+        glGetProgramiv(prog, GL_LINK_STATUS, &ok);
         glDeleteShader(vs);
         glDeleteShader(fs);
+        if (!ok)
+        {
+            glDeleteProgram(prog);
+            return false;
+        }
+
+        s_ring_program = prog;
+        return true;
+    }
+
+    static void ensure_ring_gl_objects()
+    {
+        static bool s_ring_gl_failed = false;
+        if (s_ring_program || s_ring_gl_failed) return;
+
+        // Double precision buys a lot here: a view ray nearly parallel to the ring plane -- the
+        // routine case in horizon mode, standing on/near the ring plane and looking along it --
+        // makes dot(normal, ray) a near-cancellation in the plane-intersection math below, and
+        // float32's ~7 decimal digits of precision run out well before the old discard test
+        // (abs(denom) < 1e-9) could reject it, so grazing pixels flip between "ring" and
+        // "not ring" from one frame -- even one pixel -- to the next as rounding noise
+        // dominates. Bug: the ring's edge shimmering/jumping in horizon mode, distinct from the
+        // (also real, separately fixed) texture minification moire from gputex.cpp's missing
+        // mipmaps. Falls back to the original float shader on hardware without
+        // GL_ARB_gpu_shader_fp64 -- older Intel integrated GPUs mainly -- so unsupported
+        // hardware sees exactly today's behavior rather than losing rings outright.
+        if (!try_build_ring_program(kRingFragmentShaderSrcDouble)
+            && !try_build_ring_program(kRingFragmentShaderSrc))
+        {
+            std::cerr << "Ring impostor: shader build failed (both double and float variants)." << std::endl;
+            s_ring_gl_failed = true;
+            return;
+        }
 
         s_raPosLoc          = glGetAttribLocation(s_ring_program, "aPos");
         s_raRayXYLoc        = glGetAttribLocation(s_ring_program, "aRayXY");

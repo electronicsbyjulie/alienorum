@@ -9,6 +9,19 @@ using namespace alienorum;
 
 namespace alienorum
 {
+    // glGenerateMipmap is core since GL 3.0 but predates this file's SDL_opengl.h -- the
+    // legacy header sphere_impostor.cpp's own comment describes avoiding (imgui's bundled GL
+    // loader would clash with SDL_opengl.h's typedefs in the same translation unit). On Windows
+    // in particular, opengl32.dll only exports GL 1.1 statically, so this can't be linked
+    // directly the way glGenTextures/glTexImage2D etc. below are -- it has to be resolved at
+    // runtime like any other post-1.1 entry point.
+    typedef void (APIENTRYP PFN_alienorum_glGenerateMipmap)(GLenum target);
+    static void gputex_generate_mipmap(GLenum target)
+    {
+        static PFN_alienorum_glGenerateMipmap fn = (PFN_alienorum_glGenerateMipmap)SDL_GL_GetProcAddress("glGenerateMipmap");
+        if (fn) fn(target);
+    }
+
     struct GpuTexEntry
     {
         GLuint tex = 0;
@@ -75,12 +88,19 @@ namespace alienorum
 
         if (!entry.tex) glGenTextures(1, &entry.tex);
         glBindTexture(GL_TEXTURE_2D, entry.tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        // Mipmapped + trilinear rather than a flat GL_LINEAR: sampled at a steep grazing angle
+        // (a ring viewed nearly edge-on from horizon mode, a planet's own limb) adjacent screen
+        // pixels can land on wildly different texels with no mip chain to fall back to, which
+        // reads as a shimmering moire crawling over the surface as the view shifts by even a
+        // fraction of a pixel. Letting the GPU pick a coarser, pre-averaged level for compressed
+        // footprints is the standard fix and costs nothing where minification isn't happening.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);          // longitude wraps
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);   // latitude does not
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
         return entry.tex;
@@ -131,12 +151,15 @@ namespace alienorum
 
         if (!entry.tex) glGenTextures(1, &entry.tex);
         glBindTexture(GL_TEXTURE_2D, entry.tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        // See the identical comment in gputex_for(): same grazing-angle minification shimmer
+        // applies to elevation data sampled near a planet's own limb.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);          // longitude wraps
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);   // latitude does not
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, (GLsizei)w, (GLsizei)h, 0, GL_RED, GL_FLOAT, bump.data());
+        gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
         return entry.tex;
