@@ -508,7 +508,24 @@ void compute_object_draw_coordinates()
             }
 
             cels[i]->viewrel = rel;
-            
+
+            // Ahead of the screen-bounds bails below, not after them. Every rotation rel has been
+            // through preserves its magnitude, so the value is the same either way -- what changes
+            // is that an object off the edge of the screen now gets a current one instead of
+            // keeping whatever it had on the last frame its centre was inside the window.
+            //
+            // Nothing culls on being offscreen alone: draw_objects() deliberately exempts anything
+            // with a big enough disc ("angular_radius[i]*zoom < sphere_rad_threshold" guarding the
+            // drawnx/drawny test there), because a disc whose centre is past the edge can still
+            // throw its glare across the visible frame. So a body that drifts out of frame while
+            // large goes on being drawn from a frozen angular_radius, and draw_one_object() divides
+            // its flare by exactly that ("f_ang"). vmag_cache[i] is still updated every frame, a
+            // few lines up -- so on a close flyby the brightness kept climbing while the disc it
+            // was being spread over stayed pinned at its stale value. Bug: the flare of an object
+            // that had left the frame staying far too bright until it came back into view and
+            // refreshed this.
+            angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
             float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
@@ -516,15 +533,13 @@ void compute_object_draw_coordinates()
 
             if (dx < 0 || dx >= dispw) continue;
             if (dy < 0 || dy >= disph) continue;
-            
+
             bx = dx*drawblxscalex;
             by = dy*drawblxscaley;
             if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
             drawnblocks[bx][by].push_back(i);
             bx_cache[i] = bx;
             by_cache[i] = by;
-
-            angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
                     }
     }
 
