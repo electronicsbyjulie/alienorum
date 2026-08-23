@@ -3,6 +3,7 @@
 #define _Star
 
 #include <cstdint>
+#include <map>
 #include <math.h>
 #include "celestial.h"
 
@@ -158,5 +159,9 @@ void Gliese_doubles_fix();
 #define mseqmax 70
 extern double msq_mass[mseqmax], msq_rad[mseqmax], msq_lum[mseqmax], msq_temp[mseqmax], msq_BV[mseqmax];
 extern alienorum::Star **hdcache, **hipcache;
+
+// Cross-catalog Durchmusterung (BD/CD/CP) lookup, keyed by bonn_survey_key().
+extern std::map<std::string, alienorum::Star*> dmcache;
+std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential);
 
 #endif

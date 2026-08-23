@@ -2,12 +2,24 @@
 #include <string.h>
 #include <algorithm>
 #include <math.h>
+#include <cstdio>
 #include "cons.h"
 
 using namespace alienorum;
 
 double msq_mass[70], msq_rad[70], msq_lum[70], msq_temp[70], msq_BV[70];
 Star **hdcache = nullptr, **hipcache = nullptr;
+std::map<std::string, Star*> dmcache;
+
+// Canonical key for a Durchmusterung designation, e.g. survey="BD", declination=-2, sequential=5958
+// -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().
+std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential)
+{
+    if (!survey[0] || survey[0] == ' ' || !survey[1] || survey[1] == ' ') return std::string();
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%c%c%+03d %05u", survey[0], survey[1], declination, sequential);
+    return std::string(buf);
+}
 
 char Star::get_component()
 {

@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <fstream>
 #include <random>
 #include <cmath>
@@ -16,6 +17,7 @@
 
 extern std::vector<std::string> known_catalog_names;
 extern Star **hdcache, **hipcache;
+extern std::map<std::string, Star*> dmcache;
 
 #define auto_match_multiples 0
 

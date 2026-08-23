@@ -434,6 +434,25 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         s->HD = atoi(field);
         if (!hdcache[s->HD]) hdcache[s->HD] = s;
 
+        // 154-166  A13    ---     DM       Durchmusterung Identification (BD/CD/CP survey+zone+sequential)
+        // Many Gliese/Woolley entries (e.g. old "Wo" numbers, like GJ 9827) carry no HD or HIP at
+        // all, so this is often the only identifier this catalog shares with Hipparcos/BSC -- it's
+        // what lets those later readers recognize the star instead of creating a duplicate.
+        read_field_onebased(buffer, 154, 155, field);
+        if ((field[0] == 'B' || field[0] == 'C') && field[1] != ' ')
+        {
+            s->Bonn_survey[0] = field[0];
+            s->Bonn_survey[1] = field[1];
+            read_field_onebased(buffer, 156, 158, field);
+            s->Bonn_survey_sign = field[0];
+            s->Bonn_survey_declination = atoi(field);
+            read_field_onebased(buffer, 159, 166, field);
+            s->Bonn_survey_sequential = atoi(field);
+
+            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
+            if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
+        }
+
         s->update_location(J2000_TIME_T);
 
         if (!num_read)
@@ -615,6 +634,24 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 26, 31, field);
         HD = atoi(field);
 
+        //  15- 25  A11    ---     DM       Durchmusterung Identification (zone in bytes 17-19)
+        // Parsed ahead of the existence check (rather than where the rest of the fields are read,
+        // further below) so it can double as a cross-catalog match key: some BSC stars carry a DM
+        // but no HD, and may already exist under that DM from a prior Gliese load.
+        char dm_survey[3] = {0,0,0};
+        char dm_sign = 0;
+        int dm_decl = 0;
+        unsigned int dm_seq = 0;
+        read_field_onebased(buffer, 15, 16, field);
+        dm_survey[0] = field[0];
+        dm_survey[1] = field[1];
+        read_field_onebased(buffer, 17, 19, field);
+        dm_sign = field[0];
+        dm_decl = atoi(field);
+        read_field_onebased(buffer, 20, 25, field);
+        dm_seq = atoi(field);
+        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq);
+
         HDfound = false;
         if (HD)
         {
@@ -634,6 +671,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             }
         }
 
+        if (!HDfound && dmkey.size() && dmcache.count(dmkey))
+        {
+            s = dmcache[dmkey];
+            HDfound = true;
+        }
+
         if (!HDfound)
         {
             s = new Star();
@@ -648,15 +691,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 5, 14, field);
         if (strlen(trim(field).c_str())) strcpy(s->name, trim(field).c_str());
 
-        //  15- 25  A11    ---     DM       Durchmusterung Identification (zone in bytes 17-19)
-        read_field_onebased(buffer, 15, 16, field);
-        s->Bonn_survey[0] = field[0];
-        s->Bonn_survey[1] = field[1];
-        read_field_onebased(buffer, 17, 19, field);
-        s->Bonn_survey_sign = field[0];
-        s->Bonn_survey_declination = atoi(field);
-        read_field_onebased(buffer, 20, 25, field);
-        s->Bonn_survey_sequential = atoi(field);
+        s->Bonn_survey[0] = dm_survey[0];
+        s->Bonn_survey[1] = dm_survey[1];
+        s->Bonn_survey_sign = dm_sign;
+        s->Bonn_survey_declination = dm_decl;
+        s->Bonn_survey_sequential = dm_seq;
+        if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
 
         read_field_onebased(buffer, 5, 7, field);
         s->FlamsteedNo = atoi(field);
@@ -884,6 +924,12 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         if (cels[j]->typeclass() != class_star) continue;
         if (((Star*)cels[j])->HD) hdcache[((Star*)cels[j])->HD] = (Star*)cels[j];
         if (((Star*)cels[j])->HIP) hipcache[((Star*)cels[j])->HIP] = (Star*)cels[j];
+        Star *dms = (Star*)cels[j];
+        if (dms->Bonn_survey[0])
+        {
+            std::string k = bonn_survey_key(dms->Bonn_survey, dms->Bonn_survey_declination, dms->Bonn_survey_sequential);
+            if (k.size() && !dmcache.count(k)) dmcache[k] = dms;
+        }
     }
 
     FILE* fp = fopen(path.c_str(), "rb");
@@ -910,11 +956,52 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 391, 396, field);
         HD = atoi(field);
 
+        // 398-429  Bonner/Cordoba/Cape Durchmusterung, parsed ahead of the existence check below so
+        // it can serve as a fallback match key: a star loaded from Gliese under an old "Wo"/"NN"
+        // designation (e.g. GJ 9827 / BD-02 5958) often carries neither HD nor HIP, so without this
+        // it silently gets recreated as a second, planet-less duplicate under this record's HIP name.
+        char dm_survey[3] = {0,0,0};
+        char dm_sign = 0;
+        int dm_decl = 0;
+        unsigned int dm_seq = 0;
+        read_field_onebased(buffer, 398, 407, Bonn);
+        read_field_onebased(buffer, 409, 418, Cordoba);
+        read_field_onebased(buffer, 420, 429, Cape);
+        if (Cape[0] != ' ')
+        {
+            dm_survey[0] = 'C'; dm_survey[1] = 'P';
+            read_field_onebased(buffer, 421, 423, field);
+            dm_sign = field[0];
+            dm_decl = atoi(field);
+            read_field_onebased(buffer, 424, 429, field);
+            dm_seq = atoi(field);
+        }
+        else if (Cordoba[0] != ' ')
+        {
+            dm_survey[0] = 'C'; dm_survey[1] = 'D';
+            read_field_onebased(buffer, 410, 412, field);
+            dm_sign = field[0];
+            dm_decl = atoi(field);
+            read_field_onebased(buffer, 413, 418, field);
+            dm_seq = atoi(field);
+        }
+        else if (Bonn[0] != ' ')
+        {
+            dm_survey[0] = 'B'; dm_survey[1] = 'D';
+            read_field_onebased(buffer, 399, 401, field);
+            dm_sign = field[0];
+            dm_decl = atoi(field);
+            read_field_onebased(buffer, 402, 407, field);
+            dm_seq = atoi(field);
+        }
+        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq);
+
         s = nullptr;
         bool is_new = false;
 
         if (HD && hdcache && hdcache[HD]) s = (Star*)hdcache[HD];
         else if (HIP && hipcache && hipcache[HIP]) s = (Star*)hipcache[HIP];
+        else if (dmkey.size() && dmcache.count(dmkey)) s = dmcache[dmkey];
         if (!s)
         {
             // There are only a handful with no V magnitude; omit them.
@@ -950,44 +1037,16 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 328, 337, field);
         s->CCDM = trim(field);
 
-        // 398-407  A10   ---     BD        Bonner DM <I/119>, <I/122>               (H72)
-        read_field_onebased(buffer, 398, 407, Bonn);
-
-        // 409-418  A10   ---     CoD       Cordoba Durchmusterung (DM) <I/114>      (H73)
-        read_field_onebased(buffer, 409, 418, Cordoba);
-
-        // 420-429  A10   ---     CPD       Cape Photographic DM <I/108>             (H74)
-        read_field_onebased(buffer, 420, 429, Cape);
-
-        if (Cape[0] != ' ')
+        // BD/CoD/CPD already parsed above (dm_survey/dm_sign/dm_decl/dm_seq) for the existence check;
+        // apply them to the resolved star and register/refresh the cross-catalog lookup entry.
+        if (dm_survey[0])
         {
-            s->Bonn_survey[0] = 'C';
-            s->Bonn_survey[1] = 'P';
-            read_field_onebased(buffer, 421, 423, field);
-            s->Bonn_survey_sign = field[0];
-            s->Bonn_survey_declination = atoi(field);
-            read_field_onebased(buffer, 424, 429, field);
-            s->Bonn_survey_sequential = atoi(field);
-        }
-        else if (Cordoba[0] != ' ')
-        {
-            s->Bonn_survey[0] = 'C';
-            s->Bonn_survey[1] = 'D';
-            read_field_onebased(buffer, 410, 412, field);
-            s->Bonn_survey_sign = field[0];
-            s->Bonn_survey_declination = atoi(field);
-            read_field_onebased(buffer, 413, 418, field);
-            s->Bonn_survey_sequential = atoi(field);
-        }
-        else if (Bonn[0] != ' ')
-        {
-            s->Bonn_survey[0] = 'B';
-            s->Bonn_survey[1] = 'D';
-            read_field_onebased(buffer, 399, 401, field);
-            s->Bonn_survey_sign = field[0];
-            s->Bonn_survey_declination = atoi(field);
-            read_field_onebased(buffer, 402, 407, field);
-            s->Bonn_survey_sequential = atoi(field);
+            s->Bonn_survey[0] = dm_survey[0];
+            s->Bonn_survey[1] = dm_survey[1];
+            s->Bonn_survey_sign = dm_sign;
+            s->Bonn_survey_declination = dm_decl;
+            s->Bonn_survey_sequential = dm_seq;
+            if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 
         //  18- 28  A11   ---     RAhms     Right ascension in h m s, ICRS (J1991.25) (H3)
@@ -4549,6 +4608,25 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 2;
     line << std::string(l - line.str().size(), ' ');
 
+    // Durchmusterung (BD/CD/CP) designation, kept so re-derived caches and later-loaded catalogs
+    // (SB9, CCDM) can still cross-reference stars that carry no HD/HIP -- see bonn_survey_key().
+    if (s->Bonn_survey[0]) line << s->Bonn_survey[0] << s->Bonn_survey[1];
+    l += 3;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->Bonn_survey[0])
+    {
+        line << ((s->Bonn_survey_declination >= 0) ? "+" : "-");
+        if (abs(s->Bonn_survey_declination) < 10) line << "0";
+        line << abs(s->Bonn_survey_declination) << std::flush;
+    }
+    l += 5;
+    line << std::string(l - line.str().size(), ' ');
+
+    if (s->Bonn_survey[0]) line << s->Bonn_survey_sequential;
+    l += 7;
+    line << std::string(l - line.str().size(), ' ');
+
     // std::cout << line << std::endl;
     line << std::string("\n");
     fputs(line.str().c_str(), fp);
@@ -4820,6 +4898,26 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 433, 433, field);
         if (field[0] == 'E') s->is_eclipsing_binary = true;
+
+        // 435-448  Durchmusterung (BD/CD/CP), written by write_condensed_star_cat_line(). Older
+        // caches predating this column simply read back empty here, same as any other blank field.
+        read_field_onebased(buffer, 435, 436, field);
+        str = trim(field);
+        if (str.size() >= 2)
+        {
+            s->Bonn_survey[0] = str[0];
+            s->Bonn_survey[1] = str[1];
+
+            read_field_onebased(buffer, 438, 441, field);
+            s->Bonn_survey_sign = field[0];
+            s->Bonn_survey_declination = atoi(field);
+
+            read_field_onebased(buffer, 443, 448, field);
+            s->Bonn_survey_sequential = atoi(field);
+
+            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
+            if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
+        }
 
         append_cel(s);
         num_read++;
