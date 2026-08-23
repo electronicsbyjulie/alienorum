@@ -594,7 +594,17 @@ void set_center_objects()
                 {
                     if (comp)
                     {
-                        if (!s->has_custom_name) strcpy(s->name, (lop_component(s->name) + std::string(" ") + std::string(1, comp)).c_str());
+                        // Only force "<primary base> <letter>" when this star's current name is
+                        // empty or already just the primary's base name -- never when it already
+                        // reads differently (e.g. Zeta 1/2 Reticuli, each with its own Bayer name).
+                        Star *primary = s->multisys->get_member('A');
+                        if (!s->has_custom_name && primary && primary != s)
+                        {
+                            std::string base = lop_component(primary->name);
+                            std::string current = trim(lop_component(s->name));
+                            if (!current.size() || current == base)
+                                strcpy(s->name, (base + std::string(" ") + std::string(1, comp)).c_str());
+                        }
                     }
                     else
                     {

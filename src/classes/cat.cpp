@@ -2166,7 +2166,12 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             s = swap;
 
             if (!A->has_custom_name) strcpy(A->name, lop_component(A->name).c_str());
-            if (!s->has_custom_name) strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
+            if (!s->has_custom_name)
+            {
+                s->assign_identifier_name();
+                if (!trim(s->name).size() || !strcmp(trim(s->name).c_str(), A->name))
+                    strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
+            }
         }
 
         if (buffer[12] != s->name[strlen(s->name)-1]) continue;
@@ -3781,8 +3786,15 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
                     Star* companion;
                     for (char c = 'B'; (companion = s->multisys->get_member(c)); c++)
                     {
-                        if (!companion->has_custom_name)
-                            strcpy(companion->name, (lop_component(s->name) + std::string(" ") + std::string(1, c)).c_str() );
+                        if (companion->has_custom_name) continue;
+
+                        // Only borrow "<primary> <letter>" when the companion has no identity of
+                        // its own, or it's identical to the primary's -- never when it already
+                        // reads differently.
+                        companion->assign_identifier_name();
+                        std::string base = lop_component(s->name);
+                        if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
+                            strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
                     }
                 }
 
@@ -4640,6 +4652,19 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
+    // has_custom_name: not derivable from anything else in this format, and unlike every other
+    // field here it's read back into a struct member that starts false, so simply never touching
+    // it doesn't leave it correct by omission -- every reload from this cache silently forgot
+    // which stars had a settled name (a proper name from starname.dat, a hardcoded exception like
+    // 55 Cnc B) versus one still open to Bayer/Flamsteed re-derivation. Concretely: any named
+    // companion star that read_star_orbits_dat() also processes (make_companion_of() gates on this
+    // exact flag) got silently renamed back to its Bayer designation on the *second* load from a
+    // cache that had it right the first time -- e.g. Alpha Centauri B, "Toliman" -> "Alpha 2
+    // Centauri", only after closing and reopening once the correct name was already baked in.
+    if (s->has_custom_name) line << "Y";
+    l += 2;
+    line << std::string(l - line.str().size(), ' ');
+
     // std::cout << line << std::endl;
     line << std::string("\n");
     fputs(line.str().c_str(), fp);
@@ -4930,6 +4955,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
+
+        // 450  has_custom_name -- without this, every reload from this cache forgot which stars had
+        // a settled name (starname.dat, or a hardcoded exception), leaving them open to being
+        // silently renamed back to a Bayer/Flamsteed designation by whichever later pass runs
+        // unconditionally (make_companion_of() via read_star_orbits_dat(), in particular).
+        read_field_onebased(buffer, 450, 450, field);
+        if (field[0] == 'Y') s->has_custom_name = true;
 
         append_cel(s);
         num_read++;

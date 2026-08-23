@@ -227,8 +227,15 @@ void Star::rename_from_Bayer_Flamsteed()
         Star* companion;
         for (char c = 'B'; (companion = multisys->get_member(c)); c++)
         {
-            if (!companion->has_custom_name)
-                strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
+            if (companion->has_custom_name) continue;
+
+            // Only borrow "<primary base> <letter>" when the companion has no identity of its own,
+            // or it's identical to the primary's -- never when it already reads differently (Zeta
+            // 1/2 Reticuli, each with its own Bayer name).
+            companion->assign_identifier_name();
+            std::string base = lop_component(name);
+            if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
+                strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
 
@@ -722,17 +729,39 @@ double Star::estimate_radius(bool sms)
     return volumetric_mean_radius = solar_radii * solar_radius;
 }
 
+// Priority: Bayer > Flamsteed > Gould > GJ (Gliese) > HD > HIP > SAO > Durchmusterung > SB9.
+void Star::assign_identifier_name()
+{
+    if ((BayerGrkno >= 0 || FlamsteedNo > 0 || GouldNo > 0) && strlen(constellation))
+        rename_from_Bayer_Flamsteed();
+
+    if (!trim(name).size() && strlen(Gliese)) strcpy(name, Gliese);
+    else if (!trim(name).size() && HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
+    else if (!trim(name).size() && HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
+    else if (!trim(name).size() && SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
+    else if (!trim(name).size() && Bonn_survey_sequential)
+    {
+        name[0] = Bonn_survey[0];
+        name[1] = Bonn_survey[1];
+        name[2] = Bonn_survey_sign;
+        strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
+            + std::to_string(Bonn_survey_sequential) ).c_str() );
+    }
+    else if (!trim(name).size() && SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
+}
+
 void Star::gotta_be_named_something()
 {
     if (!trim(name).size())
     {
-        // Priority: Bayer > Flamsteed > Gould > GJ (Gliese) > HD > HIP > SAO > Durchmusterung > SB9.
-        // Checked by outcome rather than by which branch's condition happened to be true first: a
-        // Bayer/Flamsteed/Gould star whose constellation isn't known yet (or whose rename call turns
-        // out to be a no-op for some other reason) must still fall through to the identifiers below,
-        // not end up with no name at all.
         if (multisys && multisys->get_member('A') != this) return;              // update this name later, based on the main star's name
-        else if (orbit && orbit->center && strlen(orbit->center->name))
+
+        // Try this star's own identifiers before ever borrowing "center's name + letter": a
+        // companion with its own Bayer/Flamsteed/Gould/GJ/HD/HIP identity (Zeta 2 Reticuli, an
+        // adjacent HD number) keeps it instead of becoming "<primary> B".
+        assign_identifier_name();
+
+        if (!trim(name).size() && orbit && orbit->center && strlen(orbit->center->name))
         {
             int n = strlen(orbit->center->name);
             if (orbit->center->name[n-1] >= 'A' && orbit->center->name[n-2] == ' ')
@@ -744,38 +773,33 @@ void Star::gotta_be_named_something()
             {
                 strcpy(name, ( std::string(orbit->center->name) + std::string(" B") ).c_str());
             }
-            return;
         }
 
-        if (!trim(name).size() && (BayerGrkno >= 0 || FlamsteedNo > 0 || GouldNo > 0) && strlen(constellation))
-            rename_from_Bayer_Flamsteed();
-
-        if (!trim(name).size() && strlen(Gliese)) strcpy(name, Gliese);
-        else if (!trim(name).size() && HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
-        else if (!trim(name).size() && HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
-        else if (!trim(name).size() && SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
-        else if (!trim(name).size() && Bonn_survey_sequential)
-        {
-            name[0] = Bonn_survey[0];
-            name[1] = Bonn_survey[1];
-            name[2] = Bonn_survey_sign;
-            strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
-                + std::to_string(Bonn_survey_sequential) ).c_str() );
-        }
-        else if (!trim(name).size() && SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
-        else if (!trim(name).size()) std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
+        if (!trim(name).size()) std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
             << " distance " << (distance/light_year) << std::endl;
     }
 
-    if (multisys)
+    // Only the primary hands its base name down to companions. Without this guard, calling
+    // gotta_be_named_something() directly on a non-A member (BSC does, for every row it loads,
+    // including Gam1Vel/HD68243 itself) walks this same loop, finds itself sitting at its own
+    // component letter, and -- now that its own name is already computed -- "matches the primary's
+    // base name" trivially against itself, self-appending the letter (e.g. "Gamma 1 Velorum B").
+    if (multisys && multisys->get_member('A') == this)
     {
         Star* companion;
         for (char c = 'B'; (companion = multisys->get_member(c)); c++)
         {
             if(companion == nullptr)
                 break;
-            if (!companion->has_custom_name)
-                strcpy(companion->name, (lop_component(name) + std::string(" ") + std::string(1, c)).c_str() );
+            if (companion->has_custom_name) continue;
+
+            // Only fall back to "<primary base> <letter>" when the companion has no name of its
+            // own, or its own name is identical to the primary's (54 Psc A/B, sharing one
+            // Flamsteed number) -- never when it already reads differently (Zeta 1/2 Reticuli).
+            companion->assign_identifier_name();
+            std::string base = lop_component(name);
+            if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
+                strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
         }
     }
 
@@ -895,7 +919,15 @@ void Star::make_companion_of(Star *A, char comp)
     parallax = A->parallax;
     distance = A->distance;
     location = A->location;
-    if (!has_custom_name) strcpy(name, (std::string(lop_component(A->name)) + std::string(" ") + std::string(1, comp)).c_str());
+    if (!has_custom_name)
+    {
+        // Only borrow "<primary base> <letter>" when this star has no identity of its own, or that
+        // identity is identical to the primary's -- never when it already reads differently.
+        assign_identifier_name();
+        std::string base = lop_component(A->name);
+        if (!trim(name).size() || !strcmp(trim(name).c_str(), base.c_str()))
+            strcpy(name, (base + std::string(" ") + std::string(1, comp)).c_str());
+    }
     CCDM = A->CCDM;
     proper_motion_RA = A->proper_motion_RA;
     proper_motion_decl = A->proper_motion_decl;

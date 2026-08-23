@@ -112,6 +112,7 @@ namespace alienorum
         void limb_darkening_coefficients(double &a, double &b);
 
         void gotta_be_named_something();
+        void assign_identifier_name();       // Bayer > Flamsteed > Gould > GJ > HD > HIP > SAO > Durchmusterung > SB9; no-op if already named.
         json to_json();
         bool from_json(json j);
         void make_companion_of(Star* primary, char comp = 'B');
