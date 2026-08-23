@@ -306,6 +306,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         if (!strcmp(s->Gliese, "GJ 324 B"))
         {
             strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
+            strcpy(s->name, "55 Cnc B");
             s->has_custom_name = true;
         }
         if (!strcmp(s->Gliese, "GJ 22 AC"))
@@ -589,7 +590,6 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     double deg, mnt, sec;
     bool HDfound;
     double f;
-    char comp = 0;
     // StarMulti *current_multi = nullptr;
     double current_multi_ra = -1e9, current_multi_decl = -1e9;
     #define ra_dec_multi_limit (fiftyseventh / 60)
@@ -623,10 +623,6 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     {
         bool is_new = false;
 
-        //   50- 51  A2     ---     ADScomp  ADS number components
-        comp = buffer[49];          // Correct for one-based field description.
-        if (comp < 'A') comp = 0;
-
         //   1-  4  I4     ---     HR       [1/9110]+ Harvard Revised Number = Bright Star Number
         read_field_onebased(buffer, 1, 4, field);
         HR = atoi(field);
@@ -655,7 +651,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         HDfound = false;
         if (HD)
         {
-            if (comp <= 'A' && hdcache[HD])
+            if (hdcache[HD])
             {
                 s = hdcache[HD];
                 HDfound = true;
@@ -877,10 +873,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         #endif
 
-        if (HD)
-        {
-            if (comp <= 'A') hdcache[HD] = s;
-        }
+        // Register every component's own HD, not just the 'A'/primary one: each ADS component here
+        // carries its own distinct HD number (e.g. Gam1Vel/HD68243 vs Gam2Vel/HD68273, comp 'B'/'A'
+        // respectively), so gating this on comp<='A' left 'B'/'C' components unfindable by HD --
+        // Hipparcos would then create a second, Bayer-less duplicate for that HD, and Uranometria
+        // would attach that component's Gould number to the duplicate instead of to the real star.
+        if (HD) hdcache[HD] = s;
 
         if (is_new)
         {
@@ -3770,6 +3768,10 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             Star* s = (Star*)cels[i];
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
+                // A star can already carry a hardcoded custom name (e.g. 55 Cnc B) set upstream of
+                // this pass; that outranks starname.dat's own entries, so leave it alone.
+                if (s->has_custom_name) break;
+
                 strcpy(s->name, trim(field).c_str());
                 s->has_custom_name = true;
                 num_read++;

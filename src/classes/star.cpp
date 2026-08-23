@@ -148,7 +148,7 @@ void Star::rename_from_Bayer_Flamsteed()
     if (!strlen(constellation)) return;
     if (has_custom_name) return;
     if (orbit && orbit->center && orbit->center->typeclass() == class_star
-        && !BayerGrkno && !FlamsteedNo && GouldNo < 1
+        && BayerGrkno < 0 && !FlamsteedNo && GouldNo < 1
         )
     {
         std::string buildname = lop_component(orbit->center->name);
@@ -182,7 +182,10 @@ void Star::rename_from_Bayer_Flamsteed()
         return;
     }
 
-    if (BayerGrkno > 23) BayerGrkno = -1;
+    // Values >= 100 aren't a raw Greek-letter index: grkno_from_abbrev() encodes a numbered variant
+    // (e.g. Gam1Vel, Gam2Vel) as 100 + 10*index + component_digit, decoded just below. Only an index
+    // outside the plain 0-23 range *and* outside that encoding is actually invalid.
+    if (BayerGrkno > 23 && BayerGrkno < 100) BayerGrkno = -1;
     if (BayerGrkno >= 0)
     {
         int BayerGrkIdx = BayerGrkno;
@@ -711,6 +714,11 @@ void Star::gotta_be_named_something()
 {
     if (!trim(name).size())
     {
+        // Priority: Bayer > Flamsteed > Gould > GJ (Gliese) > HD > HIP > SAO > Durchmusterung > SB9.
+        // Checked by outcome rather than by which branch's condition happened to be true first: a
+        // Bayer/Flamsteed/Gould star whose constellation isn't known yet (or whose rename call turns
+        // out to be a no-op for some other reason) must still fall through to the identifiers below,
+        // not end up with no name at all.
         if (multisys && multisys->get_member('A') != this) return;              // update this name later, based on the main star's name
         else if (orbit && orbit->center && strlen(orbit->center->name))
         {
@@ -724,13 +732,17 @@ void Star::gotta_be_named_something()
             {
                 strcpy(name, ( std::string(orbit->center->name) + std::string(" B") ).c_str());
             }
+            return;
         }
-        else if (BayerGrkno && strlen(constellation)) rename_from_Bayer_Flamsteed();
-        else if (FlamsteedNo && strlen(constellation)) rename_from_Bayer_Flamsteed();
-        else if (HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
-        else if (HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
-        else if (SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
-        else if (Bonn_survey_sequential)
+
+        if (!trim(name).size() && (BayerGrkno >= 0 || FlamsteedNo > 0 || GouldNo > 0) && strlen(constellation))
+            rename_from_Bayer_Flamsteed();
+
+        if (!trim(name).size() && strlen(Gliese)) strcpy(name, Gliese);
+        else if (!trim(name).size() && HD) strcpy(name, (std::string("HD")+std::to_string(HD)).c_str() );
+        else if (!trim(name).size() && HIP) strcpy(name, (std::string("HIP")+std::to_string(HIP)).c_str() );
+        else if (!trim(name).size() && SAO) strcpy(name, (std::string("SAO")+std::to_string(SAO)).c_str() );
+        else if (!trim(name).size() && Bonn_survey_sequential)
         {
             name[0] = Bonn_survey[0];
             name[1] = Bonn_survey[1];
@@ -738,8 +750,8 @@ void Star::gotta_be_named_something()
             strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
                 + std::to_string(Bonn_survey_sequential) ).c_str() );
         }
-        else if (SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
-        else std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
+        else if (!trim(name).size() && SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );
+        else if (!trim(name).size()) std::cerr << "Failed to name star @ RA: " << RA_as_hms(0) << " decl " << Decl_as_degms() << " magnitude " << apparent_magnitude
             << " distance " << (distance/light_year) << std::endl;
     }
 
