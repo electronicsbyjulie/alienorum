@@ -281,14 +281,14 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     }
     ImGui::Text("%s", velocstr.c_str());
 
-    int dstmin = 0;
+    int dstadd = 0;
     if (viewer_dst)
     {
         time_t std_local = simnow + (time_t)viewer_tz;
         struct tm std_local_tm = *std::gmtime(&std_local);
-        if (in_us_dst_window(std_local_tm)) dstmin = 3600;
+        if (in_us_dst_window(std_local_tm)) dstadd = 3600;
     }
-    double eff_tz = viewer_tz + dstmin;
+    double eff_tz = viewer_tz + dstadd;
     time_t tmpnow = simnow + eff_tz;
 
     if (fabs(eff_tz) > 0.5 || viewer_dst)

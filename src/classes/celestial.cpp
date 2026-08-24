@@ -2983,6 +2983,7 @@ alienorum::Locale::Locale(json fj)
         int minutes = atoi(&colon[1]);
 
         tz = (60 * minutes + 3600 * hours) * sign;
+        dst = (strchr(tzcstr, 'D') != nullptr);
     }
     catch (...)
     {
