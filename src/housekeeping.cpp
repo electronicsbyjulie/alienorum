@@ -437,7 +437,6 @@ void compute_object_draw_coordinates()
 
             rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-            auto _tV0 = std::chrono::steady_clock::now();
             cel_obj_class icls = cels[i]->typeclass();
             if (icls == class_planet || icls == class_moon)
             {
@@ -448,7 +447,6 @@ void compute_object_draw_coordinates()
             }
             else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
             else vmag_cache[i] = cels[i]->viewer_magnitude(here);
-            _p_vmag += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _tV0).count();
 
             double brght;
 
@@ -457,10 +455,7 @@ void compute_object_draw_coordinates()
                 /* Point axis = compute_normal(rel, yaxis, center);
                 rel = rotate3D(rel, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(cels[i]->Decl_as_radians(here))); */
 
-                { auto _tR0 = std::chrono::steady_clock::now();
-                  rel = refract_true_point(rel);
-                  _p_refract += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _tR0).count();
-                  _n_refract++; }
+                rel = refract_true_point(rel);
 
                 if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
                 {
@@ -544,9 +539,7 @@ void compute_object_draw_coordinates()
             // refreshed this.
             angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
 
-            auto _tC0 = std::chrono::steady_clock::now();
             Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
-            _p_cart += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _tC0).count();
             float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
             cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
             cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = dy;
@@ -562,22 +555,6 @@ void compute_object_draw_coordinates()
             by_cache[i] = by;
                     }
     }
-
-// ---- TEMPORARY PROFILING SCAFFOLD ----
-    _p_loop2 += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _tB).count();
-    if (++_p_frames >= 30)
-    {
-        std::cerr << "=== compute_object_draw_coordinates breakdown, avg ms/frame ===" << std::endl
-            << "  loop1 (compute_object_location x" << (_n_loop1/_p_frames) << "): " << (_p_loop1/_p_frames) << std::endl
-            << "  loop2 total (x" << (_n_loop2/_p_frames) << "): " << (_p_loop2/_p_frames) << std::endl
-            << "    of which vmag:    " << (_p_vmag/_p_frames) << std::endl
-            << "    of which refract (x" << (_n_refract/_p_frames) << "): " << (_p_refract/_p_frames) << std::endl
-            << "    of which Cartesian2D: " << (_p_cart/_p_frames) << std::endl;
-        _p_loop1 = _p_loop2 = _p_refract = _p_vmag = _p_cart = 0;
-        _n_loop1 = _n_loop2 = _n_refract = 0;
-        _p_frames = 0;
-    }
-// ---- END ----
 
     redo_proper_motions = false;
 }
