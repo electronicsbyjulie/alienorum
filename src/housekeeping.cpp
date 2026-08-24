@@ -2,8 +2,6 @@
 #include "housekeeping.h"
 #include "inputs.h"
 #include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
-#include <chrono>           // TEMPORARY: profiling scaffold
-#include <iostream>         // TEMPORARY: profiling scaffold
 
 using namespace alienorum;
 
@@ -169,7 +167,20 @@ bool compute_object_location(CelestialObject* cel)
     double viewer_distance = cel->tmprel.magnitude();
     double light_travel_time = viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
-    mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
+
+    // Nothing about this depends on cel, but the dialogs call this function on a single object
+    // outside any frame loop and would notice it going missing -- so memoize rather than hoist it
+    // into the caller. A pow() and a log() apiece, over every object in the catalog, every frame.
+    {
+        static double mla_zoom = -1e300, mla_limit = -1e300, mla_value = 0;
+        if (zoom != mla_zoom || normal_best_mag_limit != mla_limit)
+        {
+            mla_value = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
+            mla_zoom = zoom;
+            mla_limit = normal_best_mag_limit;
+        }
+        mag_limit_adjusted = mla_value;
+    }
     switch (cel->typeclass())
     {
         case class_star:
@@ -333,17 +344,9 @@ void compute_object_draw_coordinates()
         }
     }
 
-// ---- TEMPORARY PROFILING SCAFFOLD ----
-    static double _p_loop1 = 0, _p_loop2 = 0, _p_refract = 0, _p_vmag = 0, _p_cart = 0;
-    static long _n_loop1 = 0, _n_loop2 = 0, _n_refract = 0;
-    static int _p_frames = 0;
-    auto _tA = std::chrono::steady_clock::now();
-// ---- END ----
-
     for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        _n_loop1++;
         if (cels[i]->deleted) continue;
         if (!compute_object_location(cels[i])) continue;
 
@@ -377,16 +380,12 @@ void compute_object_draw_coordinates()
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
-    auto _tB = std::chrono::steady_clock::now();
-    _p_loop1 += std::chrono::duration<double, std::milli>(_tB - _tA).count();
-
     if (1) // viewchanged || redo_proper_motions)
     {
         luminous_flux = cels[1] ? 0 : 1e10;
         inside_galaxy_idx = -1;
         for (i=0; cels[i] && i<MAX_CELOBJS; i++)
         {
-            _n_loop2++;
 
             vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
             if (cels[i]->deleted) continue;
