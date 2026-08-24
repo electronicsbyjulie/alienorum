@@ -84,6 +84,25 @@ namespace alienorum
     protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;
+
+        // Everything atmospheric_refraction() computes that does not depend on the altitude it is
+        // asked about -- which is all of it bar the final curve evaluation. Reaching those values
+        // costs an estimate_surface_temperature() (equilibrium temperature, then a tau over
+        // thirteen greenhouse species) twice over, once directly and once inside
+        // atmospheric_horizon_lift(), and in horizon mode the function is called once per visible
+        // object per frame. Keyed on the two things they actually vary with: the epoch, which the
+        // equilibrium temperature follows through the orbit, and the surface pressure, which the
+        // object editor can change under us at any time.
+        struct RefractionConstants
+        {
+            double pressure_ratio, tempfactor, min_calc_alt, k;
+            double extra_at_horizon_deg, k_extra, shape90, ceiling_deg;
+            double temperature_k;       // so the member assignment stays a per-call side effect
+            double key_jd = -1e300, key_pressure = -1e300;
+            bool valid = false;
+        } refr_cache;
+
+        const RefractionConstants& refraction_constants();
     };
 
     struct AstorbRow

@@ -610,12 +610,25 @@ int main (int argc, char** argv)
                     toplbl.c_str());
             }
 
-            set_viewer_location_and_plane();
-            compute_object_draw_coordinates();
+// ---- TEMPORARY PROFILING SCAFFOLD (remove once the horizon-mode hot spot is found) ----
+#define _PROF(_name, _call) { \
+    auto _t0 = std::chrono::steady_clock::now(); \
+    _call; \
+    auto _t1 = std::chrono::steady_clock::now(); \
+    _prof_accum[_name] += std::chrono::duration<double, std::milli>(_t1 - _t0).count(); }
+
+            static double _prof_accum[10] = {0};
+            static int _prof_frames = 0;
+            static const char *_prof_names[10] = { "set_viewer_loc", "compute_coords", "find_horizon",
+                "sky_gradient", "galaxy_band", "ra_dec_lines", "cons_lines", "draw_objects",
+                "cloudy_sky", "draw_horizon" };
+
+            _PROF(0, set_viewer_location_and_plane());
+            _PROF(1, compute_object_draw_coordinates());
             if (view_mode == vm_horizon)
             {
-                find_horizon();
-                draw_sky_gradient();
+                _PROF(2, find_horizon());
+                _PROF(3, draw_sky_gradient());
             }
             else
             {
@@ -628,13 +641,26 @@ int main (int argc, char** argv)
             {
                 is_a_locale_under_cursor = nullptr;
                 selected_locale = nullptr;
-                draw_galaxy_band();                 // behind everything: it is the backdrop
-                if (show_grid) draw_ra_dec_lines();
-                if (show_consln) draw_cons_lines();
-                draw_objects();
-                draw_cloudy_sky();
-                draw_horizon();
+                _PROF(4, draw_galaxy_band());       // behind everything: it is the backdrop
+                if (show_grid) _PROF(5, draw_ra_dec_lines());
+                if (show_consln) _PROF(6, draw_cons_lines());
+                _PROF(7, draw_objects());
+                _PROF(8, draw_cloudy_sky());
+                _PROF(9, draw_horizon());
             }
+
+            if (++_prof_frames >= 30)
+            {
+                double _tot = 0;
+                for (int _p = 0; _p < 10; _p++) _tot += _prof_accum[_p];
+                std::cerr << "--- avg ms/frame over " << _prof_frames << " frames ---" << std::endl;
+                for (int _p = 0; _p < 10; _p++)
+                    std::cerr << "  " << _prof_names[_p] << ": " << (_prof_accum[_p]/_prof_frames) << std::endl;
+                std::cerr << "  TOTAL instrumented: " << (_tot/_prof_frames) << std::endl;
+                for (int _p = 0; _p < 10; _p++) _prof_accum[_p] = 0;
+                _prof_frames = 0;
+            }
+// ---- END TEMPORARY PROFILING SCAFFOLD ----
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();

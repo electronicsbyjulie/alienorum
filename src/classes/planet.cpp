@@ -572,14 +572,17 @@ double Planet::temperature_at_pressure(double pressure_pa)
     return t_eq * std::pow(greenhouse_factor, 0.25);
 }
 
-// Convert true altitude to observed.
-double alienorum::Planet::atmospheric_refraction(double alt_rad)
+// The altitude-independent half of atmospheric_refraction(), computed once per epoch per planet
+// rather than once per object per frame. See RefractionConstants in planet.h for why.
+const alienorum::Planet::RefractionConstants& alienorum::Planet::refraction_constants()
 {
-    temperature = estimate_surface_temperature();       // Kelvins
-    double P_hpa = get_surface_pressure() * 0.01;       // Pascals to hPa (millibars)
-    double T_c = temperature - 273.15;
+    double pressure_now = get_surface_pressure();
+    if (refr_cache.valid && refr_cache.key_jd == JDnow && refr_cache.key_pressure == pressure_now)
+        return refr_cache;
 
-    double h_true_deg = alt_rad * fiftyseven;
+    temperature = estimate_surface_temperature();       // Kelvins
+    double P_hpa = pressure_now * 0.01;                 // Pascals to hPa (millibars)
+    double T_c = temperature - 273.15;
 
     // 1. Calculate pressure modifier first
     double pressure_ratio = P_hpa / 1013.25;
@@ -647,8 +650,6 @@ double alienorum::Planet::atmospheric_refraction(double alt_rad)
         return saemundsson_deg(calc_h_deg);
     };
 
-    double R_deg = base_refraction_deg(h_true_deg);
-
     // 4. Horizon-bowl consistency (see find_horizon() in visuals.cpp, "Horizon bowl" -- it draws
     // the ground/sky boundary lifted by atmospheric_horizon_lift() on dense-atmosphere worlds).
     // Star refraction and that ground lift used to be computed by two unrelated formulas that
@@ -674,9 +675,10 @@ double alienorum::Planet::atmospheric_refraction(double alt_rad)
     // both endpoints are pinned, which is what keeps the two ends of the sky from folding over).
     double horizon_lift_deg = atmospheric_horizon_lift() * fiftyseven;
     double extra_at_horizon_deg = fmax(0.0, horizon_lift_deg - base_refraction_deg(0.0));
+    double k_extra = 0, shape90 = 0;
     if (extra_at_horizon_deg > 0.0)
     {
-        double k_extra = fmax(0.5, extra_at_horizon_deg * 1.5);
+        k_extra = fmax(0.5, extra_at_horizon_deg * 1.5);
         auto shape = [&](double h_deg) -> double
         {
             return 2.0 / (1.0 + std::exp(fmax(0.0, h_deg) / k_extra));
@@ -699,16 +701,64 @@ double alienorum::Planet::atmospheric_refraction(double alt_rad)
         // Verified across Earth/Titan/Venus/300 atm/1000 atm: apparent altitude stays strictly
         // increasing, h=0 lands on the rim and h=90 on the zenith to the last digit, worst-case
         // slope 0.21 (Titan, and set by the base curve, not this term).
-        double shape90 = shape(90.0);
-        double decay = fmax(0.0, (shape(h_true_deg) - shape90) / (1.0 - shape90));
-        R_deg += extra_at_horizon_deg * decay;
+        shape90 = shape(90.0);
     }
 
+    refr_cache.pressure_ratio = pressure_ratio;
+    refr_cache.tempfactor = tempfactor;
+    refr_cache.min_calc_alt = min_calc_alt;
+    refr_cache.k = k;
+    refr_cache.extra_at_horizon_deg = extra_at_horizon_deg;
+    refr_cache.k_extra = k_extra;
+    refr_cache.shape90 = shape90;
     // Final safety clamp -- never exceed the larger of the old flat ceiling or what the bowl
     // itself requires.
-    double ceiling_deg = fmax(5.0, horizon_lift_deg);
+    refr_cache.ceiling_deg = fmax(5.0, horizon_lift_deg);
+    refr_cache.temperature_k = temperature;
+    refr_cache.key_jd = JDnow;
+    refr_cache.key_pressure = pressure_now;
+    refr_cache.valid = true;
+    return refr_cache;
+}
+
+// Convert true altitude to observed. Everything here bar the curve evaluation itself is the same
+// for every object in the sky, and lives in refraction_constants() above.
+double alienorum::Planet::atmospheric_refraction(double alt_rad)
+{
+    const RefractionConstants &c = refraction_constants();
+
+    temperature = c.temperature_k;
+    double h_true_deg = alt_rad * fiftyseven;
+
+    // Saemundsson's formula, then steps 2 and 3 together: clamp the altitude, then run it. Same
+    // curve refraction_constants() evaluated at the true horizon to size the bowl term below.
+    double delta = h_true_deg - c.min_calc_alt;
+    double calc_h_deg;
+    if (delta > 40.0 * c.k) calc_h_deg = h_true_deg;
+    else calc_h_deg = c.min_calc_alt + c.k * std::log1p(std::exp(delta / c.k));
+    if (calc_h_deg < c.min_calc_alt) calc_h_deg = c.min_calc_alt;
+
+    // Written exactly as the saemundsson_deg() lambda in refraction_constants() still writes it --
+    // the reciprocal taken first and then multiplied, not folded into a single division. The two
+    // round differently in the last bit, and the horizon term below is sized by that lambda's own
+    // value at h=0, so the two halves have to agree to the bit or the curve steps at the horizon.
+    double R_deg = 0.0;
+    double arg_deg = calc_h_deg + 10.3 / (calc_h_deg + 5.11);
+    if (arg_deg < 90.0)
+    {
+        double cot_val = 1.0 / std::tan(arg_deg * fiftyseventh);
+        R_deg = fmax(0.0, 1.02 * cot_val * c.pressure_ratio * c.tempfactor / 60.0);
+    }
+
+    if (c.extra_at_horizon_deg > 0.0)
+    {
+        double shape_h = 2.0 / (1.0 + std::exp(fmax(0.0, h_true_deg) / c.k_extra));
+        double decay = fmax(0.0, (shape_h - c.shape90) / (1.0 - c.shape90));
+        R_deg += c.extra_at_horizon_deg * decay;
+    }
+
     if (R_deg < 0.0) R_deg = 0.0;
-    if (R_deg > ceiling_deg) R_deg = ceiling_deg;
+    if (R_deg > c.ceiling_deg) R_deg = c.ceiling_deg;
 
     return R_deg * fiftyseventh;  // Return just the refractive shift in radians
 }
