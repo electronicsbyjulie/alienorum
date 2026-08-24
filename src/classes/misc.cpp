@@ -57,7 +57,7 @@ std::string objname, viewer_locale;
 bool is_mouse_over_window;
 int objinfwnd_hei = 0;
 int timeout_ms = 5;
-bool draggable, dragging, dragged, editing, viewchanged, randomize_txgen=true, updating_sats=false;
+bool draggable, dragging, dragged, editing, viewchanged, randomize_txgen=true, updating_sats=false, viewer_dst=false, viewer_home_dst;
 bool generating_fic_texture = false;
 int lmx, lmy, whereami=0, iamhome=0, took_off_from=0, tookoff_countdown=0;
 double velocmag;

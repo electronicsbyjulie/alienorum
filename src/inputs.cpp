@@ -418,7 +418,8 @@ void process_key_cmd_char(char c)
         {
             viewer_lat = selected_locale->lat * fiftyseventh;
             viewer_lon = selected_locale->lon * fiftyseventh;
-            viewer_tz = selected_locale->tz;
+            viewer_tz  = selected_locale->tz;
+            viewer_dst = selected_locale->dst;
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
         }
@@ -445,7 +446,8 @@ void process_key_cmd_char(char c)
         vplane_mode = vplane_local;
         viewer_lat = viewer_home_lat;
         viewer_lon = viewer_home_lon;
-        viewer_tz = viewer_home_tz;
+        viewer_tz  = viewer_home_tz;
+        viewer_dst = viewer_home_dst;
         viewer_locale = "";
         save_viewer_latlon = true;
         set_viewer_location_and_plane();

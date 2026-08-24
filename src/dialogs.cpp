@@ -22,6 +22,47 @@
 
 using namespace alienorum;
 
+// US DST rule: 02:00 local standard time on the second Sunday in March through
+// 02:00 local standard time on the first Sunday in November. Uses Sakamoto's
+// algorithm for day-of-week instead of timegm()/mktime(), since the latter are
+// not portably available (MinGW lacks timegm) and behave inconsistently across
+// platforms for pre-epoch or far-future years.
+static bool in_us_dst_window(const struct tm &std_local_time)
+{
+    int year = std_local_time.tm_year + 1900;
+    int mon = std_local_time.tm_mon + 1;
+    int mday = std_local_time.tm_mday;
+
+    auto day_of_week = [](int y, int m, int d) -> int
+    {
+        static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+        if (m < 3) y -= 1;
+        return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+    };
+
+    int mar_first_wday = day_of_week(year, 3, 1);
+    int mar_second_sunday = 1 + (7 - mar_first_wday) % 7 + 7;
+
+    int nov_first_wday = day_of_week(year, 11, 1);
+    int nov_first_sunday = 1 + (7 - nov_first_wday) % 7;
+
+    auto before = [](int m1, int d1, int h1, int mi1, int s1, int m2, int d2, int h2, int mi2, int s2) -> bool
+    {
+        if (m1 != m2) return m1 < m2;
+        if (d1 != d2) return d1 < d2;
+        if (h1 != h2) return h1 < h2;
+        if (mi1 != mi2) return mi1 < mi2;
+        return s1 < s2;
+    };
+
+    bool at_or_after_start = !before(mon, mday, std_local_time.tm_hour, std_local_time.tm_min, std_local_time.tm_sec,
+                                      3, mar_second_sunday, 2, 0, 0);
+    bool before_end = before(mon, mday, std_local_time.tm_hour, std_local_time.tm_min, std_local_time.tm_sec,
+                              11, nov_first_sunday, 2, 0, 0);
+
+    return at_or_after_start && before_end;
+}
+
 void draw_status_window(ImGuiIO& io)            // the S panel
 {
     if (!cels[1]) return;
@@ -240,8 +281,17 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     }
     ImGui::Text("%s", velocstr.c_str());
 
-    time_t tmpnow = simnow + viewer_tz;
-    if (fabs(viewer_tz) > 0.5)
+    int dstmin = 0;
+    if (viewer_dst)
+    {
+        time_t std_local = simnow + (time_t)viewer_tz;
+        struct tm std_local_tm = *std::gmtime(&std_local);
+        if (in_us_dst_window(std_local_tm)) dstmin = 3600;
+    }
+    double eff_tz = viewer_tz + dstmin;
+    time_t tmpnow = simnow + eff_tz;
+
+    if (fabs(eff_tz) > 0.5 || viewer_dst)
     {
         struct tm *local_time = std::gmtime(&tmpnow);
 
@@ -252,9 +302,9 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 
         int hr = local_time->tm_hour, mn = local_time->tm_min, sec = local_time->tm_sec;
 
-        int tzsgn = (viewer_tz < 0) ? -1 : 1;
-        int tzhr = floor(fabs(viewer_tz) / 3600);
-        int tzmin = floor(fmod(fabs(viewer_tz), 3600) / 60);
+        int tzsgn = (eff_tz < 0) ? -1 : 1;
+        int tzhr = floor(fabs(eff_tz) / 3600);
+        int tzmin = floor(fmod(fabs(eff_tz), 3600) / 60);
 
         std::string timedisp = std::string((hr<10)?"0":"") + std::to_string(hr)
             + std::string(":") + std::string((mn<10)?"0":"") + std::to_string(mn)
