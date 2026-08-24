@@ -3990,20 +3990,35 @@ void draw_horizon()
         double hzheight[hznodes];
         if (show_terrain && (cels[whereami]->type >= (rocky & 0xfffffff0)) && !is_water)
         {
-            // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
-            pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
-            double terrain_height = dispcx * 0.1 * zoom;
-            double terrain_min = 9999;
-            for (j = 0; j < hznodes; j++)
+            // The raw noise shape only depends on where the viewer is standing, not on which way
+            // they're looking or how far they've zoomed -- so it's cached and only regenerated
+            // when viewer_lat/viewer_lon/whereami actually change, instead of every frame.
+            static double cached_raw_noise[hznodes];
+            static double cached_raw_min = 0;
+            static double cached_lat = 1e293, cached_lon = 1e293;
+            static int cached_whereami = -2;
+
+            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon)
             {
-                double theta = _pi * 2 * j / hznodes;
-                double scale = 0.19;
-                double nx = scale * sin(theta), ny = scale * cos(theta);
-                hzheight[j] = terrain_height * fBm(nx, ny, 0, 29, 1.29, 0.8559) * 3;
-                if (hzheight[j] < terrain_min) terrain_min = hzheight[j];
+                // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
+                pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
+                cached_raw_min = 9999;
+                for (j = 0; j < hznodes; j++)
+                {
+                    double theta = _pi * 2 * j / hznodes;
+                    double scale = 0.19;
+                    double nx = scale * sin(theta), ny = scale * cos(theta);
+                    cached_raw_noise[j] = fBm(nx, ny, 0, 29, 1.29, 0.8559);             // The octaves must stay a high number like this or the terrain won't look realistic.
+                    if (cached_raw_noise[j] < cached_raw_min) cached_raw_min = cached_raw_noise[j];
+                }
+                cached_lat = viewer_lat;
+                cached_lon = viewer_lon;
+                cached_whereami = whereami;
             }
-            for (j = 0; j < hznodes; j++) hzheight[j] -= terrain_min;
-            for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j] - hzheight[j];
+
+            double terrain_height = dispcx * 0.1 * zoom;
+            for (j = 0; j < hznodes; j++)
+                hzheight[j] = hz_dy[j] - terrain_height * (cached_raw_noise[j] - cached_raw_min) * 3;
         }
         else for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j];
 
