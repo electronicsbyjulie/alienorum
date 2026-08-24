@@ -419,7 +419,7 @@ void process_key_cmd_char(char c)
             viewer_lat = selected_locale->lat * fiftyseventh;
             viewer_lon = selected_locale->lon * fiftyseventh;
             viewer_tz  = selected_locale->tz;
-            viewer_dst = selected_locale->dst;
+            viewer_dst = selected_locale->dst_rule;
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
         }

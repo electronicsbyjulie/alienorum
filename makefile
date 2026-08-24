@@ -14,12 +14,6 @@
 #
 
 CPP = g++
-# -MMD -MP: have the compiler emit a per-object .d file listing every header that object
-# actually includes (recursively), so editing any header rebuilds everything that transitively
-# depends on it -- no more hand-maintained header lists per rule silently drifting out of sync
-# with reality (-MP adds phantom targets for each header so a deleted/renamed header doesn't
-# break the build with a "no rule to make target" error). See the `-include` near the bottom
-# of this file, which is what actually pulls the generated .d files back in.
 CPPFLAGS = -std=c++17 -O2 -MMD -MP -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -Wall -Wformat
 
 # Uncomment for debug mode

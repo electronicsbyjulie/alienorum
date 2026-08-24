@@ -506,16 +506,9 @@ TEST(PlanetEstimationTest, RadiusFromMass)
     EXPECT_TRUE(std::isfinite(nonsense.volumetric_mean_radius));
 }
 
-// Given a star to stand in front of, rather than a temperature written straight into the field.
-// Setting temperature by hand used to work because equilibrium_temperature() started by returning
-// it -- which is exactly what must not happen: the surface temperature is stored back into that
-// same field, so returning it here would feed the calculation its own last answer and multiply it
-// by the greenhouse factor again on every pass, climbing until it is infinite. See the warning at
-// the top of Planet::equilibrium_temperature(). So the temperature has to be arrived at the way
-// the program arrives at it, from a real star at a real distance.
 class PlanetAtmosphereTest : public UniverseFixture {};
 
-TEST_F(PlanetAtmosphereTest, ScaleHeightRequiresAnAtmosphere)         // Claude is NOT PTSD-friendly.
+TEST_F(PlanetAtmosphereTest, ScaleHeightRequiresAnAtmosphere)
 {
     Star* sun = make_star("Sol");
 

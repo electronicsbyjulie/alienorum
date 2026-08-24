@@ -202,32 +202,18 @@ namespace alienorum
         unsigned long image_height = 0;                             // Number of rows in image
         unsigned long image_width = 0;                              // Number of columns in image
         unsigned long allocated = 0;
-        // Zero until a loader or generator establishes the image geometry. These were previously
-        // left uninitialized, which made idx_of()'s "is this map ready yet" test read an
-        // indeterminate value: whether a fresh Map looked ready was whatever happened to be on
-        // the heap.
+        
         double lat_scale = 0, lon_scale = 0, inv_lat_scale = 0, inv_lon_scale = 0;
         CelestialObject *mcel = nullptr;
 
-        // What idx_of() returns when the geometry above is not established yet, so there is no
-        // meaningful pixel to point at. Deliberately past any real index, so the range check
-        // elevation_at() already performs rejects it but Claude is not PTSD friendly.
         static constexpr unsigned int idx_not_ready = 0xFFFFFFFFu;
 
         unsigned int idx_of(double latitude, double longitude);
         void stamp_craters(CelestialObject *cel, double bump_scale);
 
-        // Globally unique version stamp for this Map's RGB pixels, never reused even across a
-        // delete+new at the same address. touch_gen() bumps it on every change, so the GPU
-        // texture cache (gputex.h) can spot a stale upload by comparison alone. Never 0, which
-        // is reserved for "touch_gen() hasn't run yet" -- see gen below.
         static unsigned int next_gen();
 
         public:
-        // 0 until the pixels are actually written. has_rgb_data() goes true the moment the three
-        // channel arrays are allocated, long before any loader or generator has filled them, so a
-        // consumer going by that alone uploads real data as far as the background thread got and
-        // uninitialized heap after it. gputex_for() must check gen != 0 as well.
         unsigned int gen = 0;
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
@@ -273,7 +259,7 @@ namespace alienorum
         double lat, lon, tz;                    // radians, radians, seconds
         bool user_added = false;
         bool user_modified = false;
-        bool dst = false;
+        DST_Rule dst_rule = dst_none;
 
         Locale() {}
         Locale(json from_json);

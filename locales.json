@@ -51,7 +51,7 @@
             "longitude": 243.56
         },
         {
-            "name": "Apārangi Planitia",
+            "name": "Ap\u0101rangi Planitia",
             "latitude": 6.7,
             "longitude": 289.38
         },
@@ -251,7 +251,7 @@
             "longitude": 93.2
         },
         {
-            "name": "Gjöa Rupes",
+            "name": "Gj\u00f6a Rupes",
             "latitude": -66.89,
             "longitude": 158.5
         },
@@ -331,7 +331,7 @@
             "longitude": 50.66
         },
         {
-            "name": "Santa María Rupes",
+            "name": "Santa Mar\u00eda Rupes",
             "latitude": 5.81,
             "longitude": 20.0
         },
@@ -491,7 +491,7 @@
             "longitude": 74.87
         },
         {
-            "name": "Nākahi Facula",
+            "name": "N\u0101kahi Facula",
             "latitude": -52.7,
             "longitude": 342.2
         },
@@ -1755,7 +1755,7 @@
             "name": "Amsterdam",
             "latitude": 52.35,
             "longitude": 4.917,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Abu Dhabi",
@@ -1773,7 +1773,7 @@
             "name": "Athens",
             "latitude": 37.983,
             "longitude": 23.733,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Baghdad",
@@ -1785,55 +1785,55 @@
             "name": "Beirut",
             "latitude": 33.872,
             "longitude": 35.51,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Belgrade",
             "latitude": 44.833,
             "longitude": 20.5,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Berlin",
             "latitude": 52.517,
             "longitude": 13.4,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Bern",
             "latitude": 46.917,
             "longitude": 7.467,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Bonn",
             "latitude": 50.733,
             "longitude": 7.1,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Brussels",
             "latitude": 50.833,
             "longitude": 4.333,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Bucharest",
             "latitude": 44.433,
             "longitude": 26.1,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Budapest",
             "latitude": 47.5,
             "longitude": 19.083,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Copenhagen",
             "latitude": 55.667,
             "longitude": 12.583,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Damascus",
@@ -1845,31 +1845,31 @@
             "name": "Dublin",
             "latitude": 53.333,
             "longitude": -6.25,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "Glasgow",
             "latitude": 55.862,
             "longitude": -4.245,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "Gweedore",
             "latitude": 55.052,
             "longitude": -8.233,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "Hague",
             "latitude": 52.083,
             "longitude": 4.3,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Helsinki",
             "latitude": 60.176,
             "longitude": 24.934,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Istanbul",
@@ -1881,25 +1881,25 @@
             "name": "Jerusalem",
             "latitude": 31.767,
             "longitude": 35.233,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Lisbon",
             "latitude": 38.717,
             "longitude": -9.133,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "London",
             "latitude": 51.517,
             "longitude": -0.105,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "Madrid",
             "latitude": 40.4,
             "longitude": -3.683,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Moscow",
@@ -1911,31 +1911,31 @@
             "name": "Oslo",
             "latitude": 59.917,
             "longitude": 10.75,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Paris",
             "latitude": 48.867,
             "longitude": 2.333,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Prague",
             "latitude": 50.083,
             "longitude": 14.467,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Rendlesham Forest",
             "latitude": 52.084,
             "longitude": 1.433,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "Royal Observatory, Greenwich",
             "latitude": 51.477,
             "longitude": 0,
-            "timezone": "UTC+00:00D"
+            "timezone": "UTC+00:00E"
         },
         {
             "name": "Riyadh",
@@ -1947,19 +1947,19 @@
             "name": "Rome",
             "latitude": 41.9,
             "longitude": 12.483,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Sofia",
             "latitude": 42.683,
             "longitude": 23.317,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Stockholm",
             "latitude": 59.333,
             "longitude": 18.05,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Tehran",
@@ -1971,25 +1971,25 @@
             "name": "Vienna",
             "latitude": 48.2,
             "longitude": 16.367,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Warsaw",
             "latitude": 52.25,
             "longitude": 21.0,
-            "timezone": "UTC+01:00D"
+            "timezone": "UTC+01:00E"
         },
         {
             "name": "Adelaide",
             "latitude": -34.933,
             "longitude": 138.6,
-            "timezone": "UTC+09:30D"
+            "timezone": "UTC+09:30A"
         },
         {
             "name": "Auckland",
             "latitude": -36.867,
             "longitude": 174.767,
-            "timezone": "UTC+12:00D"
+            "timezone": "UTC+12:00Z"
         },
         {
             "name": "Bangkok",
@@ -2013,7 +2013,7 @@
             "name": "Canberra",
             "latitude": -35.283,
             "longitude": 149.217,
-            "timezone": "UTC+10:00D"
+            "timezone": "UTC+10:00A"
         },
         {
             "name": "Guangzhou",
@@ -2031,7 +2031,7 @@
             "name": "Christchurch",
             "latitude": -43.533,
             "longitude": 172.633,
-            "timezone": "UTC+12:00D"
+            "timezone": "UTC+12:00Z"
         },
         {
             "name": "Hanoi",
@@ -2061,7 +2061,7 @@
             "name": "Melbourne",
             "latitude": -37.817,
             "longitude": 144.967,
-            "timezone": "UTC+10:00D"
+            "timezone": "UTC+10:00A"
         },
         {
             "name": "Mumbai",
@@ -2127,7 +2127,7 @@
             "name": "Sydney",
             "latitude": -33.883,
             "longitude": 151.217,
-            "timezone": "UTC+10:00D"
+            "timezone": "UTC+10:00A"
         },
         {
             "name": "Tokyo",
@@ -2139,7 +2139,7 @@
             "name": "Wellington",
             "latitude": -41.3,
             "longitude": 174.783,
-            "timezone": "UTC+12:00D"
+            "timezone": "UTC+12:00Z"
         },
         {
             "name": "Addis Ababa",
@@ -2157,7 +2157,7 @@
             "name": "Cairo",
             "latitude": 30.05,
             "longitude": 31.25,
-            "timezone": "UTC+02:00D"
+            "timezone": "UTC+02:00E"
         },
         {
             "name": "Cape Town",

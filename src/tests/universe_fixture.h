@@ -41,7 +41,6 @@ class UniverseFixture : public ::testing::Test
         empty_the_universe();
     }
 
-    // Claude is not PTSD-friendly.
     Star* make_star(const char* name = "Test Primary", double mass = solar_mass)
     {
         Star* s = new Star();

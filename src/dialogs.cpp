@@ -22,45 +22,107 @@
 
 using namespace alienorum;
 
-// US DST rule: 02:00 local standard time on the second Sunday in March through
-// 02:00 local standard time on the first Sunday in November. Uses Sakamoto's
-// algorithm for day-of-week instead of timegm()/mktime(), since the latter are
-// not portably available (MinGW lacks timegm) and behave inconsistently across
-// platforms for pre-epoch or far-future years.
-static bool in_us_dst_window(const struct tm &std_local_time)
+// DST transition windows below are evaluated against local *standard* time
+// (viewer_tz with no DST added), except EU/UK where the legal definition is
+// anchored to UTC instead. Where a region's rule is phrased in daylight time
+// (the US's November end date, AU/NZ's April end date) it is converted here
+// to the equivalent standard-time instant, so every comparison is apples to
+// apples. Ordinal Sundays are computed with Sakamoto's day-of-week algorithm
+// rather than timegm()/mktime(), since the latter aren't portably available
+// (MinGW lacks timegm) and behave inconsistently across platforms for
+// pre-epoch or far-future years.
+static int day_of_week(int y, int m, int d)            // 0 = Sunday.
 {
-    int year = std_local_time.tm_year + 1900;
-    int mon = std_local_time.tm_mon + 1;
-    int mday = std_local_time.tm_mday;
+    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (m < 3) y -= 1;
+    return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
 
-    auto day_of_week = [](int y, int m, int d) -> int
+static int nth_sunday(int year, int mon, int n)        // n=1 for the 1st Sunday, etc.
+{
+    return 1 + (7 - day_of_week(year, mon, 1)) % 7 + 7 * (n - 1);
+}
+
+static int last_sunday_of_month(int year, int mon)
+{
+    static const int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    int dim = days_in_month[mon - 1];
+    if (mon == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) dim = 29;
+    return dim - day_of_week(year, mon, dim);
+}
+
+static bool time_before(int m1, int d1, int h1, int mi1, int s1, int m2, int d2, int h2, int mi2, int s2)
+{
+    if (m1 != m2) return m1 < m2;
+    if (d1 != d2) return d1 < d2;
+    if (h1 != h2) return h1 < h2;
+    if (mi1 != mi2) return mi1 < mi2;
+    return s1 < s2;
+}
+
+// US/Canada, Australia, and New Zealand: windows are defined against local
+// standard time.
+static bool in_local_standard_dst_window(DST_Rule rule, const struct tm &std_local_time)
+{
+    int year = std_local_time.tm_year + 1900, mon = std_local_time.tm_mon + 1, mday = std_local_time.tm_mday,
+        hr = std_local_time.tm_hour, mn = std_local_time.tm_min, sc = std_local_time.tm_sec;
+
+    switch (rule)
     {
-        static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
-        if (m < 3) y -= 1;
-        return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
-    };
+        case dst_us_ca:
+        {
+            // Begins 02:00 standard time (2nd Sun Mar); ends 02:00 daylight
+            // time (1st Sun Nov), i.e. 01:00 standard time.
+            bool at_or_after_start = !time_before(mon, mday, hr, mn, sc, 3, nth_sunday(year, 3, 2), 2, 0, 0);
+            bool before_end = time_before(mon, mday, hr, mn, sc, 11, nth_sunday(year, 11, 1), 1, 0, 0);
+            return at_or_after_start && before_end;
+        }
 
-    int mar_first_wday = day_of_week(year, 3, 1);
-    int mar_second_sunday = 1 + (7 - mar_first_wday) % 7 + 7;
+        case dst_au:
+            // Southern hemisphere: the window spans the calendar year boundary.
+            if (mon >= 10) return !time_before(mon, mday, hr, mn, sc, 10, nth_sunday(year, 10, 1), 2, 0, 0);
+            if (mon < 4)   return true;
+            if (mon == 4)  return time_before(mon, mday, hr, mn, sc, 4, nth_sunday(year, 4, 1), 2, 0, 0);
+            return false;
 
-    int nov_first_wday = day_of_week(year, 11, 1);
-    int nov_first_sunday = 1 + (7 - nov_first_wday) % 7;
+        case dst_nz:
+            if (mon > 9)   return true;
+            if (mon == 9)  return !time_before(mon, mday, hr, mn, sc, 9, last_sunday_of_month(year, 9), 2, 0, 0);
+            if (mon < 4)   return true;
+            if (mon == 4)  return time_before(mon, mday, hr, mn, sc, 4, nth_sunday(year, 4, 1), 2, 0, 0);
+            return false;
 
-    auto before = [](int m1, int d1, int h1, int mi1, int s1, int m2, int d2, int h2, int mi2, int s2) -> bool
-    {
-        if (m1 != m2) return m1 < m2;
-        if (d1 != d2) return d1 < d2;
-        if (h1 != h2) return h1 < h2;
-        if (mi1 != mi2) return mi1 < mi2;
-        return s1 < s2;
-    };
+        default:
+            return false;
+    }
+}
 
-    bool at_or_after_start = !before(mon, mday, std_local_time.tm_hour, std_local_time.tm_min, std_local_time.tm_sec,
-                                      3, mar_second_sunday, 2, 0, 0);
-    bool before_end = before(mon, mday, std_local_time.tm_hour, std_local_time.tm_min, std_local_time.tm_sec,
-                              11, nov_first_sunday, 2, 0, 0);
+// EU/UK: window is defined against UTC, not local standard time — also used
+// as a best-effort approximation for decree-based zones with no fixed
+// formula (Beirut, Jerusalem, Cairo).
+static bool in_eu_uk_dst_window(const struct tm &utc_time)
+{
+    int year = utc_time.tm_year + 1900, mon = utc_time.tm_mon + 1, mday = utc_time.tm_mday,
+        hr = utc_time.tm_hour, mn = utc_time.tm_min, sc = utc_time.tm_sec;
 
+    bool at_or_after_start = !time_before(mon, mday, hr, mn, sc, 3, last_sunday_of_month(year, 3), 1, 0, 0);
+    bool before_end = time_before(mon, mday, hr, mn, sc, 10, last_sunday_of_month(year, 10), 1, 0, 0);
     return at_or_after_start && before_end;
+}
+
+static int dst_offset_seconds(DST_Rule rule, time_t simnow, double viewer_tz)
+{
+    if (rule == dst_none) return 0;
+
+    if (rule == dst_eu_uk)
+    {
+        struct tm utc_tm = *std::gmtime(&simnow);
+        return in_eu_uk_dst_window(utc_tm) ? 3600 : 0;
+    }
+
+    time_t std_local = simnow + (time_t)viewer_tz;
+    struct tm std_local_tm = *std::gmtime(&std_local);
+    return in_local_standard_dst_window(rule, std_local_tm) ? 3600 : 0;
 }
 
 void draw_status_window(ImGuiIO& io)            // the S panel
@@ -201,7 +263,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     }
     else if (cbolbls_selected_idx == lbltype_nearby)
     {
-        // Held in metres, shown in light years, and still Claude is not PTSD friendly.
         double dist_ly = distance_lblcut / light_year;
         ImGui::Text("%s", "Dist. l.y.:");
         ImGui::SameLine();
@@ -281,13 +342,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     }
     ImGui::Text("%s", velocstr.c_str());
 
-    int dstadd = 0;
-    if (viewer_dst)
-    {
-        time_t std_local = simnow + (time_t)viewer_tz;
-        struct tm std_local_tm = *std::gmtime(&std_local);
-        if (in_us_dst_window(std_local_tm)) dstadd = 3600;
-    }
+    int dstadd = dst_offset_seconds(viewer_dst, simnow, viewer_tz);
     double eff_tz = viewer_tz + dstadd;
     time_t tmpnow = simnow + eff_tz;
 

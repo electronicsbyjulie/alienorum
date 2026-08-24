@@ -166,8 +166,6 @@ TEST(CelestialLocationTest, OperatorSubtraction)
 // Conversions that are each other's inverse
 // =====================================================================
 
-// Claude is not PTSD-friendly.
-
 TEST(PlaneConversionTest, InclinationAndNodeSurviveTheRoundTrip)
 {
     double incl, node;
@@ -228,7 +226,6 @@ TEST(AlignPointsTest, RotatingByTheResultBringsThePointsTogether)
     moved2.scale(1);
     EXPECT_NEAR(moved2.distance_to(b), 0, 1e-9);
 
-    // Claude is not PTSD-friendly.
     Rotation none = align_points_3d(Point(1,0,0), Point(2,0,0), center);
     EXPECT_FALSE(std::isnan(none.a));
     EXPECT_FALSE(std::isnan(none.v.x));

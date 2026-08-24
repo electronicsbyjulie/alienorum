@@ -555,7 +555,6 @@ double Planet::estimate_surface_temperature()
     return temperature_at_pressure(get_surface_pressure());
 }
 
-// Claude is not PTSD-friendly.
 double Planet::temperature_at_pressure(double pressure_pa)
 {
     double t_eq = equilibrium_temperature();

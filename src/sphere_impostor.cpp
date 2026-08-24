@@ -279,55 +279,10 @@ namespace alienorum
         "const float RING_SHADOW_DENSITY = 0.1;\n"
         "const float UMBRA_REFRACTION = 1.0;\n"
         "const float ATM_GLOW = 1.0;\n"
-        //
-        // ATM_REDDEN_PHASE decides *when* a world's limb goes from blue to copper, as the
-        // observer crosses from the sunlit side of it to the shadowed one. It is an exponent on
-        // the crossfade, so it moves the changeover without moving its ends: at 1 the limb is
-        // half-reddened at half phase, higher values hold the blue further round and let the
-        // copper arrive only near new phase, lower values bring it on earlier. Both extremes
-        // stay pinned -- a full disc is always blue and a new one always copper.
-        //
-        // How *red* that copper gets is a separate matter, and lives on the other side of the
-        // wire: see kAtmosphereOpticalDepth in visuals.cpp, which sets how much air the light is
-        // reckoned to have crossed and so how much of its blue was taken out on the way.
+        
         "const float ATM_REDDEN_PHASE = 10.0;\n"
-        // Matches GOSSAMER in the ring shader below, which in turn matches gossamer_rings in
-        // misc.h -- a ring's shadow has to be exactly as dense as the ring that casts it.
         "const float SPH_GOSSAMER = 0.08;\n"
-        // Fraction of one disc hidden behind another, both measured as angles seen from the same
-        // point: R is the light source's angular radius, r the caster's, d the angular distance
-        // between their centers. This is what makes an eclipse look like an eclipse rather than a
-        // stencil: the four cases below are, in order, no eclipse, totality (the caster's disc
-        // swallows the light's), an annular eclipse (the caster sits entirely inside the light's
-        // disc and can never hide all of it -- the "ring of fire"), and the partial phase, where
-        // the two discs overlap in a lens whose area is the standard circle-circle intersection.
-        // Everything between full sun and totality falls out of this one formula, so the umbra,
-        // the penumbra, and the gradient between them are never modelled separately -- they are
-        // just where this fraction happens to reach 1, exceed 0, and travel in between.
-        //
-        // The light's disc is treated as uniformly bright. A real star is limb-darkened (this
-        // very shader gives a self-luminous one a quadratic limb-darkening law further down), so
-        // a true penumbra darkens marginally faster near totality than this says; the difference
-        // is far below what a penumbra's own softness shows on screen.
-        //
-        // The two angles are taken with atan(y,x) rather than the acos() the textbook writes them
-        // with, and that is not a stylistic choice -- acos() cannot survive this in single
-        // precision. The interesting case is a huge caster in front of a tiny light: Saturn seen
-        // from one of its own moons is a third of a radian across, the sun from out there barely
-        // half a milliradian, and the entire penumbra is the sliver of d where |d - r| < R. Over
-        // that sliver the cosine acos() is handed sits within about five parts in a million of
-        // 1.0, which a float can barely tell from 1.0 at all -- and acos is vertical there, so
-        // what little is left gets multiplied by a few hundred. The answer then goes on to be
-        // scaled by r*r/(PI*R*R), some hundred thousand for these two bodies, which turned a
-        // rounding step into a swing of the whole 0..1 range: the penumbra came out as
-        // salt-and-pepper noise, every pixel independently in full sun or full shadow.
-        //
-        // atan(y,x) has none of that. The same angle written as the triangle's own area over its
-        // sides (sin) against the cosine's numerator (cos). Claude Code is not PTSD friendly.
-        // near a singularity -- both are ordinary quantities, and their ratio is the small number,
-        // computed as a ratio rather than by subtracting one from something. `lens` supplies the
-        // numerator: it is twice the area of the triangle whose sides are d, r, and R, which is
-        // exactly the sine of each angle times the two sides that meet there.
+        
         "float disc_overlap(float R, float r, float d)\n"
         "{\n"
         "    if (d >= R + r) return 0.0;\n"
@@ -339,31 +294,7 @@ namespace alienorum
         "    float a2 = atan(2.0*lens, d2 + R2 - r2);\n"
         "    return clamp((r2*a1 + R2*a2 - lens)/(PI*R2), 0.0, 1.0);\n"
         "}\n"
-        // The two per-pixel adjustments every fragment this shader emits has to end with, whether
-        // it came out of the solid body's own surface or out of the band of lit air around it
-        // (see the atmosphere branch in main()). Reads the varyings directly rather than taking
-        // them as arguments -- in GLSL a shader's `in` declarations are file scope, so a helper
-        // sees them the same way main() does.
-        // Color of a patch of a world's air, given how high the sun stands over *that patch*
-        // (sun_elev, the cosine of its solar zenith angle) and how the body as a whole is lit
-        // (phase, +1 with the sun behind the viewer and -1 with the body between viewer and sun).
-        //
-        // Both terms are required, and each one alone gets a case badly wrong. Sun elevation is
-        // the real driver: air with the sun high over it has scattered light that crossed very
-        // little atmosphere, and that light is blue for the reason the sky is; air at its own
-        // sunrise has only light that grazed the whole dense lower atmosphere, and that light is
-        // red for the reason sunsets are. That is what makes the reddening *local* -- a crescent
-        // world's limb stays blue along the stretch facing the sun and turns copper only as it
-        // runs down toward the terminator at either end, which is what a crescent Earth actually
-        // looks like from out here.
-        //
-        // On its own, though, sun elevation reddens a *full* disc's limb too, since the visible
-        // edge of a fully lit world is precisely the ring where the sun sits on the horizon. What
-        // saves that case is that a full disc is lit from behind the viewer, so what reaches us
-        // off its limb is overwhelmingly backscattered light rather than light transmitted the
-        // long way through: the phase term is what says so, and it holds a gibbous world blue.
-        //
-        // ATM_REDDEN_PHASE is the exponent over the pair -- how readily the copper arrives at all.
+        
         "vec3 air_tint(float sun_elev, float phase)\n"
         "{\n"
         "    float redden = smoothstep(0.35, 0.02, sun_elev) * smoothstep(0.5, -0.3, phase);\n"
