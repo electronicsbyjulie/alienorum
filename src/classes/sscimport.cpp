@@ -1068,9 +1068,14 @@ bool SSCImport::install_ring_textures(const std::string &src, Planet *pl, double
     }
 
     std::string dest = map_path(pl, "_ring", ".png"), destx = map_path(pl, "_ringx", ".png");
-    // Evaluated separately rather than short-circuited, so a run with only one of the two files
-    // already on disk still reports on -- and still writes -- the other.
+    // Evaluated separately (not short-circuited), so a run where only one of the two already
+    // exists still gets its own "already exists" note for that specific file -- but the decision
+    // to write is taken as a pair below: color and transparency are sampled together at render
+    // time, so replacing only the half that happens to be missing would pair fresh content
+    // against an existing file it was never generated alongside, from a possibly unrelated
+    // source. An existing file on either side means the whole pair is left alone.
     bool dest_writable = may_write_map(dest), destx_writable = may_write_map(destx);
+    bool may_write_pair = dest_writable && destx_writable;
 
     // These ring textures are strips: one axis is radius, the other is a couple of texels of
     // padding. Whichever axis is longer is the radial one.
@@ -1124,21 +1129,23 @@ bool SSCImport::install_ring_textures(const std::string &src, Planet *pl, double
         }
     }
 
-    // dest_writable/destx_writable being false means an existing file was deliberately left
-    // alone (may_write_map() already noted it), not a failure -- the ring still ends up with a
-    // real texture, just not one written by this run, so the caller should not treat this as a
-    // reason to fall back to a generated ring.
-    if (dest_writable && !write_png(dest, colors))
+    // !may_write_pair means an existing file was deliberately left alone (may_write_map() already
+    // noted which one) -- not a failure. The ring still ends up with a real texture, whether it
+    // is the pair already on disk or the one just decoded from the add-on, so the caller should
+    // not treat this as a reason to fall back to a generated ring.
+    if (!may_write_pair) return true;
+
+    if (!write_png(dest, colors))
     {
         report.note(std::string("Could not write ") + dest + ".");
         return false;
     }
-    if (destx_writable && !write_png(destx, alphas))
+    if (!write_png(destx, alphas))
     {
         report.note(std::string("Could not write ") + destx + ".");
         return false;
     }
-    report.textures_written += (dest_writable ? 1 : 0) + (destx_writable ? 1 : 0);
+    report.textures_written += 2;
     return true;
 }
 
@@ -1160,9 +1167,13 @@ void SSCImport::install_procedural_ring(Planet *pl)
         pl->ring_mean_opacity, pl->ringx_map);
 
     std::string dest = map_path(pl, "_ring", ".png"), destx = map_path(pl, "_ringx", ".png");
+    // Same pairing rule as install_ring_textures(): color and transparency here come out of one
+    // generate_ring_map() call together, so an existing file on either side means the disk copy
+    // of the pair is left as it is rather than mixed with a freshly generated other half.
     bool dest_writable = may_write_map(dest), destx_writable = may_write_map(destx);
-    if (dest_writable && pl->ring_map->save_to_png(dest)) report.textures_written++;
-    if (destx_writable && pl->ringx_map->save_to_png(destx)) report.textures_written++;
+    if (!(dest_writable && destx_writable)) return;
+
+    if (pl->ring_map->save_to_png(dest) && pl->ringx_map->save_to_png(destx)) report.textures_written += 2;
 }
 
 bool SSCImport::install_bump_from_normal_map(const std::string &src, CelestialObject *cel)

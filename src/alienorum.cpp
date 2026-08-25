@@ -645,14 +645,6 @@ int main (int argc, char** argv)
             // frame's answer to "is the mouse over a window" and so far this has been good enough.
             is_mouse_over_window = false;
 
-            // A native file dialog is its own top-level window, not one of ours, so nothing
-            // below sets this from its bounds the way it does for our own ImGui windows. Left
-            // unset, sky-panning's own dragging (pan_with_crosshairs()) would arm underneath it
-            // -- and that function wraps the cursor back onto the screen near either edge, which
-            // fights the dialog's own edge-drag resize. Set unconditionally, before the dragging
-            // gate further down reads it this same frame, for as long as the dialog is open.
-            if (fdlg_shown) is_mouse_over_window = true;
-
             // Status window
             if (statuswnd) draw_status_window(io);
 
@@ -714,7 +706,14 @@ int main (int argc, char** argv)
             // Clicking and dragging
             is_mouse_down = ImGui::IsMouseDown(0) || ImGui::IsMouseDown(1) || ImGui::IsMouseDown(2);
             if (trackidx >= 0) dragging = false;
-            else if (is_mouse_down && !is_mouse_over_window && !was_mouse_down) draggable = true;
+            // io.WantCaptureMouse is ImGui's own answer to "is the mouse over or interacting with
+            // any ImGui window right now," which -- unlike is_mouse_over_window -- already covers
+            // a native file dialog without having to track its bounds ourselves, and stays true
+            // for the length of an ImGui-internal drag (its own edge-resize included) even if the
+            // cursor momentarily strays outside the window's rectangle mid-drag. Checked only here,
+            // at the moment a drag would start: an in-progress sky pan is meant to survive the
+            // cursor later crossing over a window, same as it always has for our own windows.
+            else if (is_mouse_down && !is_mouse_over_window && !io.WantCaptureMouse && !was_mouse_down) draggable = true;
             else if (!is_mouse_down) dragging = draggable = false;
 
             if (draggable && (fabs(io.MousePos.x - lmx) >= mouse_drag_threshold || fabs(io.MousePos.y - lmy) >= mouse_drag_threshold)) dragging = true;
