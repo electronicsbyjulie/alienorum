@@ -308,11 +308,9 @@ Kelu-1                  Kelu-1 B                24.98y          044.78      082.
 HD81009                 KU Hya B                52.98y          202.4       068.5       058.7       0.169s      .074        0                   2020.20                                         2.05
 HD2772                  HD2772 B                245.70y         017.6       053.6       301.0       0.448s      .689        0                   2025.54
 HD146667                HD146667 B              67.50y          215.2       045.8       082.5       0.293s      .788        0                   2049.90                                         2.13
-
+HD26965                 GJ 166 B                8000y                                               400AU                                                                                       0.558       0.01308     0.01349     17200
+HD26976                 GJ 166 C                233.20y         151.58      107.98      321.2       34.5AU      .4141       0                   1848.7888                                       0.1980      0.274       0.00651      3167
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
-
-# Unresolved WD multiples
-# WD2058+342              WD2058+342.1
 

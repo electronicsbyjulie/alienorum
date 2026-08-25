@@ -4155,6 +4155,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (inclination || ascending_node)
         {
             s->location.equatorial_plane = s->location.orbital_plane = s->location.local_system_plane = new_orbital_plane;
+            if (!A->lock_equatorial_plane && !A->lock_system_plane)
+                A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane = new_orbital_plane;
             s->lock_system_plane = true;
             s->lock_equatorial_plane = true;
             s->obliquity = 0;
@@ -4986,15 +4988,18 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                     cels[i]->origcenname = A->name;
 
                     A->update_location(simnow);
-                    if (!cels[j]->lock_system_plane)
+                    if (cels[i]->orbit->heliocentric_inclination || cels[i]->orbit->heliocentric_node)
                     {
-                        cels[j]->location.equatorial_plane = cels[j]->location.orbital_plane = cels[j]->location.local_system_plane
-                            = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
-                            cels[i]->orbit->heliocentric_node, A->location.system_center);
-                        // cels[j]->lock_system_plane = true;
-                    }
+                        if (!A->lock_system_plane)
+                        {
+                            A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
+                                = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
+                                cels[i]->orbit->heliocentric_node, A->location.system_center);
+                            // A->lock_system_plane = true;
+                        }
 
-                    cels[i]->known_poles = A->known_poles = true;
+                        cels[i]->known_poles = A->known_poles = true;
+                    }
                     break;
                 }
             }
