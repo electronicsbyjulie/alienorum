@@ -4,6 +4,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
+#include "classes/sscimport.h"
 
 using namespace alienorum;
 
@@ -201,6 +202,8 @@ void show_menu()
             if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
             if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
             if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
+            if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
+            if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
             if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
             ImGui::EndMenu();
@@ -718,6 +721,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
     if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
 
     if (io.KeyCtrl)
@@ -893,6 +897,10 @@ void process_key_F5()
 
 void process_key_F6()
 {
+    IGFD::FileDialogConfig config;
+    config.path = ".";
+    ImGuiFileDialog::Instance()->OpenDialog("ImportSscDlgKey", "Import SSC Add-On", ".ssc", config);
+    fdlg_shown = true;
 }
 
 void process_key_F7()

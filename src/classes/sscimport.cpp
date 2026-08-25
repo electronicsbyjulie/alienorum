@@ -1,0 +1,1630 @@
+
+// Reads an .ssc add-on file -- the native scene format of another astronomy package -- and turns
+// as much of it as this program has room for into our own objects: names, sizes, orbits,
+// rotations, atmospheres, rings, and texture maps.
+//
+// Unit conventions on the .ssc side, which are not uniform and are the main thing this file is
+// careful about:
+//   Radius, ring radii, SemiMajorAxis around a planet   kilometres
+//   SemiMajorAxis around a star                         AU
+//   Period around a star                                Julian years
+//   Period around anything else                         days
+//   RotationPeriod                                      hours
+//   angles                                              degrees
+//   Epoch                                               JD (default 2451545.0, i.e. J2000 noon;
+//                                                       ours is midnight, so they are half a day
+//                                                       apart and the value is passed through)
+
+#include "sscimport.h"
+#include <cctype>
+#include <cmath>
+#include <complex>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <map>
+#include <vector>
+
+using namespace alienorum;
+
+bool ssc_report_shown = false;
+SSCImport last_ssc_import;
+
+namespace
+{
+
+// ---------------------------------------------------------------- image reading and writing
+
+struct SSCImage
+{
+    unsigned width = 0, height = 0;
+    std::vector<unsigned char> rgba;                // width*height*4
+
+    bool empty() const { return !width || !height || rgba.empty(); }
+    const unsigned char* at(unsigned x, unsigned y) const { return &rgba[((size_t)y*width + x) * 4]; }
+    unsigned char* at(unsigned x, unsigned y) { return &rgba[((size_t)y*width + x) * 4]; }
+};
+
+std::string lowercased(const std::string &s)
+{
+    std::string r = s;
+    for (char &c : r) c = (char)tolower((unsigned char)c);
+    return r;
+}
+
+std::string extension_of(const std::string &path)
+{
+    size_t dot = path.find_last_of('.');
+    size_t slash = path.find_last_of("/\\");
+    if (dot == std::string::npos) return "";
+    if (slash != std::string::npos && dot < slash) return "";
+    return lowercased(path.substr(dot));
+}
+
+bool read_png(const std::string &fname, SSCImage &img)
+{
+    FILE *fp = fopen(fname.c_str(), "rb");
+    if (!fp) return false;
+
+    png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    if (!png)
+    {
+        fclose(fp);
+        return false;
+    }
+    png_infop info = png_create_info_struct(png);
+    if (!info)
+    {
+        png_destroy_read_struct(&png, nullptr, nullptr);
+        fclose(fp);
+        return false;
+    }
+    if (setjmp(png_jmpbuf(png)))
+    {
+        png_destroy_read_struct(&png, &info, nullptr);
+        fclose(fp);
+        return false;
+    }
+
+    png_init_io(png, fp);
+    // EXPAND brings palettes, sub-8-bit greys and tRNS chunks up to plain 8-bit channels, so the
+    // loop below only ever has to deal with 8-bit RGB or RGBA.
+    png_read_png(png, info,
+        PNG_TRANSFORM_STRIP_16 | PNG_TRANSFORM_EXPAND | PNG_TRANSFORM_GRAY_TO_RGB | PNG_TRANSFORM_PACKING,
+        nullptr);
+
+    unsigned w = png_get_image_width(png, info);
+    unsigned h = png_get_image_height(png, info);
+    int channels = png_get_channels(png, info);
+    png_bytepp rows = png_get_rows(png, info);
+
+    img.width = w;
+    img.height = h;
+    img.rgba.assign((size_t)w * h * 4, 255);
+    for (unsigned y=0; y<h; y++)
+    {
+        for (unsigned x=0; x<w; x++)
+        {
+            const png_byte *px = &rows[y][(size_t)x * channels];
+            unsigned char *o = img.at(x, y);
+            o[0] = px[0];
+            o[1] = (channels >= 3) ? px[1] : px[0];
+            o[2] = (channels >= 3) ? px[2] : px[0];
+            o[3] = (channels == 4 || channels == 2) ? px[channels-1] : 255;
+        }
+    }
+
+    png_destroy_read_struct(&png, &info, nullptr);
+    fclose(fp);
+    return true;
+}
+
+struct SSCJpegErrorMgr
+{
+    struct jpeg_error_mgr pub;
+    jmp_buf setjmp_buffer;
+};
+
+void ssc_jpeg_error_exit(j_common_ptr cinfo)
+{
+    SSCJpegErrorMgr *err = (SSCJpegErrorMgr*)cinfo->err;
+    (*cinfo->err->output_message)(cinfo);
+    longjmp(err->setjmp_buffer, 1);
+}
+
+bool read_jpeg(const std::string &fname, SSCImage &img)
+{
+    FILE *fp = fopen(fname.c_str(), "rb");
+    if (!fp) return false;
+
+    struct jpeg_decompress_struct cinfo;
+    SSCJpegErrorMgr jerr;
+
+    cinfo.err = jpeg_std_error(&jerr.pub);
+    jerr.pub.error_exit = ssc_jpeg_error_exit;
+    if (setjmp(jerr.setjmp_buffer))
+    {
+        jpeg_destroy_decompress(&cinfo);
+        fclose(fp);
+        return false;
+    }
+
+    jpeg_create_decompress(&cinfo);
+    jpeg_stdio_src(&cinfo, fp);
+    jpeg_read_header(&cinfo, TRUE);
+    cinfo.out_color_space = JCS_RGB;
+    jpeg_start_decompress(&cinfo);
+
+    img.width = cinfo.output_width;
+    img.height = cinfo.output_height;
+    img.rgba.assign((size_t)img.width * img.height * 4, 255);
+
+    std::vector<unsigned char> row((size_t)cinfo.output_width * cinfo.output_components);
+    unsigned char *rowp = row.data();
+    while (cinfo.output_scanline < cinfo.output_height)
+    {
+        unsigned y = cinfo.output_scanline;
+        jpeg_read_scanlines(&cinfo, &rowp, 1);
+        for (unsigned x=0; x<img.width; x++)
+        {
+            unsigned char *o = img.at(x, y);
+            o[0] = row[x*3 + 0];
+            o[1] = row[x*3 + 1];
+            o[2] = row[x*3 + 2];
+            o[3] = 255;
+        }
+    }
+
+    jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+    fclose(fp);
+    return true;
+}
+
+uint32_t read_le32(const unsigned char *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+// Expands one BC1 colour block (the 8 bytes shared by DXT1/3/5) into 16 RGB texels. Alpha is left
+// to the caller: DXT1 encodes it in the colour block's ordering, DXT3 and DXT5 carry their own.
+void decode_bc1_colors(const unsigned char *b, unsigned char out[16][4], bool dxt1_alpha)
+{
+    uint16_t c0 = (uint16_t)(b[0] | (b[1] << 8));
+    uint16_t c1 = (uint16_t)(b[2] | (b[3] << 8));
+
+    int r[4], g[4], bl[4], a[4];
+    auto unpack = [](uint16_t c, int &rr, int &gg, int &bb)
+    {
+        rr = ((c >> 11) & 0x1f) * 255 / 31;
+        gg = ((c >>  5) & 0x3f) * 255 / 63;
+        bb = ( c        & 0x1f) * 255 / 31;
+    };
+    unpack(c0, r[0], g[0], bl[0]);
+    unpack(c1, r[1], g[1], bl[1]);
+    a[0] = a[1] = a[2] = a[3] = 255;
+
+    if (c0 > c1 || !dxt1_alpha)
+    {
+        r[2]  = (2*r[0]  + r[1] ) / 3;   g[2] = (2*g[0] + g[1]) / 3;   bl[2] = (2*bl[0] + bl[1]) / 3;
+        r[3]  = (r[0]  + 2*r[1] ) / 3;   g[3] = (g[0] + 2*g[1]) / 3;   bl[3] = (bl[0] + 2*bl[1]) / 3;
+    }
+    else
+    {
+        r[2]  = (r[0]  + r[1] ) / 2;     g[2] = (g[0] + g[1]) / 2;     bl[2] = (bl[0] + bl[1]) / 2;
+        r[3]  = g[3] = bl[3] = 0;
+        a[3]  = 0;
+    }
+
+    uint32_t bits = read_le32(&b[4]);
+    for (int i=0; i<16; i++)
+    {
+        int sel = (bits >> (i*2)) & 3;
+        out[i][0] = (unsigned char)r[sel];
+        out[i][1] = (unsigned char)g[sel];
+        out[i][2] = (unsigned char)bl[sel];
+        out[i][3] = (unsigned char)a[sel];
+    }
+}
+
+// DDS is the one texture format .ssc add-ons use that neither libpng nor libjpeg will touch,
+// and both compressed files in the Vulcan add-on are in it. Handles the three block formats that
+// account for very nearly every add-on texture ever shipped -- DXT1, DXT3, DXT5 -- plus plain
+// uncompressed 24- and 32-bit surfaces. A DX10-header file naming a format outside that set is
+// reported as unsupported rather than decoded into garbage.
+bool read_dds(const std::string &fname, SSCImage &img, std::string &why_not)
+{
+    std::ifstream fs(fname, std::ios::binary);
+    if (!fs) return false;
+
+    std::vector<unsigned char> data((std::istreambuf_iterator<char>(fs)), std::istreambuf_iterator<char>());
+    if (data.size() < 128 || memcmp(data.data(), "DDS ", 4))
+    {
+        why_not = "not a DDS file";
+        return false;
+    }
+
+    unsigned h = read_le32(&data[12]);
+    unsigned w = read_le32(&data[16]);
+    uint32_t pf_flags = read_le32(&data[80]);
+    uint32_t four_cc  = read_le32(&data[84]);
+    uint32_t bit_count = read_le32(&data[88]);
+    uint32_t rmask = read_le32(&data[92]), gmask = read_le32(&data[96]),
+             bmask = read_le32(&data[100]), amask = read_le32(&data[104]);
+
+    const uint32_t fcc_dxt1 = 0x31545844, fcc_dxt2 = 0x32545844, fcc_dxt3 = 0x33545844,
+                   fcc_dxt4 = 0x34545844, fcc_dxt5 = 0x35545844, fcc_dx10 = 0x30315844;
+
+    size_t offset = 128;
+    if (four_cc == fcc_dx10)
+    {
+        if (data.size() < 148)
+        {
+            why_not = "truncated DX10 header";
+            return false;
+        }
+        uint32_t dxgi = read_le32(&data[128]);
+        offset = 148;
+        // The BC1/BC2/BC3 DXGI codes, in both their UNORM and SRGB spellings.
+        if      (dxgi == 71 || dxgi == 72) four_cc = fcc_dxt1;
+        else if (dxgi == 74 || dxgi == 75) four_cc = fcc_dxt3;
+        else if (dxgi == 77 || dxgi == 78) four_cc = fcc_dxt5;
+        else
+        {
+            why_not = "DX10 format " + std::to_string(dxgi) + " is not one we decode";
+            return false;
+        }
+    }
+
+    if (!w || !h)
+    {
+        why_not = "zero-sized surface";
+        return false;
+    }
+
+    img.width = w;
+    img.height = h;
+    img.rgba.assign((size_t)w * h * 4, 255);
+
+    if (four_cc == fcc_dxt1 || four_cc == fcc_dxt2 || four_cc == fcc_dxt3
+        || four_cc == fcc_dxt4 || four_cc == fcc_dxt5)
+    {
+        bool is_dxt1 = (four_cc == fcc_dxt1);
+        size_t block_bytes = is_dxt1 ? 8 : 16;
+        unsigned bw = (w + 3) / 4, bh = (h + 3) / 4;
+        if (data.size() < offset + (size_t)bw * bh * block_bytes)
+        {
+            why_not = "truncated pixel data";
+            return false;
+        }
+
+        for (unsigned by=0; by<bh; by++)
+        {
+            for (unsigned bx=0; bx<bw; bx++)
+            {
+                const unsigned char *blk = &data[offset + ((size_t)by * bw + bx) * block_bytes];
+                unsigned char texels[16][4];
+                unsigned char alpha[16];
+                for (int i=0; i<16; i++) alpha[i] = 255;
+
+                if (four_cc == fcc_dxt2 || four_cc == fcc_dxt3)
+                {
+                    // Explicit 4-bit alpha, two texels per byte.
+                    for (int i=0; i<16; i++)
+                    {
+                        unsigned char nib = (i & 1) ? (blk[i/2] >> 4) : (blk[i/2] & 0x0f);
+                        alpha[i] = (unsigned char)(nib * 17);
+                    }
+                }
+                else if (four_cc == fcc_dxt4 || four_cc == fcc_dxt5)
+                {
+                    int a0 = blk[0], a1 = blk[1];
+                    int lut[8];
+                    lut[0] = a0;
+                    lut[1] = a1;
+                    if (a0 > a1) for (int i=1; i<=5; i++) lut[i+1] = ((6-i)*a0 + i*a1) / 7;
+                    else
+                    {
+                        for (int i=1; i<=3; i++) lut[i+1] = ((4-i)*a0 + i*a1) / 5;
+                        lut[6] = 0;
+                        lut[7] = 255;
+                    }
+                    uint64_t abits = 0;
+                    for (int i=0; i<6; i++) abits |= (uint64_t)blk[2+i] << (i*8);
+                    for (int i=0; i<16; i++) alpha[i] = (unsigned char)lut[(abits >> (i*3)) & 7];
+                }
+
+                decode_bc1_colors(is_dxt1 ? blk : &blk[8], texels, is_dxt1);
+
+                for (int i=0; i<16; i++)
+                {
+                    unsigned px = bx*4 + (i & 3), py = by*4 + (i >> 2);
+                    if (px >= w || py >= h) continue;
+                    unsigned char *o = img.at(px, py);
+                    o[0] = texels[i][0];
+                    o[1] = texels[i][1];
+                    o[2] = texels[i][2];
+                    o[3] = is_dxt1 ? texels[i][3] : alpha[i];
+                }
+            }
+        }
+        return true;
+    }
+
+    if ((pf_flags & 0x40) && (bit_count == 24 || bit_count == 32))       // DDPF_RGB
+    {
+        size_t stride = (size_t)w * (bit_count / 8);
+        if (data.size() < offset + stride * h)
+        {
+            why_not = "truncated pixel data";
+            return false;
+        }
+        auto shift_of = [](uint32_t mask)
+        {
+            int s = 0;
+            if (!mask) return -1;
+            while (!(mask & 1)) { mask >>= 1; s++; }
+            return s;
+        };
+        int rs = shift_of(rmask), gs = shift_of(gmask), bs = shift_of(bmask), as = shift_of(amask);
+        for (unsigned y=0; y<h; y++)
+        {
+            for (unsigned x=0; x<w; x++)
+            {
+                const unsigned char *px = &data[offset + y*stride + (size_t)x * (bit_count/8)];
+                uint32_t v = (bit_count == 32) ? read_le32(px)
+                                               : ((uint32_t)px[0] | ((uint32_t)px[1] << 8) | ((uint32_t)px[2] << 16));
+                unsigned char *o = img.at(x, y);
+                o[0] = (rs >= 0) ? (unsigned char)((v & rmask) >> rs) : 0;
+                o[1] = (gs >= 0) ? (unsigned char)((v & gmask) >> gs) : 0;
+                o[2] = (bs >= 0) ? (unsigned char)((v & bmask) >> bs) : 0;
+                o[3] = (as >= 0) ? (unsigned char)((v & amask) >> as) : 255;
+            }
+        }
+        return true;
+    }
+
+    why_not = "unsupported pixel format";
+    return false;
+}
+
+bool read_image(const std::string &path, SSCImage &img, std::string &why_not)
+{
+    std::string ext = extension_of(path);
+    if (ext == ".png") { if (read_png(path, img)) return true; why_not = "PNG could not be read"; return false; }
+    if (ext == ".jpg" || ext == ".jpeg")
+    {
+        if (read_jpeg(path, img)) return true;
+        why_not = "JPEG could not be read";
+        return false;
+    }
+    if (ext == ".dds") return read_dds(path, img, why_not);
+    why_not = "no reader for " + (ext.size() ? ext : std::string("that file type"));
+    return false;
+}
+
+bool write_png(const std::string &fname, const SSCImage &img)
+{
+    if (img.empty()) return false;
+
+    FILE *fp = fopen(fname.c_str(), "wb");
+    if (!fp) return false;
+
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    if (!png)
+    {
+        fclose(fp);
+        return false;
+    }
+    png_infop info = png_create_info_struct(png);
+    if (!info)
+    {
+        png_destroy_write_struct(&png, nullptr);
+        fclose(fp);
+        return false;
+    }
+    if (setjmp(png_jmpbuf(png)))
+    {
+        png_destroy_write_struct(&png, &info);
+        fclose(fp);
+        return false;
+    }
+
+    png_init_io(png, fp);
+    png_set_IHDR(png, info, img.width, img.height, 8, PNG_COLOR_TYPE_RGB,
+        PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    png_write_info(png, info);
+
+    std::vector<unsigned char> row((size_t)img.width * 3);
+    for (unsigned y=0; y<img.height; y++)
+    {
+        for (unsigned x=0; x<img.width; x++)
+        {
+            const unsigned char *px = img.at(x, y);
+            row[x*3 + 0] = px[0];
+            row[x*3 + 1] = px[1];
+            row[x*3 + 2] = px[2];
+        }
+        png_write_row(png, row.data());
+    }
+
+    png_write_end(png, nullptr);
+    png_destroy_write_struct(&png, &info);
+    fclose(fp);
+    return true;
+}
+
+// ---------------------------------------------------------------- normal map to height map
+
+bool is_power_of_two(unsigned n) { return n && !(n & (n-1)); }
+
+void fft_1d(std::complex<float> *a, size_t n, bool inverse)
+{
+    for (size_t i=1, j=0; i<n; i++)
+    {
+        size_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(a[i], a[j]);
+    }
+
+    for (size_t len=2; len<=n; len <<= 1)
+    {
+        double ang = 2 * _pi / (double)len * (inverse ? 1 : -1);
+        std::complex<float> wlen((float)cos(ang), (float)sin(ang));
+        for (size_t i=0; i<n; i+=len)
+        {
+            std::complex<float> w(1.0f, 0.0f);
+            for (size_t k=0; k<len/2; k++)
+            {
+                std::complex<float> u = a[i+k], v = a[i+k+len/2] * w;
+                a[i+k] = u + v;
+                a[i+k+len/2] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+
+    if (inverse) for (size_t i=0; i<n; i++) a[i] /= (float)n;
+}
+
+void fft_2d(std::vector<std::complex<float>> &a, unsigned w, unsigned h, bool inverse)
+{
+    for (unsigned y=0; y<h; y++) fft_1d(&a[(size_t)y * w], w, inverse);
+
+    std::vector<std::complex<float>> col(h);
+    for (unsigned x=0; x<w; x++)
+    {
+        for (unsigned y=0; y<h; y++) col[y] = a[(size_t)y * w + x];
+        fft_1d(col.data(), h, inverse);
+        for (unsigned y=0; y<h; y++) a[(size_t)y * w + x] = col[y];
+    }
+}
+
+void halve(SSCImage &img)
+{
+    SSCImage out;
+    out.width = img.width / 2;
+    out.height = img.height / 2;
+    out.rgba.assign((size_t)out.width * out.height * 4, 255);
+    for (unsigned y=0; y<out.height; y++)
+    {
+        for (unsigned x=0; x<out.width; x++)
+        {
+            int acc[4] = {0,0,0,0};
+            for (int dy=0; dy<2; dy++) for (int dx=0; dx<2; dx++)
+            {
+                const unsigned char *p = img.at(x*2+dx, y*2+dy);
+                for (int c=0; c<4; c++) acc[c] += p[c];
+            }
+            unsigned char *o = out.at(x, y);
+            for (int c=0; c<4; c++) o[c] = (unsigned char)(acc[c] / 4);
+        }
+    }
+    img = out;
+}
+
+// An .ssc file states relief as a tangent-space normal map; we state it as an elevation, so the
+// gradient field has to be integrated back into the surface it came from. That is a Poisson
+// problem, solved here the Frankot-Chellappa way: take the FFT of the two gradient components,
+// divide by the frequency, transform back. It is the least-squares best surface whose gradient
+// matches, which is the right answer for a field that -- being a painted normal map rather than a
+// measured one -- is not exactly integrable in the first place.
+//
+// Two things make the sphere different from the flat plate the method assumes. Longitude really
+// does wrap, so the horizontal periodicity the FFT imposes is free; latitude does not, so the
+// field is mirrored top-to-bottom into a doubled image (negating the vertical gradient in the
+// reflected half, which is what makes the seam continuous) and only the top half is kept. And an
+// equirectangular grid's columns crowd together towards the poles as cos(latitude), so the
+// horizontal gradient is weighted by that before integrating -- without it, polar detail is
+// stretched into streaks.
+//
+// The result is relative: elevations come out in arbitrary units and are normalized into the
+// 0-255 the bump loader reads, where 128 is the datum and the full range spans
+// Planet::estimate_bump_scale() metres. The true vertical scale is not in a normal map to recover.
+bool normal_map_to_height(SSCImage src, SSCImage &height_out, std::string &why_not)
+{
+    while (src.width > 2048 && !(src.width & 1) && !(src.height & 1)) halve(src);
+
+    unsigned w = src.width, h = src.height;
+    if (!is_power_of_two(w) || !is_power_of_two(h))
+    {
+        why_not = "resolution " + std::to_string(w) + "x" + std::to_string(h) + " is not a power of two";
+        return false;
+    }
+
+    unsigned h2 = h * 2;                                    // mirrored, so the field is periodic vertically
+    std::vector<std::complex<float>> P((size_t)w * h2), Q((size_t)w * h2);
+
+    for (unsigned y=0; y<h2; y++)
+    {
+        bool mirrored = (y >= h);
+        unsigned sy = mirrored ? (h2 - 1 - y) : y;
+        double lat = (0.5 - ((double)sy + 0.5) / h) * _pi;
+        double coslat = cos(lat);
+
+        for (unsigned x=0; x<w; x++)
+        {
+            const unsigned char *px = src.at(x, sy);
+            double nx = px[0] / 127.5 - 1.0;
+            double ny = px[1] / 127.5 - 1.0;
+            double nz = px[2] / 127.5 - 1.0;
+            if (nz < 0.01) nz = 0.01;                       // a normal lying flat says nothing about height
+
+            // Green up is the OpenGL convention these normal maps follow, so +G points north
+            // and rows run the other way.
+            double p = -nx / nz * coslat;
+            double q =  ny / nz;
+            if (mirrored) q = -q;
+
+            P[(size_t)y * w + x] = std::complex<float>((float)p, 0.0f);
+            Q[(size_t)y * w + x] = std::complex<float>((float)q, 0.0f);
+        }
+    }
+
+    fft_2d(P, w, h2, false);
+    fft_2d(Q, w, h2, false);
+
+    for (unsigned y=0; y<h2; y++)
+    {
+        double wy = 2 * _pi * ((y < h2/2) ? (double)y : (double)y - (double)h2) / (double)h2;
+        for (unsigned x=0; x<w; x++)
+        {
+            double wx = 2 * _pi * ((x < w/2) ? (double)x : (double)x - (double)w) / (double)w;
+            double denom = wx*wx + wy*wy;
+            size_t i = (size_t)y * w + x;
+            if (denom < 1e-12)
+            {
+                P[i] = std::complex<float>(0.0f, 0.0f);     // the mean elevation, which is our datum
+                continue;
+            }
+            std::complex<float> minus_i(0.0f, -1.0f);
+            P[i] = (minus_i * (float)wx * P[i] + minus_i * (float)wy * Q[i]) / (float)denom;
+        }
+    }
+
+    fft_2d(P, w, h2, true);
+
+    double sum = 0, sumsq = 0;
+    size_t n = (size_t)w * h;
+    for (unsigned y=0; y<h; y++) for (unsigned x=0; x<w; x++)
+    {
+        double v = P[(size_t)y * w + x].real();
+        sum += v;
+        sumsq += v*v;
+    }
+    double mean = sum / n;
+    double sigma = sqrt(fmax(0.0, sumsq/n - mean*mean));
+
+    double peak = 0;
+    for (unsigned y=0; y<h; y++) for (unsigned x=0; x<w; x++)
+        peak = fmax(peak, fabs(P[(size_t)y * w + x].real() - mean));
+    // A handful of outliers -- one bad texel in a painted normal map is enough -- would otherwise
+    // crush every real feature into a couple of grey levels, so the range is capped at four sigma
+    // and anything beyond it clips.
+    double scale = (sigma > 0) ? fmin(peak, 4.0 * sigma) : peak;
+    if (scale <= 0)
+    {
+        why_not = "the normal map is flat";
+        return false;
+    }
+
+    height_out.width = w;
+    height_out.height = h;
+    height_out.rgba.assign((size_t)w * h * 4, 255);
+    for (unsigned y=0; y<h; y++)
+    {
+        for (unsigned x=0; x<w; x++)
+        {
+            double v = 128.0 + 127.0 * (P[(size_t)y * w + x].real() - mean) / scale;
+            unsigned char g = (unsigned char)fmax(0.0, fmin(255.0, v));
+            unsigned char *o = height_out.at(x, y);
+            o[0] = o[1] = o[2] = g;
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------- .ssc parsing
+
+void skip_space(const std::string &s, size_t &i)
+{
+    while (i < s.size())
+    {
+        if (s[i] == '#')
+        {
+            while (i < s.size() && s[i] != '\n') i++;
+        }
+        else if (isspace((unsigned char)s[i])) i++;
+        else break;
+    }
+}
+
+bool parse_quoted(const std::string &s, size_t &i, std::string &out)
+{
+    if (i >= s.size() || s[i] != '"') return false;
+    i++;
+    out.clear();
+    while (i < s.size() && s[i] != '"')
+    {
+        if (s[i] == '\\' && i+1 < s.size()) i++;
+        out += s[i++];
+    }
+    if (i >= s.size()) return false;
+    i++;
+    return true;
+}
+
+bool parse_value(const std::string &s, size_t &i, json &out);
+
+bool parse_braced(const std::string &s, size_t &i, json &out)
+{
+    i++;                                                // past '{'
+    out = json::object();
+    for (;;)
+    {
+        skip_space(s, i);
+        if (i >= s.size()) return false;
+        if (s[i] == '}') { i++; return true; }
+
+        std::string key;
+        if (s[i] == '"')
+        {
+            if (!parse_quoted(s, i, key)) return false;
+        }
+        else
+        {
+            size_t start = i;
+            while (i < s.size() && (isalnum((unsigned char)s[i]) || s[i] == '_')) i++;
+            if (i == start) return false;
+            key = s.substr(start, i - start);
+        }
+
+        skip_space(s, i);
+        json val;
+        if (!parse_value(s, i, val)) return false;
+        out[key] = val;
+    }
+}
+
+bool parse_value(const std::string &s, size_t &i, json &out)
+{
+    skip_space(s, i);
+    if (i >= s.size()) return false;
+
+    if (s[i] == '"')
+    {
+        std::string str;
+        if (!parse_quoted(s, i, str)) return false;
+        out = str;
+        return true;
+    }
+    if (s[i] == '{') return parse_braced(s, i, out);
+    if (s[i] == '[')
+    {
+        i++;
+        out = json::array();
+        for (;;)
+        {
+            skip_space(s, i);
+            if (i >= s.size()) return false;
+            if (s[i] == ']') { i++; return true; }
+            if (s[i] == ',') { i++; continue; }
+            json el;
+            if (!parse_value(s, i, el)) return false;
+            out.push_back(el);
+        }
+    }
+    if (isalpha((unsigned char)s[i]))
+    {
+        size_t start = i;
+        while (i < s.size() && isalnum((unsigned char)s[i])) i++;
+        std::string word = s.substr(start, i - start);
+        std::string lw = lowercased(word);
+        if (lw == "true")  { out = true;  return true; }
+        if (lw == "false") { out = false; return true; }
+        out = word;                                     // an unquoted token; kept as a string
+        return true;
+    }
+
+    const char *begin = s.c_str() + i;
+    char *end = nullptr;
+    double v = strtod(begin, &end);
+    if (end == begin) return false;
+    i += (size_t)(end - begin);
+    out = v;
+    return true;
+}
+
+// Older .ssc files have no Mass field at all, and habitually write the
+// figure into the comment beside Radius instead ("# Mass=9.113 Earths (density = 5.517 gm/cm^3").
+// It is the only statement of mass those files contain, and mass decides what kind of world
+// classify() thinks this is, so it is worth reading.
+void scan_mass_hint(const std::string &text, SSCBlock &blk)
+{
+    size_t at = 0;
+    while ((at = text.find("Mass", at)) != std::string::npos)
+    {
+        size_t j = at + 4;
+        while (j < text.size() && (isspace((unsigned char)text[j]) || text[j] == '=')) j++;
+        char *end = nullptr;
+        double v = strtod(text.c_str() + j, &end);
+        if (end && end != text.c_str() + j && v > 0)
+        {
+            size_t k = (size_t)(end - text.c_str());
+            while (k < text.size() && isspace((unsigned char)text[k])) k++;
+            if (!text.compare(k, 5, "Earth")) blk.mass_hint_earths = v;
+        }
+        at += 4;
+    }
+
+    at = 0;
+    while ((at = text.find("density", at)) != std::string::npos)
+    {
+        size_t j = at + 7;
+        while (j < text.size() && (isspace((unsigned char)text[j]) || text[j] == '=')) j++;
+        char *end = nullptr;
+        double v = strtod(text.c_str() + j, &end);
+        if (end && end != text.c_str() + j && v > 0 && v < 30) blk.density_hint = v;
+        at += 7;
+    }
+}
+
+bool parse_ssc(const std::string &text, std::vector<SSCBlock> &blocks, std::string &error)
+{
+    size_t i = 0;
+    for (;;)
+    {
+        skip_space(text, i);
+        if (i >= text.size()) return true;
+
+        SSCBlock blk;
+        size_t block_start = i;
+
+        if (isalpha((unsigned char)text[i]))
+        {
+            size_t start = i;
+            while (i < text.size() && isalpha((unsigned char)text[i])) i++;
+            blk.disposition = text.substr(start, i - start);
+            skip_space(text, i);
+        }
+
+        if (!parse_quoted(text, i, blk.name))
+        {
+            error = "expected a quoted object name at byte " + std::to_string(i);
+            return false;
+        }
+        skip_space(text, i);
+        if (!parse_quoted(text, i, blk.parent))
+        {
+            error = "expected a quoted parent name for \"" + blk.name + "\"";
+            return false;
+        }
+        skip_space(text, i);
+        if (i >= text.size() || text[i] != '{')
+        {
+            error = "expected '{' after \"" + blk.name + "\"";
+            return false;
+        }
+        if (!parse_braced(text, i, blk.fields))
+        {
+            error = "malformed definition for \"" + blk.name + "\"";
+            return false;
+        }
+
+        scan_mass_hint(text.substr(block_start, i - block_start), blk);
+        blocks.push_back(blk);
+    }
+}
+
+// ---------------------------------------------------------------- field access
+
+bool get_num(const json &j, const char *key, double &out)
+{
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_number()) return false;
+    out = it->get<double>();
+    return true;
+}
+
+bool get_str(const json &j, const char *key, std::string &out)
+{
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_string()) return false;
+    out = it->get<std::string>();
+    return true;
+}
+
+const json* get_obj(const json &j, const char *key)
+{
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_object()) return nullptr;
+    return &(*it);
+}
+
+// ---------------------------------------------------------------- the import itself
+
+std::string parent_directory(const std::string &path)
+{
+    size_t slash = path.find_last_of("/\\");
+    return (slash == std::string::npos) ? std::string(".") : path.substr(0, slash);
+}
+
+// An .ssc file names a texture by bare filename, found under textures/<resolution>/, preferring the
+// highest resolution present. Same order here, plus the add-on root, because some add-ons drop
+// their maps straight beside the .ssc.
+std::string find_texture(const std::string &base_dir, const std::string &fname)
+{
+    if (fname.empty()) return "";
+    static const char *dirs[] = { "/textures/hires/", "/textures/medres/", "/textures/lores/",
+                                  "/textures/", "/" };
+    for (const char *d : dirs)
+    {
+        std::string candidate = base_dir + d + fname;
+        if (file_exists(candidate.c_str())) return candidate;
+    }
+    return "";
+}
+
+std::string map_path(const CelestialObject *cel, const char *suffix, const char *ext)
+{
+    return std::string("maps") + _FSSTR + std::string(cel->name) + std::string(suffix) + std::string(ext);
+}
+
+}   // anonymous namespace
+
+// Nothing here ever overwrites a map that is already on disk unless the user has asked for it:
+// the maps folder holds hand-made and hard-won textures, and an import that silently replaced one
+// would be unrecoverable. Returns false, with a note, when it declines.
+bool SSCImport::may_write_map(const std::string &dest)
+{
+    if (!file_exists(dest.c_str())) return true;
+    if (overwrite_maps) return true;
+    report.note(dest + " already exists and was left alone (File > Overwrite Map Files On Import to replace).");
+    return false;
+}
+
+bool SSCImport::copy_file(const std::string &from, const std::string &to)
+{
+    std::ifstream in(from, std::ios::binary);
+    if (!in) return false;
+    std::ofstream out(to, std::ios::binary);
+    if (!out) return false;
+    out << in.rdbuf();
+    return out.good();
+}
+
+// A texture that we could hand to the loader unchanged is copied rather than re-encoded -- a
+// 2048x1024 JPEG is a few hundred kilobytes and the PNG it would become is several megabytes, and
+// the re-encode would cost a generation of quality for nothing.
+bool SSCImport::install_plain_texture(const std::string &src, CelestialObject *cel, const char *suffix)
+{
+    std::string ext = extension_of(src);
+    if (ext == ".jpg" || ext == ".jpeg" || ext == ".png")
+    {
+        std::string dest = map_path(cel, suffix, (ext == ".png") ? ".png" : ".jpg");
+        if (!may_write_map(dest)) return false;
+        if (!copy_file(src, dest))
+        {
+            report.note(std::string("Could not write ") + dest + ".");
+            return false;
+        }
+        report.textures_written++;
+        return true;
+    }
+
+    SSCImage img;
+    std::string why;
+    if (!read_image(src, img, why))
+    {
+        report.note(src + ": " + why + "; skipped.");
+        return false;
+    }
+    std::string dest = map_path(cel, suffix, ".png");
+    if (!may_write_map(dest)) return false;
+    if (!write_png(dest, img))
+    {
+        report.note(std::string("Could not write ") + dest + ".");
+        return false;
+    }
+    report.textures_written++;
+    return true;
+}
+
+// An .ssc file paints its clouds as a separate translucent shell over the surface; we have one day-lit
+// map per body, and cloud_map is what a world made entirely of weather uses instead of a surface,
+// not a layer above one. So for a body with ground underneath, the cloud layer is composited into
+// the surface map here -- which is what it looks like from orbit anyway -- rather than imported as
+// a cloud map that would hide the ground completely.
+//
+// TODO: this is a stop-gap, and a regression against what the renderer is meant to grow into.
+// Overlaying clouds on the surface from space, and drawing them as a generated cloudy sky from the
+// ground, is on the list. When that lands, drop the compositing here and import the cloud map as
+// its own layer -- the file has already told us which texture is which.
+bool SSCImport::install_composited_surface(const std::string &surf_src, const std::string &cloud_src,
+    CelestialObject *cel)
+{
+    SSCImage surf, cloud;
+    std::string why;
+    if (!read_image(surf_src, surf, why))
+    {
+        report.note(surf_src + ": " + why + "; skipped.");
+        return false;
+    }
+    if (!read_image(cloud_src, cloud, why))
+    {
+        report.note(cloud_src + ": " + why + "; surface imported without its clouds.");
+        return install_plain_texture(surf_src, cel, "_surf");
+    }
+
+    std::string dest = map_path(cel, "_surf", ".png");
+    if (!may_write_map(dest)) return false;
+
+    for (unsigned y=0; y<surf.height; y++)
+    {
+        unsigned cy = (unsigned)((uint64_t)y * cloud.height / surf.height);
+        for (unsigned x=0; x<surf.width; x++)
+        {
+            unsigned cx = (unsigned)((uint64_t)x * cloud.width / surf.width);
+            const unsigned char *c = cloud.at(cx, cy);
+            unsigned char *o = surf.at(x, y);
+            double a = c[3] / 255.0;
+            for (int k=0; k<3; k++) o[k] = (unsigned char)(o[k] * (1.0 - a) + c[k] * a);
+        }
+    }
+
+    if (!write_png(dest, surf))
+    {
+        report.note(std::string("Could not write ") + dest + ".");
+        return false;
+    }
+    report.textures_written++;
+    return true;
+}
+
+// Our ring strip runs from the planet's own equatorial radius out to the outer edge, with the gap
+// between surface and inner edge carried by the transparency map; an .ssc file's runs from inner edge
+// to outer edge and carries transparency in its alpha channel. So the strip is rebuilt rather than
+// copied, and split into the colour map and the transparency map the renderer reads separately.
+bool SSCImport::install_ring_textures(const std::string &src, Planet *pl, double inner_m, double outer_m)
+{
+    SSCImage ring;
+    std::string why;
+    if (!read_image(src, ring, why))
+    {
+        report.note(src + ": " + why + "; rings left procedural.");
+        return false;
+    }
+
+    std::string dest = map_path(pl, "_ring", ".png"), destx = map_path(pl, "_ringx", ".png");
+    if (!may_write_map(dest) || !may_write_map(destx)) return false;
+
+    // These ring textures are strips: one axis is radius, the other is a couple of texels of
+    // padding. Whichever axis is longer is the radial one.
+    bool radial_is_x = (ring.width >= ring.height);
+    unsigned radial_n = radial_is_x ? ring.width : ring.height;
+
+    double eqr = pl->get_equatorial_radius();
+    if (outer_m <= eqr) return false;
+
+    const unsigned out_w = 1024, out_h = 29;
+    SSCImage colors, alphas;
+    colors.width = alphas.width = out_w;
+    colors.height = alphas.height = out_h;
+    colors.rgba.assign((size_t)out_w * out_h * 4, 255);
+    alphas.rgba.assign((size_t)out_w * out_h * 4, 255);
+
+    for (unsigned x=0; x<out_w; x++)
+    {
+        double r = eqr + (outer_m - eqr) * ((double)x + 0.5) / out_w;
+        unsigned char rgb[3] = {225, 208, 192};
+        double a = 0;
+
+        if (r >= inner_m)
+        {
+            double f = (r - inner_m) / (outer_m - inner_m);
+            unsigned s = (unsigned)fmin((double)radial_n - 1, f * radial_n);
+            // Average the strip's short axis, so a texture with any real content across it is not
+            // decided by whichever row we happened to land on.
+            double acc[4] = {0,0,0,0};
+            unsigned across = radial_is_x ? ring.height : ring.width;
+            for (unsigned t=0; t<across; t++)
+            {
+                const unsigned char *px = radial_is_x ? ring.at(s, t) : ring.at(t, s);
+                for (int k=0; k<4; k++) acc[k] += px[k];
+            }
+            for (int k=0; k<3; k++) rgb[k] = (unsigned char)(acc[k] / across);
+            a = acc[3] / across / 255.0;
+        }
+
+        for (unsigned y=0; y<out_h; y++)
+        {
+            unsigned char *c = colors.at(x, y);
+            c[0] = rgb[0];
+            c[1] = rgb[1];
+            c[2] = rgb[2];
+            // The renderer reads opacity as 1 - (green/255)^gossamer, so white is clear and black
+            // is solid -- the opposite way round from the alpha channel it came out of.
+            unsigned char t = (unsigned char)fmax(0.0, fmin(255.0, 255.0 * (1.0 - a)));
+            unsigned char *xp = alphas.at(x, y);
+            xp[0] = xp[1] = xp[2] = t;
+        }
+    }
+
+    if (!write_png(dest, colors) || !write_png(destx, alphas))
+    {
+        report.note(std::string("Could not write ") + dest + ".");
+        return false;
+    }
+    report.textures_written += 2;
+    return true;
+}
+
+bool SSCImport::install_bump_from_normal_map(const std::string &src, CelestialObject *cel)
+{
+    SSCImage normals;
+    std::string why;
+    if (!read_image(src, normals, why))
+    {
+        report.note(src + ": " + why + "; no relief imported.");
+        return false;
+    }
+
+    std::string dest = map_path(cel, "_bump", ".png");
+    if (!may_write_map(dest)) return false;
+
+    SSCImage heights;
+    if (!normal_map_to_height(normals, heights, why))
+    {
+        report.note(std::string(cel->name) + ": normal map not integrated (" + why + ").");
+        return false;
+    }
+    if (!write_png(dest, heights))
+    {
+        report.note(std::string("Could not write ") + dest + ".");
+        return false;
+    }
+    report.bumps_built++;
+    return true;
+}
+
+std::string SSCImport::first_alias(const std::string &ssc_name)
+{
+    size_t colon = ssc_name.find(':');
+    return (colon == std::string::npos) ? ssc_name : ssc_name.substr(0, colon);
+}
+
+// update_location() is not virtual, and the three classes that have one mean genuinely different
+// things by it -- a moon's is the only one that supplies the Laplace plane its orbit is measured
+// against, and calling the Planet one on a moon throws. So the class decides which is called.
+void SSCImport::update_body_location(CelestialObject *cel)
+{
+    switch (cel->typeclass())
+    {
+        case class_planet:    ((Planet*)cel)->update_location(J2000_TIME_T);    break;
+        case class_moon:      ((Moon*)cel)->update_location(J2000_TIME_T);      break;
+        case class_satellite: ((Satellite*)cel)->update_location(J2000_TIME_T); break;
+        default: break;
+    }
+}
+
+CelestialObject* SSCImport::resolve_star(const std::string &ssc_name)
+{
+    auto found = star_cache.find(ssc_name);
+    if (found != star_cache.end()) return found->second;
+
+    std::string want = first_alias(ssc_name);
+    if (want == "Sol") want = "Sun";                    // the one name the two programs disagree on
+
+    int idx = find_object(want.c_str(), true, 9e29, 2);
+    CelestialObject *star = (idx >= 0) ? cels[idx] : nullptr;
+    star_cache[ssc_name] = star;
+
+    if (star) report.note("Star \"" + ssc_name + "\" resolved to " + std::string(star->name) + ".");
+    else report.note("Star \"" + ssc_name + "\" is not in our catalogs; everything orbiting it was skipped.");
+    return star;
+}
+
+cel_obj_class SSCImport::class_from_ssc(const json &fields, const CelestialObject *parent)
+{
+    std::string cls;
+    if (get_str(fields, "Class", cls))
+    {
+        cls = lowercased(cls);
+        if (cls == "spacecraft") return class_satellite;
+        if (cls == "comet") return class_comet;
+        if (cls == "moon" || cls == "minormoon") return class_moon;
+        if (cls == "planet" || cls == "dwarfplanet" || cls == "asteroid" || cls == "minorbody")
+            return class_planet;
+        return class_unknown;                           // surface, invisible, component, ...
+    }
+    // With no Class stated, the source format calls a body of a star a planet and a body of anything else a
+    // moon -- but a block that names a Mesh is a model, and a body of a spacecraft is another
+    // spacecraft however the add-on wrote it. Both come up in this very add-on: the Vulcan Shuttle
+    // docked at the starbase states nothing but a mesh and an orbit.
+    if (fields.contains("Mesh")) return class_satellite;
+    if (parent && parent->typeclass() == class_satellite) return class_satellite;
+    return (parent && parent->typeclass() == class_star) ? class_planet : class_moon;
+}
+
+void SSCImport::apply_orbit(const json &orb, CelestialObject *cel, CelestialObject *parent)
+{
+    bool around_star = (parent->typeclass() == class_star);
+    double v;
+
+    cel->orbit = new Orbit();
+    cel->orbit->center = parent;
+    cel->orbit->center_name = parent->name;
+
+    if (get_num(orb, "SemiMajorAxis", v)) cel->orbit->semimajor_axis = v * (around_star ? AU : 1000.0);
+    if (get_num(orb, "PericenterDistance", v)) cel->orbit->periapsis_distance = v * (around_star ? AU : 1000.0);
+    if (get_num(orb, "Eccentricity", v)) cel->orbit->eccentricity = v;
+    if (get_num(orb, "Inclination", v)) cel->orbit->inclination = v * fiftyseventh;
+    if (get_num(orb, "AscendingNode", v)) cel->orbit->ascending_node = v * fiftyseventh;
+    if (get_num(orb, "MeanAnomaly", v)) cel->orbit->mean_anomaly = v * fiftyseventh;
+    if (get_num(orb, "Epoch", v)) cel->orbit->epoch = v;
+    else cel->orbit->epoch = 2451545.0;                 // the format's default, half a day off ours
+
+    if (get_num(orb, "Period", v))
+        cel->orbit->period = v * (around_star ? (365.25 * oneday) : oneday);
+
+    // The format lets an orbit be stated with longitudes measured from the reference direction
+    // instead of from the node. Both reduce to what we store.
+    double node_deg = cel->orbit->ascending_node * fiftyseven;
+    if (get_num(orb, "ArgOfPericenter", v)) cel->orbit->arg_periapsis = v * fiftyseventh;
+    else if (get_num(orb, "LongOfPericenter", v)) cel->orbit->arg_periapsis = (v - node_deg) * fiftyseventh;
+
+    double peri_deg = cel->orbit->arg_periapsis * fiftyseven + node_deg;
+    if (get_num(orb, "MeanLongitude", v)) cel->orbit->mean_anomaly = (v - peri_deg) * fiftyseventh;
+
+    if (!cel->orbit->semimajor_axis && cel->orbit->periapsis_distance && cel->orbit->eccentricity < 1)
+        cel->orbit->semimajor_axis = cel->orbit->periapsis_distance / (1.0 - cel->orbit->eccentricity);
+
+    if (!cel->orbit->period && !cel->orbit->semimajor_axis)
+        report.note(std::string(cel->name) + " has an orbit with neither a period nor a size; one will be invented.");
+}
+
+void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
+{
+    double v;
+
+    if (get_num(fields, "RotationPeriod", v)) cel->sidereal_rotational_period = v * 3600.0;
+    if (get_num(fields, "Obliquity", v)) cel->obliquity = v * fiftyseventh;
+    if (get_num(fields, "EquatorAscendingNode", v)) cel->equinox = v * fiftyseventh;
+    if (get_num(fields, "RotationOffset", v)) cel->lon_J2000_offset = v * fiftyseventh;
+
+    // Newer .ssc files state the same thing as a rotation model. Its Inclination and
+    // AscendingNode place the pole exactly as Obliquity and EquatorAscendingNode do, and
+    // MeridianAngle is where the prime meridian sits at the epoch, which is our lon_J2000_offset.
+    const json *uni = get_obj(fields, "UniformRotation");
+    if (uni)
+    {
+        if (get_num(*uni, "Period", v)) cel->sidereal_rotational_period = v * 3600.0;
+        if (get_num(*uni, "Inclination", v)) cel->obliquity = v * fiftyseventh;
+        if (get_num(*uni, "AscendingNode", v)) cel->equinox = v * fiftyseventh;
+        if (get_num(*uni, "MeridianAngle", v)) cel->lon_J2000_offset = v * fiftyseventh;
+    }
+
+    cel->known_poles = true;
+}
+
+// An .ssc file states a radius and, occasionally, a mass or a density. We have to end up with a mass
+// either way, because it is what classify() reads to decide what kind of world this is. Preference
+// order: a stated mass, a stated density against the volume, the "Mass=... Earths" comment older
+// add-ons carry, and failing all of those our own mass-radius relation run backwards.
+void SSCImport::establish_mass(Planet *pl, const json &fields, const SSCBlock &blk)
+{
+    double v;
+
+    if (get_num(fields, "Mass", v) && v > 0)
+    {
+        pl->mass = v * earth_mass;
+        return;
+    }
+    if (get_num(fields, "Density", v) && v > 0)
+    {
+        pl->mass = sphere_volume(pl->volumetric_mean_radius) * v * 1e-3;    // kg/m^3 -> g/cm^3
+        return;
+    }
+    if (blk.mass_hint_earths > 0)
+    {
+        pl->mass = blk.mass_hint_earths * earth_mass;
+        report.note(std::string(pl->name) + ": mass taken from the file's own comment ("
+            + std::to_string(blk.mass_hint_earths) + " Earths).");
+        return;
+    }
+    if (blk.density_hint > 0)
+    {
+        pl->mass = sphere_volume(pl->volumetric_mean_radius) * blk.density_hint;
+        return;
+    }
+
+    // estimate_radius() run backwards, using the same two branches and the same exponents, so an
+    // imported world sits where our own mass-radius relation would put it.
+    double r = pl->volumetric_mean_radius;
+    double rocky_ceiling = 1.02 * earth_radius * pow(rocky_mass_cutoff / earth_mass, 0.27);
+    if (r <= rocky_ceiling) pl->mass = earth_mass * pow(r / (1.02 * earth_radius), 1.0/0.27);
+    else pl->mass = earth_mass * pow(r / (0.56 * earth_radius), 1.0/0.67);
+    report.note(std::string(pl->name) + ": the file states no mass, so one was derived from its radius.");
+}
+
+bool SSCImport::read(const std::string &ssc_path)
+{
+    report = SSCImportReport();
+    report.source = ssc_path;
+
+    std::ifstream fs(ssc_path, std::ios::binary);
+    if (!fs)
+    {
+        report.note("Could not open " + ssc_path + ".");
+        return false;
+    }
+    std::string text((std::istreambuf_iterator<char>(fs)), std::istreambuf_iterator<char>());
+    fs.close();
+
+    std::vector<SSCBlock> blocks;
+    std::string error;
+    if (!parse_ssc(text, blocks, error))
+    {
+        report.note("Could not read the file: " + error + ".");
+        return false;
+    }
+    if (blocks.empty())
+    {
+        report.note("The file defines no objects.");
+        return false;
+    }
+
+    std::string base_dir = parent_directory(ssc_path);
+    std::map<std::string, CelestialObject*> imported;    // keyed by full Celestia path
+    std::vector<CelestialObject*> fresh;
+
+    // A moon may be defined before the planet it belongs to, so the list is walked repeatedly
+    // until a pass places nothing new. Whatever is left after that has a parent the file never
+    // defines and our catalogs do not have.
+    std::vector<bool> done(blocks.size(), false);
+    bool progress = true;
+    while (progress)
+    {
+        progress = false;
+        for (size_t bi=0; bi<blocks.size(); bi++)
+        {
+            if (done[bi]) continue;
+            SSCBlock &blk = blocks[bi];
+
+            CelestialObject *parent = nullptr;
+            std::string parent_path = blk.parent;
+            auto already = imported.find(parent_path);
+            if (already != imported.end()) parent = already->second;
+            else if (parent_path.find('/') == std::string::npos)
+            {
+                parent = resolve_star(parent_path);
+                if (!parent)
+                {
+                    done[bi] = true;
+                    report.bodies_skipped++;
+                    progress = true;
+                    continue;
+                }
+            }
+            else continue;                              // its parent has not been created yet
+
+            done[bi] = true;
+            progress = true;
+
+            std::string name = first_alias(blk.name);
+            std::string full_path = parent_path + "/" + blk.name;
+
+            cel_obj_class cls = class_from_ssc(blk.fields, parent);
+            if (cls == class_unknown || cls == class_comet)
+            {
+                std::string what;
+                get_str(blk.fields, "Class", what);
+                report.note("\"" + name + "\" is a foreign " + (what.size() ? what : "object")
+                    + ", which has no equivalent here; skipped.");
+                report.bodies_skipped++;
+                continue;
+            }
+
+            if (!lowercased(blk.disposition).compare(0, 6, "modify"))
+                report.note("\"" + name + "\" is a Modify directive; it was imported as a new object instead.");
+
+            CelestialObject *cel = nullptr;
+            switch (cls)
+            {
+                case class_planet:    cel = new Planet();    cel->type = rocky;      break;
+                case class_moon:      cel = new Moon();      cel->type = rocky;      break;
+                case class_satellite: cel = new Satellite(); cel->type = artificial; break;
+                default: break;
+            }
+            if (!cel) continue;
+
+            if (name.size() >= name_max_len)
+            {
+                report.note("\"" + name + "\" is longer than we can store; shortened to "
+                    + name.substr(0, name_max_len-1) + ".");
+                name = name.substr(0, name_max_len-1);
+            }
+            strcpy(cel->name, name.c_str());
+
+            if (!append_cel(cel))
+            {
+                delete cel;
+                report.note("Ran out of room for objects; the rest of the file was not imported.");
+                report.ok = true;
+                return true;
+            }
+
+            cel->user_added = true;
+            // save_all() writes only the objects marked as edited, so without this an imported
+            // universe could not be written back out to a .json file at all -- which is the whole
+            // point of importing one.
+            cel->user_edited = true;
+            cel->distance_known = true;
+            cel->cenobj = parent->cenobj ? parent->cenobj : parent;
+            if (cls == class_moon) ((Moon*)cel)->orbit_type = ot_equatorial;
+
+            double v;
+            if (get_num(blk.fields, "Radius", v)) cel->volumetric_mean_radius = v * 1000.0;
+            else
+            {
+                auto sa = blk.fields.find("SemiAxes");
+                if (sa != blk.fields.end() && sa->is_array() && sa->size() == 3)
+                {
+                    double a = (*sa)[0].get<double>(), b = (*sa)[1].get<double>(), c = (*sa)[2].get<double>();
+                    cel->volumetric_mean_radius = 1000.0 * pow(a*b*c, 1.0/3.0);
+                }
+            }
+            if (get_num(blk.fields, "Oblateness", v)) cel->oblateness = v;
+
+            // Radius in an .ssc file is the equatorial radius; ours is the radius of the sphere of
+            // equal volume, which for a flattened body is the smaller of the two.
+            if (cel->oblateness > 0 && cel->oblateness < 1)
+                cel->volumetric_mean_radius *= pow(1.0 - cel->oblateness, 1.0/3.0);
+
+            const json *orb = get_obj(blk.fields, "EllipticalOrbit");
+            if (orb) apply_orbit(*orb, cel, parent);
+            else
+            {
+                report.note("\"" + name + "\" has no elliptical orbit we can read"
+                    + (blk.fields.contains("SampledOrbit") || blk.fields.contains("SampledTrajectory")
+                        ? " (its trajectory is a sampled file)" : "") + "; it was placed on a guessed one.");
+                cel->orbit = new Orbit();
+                cel->orbit->center = parent;
+                cel->orbit->center_name = parent->name;
+                cel->orbit->semimajor_axis = parent->volumetric_mean_radius * 4;
+                cel->orbit->epoch = J2000;
+            }
+
+            apply_rotation(blk.fields, cel);
+
+            imported[full_path] = cel;
+            // A name in these files may list aliases after a colon ("Vulcan:40 Eri A I"), and a child
+            // is free to name its parent by any of them, so each is registered as a path of its
+            // own rather than only the spelling the parent's own line happened to lead with.
+            {
+                size_t from = 0;
+                std::string names = blk.name;
+                while (from <= names.size())
+                {
+                    size_t colon = names.find(':', from);
+                    std::string one = names.substr(from, (colon == std::string::npos) ? std::string::npos : colon - from);
+                    if (one.size()) imported[parent_path + "/" + one] = cel;
+                    if (colon == std::string::npos) break;
+                    from = colon + 1;
+                }
+            }
+            fresh.push_back(cel);
+            report.bodies_added++;
+
+            if (cls == class_satellite)
+            {
+                std::string mesh;
+                if (get_str(blk.fields, "Mesh", mesh))
+                    report.note("\"" + name + "\": its mesh " + mesh + " was not imported; only the orbit was.");
+                if (!cel->sidereal_rotational_period) cel->sidereal_rotational_period = oneday;
+                continue;
+            }
+
+            Planet *pl = (Planet*)cel;
+
+            establish_mass(pl, blk.fields, blk);
+            if (get_num(blk.fields, "J2", v)) pl->J2 = v;
+
+            update_body_location(pl);
+            // Classified with the density, always. classify()'s other branch splits rocky worlds
+            // from ice giants on mass alone, and puts anything past 4.37 Earths in the ice giant
+            // bin -- which makes an ice giant of every large terrestrial an add-on describes.
+            // Vulcan, 1.58 Earth radii of solid ground, landed there. We reach this line with a
+            // radius and a mass in hand whichever route establish_mass() took, so the density is
+            // available and it is the thing that actually tells the two apart.
+            pl->classify(pl->is_in_con_HZ(), true);
+            pl->estimate_albedo_and_absmagn();
+
+            double stated_albedo = 0;
+            if (get_num(blk.fields, "Albedo", stated_albedo) || get_num(blk.fields, "GeomAlbedo", stated_albedo))
+            {
+                pl->albedo = stated_albedo;
+                double rearths = fmax(0.01, pl->volumetric_mean_radius / earth_radius);
+                pl->absolute_magnitude = fmax(-10.0, earth_absmag
+                    - log(rearths * rearths * stated_albedo / earth_albedo) / log(magnbase));
+            }
+
+            if (!cel->sidereal_rotational_period) pl->estimate_rotation();
+
+            const json *atmos = get_obj(blk.fields, "Atmosphere");
+            bool all_weather = (pl->type == gas_giant || pl->type == ice_giant || pl->type == hot_jupiter);
+            if (atmos)
+            {
+                // The cosmic shoreline is a model of what a terrestrial world can hold on to, and
+                // asking it about a gas giant gets an answer in the thousands of atmospheres --
+                // true of the deep interior, useless as the reference level for a body whose
+                // visible surface is its cloud tops. Giants get the conventional 1 bar those cloud
+                // tops are defined at instead, which is the level the rest of the app reasons about
+                // them at as well.
+                if (all_weather) pl->ensure_atmosphere()->surface_pressure = oneatm;
+                else pl->apply_cosmic_shoreline();
+                if (pl->get_surface_pressure() <= 0) pl->ensure_atmosphere()->surface_pressure = oneatm;
+                if (pl->estimate_habitability())
+                    pl->ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
+                else
+                    pl->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(pl->type);
+                report.note(std::string(pl->name) + ": the file states no air pressure, so "
+                    + std::to_string((int)(pl->get_surface_pressure() / oneatm * 1000) / 1000.0)
+                    + " atm was estimated for it.");
+            }
+
+            // Textures. The surface map goes to _surf for a world with ground and to _clouds for
+            // one that is nothing but weather, which is where our renderer looks for each.
+            std::string texname, cloudname, nightname, normalname, othername;
+            get_str(blk.fields, "Texture", texname);
+            get_str(blk.fields, "NightTexture", nightname);
+            get_str(blk.fields, "NormalMap", normalname);
+            if (atmos) get_str(*atmos, "CloudMap", cloudname);
+
+            std::string tex_path = find_texture(base_dir, texname);
+            std::string cloud_path = find_texture(base_dir, cloudname);
+
+            if (texname.size() && tex_path.empty())
+                report.note("Texture " + texname + " for \"" + name + "\" is not in the add-on; skipped.");
+            if (cloudname.size() && cloud_path.empty())
+                report.note("Cloud map " + cloudname + " for \"" + name + "\" is not in the add-on; skipped.");
+
+            if (tex_path.size())
+            {
+                if (all_weather) install_plain_texture(tex_path, cel, "_clouds");
+                else if (cloud_path.size())
+                {
+                    if (install_composited_surface(tex_path, cloud_path, cel))
+                        report.note(std::string(pl->name) + ": its cloud layer was composited into the "
+                            "surface map, which is the only place we can put it.");
+                }
+                else install_plain_texture(tex_path, cel, "_surf");
+            }
+            else if (cloud_path.size()) install_plain_texture(cloud_path, cel, "_clouds");
+
+            if (nightname.size())
+            {
+                std::string np = find_texture(base_dir, nightname);
+                if (np.size()) install_plain_texture(np, cel, "_night");
+                else report.note("Night texture " + nightname + " for \"" + name + "\" is not in the add-on; skipped.");
+            }
+
+            if (normalname.size())
+            {
+                std::string np = find_texture(base_dir, normalname);
+                if (np.size()) install_bump_from_normal_map(np, cel);
+                else report.note("Normal map " + normalname + " for \"" + name + "\" is not in the add-on; skipped.");
+            }
+
+            if (get_str(blk.fields, "SpecularTexture", othername))
+                report.note("\"" + name + "\": its specular map " + othername + " has no equivalent here.");
+            if (get_str(blk.fields, "OverlayTexture", othername))
+                report.note("\"" + name + "\": its overlay map " + othername + " has no equivalent here.");
+
+            const json *rings = get_obj(blk.fields, "Rings");
+            if (rings)
+            {
+                double inner = 0, outer = 0;
+                get_num(*rings, "Inner", inner);
+                get_num(*rings, "Outer", outer);
+                inner *= 1000.0;
+                outer *= 1000.0;
+                if (outer > pl->get_equatorial_radius())
+                {
+                    pl->ring_inner_radius = inner;
+                    pl->ring_radius = outer;
+                    pl->ring_mean_opacity = 0.75;
+
+                    std::string ringtex;
+                    std::string ring_path;
+                    if (get_str(*rings, "Texture", ringtex)) ring_path = find_texture(base_dir, ringtex);
+                    if (ring_path.size()) install_ring_textures(ring_path, pl, inner, outer);
+                    else
+                    {
+                        if (ringtex.size())
+                            report.note("Ring texture " + ringtex + " for \"" + name
+                                + "\" is not in the add-on (the source package ships it); rings generated instead.");
+                        pl->generate_ring_parameters(true);
+                        pl->ring_inner_radius = inner;
+                        pl->ring_radius = outer;
+                    }
+                }
+                else report.note("\"" + name + "\": its rings sit inside the planet and were dropped.");
+            }
+        }
+    }
+
+    for (size_t bi=0; bi<blocks.size(); bi++)
+    {
+        if (done[bi]) continue;
+        report.note("\"" + first_alias(blocks[bi].name) + "\" orbits \"" + blocks[bi].parent
+            + "\", which the file never defines; skipped.");
+        report.bodies_skipped++;
+    }
+
+    for (CelestialObject *cel : fresh) update_body_location(cel);
+
+    report.ok = true;
+    return true;
+}
+
+// ---------------------------------------------------------------- report window
+
+void draw_ssc_import_window(ImGuiIO &io)
+{
+    if (!ssc_report_shown) return;
+
+    ImGui::Begin("SSC Import", &ssc_report_shown, 0);
+
+    const SSCImportReport &rpt = last_ssc_import.report;
+
+    ImGui::TextUnformatted(rpt.source.c_str());
+    ImGui::Separator();
+    ImGui::Text("%d added, %d skipped, %d texture files written, %d relief maps built.",
+        rpt.bodies_added, rpt.bodies_skipped, rpt.textures_written, rpt.bumps_built);
+
+    if (rpt.notes.size())
+    {
+        ImGui::Separator();
+        ImGui::BeginChild("ssc_notes", ImVec2(720, 320), true, ImGuiWindowFlags_HorizontalScrollbar);
+        for (const std::string &n : rpt.notes)
+        {
+            ImGui::PushTextWrapPos(700);
+            ImGui::TextUnformatted(n.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        ImGui::EndChild();
+    }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Press U to write what was imported into universe.json.");
+
+    ImGui::SetWindowSize(ImVec2(0,0));
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
+        && io.MousePos.x < pos.x+siz.x && io.MousePos.y < pos.y+siz.y)
+        is_mouse_over_window = true;
+}

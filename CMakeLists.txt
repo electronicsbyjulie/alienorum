@@ -79,6 +79,7 @@ add_library(CLASSES STATIC
 	src/classes/satellite.cpp
 	src/classes/serial.cpp
 	src/classes/shore.cpp
+	src/classes/sscimport.cpp
 	src/classes/star.cpp
 )
 

@@ -17,6 +17,7 @@
 #include "dialogs.h"
 #include "visuals.h"
 #include "sphere_impostor.h"
+#include "classes/sscimport.h"
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 
 using namespace alienorum;
@@ -26,7 +27,7 @@ using namespace alienorum;
 // of everything typed before it.
 struct CliCmd
 {
-    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_fkey, k_char } kind;
+    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_fkey, k_char, k_import } kind;
     std::string s;
     int fkey = 0;
     char c = 0;
@@ -216,6 +217,10 @@ int main (int argc, char** argv)
         else if (!strcmp(argv[l], "find"))
         {
             if (const char* a = next_arg("find")) push_str(CliCmd::k_find, a);
+        }
+        else if (!strcmp(argv[l], "import"))
+        {
+            if (const char* a = next_arg("import")) push_str(CliCmd::k_import, a);
         }
         else if (!strcmp(argv[l], "track"))
         {
@@ -658,6 +663,7 @@ int main (int argc, char** argv)
             if (satwnd) draw_sat_window(io);
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
+            draw_ssc_import_window(io);
 
             if (!is_mouse_over_window && !dragging)
             {
@@ -783,6 +789,22 @@ int main (int argc, char** argv)
                         viewchanged = true;
                         break;
                     }
+                    case CliCmd::k_import:
+                        // Queued like every other command-line token rather than run before the
+                        // window opens, because the importer looks its parent stars up in cels[]
+                        // and that is not filled until the catalogs have finished loading.
+                        last_ssc_import.read(cmd.s);
+                        set_center_objects();
+                        refresh_star_visibilities();
+                        for (const std::string &note : last_ssc_import.report.notes)
+                            std::cout << note << std::endl;
+                        std::cout << last_ssc_import.report.bodies_added << " objects imported from "
+                            << cmd.s << ", " << last_ssc_import.report.bodies_skipped << " skipped." << std::endl;
+                        // No report window on this path. The same commentary has just gone to the
+                        // console, where a scripted run can read it, and a window sitting over the
+                        // view is exactly what a scripted run does not want.
+                        viewchanged = true;
+                        break;
                     case CliCmd::k_zoom:
                         zoom = atof(cmd.s.c_str());
                         viewchanged = true;
@@ -834,6 +856,21 @@ int main (int argc, char** argv)
                 }
 
                 // close
+                ImGuiFileDialog::Instance()->Close();
+                fdlg_shown = false;
+            }
+
+            if (ImGuiFileDialog::Instance()->Display("ImportSscDlgKey"))
+            {
+                if (ImGuiFileDialog::Instance()->IsOk())
+                {
+                    std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+                    last_ssc_import.read(filePathName);
+                    set_center_objects();
+                    refresh_star_visibilities();
+                    ssc_report_shown = true;
+                }
+
                 ImGuiFileDialog::Instance()->Close();
                 fdlg_shown = false;
             }

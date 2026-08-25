@@ -931,6 +931,19 @@ json Planet::to_json()
     if (asteroid_no) towrite["asteroid_no"] = asteroid_no;
     if (lock_type) towrite["lock_type"] = lock_type;
 
+    // A ring system's geometry used not to be written at all, on the understanding that
+    // generate_ring_parameters() would invent one again on the next load. That is fine for a body
+    // whose rings we made up in the first place, and wrong for one whose rings are a stated fact:
+    // a hand-edited radius, or the Inner/Outer a Celestia add-on gave -- both were silently
+    // replaced by a fresh guess. Written in kilometres, as every other distance in these files is,
+    // and only when there are rings to describe.
+    if (ring_radius)
+    {
+        towrite["ring_radius"] = ring_radius * 1e-3;
+        towrite["ring_inner_radius"] = ring_inner_radius * 1e-3;
+        towrite["ring_mean_opacity"] = ring_mean_opacity;
+    }
+
     return towrite;
 }
 
@@ -964,6 +977,9 @@ bool Planet::from_json(json j)
     try { j.at("J2").get_to(J2); } catch (...) { ; }
     try { j.at("asteroid_no").get_to(asteroid_no); } catch (...) { ; }
     try { j.at("lock_type").get_to(lock_type); } catch (...) { ; }
+    try { j.at("ring_radius").get_to(ring_radius); ring_radius *= 1e3; } catch (...) { ; }
+    try { j.at("ring_inner_radius").get_to(ring_inner_radius); ring_inner_radius *= 1e3; } catch (...) { ; }
+    try { j.at("ring_mean_opacity").get_to(ring_mean_opacity); } catch (...) { ; }
     return true;
 }
 
