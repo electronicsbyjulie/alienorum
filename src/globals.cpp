@@ -7,7 +7,6 @@ using namespace alienorum;
 SDL_Window* window;
 char lookfor[name_max_len], edit_name[name_max_len], looksat[name_max_len], lookast[name_max_len], lookcomet[name_max_len], lookloc[name_max_len];
 bool edtname_dirty=false, lookfor_notfound = false;
-std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 std::filesystem::path p = "catalogs";
 std::string load_univ = "", setjd = "";
 bool catalogs_found = false, fullscreen = false;

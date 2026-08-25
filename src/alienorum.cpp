@@ -161,8 +161,6 @@ int main (int argc, char** argv)
     angular_radius = new double[MAX_CELOBJS];
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
-    bx_cache = new int[MAX_CELOBJS];
-    by_cache = new int[MAX_CELOBJS];
 
     std::vector<CliCmd> cli_cmds;
     size_t cli_cmd_pos = 0;
@@ -594,8 +592,6 @@ int main (int argc, char** argv)
 
             dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
-            drawblxscalex = drawn_cache_split / io.DisplaySize.x;
-            drawblxscaley = drawn_cache_split / io.DisplaySize.y;
 
             if (!cels[1]) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2((int)io.DisplaySize.x, (int)io.DisplaySize.y), IM_COL32(78, 137, 225, 255));
 
@@ -995,8 +991,6 @@ int main (int argc, char** argv)
     delete[] vmag_cache;
     delete[] bloomrad_cache;
     delete[] discinstead;
-    delete[] bx_cache;
-    delete[] by_cache;
     if (hdcache) delete[] hdcache;
     if (hipcache) delete[] hipcache;
     return 0;

@@ -307,10 +307,8 @@ void compute_object_draw_coordinates()
 {
     num_stars_in_box = 0;
     if (!ncelobjs) return;
-    if (!bx_cache) bx_cache = new int[MAX_CELOBJS];
-    if (!by_cache) by_cache = new int[MAX_CELOBJS];
 
-    int i, j, n, bx, by;
+    int i, j, n;
     dispw = dispcx*2;
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
@@ -344,7 +342,6 @@ void compute_object_draw_coordinates()
         }
     }
 
-    for (i=0; i<drawn_cache_split; i++) for (j=0; j<drawn_cache_split; j++) drawnblocks[i][j].clear();
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->deleted) continue;
@@ -380,180 +377,125 @@ void compute_object_draw_coordinates()
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
-    if (1) // viewchanged || redo_proper_motions)
+    luminous_flux = cels[1] ? 0 : 1e10;
+    inside_galaxy_idx = -1;
+    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        luminous_flux = cels[1] ? 0 : 1e10;
-        inside_galaxy_idx = -1;
-        for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+
+        vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
+        if (cels[i]->deleted) continue;
+        cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
+            = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
+        if (isnan(cels[i]->tmprel.x)) continue;
+        
+        // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
+        // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
+        if (cels[i]->typeclass() == class_galaxy)
         {
+            double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
+            if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
+                inside_galaxy_idx = i;
+        }
 
-            vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
-            if (cels[i]->deleted) continue;
-            cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
-                = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
-            if (isnan(cels[i]->tmprel.x)) continue;
-            
-            // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
-            // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
-            if (cels[i]->typeclass() == class_galaxy)
+        if (i == whereami) continue;
+        
+        // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
+        // a star out of its visible box would.
+        if (cels[i]->typeclass() == class_star)
+        {
+            Star* cels_i_star = ((Star*)cels[i]);
+
+            if (cels_i_star
+                && cels_i_star->seqno
+                && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
+                && !cels_i_star->tmp_vis_flag
+                && !cels_i_star->is_universally_visible())
             {
-                double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
-                if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
-                    inside_galaxy_idx = i;
+                cels[i]->drawnx = cels[i]->drawny = -1e9;
+                continue;
             }
+        }
 
-            if (i == whereami) continue;
-            
-            // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
-            // a star out of its visible box would.
-            if (cels[i]->typeclass() == class_star)
-            {
-                Star* cels_i_star = ((Star*)cels[i]);
+        Point rel = cels[i]->tmprel;
+        double relm = rel.magnitude();
 
-                if (cels_i_star
-                    && cels_i_star->seqno
-                    && i!=selected && i!=trackidx && i!=whereami && cels_i_star!=mycenobj
-                    && !cels_i_star->tmp_vis_flag
-                    && !cels_i_star->is_universally_visible())
-                {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
-                }
-            }
-
-            Point rel = cels[i]->tmprel;
-            double relm = rel.magnitude();
-
-            if (cels[i]->orbit
-                && relm > 1e4 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
-            {
-                angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
-                if (angular_radius[i] < 0.01*fiftyseventh)
-                {
-                    cels[i]->drawnx = cels[i]->drawny = -1e9;
-                    continue;
-                }
-            }
-
-            rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
-
-            cel_obj_class icls = cels[i]->typeclass();
-            if (icls == class_planet || icls == class_moon)
-            {
-                vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
-
-                double lit = eclipse_illumination(cels[i]);
-                if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
-            }
-            else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
-            else vmag_cache[i] = cels[i]->viewer_magnitude(here);
-
-            double brght;
-
-            if (view_mode == vm_horizon)
-            {
-                /* Point axis = compute_normal(rel, yaxis, center);
-                rel = rotate3D(rel, center, axis, ((Planet*)cels[whereami])->atmospheric_refraction(cels[i]->Decl_as_radians(here))); */
-
-                rel = refract_true_point(rel);
-
-                if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
-                {
-                    brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-                    float theta = cels[i]->Decl_as_radians(here);
-
-                    if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
-                    {
-                        // Interpolated twilight values.
-                        float theta_deg = theta * fiftyseven, twilight;
-                        if (theta_deg >= 6) twilight = 6.0;
-                        else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg);
-                        else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6));
-                        else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12));
-                        else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18));
-                        else twilight = 0;
-
-                        double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
-
-                        // A solar eclipse, from underneath it. Nothing here is specific to
-                        // eclipses: the daylight this loop is accumulating is simply the light
-                        // actually arriving, and during an eclipse most of it is not arriving.
-                        // Everything the sky does about that follows on its own from
-                        // luminous_flux -- draw_sky_gradient() dims, sky_mag_shift falls with
-                        // it, and stars that were being drowned out clear the magnitude limit
-                        // and come out, which is exactly what happens outdoors.
-                        //
-                        // The floor is what still lights the sky once the disc is gone -- the
-                        // corona, and air outside the shadow scattering light back in under it.
-                        // Its value is set by how totality should *look*, not by the photometry:
-                        // the corona really is about a millionth of the photosphere, and a
-                        // millionth put through the compression curve draw_sky_gradient() runs
-                        // luminous_flux through comes out as an essentially black sky with the
-                        // Milky Way across it, which is not what anyone standing under an
-                        // eclipse has ever seen. Totality is a deep blue twilight with the
-                        // brightest few stars and planets out, and 1e-3 is what lands there on
-                        // this particular curve.
-                        //
-                        // Turn it down for a darker totality, up for a milder one. It is a
-                        // fraction of the light the sun would be delivering uneclipsed, so it
-                        // follows the sun up and down the sky on its own.
-                        const double kTotalityFloor = 1.2e-3;
-                        double obsc = eclipse_obscuration(cels[i]);
-                        if (obsc > 0)
-                        {
-                            // fmax, not a blend: at true totality the geometry really does reach
-                            // an obscuration of exactly 1 (measured), so a floor written as a
-                            // share of the covered fraction would have nothing left to scale and
-                            // the sky would go out entirely. This way the floor is a hard limit
-                            // on how dark an eclipse can drive the daylight, whatever the
-                            // geometry does.
-                            add_flux *= fmax(1.0 - obsc, kTotalityFloor);
-                            if (obsc > eclipsed_fraction)
-                            {
-                                eclipsed_fraction = obsc;
-                                eclipsed_light = cels[i];
-                            }
-                        }
-
-                        if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
-                    }
-                }
-            }
-
-            cels[i]->viewrel = rel;
-
-            // Ahead of the screen-bounds bails below, not after them. Every rotation rel has been
-            // through preserves its magnitude, so the value is the same either way -- what changes
-            // is that an object off the edge of the screen now gets a current one instead of
-            // keeping whatever it had on the last frame its centre was inside the window.
-            //
-            // Nothing culls on being offscreen alone: draw_objects() deliberately exempts anything
-            // with a big enough disc ("angular_radius[i]*zoom < sphere_rad_threshold" guarding the
-            // drawnx/drawny test there), because a disc whose centre is past the edge can still
-            // throw its glare across the visible frame. So a body that drifts out of frame while
-            // large goes on being drawn from a frozen angular_radius, and draw_one_object() divides
-            // its flare by exactly that ("f_ang"). vmag_cache[i] is still updated every frame, a
-            // few lines up -- so on a close flyby the brightness kept climbing while the disc it
-            // was being spread over stayed pinned at its stale value. Bug: the flare of an object
-            // that had left the frame staying far too bright until it came back into view and
-            // refreshed this.
+        if (cels[i]->orbit
+            && relm > 1e4 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
+        {
             angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+            if (angular_radius[i] < 0.01*fiftyseventh)
+            {
+                cels[i]->drawnx = cels[i]->drawny = -1e9;
+                continue;
+            }
+        }
 
-            Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
-            float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
-            cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
-            cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = dy;
+        rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-            if (dx < 0 || dx >= dispw) continue;
-            if (dy < 0 || dy >= disph) continue;
+        cel_obj_class icls = cels[i]->typeclass();
+        if (icls == class_planet || icls == class_moon)
+        {
+            vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
 
-            bx = dx*drawblxscalex;
-            by = dy*drawblxscaley;
-            if (bx<0 || bx>=drawn_cache_split || by<0 || by>=drawn_cache_split) continue;
-            drawnblocks[bx][by].push_back(i);
-            bx_cache[i] = bx;
-            by_cache[i] = by;
+            double lit = eclipse_illumination(cels[i]);
+            if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
+        }
+        else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
+        else vmag_cache[i] = cels[i]->viewer_magnitude(here);
+
+        double brght;
+
+        if (view_mode == vm_horizon)
+        {
+            rel = refract_true_point(rel);
+
+            if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
+            {
+                brght = global_brightness * pow(magnbase, -vmag_cache[i]);
+                float theta = cels[i]->Decl_as_radians(here);
+
+                if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
+                {
+                    // Interpolated twilight values.
+                    float theta_deg = theta * fiftyseven, twilight;
+                    if (theta_deg >= 6) twilight = 6.0;
+                    else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg);
+                    else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6));
+                    else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12));
+                    else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18));
+                    else twilight = 0;
+
+                    double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
+
+                    // Under a solar eclipse.
+                    const double kTotalityFloor = 1.2e-3;
+                    double obsc = eclipse_obscuration(cels[i]);
+                    if (obsc > 0)
+                    {
+                        add_flux *= fmax(1.0 - obsc, kTotalityFloor);
+                        if (obsc > eclipsed_fraction)
+                        {
+                            eclipsed_fraction = obsc;
+                            eclipsed_light = cels[i];
+                        }
                     }
+
+                    if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
+                }
+            }
+        }
+
+        cels[i]->viewrel = rel;
+
+        angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+
+        Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
+        float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
+        cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
+        cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = dy;
+
+        if (dx < 0 || dx >= dispw) continue;
+        if (dy < 0 || dy >= disph) continue;
     }
 
     redo_proper_motions = false;

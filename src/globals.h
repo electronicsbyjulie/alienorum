@@ -33,7 +33,6 @@ using namespace std;
 extern SDL_Window* window;
 extern char lookfor[name_max_len], edit_name[name_max_len], looksat[name_max_len], lookast[name_max_len], lookcomet[name_max_len], lookloc[name_max_len];
 extern bool edtname_dirty, lookfor_notfound;
-extern std::vector<int> drawnblocks[drawn_cache_split][drawn_cache_split];
 extern std::filesystem::path p;
 extern std::string load_univ, setjd;
 extern bool catalogs_found, fullscreen;

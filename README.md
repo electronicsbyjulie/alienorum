@@ -46,10 +46,6 @@ MSYS2 (Run in MINGW64 environment):
 
 Internal AlienorumIDs for stars dimmer than magnitude 8 should be considered provisional and subject to change.
 
-Unofficial proposed names are included for the four planets in the 82 Eridani system. These names are not in use
-by any authority at the time of this writing. The names were invented here to avoid confusion between two
-different lettering schemes for the planets in this system.
-
 
 ## Initial Run
 

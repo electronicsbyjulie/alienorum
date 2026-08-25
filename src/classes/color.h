@@ -8,7 +8,6 @@
 #include "misc.h"
 #include "imgui/imgui.h"
 
-#define drawn_cache_split 25
 #define _lum_r_comp 0.29
 #define _lum_g_comp 0.56
 #define _lum_b_comp 0.15
@@ -140,8 +139,6 @@ namespace alienorum
 
 extern double global_brightness, sky_mag_shift;
 extern bool redlight_mode;
-extern double drawblxscalex, drawblxscaley;
-extern int *bx_cache, *by_cache;
 extern AlienStyle global_style;
 extern std::map<int, RGB3Byte> sky_grad;
 

@@ -20,9 +20,6 @@ AlienStyle global_style;
 bool redlight_mode = false;
 std::map<int, RGB3Byte> sky_grad;
 
-double drawblxscalex, drawblxscaley;
-int *bx_cache = nullptr, *by_cache = nullptr;
-
 double Color::luminance()
 {
     return _lum_r_comp * red + _lum_g_comp * green + _lum_b_comp * blue;
