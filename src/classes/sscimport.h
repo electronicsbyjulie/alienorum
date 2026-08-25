@@ -75,10 +75,16 @@ namespace alienorum
         bool install_composited_surface(const std::string &surf_src, const std::string &cloud_src,
             CelestialObject *cel);
         bool install_ring_textures(const std::string &src, Planet *pl, double inner_m, double outer_m);
+        void install_procedural_ring(Planet *pl);
         bool install_bump_from_normal_map(const std::string &src, CelestialObject *cel);
         CelestialObject* resolve_star(const std::string &ssc_name);
+        CelestialObject* find_star_in_stc_files(const std::string &ssc_name);
+        CelestialObject* create_star_from_stc_record(const json &fields, const std::string &raw_name);
+        CelestialObject* create_fictitious_star(const std::string &raw_name);
         void apply_orbit(const json &orb, CelestialObject *cel, CelestialObject *parent);
         void establish_mass(Planet *pl, const json &fields, const SSCBlock &blk);
+
+        std::string base_dir;                        // set once at the top of read()
     };
 }
 

@@ -645,6 +645,14 @@ int main (int argc, char** argv)
             // frame's answer to "is the mouse over a window" and so far this has been good enough.
             is_mouse_over_window = false;
 
+            // A native file dialog is its own top-level window, not one of ours, so nothing
+            // below sets this from its bounds the way it does for our own ImGui windows. Left
+            // unset, sky-panning's own dragging (pan_with_crosshairs()) would arm underneath it
+            // -- and that function wraps the cursor back onto the screen near either edge, which
+            // fights the dialog's own edge-drag resize. Set unconditionally, before the dragging
+            // gate further down reads it this same frame, for as long as the dialog is open.
+            if (fdlg_shown) is_mouse_over_window = true;
+
             // Status window
             if (statuswnd) draw_status_window(io);
 
@@ -836,7 +844,10 @@ int main (int argc, char** argv)
             if (ImGui::IsAnyItemActive()) editing = true;
             if (!editing) process_keyboard_commands(io);
 
-            if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
+            // A minimum size big enough to be usable on open, so resizing it -- awkward, since
+            // the sky view's own edge-drag panning has to be held off the whole time one of these
+            // is up (see the fdlg_shown check above) -- is rarely something the user needs to do.
+            if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
             {
                 if (ImGuiFileDialog::Instance()->IsOk())
                 {
@@ -860,7 +871,7 @@ int main (int argc, char** argv)
                 fdlg_shown = false;
             }
 
-            if (ImGuiFileDialog::Instance()->Display("ImportSscDlgKey"))
+            if (ImGuiFileDialog::Instance()->Display("ImportSscDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
             {
                 if (ImGuiFileDialog::Instance()->IsOk())
                 {

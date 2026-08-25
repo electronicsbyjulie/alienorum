@@ -21,6 +21,7 @@
 #include <complex>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <vector>
@@ -837,6 +838,36 @@ bool parse_ssc(const std::string &text, std::vector<SSCBlock> &blocks, std::stri
     }
 }
 
+// A sibling star-catalog file: same format family as the .ssc itself (a leading catalog number,
+// a quoted name that may carry ':'-separated aliases the way a body's name does, then a braced
+// field list), but always flat -- one star per entry, nothing nested under it -- since a star
+// catalog has no orbits of its own to place things in. Reuses the .ssc block reader's own
+// primitives (skip_space/parse_quoted/parse_braced) rather than a second parser.
+bool parse_stc(const std::string &text, std::vector<std::pair<std::string, json>> &out)
+{
+    size_t i = 0;
+    for (;;)
+    {
+        skip_space(text, i);
+        if (i >= text.size()) return true;
+
+        if (isdigit((unsigned char)text[i]) || text[i] == '-')
+        {
+            while (i < text.size() && (isdigit((unsigned char)text[i]) || text[i] == '-')) i++;
+            skip_space(text, i);
+        }
+
+        std::string name;
+        if (!parse_quoted(text, i, name)) return false;
+        skip_space(text, i);
+        if (i >= text.size() || text[i] != '{') return false;
+
+        json fields;
+        if (!parse_braced(text, i, fields)) return false;
+        out.push_back({name, fields});
+    }
+}
+
 // ---------------------------------------------------------------- field access
 
 bool get_num(const json &j, const char *key, double &out)
@@ -1012,12 +1043,34 @@ bool SSCImport::install_ring_textures(const std::string &src, Planet *pl, double
     std::string why;
     if (!read_image(src, ring, why))
     {
-        report.note(src + ": " + why + "; rings left procedural.");
+        report.note(src + ": " + why + "; a ring pattern was generated instead.");
+        return false;
+    }
+
+    // Our ring transparency map is exactly that -- a per-radius transparency channel -- so the
+    // conversion below only means something if the source actually carries one. A texture with
+    // no alpha channel at all decodes here as uniformly opaque (see read_png/read_jpeg/read_dds
+    // above, which default every pixel's alpha to 255 when the format has none), and copying that
+    // in would draw a ring with no falloff at either edge: the same solid-disc result a missing
+    // ring texture gives. Caught here by the same test either failure produces -- no real
+    // variation in the decoded alpha -- rather than by asking each decoder what it saw.
+    unsigned char amin = 255, amax = 0;
+    for (size_t i = 3; i < ring.rgba.size(); i += 4)
+    {
+        if (ring.rgba[i] < amin) amin = ring.rgba[i];
+        if (ring.rgba[i] > amax) amax = ring.rgba[i];
+    }
+    if ((int)amax - (int)amin < 8)
+    {
+        report.note(src + " carries no real transparency data (its opacity is uniform); "
+            "a ring pattern was generated instead.");
         return false;
     }
 
     std::string dest = map_path(pl, "_ring", ".png"), destx = map_path(pl, "_ringx", ".png");
-    if (!may_write_map(dest) || !may_write_map(destx)) return false;
+    // Evaluated separately rather than short-circuited, so a run with only one of the two files
+    // already on disk still reports on -- and still writes -- the other.
+    bool dest_writable = may_write_map(dest), destx_writable = may_write_map(destx);
 
     // These ring textures are strips: one axis is radius, the other is a couple of texels of
     // padding. Whichever axis is longer is the radial one.
@@ -1071,13 +1124,45 @@ bool SSCImport::install_ring_textures(const std::string &src, Planet *pl, double
         }
     }
 
-    if (!write_png(dest, colors) || !write_png(destx, alphas))
+    // dest_writable/destx_writable being false means an existing file was deliberately left
+    // alone (may_write_map() already noted it), not a failure -- the ring still ends up with a
+    // real texture, just not one written by this run, so the caller should not treat this as a
+    // reason to fall back to a generated ring.
+    if (dest_writable && !write_png(dest, colors))
     {
         report.note(std::string("Could not write ") + dest + ".");
         return false;
     }
-    report.textures_written += 2;
+    if (destx_writable && !write_png(destx, alphas))
+    {
+        report.note(std::string("Could not write ") + destx + ".");
+        return false;
+    }
+    report.textures_written += (dest_writable ? 1 : 0) + (destx_writable ? 1 : 0);
     return true;
+}
+
+// Builds a ring pattern with the app's own procedural generator and saves it alongside the other
+// imported maps, wherever may_write_map() allows -- used whenever the add-on's own ring texture
+// is missing, undecodable, or (per install_ring_textures() above) carries no real transparency
+// data to convert. Mirrors exactly how celestial.cpp builds a ring for a body it is texturing
+// itself: replace ring_map/ringx_map, call Map::generate_ring_map() with the geometry already
+// settled on this body, then save what came out.
+void SSCImport::install_procedural_ring(Planet *pl)
+{
+    if (pl->ring_map) delete pl->ring_map;
+    if (pl->ringx_map) delete pl->ringx_map;
+
+    pl->ring_map = new Map(pl);
+    pl->ringx_map = new Map(pl);
+    int res = (int)(pl->ring_radius / pl->volumetric_mean_radius * 1024);
+    pl->ring_map->generate_ring_map(pl, res, pl->ring_inner_radius / pl->ring_radius,
+        pl->ring_mean_opacity, pl->ringx_map);
+
+    std::string dest = map_path(pl, "_ring", ".png"), destx = map_path(pl, "_ringx", ".png");
+    bool dest_writable = may_write_map(dest), destx_writable = may_write_map(destx);
+    if (dest_writable && pl->ring_map->save_to_png(dest)) report.textures_written++;
+    if (destx_writable && pl->ringx_map->save_to_png(destx)) report.textures_written++;
 }
 
 bool SSCImport::install_bump_from_normal_map(const std::string &src, CelestialObject *cel)
@@ -1128,6 +1213,9 @@ void SSCImport::update_body_location(CelestialObject *cel)
     }
 }
 
+// A body's parent is always found, one way or another: a real catalog star first, then a star
+// this same add-on defines in a sibling star-catalog file, and only failing both of those a
+// plausible invented one -- never a hard failure that drops everything orbiting it.
 CelestialObject* SSCImport::resolve_star(const std::string &ssc_name)
 {
     auto found = star_cache.find(ssc_name);
@@ -1138,11 +1226,181 @@ CelestialObject* SSCImport::resolve_star(const std::string &ssc_name)
 
     int idx = find_object(want.c_str(), true, 9e29, 2);
     CelestialObject *star = (idx >= 0) ? cels[idx] : nullptr;
-    star_cache[ssc_name] = star;
 
-    if (star) report.note("Star \"" + ssc_name + "\" resolved to " + std::string(star->name) + ".");
-    else report.note("Star \"" + ssc_name + "\" is not in our catalogs; everything orbiting it was skipped.");
+    if (star)
+        report.note("Star \"" + ssc_name + "\" resolved to " + std::string(star->name) + ".");
+    else
+    {
+        star = find_star_in_stc_files(ssc_name);
+        if (!star) star = create_fictitious_star(ssc_name);
+    }
+
+    star_cache[ssc_name] = star;
     return star;
+}
+
+CelestialObject* SSCImport::find_star_in_stc_files(const std::string &ssc_name)
+{
+    std::error_code ec;
+    std::filesystem::directory_iterator it(base_dir, ec), end;
+    if (ec) return nullptr;
+
+    std::string want = first_alias(ssc_name);
+    for (; it != end && !ec; it.increment(ec))
+    {
+        if (!it->is_regular_file()) continue;
+        if (lowercased(it->path().extension().string()) != ".stc") continue;
+
+        std::ifstream fs(it->path(), std::ios::binary);
+        if (!fs) continue;
+        std::string text((std::istreambuf_iterator<char>(fs)), std::istreambuf_iterator<char>());
+
+        std::vector<std::pair<std::string, json>> records;
+        if (!parse_stc(text, records)) continue;
+
+        for (auto &rec : records)
+        {
+            // The record's own name may itself carry ':'-separated aliases (the star-catalog
+            // format's "Bajor:B'hava'el" is exactly the ':'-alias convention a body's name uses),
+            // so every alias is a candidate match, not just the one the file leads with.
+            size_t from = 0;
+            while (from <= rec.first.size())
+            {
+                size_t colon = rec.first.find(':', from);
+                std::string one = rec.first.substr(from, (colon == std::string::npos) ? std::string::npos : colon - from);
+                if (one == want || one == ssc_name)
+                {
+                    CelestialObject *star = create_star_from_stc_record(rec.second, rec.first);
+                    if (star)
+                        report.note("Star \"" + ssc_name + "\" has no catalog entry, but "
+                            + it->path().filename().string() + " in the add-on defines it; that definition was used.");
+                    return star;
+                }
+                if (colon == std::string::npos) break;
+                from = colon + 1;
+            }
+        }
+    }
+    return nullptr;
+}
+
+CelestialObject* SSCImport::create_star_from_stc_record(const json &fields, const std::string &raw_name)
+{
+    std::string name = first_alias(raw_name);
+    if (name.size() >= name_max_len) name = name.substr(0, name_max_len-1);
+
+    Star *s = new Star();
+    strcpy(s->name, name.c_str());
+    s->origname = name;
+
+    double ra_deg = 0, dec_deg = 0, distance_ly = 0;
+    get_num(fields, "RA", ra_deg);
+    get_num(fields, "Dec", dec_deg);
+    get_num(fields, "Distance", distance_ly);
+    get_num(fields, "AppMag", s->apparent_magnitude);
+    s->right_ascension = ra_deg * fiftyseventh;
+    s->declination = dec_deg * fiftyseventh;
+    s->distance = distance_ly * light_year;
+    s->distance_known = true;
+
+    std::string sptyp;
+    if (get_str(fields, "SpectralType", sptyp))
+    {
+        if (sptyp.size() >= sizeof(s->spectral_type)) sptyp = sptyp.substr(0, sizeof(s->spectral_type)-1);
+        strcpy(s->spectral_type, sptyp.c_str());
+        double msqi = Star::get_mseqidx_from_sptyp(s->spectral_type);
+        if (msqi >= mseqmin && msqi <= mseqmax) s->BV_color = Star::interpolate_mseq_BV(msqi);
+    }
+
+    // Same distance-modulus algebra CelestialObject::to_json()'s callers use elsewhere in this
+    // codebase, just run on real apparent-magnitude-and-distance data instead of a catalog's own
+    // parallax.
+    double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+    s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+
+    if (!cels[0])
+    {
+        // estimate_mass()/estimate_radius() fall back to a comparison against the Sun when the
+        // main-sequence color lookup itself fails, and throw rather than dereference a null Sun
+        // if that ever happens with no catalogs loaded. It should not happen for an ordinary
+        // dwarf spectral type, but nothing here guarantees the add-on gave us one.
+        delete s;
+        return nullptr;
+    }
+    s->mass = s->estimate_mass();
+    s->volumetric_mean_radius = s->estimate_radius();
+    s->temperature = s->estimate_temperature();
+    s->estimate_UB();
+    s->user_added = true;
+    s->user_edited = true;
+
+    if (!append_cel(s))
+    {
+        delete s;
+        return nullptr;
+    }
+    s->update_location(J2000_TIME_T);
+    return s;
+}
+
+// The add-on names a star neither we nor it can supply a definition for. Refusing to import
+// anything under it would throw away everything the file DOES tell us -- the planets' names,
+// sizes, atmospheres, texture maps -- over one missing line, so a Sun-like G2 V star is invented
+// in its place instead. G2 V specifically because these add-ons are near-universally designed
+// with real-world distances in mind: a "habitable" world here is placed at roughly 1 AU because
+// that is the habitable zone of a Sun-like star, not because the file says so anywhere -- Risa
+// orbits its own primary at exactly 1 AU, Bajor III at 1.6. A Sun-like default makes that design
+// intent come out right without this importer having to go looking at texture names to guess at
+// habitability itself.
+CelestialObject* SSCImport::create_fictitious_star(const std::string &raw_name)
+{
+    if (!cels[0]) return nullptr;                       // see create_star_from_stc_record()
+
+    std::string name = first_alias(raw_name);
+    if (name.size() >= name_max_len) name = name.substr(0, name_max_len-1);
+
+    // Deterministic placement from the name (not random), so re-importing the same file lands
+    // this star in the same empty patch of sky rather than drifting, and two different invented
+    // stars don't stack exactly on top of each other.
+    uint32_t h = 2166136261u;
+    for (unsigned char c : name) h = (h ^ c) * 16777619u;
+
+    Star *s = new Star();
+    strcpy(s->name, name.c_str());
+    s->origname = name;
+    s->right_ascension = (double)(h % 360000u) / 1000.0 * fiftyseventh;
+    s->declination = ((double)((h / 360000u) % 180000u) / 1000.0 - 90.0) * fiftyseventh;
+    s->distance = 200.0 * light_year;                    // arbitrary, just out of the way
+    s->distance_known = true;
+    strcpy(s->spectral_type, "G2 V");
+
+    double msqi = Star::get_mseqidx_from_sptyp(s->spectral_type);
+    if (msqi >= mseqmin && msqi <= mseqmax) s->BV_color = Star::interpolate_mseq_BV(msqi);
+    s->mass = s->estimate_mass();
+    s->volumetric_mean_radius = s->estimate_radius();
+    s->temperature = s->estimate_temperature();
+    s->estimate_UB();
+
+    // The Sun's own true absolute V magnitude, so "Sun-like" is not just its spectral class but
+    // its actual brightness too; apparent magnitude then follows from that and the distance just
+    // chosen above, rather than the other way around, since neither one is an observation.
+    s->absolute_magnitude = 4.83;
+    double dist_pc = fmax(s->distance / parsec, 1.0);
+    s->apparent_magnitude = s->absolute_magnitude + 5.0 * log10(dist_pc / 10.0);
+
+    s->user_added = true;
+    s->user_edited = true;
+
+    if (!append_cel(s))
+    {
+        delete s;
+        return nullptr;
+    }
+    s->update_location(J2000_TIME_T);
+
+    report.note("Star \"" + raw_name + "\" is not in our catalogs, and the add-on carries no "
+        "definition for it either, so a Sun-like G2 V star was invented in its place.");
+    return s;
 }
 
 cel_obj_class SSCImport::class_from_ssc(const json &fields, const CelestialObject *parent)
@@ -1295,7 +1553,7 @@ bool SSCImport::read(const std::string &ssc_path)
         return false;
     }
 
-    std::string base_dir = parent_directory(ssc_path);
+    base_dir = parent_directory(ssc_path);
     std::map<std::string, CelestialObject*> imported;    // keyed by full Celestia path
     std::vector<CelestialObject*> fresh;
 
@@ -1559,15 +1817,14 @@ bool SSCImport::read(const std::string &ssc_path)
                     std::string ringtex;
                     std::string ring_path;
                     if (get_str(*rings, "Texture", ringtex)) ring_path = find_texture(base_dir, ringtex);
-                    if (ring_path.size()) install_ring_textures(ring_path, pl, inner, outer);
-                    else
+
+                    bool have_ring_texture = ring_path.size() && install_ring_textures(ring_path, pl, inner, outer);
+                    if (!have_ring_texture)
                     {
-                        if (ringtex.size())
+                        if (ringtex.size() && ring_path.empty())
                             report.note("Ring texture " + ringtex + " for \"" + name
-                                + "\" is not in the add-on (the source package ships it); rings generated instead.");
-                        pl->generate_ring_parameters(true);
-                        pl->ring_inner_radius = inner;
-                        pl->ring_radius = outer;
+                                + "\" is not in the add-on (the source package ships it); a ring pattern was generated instead.");
+                        install_procedural_ring(pl);
                     }
                 }
                 else report.note("\"" + name + "\": its rings sit inside the planet and were dropped.");
