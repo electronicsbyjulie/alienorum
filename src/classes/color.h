@@ -9,8 +9,8 @@
 #include "imgui/imgui.h"
 
 #define _lum_r_comp 0.29
-#define _lum_g_comp 0.56
-#define _lum_b_comp 0.15
+#define _lum_g_comp 0.53
+#define _lum_b_comp 0.18
 
 namespace alienorum
 {
@@ -44,7 +44,7 @@ namespace alienorum
         static RGB3Byte disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
-        static ImU32 adjust_alpha(ImU32 input, double new_alpha);
+        static ImU32 adjust_alpha(ImU32 input, double target_visibility);
 
         // Re-balances a themed overlay color (alpha-blended over a solid black or white
         // background) so its WCAG contrast ratio against that background lands in

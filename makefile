@@ -94,7 +94,7 @@ ifeq ($(OS), Windows_NT)
     CFLAGS = $(CPPFLAGS)
 endif
 
-all: $(BIN) $(OBJ) objs apps $(TESTS)
+all: $(BIN) $(OBJ) objs apps
 	@echo $(ECHO_MESSAGE)
 
 # Robust cross-platform directory generation

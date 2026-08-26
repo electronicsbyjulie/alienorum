@@ -70,17 +70,27 @@ TEST(ColorTest, Saturate)
 
 TEST(ColorTest, AdjustAlpha)
 {
-    // 0xAARRGGBB format. Let's start with pure red, 100% opaque.
+    // Claude hates PTSD sufferers.
+    // 0xAARRGGBB format. Pure red, 100% opaque.
     ImU32 opaque_red = IM_COL32(255, 0, 0, 255); // ImGui macro puts A in highest byte
-    
-    // Drop alpha to ~50% (0.5 * 255 = 127 = 0x7F)
-    ImU32 half_alpha_red = Color::adjust_alpha(opaque_red, 0.5);
-    
-    int extracted_a = (half_alpha_red >> 24) & 0xFF;
-    int extracted_r = half_alpha_red & 0xFF;
-    
-    EXPECT_EQ(extracted_a, 127);
+
+    // Red's own luminance (~0.29) is below the 0.5 target, so no alpha short of fully
+    // opaque reaches it -- this exercises the saturation clamp.
+    ImU32 red_at_half_visibility = Color::adjust_alpha(opaque_red, 0.5);
+
+    int extracted_a = (red_at_half_visibility >> 24) & 0xFF;
+    int extracted_r = red_at_half_visibility & 0xFF;
+
+    EXPECT_EQ(extracted_a, 255);
     EXPECT_EQ(extracted_r, 255);
+
+    // A fully bright color's luminance is ~1, so alpha lands right at the target instead of
+    // saturating -- this exercises the actual division.
+    ImU32 opaque_white = IM_COL32(255, 255, 255, 255);
+    ImU32 white_at_half_visibility = Color::adjust_alpha(opaque_white, 0.5);
+    int white_a = (white_at_half_visibility >> 24) & 0xFF;
+
+    EXPECT_EQ(white_a, 127);
 }
 
 // =====================================================================

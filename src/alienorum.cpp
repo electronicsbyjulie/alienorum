@@ -843,9 +843,6 @@ int main (int argc, char** argv)
             if (ImGui::IsAnyItemActive()) editing = true;
             if (!editing) process_keyboard_commands(io);
 
-            // A minimum size big enough to be usable on open, so resizing it -- awkward, since
-            // the sky view's own edge-drag panning has to be held off the whole time one of these
-            // is up (see the fdlg_shown check above) -- is rarely something the user needs to do.
             if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
             {
                 if (ImGuiFileDialog::Instance()->IsOk())

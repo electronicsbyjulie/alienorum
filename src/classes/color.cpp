@@ -118,10 +118,13 @@ ImU32 Color::black_to_transparent(ImU32 input)
     return (a<<24) + (b<<16) + (g<<8) + r;
 }
 
-ImU32 alienorum::Color::adjust_alpha(ImU32 input, double new_alpha)
+ImU32 alienorum::Color::adjust_alpha(ImU32 input, double tgtv)
 {
-    int a = fmax(0, fmin(255, new_alpha*255));
     int r = input&0xff, g = (input&0xff00)>>8, b = (input&0xff0000)>>16;
+    double lum = (_lum_r_comp * r + _lum_g_comp * g + _lum_b_comp * b) * 0.00392;
+    if (whtbkgd) lum = 1.0 - lum;
+    double new_alpha = tgtv / lum;
+    int a = fmax(0, fmin(255, new_alpha*255));
     return (a<<24) + (b<<16) + (g<<8) + r;
 }
 

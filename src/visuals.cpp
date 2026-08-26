@@ -18,15 +18,9 @@ void draw_ra_dec_lines()
     if (!cels[1]) return;
     int i, j;
     Cartesian2D prev, zdes;
-    // Grid lines are decorative wayfinding, not text, so they only need to clear WCAG's
-    // non-text minimum (3:1) -- and the user-visible complaint has been the opposite problem,
-    // themes that blow well past it and read as harsh on a white background. Keep them in a
-    // band that is always findable but never shouts over the sky.
-    ImU32 gc = rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.grid_color, whtbkgd, 1.7, 3.0));
-    ImU32 gcb = rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.grid_color_brighter, whtbkgd, 1.9, 3.2));
-    ImU32 ec = rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.ecliptic_color, whtbkgd, 1.7, 3.2));
-    // equinox_RA, not equinox_eff: the grid is being laid out in the equatorial frame, and where
-    // 0h falls in that frame is its own quantity. See CelestialObject::equinox_RA.
+    ImU32 gc = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color, 0.1));
+    ImU32 gcb = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color_brighter, 0.1));
+    ImU32 ec = rgba_apply_redlight(Color::adjust_alpha(global_style.ecliptic_color, 0.1));
     double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
@@ -4166,14 +4160,14 @@ void draw_cons_lines()
 
             if (draw_actual_conslines)
                 wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2),
-                    rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.consline_color, whtbkgd, 1.7, 3.0)), 1, io);
+                    rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.21)),
+                    1, io);
         }
     }
 
     // Constellation labels
     n = constellations.size();
-    ImU32 cbcol = rgba_apply_redlight(Color::ensure_wcag_contrast(
-        Color::adjust_alpha(global_style.consline_color, 0.2), whtbkgd, 1.4, 2.6));
+    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.16));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
         Point lconsdir;
@@ -4252,9 +4246,9 @@ void draw_mouse_cursor(ImGuiIO& io)
     circle_size = cursor_size / 2.5;
 
     ImU32 cc[3];
-    cc[0] = rgba_apply_redlight(global_style.cursor_color1);
-    cc[1] = rgba_apply_redlight(global_style.cursor_color2);
-    cc[2] = rgba_apply_redlight(global_style.cursor_color3);
+    cc[0] = rgba_apply_redlight(Color::adjust_alpha(global_style.cursor_color1, 0.18));
+    cc[1] = rgba_apply_redlight(Color::adjust_alpha(global_style.cursor_color2, 0.17));
+    cc[2] = rgba_apply_redlight(Color::adjust_alpha(global_style.cursor_color3, 0.16));
 
     int i;
 
