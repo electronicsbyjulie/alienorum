@@ -20,7 +20,7 @@ void draw_ra_dec_lines()
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color, 0.1));
     ImU32 gcb = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color_brighter, 0.1));
-    ImU32 ec = rgba_apply_redlight(Color::adjust_alpha(global_style.ecliptic_color, 0.1));
+    ImU32 ec = rgba_apply_redlight(Color::adjust_alpha(global_style.ecliptic_color, 0.25));
     double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     npaz = (view_mode == vm_horizon) ? fmod(npdummy.RA_as_radians(here, myeq), _pi*2) : 0;
@@ -4167,13 +4167,16 @@ void draw_cons_lines()
 
     // Constellation labels
     n = constellations.size();
-    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.16));
+    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.05));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
         Point lconsdir;
 
-        // Constellation boundaries
+        // Constellation boundaries, drawn as a dashed line: connect every other
+        // pair of adjacent perimeter points, leaving the pairs in between as gaps.
         m = constellations[l].bounds.size();
+        float pdx = 0, pdy = 0;
+        bool pvalid = false;
         for (i=0; i<m; i++)
         {
             Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
@@ -4183,8 +4186,11 @@ void draw_cons_lines()
             Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
-            if (dx < 0 || dy < 0) continue;
-            if (draw_actual_conslines) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx,dy), ImVec2(dx+1,dy+1), cbcol);
+            bool valid = !(dx < 0 || dy < 0);
+            if (draw_actual_conslines && (i % 2) == 1 && pvalid && valid)
+                wrapped_line(ImVec2(pdx, pdy), ImVec2(dx, dy), cbcol, io);
+
+            pdx = dx; pdy = dy; pvalid = valid;
         }
 
         if (!constellations[l].lines.size()) continue;
