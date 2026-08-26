@@ -125,6 +125,99 @@ ImU32 alienorum::Color::adjust_alpha(ImU32 input, double new_alpha)
     return (a<<24) + (b<<16) + (g<<8) + r;
 }
 
+// WCAG 2.x relative luminance of one linear-light channel, c in [0,1]. See
+// https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
+static double wcag_channel(double c)
+{
+    return (c <= 0.03928) ? c/12.92 : pow((c+0.055)/1.055, 2.4);
+}
+
+static double wcag_luminance(double r, double g, double b)
+{
+    return 0.2126*wcag_channel(r) + 0.7152*wcag_channel(g) + 0.0722*wcag_channel(b);
+}
+
+static double wcag_contrast(double La, double Lb)
+{
+    double hi = fmax(La, Lb), lo = fmin(La, Lb);
+    return (hi+0.05) / (lo+0.05);
+}
+
+// Contrast ratio of (r,g,b) alpha-blended at `alpha` over a solid background of luminance
+// bg_lum (0 for black, 1 for white -- the only backgrounds this app composites onto) against
+// that same background.
+static double wcag_blended_contrast(double r, double g, double b, double alpha, double bg_lum)
+{
+    double cr = alpha*r + (1-alpha)*bg_lum, cg = alpha*g + (1-alpha)*bg_lum, cb = alpha*b + (1-alpha)*bg_lum;
+    return wcag_contrast(wcag_luminance(cr, cg, cb), bg_lum);
+}
+
+ImU32 alienorum::Color::ensure_wcag_contrast(ImU32 input, bool white_bg, double min_ratio, double max_ratio, bool allow_hue_shift)
+{
+    int a = (input>>24)&0xff, b = (input&0xff0000)>>16, g = (input&0xff00)>>8, r = input&0xff;
+    double rf = r/255.0, gf = g/255.0, bf = b/255.0, af = a/255.0;
+    double bg_lum = white_bg ? 1.0 : 0.0;
+
+    double ratio = wcag_blended_contrast(rf, gf, bf, af, bg_lum);
+    if (ratio >= min_ratio && (max_ratio <= 0 || ratio <= max_ratio)) return input;
+
+    double new_alpha = af;
+    if (ratio < min_ratio)
+    {
+        // Raise alpha toward opaque until the blend clears min_ratio.
+        if (wcag_blended_contrast(rf, gf, bf, 1.0, bg_lum) < min_ratio)
+        {
+            new_alpha = 1.0;
+        }
+        else
+        {
+            double lo = af, hi = 1.0;
+            for (int i=0; i<32; i++)
+            {
+                double mid = 0.5*(lo+hi);
+                if (wcag_blended_contrast(rf, gf, bf, mid, bg_lum) < min_ratio) lo = mid; else hi = mid;
+            }
+            new_alpha = hi;
+        }
+
+        if (allow_hue_shift && wcag_blended_contrast(rf, gf, bf, new_alpha, bg_lum) < min_ratio)
+        {
+            // Opaque still is not enough -- this hue itself reads too close to the
+            // background. Push it toward the opposite extreme, preserving its direction,
+            // until the shifted color alone clears min_ratio.
+            double ext = white_bg ? 0.0 : 1.0;
+            double tlo = 0.0, thi = 1.0;
+            for (int i=0; i<32; i++)
+            {
+                double mid = 0.5*(tlo+thi);
+                double tr = rf+(ext-rf)*mid, tg = gf+(ext-gf)*mid, tb = bf+(ext-bf)*mid;
+                if (wcag_blended_contrast(tr, tg, tb, 1.0, bg_lum) < min_ratio) tlo = mid; else thi = mid;
+            }
+            rf += (ext-rf)*thi; gf += (ext-gf)*thi; bf += (ext-bf)*thi;
+            new_alpha = 1.0;
+        }
+    }
+    else
+    {
+        // Too harsh: dial alpha back toward the background until it reads as subtle again,
+        // without letting it fade past a visibility floor.
+        const double alpha_floor = 0.08;
+        double lo = 0.0, hi = af;
+        for (int i=0; i<32; i++)
+        {
+            double mid = 0.5*(lo+hi);
+            if (wcag_blended_contrast(rf, gf, bf, mid, bg_lum) > max_ratio) hi = mid; else lo = mid;
+        }
+        new_alpha = fmax(alpha_floor, lo);
+    }
+
+    int nr = (int)round(fmax(0.0, fmin(255.0, rf*255)));
+    int ng = (int)round(fmax(0.0, fmin(255.0, gf*255)));
+    int nb = (int)round(fmax(0.0, fmin(255.0, bf*255)));
+    int na = (int)round(fmax(0.0, fmin(255.0, new_alpha*255)));
+    return (na<<24) + (nb<<16) + (ng<<8) + nr;
+}
+
 json Color::to_json()
 {
     return

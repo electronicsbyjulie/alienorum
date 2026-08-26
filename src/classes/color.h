@@ -45,6 +45,16 @@ namespace alienorum
 
         static ImU32 black_to_transparent(ImU32 input);
         static ImU32 adjust_alpha(ImU32 input, double new_alpha);
+
+        // Re-balances a themed overlay color (alpha-blended over a solid black or white
+        // background) so its WCAG contrast ratio against that background lands in
+        // [min_ratio, max_ratio]. max_ratio <= 0 means "no ceiling". Leaves colors that
+        // already land in range untouched, so most theme authoring is unaffected.
+        // allow_hue_shift permits darkening/lightening the color itself (toward black on
+        // white_bg, toward white otherwise) when raising alpha alone cannot reach min_ratio --
+        // meant for text, where legibility trumps preserving the exact authored hue.
+        static ImU32 ensure_wcag_contrast(ImU32 input, bool white_bg, double min_ratio,
+            double max_ratio = -1, bool allow_hue_shift = false);
         json to_json();
         bool from_json(json j);
 

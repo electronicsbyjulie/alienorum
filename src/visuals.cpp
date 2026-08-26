@@ -18,9 +18,13 @@ void draw_ra_dec_lines()
     if (!cels[1]) return;
     int i, j;
     Cartesian2D prev, zdes;
-    ImU32 gc = rgba_apply_redlight(global_style.grid_color);
-    ImU32 gcb = rgba_apply_redlight(global_style.grid_color_brighter);
-    ImU32 ec = rgba_apply_redlight(global_style.ecliptic_color);
+    // Grid lines are decorative wayfinding, not text, so they only need to clear WCAG's
+    // non-text minimum (3:1) -- and the user-visible complaint has been the opposite problem,
+    // themes that blow well past it and read as harsh on a white background. Keep them in a
+    // band that is always findable but never shouts over the sky.
+    ImU32 gc = rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.grid_color, whtbkgd, 1.7, 3.0));
+    ImU32 gcb = rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.grid_color_brighter, whtbkgd, 1.9, 3.2));
+    ImU32 ec = rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.ecliptic_color, whtbkgd, 1.7, 3.2));
     // equinox_RA, not equinox_eff: the grid is being laid out in the equatorial frame, and where
     // 0h falls in that frame is its own quantity. See CelestialObject::equinox_RA.
     double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
@@ -3033,7 +3037,8 @@ bool draw_one_object(int i)
         }
         ImVec2 sz = ImGui::CalcTextSize(dispname);
         ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
-            rgba_apply_redlight((i == selected) ? global_style.selected_color : global_style.objlbl_color),
+            rgba_apply_redlight(Color::ensure_wcag_contrast(
+                (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
             dispname);
     }
     return true;
@@ -3649,7 +3654,8 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
             double lfontsz = global_font_size;
             ImVec2 sz = ImGui::CalcTextSize(dispname);
             ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(obj->drawnx - sz.x/2, obj->drawny+bloomrad+1),
-                rgba_apply_redlight((i == selected) ? global_style.selected_color : global_style.objlbl_color),
+                rgba_apply_redlight(Color::ensure_wcag_contrast(
+                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                 dispname);
         }
 
@@ -4159,13 +4165,15 @@ void draw_cons_lines()
             if (dy2 < -1e3) continue;
 
             if (draw_actual_conslines)
-                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), global_style.consline_color, 1, io);
+                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2),
+                    rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.consline_color, whtbkgd, 1.7, 3.0)), 1, io);
         }
     }
 
     // Constellation labels
     n = constellations.size();
-    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.2));
+    ImU32 cbcol = rgba_apply_redlight(Color::ensure_wcag_contrast(
+        Color::adjust_alpha(global_style.consline_color, 0.2), whtbkgd, 1.4, 2.6));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
         Point lconsdir;
@@ -4196,7 +4204,7 @@ void draw_cons_lines()
         if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
-                rgba_apply_redlight(global_style.conslbl_color),
+                rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 4.5, -1, true)),
                 constellations[l].name.c_str());
         }
     }
