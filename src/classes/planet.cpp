@@ -394,30 +394,29 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
 double Planet::estimate_bump_scale()
 {
-    double p_pa = get_surface_pressure();
-    return 0.001 * volumetric_mean_radius * (p_pa ? log(p_pa) : 1) / log(20);
+    // Thicker air erodes terrain harder -- wind, rain, and chemical weathering wear peaks down
+    // and fill craters in -- so relief should fall as pressure rises, not rise with it. relief
+    // is 1 for an airless world (the same ceiling the old vacuum-clamped formula used, so a body
+    // with no atmosphere renders exactly as before) and decays toward 0 as pressure climbs.
+    // log1p(p_pa / P_HALF) grows without bound but only ever slowly, so relief approaches zero
+    // asymptotically rather than needing a hard floor, and stays positive at every pressure --
+    // there is no value of p_pa that can drive bump_scale negative and flip a crater inside out.
+    // P_HALF sets how little air it takes to start visibly softening relief: a few hundred
+    // pascals, a thin Mars-like haze, is already enough.
+    const double P_HALF = 100.0;   // Pa
+    double p_pa = fmax(get_surface_pressure(), 0.0);
+    double relief = 1.0 / (1.0 + log1p(p_pa / P_HALF));
+
+    return 0.001 * volumetric_mean_radius * relief / log(20);
 }
 
 // Pressure scale height, meters -- the altitude over which the air thins by a factor of e,
 // H = RT/(Mg) from the barometric formula. This is the natural thickness of the bright band of
-// atmosphere seen on a planet's limb from space (the impostor shader draws the glow out to a
-// few H, see SphereImpostorInput::atmosphere_height), and it varies enormously between worlds:
-// roughly 8 km on Earth, 11 on Mars for all its thin air (cold, light gravity), 15 on Titan,
-// and 27 on Jupiter, whose hydrogen is barely a fifteenth the molar mass of Venus's CO2.
+// atmosphere seen on a planet's limb from space.
 //
 // Returns 0 for an airless body, which reads as "no glow at all" downstream.
 double Planet::estimate_scale_height()
 {
-    // get_surface_pressure() is not one consistent reference level: for a bare-ish rock we see
-    // the ground of (Mars, Earth) it is that ground, which is exactly where the visible haze
-    // starts. For a world we only ever see the top of the weather of -- Venus's permanent
-    // sulfuric-acid overcast sitting on 92 atmospheres we never render, any gas or ice giant --
-    // it can be the true deep pressure (Venus) or left at zero because there is no ground to give
-    // a value to (Uranus, Neptune, if nobody typed one in). Either way it is the wrong altitude
-    // for a glow meant to sit above the cloud deck we actually draw, so cloud_deck_fraction() (1
-    // for a world that is nothing but weather) picks the reference level instead: the
-    // conventional 1-bar cloud-top pressure astronomers already use to define a gas giant's own
-    // radius, rather than whatever get_surface_pressure() happens to hold underneath it.
     bool at_cloud_deck = cloud_deck_fraction() >= 1.0;
     double p_ref = at_cloud_deck ? oneatm : get_surface_pressure();
     if (p_ref <= 0) return 0;
@@ -434,11 +433,6 @@ double Planet::estimate_scale_height()
 
     double H = 8.314462618 * T / (M * g);
 
-    // Even the puffiest real atmosphere we know of is a small fraction of its planet's radius
-    // (Titan's ~15 km against a 2575 km radius is under 0.6%). A poorly-constrained world -- a
-    // directly-imaged wide-orbit giant with no measured composition or temperature, say -- can
-    // still send T or g to an extreme that makes H balloon past the planet itself. Cap it well
-    // above anything physical so the glow stays a limb, not a shroud, however bad the inputs are.
     const double max_scale_height_fraction_of_radius = 0.05;
     if (volumetric_mean_radius > 0)
         H = std::min(H, volumetric_mean_radius * max_scale_height_fraction_of_radius);

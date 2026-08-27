@@ -2146,9 +2146,15 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                     {
                         // Raised rim, fading out into the terrain. Kept subtle: most craters are
                         // old, and real standout brightness belongs to the rays below.
+                        // The brightening wants the rim's profile, which is the Gaussian on its
+                        // own -- dividing the scaled height back out again only reintroduces
+                        // c.rim_height as a divisor, and fmax() cannot guard that: for a
+                        // negative rim height it returns 1e-6 rather than the height, turning a
+                        // number that belongs in (0,1] into billions of the wrong sign.
                         double t = (r - 1.0) / c.rim_width;
-                        bump_delta = c.rim_height * exp(-t * t);
-                        color_mult += 0.15 * (bump_delta / fmax(1e-6, c.rim_height));
+                        double rim_profile = exp(-t * t);
+                        bump_delta = c.rim_height * rim_profile;
+                        color_mult += 0.15 * rim_profile;
                     }
                 }
 
