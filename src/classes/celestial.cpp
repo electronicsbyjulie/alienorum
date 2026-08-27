@@ -1655,13 +1655,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
     int lr = cel->fictitious_map_height;
     double BV = cel->BV_color;
     if (BV < 0.8) BV = 0.8;                 // most rocks aren't blue
-    if (cel->type == waterworld)
+    bool force_has_water = false;
+    if (cel->type == waterworld || cel->type == hycean)
     {
         has_water = 1;
-    }
-    else if (randomize_txgen)
-    {
-        has_water = 0;
+        force_has_water = true;
     }
 
     p->temperature = 0;
@@ -1681,7 +1679,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     bool life_possible = p->estimate_habitability();
 
     bool want_overcast_sky = false;
-    if (p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
+    if (!force_has_water && p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
     {
         has_water = 0;
         want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
@@ -1894,7 +1892,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     blue_data[idx] = fmin(255, 190 + 63 * r_weight);
                     // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
                 }
-                else if (cel->type == waterworld)
+                else if (cel->type == waterworld || cel->type == hycean)
                 {
                     // Deep ocean
                     red_data[idx] = fmin(255, 12+16*height_value);
@@ -2870,7 +2868,7 @@ double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
     if (primary_density <= 0.0 || orbiter_density <= 0.0) return 0.0;
 
     // Multiplier constant changes based on rigidity
-    bool is_fluid = orbiter && (orbiter->type == waterworld
+    bool is_fluid = orbiter && (orbiter->type == waterworld || orbiter->type == hycean
         || orbiter->type == gas_giant || orbiter->type == ice_giant || orbiter->type == hot_jupiter || orbiter->type == star);
     double constant = is_fluid ? 2.44 : std::cbrt(2.0);
 
@@ -3129,6 +3127,12 @@ void alienorum::AtmosphereComposition::generate_fictitious_titanean()
 
 void alienorum::AtmosphereComposition::generate_fictitious_habitable()
 {
+    if (cel->type == hycean)
+    {
+        generate_fictitious_gas_giant();
+        return;
+    }
+
     bool has_intense_volcanism = cel->cel_frand(0,1) < 0.4;
     bool has_free_oxygen = cel->cel_frand(0,1) < 0.03;           // yes I am an oxygen pessimist
 
@@ -3163,7 +3167,7 @@ void alienorum::AtmosphereComposition::generate_fictitious_habitable()
 
 void alienorum::AtmosphereComposition::generate_fictitious_for_planet(cel_obj_type t)       // does NOT cover habitable atmospheres - that's a separate call.
 {
-    if (t == gas_giant) generate_fictitious_gas_giant();
+    if (t == gas_giant || t == hycean) generate_fictitious_gas_giant();
     else if (t == ice_giant) generate_fictitious_ice_giant();
     else if (t == rocky) generate_fictitious_venusian();
     else if (t == icy) generate_fictitious_titanean();

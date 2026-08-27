@@ -2998,6 +2998,7 @@ bool draw_one_object(int i)
         const char *dispname = cels[i]->name;
         int l = strlen(dispname);
         if (!l) return true;
+        int disph = dispcy * 2;
         std::string lopped;
         if (dispname[l-1] == 'A' && cels[i] != mycenobj)
         {
@@ -3030,7 +3031,9 @@ bool draw_one_object(int i)
             dispname = str.c_str();
         }
         ImVec2 sz = ImGui::CalcTextSize(dispname);
-        ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, cels[i]->drawny+bloomrad+1),
+        int dy = cels[i]->drawny+bloomrad+1;
+        if (cels[i]->drawny < disph && dy > disph-sz.y) dy = disph-sz.y;
+        ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, dy),
             rgba_apply_redlight(Color::ensure_wcag_contrast(
                 (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
             dispname);
@@ -3976,7 +3979,9 @@ void draw_horizon()
         rgb.g *= is_day;
         rgb.b *= is_day;
 
-        bool is_water = (p->type == rocky) && (rgb.b > 2 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99% of the time.
+        bool is_water = (p->type == rocky)
+            && (rgb.b > 0.8 * rgb.r)
+            && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
         if (p && p->type == lavaworld && p->night_map)
         {

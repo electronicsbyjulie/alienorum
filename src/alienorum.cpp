@@ -926,8 +926,7 @@ int main (int argc, char** argv)
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         if (take_snapshot)
         {
-            auto now = std::chrono::system_clock::now();
-            auto time_t_now = std::chrono::system_clock::to_time_t(now);
+            auto time_t_now = (time_t)simnow;
 
             const char* snapdir = "snapshots";
             std::filesystem::path p = snapdir;
@@ -939,7 +938,18 @@ int main (int argc, char** argv)
 
             // Format the time into a stringstream
             std::stringstream shnapsot_fname;
-            shnapsot_fname << snapdir << _FILESLASH << "snapshot." 
+
+            int nameidx = trackidx;
+            if (nameidx < 0) nameidx = whereami;
+
+            std::string snapname = (nameidx >= 0)
+                ? cels[nameidx]->name
+                : "snapshot"
+                ;
+
+            shnapsot_fname << snapdir << _FILESLASH
+                << snapname
+                << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";
 

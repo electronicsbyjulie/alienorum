@@ -19,7 +19,7 @@ void alienorum::Planet::setup_atm_ring_props()
 {
     classify();
     apply_cosmic_shoreline();
-    if (estimate_habitability()) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
+    if (estimate_habitability() && type != hycean) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
     else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
 
     generate_ring_parameters();
@@ -44,7 +44,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
 
 bool alienorum::Planet::estimate_habitability()
 {
-    if (type == waterworld)
+    if (type == waterworld || type == hycean)
     {
         has_water = 1;
     }
@@ -73,14 +73,6 @@ bool alienorum::Planet::estimate_habitability()
 
     bool life_possible = false;
 
-    // This is a query -- "could this world support life as it stands" -- not a place to give a
-    // world an atmosphere it didn't already have. It used to reach for one unconditionally via
-    // ensure_atmosphere(), which default-constructs surface_pressure at one bar: called from
-    // generate_rocky_map() (so on every airless rock or moon the moment its texture is drawn) and
-    // from setup_atm_ring_props(), that put a full Earth atmosphere on bodies that should have
-    // stayed airless -- Solar System moons, Mercury, the asteroids -- unless catalogs/planets.json
-    // said otherwise. Only read what is already there; only apply_cosmic_shoreline() (exoplanets
-    // at load, Shift+A new bodies) and the edit dialog are allowed to create one.
     AtmosphereComposition *ac = atm ? atm->ensure_composition() : nullptr;
     life_possible = (is_in_con_HZ() && mass > 0.02 * earth_mass);       // Based on Titan's mass.
     if (randomize_txgen && ac)
@@ -112,7 +104,8 @@ bool alienorum::Planet::estimate_habitability()
 
         if (randomize_txgen)
         {
-            if (T_surf < 0.9 * water_freezing)
+            if (type == waterworld || type == hycean) has_water = 1;
+            else if (T_surf < 0.9 * water_freezing)
             {
                 has_water = 1;
             }
@@ -177,7 +170,7 @@ void Planet::set_color_from_type(bool HZ)
     else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
     else if (type == icy) BV_color = 0.6;
     else if (type == lavaworld) BV_color = 1.3;
-    else if (type == waterworld) BV_color = -0.3;
+    else if (type == waterworld || type == hycean) BV_color = -0.3;
 }
 
 double alienorum::Planet::get_atmospheric_tau()
@@ -256,7 +249,7 @@ void Planet::estimate_radius()
 {
     // https://doi.org/10.1051/0004-6361/202348690
     if ((mass < rocky_mass_cutoff)
-        || type == rocky || type == waterworld || type == icy)
+        || type == rocky || type == waterworld || type == hycean || type == icy)
         volumetric_mean_radius = 1.02 * earth_radius * pow(mass/earth_mass, 0.27);
     else if (mass < giant_mass_cutoff) volumetric_mean_radius = 0.56 * earth_radius * pow(mass/earth_mass, 0.67);
     else if (type == hot_jupiter)
@@ -292,7 +285,7 @@ void Planet::estimate_rotation()
     {
         sidereal_rotational_period = 1.5 * orbit->period;
     }
-    else if (type == waterworld ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
+    else if (type == waterworld || type == hycean ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
     else if (type == ice_giant  ) sidereal_rotational_period = 1.74e+6 / log(mass);
     else if (type == gas_giant  ) sidereal_rotational_period = 1.11e+6 / log(mass);
     else sidereal_rotational_period = 2.38e+6 / log(mass);                              // rocky, icy, or lava world.
@@ -486,7 +479,7 @@ void Planet::estimate_albedo_and_absmagn()
     if (type == gas_giant       ) est_albedo = 0.5;
     else if (type == hot_jupiter) est_albedo = 0.01;
     else if (type == ice_giant  ) est_albedo = 0.3;
-    else if (type == waterworld ) est_albedo = 0.4;
+    else if (type == waterworld || type == hycean ) est_albedo = 0.4;
     else if (type == icy        ) est_albedo = 0.8;
     else if (type == rocky
         || type == lavaworld    ) est_albedo = (mass > 0.5 * earth_mass) ? 0.5 : 0.1;

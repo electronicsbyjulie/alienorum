@@ -21,7 +21,8 @@ namespace alienorum
         ice_giant = 0x301,
         hot_jupiter = 0x310,
         clearskies = 0x401,
-        waterworld = 0x410,     // includes hycean
+        waterworld = 0x410,     
+        hycean = 0x418,
         icy = 0x502,
         rocky = 0x503,          // includes Venusian
         lavaworld = 0x504,
@@ -34,7 +35,7 @@ namespace alienorum
     // both branch on it, and the two lists had drifted apart.
     inline bool uses_rocky_map(cel_obj_type type)
     {
-        return type == rocky || type == icy || type == waterworld || type == lavaworld;
+        return type == rocky || type == icy || type == waterworld || type == hycean || type == lavaworld;
     }
 
     enum cel_obj_class

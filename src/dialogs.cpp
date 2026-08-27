@@ -2489,6 +2489,7 @@ void draw_system_explorer(ImGuiIO& io)
 bool onlysun = false, onlyplt = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
+float neighbly = 25, lneighbly = 0;
 void draw_stellar_neighborhood(ImGuiIO &io)
 {
     if (!cels[1]) return;
@@ -2497,6 +2498,15 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     ImGui::Checkbox("Only Sunlike##", &onlysun);
     ImGui::SameLine();
     ImGui::Checkbox("Must Have Planets##", &onlyplt);
+    ImGui::SameLine();
+    ImGui::Text("Cutoff:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(67);
+    ImGui::InputFloat("##neighborhood_ly_cutoff", &neighbly);
+    ImGui::SameLine();
+    ImGui::Text("l.y.");
+
+    neighb_rthresh = (double)neighbly * light_year;
 
     int i, j, l, n;
     double r, m;
@@ -2506,7 +2516,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     if (ImGui::BeginListBox("##neighblist", ImVec2(768, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
-        if (last_neighb_cen != mycenobj)
+        if (last_neighb_cen != mycenobj || fabs(lneighbly - neighbly) > 1e-29)
         {
             neighb_celids.clear();
             neighb_celr.clear();
@@ -2543,6 +2553,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                     }
                 }
             }
+            
+            lneighbly = neighbly;
         }
 
         n = neighb_celids.size();
@@ -2593,9 +2605,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     }
 
     l = neighb_celids.size();
-    if (l < 100) neighb_rthresh *= 1.1;
-    else if (l > 200 && (neighb_rthresh > 25 * light_year)) neighb_rthresh *= 0.9;
-    else last_neighb_cen = mycenobj;
+    last_neighb_cen = mycenobj;
 
     if (item_selected_idx >= neighb_celids.size()) item_selected_idx = 0;
     if (ImGui::Button("Select##neighbors"))
