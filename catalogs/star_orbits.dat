@@ -3,8 +3,8 @@
 Sun                     (system inclination)                    000         023.45
 
 # https://en.wikipedia.org/wiki/Alpha_Centauri and https://www.drewexmachina.com/2016/11/29/the-orbit-of-proxima-centauri/
-Rigil Kentaurus         Toliman                 2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
-Rigil Kentaurus         Proxima Cen             1.73e+13        126         107.6       072.3       1.3e+15     .50         0                   300000                                          0.1221      0.1542      0.00005      2992
+HD128620                HD128621                2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
+HD128620                Proxima Cen             1.73e+13        126         107.6       072.3       1.3e+15     .50         0                   300000                                          0.1221      0.1542      0.00005      2992
 
 # https://doi.org/10.48550/arXiv.2501.09058
 GJ14                    (cometary disk)                         005         064

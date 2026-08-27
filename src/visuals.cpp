@@ -3030,6 +3030,9 @@ bool draw_one_object(int i)
             str = std::to_string(((Star*)cels[i])->GouldNo);
             dispname = str.c_str();
         }
+        else if (cls == class_star && cels[i]->cenobj == mycenobj && ((Star*)cels[i])->local_name.size())
+            dispname = ((Star*)cels[i])->local_name.c_str();
+
         ImVec2 sz = ImGui::CalcTextSize(dispname);
         int dy = cels[i]->drawny+bloomrad+1;
         if (cels[i]->drawny < disph && dy > disph-sz.y) dy = disph-sz.y;
@@ -3351,6 +3354,12 @@ void draw_objects()
     std::vector<CelestialObject*> to_draw_layered;
     global_magshift = -log(global_brightness) * invlogmagnbase;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
+
+    if (whereami >= 0 && cels[whereami]->typeclass() == class_star)
+    {
+        if (view_mode == vm_horizon) view_mode = vm_spaceship;
+    }
+    if (whereami >= 0 && trackidx == whereami) trackidx = -1;
 
     double mycensq = mycenobj->tmprel.squared_magnitude();
     double layer_cutoff = mycensq * 1.1 * zoom * zoom;

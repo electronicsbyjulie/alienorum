@@ -3006,6 +3006,23 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             if (buffer[0] == '#') continue;
             if (strlen(buffer) < 40) continue;
 
+            if (buffer[0] == 'H' && buffer[1] == 'D')
+            {
+                // A bare "HD nnnnnn" designation names the star itself; anything trailing the
+                // number ("HD nnnnnn b") is one of its planets, and belongs to the pass below.
+                read_field_onebased(buffer, 1, 39, field);
+                std::string desig = trim(field);
+                int HD = 0;
+                if (desig.find_first_not_of("0123456789 ", 2) == std::string::npos) HD = atoi(&desig[2]);
+
+                if (HD > 0 && HD <= MAX_HD && hdcache[HD])
+                {
+                    read_field_onebased(buffer, 41, 63, field);
+                    hdcache[HD]->local_name = trim(field);
+                    continue;
+                }
+            }
+
             read_field_onebased(buffer, 1, 39, field);
             std::string designation = trim(field);
 

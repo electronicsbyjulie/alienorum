@@ -299,6 +299,8 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     if (whereami >= 0)
     {
         if (viewer_locale.size()) vfstr = std::string("View from ") + viewer_locale;
+        else if (cels[whereami]->typeclass() == class_star && ((Star*)cels[whereami])->local_name.size())
+            vfstr = std::string("View from ") + ((Star*)cels[whereami])->local_name;
         else vfstr = std::string("View from ") + cels[whereami]->name;
     }
     else vfstr = std::string("View from space");
@@ -2276,12 +2278,20 @@ void draw_system_explorer(ImGuiIO& io)
             }
             if (cls == class_comet && !list_comets) continue;
 
-            std::string line = std::string(cels[i]->name).substr(0, 20);
+            std::string dispname = cels[i]->name;
+            if (cls == class_star && ((Star*)cels[i])->local_name.size()) dispname = ((Star*)cels[i])->local_name;
+
+            std::string line = dispname.substr(0, 20);
             l = 36 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
             if (cels[i]->orbit && cels[i]->orbit->center)
-                line += std::string(cels[i]->orbit->center->name).substr(0, 18);
+            {
+                std::string cenname = cels[i]->orbit->center->name;
+                if (cels[i]->orbit->center->typeclass() == class_star && ((Star*)cels[i]->orbit->center)->local_name.size())
+                    cenname = ((Star*)cels[i]->orbit->center)->local_name;
+                line += cenname.substr(0, 18);
+            }
             else line += std::string("-");
 
             if (xplorlen && !strcasestr(line.c_str(), xplorfor)) continue;

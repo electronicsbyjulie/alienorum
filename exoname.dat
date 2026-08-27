@@ -170,3 +170,116 @@ HD 20794 b                              82 Eri b
 HD 20794 d                              82 Eri c
 HD 20794 f                              82 Eri d
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
+
+
+# Stars
+          
+HD128620                                Rigil Kentaurus
+HD128621                                Toliman
+
+# IAU NameExoWorlds host-star names (en.wikipedia.org/wiki/List_of_proper_names_of_exoplanets),
+# cross-identified to HD numbers via SIMBAD.
+HD75732                                 Copernicus
+HD221345                                Veritate
+HD199665                                Musica
+HD81688                                 Intercrus
+HD170693                                Fafnir
+HD95128                                 Chalawan
+HD217014                                Helvetios
+HD22049                                 Ran
+HD28305                                 Ain
+HD222404                                Errai
+HD104985                                Tonatiuh
+HD149026                                Ogma
+HD137759                                Edasich
+HD160691                                Cervantes
+HD9826                                  Titawin
+HD188310                                Libertas
+HD82886                                 Illyrian
+HD28678                                 Hoggar
+HD131496                                Arcalís
+HD48265                                 Nosaxa
+HD38283                                 Bubup
+HD152581                                Mahsati
+HD148427                                Timir
+HD49674                                 Nervia
+HD73534                                 Gakyid
+HD63765                                 Tapecue
+HD206610                                Bosona
+HD23079                                 Tupi
+HD179949                                Gumala
+HD30856                                 Mouhoun
+HD136418                                Nikawiy
+HD164604                                Pincoya
+HD173416                                Xihe
+HD93083                                 Macondo
+HD221287                                Poerava
+HD75898                                 Stribor
+HD168746                                Alasia
+HD6434                                  Nenque
+HD52265                                 Citalá
+HD16175                                 Buna
+HD8574                                  Bélénos
+HD208487                                Itonda
+HD32518                                 Mago
+HD181720                                Sika
+HD1502                                  Citadelle
+HD98219                                 Hunaphú
+HD212771                                Lionrock
+HD147506                                Hunor
+HD109246                                Funi
+HD86081                                 Bibhā
+HD117618                                Dofida
+HD175541                                Kaveh
+HD231701                                Uruk
+HD102195                                Flegetonte
+HD145457                                Kamuy
+HD83443                                 Kalausi
+HD118203                                Liesma
+HD192263                                Phoenicia
+HD45350                                 Lucilinburhuc
+HD153950                                Rapeto
+HD20868                                 Intan
+HD351766                                Sansuna
+HD224693                                Axólotl
+HD7199                                  Emiw
+HD18742                                 Ayeyarwady
+HD100777                                Sagarmatha
+HD137388                                Karaka
+HD4208                                  Cocibolca
+HD43197                                 Amadioha
+HD68988                                 Násti
+HD99109                                 Shama
+HD108147                                Tupã
+HD156411                                Inquill
+HD102117                                Uklun
+HD45652                                 Lusitânia
+HD181342                                Belel
+HD146389                                Irena
+HD133086                                Baekdu
+HD149143                                Rosalíadecastro
+HD205739                                Sāmaya
+HD102956                                Aniara
+HD130322                                Mönch
+HD218566                                Ebla
+HD100655                                Formosa
+HD96063                                 Dingolay
+HD192699                                Chechia
+HD17156                                 Nushagak
+HD63454                                 Ceibo
+HD85390                                 Natasha
+HD95086                                 Aiolos
+HD116434                                Matza
+
+# The remaining IAU-named host stars carry no HD number, so this file cannot reach them:
+#   PSR B1257+12 = Lich; WASP-39 = Malmok; HAT-P-14 = Franz; WASP-21 = Tangra; WASP-17 = Diwö; WASP-15 = Nyamien;
+#   BD-17 63 = Felixvarela; XO-5 = Absolutno; HAT-P-29 = Muspelheim; WASP-6 = Márohu; XO-4 = Koit;
+#   HAT-P-38 = Horna; HAT-P-42 = Lerna; WASP-22 = Tojil; HAT-P-36 = Tuiren; HAT-P-9 = Tevel; WASP-80 = Petra;
+#   TrES-3 = Pipoltr; HAT-P-40 = Taika; WASP-72 = Diya; WASP-161 = Tislit; HAT-P-6 = Sterrennacht;
+#   HAT-P-23 = Moriah; WASP-79 = Montuno; WASP-34 = Amansinaya; BD+14 4559 = Solaris; HIP 12961 = Koeia;
+#   XO-1 = Moldoveanu; HAT-P-3 = Dombay; WASP-60 = Morava; WASP-32 = Parumleo; HAT-P-5 = Chasoň; WASP-62 = Naledi;
+#   WASP-71 = Mpingo; WASP-50 = Chaophraya; WASP-64 = Atakoraka; WASP-52 = Anadolu; HAT-P-15 = Berehynia;
+#   HIP 79431 = Sharjah; WASP-13 = Gloas; HAT-P-21 = Mazaalai; Gliese 367 = Añañuca; Gliese 436 = Noquisi;
+#   Gliese 486 = Gar; GJ 1214 = Orkaria; GJ 3470 = Kaewkosin; HAT-P-12 = Komondor; HAT-P-26 = Guahayona;
+#   HATS-72 = Zembra; L 168-9 = Danfeng; LHS 3844 = Batsũ̀; LTT 9779 = Uúba; WASP-19 = Wattle; WASP-43 = Gnomon;
+#   WASP-63 = Kosjenka; WASP-69 = Wouri; WASP-121 = Dilmun; WASP-166 = Filetdor; WD 0806-661 = Maru

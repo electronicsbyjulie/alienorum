@@ -97,13 +97,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         if (match_comp)
         {
             // A component letter was explicitly asked for. Only ever return it if it actually
-            // exists as its own registered member -- falling through to "return s->seqno" here
-            // used to hand back the PRIMARY star whenever the named companion had no Star object
-            // of its own (e.g. a component too faint for its own HD/HIP entry, so CCDM never
-            // built it). A caller that asked for "HD196885 B" then silently got HD196885 A back
-            // under B's name, which is worse than reporting not-found: read_star_orbits_dat()
-            // took that as an existing star to update, and renamed the primary into the
-            // companion while grafting the companion's mass and radius onto it.
+            // exists as its own registered member.
             Star *b = s->multisys ? s->multisys->get_member(match_comp) : nullptr;
             if (b) return b->seqno;
         }
@@ -283,7 +277,13 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
                 if (s)
                 {
-                    int lev1 = Damerau_Levenshtein( s->Bayer, lookstr);
+                    int lev1;
+                    if (s->local_name.size())
+                    {
+                        lev1 = Damerau_Levenshtein(s->local_name.c_str(), lookstr);
+                        if (lev1 < lev) lev = lev1;
+                    }
+                    lev1 = Damerau_Levenshtein( s->Bayer, lookstr);
                     if (!has_same_numbers(s->Bayer, lookstr.c_str())) lev1 = 1e9;
                     if (lev1 < lev) lev = lev1;
                     lev1 = Damerau_Levenshtein( s->Flamsteed, lookstr);

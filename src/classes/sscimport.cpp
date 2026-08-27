@@ -36,6 +36,7 @@ using namespace alienorum;
 bool ssc_report_shown = false;
 SSCImport last_ssc_import;
 
+
 namespace
 {
 

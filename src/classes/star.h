@@ -40,6 +40,7 @@ namespace alienorum
         StarMulti* multisys = nullptr;
         char get_component();
         void set_component(char comp, Star* compA);
+        std::string local_name;
 
         uint32_t HR = 0;                            // Harvard Revised catalog number
         uint32_t HD = 0;                            // Henry Draper catalog number
