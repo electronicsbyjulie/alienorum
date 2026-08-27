@@ -394,15 +394,6 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
 double Planet::estimate_bump_scale()
 {
-    // Thicker air erodes terrain harder -- wind, rain, and chemical weathering wear peaks down
-    // and fill craters in -- so relief should fall as pressure rises, not rise with it. relief
-    // is 1 for an airless world (the same ceiling the old vacuum-clamped formula used, so a body
-    // with no atmosphere renders exactly as before) and decays toward 0 as pressure climbs.
-    // log1p(p_pa / P_HALF) grows without bound but only ever slowly, so relief approaches zero
-    // asymptotically rather than needing a hard floor, and stays positive at every pressure --
-    // there is no value of p_pa that can drive bump_scale negative and flip a crater inside out.
-    // P_HALF sets how little air it takes to start visibly softening relief: a few hundred
-    // pascals, a thin Mars-like haze, is already enough.
     const double P_HALF = 100.0;   // Pa
     double p_pa = fmax(get_surface_pressure(), 0.0);
     double relief = 1.0 / (1.0 + log1p(p_pa / P_HALF));

@@ -1078,6 +1078,7 @@ void draw_ring_gpu(CelestialObject* cel)
     in.cx = display_space.x; in.cy = display_space.y; in.cz = display_space.z;
     in.inner_r = R; in.outer_r = pl->ring_radius;
     in.normal[0] = normal.x; in.normal[1] = normal.y; in.normal[2] = normal.z;
+    in.oblateness = cel->oblateness;
     in.ring_map_texture = gputex_for(cel->ring_map);
     in.ringx_map_texture = gputex_for(cel->ringx_map);
     in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb

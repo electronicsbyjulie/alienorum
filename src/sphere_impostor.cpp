@@ -1224,6 +1224,7 @@ namespace alienorum
         float ccx, ccy, ccz;             // ring/planet center, camera space, scaled by 1/d
         float nx, ny, nz;                // ring plane normal, camera space, unit length
         float rho_inner, rho_outer;      // inner_r/d, outer_r/d
+        float inv_flatten;               // 1/(1-oblateness); 1 for a round occluder
         float has_ring_tex, has_ringx_tex;
         GLuint ring_tex, ringx_tex;
         float r, g, b, a;                // fallback color
@@ -1240,7 +1241,7 @@ namespace alienorum
     static GLuint s_ring_program = 0;
     static GLuint s_ring_vao = 0, s_ring_vbo = 0, s_ring_ebo = 0;
     static GLint s_raPosLoc = -1, s_raRayXYLoc = -1, s_raCenterLoc = -1, s_raNormalLoc = -1;
-    static GLint s_raRhoInnerLoc = -1, s_raRhoOuterLoc = -1;
+    static GLint s_raRhoInnerLoc = -1, s_raRhoOuterLoc = -1, s_raInvFlattenLoc = -1;
     static GLint s_raHasRingTexLoc = -1, s_raHasRingXTexLoc = -1, s_raColorLoc = -1;
     static GLint s_raLightDirLoc = -1, s_raAmtLitLoc = -1, s_raSelfLuminousLoc = -1, s_raRedlightLoc = -1;
     static GLint s_uRingMapLoc = -1, s_uRingXMapLoc = -1;
@@ -1253,6 +1254,7 @@ namespace alienorum
         "in vec3 aNormal;\n"
         "in float aRhoInner;\n"
         "in float aRhoOuter;\n"
+        "in float aInvFlatten;\n"
         "in float aHasRingTex;\n"
         "in float aHasRingXTex;\n"
         "in vec4 aColor;\n"
@@ -1265,6 +1267,7 @@ namespace alienorum
         "out vec3 vNormal;\n"
         "out float vRhoInner;\n"
         "out float vRhoOuter;\n"
+        "out float vInvFlatten;\n"
         "out float vHasRingTex;\n"
         "out float vHasRingXTex;\n"
         "out vec4 vColor;\n"
@@ -1279,6 +1282,7 @@ namespace alienorum
         "    vNormal = aNormal;\n"
         "    vRhoInner = aRhoInner;\n"
         "    vRhoOuter = aRhoOuter;\n"
+        "    vInvFlatten = aInvFlatten;\n"
         "    vHasRingTex = aHasRingTex;\n"
         "    vHasRingXTex = aHasRingXTex;\n"
         "    vColor = aColor;\n"
@@ -1296,6 +1300,7 @@ namespace alienorum
         "in vec3 vNormal;\n"
         "in float vRhoInner;\n"
         "in float vRhoOuter;\n"
+        "in float vInvFlatten;\n"
         "in float vHasRingTex;\n"
         "in float vHasRingXTex;\n"
         "in vec4 vColor;\n"
@@ -1324,32 +1329,17 @@ namespace alienorum
         "    float ringDist = length(rel);\n"
         "    if (ringDist < vRhoInner || ringDist > vRhoOuter) discard;\n"
         "\n"
-        "    // Occluded by the planet's own opaque disc? Same ray-sphere test the sphere\n"
-        "    // impostor shader itself uses (vRhoInner doubles as the sphere's own scaled\n"
-        "    // radius, since the ring starts exactly at the equatorial radius) -- if the ray\n"
-        "    // reaches the sphere surface before it reaches this ring-plane hit, the sphere\n"
-        "    // is in front of this ring point.\n"
-        "    //\n"
-        "    // Skipped whenever the camera itself is essentially sitting on that sphere\n"
-        "    // (vRhoInner near 1 -- the camera-to-center distance is normalized to 1 by\n"
-        "    // construction, so vRhoInner==1 means the sphere's own radius equals that\n"
-        "    // distance) -- exactly horizon mode, standing on the ringed body's own\n"
-        "    // surface. With the ray origin pinned to the occluder's surface, tSphereNear's\n"
-        "    // sign near the local horizon is decided by sub-ULP rounding in sin/cos rather\n"
-        "    // than real geometry, flipping at random from one frame (or pixel) to the next.\n"
-        "    // Bug: the whole visible ring winking between 'shown' and 'self-occluded' --\n"
-        "    // large contiguous regions, not fine texture noise, since the flip is on a\n"
-        "    // single shared boundary rather than per-pixel sampling. The test is also\n"
-        "    // physically moot here: standing on the surface, nothing above the local\n"
-        "    // horizon can be behind this same body, and anything below it is already\n"
-        "    // hidden by the ground polygon drawn over this impostor.\n"
-        "    float tca = dot(vCenter, dirN);\n"
-        "    vec3 perp = vCenter - dirN * tca;\n"
+        "    vec3 dirS = dirN + vNormal * (dot(dirN, vNormal) * (vInvFlatten - 1.0));\n"
+        "    vec3 cenS = vCenter + vNormal * (dot(vCenter, vNormal) * (vInvFlatten - 1.0));\n"
+        "    float dirSLen = length(dirS);\n"
+        "    vec3 dirSN = dirS / dirSLen;\n"
+        "    float tca = dot(cenS, dirSN);\n"
+        "    vec3 perp = cenS - dirSN * tca;\n"
         "    float d2 = dot(perp, perp);\n"
         "    if (vRhoInner < 0.999 && d2 < vRhoInner*vRhoInner)\n"
         "    {\n"
         "        float thc = sqrt(vRhoInner*vRhoInner - d2);\n"
-        "        float tSphereNear = tca - thc;\n"
+        "        float tSphereNear = (tca - thc) / dirSLen;\n"
         "        if (tSphereNear > 0.0 && tSphereNear < s) discard;\n"
         "    }\n"
         "\n"
@@ -1435,6 +1425,7 @@ namespace alienorum
         "in vec3 vNormal;\n"
         "in float vRhoInner;\n"
         "in float vRhoOuter;\n"
+        "in float vInvFlatten;\n"
         "in float vHasRingTex;\n"
         "in float vHasRingXTex;\n"
         "in vec4 vColor;\n"
@@ -1468,14 +1459,21 @@ namespace alienorum
         "    // essentially on the occluder's own surface -- horizon mode) where this test is\n"
         "    // both physically moot and numerically degenerate. Double precision narrows the\n"
         "    // angular range where sin/cos rounding can flip tSphereNear's sign, but doesn't\n"
-        "    // remove it -- the ray origin is still pinned to the sphere's surface either way.\n"
-        "    double tca = dot(cen, dirN);\n"
-        "    dvec3 perp = cen - dirN * tca;\n"
+        "    // remove it -- the ray origin is still pinned to the spheroid's surface either\n"
+        "    // way. See the float shader's identical comment for the oblate-spheroid\n"
+        "    // scale-along-the-polar-axis derivation this reuses.\n"
+        "    double invFlatten = double(vInvFlatten);\n"
+        "    dvec3 dirS = dirN + nrm * (dot(dirN, nrm) * (invFlatten - 1.0lf));\n"
+        "    dvec3 cenS = cen + nrm * (dot(cen, nrm) * (invFlatten - 1.0lf));\n"
+        "    double dirSLen = length(dirS);\n"
+        "    dvec3 dirSN = dirS / dirSLen;\n"
+        "    double tca = dot(cenS, dirSN);\n"
+        "    dvec3 perp = cenS - dirSN * tca;\n"
         "    double d2 = dot(perp, perp);\n"
         "    if (rhoInner < 0.999lf && d2 < rhoInner*rhoInner)\n"
         "    {\n"
         "        double thc = sqrt(rhoInner*rhoInner - d2);\n"
-        "        double tSphereNear = tca - thc;\n"
+        "        double tSphereNear = (tca - thc) / dirSLen;\n"
         "        if (tSphereNear > 0.0lf && tSphereNear < s) discard;\n"
         "    }\n"
         "\n"
@@ -1510,8 +1508,9 @@ namespace alienorum
         "}\n";
 
     // Floats per vertex: pos(2) rayxy(2) center(3) normal(3) rhoInner(1) rhoOuter(1)
-    // hasRingTex(1) hasRingXTex(1) color(4) lightDir(3) amtLit(1) selfLuminous(1) redlight(1) = 24.
-    static const int kRingFloatsPerVertex = 24;
+    // invFlatten(1) hasRingTex(1) hasRingXTex(1) color(4) lightDir(3) amtLit(1) selfLuminous(1)
+    // redlight(1) = 25.
+    static const int kRingFloatsPerVertex = 25;
 
     static bool try_build_ring_program(const char *fs_src)
     {
@@ -1576,6 +1575,7 @@ namespace alienorum
         s_raNormalLoc       = glGetAttribLocation(s_ring_program, "aNormal");
         s_raRhoInnerLoc     = glGetAttribLocation(s_ring_program, "aRhoInner");
         s_raRhoOuterLoc     = glGetAttribLocation(s_ring_program, "aRhoOuter");
+        s_raInvFlattenLoc   = glGetAttribLocation(s_ring_program, "aInvFlatten");
         s_raHasRingTexLoc   = glGetAttribLocation(s_ring_program, "aHasRingTex");
         s_raHasRingXTexLoc  = glGetAttribLocation(s_ring_program, "aHasRingXTex");
         s_raColorLoc        = glGetAttribLocation(s_ring_program, "aColor");
@@ -1610,20 +1610,22 @@ namespace alienorum
         glVertexAttribPointer(s_raRhoInnerLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 10));
         glEnableVertexAttribArray(s_raRhoOuterLoc);
         glVertexAttribPointer(s_raRhoOuterLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 11));
+        glEnableVertexAttribArray(s_raInvFlattenLoc);
+        glVertexAttribPointer(s_raInvFlattenLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 12));
         glEnableVertexAttribArray(s_raHasRingTexLoc);
-        glVertexAttribPointer(s_raHasRingTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 12));
+        glVertexAttribPointer(s_raHasRingTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 13));
         glEnableVertexAttribArray(s_raHasRingXTexLoc);
-        glVertexAttribPointer(s_raHasRingXTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 13));
+        glVertexAttribPointer(s_raHasRingXTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
         glEnableVertexAttribArray(s_raColorLoc);
-        glVertexAttribPointer(s_raColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
+        glVertexAttribPointer(s_raColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 15));
         glEnableVertexAttribArray(s_raLightDirLoc);
-        glVertexAttribPointer(s_raLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 18));
+        glVertexAttribPointer(s_raLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 19));
         glEnableVertexAttribArray(s_raAmtLitLoc);
-        glVertexAttribPointer(s_raAmtLitLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 21));
+        glVertexAttribPointer(s_raAmtLitLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 22));
         glEnableVertexAttribArray(s_raSelfLuminousLoc);
-        glVertexAttribPointer(s_raSelfLuminousLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 22));
+        glVertexAttribPointer(s_raSelfLuminousLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 23));
         glEnableVertexAttribArray(s_raRedlightLoc);
-        glVertexAttribPointer(s_raRedlightLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 23));
+        glVertexAttribPointer(s_raRedlightLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 24));
 
         const unsigned short indices[6] = {0, 1, 2, 0, 2, 3};
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s_ring_ebo);
@@ -1660,18 +1662,19 @@ namespace alienorum
             v[9] = p->nz;
             v[10] = p->rho_inner;
             v[11] = p->rho_outer;
-            v[12] = p->has_ring_tex;
-            v[13] = p->has_ringx_tex;
-            v[14] = p->r;
-            v[15] = p->g;
-            v[16] = p->b;
-            v[17] = p->a;
-            v[18] = p->lightx;
-            v[19] = p->lighty;
-            v[20] = p->lightz;
-            v[21] = p->amt_lit;
-            v[22] = p->self_luminous;
-            v[23] = p->redlight;
+            v[12] = p->inv_flatten;
+            v[13] = p->has_ring_tex;
+            v[14] = p->has_ringx_tex;
+            v[15] = p->r;
+            v[16] = p->g;
+            v[17] = p->b;
+            v[18] = p->a;
+            v[19] = p->lightx;
+            v[20] = p->lighty;
+            v[21] = p->lightz;
+            v[22] = p->amt_lit;
+            v[23] = p->self_luminous;
+            v[24] = p->redlight;
         }
 
         glUseProgram(s_ring_program);
@@ -1757,6 +1760,9 @@ namespace alienorum
         p->nx = (float)in.normal[0]; p->ny = (float)in.normal[1]; p->nz = (float)in.normal[2];
         p->rho_inner = (float)(in.inner_r / d);
         p->rho_outer = (float)(in.outer_r / d);
+        // Clamped away from 1.0-oblateness==0 (a degenerate flat disc, never a real planet)
+        // rather than letting the occlusion test divide by zero.
+        p->inv_flatten = (float)(1.0 / std::max(1e-6, 1.0 - in.oblateness));
 
         p->has_ring_tex = in.ring_map_texture ? 1.0f : 0.0f;
         p->has_ringx_tex = in.ringx_map_texture ? 1.0f : 0.0f;
