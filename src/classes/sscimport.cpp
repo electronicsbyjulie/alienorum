@@ -9,13 +9,18 @@
 //   SemiMajorAxis around a star                         AU
 //   Period around a star                                Julian years
 //   Period around anything else                         days
-//   RotationPeriod                                      hours
+//   RotationPeriod, and a rotation model's Period       hours
+//   PrecessionRate                                      radians per day
+//   PrecessionPeriod                                    Julian years
+//   BumpHeight                                          kilometres, black to white
+//   a Location's LongLat                                degrees, degrees, kilometres
 //   angles                                              degrees
 //   Epoch                                               JD (default 2451545.0, i.e. J2000 noon;
 //                                                       ours is midnight, so they are half a day
 //                                                       apart and the value is passed through)
 
 #include "sscimport.h"
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <complex>
@@ -802,11 +807,18 @@ bool parse_ssc(const std::string &text, std::vector<SSCBlock> &blocks, std::stri
         SSCBlock blk;
         size_t block_start = i;
 
-        if (isalpha((unsigned char)text[i]))
+        // Up to two bare words stand in front of the name: what to do with the definition
+        // (Add, Modify, Replace) and what kind of thing is being defined (a body unless it
+        // says AltSurface, Location, ReferencePoint or SurfaceObject). Either may be left out,
+        // so each word is placed by what it says rather than by where it sits.
+        while (i < text.size() && isalpha((unsigned char)text[i]))
         {
             size_t start = i;
             while (i < text.size() && isalpha((unsigned char)text[i])) i++;
-            blk.disposition = text.substr(start, i - start);
+            std::string word = text.substr(start, i - start);
+            std::string lw = lowercased(word);
+            if (lw == "add" || lw == "modify" || lw == "replace") blk.disposition = word;
+            else blk.item_type = word;
             skip_space(text, i);
         }
 
@@ -891,6 +903,37 @@ const json* get_obj(const json &j, const char *key)
     auto it = j.find(key);
     if (it == j.end() || !it->is_object()) return nullptr;
     return &(*it);
+}
+
+// [ x y z ], which is how the format states every vector it has: a colour, a set of axes, a
+// place on a surface.
+bool get_vec3(const json &j, const char *key, double out[3])
+{
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_array() || it->size() != 3) return false;
+    for (int i=0; i<3; i++)
+    {
+        if (!(*it)[i].is_number()) return false;
+        out[i] = (*it)[i].get<double>();
+    }
+    return true;
+}
+
+// The file paints a body it has no texture for in a flat colour, and paints the dot the body
+// shrinks to at a distance in that same colour. We say the second of those in one number
+// instead -- B-V, which color_from_magnitude_indices() turns back into exactly that dot. Its
+// two-index form builds blue as magnbase^-(B-V) and red as magnbase^(B-V) against a fixed
+// green, so the whole of B-V sits in the red-to-blue ratio and recovering it is one division.
+// The stated triple is display-side, i.e. gamma-encoded, and undoing that leaves the gamma
+// behind as a plain factor on the logarithm. Green carries nothing a one-number colour can
+// hold, and is dropped.
+double bv_from_ssc_color(const double rgb[3])
+{
+    // A channel at zero would send the logarithm to infinity, and a colour written as zero
+    // still lands on the darkest step the screen has rather than on no light at all.
+    double red = fmax(rgb[0], 1.0/255), blue = fmax(rgb[2], 1.0/255);
+    double bv = 0.5 * get_gamma() * log(red / blue) * invlogmagnbase - bv_correction;
+    return fmax(-0.5, fmin(2.5, bv));
 }
 
 // ---------------------------------------------------------------- the import itself
@@ -1204,6 +1247,210 @@ bool SSCImport::install_bump_from_normal_map(const std::string &src, CelestialOb
     return true;
 }
 
+// A relief map states its heights outright, which is the same thing our own bump data holds, so
+// unlike a normal map it arrives ready to use and all it wants is a vertical scale. The file's
+// BumpHeight is that scale in kilometres from black to white; ours is fixed per body by
+// estimate_bump_scale(), which reads a radius and an air pressure rather than the picture. So the
+// grey levels are stretched about their midpoint to make the two agree, and the stated relief
+// survives instead of being quietly replaced by ours.
+bool SSCImport::install_bump_from_height_map(const std::string &src, CelestialObject *cel,
+    double bump_height_km)
+{
+    SSCImage heights;
+    std::string why;
+    if (!read_image(src, heights, why))
+    {
+        report.note(src + ": " + why + "; no relief imported.");
+        return false;
+    }
+
+    std::string dest = map_path(cel, "_bump", ".png");
+    if (!may_write_map(dest)) return false;
+
+    double ours = ((Planet*)cel)->estimate_bump_scale();
+    double stretch = (bump_height_km > 0 && ours > 0) ? (bump_height_km * 1000.0 / ours) : 1.0;
+
+    for (unsigned y=0; y<heights.height; y++)
+    {
+        for (unsigned x=0; x<heights.width; x++)
+        {
+            unsigned char *px = heights.at(x, y);
+            double grey = (_lum_r_comp*px[0] + _lum_g_comp*px[1] + _lum_b_comp*px[2]) / 255.0;
+            grey = 0.5 + (grey - 0.5) * stretch;
+            unsigned char lvl = (unsigned char)(255.0 * fmax(0.0, fmin(1.0, grey)) + 0.5);
+            px[0] = px[1] = px[2] = lvl;
+            px[3] = 255;
+        }
+    }
+
+    if (!write_png(dest, heights))
+    {
+        report.note(std::string("Could not write ") + dest + ".");
+        return false;
+    }
+    report.bumps_built++;
+    return true;
+}
+
+// The pictures. The surface map goes to _surf for a world with ground and to _clouds for one that
+// is nothing but weather, which is where our renderer looks for each; the relief comes from a
+// height map if the file has one and from an integrated normal map if it has only that.
+void SSCImport::install_body_textures(const json &fields, const json *atmos, CelestialObject *cel,
+    bool all_weather)
+{
+    std::string name = cel->name;
+    std::string texname, cloudname, nightname, normalname, bumpname;
+    get_str(fields, "Texture", texname);
+    get_str(fields, "NightTexture", nightname);
+    get_str(fields, "NormalMap", normalname);
+    get_str(fields, "BumpMap", bumpname);
+    if (atmos) get_str(*atmos, "CloudMap", cloudname);
+
+    std::string tex_path = find_texture(base_dir, texname);
+    std::string cloud_path = find_texture(base_dir, cloudname);
+
+    if (texname.size() && tex_path.empty())
+        report.note("Texture " + texname + " for \"" + name + "\" is not in the add-on; skipped.");
+    if (cloudname.size() && cloud_path.empty())
+        report.note("Cloud map " + cloudname + " for \"" + name + "\" is not in the add-on; skipped.");
+
+    if (tex_path.size())
+    {
+        if (all_weather) install_plain_texture(tex_path, cel, "_clouds");
+        else if (cloud_path.size())
+        {
+            if (install_composited_surface(tex_path, cloud_path, cel))
+                report.note(name + ": its cloud layer was composited into the "
+                    "surface map, which is the only place we can put it.");
+        }
+        else install_plain_texture(tex_path, cel, "_surf");
+    }
+    else if (cloud_path.size()) install_plain_texture(cloud_path, cel, "_clouds");
+
+    if (nightname.size())
+    {
+        std::string np = find_texture(base_dir, nightname);
+        if (np.size()) install_plain_texture(np, cel, "_night");
+        else report.note("Night texture " + nightname + " for \"" + name + "\" is not in the add-on; skipped.");
+    }
+
+    // Relief belongs to a body with a surface to carve; a comet is a coma with a speck in it, and
+    // nothing downstream would ever read the map.
+    cel_obj_class cls = cel->typeclass();
+    if (cls != class_planet && cls != class_moon) return;
+
+    double bump_height = 2.0;                           // the format's own default
+    get_num(fields, "BumpHeight", bump_height);
+
+    if (bumpname.size())
+    {
+        std::string bp = find_texture(base_dir, bumpname);
+        if (bp.size()) install_bump_from_height_map(bp, cel, bump_height);
+        else report.note("Relief map " + bumpname + " for \"" + name + "\" is not in the add-on; skipped.");
+        if (normalname.size())
+            report.note(name + " states both a relief map and a normal map; the relief map was used.");
+    }
+    else if (normalname.size())
+    {
+        std::string np = find_texture(base_dir, normalname);
+        if (np.size()) install_bump_from_normal_map(np, cel);
+        else report.note("Normal map " + normalname + " for \"" + name + "\" is not in the add-on; skipped.");
+    }
+}
+
+// Everything the format can state that has nothing on our side to correspond to. Named once per
+// body rather than left to vanish: an add-on that says a thing and is never told it was dropped
+// looks, from the outside, exactly like one that was read in full.
+void SSCImport::note_dropped_fields(const json &fields, const json *atmos, const json *rings,
+    const std::string &name, const char *skip)
+{
+    // Meshes and everything that places or scales one; the four maps and three constants of a
+    // lighting model we do not run; a light curve stated as a scattering law rather than as a
+    // slope; the bond albedo, which we work out from the geometry instead; the flags and dates
+    // and web pages an object can carry.
+    static const char *body_fields[] = {
+        "Mesh", "MeshCenter", "MeshScale", "NormalizeMesh", "Orientation",
+        "SpecularTexture", "SpecularColor", "SpecularPower", "OverlayTexture", "BlendTexture",
+        "LunarLambert", "BondAlbedo", "Emissive", "Visible", "InfoURL", "OrbitColor", "HazeColor",
+        "Beginning", "Ending", "Timeline",
+        "CustomOrbit", "SpiceOrbit", "ScriptedOrbit", "FixedPosition",
+        "SampledOrientation", "ScriptedRotation",
+    };
+    // A sky we build out of a pressure, a composition and a haze fraction, rather than out of
+    // stated colours at stated heights.
+    static const char *atmos_fields[] = {
+        "Height", "CloudHeight", "CloudSpeed", "CloudNormalMap", "Absorption",
+        "MieScaleHeight", "MieAsymmetry", "Lower", "Upper", "Sky", "Sunset",
+    };
+
+    std::string dropped;
+    auto add = [&dropped](const std::string &what)
+    {
+        if (dropped.size()) dropped += ", ";
+        dropped += what;
+    };
+
+    for (const char *f : body_fields)
+    {
+        if (skip && !strcmp(skip, f)) continue;
+        if (fields.contains(f)) add(f);
+    }
+    if (atmos) for (const char *f : atmos_fields) if (atmos->contains(f)) add(std::string("Atmosphere ") + f);
+    if (rings && rings->contains("Color")) add("Rings Color");
+
+    if (dropped.size())
+        report.note("\"" + name + "\": the file also states " + dropped
+            + ", which we have nothing to say with; dropped.");
+}
+
+// A Location is a named place on a body's surface, and we have those: they are what the sun clock
+// labels, and what the viewer can stand on. The block gives a longitude, a latitude and an
+// altitude; we keep the first two.
+void SSCImport::attach_locations(std::map<std::string, std::vector<Locale>> &pending,
+    std::map<std::string, CelestialObject*> &imported)
+{
+    for (auto &entry : pending)
+    {
+        const std::string &path = entry.first;
+        CelestialObject *cel = nullptr;
+
+        auto here = imported.find(path);
+        if (here != imported.end()) cel = here->second;
+        else
+        {
+            // A place may sit on a body this file never defines -- an add-on that does nothing
+            // but name craters on our own Moon is a perfectly ordinary one -- so the last name
+            // in the path is looked for among the objects we already have.
+            size_t slash = path.find_last_of('/');
+            std::string leaf = first_alias((slash == std::string::npos) ? path : path.substr(slash+1));
+            int idx = find_object(leaf.c_str(), false, 9e29, 0);
+            if (idx >= 0) cel = cels[idx];
+        }
+
+        if (!cel)
+        {
+            report.note("The places named on \"" + path + "\" have nowhere to go: no such body; skipped.");
+            continue;
+        }
+
+        // read_locales() fills a body's places the first time anyone looks at it, and only a body
+        // that has none -- so a body given one place here would otherwise never be given the
+        // hundreds it already has a right to. Its own list is fetched first, and these join it.
+        if (!cel->nlocales) cel->read_locales("locales.json");
+        int have = cel->nlocales;
+        Locale *all = new Locale[have + entry.second.size()];
+        for (int i=0; i<have; i++) all[i] = cel->locales[i];
+        for (size_t i=0; i<entry.second.size(); i++) all[have+i] = entry.second[i];
+        delete[] cel->locales;
+        cel->locales = all;
+        cel->nlocales = have + (int)entry.second.size();
+
+        report.note(std::to_string(entry.second.size()) + " place(s) on \"" + std::string(cel->name)
+            + "\" were read. Their time zones are local mean solar time, the file stating none, and "
+            "places are not written to universe.json -- they last as long as this session.");
+    }
+}
+
 std::string SSCImport::first_alias(const std::string &ssc_name)
 {
     size_t colon = ssc_name.find(':');
@@ -1219,6 +1466,7 @@ void SSCImport::update_body_location(CelestialObject *cel)
     {
         case class_planet:    ((Planet*)cel)->update_location(J2000_TIME_T);    break;
         case class_moon:      ((Moon*)cel)->update_location(J2000_TIME_T);      break;
+        case class_comet:     ((Comet*)cel)->update_location(J2000_TIME_T);     break;
         case class_satellite: ((Satellite*)cel)->update_location(J2000_TIME_T); break;
         default: break;
     }
@@ -1476,25 +1724,92 @@ void SSCImport::apply_orbit(const json &orb, CelestialObject *cel, CelestialObje
 void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
 {
     double v;
+    double meridian_epoch = J2000;                      // JD the prime meridian below is quoted at
 
     if (get_num(fields, "RotationPeriod", v)) cel->sidereal_rotational_period = v * 3600.0;
     if (get_num(fields, "Obliquity", v)) cel->obliquity = v * fiftyseventh;
     if (get_num(fields, "EquatorAscendingNode", v)) cel->equinox = v * fiftyseventh;
+    // What the same angle was called before EquatorAscendingNode replaced it, and what the
+    // older add-ons in circulation still write. It sits where the newer name sits, next to
+    // Obliquity, and means the same thing.
+    else if (get_num(fields, "LongOfRotationAxis", v)) cel->equinox = v * fiftyseventh;
     if (get_num(fields, "RotationOffset", v)) cel->lon_J2000_offset = v * fiftyseventh;
+    if (get_num(fields, "RotationEpoch", v)) meridian_epoch = v;
 
-    // Newer .ssc files state the same thing as a rotation model. Its Inclination and
-    // AscendingNode place the pole exactly as Obliquity and EquatorAscendingNode do, and
-    // MeridianAngle is where the prime meridian sits at the epoch, which is our lon_J2000_offset.
-    const json *uni = get_obj(fields, "UniformRotation");
-    if (uni)
+    // The axis's own drift. Theirs is how fast the equatorial node moves, in radians a day;
+    // ours is how fast that node moves *backwards*, per second -- update_orbit_location() reads
+    // equinox_eff = equinox - precession * seconds -- so the sign turns over on the way in.
+    if (get_num(fields, "PrecessionRate", v)) cel->precession = -v / oneday;
+
+    // Newer .ssc files state all of the above as a rotation model instead: one block, of one of
+    // three kinds. Its Inclination and AscendingNode place the pole exactly as Obliquity and
+    // EquatorAscendingNode do, and MeridianAngle is where the prime meridian sits at the block's
+    // own Epoch, which is our lon_J2000_offset once carried back to J2000.
+    bool precessing = false, fixed = false;
+    const json *rot = get_obj(fields, "UniformRotation");
+    if (!rot && (rot = get_obj(fields, "PrecessingRotation"))) precessing = true;
+    if (!rot && (rot = get_obj(fields, "FixedRotation"))) fixed = true;
+
+    if (rot)
     {
-        if (get_num(*uni, "Period", v)) cel->sidereal_rotational_period = v * 3600.0;
-        if (get_num(*uni, "Inclination", v)) cel->obliquity = v * fiftyseventh;
-        if (get_num(*uni, "AscendingNode", v)) cel->equinox = v * fiftyseventh;
-        if (get_num(*uni, "MeridianAngle", v)) cel->lon_J2000_offset = v * fiftyseventh;
+        if (get_num(*rot, "Period", v)) cel->sidereal_rotational_period = v * 3600.0;
+        else if (!fixed && cel->orbit && cel->orbit->period)
+        {
+            // A rotation model that states no period at all is how the format says "tidally
+            // locked", and that is as much a statement about the spin as a number would be.
+            cel->sidereal_rotational_period = cel->orbit->period;
+        }
+        if (get_num(*rot, "Inclination", v)) cel->obliquity = v * fiftyseventh;
+        if (get_num(*rot, "AscendingNode", v)) cel->equinox = v * fiftyseventh;
+        if (get_num(*rot, "MeridianAngle", v)) cel->lon_J2000_offset = v * fiftyseventh;
+        if (get_num(*rot, "Epoch", v)) meridian_epoch = v;
+
+        // How long the axis takes to go round once, in years -- which is the very form we hold
+        // the same quantity in on the way to and from universe.json.
+        if (precessing && get_num(*rot, "PrecessionPeriod", v) && v)
+            cel->precession = (_pi * 2) / (v * oneyear);
+
+        if (fixed)
+            report.note(std::string(cel->name) + " is stated as not rotating at all, which we have "
+                "no way of saying; it turns like any other body here.");
+    }
+
+    // Both ways of stating the meridian quote it at an epoch of their own choosing, ours is
+    // quoted at J2000, and between the two lies some whole number of turns and a fraction. Only
+    // the fraction moves the meridian, and only if we know how long a turn takes.
+    if (meridian_epoch != J2000 && cel->sidereal_rotational_period)
+    {
+        double turns = (J2000 - meridian_epoch) * oneday / cel->sidereal_rotational_period;
+        cel->lon_J2000_offset += (turns - floor(turns)) * (_pi * 2);
+        cel->lon_J2000_offset = fmod(cel->lon_J2000_offset, _pi * 2);
+        if (cel->lon_J2000_offset < 0) cel->lon_J2000_offset += _pi * 2;
     }
 
     cel->known_poles = true;
+}
+
+// Which plane a moon's orbital elements are measured in. Theirs is a named reference frame,
+// ours is one of three planes, and they agree on the two that come up: elements given in the
+// ecliptic frame are elements in the parent's own orbital plane, and elements given in a body's
+// equatorial frame -- what the format falls back on for anything orbiting a planet, and what an
+// Earth satellite's frame amounts to as well -- are elements in the parent's equatorial plane.
+void SSCImport::apply_orbit_frame(const json &fields, CelestialObject *cel)
+{
+    if (cel->typeclass() != class_moon) return;
+    const json *frame = get_obj(fields, "OrbitFrame");
+    if (!frame) return;
+
+    if (frame->contains("EclipticJ2000")) ((Moon*)cel)->orbit_type = ot_ecliptic;
+    else if (frame->contains("EquatorJ2000") || frame->contains("MeanEquator")
+        || frame->contains("BodyFixed")) ((Moon*)cel)->orbit_type = ot_equatorial;
+}
+
+// Applied after classify(), which sets a colour of its own from the body type: a colour the
+// add-on went to the trouble of stating outranks one we inferred from a mass and a radius.
+void SSCImport::apply_color(const json &fields, CelestialObject *cel)
+{
+    double rgb[3];
+    if (get_vec3(fields, "Color", rgb)) cel->BV_color = bv_from_ssc_color(rgb);
 }
 
 // An .ssc file states a radius and, occasionally, a mass or a density. We have to end up with a mass
@@ -1566,6 +1881,8 @@ bool SSCImport::read(const std::string &ssc_path)
 
     base_dir = parent_directory(ssc_path);
     std::map<std::string, CelestialObject*> imported;    // keyed by full Celestia path
+    std::map<std::string, std::vector<Locale>> places;   // likewise, and applied once the bodies exist
+    bool place_detail_dropped = false;
     std::vector<CelestialObject*> fresh;
 
     // A moon may be defined before the planet it belongs to, so the list is walked repeatedly
@@ -1580,6 +1897,52 @@ bool SSCImport::read(const std::string &ssc_path)
         {
             if (done[bi]) continue;
             SSCBlock &blk = blocks[bi];
+
+            // Not every block defines a body. A place on a surface is one of ours and is set
+            // aside until the body it stands on has been made; the other kinds -- an extra skin
+            // for a body, a thing standing on one -- are nothing we can hold.
+            std::string kind = lowercased(blk.item_type);
+            if (kind == "location")
+            {
+                done[bi] = true;
+                progress = true;
+
+                // Two spellings of the same three numbers: the older LongLat, and the fixed
+                // position in body coordinates that replaced it.
+                double longlat[3];
+                const json *fixed_at = get_obj(blk.fields, "FixedPosition");
+                if (!get_vec3(blk.fields, "LongLat", longlat)
+                    && !(fixed_at && get_vec3(*fixed_at, "Planetographic", longlat)))
+                {
+                    report.note("\"" + first_alias(blk.name) + "\" is a place whose position is "
+                        "stated in a way we cannot read; skipped.");
+                    continue;
+                }
+
+                // A place here is a name and a point, with no extent and no kind of thing it is.
+                if (blk.fields.contains("Size") || blk.fields.contains("Importance")
+                    || blk.fields.contains("Type")) place_detail_dropped = true;
+
+                Locale place;
+                place.name = first_alias(blk.name);
+                place.lon = longlat[0];                 // east longitude, degrees, as ours are
+                place.lat = longlat[1];
+                // The format has no time zones. Local mean solar time is the one answer that does
+                // not pick a civil convention out of the air for a world that may not have one.
+                place.tz = longlat[0] / 15.0 * 3600.0;
+                place.user_added = true;
+                places[blk.parent].push_back(place);
+                continue;
+            }
+            if (kind == "altsurface" || kind == "surfaceobject")
+            {
+                done[bi] = true;
+                progress = true;
+                report.note("\"" + first_alias(blk.name) + "\" is " + blk.item_type
+                    + ", which has no equivalent here; skipped.");
+                report.bodies_skipped++;
+                continue;
+            }
 
             CelestialObject *parent = nullptr;
             std::string parent_path = blk.parent;
@@ -1605,7 +1968,7 @@ bool SSCImport::read(const std::string &ssc_path)
             std::string full_path = parent_path + "/" + blk.name;
 
             cel_obj_class cls = class_from_ssc(blk.fields, parent);
-            if (cls == class_unknown || cls == class_comet)
+            if (cls == class_unknown)
             {
                 std::string what;
                 get_str(blk.fields, "Class", what);
@@ -1623,6 +1986,7 @@ bool SSCImport::read(const std::string &ssc_path)
             {
                 case class_planet:    cel = new Planet();    cel->type = rocky;      break;
                 case class_moon:      cel = new Moon();      cel->type = rocky;      break;
+                case class_comet:     cel = new Comet();     cel->type = icy_tailed; break;
                 case class_satellite: cel = new Satellite(); cel->type = artificial; break;
                 default: break;
             }
@@ -1653,23 +2017,48 @@ bool SSCImport::read(const std::string &ssc_path)
             cel->cenobj = parent->cenobj ? parent->cenobj : parent;
             if (cls == class_moon) ((Moon*)cel)->orbit_type = ot_equatorial;
 
-            double v;
-            if (get_num(blk.fields, "Radius", v)) cel->volumetric_mean_radius = v * 1000.0;
+            double v, semi[3];
+            bool have_semi = get_vec3(blk.fields, "SemiAxes", semi);
+            bool have_radius = get_num(blk.fields, "Radius", v);
+
+            if (have_semi)
+            {
+                // Three axes on their own are kilometres. Three axes beside a Radius are a shape
+                // and nothing more, and that Radius is the scale they are drawn at.
+                if (have_radius) for (int k=0; k<3; k++) semi[k] *= v;
+                cel->volumetric_mean_radius = 1000.0 * pow(fabs(semi[0]*semi[1]*semi[2]), 1.0/3.0);
+            }
+            else if (have_radius) cel->volumetric_mean_radius = v * 1000.0;
             else
             {
-                auto sa = blk.fields.find("SemiAxes");
-                if (sa != blk.fields.end() && sa->is_array() && sa->size() == 3)
-                {
-                    double a = (*sa)[0].get<double>(), b = (*sa)[1].get<double>(), c = (*sa)[2].get<double>();
-                    cel->volumetric_mean_radius = 1000.0 * pow(a*b*c, 1.0/3.0);
-                }
+                // A block with no size at all -- a bare point put there for other things to orbit
+                // is the usual reason -- would otherwise reach classify() with a zero volume and a
+                // density of nothing over nothing.
+                cel->volumetric_mean_radius = 1000.0;
+                report.note("\"" + name + "\" is stated with no size at all; it was given a "
+                    "one-kilometre radius so that it could be placed.");
             }
+
             if (get_num(blk.fields, "Oblateness", v)) cel->oblateness = v;
 
             // Radius in an .ssc file is the equatorial radius; ours is the radius of the sphere of
-            // equal volume, which for a flattened body is the smaller of the two.
-            if (cel->oblateness > 0 && cel->oblateness < 1)
+            // equal volume, which for a flattened body is the smaller of the two. Three axes give
+            // that sphere directly, and are left alone.
+            if (!have_semi && cel->oblateness > 0 && cel->oblateness < 1)
                 cel->volumetric_mean_radius *= pow(1.0 - cel->oblateness, 1.0/3.0);
+
+            // A small moon is drawn as the ellipsoid it is rather than as a sphere, and these
+            // three diameters are where the renderer looks for its shape. Which axis is which is
+            // not something the format says, so they are taken in the order every measured moon
+            // is quoted in: longest toward the planet it is locked to, shortest through the poles.
+            if (cls == class_moon && have_semi)
+            {
+                std::sort(semi, semi + 3, std::greater<double>());
+                Moon *mn = (Moon*)cel;
+                mn->depth  = semi[0] * 2000.0;
+                mn->width  = semi[1] * 2000.0;
+                mn->height = semi[2] * 2000.0;
+            }
 
             const json *orb = get_obj(blk.fields, "EllipticalOrbit");
             if (orb) apply_orbit(*orb, cel, parent);
@@ -1685,6 +2074,7 @@ bool SSCImport::read(const std::string &ssc_path)
                 cel->orbit->epoch = J2000;
             }
 
+            apply_orbit_frame(blk.fields, cel);
             apply_rotation(blk.fields, cel);
 
             imported[full_path] = cel;
@@ -1712,6 +2102,23 @@ bool SSCImport::read(const std::string &ssc_path)
                 if (get_str(blk.fields, "Mesh", mesh))
                     report.note("\"" + name + "\": its mesh " + mesh + " was not imported; only the orbit was.");
                 if (!cel->sidereal_rotational_period) cel->sidereal_rotational_period = oneday;
+                apply_color(blk.fields, cel);
+                note_dropped_fields(blk.fields, nullptr, nullptr, name, "Mesh");
+                continue;
+            }
+
+            // A comet is not a Planet here -- its brightness follows how hard the Sun is boiling
+            // it rather than how big its disc is -- so none of the mass, air and ring work below
+            // applies to one. What the file states about it is its orbit, its nucleus and its
+            // colour, and all three are already in hand.
+            if (cls == class_comet)
+            {
+                if (!cel->sidereal_rotational_period) cel->sidereal_rotational_period = oneday * 0.5;
+                apply_color(blk.fields, cel);
+                install_body_textures(blk.fields, nullptr, cel, false);
+                note_dropped_fields(blk.fields, nullptr, nullptr, name, nullptr);
+                report.note("\"" + name + "\" is a comet; the file states no light curve, so the "
+                    "brightness of a middling one was assumed for it.");
                 continue;
             }
 
@@ -1739,6 +2146,8 @@ bool SSCImport::read(const std::string &ssc_path)
                     - log(rearths * rearths * stated_albedo / earth_albedo) / log(magnbase));
             }
 
+            apply_color(blk.fields, cel);
+
             if (!cel->sidereal_rotational_period) pl->estimate_rotation();
 
             const json *atmos = get_obj(blk.fields, "Atmosphere");
@@ -1761,55 +2170,24 @@ bool SSCImport::read(const std::string &ssc_path)
                 report.note(std::string(pl->name) + ": the file states no air pressure, so "
                     + std::to_string((int)(pl->get_surface_pressure() / oneatm * 1000) / 1000.0)
                     + " atm was estimated for it.");
-            }
 
-            // Textures. The surface map goes to _surf for a world with ground and to _clouds for
-            // one that is nothing but weather, which is where our renderer looks for each.
-            std::string texname, cloudname, nightname, normalname, othername;
-            get_str(blk.fields, "Texture", texname);
-            get_str(blk.fields, "NightTexture", nightname);
-            get_str(blk.fields, "NormalMap", normalname);
-            if (atmos) get_str(*atmos, "CloudMap", cloudname);
-
-            std::string tex_path = find_texture(base_dir, texname);
-            std::string cloud_path = find_texture(base_dir, cloudname);
-
-            if (texname.size() && tex_path.empty())
-                report.note("Texture " + texname + " for \"" + name + "\" is not in the add-on; skipped.");
-            if (cloudname.size() && cloud_path.empty())
-                report.note("Cloud map " + cloudname + " for \"" + name + "\" is not in the add-on; skipped.");
-
-            if (tex_path.size())
-            {
-                if (all_weather) install_plain_texture(tex_path, cel, "_clouds");
-                else if (cloud_path.size())
+                // How much of the sky is dust and how much is air. The file states the two
+                // scattering coefficients in the same units, so the share between them is exactly
+                // what particulates means here: 0 is a sky of pure Rayleigh blue, 1 a sky that
+                // repeats the colour of the ground below it. Older add-ons say the same thing in
+                // one number, and it is already the fraction we want.
+                double mie = 0, haze = 0, rayleigh[3];
+                bool have_rayleigh = get_vec3(*atmos, "Rayleigh", rayleigh);
+                if (get_num(*atmos, "Mie", mie) && have_rayleigh)
                 {
-                    if (install_composited_surface(tex_path, cloud_path, cel))
-                        report.note(std::string(pl->name) + ": its cloud layer was composited into the "
-                            "surface map, which is the only place we can put it.");
+                    double air = (rayleigh[0] + rayleigh[1] + rayleigh[2]) / 3.0;
+                    if (mie + air > 0) pl->ensure_atmosphere()->particulates = mie / (mie + air);
                 }
-                else install_plain_texture(tex_path, cel, "_surf");
-            }
-            else if (cloud_path.size()) install_plain_texture(cloud_path, cel, "_clouds");
-
-            if (nightname.size())
-            {
-                std::string np = find_texture(base_dir, nightname);
-                if (np.size()) install_plain_texture(np, cel, "_night");
-                else report.note("Night texture " + nightname + " for \"" + name + "\" is not in the add-on; skipped.");
+                else if (get_num(blk.fields, "HazeDensity", haze))
+                    pl->ensure_atmosphere()->particulates = fmax(0.0, fmin(1.0, haze));
             }
 
-            if (normalname.size())
-            {
-                std::string np = find_texture(base_dir, normalname);
-                if (np.size()) install_bump_from_normal_map(np, cel);
-                else report.note("Normal map " + normalname + " for \"" + name + "\" is not in the add-on; skipped.");
-            }
-
-            if (get_str(blk.fields, "SpecularTexture", othername))
-                report.note("\"" + name + "\": its specular map " + othername + " has no equivalent here.");
-            if (get_str(blk.fields, "OverlayTexture", othername))
-                report.note("\"" + name + "\": its overlay map " + othername + " has no equivalent here.");
+            install_body_textures(blk.fields, atmos, cel, all_weather);
 
             const json *rings = get_obj(blk.fields, "Rings");
             if (rings)
@@ -1840,8 +2218,15 @@ bool SSCImport::read(const std::string &ssc_path)
                 }
                 else report.note("\"" + name + "\": its rings sit inside the planet and were dropped.");
             }
+
+            note_dropped_fields(blk.fields, atmos, rings, name, nullptr);
         }
     }
+
+    attach_locations(places, imported);
+    if (place_detail_dropped)
+        report.note("The places in this file state sizes or topographical types as well; a place "
+            "here is a name and a point, so those were dropped.");
 
     for (size_t bi=0; bi<blocks.size(); bi++)
     {

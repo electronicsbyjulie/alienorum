@@ -24,12 +24,15 @@ namespace alienorum
         void note(const std::string &s) { notes.push_back(s); }
     };
 
-    // One object definition as it stood in the file: the disposition word, the object's name (which
-    // may carry ':'-separated aliases), the '/'-separated path of its parent, and everything inside
-    // its braces as a json tree.
+    // One object definition as it stood in the file: the disposition word, what kind of block it
+    // is (a body unless it says otherwise -- a place on a body's surface, an alternative skin for
+    // one, a bare point for others to orbit), the object's name (which may carry ':'-separated
+    // aliases), the '/'-separated path of its parent, and everything inside its braces as a json
+    // tree.
     struct SSCBlock
     {
         std::string disposition = "Add";
+        std::string item_type = "Body";
         std::string name;
         std::string parent;
         json fields = json::object();
@@ -68,8 +71,10 @@ namespace alienorum
         static std::string first_alias(const std::string &ssc_name);
         static void update_body_location(CelestialObject *cel);
         static cel_obj_class class_from_ssc(const json &fields, const CelestialObject *parent);
-        static void apply_rotation(const json &fields, CelestialObject *cel);
+        static void apply_orbit_frame(const json &fields, CelestialObject *cel);
+        static void apply_color(const json &fields, CelestialObject *cel);
 
+        void apply_rotation(const json &fields, CelestialObject *cel);
         bool may_write_map(const std::string &dest);
         bool install_plain_texture(const std::string &src, CelestialObject *cel, const char *suffix);
         bool install_composited_surface(const std::string &surf_src, const std::string &cloud_src,
@@ -77,6 +82,13 @@ namespace alienorum
         bool install_ring_textures(const std::string &src, Planet *pl, double inner_m, double outer_m);
         void install_procedural_ring(Planet *pl);
         bool install_bump_from_normal_map(const std::string &src, CelestialObject *cel);
+        bool install_bump_from_height_map(const std::string &src, CelestialObject *cel, double bump_height_km);
+        void install_body_textures(const json &fields, const json *atmos, CelestialObject *cel,
+            bool all_weather);
+        void note_dropped_fields(const json &fields, const json *atmos, const json *rings,
+            const std::string &name, const char *skip);
+        void attach_locations(std::map<std::string, std::vector<Locale>> &pending,
+            std::map<std::string, CelestialObject*> &imported);
         CelestialObject* resolve_star(const std::string &ssc_name);
         CelestialObject* find_star_in_stc_files(const std::string &ssc_name);
         CelestialObject* create_star_from_stc_record(const json &fields, const std::string &raw_name);
