@@ -285,6 +285,71 @@ TEST(AtmosphericTauTest, ThickerAndGreenerMeansMoreOpaque)
     EXPECT_NEAR(atmospheric_tau(0.0, 0.01, 0, 0), 0.0, 1e-9);
 }
 
+// Venus, straight out of planets.json: 9.3e6 Pa (91.7817 atm) at 96.5% CO2, with the trace SO2,
+// H2O and CO that record also carries. The band terms are logarithmic and saturate long before
+// this -- they alone reach tau 4.99, barely more than a single bar of pure CO2 would give -- so
+// the CO2-CO2 collision-induced term is what has to carry a dense CO2 world. It is calibrated to
+// land on the tau of 61.4 that planets.json records for Venus.
+TEST(AtmosphericTauTest, DenseCO2ReachesTheMeasuredVenusOpacity)
+{
+    const double venus_atm = 91.7817;
+    double venus = atmospheric_tau(venus_atm, 0.965, 0.0, 2e-5, 0.0, 0.0, 1.5e-4, 0.0, 1.7e-5);
+
+    EXPECT_NEAR(venus, 61.4, 0.1) << "Venus must reach the optical depth planets.json records";
+
+    // The shape of the fix, stated without reference to the formula: piling on ninety times more
+    // CO2 has to buy far more than ninety-log-of-anything. A purely logarithmic model gives 92 bar
+    // less than twice the opacity of 1 bar, which is what left the surface hundreds of K too cold.
+    double one_bar_co2 = atmospheric_tau(1.0, 1.0, 0.0, 0.0);
+    EXPECT_GT(venus, 10 * one_bar_co2)
+        << "a saturating band model cannot reach Venus; the collisional term is what gets there";
+}
+
+// The point of making the term quadratic rather than logarithmic is that it vanishes on thin
+// atmospheres: Earth and Mars must not feel it at all, or fixing Venus would break both.
+TEST(AtmosphericTauTest, ThinCO2AtmospheresAreUntouched)
+{
+    // Earth: 1 atm, 420 ppm CO2 (plus water vapor and methane, which the band terms do handle).
+    double earth = atmospheric_tau(1.0, 0.00042, 1.9e-6, 0.0025);
+    EXPECT_NEAR(earth, 0.11593685903340019, 1e-6)
+        << "the CO2 CIA term must not perturb Earth's opacity";
+
+    // Mars: 0.00636 atm, but 95.3% CO2 -- a high fraction of almost nothing.
+    double mars = atmospheric_tau(0.00636, 0.9532, 0.0, 0.0);
+    EXPECT_NEAR(mars, 0.23694652780558079, 1e-6)
+        << "a high CO2 fraction at negligible pressure must stay negligible";
+
+    // Both sit far below the pressure where collisional absorption starts to matter at all.
+    EXPECT_LT(earth, 1.0);
+    EXPECT_LT(mars, 1.0);
+}
+
+// Collisional absorption scales with the square of the density, so the optical depth it
+// contributes has to scale with the square of the partial pressure.
+TEST(AtmosphericTauTest, CollisionInducedAbsorptionIsQuadraticInPressure)
+{
+    // Pure CO2, far above the pressure where the quadratic term swamps the logarithmic ones, so
+    // these ratios are the quadratic part on its own.
+    double at_500  = atmospheric_tau(500.0,  1.0, 0.0, 0.0);
+    double at_1000 = atmospheric_tau(1000.0, 1.0, 0.0, 0.0);
+    double at_2000 = atmospheric_tau(2000.0, 1.0, 0.0, 0.0);
+
+    EXPECT_NEAR(at_1000 / at_500,  4.0, 0.05) << "doubling the pressure must quadruple tau";
+    EXPECT_NEAR(at_2000 / at_1000, 4.0, 0.05);
+
+    // Nearer Venus's own pressure the band terms still contribute, so the growth is short of
+    // quadratic -- but it must stay well clear of the linear-or-slower behaviour of a pure band
+    // model, which is the regime the old formula was stuck in.
+    double at_50  = atmospheric_tau(50.0,  1.0, 0.0, 0.0);
+    double at_100 = atmospheric_tau(100.0, 1.0, 0.0, 0.0);
+    EXPECT_GT(at_100 / at_50, 3.0);
+
+    // And it stays monotonic, with no discontinuity across the 0.5 atm threshold that gates the
+    // hydrogen CIA term next to it.
+    EXPECT_LT(atmospheric_tau(0.49, 1.0, 0.0, 0.0), atmospheric_tau(0.51, 1.0, 0.0, 0.0));
+    EXPECT_NEAR(atmospheric_tau(0.499, 1.0, 0.0, 0.0), atmospheric_tau(0.501, 1.0, 0.0, 0.0), 0.01);
+}
+
 TEST(SphereVolumeTest, MatchesTheFormula)
 {
     EXPECT_NEAR(sphere_volume(1.0), 4.0/3.0 * _pi, 1e-12);

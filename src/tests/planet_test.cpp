@@ -727,6 +727,84 @@ TEST_F(PlanetAtmosphereTest, ScaleHeightIsSaneForRealPlanets)
 // gas/ice giants, so cloud_deck_fraction() is 1 regardless of what surface_pressure holds, and
 // estimate_scale_height() should fall back to the same 1-bar cloud-top reference a gas giant with
 // a populated pressure field gets, rather than returning 0 and rendering no haze at all.
+// End to end, through equilibrium_temperature() and the Eddington-gray greenhouse: the three
+// terrestrial atmospheres this app actually carries, ordered the way the real ones are. Venus is
+// the case the CO2-CO2 collisional term in atmospheric_tau() exists for -- without it its 92 bar
+// of CO2 only reached tau 5, and the surface came out near 430 K instead of somewhere in the 700s.
+//
+// The bounds are wide on purpose, and Venus is not pinned to its textbook 737 K. Two approximations
+// stand between tau and the number here: estimate_bond_albedo() runs the geometric albedo through
+// a fitted model that returns about 0.73 for Venus where the measured Bond albedo is 0.76 (worth
+// tens of K on its own, and note that planets.json carries the measured value but cat.cpp never
+// loads it), and a single-band gray atmosphere is a crude stand-in for real radiative transfer.
+// What these bounds do pin down is that Venus lands in the right regime rather than hundreds of
+// K below it, and that Earth and Mars did not move when it got there.
+TEST_F(PlanetAtmosphereTest, DenseCO2GreenhouseIsSaneForRealPlanets)
+{
+    Star* sun = make_star("Sol");
+
+    Planet* earth = make_planet(sun, "Earth", AU);
+    earth->albedo = 0.367;
+    Atmosphere* eatm = earth->ensure_atmosphere();
+    eatm->surface_pressure = oneatm;
+    AtmosphereComposition* ecomp = eatm->ensure_composition();
+    ecomp->N2_portion = 0.78;
+    ecomp->O2_portion = 0.21;
+    ecomp->Ar_portion = 0.0093;
+    ecomp->CO2_portion = 0.00042;
+    ecomp->H2O_portion = 0.0025;
+    ecomp->CH4_portion = 1.9e-6;
+
+    // Straight out of planets.json: 9.3e6 Pa, 96.5% CO2 with the trace SO2, H2O and CO.
+    Planet* venus = make_planet(sun, "Venus", 0.723 * AU);
+    venus->mass = 0.815 * earth_mass;
+    venus->volumetric_mean_radius = 0.9499 * earth_radius;
+    venus->albedo = 0.689;
+    Atmosphere* vatm = venus->ensure_atmosphere();
+    vatm->surface_pressure = 9.3e6;
+    AtmosphereComposition* vcomp = vatm->ensure_composition();
+    vcomp->CO2_portion = 0.965;
+    vcomp->N2_portion = 0.035;
+    vcomp->SO2_portion = 1.5e-4;
+    vcomp->H2O_portion = 2e-5;
+    vcomp->CO_portion = 1.7e-5;
+
+    Planet* mars = make_planet(sun, "Mars", 1.524 * AU);
+    mars->mass = 0.1074 * earth_mass;
+    mars->volumetric_mean_radius = 0.5320 * earth_radius;
+    mars->albedo = 0.17;
+    Atmosphere* matm = mars->ensure_atmosphere();
+    matm->surface_pressure = 0.00636 * oneatm;
+    AtmosphereComposition* mcomp = matm->ensure_composition();
+    mcomp->CO2_portion = 0.9532;
+    mcomp->N2_portion = 0.027;
+    mcomp->Ar_portion = 0.016;
+
+    double t_earth = earth->estimate_surface_temperature();
+    double t_venus = venus->estimate_surface_temperature();
+    double t_mars  = mars->estimate_surface_temperature();
+
+    // Venus: hot enough to melt lead, which is the whole point of the collisional term.
+    EXPECT_GT(t_venus, 650.0) << "the dense-CO2 greenhouse has collapsed back to a band-only model";
+    EXPECT_LT(t_venus, 900.0) << "the collisional coefficient has run away";
+    EXPECT_GT(venus->get_atmospheric_tau(), 55.0);
+
+    // Earth and Mars sit far below the pressure where collisional absorption bites, so both keep
+    // the modest greenhouse they had before: a few tens of K above equilibrium, and no more.
+    EXPECT_NEAR(t_earth, 277.0, 25.0);
+    EXPECT_NEAR(t_mars,  245.0, 25.0);
+    EXPECT_LT(earth->get_atmospheric_tau(), 1.0);
+    EXPECT_LT(mars->get_atmospheric_tau(),  1.0);
+
+    // Each still warmer than it would be bare, and in the right order relative to each other.
+    EXPECT_GT(t_earth, earth->equilibrium_temperature());
+    EXPECT_GT(t_mars,  mars->equilibrium_temperature());
+    EXPECT_GT(t_venus, t_earth);
+    EXPECT_GT(t_earth, t_mars);
+
+    delete_the_universe();
+}
+
 TEST_F(PlanetAtmosphereTest, IceGiantWithNoSurfacePressureStillGetsAHaze)
 {
     Star* sun = make_star("Sol");

@@ -396,10 +396,23 @@ double atmospheric_tau(double normalized_pressure,
     double p_c2h6 = normalized_pressure * c2h6_fraction;
 
     // 4. Dense Atmosphere Collision-Induced Absorption (CIA)
+    //
+    // Collisional absorption goes as the square of the number density, so integrating it over a
+    // hydrostatic column gives an optical depth rising as p^2 -- strictly p^2/g, with the 1/g
+    // folded into the coefficients below, which are set at close to one Earth gravity.
     double tau_cia = 0.0;
-    if (normalized_pressure > 0.5) {
-        tau_cia += 0.08 * (p_h2 * normalized_pressure); 
+    if (normalized_pressure > 0.5)
+    {
+        tau_cia += 0.08 * (p_h2 * normalized_pressure);
     }
+
+    // CO2 pairs absorb the same way, and on a dense CO2 world this is what actually holds the heat
+    // in: the logarithmic band terms above saturate, so 92 bar of it only reaches tau_co2 = 4.5,
+    // roughly what a single bar of pure CO2 would already give. The coefficient is calibrated so
+    // that Venus (91.78 atm, 96.5% CO2) reaches the tau of 61.4 that planets.json records for it.
+    // Being quadratic in the partial pressure, it leaves thin CO2 atmospheres alone -- it moves
+    // Earth's tau by 1e-9 and Mars's by 3e-7.
+    tau_cia += 0.00719 * p_co2 * p_co2;
 
     double h2_feedback = 1.0 + (p_h2 * 25.0);
 
