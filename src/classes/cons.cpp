@@ -292,6 +292,7 @@ ConsBins fill_alienorum_ids()
                         + std::string(" ")
                         + cs->abbrev
                         + std::string(" ")
+                        + (m >= 8 ? std::string("T") : std::string(""))
                         + (n>1 ? std::to_string(i+1) : std::string(""))
                         ;
 

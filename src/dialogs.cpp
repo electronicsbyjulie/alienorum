@@ -613,6 +613,17 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         bool sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
 
         std::stringstream oss;
+        Star *s = nullptr;
+
+        cel_obj_class cls = cels[i]->typeclass();
+        if (cls == class_star)
+        {
+            s = (Star*)cels[i];
+            if (s->local_name.size())
+            {
+                ImGui::Text("%s", s->local_name.c_str());
+            }
+        }
 
         objname = cels[i]->name;
         ImGui::Text("%s", objname.c_str());
@@ -762,7 +773,6 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
         }
 
-        cel_obj_class cls = cels[i]->typeclass();
         if (cels[i]->mass)
         {
             if (cls == class_star)
@@ -898,6 +908,7 @@ void draw_addcel_window(ImGuiIO& io)
             if (cel)
             {
                 strcpy(cel->name, "new");
+                cel->namelen = 0;
                 cel->user_added = true;
                 cels[addcenidx]->distance_known = true;
                 cel->distance_known = true;
@@ -968,6 +979,7 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::InputText("##edtname", edit_name, name_max_len, 0))
     {
         strcpy(cels[editidx]->name, edit_name);
+        cels[editidx]->namelen = 0;
         cel->user_edited = true;
     }
     ImGui::SameLine(col3);
@@ -2418,6 +2430,7 @@ void draw_system_explorer(ImGuiIO& io)
                     Moon *m = new Moon();
                     std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
                     strcpy(m->name, mname.c_str());
+                    m->namelen = 0;
                     m->user_added = true;
                     m->user_edited = true;
                     m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;

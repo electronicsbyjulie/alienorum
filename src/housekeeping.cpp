@@ -558,7 +558,10 @@ void set_center_objects()
                             std::string base = lop_component(primary->name);
                             std::string current = trim(lop_component(s->name));
                             if (!current.size() || current == base)
+                            {
                                 strcpy(s->name, (base + std::string(" ") + std::string(1, comp)).c_str());
+                                s->namelen = 0;
+                            }
                         }
                     }
                     else

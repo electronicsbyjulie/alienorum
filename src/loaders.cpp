@@ -636,6 +636,7 @@ void load_catalogs()
             double magnitude = -1.0 + 0.1 * i;
             Star* s = new Star();
             strcpy(s->name, ((std::string)"Test "+std::to_string(magnitude)).c_str());
+            s->namelen = 0;
             s->right_ascension = fiftyseventh * i;
             s->declination = -2.59 * fiftyseventh;
             s->apparent_magnitude = s->absolute_magnitude = magnitude;

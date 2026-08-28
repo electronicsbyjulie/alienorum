@@ -1551,6 +1551,7 @@ CelestialObject* SSCImport::create_star_from_stc_record(const json &fields, cons
 
     Star *s = new Star();
     strcpy(s->name, name.c_str());
+    s->namelen = 0;
     s->origname = name;
 
     double ra_deg = 0, dec_deg = 0, distance_ly = 0;
@@ -1627,6 +1628,7 @@ CelestialObject* SSCImport::create_fictitious_star(const std::string &raw_name)
 
     Star *s = new Star();
     strcpy(s->name, name.c_str());
+    s->namelen = 0;
     s->origname = name;
     s->right_ascension = (double)(h % 360000u) / 1000.0 * fiftyseventh;
     s->declination = ((double)((h / 360000u) % 180000u) / 1000.0 - 90.0) * fiftyseventh;
@@ -2000,6 +2002,7 @@ bool SSCImport::read(const std::string &ssc_path)
                 name = name.substr(0, name_max_len-1);
             }
             strcpy(cel->name, name.c_str());
+            cel->namelen = 0;
 
             if (!append_cel(cel))
             {

@@ -175,15 +175,16 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     {
         if (cels[i]->deleted) continue;
         if (os && (cels[i]->typeclass() != class_star)) continue;
+        Star* s = (Star*)cels[i];
         if (!strcmp(cels[i]->name, search_term))
         {
             result = i;
             break;
         }
         if (match_cons && cels[i]->typeclass() == class_star
-            && (    (((Star*)cels[i])->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
-                ||  (((Star*)cels[i])->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
-                ||  (((Star*)cels[i])->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
+            && (    (s->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
+                ||  (s->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
+                ||  (s->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
                 )) continue;
         if (match_comp)
         {
@@ -193,8 +194,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         }
         if (cels[i]->typeclass() == class_star)
         {
-            if (((Star*)cels[i])->apparent_magnitude > ml) continue;
-            if (is_gliese && has_same_numbers(((Star*)cels[i])->Gliese, search_term))
+            if (s->apparent_magnitude > ml) continue;
+            if (is_gliese && has_same_numbers(s->Gliese, search_term))
             {
                 result = i;
                 break;
@@ -269,28 +270,39 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 && has_same_numbers(s->Gliese, lookstr.c_str()))
                 continue;
 
-            strcpy(buffer, cels[i]->name);
-            if (looklen > 0.666 * strlen(buffer)) buffer[looklen] = 0;
-            int lev = Damerau_Levenshtein(buffer, lookstr);
-            if (cels[i]->type == star)
+            memcpy(buffer, cels[i]->name, cels[i]->namelen);
+            buffer[cels[i]->namelen] = 0;
+            if (looklen > 0.666 * cels[i]->namelen)
             {
-                if (!has_same_numbers(cels[i]->name, lookstr.c_str())) lev = 1e9;
-                if (s)
+                buffer[looklen] = 0;
+            }
+
+            int lev = (!s || has_same_numbers(cels[i]->name, lookstr.c_str())) 
+                    ? Damerau_Levenshtein(buffer, lookstr) 
+                    : 1e9;
+
+            if (s)
+            {
+                int lev1;
+                if (s->local_name.size())
                 {
-                    int lev1;
-                    if (s->local_name.size())
-                    {
-                        lev1 = Damerau_Levenshtein(s->local_name.c_str(), lookstr);
-                        if (lev1 < lev) lev = lev1;
-                    }
-                    lev1 = Damerau_Levenshtein( s->Bayer, lookstr);
-                    if (!has_same_numbers(s->Bayer, lookstr.c_str())) lev1 = 1e9;
-                    if (lev1 < lev) lev = lev1;
-                    lev1 = Damerau_Levenshtein( s->Flamsteed, lookstr);
-                    if (!has_same_numbers(s->Flamsteed, lookstr.c_str())) lev1 = 1e9;
+                    lev1 = Damerau_Levenshtein(s->local_name.c_str(), lookstr);
                     if (lev1 < lev) lev = lev1;
                 }
+                
+                // Bayer check
+                lev1 = has_same_numbers(s->Bayer, lookstr.c_str()) 
+                    ? Damerau_Levenshtein(s->Bayer, lookstr) 
+                    : 1e9;
+                if (lev1 < lev) lev = lev1;
+                
+                // Flamsteed check
+                lev1 = has_same_numbers(s->Flamsteed, lookstr.c_str()) 
+                    ? Damerau_Levenshtein(s->Flamsteed, lookstr) 
+                    : 1e9;
+                if (lev1 < lev) lev = lev1;
             }
+
             if (lev < levreq)
             {
                 levreq = lev;

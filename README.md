@@ -44,7 +44,8 @@ MSYS2 (Run in MINGW64 environment):
 * Custom texture map generation;
 * More coming soon...
 
-Internal AlienorumIDs for stars dimmer than magnitude 8 should be considered provisional and subject to change.
+Internal AlienorumIDs for stars dimmer than magnitude 8 should be considered temporary and subject to change.
+These IDs can be identified by the letter T before the number at the end.
 
 
 ## Initial Run

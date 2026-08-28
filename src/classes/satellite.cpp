@@ -337,6 +337,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
 
     SatRecord& sr = sat_data[idx];
     strcpy(sat->name, sr.OBJECT_NAME.c_str());
+    sat->namelen = 0;
     if (!sat->orbit) sat->orbit = new Orbit;
     int cenidx;
 

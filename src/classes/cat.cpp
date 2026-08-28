@@ -307,6 +307,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         {
             strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
             strcpy(s->name, "55 Cnc B");
+            s->namelen = 0;
             s->has_custom_name = true;
         }
         if (!strcmp(s->Gliese, "GJ 22 AC"))
@@ -691,6 +692,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         //   5- 14  A10    ---     Name     Name, generally Bayer and/or Flamsteed name
         read_field_onebased(buffer, 5, 14, field);
         if (strlen(trim(field).c_str())) strcpy(s->name, trim(field).c_str());
+        s->namelen = 0;
 
         s->Bonn_survey[0] = dm_survey[0];
         s->Bonn_survey[1] = dm_survey[1];
@@ -843,6 +845,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         if (!strlen(s->name))
         {
             if (s->HD) strcpy(s->name, ((std::string)"HD" + std::to_string(s->HD)).c_str());
+            s->namelen = 0;
         }
 
         s->VR_color = (s->RI_color + s->BV_color*2) / 3;      // VERY rough estimate
@@ -1397,6 +1400,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         std::string sname = trim(field);
         std::replace(sname.begin(), sname.end(), '_', ' ');
         strcpy(s->name, sname.c_str());
+        s->namelen = 0;
     }
 
     fclose(fp);
@@ -1876,6 +1880,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
             if (!A) continue;
             s = new Star();
             strcpy(s->name, field);
+            s->namelen = 0;
             s->make_companion_of(A, comp[star_name]);
             append_cel(s);
         }
@@ -1883,6 +1888,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
         {
             s = new Star();
             strcpy(s->name, field);
+            s->namelen = 0;
             append_cel(s);
             A = nullptr;
         }
@@ -2165,12 +2171,17 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             A = s;
             s = swap;
 
-            if (!A->has_custom_name) strcpy(A->name, lop_component(A->name).c_str());
+            if (!A->has_custom_name)
+            {
+                strcpy(A->name, lop_component(A->name).c_str());
+                A->namelen = 0;
+            }
             if (!s->has_custom_name)
             {
                 s->assign_identifier_name();
                 if (!trim(s->name).size() || !strcmp(trim(s->name).c_str(), A->name))
                     strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
+                s->namelen = 0;
             }
         }
 
@@ -2578,6 +2589,7 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     p->orbit = new Orbit();
     p->orbit->center = cels[0];
     strcpy(p->name, r->name.c_str());
+    p->namelen = 0;
     p->absolute_magnitude = absmagn;
 
     //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
@@ -3567,6 +3579,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     {
                         s = new Star();
                         if (!s->has_custom_name) strcpy(s->name, star_name.c_str());
+                        s->namelen = 0;
                         s->cenobj = s;
                         s_is_new = true;
                     }
@@ -3575,6 +3588,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     {
                         p = new Planet();
                         if (planet_name.size()) strcpy(p->name, planet_name.c_str());
+                        p->namelen = 0;
                     }
                     if (!p->orbit) p->orbit = new Orbit();
                     p->orbit->center = p->cenobj = s;
@@ -3651,6 +3665,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
                 s->type = star;
                 if (!s->has_custom_name) strcpy(s->name, star_name.c_str());
+                s->namelen = 0;
                 p->orbit->center = p->cenobj = s;
 
                 s->right_ascension = star_ra;
@@ -3796,6 +3811,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
                 if (s->has_custom_name) break;
 
                 strcpy(s->name, trim(field).c_str());
+                s->namelen = 0;
                 s->has_custom_name = true;
                 num_read++;
 
@@ -3813,6 +3829,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
                         std::string base = lop_component(s->name);
                         if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
                             strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
+                        companion->namelen = 0;
                     }
                 }
 
@@ -3984,6 +4001,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             }
 
             strcpy(s->name, bdyname.c_str());
+            s->namelen = 0;
             s->has_custom_name = true;
             s->distance_known = true;
             read_field_onebased(buffer, 161, 175, field);
@@ -4238,6 +4256,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 }
                 memset(p->name, 0, 32);
                 strcpy(p->name, bodyname.c_str());
+                p->namelen = 0;
                 if (k >= 0)
                 {
                     p->orbit = new Orbit;
@@ -4777,6 +4796,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         str = trim(field);
         strcpy(s->name, str.c_str());
+        s->namelen = 0;
         s->origname = s->name;
 
         read_field_onebased(buffer, 56, 57, field);

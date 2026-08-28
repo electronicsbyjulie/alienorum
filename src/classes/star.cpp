@@ -196,7 +196,7 @@ void Star::rename_from_Bayer_Flamsteed()
             BayerGrkIdx/= 10;
         }
 
-        int number = atoi(std::string(Bayer).substr(3, 1).c_str());
+        int number = (strlen(Bayer) > 3) ? atoi(std::string(Bayer).substr(3, 1).c_str()) : 0;
         if (number)
         {
             if (!strcmp(constellations[j].abbrev.c_str(), "Ori") && BayerGrkIdx == 7)
@@ -249,6 +249,7 @@ void Star::rename_from_Bayer_Flamsteed()
             std::string base = lop_component(name);
             if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
                 strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
+            companion->namelen = 0;
         }
     }
 
@@ -815,6 +816,7 @@ void Star::gotta_be_named_something()
             std::string base = lop_component(name);
             if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
                 strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
+            companion->namelen = 0;
         }
     }
 

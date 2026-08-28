@@ -319,6 +319,7 @@ namespace alienorum
 
         cel_obj_type type = star;
         char name[name_max_len];
+        int namelen = 0;                            // cached for find_object performance.
         std::string origname = "", origcenname = "";
 
         Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,

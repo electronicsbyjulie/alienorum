@@ -393,6 +393,7 @@ TEST_F(CelestialGlobalsTest, AppendCel_UpdatesFirstLetterIndex)
     
     // Set a predictable name
     strcpy(obj->name, "Earth");
+    obj->namelen = 0;
     
     append_cel(obj);
     

@@ -562,6 +562,7 @@ TEST_F(PlanetAtmosphereTest, QueryingADryMoonDoesNotGiveItAnAtmosphere)
     // so this is wired up by hand the same way it does internally.
     Planet* moon = new Planet();
     strcpy(moon->name, "Moon");
+    moon->namelen = 0;
     moon->mass = lunar_mass;
     moon->volumetric_mean_radius = 1737400;
     moon->orbit = new Orbit();

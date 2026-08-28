@@ -45,6 +45,7 @@ class UniverseFixture : public ::testing::Test
     {
         Star* s = new Star();
         strcpy(s->name, name);
+        s->namelen = 0;
         strcpy(s->spectral_type, "G2V");
         s->mass = mass;
         s->volumetric_mean_radius = solar_radius;
@@ -61,6 +62,7 @@ class UniverseFixture : public ::testing::Test
     {
         Planet* p = new Planet();
         strcpy(p->name, name);
+        p->namelen = 0;
         p->mass = earth_mass;
         p->volumetric_mean_radius = earth_radius;
         p->albedo = 0.3;

@@ -84,6 +84,7 @@ TEST_F(SerializationTest, RoundTripPreservesHierarchyAndFields)
 
     Moon* luna = new Moon();
     strcpy(luna->name, "Test Moon");
+    luna->namelen = 0;
     luna->mass = 7.342e25;
     luna->volumetric_mean_radius = 1.737e6;
     luna->height = 3.4e6;
@@ -140,6 +141,7 @@ TEST_F(SerializationTest, RoundTripKeepsComets)
 
     Comet* c = new Comet();
     strcpy(c->name, "Test Comet");
+    c->namelen = 0;
     c->designation = "C/2024 T1";
     c->H1 = 5.5; c->R1 = 10.0; c->D1 = 5.0;
     c->orbit = new Orbit();
@@ -208,6 +210,7 @@ TEST_F(SerializationTest, LoadDoesNotWriteStarFieldsThroughSomethingThatIsNotASt
 
     Moon* stray = new Moon();
     strcpy(stray->name, "Stray Moon");
+    stray->namelen = 0;
     stray->mass = 7.342e25;
     stray->volumetric_mean_radius = 1.737e6;
     // type deliberately left at the default, so it is its own light center.
