@@ -270,6 +270,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 && has_same_numbers(s->Gliese, lookstr.c_str()))
                 continue;
 
+            if (!cels[i]->namelen) cels[i]->namelen = strlen(cels[i]->name);
             memcpy(buffer, cels[i]->name, cels[i]->namelen);
             buffer[cels[i]->namelen] = 0;
             if (looklen > 0.666 * cels[i]->namelen)
