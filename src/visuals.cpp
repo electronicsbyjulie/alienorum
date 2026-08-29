@@ -3832,6 +3832,12 @@ void draw_sunclock()
             {
                 nrgb = nmap->color_at(lat, lon);
             }
+            else
+            {
+                nrgb.r = rgb.r * 0.20;
+                nrgb.g = rgb.g * 0.25;
+                nrgb.b = rgb.b * 0.29;
+            }
 
             if (self_luminous)
             {
@@ -3846,7 +3852,7 @@ void draw_sunclock()
                 rgb.b *= is_day * daylight.blue;
             }
 
-            if (nmap && is_night)
+            if (is_night)
             {
                 rgb.r += nrgb.r * is_night;
                 rgb.g += nrgb.g * is_night;
