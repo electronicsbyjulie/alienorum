@@ -3576,15 +3576,17 @@ void draw_system_view()
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
         {
-            cel_obj_class cls = lsyscache[i]->typeclass();
+            cel_obj_class cls = lsyscache[j]->typeclass();
             if (cls != class_planet) continue;
 
-            Planet *p = (Planet*)lsyscache[i];
+            Planet *p = (Planet*)lsyscache[j];
+            if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
             double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius);
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);
             cursor = p->drawnx + pdrad + padding;
+            std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
         }
     }
 }
