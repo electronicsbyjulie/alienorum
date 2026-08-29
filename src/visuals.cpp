@@ -4147,11 +4147,25 @@ void draw_cons_lines()
     ImGuiIO& io = ImGui::GetIO();
 
     // Hide lines if more than 10 l.y. from Sun.
-    draw_actual_conslines = here.distance_to(cels[0]->location) < light_year*10;
+    draw_actual_conslines = true;  // here.distance_to(cels[0]->location) < light_year*10;
 
     n = constellations.size();
     for (i=0; i<n; i++)
     {
+        if (constellations[i].vantage_name.size())
+        {
+            int sidx = find_object(constellations[i].vantage_name.c_str(), true);
+            if (sidx < 0)
+            {
+                std::cerr << "WARNING: consline.dat vantage " << constellations[i].vantage_name << " does not match a star." << std::endl;
+                constellations[i].vantage.x = constellations[i].vantage.y = constellations[i].vantage.z = nanf("vantage");
+            }
+
+            constellations[i].vantage = cels[sidx]->location;
+            constellations[i].vantage_name = "";
+        }
+
+        double vantdist = constellations[i].vantage.distance_to(here);
         m = constellations[i].lines.size();
         for (l=0; l<m; l++)
         {
@@ -4173,7 +4187,7 @@ void draw_cons_lines()
             if (dx2 < -1e3) continue;
             if (dy2 < -1e3) continue;
 
-            if (draw_actual_conslines)
+            if (vantdist < light_year*10)
                 wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2),
                     rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.21)),
                     1, io);

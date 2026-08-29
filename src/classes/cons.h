@@ -24,7 +24,8 @@ namespace alienorum
     class Constellation
     {
         public:
-        std::string name, genitive, abbrev;
+        Point vantage;
+        std::string name, vantage_name, genitive, abbrev;
         std::vector<ConsLine> lines;
         std::vector<ConsBoundary> bounds;
         std::map<int, Star*> Bayer_stars;               // 0 = alpha, 1 = beta, etc.

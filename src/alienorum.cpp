@@ -942,9 +942,9 @@ int main (int argc, char** argv)
             int nameidx = trackidx;
             if (nameidx < 0) nameidx = whereami;
 
-            std::string snapname = (nameidx >= 0)
-                ? cels[nameidx]->name
-                : "snapshot"
+            std::string snapname = /*(nameidx >= 0)
+                ? trim(cels[nameidx]->name)
+                :*/ "snapshot"
                 ;
 
             shnapsot_fname << snapdir << _FILESLASH

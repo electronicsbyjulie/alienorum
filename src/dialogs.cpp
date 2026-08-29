@@ -451,27 +451,30 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         }
 
         ImGuiComboFlags cbovp_flags = 0;
-        const char* combo_vp_value = vptext[vplane_mode];
-        ImGui::Text("%s", "View Plane:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(123);
-        if (ImGui::BeginCombo("##cbovp", combo_vp_value, cbovp_flags))
+        if (view_mode == vm_spaceship || view_mode == vm_skymap)
         {
-            for (int n = 0; n < NUM_VPLANES; n++)
+            const char* combo_vp_value = vptext[vplane_mode];
+            ImGui::Text("%s", "View Plane:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(123);
+            if (ImGui::BeginCombo("##cbovp", combo_vp_value, cbovp_flags))
             {
-                const bool is_selected = (n == vplane_mode);
-                if (ImGui::Selectable(vptext[n], is_selected))
+                for (int n = 0; n < NUM_VPLANES; n++)
                 {
-                    vplane_mode = (ViewerPlaneMode)n;
-                    set_viewer_location_and_plane();
-                    viewchanged = true;
-                }
+                    const bool is_selected = (n == vplane_mode);
+                    if (ImGui::Selectable(vptext[n], is_selected))
+                    {
+                        vplane_mode = (ViewerPlaneMode)n;
+                        set_viewer_location_and_plane();
+                        viewchanged = true;
+                    }
 
-                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                if (n == vplane_mode)
-                    ImGui::SetItemDefaultFocus();
+                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                    if (n == vplane_mode)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
         }
 
         if (view_mode == vm_horizon)

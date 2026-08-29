@@ -708,6 +708,7 @@ void load_catalogs()
 void read_cons_lines()
 {
     int l;
+    std::string vantage_name;
     FILE* fp = fopen("consline.dat", "rb");
     if (fp)
     {
@@ -719,6 +720,10 @@ void read_cons_lines()
             if (newline) *newline = 0;
             newline = strchr(buffer, '\r');
             if (newline) *newline = 0;
+            if (*buffer == ':')
+            {
+                vantage_name = &buffer[1];
+            }
             if (*buffer == '~')
             {
                 char* name2 = strchr(buffer, ',');
@@ -747,6 +752,7 @@ void read_cons_lines()
                     c.name = name2;
                     c.abbrev = &buffer[1];
                     if (name3 && strlen(name3)) c.genitive = name3;
+                    c.vantage_name = vantage_name;
                     constellations.push_back(c);
                     l++;
                 }
