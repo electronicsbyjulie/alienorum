@@ -2427,6 +2427,11 @@ void draw_system_explorer(ImGuiIO& io)
         }
     }
     ImGui::SameLine();
+    if (ImGui::Button("Visualize##explored"))
+    {
+        view_mode = vm_system;
+    }
+    ImGui::SameLine();
     if (ImGui::Button("Edit##explored"))
     {
         if (celidx_sel_in_sysxplor >= 0)

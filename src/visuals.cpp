@@ -3349,6 +3349,13 @@ void draw_galaxy_band()
 void draw_objects()
 {
     if (!ncelobjs) return;
+
+    if (view_mode == vm_system)
+    {
+        draw_system_view();
+        return;
+    }
+
     int i, j, n, pass;
     double step, dispw = dispcx*2, disph = dispcy*2;
     double orbseg = 81;
@@ -3547,6 +3554,39 @@ void draw_objects()
         if (!cels[1]) return;
     }
 
+}
+
+void draw_system_view()
+{
+    int i, j, l, n = lsyscache.size();
+
+    double padding = dispcy/20;
+    int num_stars = 0;
+    for (i=0; i<n; i++) if (lsyscache[i]->typeclass() == class_star) num_stars++;
+
+    for (i=0; i<num_stars; i++)
+    {
+        Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
+        s->drawnx = 0;
+        s->drawny = dispcy;
+
+        double sdrad = dispcy/2;
+        draw_sphere(s, sdrad);
+        double cursor = s->drawnx + sdrad + padding;
+
+        for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
+        {
+            cel_obj_class cls = lsyscache[i]->typeclass();
+            if (cls != class_planet) continue;
+
+            Planet *p = (Planet*)lsyscache[i];
+            p->drawny = s->drawny;
+            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius);
+            p->drawnx = cursor + pdrad;
+            draw_sphere(p, pdrad);
+            cursor = p->drawnx + pdrad + padding;
+        }
+    }
 }
 
 ImVec2 sc_drawcoords(CelestialObject *obj, CelestialObject *cel, bool update_drawnxy = true)
