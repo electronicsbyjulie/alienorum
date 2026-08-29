@@ -40,13 +40,13 @@ namespace alienorum
 
     enum cel_obj_class
     {
-        class_unknown,
-        class_galaxy,
+        class_galaxy = 1,
         class_star,
         class_planet,
         class_moon,
         class_comet,
-        class_satellite
+        class_satellite,
+        class_unknown = 10000
     };
 
 
@@ -368,6 +368,8 @@ namespace alienorum
         json to_json();
         bool from_json(json j);
 
+        bool operator<(const CelestialObject& other) const;
+
         protected:
         int read_locales_json(json from_json);
         void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
@@ -392,5 +394,7 @@ extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;
 extern double azimuth_correction;
 extern Locale *is_a_locale_under_cursor, *selected_locale;
+
+extern std::vector<CelestialObject*> lsyscache;
 
 #endif

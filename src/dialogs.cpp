@@ -2278,27 +2278,40 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, e          HZ?");
     if (ImGui::BeginListBox("##syslist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
+        CelestialObject *cel;
+        Star *s;
         j = 0;
+        #if 0
         for (i=0; cels[i]; i++)
         {
-            if (cels[i]->deleted) continue;
-            if (cels[i]->cenobj != mycenobj) continue;
+            cel = cels[i];
+            if (cel->deleted) continue;
+            if (cel->cenobj != mycenobj) continue;
+        #else
+        int nlsc = lsyscache.size();
+        for (i=0; i<nlsc; i++)
+        {
+            cel = lsyscache[i];
+            if (cel->deleted) continue;
+        #endif
+            s = (cel->typeclass() == class_star) ? (Star*)cel : nullptr;
+
             bool is_selected = (item_selected_idx == j);
 
-            cel_obj_class cls = cels[i]->typeclass();
+            cel_obj_class cls = cel->typeclass();
             if (cls == class_satellite && !list_sats) continue;
             if (cls == class_moon && !list_moons) continue;
             if (cls == class_planet)
             {
-                if (cels[i]->mass > 0.05 * earth_mass)
+                if (cel->mass > 0.05 * earth_mass)
                 {
                     if (!list_planets) continue;
                 }
                 else
                 {
-                    if (cels[i]->orbit)
+                    if (cel->orbit)
                     {
-                        if (cels[i]->orbit->period < (60000.0*oneday))
+                        if (cel->orbit->period < (60000.0*oneday))
                         {
                             if (!list_asteroids) continue;
                         }
@@ -2311,18 +2324,18 @@ void draw_system_explorer(ImGuiIO& io)
             }
             if (cls == class_comet && !list_comets) continue;
 
-            std::string dispname = cels[i]->name;
-            if (cls == class_star && ((Star*)cels[i])->local_name.size()) dispname = ((Star*)cels[i])->local_name;
+            std::string dispname = cel->name;
+            if (s && s->local_name.size()) dispname = s->local_name;
 
             std::string line = dispname.substr(0, 20);
             l = 36 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->orbit && cels[i]->orbit->center)
+            if (cel->orbit && cel->orbit->center)
             {
-                std::string cenname = cels[i]->orbit->center->name;
-                if (cels[i]->orbit->center->typeclass() == class_star && ((Star*)cels[i]->orbit->center)->local_name.size())
-                    cenname = ((Star*)cels[i]->orbit->center)->local_name;
+                std::string cenname = cel->orbit->center->name;
+                if (cel->orbit->center->typeclass() == class_star && ((Star*)cel->orbit->center)->local_name.size())
+                    cenname = ((Star*)cel->orbit->center)->local_name;
                 line += cenname.substr(0, 18);
             }
             else line += std::string("-");
@@ -2333,10 +2346,10 @@ void draw_system_explorer(ImGuiIO& io)
             l = 70 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->orbit && cels[i]->orbit->period)
+            if (cel->orbit && cel->orbit->period)
             {
                 stringstream pss;
-                pss << setprecision(7) << (cels[i]->orbit->period/oneday);
+                pss << setprecision(7) << (cel->orbit->period/oneday);
                 line += pss.str();
             }
             else line += std::string("-");
@@ -2344,9 +2357,9 @@ void draw_system_explorer(ImGuiIO& io)
             l = 86 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->mass)
+            if (cel->mass)
             {
-                double f = cels[i]->mass / earth_mass;
+                double f = cel->mass / earth_mass;
                 stringstream mss;
                 mss << (f >= 0.1 ? std::fixed : std::scientific) << setprecision(3) << f;
                 line += mss.str();
@@ -2356,10 +2369,10 @@ void draw_system_explorer(ImGuiIO& io)
             l = 105 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->orbit && cels[i]->orbit->period)
+            if (cel->orbit && cel->orbit->period)
             {
-                cel_obj_class cls = cels[i]->typeclass();
-                if ((cls == class_planet || cls == class_moon) && ((Planet*)cels[i])->is_in_con_HZ())
+                cel_obj_class cls = cel->typeclass();
+                if ((cls == class_planet || cls == class_moon) && ((Planet*)cel)->is_in_con_HZ())
                     line += "Y";
                 else line += std::string("");
             }

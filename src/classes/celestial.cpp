@@ -18,6 +18,8 @@ CelestialObject **cels, *mycenobj = nullptr;
 std::vector<std::vector<CelestialObject*>> first_letter_index;
 std::map<std::string,std::vector<CelestialObject*>> constellation_index;
 
+std::vector<CelestialObject*> lsyscache;
+
 bool *celskip, *discinstead;
 double *vmag_cache, *bloomrad_cache, *angular_radius;
 CelestialLocation here;
@@ -759,6 +761,31 @@ bool CelestialObject::from_json(json j)
     estimated_poles = true;
 
     return true;
+}
+
+bool alienorum::CelestialObject::operator<(const CelestialObject &other) const          // Return true if this < other.
+{
+    // Is same cenobj? If not, return cenobj comparison.
+    if (cenobj != other.cenobj) return cenobj < other.cenobj;
+
+    // Check class. Galaxy > star > planet/asteroid > moon > comet > artificial, reversed because we use this function for sort order.
+    const cel_obj_class cls = typeclass(), ocls = other.typeclass();
+    if (cls != ocls) return cls < ocls;
+
+    // If same type, compare centers of orbit.
+    const CelestialObject *orbcen = (orbit ? orbit->center : this), *oorbcen = (other.orbit ? other.orbit->center : &other);
+    if (orbcen != oorbcen) return orbcen < oorbcen;
+
+    // If same center of orbit, compare semimajor axes.
+    const double sma = (orbit ? orbit->semimajor_axis : 0), osma = (other.orbit ? other.orbit->semimajor_axis : 0);
+    if (fabs(sma - osma) > fmax(sma, osma)*1e-29) return sma < osma;
+
+    // If somehow still same semimajor axes, compare masses first, then radii, then names.
+    if (fabs(mass - other.mass) > fmax(mass, other.mass)*1e-29) return mass < other.mass;
+    if (fabs(volumetric_mean_radius - other.volumetric_mean_radius) > fmax(volumetric_mean_radius, other.volumetric_mean_radius)*1e-29)
+        return volumetric_mean_radius < other.volumetric_mean_radius;
+    int namecmp = strcmp(name, other.name);
+    return namecmp < 0;
 }
 
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
@@ -2898,6 +2925,7 @@ bool append_cel(CelestialObject *cel)
     if (cel->orbit && cel->orbit->center) cel->origcenname = cel->orbit->center->name;
 
     if (first_sat < 0 && cel->typeclass() == class_satellite) first_sat = ncelobjs;
+    lsyscache.clear();
 
     cels[ncelobjs] = cel;
     cel->seqno = ncelobjs;

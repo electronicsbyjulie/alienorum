@@ -101,7 +101,7 @@ void set_viewer_location_and_plane()
 
     if (view_mode == vm_system)
     {
-        here = mycenobj->location;
+        if (mycenobj) here = mycenobj->location;
     }
     else if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
     {
@@ -373,6 +373,29 @@ void compute_object_draw_coordinates()
     {
         here.system_center = mycenobj->location.system_center;
         here.galactic_center = mycenobj->location.galactic_center;
+
+        static CelestialObject *llmycen = nullptr;
+        if (llmycen != mycenobj)
+        {
+            lsyscache.clear();
+            llmycen = mycenobj;
+        }
+        if ((explorer || view_mode == vm_system) && !lsyscache.size())
+        {
+            for (i=0; cels[i]; i++)
+            {
+                if (cels[i]->cenobj != mycenobj) continue;
+                lsyscache.push_back(cels[i]);
+            }
+
+            std::sort(lsyscache.begin(), lsyscache.end(), [](const CelestialObject* a, const CelestialObject* b)
+            {
+                if (!a) return b != nullptr; 
+                if (!b) return false;
+                
+                return *a < *b;
+            });
+        }
     }
 
     set_viewer_location_and_plane();
