@@ -2341,7 +2341,7 @@ void draw_system_explorer(ImGuiIO& io)
             else line += std::string("-");
 
             if (xplorlen && !strcasestr(line.c_str(), xplorfor)) continue;
-            list_item_celids.push_back(i);
+            list_item_celids.push_back(cel->seqno);
 
             l = 70 - line.size();
             if (l > 0) line += std::string(l, ' ');
