@@ -1925,7 +1925,10 @@ static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3Byte rgb,
 // left is a smooth core glow frayed by fine radiating streaks.
 void draw_flare(double flare, Color col, double vmag, double disc_px)
 {
-    if (whtbkgd) return;
+    if (whtbkgd)
+    {
+        if (flare > 53.81) flare = 53.81;               // ogranichit' blik v meste oshibki
+    }
 
     // An object viewed from zero distance (e.g. the Sun as seen from the Sun) makes
     // viewer_magnitude() divide by r*r = 0 and return -Infinity, which turns every
@@ -1942,6 +1945,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     rgb.r = (int)(col.red * divisor);
     rgb.g = (int)(col.green* divisor);
     rgb.b = (int)(col.blue * divisor);
+    if (whtbkgd) rgb.invert_luminance();
 
     // Four rays around magnitude -10 and dimmer, filling in to a full circle by the Sun.
     double fill = (vmag > -10.0) ? 0.0 : fmin(1.0, (-10.0 - vmag) / 16.0);
@@ -2787,12 +2791,7 @@ bool draw_one_object(int i)
     appmag = vmag_cache[i] - sky_mag_shift;
     double brght = pow(magnbase, -appmag);
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
-    // The bloom disc saturates at max_bloomrad long before the bloom-based flare threshold
-    // is met, which left the brightest planets and stars as flat blobs with nothing around
-    // them. Give anything brighter than magnitude -1 a glare of its own. Keying that off
-    // magnitude rather than bloomrad keeps the count bounded: bloomrad scales with
-    // global_brightness, so a threshold low enough to catch Venus at default brightness
-    // would flare six figures' worth of stars once brightness is turned up.
+
     double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*13 : 0;
     double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 20.0;
     double f_ang = angular_radius[i]*zoom*dispcx;
@@ -2812,8 +2811,7 @@ bool draw_one_object(int i)
                     rgba_apply_redlight(global_style.selected_color), 0, 2);
             goto labels_step;
         }
-        // Too small, too faint, or off screen: fall through to the point path below, which is the
-        // right answer for a galaxy that is only a few pixels across anyway.
+        // Too small, too faint, or off screen: fall through to the point path below.
         if (i != inside_galaxy_idx) goto dot_instead;
     }
     else if (cls == class_satellite)
@@ -3389,6 +3387,7 @@ void draw_objects()
 
         Color col = Color::color_from_magnitude_indices(vmag_cache[i] + 5, cels[i]->BV_color);
         RGB3Byte rgb = Color::rgb_from_color(col, 1);
+        if (whtbkgd) rgb.invert_luminance();
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         CelestialLocation was = cels[i]->location;
         bool is_star = (cels[i]->typeclass() == class_star),

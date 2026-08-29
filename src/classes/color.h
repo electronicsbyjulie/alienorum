@@ -27,6 +27,7 @@ namespace alienorum
         RGB3Byte(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
 
         inline double luminance() { return _lum_r_comp*r + _lum_g_comp*g + _lum_b_comp*b; }
+        void invert_luminance();        // used for white background mode only.
     };
 
     class Color

@@ -725,3 +725,11 @@ void alienorum::Cloud::draw(double planet_radius)
         draw_list->AddLine(p1, p2, haze_col, 4.0f);
     }
 }
+
+void alienorum::RGB3Byte::invert_luminance()
+{
+    double least = fmin(fmin(r, g), b);
+    r -= least;
+    g -= least;
+    b -= least;
+}
