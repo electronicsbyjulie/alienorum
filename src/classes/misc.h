@@ -161,14 +161,15 @@ const std::time_t J2000_TIME_T = 946684800;
 
 #define mouse_drag_threshold 3
 
-#define NUM_VIEWMODES 4
+#define NUM_VIEWMODES 5
 enum ViewMode
 {
     vm_spaceship = 0,
     vm_horizon = 1,
     vm_sunclock = 2,
     vm_skymap = 3,
-    vm_model = 4                // Not implemented yet.
+    vm_system = 4,
+    vm_model = 5                // Not implemented yet.
 };
 
 #define NUM_VPLANES 4

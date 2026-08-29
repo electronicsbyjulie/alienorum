@@ -99,7 +99,11 @@ void set_viewer_location_and_plane()
         }
     }
 
-    if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
+    if (view_mode == vm_system)
+    {
+        here = mycenobj->location;
+    }
+    else if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
     {
         // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
         // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;
