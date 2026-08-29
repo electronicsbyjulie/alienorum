@@ -42,6 +42,7 @@ using namespace alienorum;
 extern std::vector<Constellation> constellations;
 Constellation* identify_cons_of_star(Star* s);
 ConsBins fill_alienorum_ids();
+extern Constellation *cons4lbl;
 
 #endif
 

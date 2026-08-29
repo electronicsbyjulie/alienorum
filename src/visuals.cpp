@@ -2974,17 +2974,18 @@ bool draw_one_object(int i)
     
 
     labels_step:
-    if ( (show_labels && cels[i]->type == star && !cels[i]->orbit &&
+    Star *s = (cels[i]->type == star) ? (Star*)cels[i] : nullptr;
+    if ( (show_labels && s && !cels[i]->orbit &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_nearby && here.distance_to(cels[i]->location) <= distance_lblcut)
-            || (cbolbls_selected_idx == lbltype_Bayer && strlen(((Star*)cels[i])->Bayer))
-            || (cbolbls_selected_idx == lbltype_Flamsteed && strlen(((Star*)cels[i])->Flamsteed))
-            || (cbolbls_selected_idx == lbltype_Gould && (((Star*)cels[i])->GouldNo > 0))
-            || (cbolbls_selected_idx == lbltype_sunlike && ((Star*)cels[i])->is_sunlike())
-            || (cbolbls_selected_idx == lbltype_planets && (((Star*)cels[i])->has_planets >= planets_lblcut) )
-            || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cels[i])->has_hz_planets) )
-            || (cbolbls_selected_idx == lbltype_binary && (((Star*)cels[i])->multisys))
+            || (cbolbls_selected_idx == lbltype_Bayer && strlen(s->Bayer) && (!cons4lbl || s->matches_constellation(cons4lbl->abbrev.c_str())))
+            || (cbolbls_selected_idx == lbltype_Flamsteed && strlen(s->Flamsteed) && (!cons4lbl || s->matches_constellation(cons4lbl->abbrev.c_str())))
+            || ((cbolbls_selected_idx == lbltype_Gould && s->GouldNo > 0) && (!cons4lbl || s->matches_constellation(cons4lbl->abbrev.c_str())))
+            || (cbolbls_selected_idx == lbltype_sunlike && s->is_sunlike())
+            || (cbolbls_selected_idx == lbltype_planets && (s->has_planets >= planets_lblcut) )
+            || (cbolbls_selected_idx == lbltype_planethz && (s->has_hz_planets) )
+            || (cbolbls_selected_idx == lbltype_binary && (s->multisys))
             || (cbolbls_selected_idx == lbltype_knpole && cels[i]->known_poles)
             ))
         || (obj_is_localsys && lbl_localsys

@@ -239,14 +239,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::EndCombo();
     }
 
-    flagstr = (std::string)"Galaxy labels (K): "
-        + std::string(label_galaxies ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
-    flagstr = (std::string)"Galaxy band (Sh+K): "
-        + std::string(show_galaxy_band ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
     if (cbolbls_selected_idx == lbltype_brightest)
     {
         ImGui::Text("%s", "Mag limit:");
@@ -278,6 +270,32 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::InputInt("##npltlim", &planets_lblcut, 1, 0);
         if (planets_lblcut < 1) planets_lblcut = 1;
     }
+    else if (cbolbls_selected_idx == lbltype_Bayer || cbolbls_selected_idx == lbltype_Flamsteed || cbolbls_selected_idx == lbltype_Gould)
+    {
+        ImGui::Text("%s", "Cons:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(67);
+        if (ImGui::BeginCombo("##lblconsstars", "(all)"))
+        {
+            if (ImGui::Selectable("(all)", !cons4lbl)) cons4lbl = nullptr;
+            
+            int i, n = constellations.size();
+            for (i=0; i<n; i++)
+            {
+                if (ImGui::Selectable(constellations[i].name.c_str(), cons4lbl == &constellations[i]))
+                    cons4lbl = &constellations[i];
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    flagstr = (std::string)"Galaxy labels (K): "
+        + std::string(label_galaxies ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
+    flagstr = (std::string)"Galaxy band (Sh+K): "
+        + std::string(show_galaxy_band ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
 
     flagstr = (std::string)"Lbl planets (P): "
         + std::string(lbl_localsys ? "ON" : "OFF");

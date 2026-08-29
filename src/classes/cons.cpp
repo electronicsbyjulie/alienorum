@@ -3,6 +3,7 @@
 #include "cons.h"
 
 std::vector<Constellation> constellations;
+Constellation *cons4lbl = nullptr;
 
 // Helper to calculate true angular distance between two points on the celestial sphere
 double get_angular_distance(const ConsBoundary& a, const ConsBoundary& b) 
