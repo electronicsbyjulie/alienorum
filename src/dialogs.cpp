@@ -274,16 +274,19 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     {
         ImGui::Text("%s", "Cons:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(67);
-        if (ImGui::BeginCombo("##lblconsstars", "(all)"))
+        ImGui::SetNextItemWidth(123);
+        if (ImGui::BeginCombo("##lblconsstars", cons4lbl ? cons4lbl->name.c_str() : "(all)"))
         {
             if (ImGui::Selectable("(all)", !cons4lbl)) cons4lbl = nullptr;
             
             int i, n = constellations.size();
             for (i=0; i<n; i++)
             {
-                if (ImGui::Selectable(constellations[i].name.c_str(), cons4lbl == &constellations[i]))
+                const bool is_selected = (cons4lbl == &constellations[i]);
+                if (ImGui::Selectable(constellations[i].name.c_str(), is_selected))
                     cons4lbl = &constellations[i];
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }

@@ -3015,7 +3015,9 @@ bool draw_one_object(int i)
         {
             // str = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
             // dispname = str.c_str();
-            char c = Greek_symbol_mapping[((Star*)cels[i])->BayerGrkno];
+            int lBayerGrkNo = ((Star*)cels[i])->BayerGrkno;
+            if (lBayerGrkNo >= 100) lBayerGrkNo = (lBayerGrkNo-100)/10;
+            char c = Greek_symbol_mapping[lBayerGrkNo];
             str = std::string(1, c);
             if (((Star*)cels[i])->Bayer[3] >= '1') str += std::string(1, ((Star*)cels[i])->Bayer[3]);
             dispname = str.c_str();
