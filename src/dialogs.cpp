@@ -241,14 +241,14 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 
     if (cbolbls_selected_idx == lbltype_brightest)
     {
-        ImGui::Text("%s", "Mag limit:");
+        ImGui::Text("%s", "Lbl mag:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
         ImGui::InputDouble("##appmaglim", &appmagn_lblcut, 0, 0, "%.2f");
     }
     else if (cbolbls_selected_idx == lbltype_intrinsic)
     {
-        ImGui::Text("%s", "Mag limit:");
+        ImGui::Text("%s", "Lbl mag:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
         ImGui::InputDouble("##absmaglim", &absmagn_lblcut, 0, 0, "%.2f");
