@@ -16,6 +16,8 @@ void draw_ra_dec_lines()
 {
     ImGuiIO& io = ImGui::GetIO();
     if (!cels[1]) return;
+    if (view_mode == vm_system) return;
+
     int i, j;
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color, 0.1));
@@ -814,6 +816,8 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
+    if (view_mode == vm_system) camera_space = display_space = Point(0, 0, cel->volumetric_mean_radius * 10);
+
     // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
     // planet for a tidally-locked moon; see SphereImpostorInput's own comment on axis_x/y/z).
     // Matches the CPU path's own two shaping cases exactly (visuals.cpp's CPU polygon loop,
@@ -917,12 +921,19 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     Point light_dir(0, 0, 1);
     if (!self_luminous)
     {
-        Point light_camera_space = rotate3D(
-            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
-            center, xaxis, altitude);
-        light_dir = light_camera_space - camera_space;
-        double mag = light_dir.magnitude();
-        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+        if (view_mode == vm_system)
+        {
+            light_dir = Point(0,0,-AU);
+        }
+        else
+        {
+            Point light_camera_space = rotate3D(
+                rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+                center, xaxis, altitude);
+            light_dir = light_camera_space - camera_space;
+            double mag = light_dir.magnitude();
+            if (mag > 0) light_dir = light_dir * (1.0 / mag);
+        }
     }
 
     Color daylight = Color::color_from_magnitude_indices(0, lightcen->BV_color);
@@ -1012,7 +1023,11 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     }
 
     double xmin, ymin, xmax, ymax;
-    bool ok = queue_sphere_impostor(in, zoom, dispcx, dispcy, &xmin, &ymin, &xmax, &ymax);
+    bool ok = queue_sphere_impostor(in,
+        (view_mode == vm_system) ? 3 : zoom, 
+        (view_mode == vm_system) ? cel->drawnx : dispcx,
+        (view_mode == vm_system) ? cel->drawny : dispcy,
+        &xmin, &ymin, &xmax, &ymax);
     if (!ok) return 0;
 
     cel->drawnxmin = xmin;
@@ -1205,6 +1220,7 @@ void reap_released_objects()
 int draw_sphere(CelestialObject* cel, double arad)
 {
     if (cel->seqno == whereami) return 0;
+    if (view_mode == vm_system) cel->tmprel = Point(AU, 0, 0);
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
 
@@ -1272,14 +1288,14 @@ int draw_sphere(CelestialObject* cel, double arad)
     cel->drawnxmin = cel->drawnxmax = cel->drawnx;
     cel->drawnymin = cel->drawnymax = cel->drawny;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
-    bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
+    bool wireframe = (view_mode != vm_system) && (dragging || !cel->onscreen || d < cel->volumetric_mean_radius);
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
 
     bool use_gpu_disc = false, use_gpu_ring = false;
 #if ALIENORUM_GPU_SPHERES
     // vm_skymap isn't a pinhole camera (see Cartesian2D in point.cpp), so the camera-space
     // math draw_sphere_gpu() relies on doesn't apply there; fall through to the CPU path.
-    use_gpu_disc = (!wireframe && view_mode != vm_skymap);
+    use_gpu_disc = (view_mode == vm_system) || (!wireframe && view_mode != vm_skymap);
 
     // Deliberately its own condition, not just "use_gpu_disc" -- independent of
     // cel->onscreen and the close-range "d < volumetric_mean_radius" check baked into
@@ -2782,7 +2798,7 @@ bool draw_one_object(int i)
 {
         bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
-    if (i == whereami) return false;
+    if ((i == whereami) && (view_mode != vm_system)) return false;
     
     int j;
     double coma_px = 0;
@@ -3586,7 +3602,7 @@ void draw_system_view()
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);
             cursor = p->drawnx + pdrad + padding;
-            std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
+            // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
         }
     }
 }
@@ -4192,6 +4208,8 @@ void draw_sky_gradient()
 void draw_cons_lines()
 {
     if (!cels[1]) return;
+    if (view_mode == vm_system) return;
+
     int i, l, m, n;
     double dispw = dispcx*2, disph = dispcy*2;
     ImGuiIO& io = ImGui::GetIO();

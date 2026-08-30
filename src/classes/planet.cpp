@@ -98,8 +98,8 @@ bool alienorum::Planet::estimate_habitability()
         temperature = 0;
         T_surf = estimate_surface_temperature();
         #ifdef DEBUG
-            std::cout << "Surface pressure: " << (get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
-            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
+            /*std::cout << "Surface pressure: " << (get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
+            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
         if (randomize_txgen)
