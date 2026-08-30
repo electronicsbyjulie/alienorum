@@ -1025,7 +1025,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     double xmin=1e29, ymin=1e29, xmax=0, ymax=0;
     bool ok = queue_sphere_impostor(in,
-        (view_mode == vm_system) ? (arad*10.0/dispcx) : zoom,                   // cromulent
+        (view_mode == vm_system) ? (arad*10.0/dispcx) : zoom,
         (view_mode == vm_system) ? cel->drawnx : dispcx,
         (view_mode == vm_system) ? cel->drawny : dispcy,
         dispcx,
@@ -3614,7 +3614,7 @@ void draw_system_view()
 
         // actual draw with scaling applied
         sdrad = dispcy/2 * curscale;
-        draw_sphere(s, sdrad);                      // cromulent
+        draw_sphere(s, sdrad);
         cursor = s->drawnx + sdrad + padding*curscale;
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
@@ -3627,10 +3627,26 @@ void draw_system_view()
             p->drawny = s->drawny;
             double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
             p->drawnx = cursor + pdrad;
-            draw_sphere(p, pdrad);                      // cromulent
+            draw_sphere(p, pdrad);
             if (p->ring_radius) draw_ring_gpu(p);
             cursor = p->drawnx + pdrad + padding * curscale;
             // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
+
+            if (lbl_localsys)
+            {
+                const char *dispname = p->name;
+                int disph = dispcy * 2;
+                ImFont *font = global_font;
+                double lfontsz = global_font_size;
+
+                ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                int dy = p->drawny+pdrad+1;
+                if (p->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(p->drawnx - lsz.x/2, dy),
+                    rgba_apply_redlight(Color::ensure_wcag_contrast(
+                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                    dispname);
+            }
         }
     }
 }
