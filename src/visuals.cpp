@@ -816,7 +816,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
-    if (view_mode == vm_system) camera_space = display_space = Point(0, 0, cel->volumetric_mean_radius * 10);
+    if (view_mode == vm_system) camera_space = display_space = Point(0, 0, R * 10);
 
     // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
     // planet for a tidally-locked moon; see SphereImpostorInput's own comment on axis_x/y/z).
@@ -1024,7 +1024,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     double xmin, ymin, xmax, ymax;
     bool ok = queue_sphere_impostor(in,
-        (view_mode == vm_system) ? 3 : zoom, 
+        (view_mode == vm_system) ? 3 : zoom,
         (view_mode == vm_system) ? cel->drawnx : dispcx,
         (view_mode == vm_system) ? cel->drawny : dispcy,
         &xmin, &ymin, &xmax, &ymax);
