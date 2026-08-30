@@ -3601,6 +3601,7 @@ void draw_system_view()
 
             Planet *p = (Planet*)lsyscache[j];
             if (p->mass < 0.01 * earth_mass) continue;
+            if (!p->orbit || p->orbit->center != s) continue;
             p->drawny = s->drawny;
             double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10;
             p->drawnx = cursor + pdrad;
@@ -3639,6 +3640,7 @@ void draw_system_view()
             if (cls != class_planet) continue;
 
             Planet *p = (Planet*)lsyscache[j];
+            if (!p->orbit || p->orbit->center != s) continue;
             if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
             double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
