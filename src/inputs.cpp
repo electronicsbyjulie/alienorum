@@ -537,7 +537,13 @@ void process_key_cmd_char(char c)
         case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '0': neighborhood = !neighborhood; break;
-        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = show_localsys = label_galaxies = true; break;
+
+        case '1':
+        show_consln = show_grid = show_labels = label_galaxies = true;
+        show_localsys = lbl_localsys = statuswnd = objinfwnd = (view_mode != vm_skymap);
+        if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut = (view_mode == vm_skymap) ? 2.1 : 2.5;
+        break;
+
         case '2': cbolbls_selected_idx = lbltype_binary; show_labels = true; break;
 
         case '3':
