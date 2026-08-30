@@ -3595,17 +3595,22 @@ void draw_system_view()
 
         for (j=num_stars; j<n; j++)
         {
+            cel_obj_class cls = lsyscache[j]->typeclass();
+            if (cls != class_planet) continue;
+
             Planet *p = (Planet*)lsyscache[j];
             if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
             double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10;
             p->drawnx = cursor + pdrad;
+            // std::cout << p->name << " cursor=" << cursor << " + pdrad=" << pdrad << " + pdrad=" << pdrad;           // deliberately twice
             cursor = p->drawnx + pdrad + padding;
+            // std::cout << " + padding=" << padding << " = " << cursor << std::endl;
         }
 
         // compute scaling
-        std::cout << "cursor=" << cursor << std::endl;
-        double curscale = fmax(1, dispcx*2.0 / cursor);         // do not expand system if already fits
+        // std::cout << "cursor=" << cursor << ", width=" << (dispcx*2) << std::endl << std::endl;
+        double curscale = fmin(1, dispcx*2.0 / cursor);         // do not expand system if already fits
 
         // actual draw with scaling applied
         sdrad = dispcy/2 * curscale;
@@ -3623,6 +3628,7 @@ void draw_system_view()
             double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);                      // cromulent
+            if (p->ring_radius) draw_ring_gpu(p);
             cursor = p->drawnx + pdrad + padding * curscale;
             // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
         }
