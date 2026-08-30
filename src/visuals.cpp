@@ -3076,6 +3076,7 @@ struct BandCrossing
 void draw_galaxy_band()
 {
     if (!show_galaxy_band || inside_galaxy_idx < 0) return;
+    if (view_mode == vm_system) return;
 
     CelestialObject *cel = cels[inside_galaxy_idx];
     Galaxy *g = (Galaxy*)cel;
@@ -3616,6 +3617,21 @@ void draw_system_view()
         sdrad = dispcy/2 * curscale;
         draw_sphere(s, sdrad);
         cursor = s->drawnx + sdrad + padding*curscale;
+        if (lbl_localsys)
+        {
+            const char *dispname = s->name;
+            int disph = dispcy * 2;
+            ImFont *font = global_font;
+            double lfontsz = global_font_size;
+
+            ImVec2 lsz = ImGui::CalcTextSize(dispname);
+            int dy = s->drawny+sdrad+1;
+            if (s->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+            ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(fmax(0, s->drawnx - lsz.x/2), dy),
+                rgba_apply_redlight(Color::ensure_wcag_contrast(
+                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                dispname);
+        }
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
         {
