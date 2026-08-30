@@ -3588,10 +3588,10 @@ void draw_system_view()
     {
         Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
         s->drawnx = -dispcx/29;
-        s->drawny = dispcy;
+        s->drawny = dispcy + (2.0 * i - num_stars + 1) * (dispcy / num_stars);
 
         // dry run - find planetary system scaling
-        double sdrad = dispcy/2;
+        double sdrad = dispcy/num_stars + log(s->volumetric_mean_radius / solar_radius) * 20;
         double cursor = s->drawnx + sdrad + padding;
 
         for (j=num_stars; j<n; j++)
@@ -3603,7 +3603,7 @@ void draw_system_view()
             if (p->mass < 0.01 * earth_mass) continue;
             if (!p->orbit || p->orbit->center != s) continue;
             p->drawny = s->drawny;
-            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10;
+            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*20;
             p->drawnx = cursor + pdrad;
             // std::cout << p->name << " cursor=" << cursor << " + pdrad=" << pdrad << " + pdrad=" << pdrad;           // deliberately twice
             cursor = p->drawnx + pdrad + padding;
@@ -3615,7 +3615,7 @@ void draw_system_view()
         double curscale = fmin(1, dispcx*2.0 / cursor);         // do not expand system if already fits
 
         // actual draw with scaling applied
-        sdrad = dispcy/2 * curscale;
+        sdrad = (dispcy/num_stars + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
         draw_sphere(s, sdrad);
         cursor = s->drawnx + sdrad + padding*curscale;
         if (lbl_localsys)
