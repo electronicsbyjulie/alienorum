@@ -842,6 +842,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         axis_y = R * (1.0 - cel->oblateness);
     }
     double bounding_r = fmax(axis_x, fmax(axis_y, axis_z));
+    // std::cout << cel->name << " bounding_r=" << bounding_r << std::endl;
 
     spawn_texture_load(cel);
 
@@ -1022,12 +1023,14 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         in.apply_sky_blend = true;
     }
 
-    double xmin, ymin, xmax, ymax;
+    double xmin=1e29, ymin=1e29, xmax=0, ymax=0;
     bool ok = queue_sphere_impostor(in,
-        (view_mode == vm_system) ? 3 : zoom,
+        (view_mode == vm_system) ? (arad*10.0/dispcx) : zoom,                   // cromulent
         (view_mode == vm_system) ? cel->drawnx : dispcx,
         (view_mode == vm_system) ? cel->drawny : dispcy,
+        dispcx,
         &xmin, &ymin, &xmax, &ymax);
+    // std::cout << cel->name << ": " << xmin << "," << ymin << " ~ " << xmax << "," << ymax << std::endl << std::endl;
     if (!ok) return 0;
 
     cel->drawnxmin = xmin;
@@ -1102,7 +1105,7 @@ void draw_ring_gpu(CelestialObject* cel)
     in.amt_lit = pl->amt_lit;
     in.redlight_mode = redlight_mode;
 
-    queue_ring_impostor(in, zoom, dispcx, dispcy);
+    queue_ring_impostor(in, zoom, dispcx, dispcy, dispcx);
 }
 
 // ---- Releasing the universe --------------------------------------------------------------
@@ -3583,11 +3586,11 @@ void draw_system_view()
     for (i=0; i<num_stars; i++)
     {
         Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
-        s->drawnx = 0;
+        s->drawnx = 1;
         s->drawny = dispcy;
 
         double sdrad = dispcy/2;
-        draw_sphere(s, sdrad);
+        draw_sphere(s, sdrad);                      // cromulent
         double cursor = s->drawnx + sdrad + padding;
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
@@ -3598,9 +3601,9 @@ void draw_system_view()
             Planet *p = (Planet*)lsyscache[j];
             if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
-            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius);
+            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10;
             p->drawnx = cursor + pdrad;
-            draw_sphere(p, pdrad);
+            draw_sphere(p, pdrad);                      // cromulent
             cursor = p->drawnx + pdrad + padding;
             // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
         }

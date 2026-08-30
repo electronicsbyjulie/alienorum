@@ -39,7 +39,7 @@ namespace alienorum
     {
         // Quad corners, NDC.
         float ndc_x0, ndc_y0, ndc_x1, ndc_y1;
-        // "ray xy" (X/Z, Y/Z, i.e. zdes/zoom) at each of the 4 corners, in the same order as
+        // "ray xy" (X/Z, Y/Z, i.e. zdes/lzoom) at each of the 4 corners, in the same order as
         // the NDC corners above -- these interpolate exactly across the quad because they're
         // computed directly from (and proportional to, modulo the fixed dispcx/dispcy affine
         // map) the screen position itself, so no perspective-correction subtlety applies; the
@@ -956,20 +956,20 @@ namespace alienorum
     // Y/Z ratios) -- it exists purely to avoid literal inf/NaN reaching the arithmetic below,
     // not to define how far offscreen the resulting quad edge ends up. That's what the
     // screen-relative clamp in queue_sphere_impostor is for; a raw slope this large, run
-    // through *zoom and the pixel/NDC conversion, would otherwise land at NDC coordinates in
+    // through *lzoom and the pixel/NDC conversion, would otherwise land at NDC coordinates in
     // the thousands, which is large enough to trip GPU clipping/rasterization guard-band
     // limits on some implementations and get the whole primitive culled instead of clipped
     // (this was bug: Jupiter disappearing from Adrastea/Metis whenever enough of it was
     // offscreen to require this fallback).
-    static void tangent_bounds(double u, double w, double r, double zoom, bool flip_sign,
+    static void tangent_bounds(double u, double w, double r, double lzoom, bool flip_sign,
         double *out_min, double *out_max)
     {
         double L = sqrt(u*u + w*w);
         const double kFiniteBound = 1e4;
         if (L < 1e-6)   // object dead-on along the axis this slice ignores (e.g. straight up)
         {
-            *out_min = -kFiniteBound * zoom;
-            *out_max = kFiniteBound * zoom;
+            *out_min = -kFiniteBound * lzoom;
+            *out_max = kFiniteBound * lzoom;
             return;
         }
         // r >= L here means the camera sits inside this axis-pair's shadow of the sphere --
@@ -990,8 +990,8 @@ namespace alienorum
         // entirely rather than trying to patch its sign heuristic.
         if (r >= L)
         {
-            *out_min = -kFiniteBound * zoom;
-            *out_max = kFiniteBound * zoom;
+            *out_min = -kFiniteBound * lzoom;
+            *out_max = kFiniteBound * lzoom;
             return;
         }
         double alpha = asin(std::min(1.0, r / L));
@@ -1004,7 +1004,7 @@ namespace alienorum
             double c = cos(alpha);
             double tu = cu*c - cw*s;
             double tw = cu*s + cw*c;
-            double v = (tw > 1e-6) ? (tu / tw) * zoom : (tu >= 0 ? kFiniteBound : -kFiniteBound) * zoom;
+            double v = (tw > 1e-6) ? (tu / tw) * lzoom : (tu >= 0 ? kFiniteBound : -kFiniteBound) * lzoom;
             if (flip_sign) v = -v;
             vals[i] = v;
         }
@@ -1012,12 +1012,12 @@ namespace alienorum
         *out_max = std::max(vals[0], vals[1]);
     }
 
-    bool queue_sphere_impostor(const SphereImpostorInput &in, double zoom,
-        double dispcx, double dispcy,
+    bool queue_sphere_impostor(const SphereImpostorInput &in, double lzoom,
+        double dispcx, double dispcy, double scalex,
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax)
     {
         double cx = in.cx, cy = in.cy, cz = in.cz, r = in.r;
-        if (r <= 0 || zoom <= 0) return false;
+        if (r <= 0 || lzoom <= 0) return false;
         if (in.axis_x <= 0 || in.axis_y <= 0 || in.axis_z <= 0) return false;   // shader divides by each
         if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera genuinely inside the sphere
 
@@ -1030,12 +1030,14 @@ namespace alienorum
         double atm_h = (in.atmosphere_height > 0 && mean_r > 0) ? in.atmosphere_height : 0.0;
         double quad_r = r + atm_h;
 
-        double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
-        tangent_bounds(cx, cz, quad_r, zoom, false, &zdesXmin, &zdesXmax);
-        tangent_bounds(cy, cz, quad_r, zoom, true,  &zdesYmin, &zdesYmax);   // Cartesian2D negates Y
+        double zdesXmin=0, zdesXmax=0, zdesYmin=0, zdesYmax=0;
+        // std::cout << cx << "," << cy << "," << cz << " @ " << quad_r << " * " << lzoom << std::endl;
+        tangent_bounds(cx, cz, quad_r, lzoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, quad_r, lzoom, true,  &zdesYmin, &zdesYmax);   // Cartesian2D negates Y
+        // std::cout << zdesXmin << "," << zdesYmin << " ~ " << zdesXmax << "," << zdesYmax << std::endl;
 
-        double xmin = dispcx + zdesXmin * dispcx, xmax = dispcx + zdesXmax * dispcx;
-        double ymin = dispcy + zdesYmin * dispcx, ymax = dispcy + zdesYmax * dispcx;
+        double xmin = dispcx + zdesXmin * scalex, xmax = dispcx + zdesXmax * scalex;
+        double ymin = dispcy + zdesYmin * scalex, ymax = dispcy + zdesYmax * scalex;
 
         ImGuiIO &io = ImGui::GetIO();
         float W = io.DisplaySize.x, H = io.DisplaySize.y;
@@ -1054,8 +1056,8 @@ namespace alienorum
         // consistent with its actual screen position -- otherwise the fragment shader's
         // per-pixel interpolation of ray direction across the quad would be wrong wherever
         // clamping actually changed a corner.
-        zdesXmin = (xmin - dispcx) / dispcx; zdesXmax = (xmax - dispcx) / dispcx;
-        zdesYmin = (ymin - dispcy) / dispcx; zdesYmax = (ymax - dispcy) / dispcx;
+        zdesXmin = (xmin - dispcx) / scalex; zdesXmax = (xmax - dispcx) / scalex;
+        zdesYmin = (ymin - dispcy) / scalex; zdesYmax = (ymax - dispcy) / scalex;
 
         if (out_xmin) *out_xmin = xmin;
         if (out_ymin) *out_ymin = ymin;
@@ -1074,14 +1076,14 @@ namespace alienorum
 
         // Corner order matches render_sphere_impostor(): (x0,y0) (x1,y0) (x1,y1) (x0,y1), i.e.
         // (xmin,ymax) (xmax,ymax) (xmax,ymin) (xmin,ymin) in screen pixel terms once the Y flip
-        // above is accounted for -- each corner's ray direction is just its own zdes/zoom.
+        // above is accounted for -- each corner's ray direction is just its own zdes/lzoom.
         double cornerZdesX[4] = {zdesXmin, zdesXmax, zdesXmax, zdesXmin};
         double cornerZdesY[4] = {zdesYmax, zdesYmax, zdesYmin, zdesYmin};
         double cornerScreenY[4] = {ymax, ymax, ymin, ymin};
         for (int i = 0; i < 4; i++)
         {
-            p->rayxy[i][0] = (float)(cornerZdesX[i] / zoom);
-            p->rayxy[i][1] = (float)(cornerZdesY[i] / zoom);
+            p->rayxy[i][0] = (float)(cornerZdesX[i] / lzoom);
+            p->rayxy[i][1] = (float)(cornerZdesY[i] / lzoom);
             p->screeny[i] = (float)cornerScreenY[i];
         }
 
@@ -1695,10 +1697,10 @@ namespace alienorum
         // reset once per frame rather than freed per callback.
     }
 
-    bool queue_ring_impostor(const RingImpostorInput &in, double zoom, double dispcx, double dispcy)
+    bool queue_ring_impostor(const RingImpostorInput &in, double lzoom, double dispcx, double dispcy, double scalex)
     {
         double cx = in.cx, cy = in.cy, cz = in.cz, r = in.outer_r;
-        if (r <= 0 || zoom <= 0 || in.inner_r <= 0 || in.inner_r >= in.outer_r) return false;
+        if (r <= 0 || lzoom <= 0 || in.inner_r <= 0 || in.inner_r >= in.outer_r) return false;
         // NOT "camera inside outer_r" -- that was copied from the sphere impostor's genuine
         // camera-inside-the-solid-sphere bail-out, but a ring is a flat zero-thickness annulus,
         // not a solid volume the camera can be "inside" in any meaningful sense. ring_radius is
@@ -1717,11 +1719,11 @@ namespace alienorum
         // the fragment shader discards everything outside the true annulus regardless, so the
         // slack just costs some cheap discarded fragments.
         double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
-        tangent_bounds(cx, cz, r, zoom, false, &zdesXmin, &zdesXmax);
-        tangent_bounds(cy, cz, r, zoom, true,  &zdesYmin, &zdesYmax);
+        tangent_bounds(cx, cz, r, lzoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, r, lzoom, true,  &zdesYmin, &zdesYmax);
 
-        double xmin = dispcx + zdesXmin * dispcx, xmax = dispcx + zdesXmax * dispcx;
-        double ymin = dispcy + zdesYmin * dispcx, ymax = dispcy + zdesYmax * dispcx;
+        double xmin = dispcx + zdesXmin * scalex, xmax = dispcx + zdesXmax * scalex;
+        double ymin = dispcy + zdesYmin * scalex, ymax = dispcy + zdesYmax * scalex;
 
         ImGuiIO &io = ImGui::GetIO();
         float W = io.DisplaySize.x, H = io.DisplaySize.y;
@@ -1732,8 +1734,8 @@ namespace alienorum
         ymin = std::max(ymin, -margin); ymax = std::min(ymax, H + margin);
         if (xmax <= xmin || ymax <= ymin) return false;
 
-        zdesXmin = (xmin - dispcx) / dispcx; zdesXmax = (xmax - dispcx) / dispcx;
-        zdesYmin = (ymin - dispcy) / dispcx; zdesYmax = (ymax - dispcy) / dispcx;
+        zdesXmin = (xmin - dispcx) / scalex; zdesXmax = (xmax - dispcx) / scalex;
+        zdesYmin = (ymin - dispcy) / scalex; zdesYmax = (ymax - dispcy) / scalex;
 
         if (s_ring_used == s_ring_pool.size()) s_ring_pool.emplace_back();
         RingImpostorParams *p = &s_ring_pool[s_ring_used++];
@@ -1747,8 +1749,8 @@ namespace alienorum
         double cornerZdesY[4] = {zdesYmax, zdesYmax, zdesYmin, zdesYmin};
         for (int i = 0; i < 4; i++)
         {
-            p->rayxy[i][0] = (float)(cornerZdesX[i] / zoom);
-            p->rayxy[i][1] = (float)(cornerZdesY[i] / zoom);
+            p->rayxy[i][0] = (float)(cornerZdesX[i] / lzoom);
+            p->rayxy[i][1] = (float)(cornerZdesY[i] / lzoom);
         }
 
         // Same 1/d scaling as SphereImpostorParams::ccx/rho -- see this file's top-of-section

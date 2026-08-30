@@ -64,7 +64,7 @@ namespace alienorum
     };
 
     bool queue_sphere_impostor(const SphereImpostorInput &in, double zoom,
-        double dispcx, double dispcy,
+        double dispcx, double dispcy, double scalex,
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax);
 
     void impostor_begin_frame();
@@ -88,7 +88,7 @@ namespace alienorum
     };
 
     bool queue_ring_impostor(const RingImpostorInput &in, double zoom,
-        double dispcx, double dispcy);
+        double dispcx, double dispcy, double scalex);
 }
 
 #endif
