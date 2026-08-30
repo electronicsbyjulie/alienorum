@@ -1030,7 +1030,6 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         (view_mode == vm_system) ? cel->drawny : dispcy,
         dispcx,
         &xmin, &ymin, &xmax, &ymax);
-    // std::cout << cel->name << ": " << xmin << "," << ymin << " ~ " << xmax << "," << ymax << std::endl << std::endl;
     if (!ok) return 0;
 
     cel->drawnxmin = xmin;
@@ -1039,6 +1038,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     cel->drawnymax = ymax;
 
     ImGuiIO& io = ImGui::GetIO();
+    /*std::cout << cel->name << ": " << xmin << "," << ymin << " ~ " << xmax << "," << ymax
+        << " disp=" << io.DisplaySize.x << "," << io.DisplaySize.y
+        << std::endl;*/
     if (xmax > 0 && xmin < io.DisplaySize.x && ymax > 0 && ymin < io.DisplaySize.y)
         cel->onscreen = true;
 
@@ -3591,7 +3593,7 @@ void draw_system_view()
         s->drawny = dispcy + (2.0 * i - num_stars + 1) * (dispcy / num_stars);
 
         // dry run - find planetary system scaling
-        double sdrad = dispcy/num_stars + log(s->volumetric_mean_radius / solar_radius) * 20;
+        double sdrad = dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20;
         double cursor = s->drawnx + sdrad + padding;
 
         for (j=num_stars; j<n; j++)
@@ -3615,7 +3617,7 @@ void draw_system_view()
         double curscale = fmin(1, dispcx*2.0 / cursor);         // do not expand system if already fits
 
         // actual draw with scaling applied
-        sdrad = (dispcy/num_stars + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
+        sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
         draw_sphere(s, sdrad);
         cursor = s->drawnx + sdrad + padding*curscale;
         if (lbl_localsys)
