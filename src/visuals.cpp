@@ -3586,12 +3586,31 @@ void draw_system_view()
     for (i=0; i<num_stars; i++)
     {
         Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
-        s->drawnx = 1;
+        s->drawnx = -dispcx/29;
         s->drawny = dispcy;
 
+        // dry run - find planetary system scaling
         double sdrad = dispcy/2;
-        draw_sphere(s, sdrad);                      // cromulent
         double cursor = s->drawnx + sdrad + padding;
+
+        for (j=num_stars; j<n; j++)
+        {
+            Planet *p = (Planet*)lsyscache[j];
+            if (p->mass < 0.01 * earth_mass) continue;
+            p->drawny = s->drawny;
+            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10;
+            p->drawnx = cursor + pdrad;
+            cursor = p->drawnx + pdrad + padding;
+        }
+
+        // compute scaling
+        std::cout << "cursor=" << cursor << std::endl;
+        double curscale = fmax(1, dispcx*2.0 / cursor);         // do not expand system if already fits
+
+        // actual draw with scaling applied
+        sdrad = dispcy/2 * curscale;
+        draw_sphere(s, sdrad);                      // cromulent
+        cursor = s->drawnx + sdrad + padding*curscale;
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
         {
@@ -3601,10 +3620,10 @@ void draw_system_view()
             Planet *p = (Planet*)lsyscache[j];
             if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
-            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10;
+            double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);                      // cromulent
-            cursor = p->drawnx + pdrad + padding;
+            cursor = p->drawnx + pdrad + padding * curscale;
             // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
         }
     }
