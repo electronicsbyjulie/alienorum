@@ -50,7 +50,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
 
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold

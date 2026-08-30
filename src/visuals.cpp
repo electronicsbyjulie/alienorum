@@ -1219,7 +1219,7 @@ void reap_released_objects()
 
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    if (cel->seqno == whereami) return 0;
+    if ((cel->seqno == whereami) && (view_mode != vm_system)) return 0;
     if (view_mode == vm_system) cel->tmprel = Point(AU, 0, 0);
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
@@ -3481,7 +3481,7 @@ void draw_objects()
     {
         if (cels[i]->deleted) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
 
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
