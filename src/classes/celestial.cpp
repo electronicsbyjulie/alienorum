@@ -766,15 +766,19 @@ bool CelestialObject::from_json(json j)
 bool alienorum::CelestialObject::operator<(const CelestialObject &other) const          // Return true if this < other.
 {
     // Is same cenobj? If not, return cenobj comparison.
-    if (cenobj != other.cenobj) return cenobj < other.cenobj;
+    if (cenobj != other.cenobj) return *cenobj < *(other.cenobj);
 
     // Check class. Galaxy > star > planet/asteroid > moon > comet > artificial, reversed because we use this function for sort order.
     const cel_obj_class cls = typeclass(), ocls = other.typeclass();
     if (cls != ocls) return cls < ocls;
 
-    // If same type, compare centers of orbit.
+    // Host star gets priority.
+    if (!orbit && other.orbit) return true;
+    if (orbit && !other.orbit) return false;
+
+    // If same class, compare centers of orbit.
     const CelestialObject *orbcen = (orbit ? orbit->center : this), *oorbcen = (other.orbit ? other.orbit->center : &other);
-    if (orbcen != oorbcen) return orbcen < oorbcen;
+    if (orbcen != oorbcen) return *orbcen < *oorbcen;
 
     // If same center of orbit, compare semimajor axes.
     const double sma = (orbit ? orbit->semimajor_axis : 0), osma = (other.orbit ? other.orbit->semimajor_axis : 0);
