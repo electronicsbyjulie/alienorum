@@ -116,6 +116,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     double amount = 1;
     if (view_mode == vm_skymap) amount = 3;
     else if (view_mode == vm_sunclock) amount = 5;
+    else if (view_mode == vm_system) amount = -3;
 
     if (ImGui::IsMouseDown(2))
     {
@@ -427,6 +428,7 @@ void process_key_cmd_char(char c)
             view_mode = vm_horizon;
         }
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         velocity = center;
         viewchanged = true;
         refresh_star_visibilities();

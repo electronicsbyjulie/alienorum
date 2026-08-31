@@ -2430,6 +2430,7 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Visualize##explored"))
     {
         view_mode = vm_system;
+        explorer = false;
     }
     ImGui::SameLine();
     if (ImGui::Button("Edit##explored"))

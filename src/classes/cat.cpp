@@ -2746,7 +2746,7 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
             && asno != 5790 && asno != 5803 && asno != 5811
             && asno != 6006 && asno != 6032 && asno != 6123 && asno != 6143 && asno != 6186 && asno != 6433 && asno != 6469 && asno != 6470
             && asno != 6471 && asno != 6486 && asno != 6493 && asno != 6701 && asno != 6714 && asno != 6826 && asno != 6875 && asno != 6914 && asno != 6999
-            && asno != 7000 && asno != 50000 && asno != 90377 && asno != 90482 && asno != 134340 && asno != 136108 && asno != 136199
+            && asno != 7000 && asno != 8000 && asno != 50000 && asno != 90377 && asno != 90482 && asno != 134340 && asno != 136108 && asno != 136199
             && asno != 136472 && asno != 163693 && asno != 486958 && asno != 541132
             )
         {

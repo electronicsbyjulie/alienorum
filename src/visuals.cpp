@@ -3619,6 +3619,10 @@ void draw_system_view()
         // actual draw with scaling applied
         sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
         draw_sphere(s, sdrad);
+        if (selected == s->seqno)
+        {
+            ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(s->drawnx, s->drawny), sdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+        }
         cursor = s->drawnx + sdrad + padding*curscale;
         if (lbl_localsys)
         {
@@ -3649,6 +3653,10 @@ void draw_system_view()
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);
             if (p->ring_radius) draw_ring_gpu(p);
+            if (selected == p->seqno)
+            {
+                ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(p->drawnx, p->drawny), pdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+            }
             cursor = p->drawnx + pdrad + padding * curscale;
             // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
 
