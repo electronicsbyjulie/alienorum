@@ -1042,6 +1042,7 @@ namespace alienorum
         ImGuiIO &io = ImGui::GetIO();
         float W = io.DisplaySize.x, H = io.DisplaySize.y;
         if (W <= 0 || H <= 0) return false;
+        // float W2 = W*0.5, H2 = H*0.5;
 
         // Clamp the final pixel bounds to a generous but screen-relative margin. Anything past
         // this is invisible regardless of the "true" tangent-line answer, so clamping here

@@ -3668,6 +3668,8 @@ void draw_system_view()
                     dispname);
             }
         }
+
+        if (!i) draw_sphere(s, sdrad);
     }
 }
 
