@@ -3688,7 +3688,23 @@ void draw_system_view()
             draw_sphere(csel, selrad);
             ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(csel->drawnx, csel->drawny), selrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
 
-            // TODO: Moons.
+            // Moons.
+            double moonx = cels[selected]->drawnx;
+            double moony = cels[selected]->drawny + selrad*2 + padding;
+            double moonrad;
+            for (j=num_stars; j<n; j++)
+            {
+                cel_obj_class cls = lsyscache[j]->typeclass();
+                if (cls != class_moon) continue;
+
+                Moon *m = (Moon*)lsyscache[j];
+                if (!m->orbit || m->orbit->center != s) continue;
+
+                m->drawnx = moonx;
+                m->drawny = moony;
+                moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*10) * curscale;
+                draw_sphere(m, moonrad);
+            }
         }
     }
 }
