@@ -409,7 +409,7 @@ void load_catalogs()
 
     // TODO: Read data from more star catalogs.
     if (load_aborted()) return;
-    /* if (!ihsc) */ cr.download_catalogs();
+    cr.download_catalogs(ihsc);
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
     n = cats.size();

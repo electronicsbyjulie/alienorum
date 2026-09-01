@@ -42,7 +42,7 @@ namespace alienorum
     {
         public:
         std::vector<std::string>find_catalogs(std::string path);
-        void download_catalogs();
+        void download_catalogs(bool have_ihc);
 
         // Source Catalogs for Stars
         int read_Gliese_catalog(CelestialObject** cels, int max);

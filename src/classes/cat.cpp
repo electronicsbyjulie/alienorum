@@ -97,8 +97,9 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
     return results;
 }
 
-void CatalogReader::download_catalogs()
+void CatalogReader::download_catalogs(bool hih)
 {
+    bool separator_yet = false;
     std::string path = "catalogs" _FILESLASH "urls.dat", cmd;
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp)
@@ -113,12 +114,18 @@ void CatalogReader::download_catalogs()
     bool frist = true;
     while (fgets(buffer, 1020, fp))
     {
-        if (buffer[0] == '#') continue;
+        if (buffer[0] == '#')
+        {
+            if (buffer[1] == '#' && buffer[2] == '#' && buffer[3] == '#') separator_yet = true;
+            continue;
+        }
 
         for (i=0; buffer[i] && buffer[i] <= ' '; i++);
         catname = &buffer[i];
         if (!*catname) continue;
         if (catname[0] == '#') continue;
+
+        if (hih && !separator_yet) continue;
 
         for (j=i; buffer[j] && buffer[j] > ' '; j++);
         buffer[j] = 0;
