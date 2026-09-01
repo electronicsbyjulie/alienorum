@@ -171,7 +171,12 @@ void CatalogReader::download_catalogs(bool hih)
             // throw 0xbadc0de;
 
             // Download the (possibly gzipped) file.
-            download_file(url, destfname);
+            if (strstr(url, "astorb"))
+            {
+                std::thread tast(download_file, url, destfname);
+                tast.detach();
+            }
+            else download_file(url, destfname);
         }
 
         // Any .gz files in the destination folder, unzip them.
