@@ -173,7 +173,7 @@ void CatalogReader::download_catalogs(bool hih)
             // Download the (possibly gzipped) file.
             if (strstr(url, "astorb"))
             {
-                std::thread tast(download_file, url, destfname);
+                std::thread tast(download_file, std::string(url), destfname);
                 tast.detach();
             }
             else download_file(url, destfname);
