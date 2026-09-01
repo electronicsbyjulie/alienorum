@@ -329,6 +329,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
     try
     {
         int i;
+        Star *s;
         json allobjs;
         for (i=0; cels[i]; i++)
         {
@@ -351,8 +352,9 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
                 break;
 
                 case class_star:
-                ((Star*)cels[i])->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
-                allobjs[l] = ((Star*)cels[i])->to_json();
+                s = (Star*)cels[i];
+                s->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
+                allobjs[l] = s->to_json();
                 break;
 
                 case class_planet:
