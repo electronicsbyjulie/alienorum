@@ -3704,6 +3704,8 @@ void draw_system_view()
                 m->drawny = moony;
                 moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*10) * curscale;
                 draw_sphere(m, moonrad);
+
+                moonx += moonrad*2 + padding;
             }
         }
     }
