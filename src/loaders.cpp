@@ -684,7 +684,7 @@ void load_catalogs()
         {
             if (load_aborted()) return;
             // std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
-            if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
+            // if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
             mtx.lock();
             loading_msg = std::string("Loading ") + sat_sources[sources_sorted[i]].local_name + std::string(" satellite data...");
             mtx.unlock();
