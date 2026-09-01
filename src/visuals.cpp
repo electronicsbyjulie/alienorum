@@ -3582,7 +3582,7 @@ void draw_system_view()
 {
     int i, j, l, n = lsyscache.size();
 
-    double padding = dispcy/20;
+    double padding = dispcy/20, selrad = 0;
     int num_stars = 0;
     for (i=0; i<n; i++) if (lsyscache[i]->typeclass() == class_star) num_stars++;
 
@@ -3619,6 +3619,7 @@ void draw_system_view()
         // actual draw with scaling applied
         sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
         draw_sphere(s, sdrad);
+        if (s->seqno == selected) selrad = sdrad;
         if (selected == s->seqno)
         {
             ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(s->drawnx, s->drawny), sdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
@@ -3652,6 +3653,7 @@ void draw_system_view()
             double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);
+            if (p->seqno == selected) selrad = pdrad;
             if (p->ring_radius) draw_ring_gpu(p);
             if (selected == p->seqno)
             {
@@ -3678,6 +3680,16 @@ void draw_system_view()
         }
 
         if (!i) draw_sphere(s, sdrad);
+
+        if (selected >= 0 && selrad)
+        {
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), IM_COL32(0,0,0,128));
+            CelestialObject *csel = cels[selected];
+            draw_sphere(csel, selrad);
+            ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(csel->drawnx, csel->drawny), selrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+
+            // TODO: Moons.
+        }
     }
 }
 
