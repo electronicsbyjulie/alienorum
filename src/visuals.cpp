@@ -3653,7 +3653,7 @@ void draw_system_view()
             double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
             p->drawnx = cursor + pdrad;
             draw_sphere(p, pdrad);
-            if (p->seqno == selected) selrad = pdrad;
+            if (p->seqno == selected || (selected > 0 && cels[selected] && cels[selected]->orbit && cels[selected]->orbit->center == p)) selrad = pdrad;
             if (p->ring_radius) draw_ring_gpu(p);
             if (selected == p->seqno)
             {
@@ -3685,12 +3685,13 @@ void draw_system_view()
         {
             ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), IM_COL32(0,0,0,128));
             CelestialObject *csel = cels[selected];
+            while (csel->typeclass() == class_moon && csel->orbit) csel = csel->orbit->center;
             draw_sphere(csel, selrad);
-            ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(csel->drawnx, csel->drawny), selrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
 
             // Moons.
-            double moonx = cels[selected]->drawnx;
-            double moony = cels[selected]->drawny + selrad*2 + padding;
+            double moonx = csel->drawnx;
+            double moony = csel->drawny + selrad*2 + padding;
+            double next_moony = moony;
             double moonrad;
             for (j=num_stars; j<n; j++)
             {
@@ -3698,15 +3699,40 @@ void draw_system_view()
                 if (cls != class_moon) continue;
 
                 Moon *m = (Moon*)lsyscache[j];
-                if (!m->orbit || m->orbit->center != s) continue;
+                if (!m->orbit || m->orbit->center != csel) continue;
 
                 m->drawnx = moonx;
                 m->drawny = moony;
-                moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*10) * curscale;
+                moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*5) * curscale;
                 draw_sphere(m, moonrad);
+                next_moony = fmax(next_moony, moony + moonrad*2 + padding);
 
                 moonx += moonrad*2 + padding;
+                if (moonx > dispcx*2 - moonrad*2 - padding)
+                {
+                    moonx = csel->drawnx;
+                    moony = next_moony;
+                }
+
+                if (lbl_localsys)
+                {
+                    const char *dispname = m->name;
+                    int disph = dispcy * 2;
+                    ImFont *font = global_font;
+                    double lfontsz = global_font_size;
+
+                    ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                    int dy = m->drawny+moonrad+1;
+                    if (m->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                    ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(m->drawnx - lsz.x/2, dy),
+                        rgba_apply_redlight(Color::ensure_wcag_contrast(
+                            (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                        dispname);
+                }
             }
+
+            csel = cels[selected];
+            ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(csel->drawnx, csel->drawny), selrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
         }
     }
 }
