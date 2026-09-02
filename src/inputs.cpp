@@ -81,32 +81,39 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
     }
 
-    if (view_mode == vm_sunclock && is_an_obj_under_cursor < 0)
+    if (is_an_obj_under_cursor < 0)
     {
-        double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
-
-        if (mlon >  180) mlon -= 360;
-        if (mlon < -180) mlon += 360;
-
-        CelestialObject *cel = cels[whereami];
-        if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
+        if (view_mode == vm_sunclock)
         {
-            dlat = fabs(cel->locales[i].lat - mlat);
-            dlon = fabs(cel->locales[i].lon - mlon);
-            if (dlon < 3 && dlat < 3)
+            double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
+
+            if (mlon >  180) mlon -= 360;
+            if (mlon < -180) mlon += 360;
+
+            CelestialObject *cel = cels[whereami];
+            if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
             {
-                r = sqrt(dlat*dlat + dlon*dlon);
-                if (r < br)
+                dlat = fabs(cel->locales[i].lat - mlat);
+                dlon = fabs(cel->locales[i].lon - mlon);
+                if (dlon < 3 && dlat < 3)
                 {
-                    is_a_locale_under_cursor = &cel->locales[i];
-                    br = r;
+                    r = sqrt(dlat*dlat + dlon*dlon);
+                    if (r < br)
+                    {
+                        is_a_locale_under_cursor = &cel->locales[i];
+                        br = r;
+                    }
                 }
             }
-        }
 
-        if (is_click && !dragged)
+            if (is_click && !dragged)
+            {
+                selected_locale = is_a_locale_under_cursor;
+                if (!selected_this_turn) selected = -1;
+            }
+        }
+        else if (is_click && !dragged)
         {
-            selected_locale = is_a_locale_under_cursor;
             if (!selected_this_turn) selected = -1;
         }
     }

@@ -448,7 +448,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     if (whereami >= 0 && cels[whereami]->typeclass() != class_satellite)
     {
         ImGuiComboFlags cbovm_flags = 0;
-        const char* combo_vm_value = vmtext[view_mode];
+        const char* combo_vm_value = (view_mode == vm_system) ? "System" : vmtext[view_mode];
         ImGui::Text("%s", "View Mode:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(123);
