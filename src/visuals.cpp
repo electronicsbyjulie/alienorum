@@ -3706,6 +3706,7 @@ void draw_system_view()
                 moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*5) * curscale;
                 draw_sphere(m, moonrad);
                 next_moony = fmax(next_moony, moony + moonrad*2 + padding);
+                if (m->seqno == selected) selrad = moonrad;
 
                 moonx += moonrad*2 + padding;
                 if (moonx > dispcx*2 - moonrad*2 - padding)
