@@ -43,6 +43,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     obj_magn_under_cursor = 1e9;
     int threshold = circle_size*1.3;
     bool selected_this_turn = false;
+    bool lsysonly = (view_mode == vm_system);
 
     if (trackidx >= 0)
     {
@@ -52,6 +53,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     {
         if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
+        if (lsysonly && cels[i]->cenobj != mycenobj) continue;
 
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
             && abs(io.MousePos.y - cels[i]->drawny) < threshold)
