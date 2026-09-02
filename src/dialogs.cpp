@@ -2427,13 +2427,6 @@ void draw_system_explorer(ImGuiIO& io)
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Visualize##explored"))
-    {
-        view_mode = vm_system;
-        statuswnd = false;
-        explorer = false;
-    }
-    ImGui::SameLine();
     if (ImGui::Button("Edit##explored"))
     {
         if (celidx_sel_in_sysxplor >= 0)
@@ -2539,6 +2532,13 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Add Satellite...##explored"))
     {
         process_key_cmd_char('^');
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Visualize##explored"))
+    {
+        view_mode = vm_system;
+        statuswnd = false;
+        explorer = false;
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
