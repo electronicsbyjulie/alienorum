@@ -388,7 +388,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
     }
 }
 
-bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned int max)
+bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned int max, bool aua)
 {
     try
     {
@@ -477,7 +477,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 return false;
             }
 
-            cels[i]->user_edited = true;
+            cels[i]->user_edited = aua;
             cels[i]->estimated_poles = true;
             cels[i]->seqno = i;
 
