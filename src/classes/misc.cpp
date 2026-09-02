@@ -563,6 +563,7 @@ bool download_file(std::string URL, std::string save_path)
 {
     if (radio_silence) return false;
     curlpp::init();
+    std::cout << "Download to " << save_path << " from " << URL << std::endl;
 
     try
     {

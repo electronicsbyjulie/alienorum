@@ -383,6 +383,7 @@ void load_catalogs()
 {
     int i, j, m, n;
     time_t began = time(NULL);
+    bool have_astjson = false;
 
     cels[0] = nullptr;
 
@@ -409,7 +410,7 @@ void load_catalogs()
 
     // TODO: Read data from more star catalogs.
     if (load_aborted()) return;
-    cr.download_catalogs();
+    cr.download_catalogs(ihsc);
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
     n = cats.size();
@@ -446,19 +447,48 @@ void load_catalogs()
     loading_msg = std::string("Loading solar system...");
     mtx.unlock();
 
+    int npl = 0;
     cout << "Reading local planets..." << endl << flush;
-    int npl = cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
+    npl += cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
     num_planets += npl;
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
-    if (load_aborted()) return;
-    int nastorb = 0;
-    if (have_astorb)
+    std::string astjson = std::string("catalogs") + _FILESLASH + std::string("asteroids.json");
+    have_astjson = file_exists(astjson.c_str());
+
+    if (have_astjson)
     {
-        cout << "Reading astorb catalog..." << endl << flush;
-        nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
-        cout << "Read " << nastorb << " objects." << endl << flush;
+        fstream fs(astjson.c_str(), std::ios::in);
+        Serialization::load_all(fs, cels, MAX_CELOBJS);
+        fs.close();
+    }
+    else
+    {
+        if (load_aborted()) return;
+        int nastorb = 0;
+        if (have_astorb)
+        {
+            cout << "Reading astorb catalog..." << endl << flush;
+            nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
+            cout << "Read " << nastorb << " objects." << endl << flush;
+        }
+
+        json asts;
+        for (i=0; cels[i]; i++)
+        {
+            cel_obj_class cls = cels[i]->typeclass();
+            if (cls != class_planet && cls != class_moon) continue;
+
+            std::string key = std::string(cels[i]->name);
+            const char* l = key.c_str();
+
+            if (cls == class_planet) asts[l] = ((Planet*)cels[i])->to_json();
+            if (cls == class_moon  ) asts[l] = ((Moon*  )cels[i])->to_json();
+        }
+
+        fstream fs(astjson.c_str(), std::ios::out);
+        fs << asts.dump(4);
     }
 
     if (load_aborted()) return;
@@ -684,7 +714,7 @@ void load_catalogs()
         {
             if (load_aborted()) return;
             // std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
-            if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
+            // if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
             mtx.lock();
             loading_msg = std::string("Loading ") + sat_sources[sources_sorted[i]].local_name + std::string(" satellite data...");
             mtx.unlock();
