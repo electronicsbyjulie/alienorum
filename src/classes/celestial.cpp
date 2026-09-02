@@ -1045,6 +1045,7 @@ namespace
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
     mtx.lock();
     struct jpeg_decompress_struct cinfo;
     struct my_jpeg_error_mgr jerr;
@@ -1055,62 +1056,70 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     // But the texture maps put retrograde north at the top. We use prograde north internally, so the maps have to be inverted at load.
     bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
 
-    if ((infile = fopen(filename.c_str(), "rb")) == NULL)
-    {
-        fprintf(stderr, "can't open %s\n", filename.c_str());
-        mtx.unlock();
-        return false;
-    }
-
-    cinfo.err = jpeg_std_error(&jerr.pub);
-    jerr.pub.error_exit = alienorum_jpeg_error_exit;
-
-    if (setjmp(jerr.setjmp_buffer))
-    {
-        jpeg_destroy_decompress(&cinfo);
-        fclose(infile);
-        mtx.unlock();
-        return false;
-    }
-
-    jpeg_create_decompress(&cinfo);
-    jpeg_stdio_src(&cinfo, infile);
-    (void) jpeg_read_header(&cinfo, TRUE);
-    (void) jpeg_start_decompress(&cinfo);
-
     bool bump_resample = false;
     unsigned long bump_src_w = 0, bump_src_h = 0;
     std::vector<double> bump_src_data;
 
-    if (as_bump)
+    try
     {
-        bump_src_w = cinfo.image_width;
-        bump_src_h = cinfo.image_height;
-        bump_resample = (image_height != bump_src_h || image_width != bump_src_w);
-        if (bump_resample)
+        if ((infile = fopen(filename.c_str(), "rb")) == NULL)
         {
-            std::cout << "Resampling bump map (" << bump_src_w << "x" << bump_src_h
-                << ") to match surface map (" << image_width << "x" << image_height << ")." << std::endl;
-            bump_src_data.resize((size_t)bump_src_w * bump_src_h);
+            fprintf(stderr, "can't open %s\n", filename.c_str());
+            mtx.unlock();
+            return false;
+        }
+
+        cinfo.err = jpeg_std_error(&jerr.pub);
+        jerr.pub.error_exit = alienorum_jpeg_error_exit;
+
+        if (setjmp(jerr.setjmp_buffer))
+        {
+            jpeg_destroy_decompress(&cinfo);
+            fclose(infile);
+            mtx.unlock();
+            return false;
+        }
+
+        jpeg_create_decompress(&cinfo);
+        jpeg_stdio_src(&cinfo, infile);
+        (void) jpeg_read_header(&cinfo, TRUE);
+        (void) jpeg_start_decompress(&cinfo);
+
+        if (as_bump)
+        {
+            bump_src_w = cinfo.image_width;
+            bump_src_h = cinfo.image_height;
+            bump_resample = (image_height != bump_src_h || image_width != bump_src_w);
+            if (bump_resample)
+            {
+                std::cout << "Resampling bump map (" << bump_src_w << "x" << bump_src_h
+                    << ") to match surface map (" << image_width << "x" << image_height << ")." << std::endl;
+                bump_src_data.resize((size_t)bump_src_w * bump_src_h);
+            }
+            else
+            {
+                bump_data = new double[allocated];
+            }
         }
         else
         {
-            bump_data = new double[allocated];
+            image_height = cinfo.image_height;
+            image_width = cinfo.image_width;
+            lat_scale = lon_scale = image_width / (_pi * 2);
+            inv_lat_scale = 1.0 / lat_scale;
+            inv_lon_scale = 1.0 / lon_scale;
+            long toalloc = image_height * image_width;
+            std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
+            red_data = new unsigned char[toalloc];
+            green_data = new unsigned char[toalloc];
+            blue_data = new unsigned char[toalloc];
+            allocated = toalloc;
         }
     }
-    else
+    catch (...)
     {
-        image_height = cinfo.image_height;
-        image_width = cinfo.image_width;
-        lat_scale = lon_scale = image_width / (_pi * 2);
-        inv_lat_scale = 1.0 / lat_scale;
-        inv_lon_scale = 1.0 / lon_scale;
-        long toalloc = image_height * image_width;
-        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
-        red_data = new unsigned char[toalloc];
-        green_data = new unsigned char[toalloc];
-        blue_data = new unsigned char[toalloc];
-        allocated = toalloc;
+        mtx.unlock();
+        return false;
     }
     mtx.unlock();
 
@@ -1180,6 +1189,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
     mtx.lock();
     png_structp png_ptr;
     png_infop info_ptr;
@@ -1187,80 +1197,88 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
     bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
 
-    if ((fp = fopen(filename.c_str(), "rb")) == NULL)
-    {
-        mtx.unlock();
-        return false;
-    }
-
-    png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING,
-        nullptr, nullptr, nullptr);
-
-    if (png_ptr == NULL)
-    {
-        fclose(fp);
-        mtx.unlock();
-        return false;
-    }
-
-    info_ptr = png_create_info_struct(png_ptr);
-    if (info_ptr == NULL)
-    {
-        fclose(fp);
-        png_destroy_read_struct(&png_ptr, NULL, NULL);
-        mtx.unlock();
-        return false;
-    }
-
-    if (setjmp(png_jmpbuf(png_ptr)))
-    {
-        /* Free all of the memory associated with the png_ptr and info_ptr */
-        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-        fclose(fp);
-        /* If we get here, we had a problem reading the file */
-        mtx.unlock();
-        return false;
-    }
-
-    png_init_io(png_ptr, fp);
-    png_read_png(png_ptr, info_ptr, 0, NULL);
-
     unsigned long bump_src_w = 0, bump_src_h = 0;
     bool bump_resample = false;
     std::vector<double> bump_src_data;
 
-    if (as_bump)
-    {
-        bump_src_w = png_get_image_width(png_ptr, info_ptr);
-        bump_src_h = png_get_image_height(png_ptr, info_ptr);
-        bump_resample = (image_height != bump_src_h || image_width != bump_src_w);
-        if (bump_resample)
+    try
+    {    
+        if ((fp = fopen(filename.c_str(), "rb")) == NULL)
         {
-            std::cout << "Resampling bump map (" << bump_src_w << "x" << bump_src_h
-                << ") to match surface map (" << image_width << "x" << image_height << ")." << std::endl;
-            bump_src_data.resize((size_t)bump_src_w * bump_src_h);
+            mtx.unlock();
+            return false;
+        }
+
+        png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING,
+            nullptr, nullptr, nullptr);
+
+        if (png_ptr == NULL)
+        {
+            fclose(fp);
+            mtx.unlock();
+            return false;
+        }
+
+        info_ptr = png_create_info_struct(png_ptr);
+        if (info_ptr == NULL)
+        {
+            fclose(fp);
+            png_destroy_read_struct(&png_ptr, NULL, NULL);
+            mtx.unlock();
+            return false;
+        }
+
+        if (setjmp(png_jmpbuf(png_ptr)))
+        {
+            /* Free all of the memory associated with the png_ptr and info_ptr */
+            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+            fclose(fp);
+            /* If we get here, we had a problem reading the file */
+            mtx.unlock();
+            return false;
+        }
+
+        png_init_io(png_ptr, fp);
+        png_read_png(png_ptr, info_ptr, 0, NULL);
+
+        if (as_bump)
+        {
+            bump_src_w = png_get_image_width(png_ptr, info_ptr);
+            bump_src_h = png_get_image_height(png_ptr, info_ptr);
+            bump_resample = (image_height != bump_src_h || image_width != bump_src_w);
+            if (bump_resample)
+            {
+                std::cout << "Resampling bump map (" << bump_src_w << "x" << bump_src_h
+                    << ") to match surface map (" << image_width << "x" << image_height << ")." << std::endl;
+                bump_src_data.resize((size_t)bump_src_w * bump_src_h);
+            }
+            else
+            {
+                bump_data = new double[allocated];
+            }
         }
         else
         {
-            bump_data = new double[allocated];
+            image_height = png_get_image_height( png_ptr, info_ptr );
+            image_width = png_get_image_width( png_ptr, info_ptr );
+            lat_scale = (double)image_height / _pi;
+            lon_scale = (double)image_width / (_pi * 2);
+            inv_lat_scale = 1.0 / lat_scale;
+            inv_lon_scale = 1.0 / lon_scale;
+            // One byte per pixel per channel array: red_data/green_data/blue_data are indexed as a
+            // plain width*height grid by idx_of()/export_rgba(), never by row byte-stride.
+            long toalloc = image_height*image_width;
+            std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
+            red_data = new unsigned char[toalloc];
+            green_data = new unsigned char[toalloc];
+            blue_data = new unsigned char[toalloc];
+            allocated = toalloc;
         }
     }
-    else
+    catch (...)
     {
-        image_height = png_get_image_height( png_ptr, info_ptr );
-        image_width = png_get_image_width( png_ptr, info_ptr );
-        lat_scale = (double)image_height / _pi;
-        lon_scale = (double)image_width / (_pi * 2);
-        inv_lat_scale = 1.0 / lat_scale;
-        inv_lon_scale = 1.0 / lon_scale;
-        // One byte per pixel per channel array: red_data/green_data/blue_data are indexed as a
-        // plain width*height grid by idx_of()/export_rgba(), never by row byte-stride.
-        long toalloc = image_height*image_width;
-        std::cout << "Allocating " << toalloc << " pixels for " << filename << std::endl;
-        red_data = new unsigned char[toalloc];
-        green_data = new unsigned char[toalloc];
-        blue_data = new unsigned char[toalloc];
-        allocated = toalloc;
+        mtx.unlock();
+        return false;
     }
     mtx.unlock();
 
@@ -1677,308 +1695,321 @@ void alienorum::Atmosphere::calculate_tau(double pressure)
 
 void Map::generate_rocky_map(CelestialObject *cel)
 {
-    assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
-    mtx.lock();
-    cel->randomize();
-    generating_fic_texture = true;
-
-    Planet *p = (Planet*)cel;
-    int lr = cel->fictitious_map_height;
-    double BV = cel->BV_color;
-    if (BV < 0.8) BV = 0.8;                 // most rocks aren't blue
-    bool force_has_water = false;
-    if (cel->type == waterworld || cel->type == hycean)
-    {
-        has_water = 1;
-        force_has_water = true;
-    }
-
-    p->temperature = 0;
-    double T_surf = p->estimate_surface_temperature();
-    const double Tboil = water_freezing+100;                                     // Reference pressure
-
-    // Constants for water b.p.
-    const double R = 8.314;                                         // J/(mol*K)
-    const double DELTA_H_VAP = 40660.0;                             // J/mol
-    const double P1 = 1.0e+5;  
-
-    // Clausius-Clapeyron calculation
-    double inv_T1 = 1.0 / Tboil;
-    double gas_constant_ratio = R / DELTA_H_VAP;
-    double pressure_log = std::log(p->get_surface_pressure() / P1);
-
-    bool life_possible = p->estimate_habitability();
-
     bool want_overcast_sky = false;
-    if (!force_has_water && p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
+    Planet *p = (Planet*)cel;
+    assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    bool create_bump;
+    double bump_scale, inv_bump_scale;
+    mtx.lock();
+    try
     {
-        has_water = 0;
-        want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
-    }
+        cel->randomize();
+        generating_fic_texture = true;
 
-    int octaves = 5 + (cel->cel_rand() % 4);
-    double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
-    double lacunarity = p->cel_frand(0.51*lacbase, 0.53*lacbase);
-    double gain = has_water ? 0.5 : 2.5;
-    double scale = p->cel_frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
-
-    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-    RGB3Byte rgb = Color::rgb_from_color(col, -1);
-
-    // Tholins only survive on cold, distant bodies (Pluto, Triton, the icy moons), staining an
-    // otherwise pale crust. Elsewhere provinces stay a neutral tint of the base rock color.
-    bool cold_icy_world = (cel->type == icy) && (T_surf < 150.0);
-    if (cold_icy_world)
-    {
-        rgb.r = (unsigned char)(rgb.r * 0.15 + 235 * 0.85);
-        rgb.g = (unsigned char)(rgb.g * 0.15 + 235 * 0.85);
-        rgb.b = (unsigned char)(rgb.b * 0.15 + 240 * 0.85);
-    }
-
-    int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
-
-    bool create_bump = (bump_data == nullptr);
-    if (create_bump)
-    {
-        image_height = lr;
-        image_width = image_height * 2;
-        allocated = image_height * image_width;
-        bump_data = new double[allocated];
-        memset(bump_data, 0, allocated*sizeof(double));
-    }
-    else
-    {
-        lr = cel->fictitious_map_height = image_height;
-    }
-
-    allocated = image_height * image_width;
-    red_data = new unsigned char[allocated];
-    green_data = new unsigned char[allocated];
-    blue_data = new unsigned char[allocated];
-
-    lat_scale = (double)image_height / _pi;
-    lon_scale = (double)image_width / (_pi * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
-    double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
-    std::cout << "Allocated " << allocated << " pixels for fictitious rocky map." << std::endl;
-
-    double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
-    double province_scale = scale * 0.4, albedo_value, grain_value, border_noise;
-    double province_pos, province_t, rmult, gmult, bmult;
-    double edge_dist, mottle_strength, mottle_noise, hue_noise;
-    unsigned int x, y;
-    int idx, province_idx, neighbor_province_idx, mottled_idx;
-    if (has_water && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
-    {
-        RGB3Byte veg_color = generate_vegetation_color(&cel->rng);
-        vegetation_r = veg_color.r;
-        vegetation_g = veg_color.g;
-        vegetation_b = veg_color.b;
-    }
-    if (has_water) inv_h2o_level = 1.0 / has_water;
-
-    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
-        && p->is_tidal_locked();
-
-    double Tswing = 256.0 / (p->get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
-
-    // A small per-planet palette of terrain "provinces" -- bright highlands against darker
-    // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
-    // than one continuous gradient.
-    const bool enable_provinces = true;
-    int num_provinces = 2 + (cel->cel_rand() % 3);                                    // 2-4 provinces
-    double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
-    double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
-    double mottle_zone = p->cel_frand(0.64, 1.3);                                   // how far the speckling reaches into each province
-    unsigned int dither_seed = (unsigned int)cel->cel_rand();                         // per-planet salt for the per-pixel mottle hash
-    double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
-    double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
-    double province_variability = p->cel_frand(0.1, 0.25);
-    double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
-    double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
-    double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
-    int tholin_province = cold_icy_world ? (num_provinces - 1) : -1;
-    for (int p_i = 1; p_i < num_provinces; ++p_i)
-    {
-        if (p_i == tholin_province)
+        int lr = cel->fictitious_map_height;
+        double BV = cel->BV_color;
+        if (BV < 0.8) BV = 0.8;                 // most rocks aren't blue
+        bool force_has_water = false;
+        if (cel->type == waterworld || cel->type == hycean)
         {
-            // Reddish-brown tholin staining: red retained, blue heavily suppressed.
-            double stain = p->cel_frand(0.5, 0.85);
-            province_rmult[p_i] = 1.0 - stain * 0.25;
-            province_gmult[p_i] = 1.0 - stain * 0.55;
-            province_bmult[p_i] = 1.0 - stain * 0.85;
+            has_water = 1;
+            force_has_water = true;
         }
-        else if (cold_icy_world)
+
+        p->temperature = 0;
+        double T_surf = p->estimate_surface_temperature();
+        const double Tboil = water_freezing+100;                                     // Reference pressure
+
+        // Constants for water b.p.
+        const double R = 8.314;                                         // J/(mol*K)
+        const double DELTA_H_VAP = 40660.0;                             // J/mol
+        const double P1 = 1.0e+5;  
+
+        // Clausius-Clapeyron calculation
+        double inv_T1 = 1.0 / Tboil;
+        double gas_constant_ratio = R / DELTA_H_VAP;
+        double pressure_log = std::log(p->get_surface_pressure() / P1);
+
+        bool life_possible = p->estimate_habitability();
+
+        if (!force_has_water && p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
         {
-            // Otherwise just brightness variation across the icy background -- no hue shift.
-            double p_mult = 0.9 - p->cel_frand(0, 0.2);
-            province_rmult[p_i] = p_mult;
-            province_gmult[p_i] = p_mult;
-            province_bmult[p_i] = p_mult;
+            has_water = 0;
+            want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
+        }
+
+        int octaves = 5 + (cel->cel_rand() % 4);
+        double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
+        double lacunarity = p->cel_frand(0.51*lacbase, 0.53*lacbase);
+        double gain = has_water ? 0.5 : 2.5;
+        double scale = p->cel_frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
+
+        Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+        RGB3Byte rgb = Color::rgb_from_color(col, -1);
+
+        // Tholins only survive on cold, distant bodies (Pluto, Triton, the icy moons), staining an
+        // otherwise pale crust. Elsewhere provinces stay a neutral tint of the base rock color.
+        bool cold_icy_world = (cel->type == icy) && (T_surf < 150.0);
+        if (cold_icy_world)
+        {
+            rgb.r = (unsigned char)(rgb.r * 0.15 + 235 * 0.85);
+            rgb.g = (unsigned char)(rgb.g * 0.15 + 235 * 0.85);
+            rgb.b = (unsigned char)(rgb.b * 0.15 + 240 * 0.85);
+        }
+
+        int radd = (int)(0.15*rgb.r), gadd = (int)(0.15*rgb.g), badd = (int)(0.15*rgb.b);
+
+        create_bump = (bump_data == nullptr);
+        if (create_bump)
+        {
+            image_height = lr;
+            image_width = image_height * 2;
+            allocated = image_height * image_width;
+            bump_data = new double[allocated];
+            memset(bump_data, 0, allocated*sizeof(double));
         }
         else
         {
-            double p_rmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
-            double p_bmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
-            double lo = fmin(p_rmult, p_bmult), hi = fmax(p_rmult, p_bmult);
-            double p_gmult = p->cel_frand(lo, lo + 0.5 * (hi - lo));
-            province_rmult[p_i] = p_rmult;
-            province_gmult[p_i] = p_gmult;
-            province_bmult[p_i] = p_bmult;
+            lr = cel->fictitious_map_height = image_height;
         }
-    }
 
-    for (y = 0; y < image_height; ++y)
-    {
-        // Convert screen pixel coordinates to spherical angles
-        v = (double)y / image_height;
-        theta = v * _pi; // Latitude angle from 0 to PI
+        allocated = image_height * image_width;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
 
-        for (x = 0; x < image_width; ++x)
+        lat_scale = (double)image_height / _pi;
+        lon_scale = (double)image_width / (_pi * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+        bump_scale = p->estimate_bump_scale();
+        inv_bump_scale = 1.0 / bump_scale;
+        std::cout << "Allocated " << allocated << " pixels for fictitious rocky " << cel->name << " map." << std::endl;
+
+        double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
+        double province_scale = scale * 0.4, albedo_value, grain_value, border_noise;
+        double province_pos, province_t, rmult, gmult, bmult;
+        double edge_dist, mottle_strength, mottle_noise, hue_noise;
+        unsigned int x, y;
+        int idx, province_idx, neighbor_province_idx, mottled_idx;
+        if (has_water && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
         {
-            u = (double)x / image_width;
-            phi = u * 2.0 * _pi; // Longitude angle from 0 to 2PI
+            RGB3Byte veg_color = generate_vegetation_color(&cel->rng);
+            vegetation_r = veg_color.r;
+            vegetation_g = veg_color.g;
+            vegetation_b = veg_color.b;
+        }
+        if (has_water) inv_h2o_level = 1.0 / has_water;
 
-            // Map 2D texture coordinates to a 3D Sphere surface to avoid seam/polar stretching
-            nx = sin(theta) * cos(phi);
-            ny = sin(theta) * sin(phi);
-            nz = cos(theta);
+        bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
+            && p->is_tidal_locked();
 
-            if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
+        double Tswing = 256.0 / (p->get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
 
-            idx = y * image_width + x;
-            if (idx >= allocated)
+        // A small per-planet palette of terrain "provinces" -- bright highlands against darker
+        // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
+        // than one continuous gradient.
+        const bool enable_provinces = true;
+        int num_provinces = 2 + (cel->cel_rand() % 3);                                    // 2-4 provinces
+        double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
+        double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
+        double mottle_zone = p->cel_frand(0.64, 1.3);                                   // how far the speckling reaches into each province
+        unsigned int dither_seed = (unsigned int)cel->cel_rand();                         // per-planet salt for the per-pixel mottle hash
+        double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
+        double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
+        double province_variability = p->cel_frand(0.1, 0.25);
+        double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
+        double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
+        double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
+        int tholin_province = cold_icy_world ? (num_provinces - 1) : -1;
+        for (int p_i = 1; p_i < num_provinces; ++p_i)
+        {
+            if (p_i == tholin_province)
             {
-                mtx.unlock();
-                return;
+                // Reddish-brown tholin staining: red retained, blue heavily suppressed.
+                double stain = p->cel_frand(0.5, 0.85);
+                province_rmult[p_i] = 1.0 - stain * 0.25;
+                province_gmult[p_i] = 1.0 - stain * 0.55;
+                province_bmult[p_i] = 1.0 - stain * 0.85;
             }
-
-            // Get noise value for this point on the sphere
-            height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
-                : fmin(1, fmax(0, (inv_bump_scale * bump_data[idx] + 0.5)));
-
-            if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
-
-            albedo_value = fBm(nx * province_scale + 5.2, ny * province_scale + 1.3, nz * province_scale + 2.7,
-                4, lacunarity, gain);
-
-            if (enable_provinces)
+            else if (cold_icy_world)
             {
-                grain_value = ridged_fBm(nx * scale * 14.0 + 91.7, ny * scale * 14.0 + 43.1, nz * scale * 14.0 + 17.9,
-                    4, lacunarity, gain);
-                r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
-
-                border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
-                    3, lacunarity, gain);
-
-                double albedo_stretched = fmin(1.0, fmax(0.0, (albedo_value - 0.5) * 2.2 + 0.5));
-                province_pos = fmod(albedo_stretched * num_provinces + (border_noise - 0.5) * border_roughness, (double)num_provinces);
-                if (province_pos < 0) province_pos += num_provinces;
-                province_idx = (int)province_pos;
-                if (province_idx >= num_provinces) province_idx = num_provinces - 1;
-                province_t = province_pos - province_idx;
-
-                edge_dist = fmin(province_t, 1.0 - province_t);
-                mottle_strength = fmax(0.0, 1.0 - edge_dist / mottle_zone);
-                {
-                    unsigned int mh = x * 374761393u + y * 668265263u + dither_seed;
-                    mh = (mh ^ (mh >> 13)) * 1274126177u;
-                    mh ^= (mh >> 16);
-                    mottle_noise = (double)(mh & 0xFFFFFFu) / (double)0xFFFFFFu;
-                }
-                neighbor_province_idx = (province_t < 0.5)
-                    ? (province_idx - 1 + num_provinces) % num_provinces
-                    : (province_idx + 1) % num_provinces;
-                mottled_idx = (mottle_noise < mottle_strength * 0.65) ? neighbor_province_idx : province_idx;
-                rmult = province_rmult[mottled_idx];
-                gmult = province_gmult[mottled_idx];
-                bmult = province_bmult[mottled_idx];
-
-                hue_noise = fBm(nx * hue_scale + 71.2, ny * hue_scale + 34.9, nz * hue_scale + 6.1,
-                    3, lacunarity, gain);
-                double hue_t = 2.0 * (hue_noise - 0.5);
-                rmult *= (1.0 + hue_amount * hue_t);
-                bmult *= (1.0 - hue_amount * hue_t);
+                // Otherwise just brightness variation across the icy background -- no hue shift.
+                double p_mult = 0.9 - p->cel_frand(0, 0.2);
+                province_rmult[p_i] = p_mult;
+                province_gmult[p_i] = p_mult;
+                province_bmult[p_i] = p_mult;
             }
             else
             {
-                grain_value = fBm(nx * scale * 6.0 + 91.7, ny * scale * 6.0 + 43.1, nz * scale * 6.0 + 17.9,
-                    2, lacunarity, gain);
-                r_weight = fmin(1.0, fmax(0.0, 0.75 * albedo_value + 0.25 * grain_value));
-                rmult = gmult = bmult = 1.0;
+                double p_rmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
+                double p_bmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
+                double lo = fmin(p_rmult, p_bmult), hi = fmax(p_rmult, p_bmult);
+                double p_gmult = p->cel_frand(lo, lo + 0.5 * (hi - lo));
+                province_rmult[p_i] = p_rmult;
+                province_gmult[p_i] = p_gmult;
+                province_bmult[p_i] = p_bmult;
             }
+        }
 
-            if (has_water)
+        for (y = 0; y < image_height; ++y)
+        {
+            // Convert screen pixel coordinates to spherical angles
+            v = (double)y / image_height;
+            theta = v * _pi; // Latitude angle from 0 to PI
+
+            for (x = 0; x < image_width; ++x)
             {
-                T_base = tidal_locked_to_star
-                    ? (T_surf + halfswing - Tswing * cos(psi*0.5))
-                    : (T_surf - halfswing + Tswing * sin(theta));
-                T_local = T_base - Tswing * fmax(0, height_value - has_water);
-                if (height_value < has_water && (T_local < water_freezing))
+                u = (double)x / image_width;
+                phi = u * 2.0 * _pi; // Longitude angle from 0 to 2PI
+
+                // Map 2D texture coordinates to a 3D Sphere surface to avoid seam/polar stretching
+                nx = sin(theta) * cos(phi);
+                ny = sin(theta) * sin(phi);
+                nz = cos(theta);
+
+                if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
+
+                idx = y * image_width + x;
+                if (idx >= allocated)
                 {
-                    // Polar and elevation ice
-                    red_data[idx] = fmin(255, 167 + 67 * r_weight);
-                    green_data[idx] = fmin(255, 181 + 57 * r_weight);
-                    blue_data[idx] = fmin(255, 190 + 63 * r_weight);
-                    // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
+                    mtx.unlock();
+                    return;
                 }
-                else if (cel->type == waterworld || cel->type == hycean)
+
+                // Get noise value for this point on the sphere
+                height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
+                    : fmin(1, fmax(0, (inv_bump_scale * bump_data[idx] + 0.5)));
+
+                if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
+
+                albedo_value = fBm(nx * province_scale + 5.2, ny * province_scale + 1.3, nz * province_scale + 2.7,
+                    4, lacunarity, gain);
+
+                if (enable_provinces)
                 {
-                    // Deep ocean
-                    red_data[idx] = fmin(255, 12+16*height_value);
-                    green_data[idx] = fmin(255, 24+24*height_value);
-                    blue_data[idx] = fmin(255, 32+128*height_value);
-                }
-                // Biome allocation based on height thresholds
-                else if (height_value < has_water && (T_local < Tboil))
-                {   // Ocean
-                    sh = height_value*inv_h2o_level;
-                    sh *= (Tboil - T_base) / (Tboil - water_freezing);
-                    sh = pow(sh, 20);                                                           // shallowness multiplied to show water optical density
-                    red_data[idx] = fmin(255, 12+16*sh);
-                    green_data[idx] = fmin(255, 24+168*sh);
-                    blue_data[idx] = fmin(255, 192+32*sh);
-                    // if (create_bump) bump_data[idx] = 0;
-                }
-                else if (T_local > veg_max_temp)
-                {   // Beach or desert sand
-                    red_data[idx] = fmin(255, 220 * rmult * r_weight);
-                    green_data[idx] = fmin(255, 200 * gmult * r_weight);
-                    blue_data[idx] = fmin(255, 150 * bmult * r_weight);
-                }
-                else if (life_possible && T_local >= veg_min_temp
-                    && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
-                {   // Forests
-                    red_data[idx] = fmin(255, vegetation_r * r_weight);
-                    green_data[idx] = fmin(255, vegetation_g * r_weight);
-                    blue_data[idx] = fmin(255, vegetation_b * r_weight);
+                    grain_value = ridged_fBm(nx * scale * 14.0 + 91.7, ny * scale * 14.0 + 43.1, nz * scale * 14.0 + 17.9,
+                        4, lacunarity, gain);
+                    r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
+
+                    border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
+                        3, lacunarity, gain);
+
+                    double albedo_stretched = fmin(1.0, fmax(0.0, (albedo_value - 0.5) * 2.2 + 0.5));
+                    province_pos = fmod(albedo_stretched * num_provinces + (border_noise - 0.5) * border_roughness, (double)num_provinces);
+                    if (province_pos < 0) province_pos += num_provinces;
+                    province_idx = (int)province_pos;
+                    if (province_idx >= num_provinces) province_idx = num_provinces - 1;
+                    province_t = province_pos - province_idx;
+
+                    edge_dist = fmin(province_t, 1.0 - province_t);
+                    mottle_strength = fmax(0.0, 1.0 - edge_dist / mottle_zone);
+                    {
+                        unsigned int mh = x * 374761393u + y * 668265263u + dither_seed;
+                        mh = (mh ^ (mh >> 13)) * 1274126177u;
+                        mh ^= (mh >> 16);
+                        mottle_noise = (double)(mh & 0xFFFFFFu) / (double)0xFFFFFFu;
+                    }
+                    neighbor_province_idx = (province_t < 0.5)
+                        ? (province_idx - 1 + num_provinces) % num_provinces
+                        : (province_idx + 1) % num_provinces;
+                    mottled_idx = (mottle_noise < mottle_strength * 0.65) ? neighbor_province_idx : province_idx;
+                    rmult = province_rmult[mottled_idx];
+                    gmult = province_gmult[mottled_idx];
+                    bmult = province_bmult[mottled_idx];
+
+                    hue_noise = fBm(nx * hue_scale + 71.2, ny * hue_scale + 34.9, nz * hue_scale + 6.1,
+                        3, lacunarity, gain);
+                    double hue_t = 2.0 * (hue_noise - 0.5);
+                    rmult *= (1.0 + hue_amount * hue_t);
+                    bmult *= (1.0 - hue_amount * hue_t);
                 }
                 else
-                {   // Mountains
-                    red_data[idx] = fmin(255, 110 * rmult * r_weight);
-                    green_data[idx] = fmin(255, 90 * gmult * r_weight);
-                    blue_data[idx] = fmin(255, 75 * bmult * r_weight);
+                {
+                    grain_value = fBm(nx * scale * 6.0 + 91.7, ny * scale * 6.0 + 43.1, nz * scale * 6.0 + 17.9,
+                        2, lacunarity, gain);
+                    r_weight = fmin(1.0, fmax(0.0, 0.75 * albedo_value + 0.25 * grain_value));
+                    rmult = gmult = bmult = 1.0;
+                }
+
+                if (has_water)
+                {
+                    T_base = tidal_locked_to_star
+                        ? (T_surf + halfswing - Tswing * cos(psi*0.5))
+                        : (T_surf - halfswing + Tswing * sin(theta));
+                    T_local = T_base - Tswing * fmax(0, height_value - has_water);
+                    if (height_value < has_water && (T_local < water_freezing))
+                    {
+                        // Polar and elevation ice
+                        red_data[idx] = fmin(255, 167 + 67 * r_weight);
+                        green_data[idx] = fmin(255, 181 + 57 * r_weight);
+                        blue_data[idx] = fmin(255, 190 + 63 * r_weight);
+                        // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
+                    }
+                    else if (cel->type == waterworld || cel->type == hycean)
+                    {
+                        // Deep ocean
+                        red_data[idx] = fmin(255, 12+16*height_value);
+                        green_data[idx] = fmin(255, 24+24*height_value);
+                        blue_data[idx] = fmin(255, 32+128*height_value);
+                    }
+                    // Biome allocation based on height thresholds
+                    else if (height_value < has_water && (T_local < Tboil))
+                    {   // Ocean
+                        sh = height_value*inv_h2o_level;
+                        sh *= (Tboil - T_base) / (Tboil - water_freezing);
+                        sh = pow(sh, 20);                                                           // shallowness multiplied to show water optical density
+                        red_data[idx] = fmin(255, 12+16*sh);
+                        green_data[idx] = fmin(255, 24+168*sh);
+                        blue_data[idx] = fmin(255, 192+32*sh);
+                        // if (create_bump) bump_data[idx] = 0;
+                    }
+                    else if (T_local > veg_max_temp)
+                    {   // Beach or desert sand
+                        red_data[idx] = fmin(255, 220 * rmult * r_weight);
+                        green_data[idx] = fmin(255, 200 * gmult * r_weight);
+                        blue_data[idx] = fmin(255, 150 * bmult * r_weight);
+                    }
+                    else if (life_possible && T_local >= veg_min_temp
+                        && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
+                    {   // Forests
+                        red_data[idx] = fmin(255, vegetation_r * r_weight);
+                        green_data[idx] = fmin(255, vegetation_g * r_weight);
+                        blue_data[idx] = fmin(255, vegetation_b * r_weight);
+                    }
+                    else
+                    {   // Mountains
+                        red_data[idx] = fmin(255, 110 * rmult * r_weight);
+                        green_data[idx] = fmin(255, 90 * gmult * r_weight);
+                        blue_data[idx] = fmin(255, 75 * bmult * r_weight);
+                    }
+                }
+                else
+                {
+                    // Lifeless planet or moon
+                    red_data[idx] = (cel->type == lavaworld)
+                        ? ((unsigned char)(128 + fmin(127, rgb.r * rmult * r_weight + radd)))
+                        : ((unsigned char)(fmin(255, rgb.r * rmult * r_weight + radd)));
+                    green_data[idx] = (unsigned char)(fmin(255, rgb.g * gmult * r_weight + gadd));
+                    blue_data[idx] = (unsigned char)(fmin(255, rgb.b * bmult * r_weight + badd));
                 }
             }
-            else
-            {
-                // Lifeless planet or moon
-                red_data[idx] = (cel->type == lavaworld)
-                    ? ((unsigned char)(128 + fmin(127, rgb.r * rmult * r_weight + radd)))
-                    : ((unsigned char)(fmin(255, rgb.r * rmult * r_weight + radd)));
-                green_data[idx] = (unsigned char)(fmin(255, rgb.g * gmult * r_weight + gadd));
-                blue_data[idx] = (unsigned char)(fmin(255, rgb.b * bmult * r_weight + badd));
-            }
         }
+
+        cel->BV_color = 0.9 - has_water;
+
     }
-
-    cel->BV_color = 0.9 - has_water;
-
-    if (create_bump) stamp_craters(cel, bump_scale);
+    catch (...)
+    {
+        generating_fic_texture = false;
+        mtx.unlock();
+        return;
+    }
 
     mtx.unlock();
     generating_fic_texture = false;
+    if (create_bump) stamp_craters(cel, bump_scale);
     touch_gen();
 
     // Deferred to the end so as to avoid the mutex lock.
@@ -2005,62 +2036,72 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
 {
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
     mtx.lock();
-    generating_fic_texture = true;
-    Planet *p = (Planet*)cel;
-
-    // Copy size and allocate arrays.
-    Map *rm = cel->surf_map;
-    assert(rm);
-    image_height = rm->image_height;
-    image_width = rm->image_width;
-
-    lat_scale = (double)image_height / _pi;
-    lon_scale = (double)image_width / (_pi * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
-
-    allocated = image_height * image_width;
-    assert(allocated == rm->allocated);
-    red_data = new unsigned char[allocated];
-    green_data = new unsigned char[allocated];
-    blue_data = new unsigned char[allocated];
-
-    // Copy bump data.
-    double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
-    bump_data = new double[allocated];
-    memcpy(bump_data, rm->bump_data, allocated * sizeof(double));
-    std::cout << "Allocated " << allocated << " pixels for fictitious night map." << std::endl;
-    mtx.unlock();
-
-    // Based on temperature, calculate the degree of lava glow.
-    double tempK = p->estimate_surface_temperature(), ltemp;
-    const double glow_amt = 6.0 / blackbody_flux(tempK, R_band);
-    std::cout << glow_amt << std::endl;
-    double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
-
-    // Fill in glowing hot lava.
-    int x, y, y1, idx;
-    double height;
-    RGB3Byte rgb;
-    for (y=0; y<image_height; y++)
+    try
     {
-        y1 = y * image_width;
-        for (x=0; x<image_width; x++)
+        generating_fic_texture = true;
+        Planet *p = (Planet*)cel;
+
+        // Copy size and allocate arrays.
+        Map *rm = cel->surf_map;
+        assert(rm);
+        image_height = rm->image_height;
+        image_width = rm->image_width;
+
+        lat_scale = (double)image_height / _pi;
+        lon_scale = (double)image_width / (_pi * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+
+        allocated = image_height * image_width;
+        assert(allocated == rm->allocated);
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+
+        // Copy bump data.
+        double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
+        bump_data = new double[allocated];
+        memcpy(bump_data, rm->bump_data, allocated * sizeof(double));
+        std::cout << "Allocated " << allocated << " pixels for fictitious night map." << std::endl;
+        mtx.unlock();
+
+        // Based on temperature, calculate the degree of lava glow.
+        double tempK = p->estimate_surface_temperature(), ltemp;
+        const double glow_amt = 6.0 / blackbody_flux(tempK, R_band);
+        std::cout << glow_amt << std::endl;
+        double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
+
+        // Fill in glowing hot lava.
+        int x, y, y1, idx;
+        double height;
+        RGB3Byte rgb;
+        for (y=0; y<image_height; y++)
         {
-            idx = y1 + x;
-            height = 0.5 + inv_bump_scale * bump_data[idx];
-            ltemp = tempK - Tswing * height;
+            y1 = y * image_width;
+            for (x=0; x<image_width; x++)
+            {
+                idx = y1 + x;
+                height = 0.5 + inv_bump_scale * bump_data[idx];
+                ltemp = tempK - Tswing * height;
 
-            // if (!x) std::cout << ltemp << " -> " << (glow_amt * blackbody_flux(ltemp, R_band)) << std::endl;
-            rgb.r = fmin(255, glow_amt * blackbody_flux(ltemp*1.25, R_band));            // exaggerate the colors for effect.
-            rgb.g = fmin(255, glow_amt * blackbody_flux(ltemp, V_band));
-            rgb.b = fmin(255, glow_amt * blackbody_flux(ltemp, U_band));
+                // if (!x) std::cout << ltemp << " -> " << (glow_amt * blackbody_flux(ltemp, R_band)) << std::endl;
+                rgb.r = fmin(255, glow_amt * blackbody_flux(ltemp*1.25, R_band));            // exaggerate the colors for effect.
+                rgb.g = fmin(255, glow_amt * blackbody_flux(ltemp, V_band));
+                rgb.b = fmin(255, glow_amt * blackbody_flux(ltemp, U_band));
 
-            red_data[idx] = rgb.r;
-            green_data[idx] = rgb.g;
-            blue_data[idx] = rgb.b;
+                red_data[idx] = rgb.r;
+                green_data[idx] = rgb.g;
+                blue_data[idx] = rgb.b;
+            }
         }
+    }
+    catch (...)
+    {
+        generating_fic_texture = false;
+        mtx.unlock();
+        return;
     }
 
     generating_fic_texture = false;
@@ -2230,49 +2271,67 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
 {
-    cel->randomize();
-
-    mtx.lock();
-    generating_fic_texture = true;
-    int lr = cel->fictitious_map_height;
-    double BV = cel->BV_color;
-    image_height = lr;
-    image_width = image_height * 2;
-
-    allocated = image_height * image_width;
-    red_data = new unsigned char[allocated];
-    green_data = new unsigned char[allocated];
-    blue_data = new unsigned char[allocated];
-    lat_scale = image_height / _pi;
-    lon_scale = image_width / (_pi * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
-    std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
-
+    int num_bands, i;
+    bool tidal_locked_to_star;
+    bool add_storm;
+    double stormlat, stormlon, distToStormX, distToStormY, stormDist, stormSize;
+    double variability;
+    Color col;
+    RGB3Byte rgb;
+    std::unique_ptr<alienorum::RGB3Byte []> bands;
     Planet *p = (Planet*)cel;
-    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-    RGB3Byte rgb = Color::rgb_from_color(col, p->albedo);
-
-    p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
-
-    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
-        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
-
     cel->randomize();
-    double variability = cel->cel_frand(0, 0.666);
-    int num_bands = cel->cel_rand() % 9 + 7, i;
-    if (cel->type == ice_giant)
+
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    mtx.lock();
+    try
     {
-        num_bands = std::max(2, num_bands/4);
-        variability /= 4;
+        generating_fic_texture = true;
+        int lr = cel->fictitious_map_height;
+        double BV = cel->BV_color;
+        image_height = lr;
+        image_width = image_height * 2;
+
+        allocated = image_height * image_width;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        lat_scale = image_height / _pi;
+        lon_scale = image_width / (_pi * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+        std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
+
+        col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+        rgb = Color::rgb_from_color(col, p->albedo);
+
+        p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
+
+        tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
+            && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
+
+        cel->randomize();
+        variability = cel->cel_frand(0, 0.666);
+        num_bands = cel->cel_rand() % 9 + 7;
+        if (cel->type == ice_giant)
+        {
+            num_bands = std::max(2, num_bands/4);
+            variability /= 4;
+        }
+        bands = std::make_unique<RGB3Byte[]>(num_bands);
+
+        add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
+        stormDist = 1e29;
+        stormSize = cel->cel_frand(0.29, 0.71);
+        stormlat = cel->cel_frand(0.3, 0.7);
+        stormlon = cel->cel_frand(0, 1);
     }
-    auto bands = std::make_unique<RGB3Byte[]>(num_bands);
-
-    bool add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
-    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29, stormSize = cel->cel_frand(0.29, 0.71);
-
-    stormlat = cel->cel_frand(0.3, 0.7);
-    stormlon = cel->cel_frand(0, 1);
+    catch (...)
+    {
+        generating_fic_texture = false;
+        mtx.unlock();
+        return;
+    }
     mtx.unlock();
 
     for (i=0; i<num_bands; i++)
@@ -2292,90 +2351,90 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     double zscale = tidal_locked_to_star ? scale : (scale * 1.5);
 
     for (unsigned int y = 0; y < image_height; ++y)
-    {
-        v = (double)y / image_height;
-        theta = v * _pi;
-
-        for (unsigned int x = 0; x < image_width; ++x)
         {
-            u = (double)x / image_width;
-            phi = u * 2.0 * _pi;
+            v = (double)y / image_height;
+            theta = v * _pi;
 
-            // 3D Sphere projection
-            nx = sin(theta) * cos(phi) * scale;
-            ny = sin(theta) * sin(phi) * scale;
-            nz = cos(theta) * zscale;
-
-            if (tidal_locked_to_star)
+            for (unsigned int x = 0; x < image_width; ++x)
             {
-                sin_theta = sin(theta);
+                u = (double)x / image_width;
+                phi = u * 2.0 * _pi;
 
-                phi -= 2.9e+5 / cel->sidereal_rotational_period 
-                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
-                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
-                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta;
+                // 3D Sphere projection
                 nx = sin(theta) * cos(phi) * scale;
                 ny = sin(theta) * sin(phi) * scale;
+                nz = cos(theta) * zscale;
 
-                psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
-            }
-
-            distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
-            distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 1.3;
-            // Apply distortion primarily along the X/longitude axis to emulate wind bands
-            finalNoise = fBm(nx + distortX * 4.0, ny + distortY * 2.5, nz, 6, 2.0, 0.55);
-
-            if (add_storm)
-            {
-                distToStormX = (u - stormlon) * 2.0 * _pi;
-                distToStormY = (v - stormlat) * _pi;
-                // Elliptical distance formula
-                stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
-            }
-
-            int idx = y * image_width + x;
-
-            if (stormDist < stormSize)
-            {
-                // We are inside the storm; blend into dark colors
-                double stormBlend = (stormSize - stormDist) / stormSize; // 1 at center, 0 at edge
-                // Swirl the storm inside
-                double stormNoise = fBm(nx * 3.0, ny * 3.0, nz * 3.0, 3, 2.0, 0.5);
-
-                red_data[idx] = (unsigned char)(120 * stormNoise + 25);
-                green_data[idx] = (unsigned char)(90 * stormNoise + 15);
-                blue_data[idx] = (unsigned char)(60 * stormNoise + 10);
-
-                // Linear interpolation blending storm with background bands
-                red_data[idx] = (unsigned char)(red_data[idx] * stormBlend + bands[0].r * (1.0 - stormBlend));
-                green_data[idx] = (unsigned char)(green_data[idx] * stormBlend + bands[0].g * (1.0 - stormBlend));
-                blue_data[idx] = (unsigned char)(blue_data[idx] * stormBlend + bands[0].b * (1.0 - stormBlend));
-            }
-            else
-            {
                 if (tidal_locked_to_star)
                 {
-                    // Bands will occur in order of distance to the star, not by latitude as with solar system gas giants.
-                    bandVal = fmod(psi / _pi * num_bands + finalNoise * 1.3, num_bands);
+                    sin_theta = sin(theta);
+
+                    phi -= 2.9e+5 / cel->sidereal_rotational_period 
+                        * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
+                        * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
+                        * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta;
+                    nx = sin(theta) * cos(phi) * scale;
+                    ny = sin(theta) * sin(phi) * scale;
+
+                    psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
+                }
+
+                distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
+                distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 1.3;
+                // Apply distortion primarily along the X/longitude axis to emulate wind bands
+                finalNoise = fBm(nx + distortX * 4.0, ny + distortY * 2.5, nz, 6, 2.0, 0.55);
+
+                if (add_storm)
+                {
+                    distToStormX = (u - stormlon) * 2.0 * _pi;
+                    distToStormY = (v - stormlat) * _pi;
+                    // Elliptical distance formula
+                    stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
+                }
+
+                int idx = y * image_width + x;
+
+                if (stormDist < stormSize)
+                {
+                    // We are inside the storm; blend into dark colors
+                    double stormBlend = (stormSize - stormDist) / stormSize; // 1 at center, 0 at edge
+                    // Swirl the storm inside
+                    double stormNoise = fBm(nx * 3.0, ny * 3.0, nz * 3.0, 3, 2.0, 0.5);
+
+                    red_data[idx] = (unsigned char)(120 * stormNoise + 25);
+                    green_data[idx] = (unsigned char)(90 * stormNoise + 15);
+                    blue_data[idx] = (unsigned char)(60 * stormNoise + 10);
+
+                    // Linear interpolation blending storm with background bands
+                    red_data[idx] = (unsigned char)(red_data[idx] * stormBlend + bands[0].r * (1.0 - stormBlend));
+                    green_data[idx] = (unsigned char)(green_data[idx] * stormBlend + bands[0].g * (1.0 - stormBlend));
+                    blue_data[idx] = (unsigned char)(blue_data[idx] * stormBlend + bands[0].b * (1.0 - stormBlend));
                 }
                 else
                 {
-                    bandVal = fmod(fabs(v - 0.5) * 2 * num_bands + finalNoise * 1.3, num_bands);
+                    if (tidal_locked_to_star)
+                    {
+                        // Bands will occur in order of distance to the star, not by latitude as with solar system gas giants.
+                        bandVal = fmod(psi / _pi * num_bands + finalNoise * 1.3, num_bands);
+                    }
+                    else
+                    {
+                        bandVal = fmod(fabs(v - 0.5) * 2 * num_bands + finalNoise * 1.3, num_bands);
+                    }
+
+                    if (bandVal < 0) bandVal += num_bands;
+                    int bandIdx = (int)floor(bandVal);
+                    t = bandVal - bandIdx; // fractional part for linear interpolation
+
+                    int nextBandIdx = (bandIdx + 1) % num_bands;
+
+                    // Interpolate colors between bands for smooth transitions
+                    red_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].r + t * bands[nextBandIdx].r);
+                    green_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].g + t * bands[nextBandIdx].g);
+                    blue_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].b + t * bands[nextBandIdx].b);
                 }
-
-                if (bandVal < 0) bandVal += num_bands;
-                int bandIdx = (int)floor(bandVal);
-                t = bandVal - bandIdx; // fractional part for linear interpolation
-
-                int nextBandIdx = (bandIdx + 1) % num_bands;
-
-                // Interpolate colors between bands for smooth transitions
-                red_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].r + t * bands[nextBandIdx].r);
-                green_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].g + t * bands[nextBandIdx].g);
-                blue_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].b + t * bands[nextBandIdx].b);
             }
         }
-    }
     generating_fic_texture = false;
     touch_gen();
     p->generate_ring_parameters();
@@ -2397,47 +2456,60 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 {
     cel->randomize();
-
-    mtx.lock();
-    generating_fic_texture = true;
-    int lr = cel->fictitious_map_height;
-    image_height = lr;
-    image_width = image_height * 2;
-
-    allocated = image_height * image_width;
-    red_data = new unsigned char[allocated];
-    green_data = new unsigned char[allocated];
-    blue_data = new unsigned char[allocated];
-    lat_scale = image_height / _pi;
-    lon_scale = image_width / (_pi * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
-    std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
-
     Planet *p = (Planet*)cel;
-    RGB3Byte rgb( (unsigned char)cel->cel_frand(242, 249), (unsigned char)cel->cel_frand(234, 243), (unsigned char)cel->cel_frand(214, 228) );
+    double zonal, scale, shear, sweep_exp, warp_amt, polar_k, contrast, mottle_scale, mottle_amt;
+    bool tidal_locked_to_star;
+    RGB3Byte rgb, deep;
 
-    bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
-        && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    mtx.lock();
+    try
+    {
+        generating_fic_texture = true;
+        int lr = cel->fictitious_map_height;
+        image_height = lr;
+        image_width = image_height * 2;
 
-    cel->randomize();
+        allocated = image_height * image_width;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        lat_scale = image_height / _pi;
+        lon_scale = image_width / (_pi * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+        std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
 
-    RGB3Byte deep((unsigned char)(rgb.r * cel->cel_frand(0.78, 0.86)),
-                  (unsigned char)(rgb.g * cel->cel_frand(0.66, 0.75)),
-                  (unsigned char)(rgb.b * cel->cel_frand(0.44, 0.56)));
+        rgb = RGB3Byte( (unsigned char)cel->cel_frand(242, 249), (unsigned char)cel->cel_frand(234, 243), (unsigned char)cel->cel_frand(214, 228) );
 
-    double zonal = cel->cel_frand(5.0, 9.0);
-    double scale = cel->cel_frand(1.6, 2.6);
+        tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
+            && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
-    double shear = cel->cel_frand(1.5, 4.0);
-    double sweep_exp = cel->cel_frand(1.0, 1.6);
+        cel->randomize();
 
-    double warp_amt = cel->cel_frand(0.5, 1.1);
-    double polar_k = cel->cel_frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
-    double contrast = cel->cel_frand(0.38, 0.62);            // still low -- this is haze, not weather
+        deep = RGB3Byte((unsigned char)(rgb.r * cel->cel_frand(0.78, 0.86)),
+                    (unsigned char)(rgb.g * cel->cel_frand(0.66, 0.75)),
+                    (unsigned char)(rgb.b * cel->cel_frand(0.44, 0.56)));
 
-    double mottle_scale = scale * cel->cel_frand(2.5, 4.5);
-    double mottle_amt = cel->cel_frand(0.04, 0.10);
+        zonal = cel->cel_frand(5.0, 9.0);
+        scale = cel->cel_frand(1.6, 2.6);
+
+        shear = cel->cel_frand(1.5, 4.0);
+        sweep_exp = cel->cel_frand(1.0, 1.6);
+
+        warp_amt = cel->cel_frand(0.5, 1.1);
+        polar_k = cel->cel_frand(1.8, 3.6);               // how tightly the bright hood hugs the poles
+        contrast = cel->cel_frand(0.38, 0.62);            // still low -- this is haze, not weather
+
+        mottle_scale = scale * cel->cel_frand(2.5, 4.5);
+        mottle_amt = cel->cel_frand(0.04, 0.10);
+    }
+    catch (...)
+    {
+        generating_fic_texture = false;
+        mtx.unlock();
+        return;
+    }
     mtx.unlock();
 
     double u, v, theta, phi, phi_s, sin_theta, cos_theta, nx, ny, nz;
@@ -2506,143 +2578,166 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 void Map::generate_stellar_map(CelestialObject *cel)
 {
     assert(cel->typeclass() == class_star);
-    cel->randomize();
-
-    mtx.lock();
-    generating_fic_texture = true;
-
-    image_height = cel->fictitious_map_height;
-    image_width = image_height * 2;
-    allocated = image_height * image_width;
-    red_data = new unsigned char[allocated];
-    green_data = new unsigned char[allocated];
-    blue_data = new unsigned char[allocated];
-    lat_scale = (double)image_height / _pi;
-    lon_scale = (double)image_width / (_pi * 2);
-    inv_lat_scale = 1.0 / lat_scale;
-    inv_lon_scale = 1.0 / lon_scale;
-    std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
-
-    stellar_regime_t regime = stellar_regime(cel);
-
-    double T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
-    if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
-
-    double mass_solar = cel->mass / solar_mass;
-    bool fully_convective = (mass_solar > 0 && mass_solar < 0.35);
-    bool convective_envelope = (T_eff < 7000.0);
-    bool spotted = (regime == regime_stellar) && convective_envelope;
-
-    double radius_m = (regime == regime_degenerate) ? Star::degenerate_radius(cel->mass)
-                                                    : cel->volumetric_mean_radius;
-    if (!(radius_m > 0)) radius_m = solar_radius;
-    double mass_g = (cel->mass > 0) ? cel->mass : solar_mass;
-    double surface_g = G * mass_g / (radius_m * radius_m);
-    double logg_cgs = log10(fmax(1e-6, surface_g) * 100.0);
-
-    double p_rot_days = cel->sidereal_rotational_period / oneday;
-    double tau_conv_days = 12.0 * pow(fmax(3000.0, fmin(7000.0, T_eff)) / sun_temp, -2.5);
-    double rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days)
-                                     : ((logg_cgs < 3.5) ? cel->cel_frand(2.5, 9.0) : cel->cel_frand(0.4, 3.0));
-    double activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
-    double spot_dT = fmax(150.0, fmin(0.541 * T_eff - 1323.0, 0.45 * T_eff));
-    double gd_beta = convective_envelope ? 0.08 : 0.25;
-    double f_obl = fmax(0.0, fmin(0.45, cel->oblateness));
-    double gd_mean = 1.0 - 4.0 * f_obl / 3.0;
-
+    double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT, gd_beta, gd_mean,
+        scale_height, d_granule, granule_correction, cells_across, gran_scale, gran_nyquist, gran_amp, gran_dT, spot_base_deg, net_scale, plage_gain,
+        net_gain, mean_spot_rad, edge_scale, edge_amount, fil_scale, bv_at_teff, ref_max, inv_ref_max;
     const double atomic_mass_unit = 1.66053906660e-27;                  // kg
-    double scale_height = kB * T_eff / (1.3 * atomic_mass_unit * surface_g);
-    double d_granule = 10.0 * scale_height;
-
-    double granule_correction = 8;
-
-    if (d_granule > 0.5 * radius_m) d_granule = 0.5 * radius_m;
-    double cells_across = 2.0 * radius_m / fmax(1.0, d_granule) * granule_correction;
-
-    bool granulated = (regime == regime_stellar) && convective_envelope;
-    double gran_scale = cells_across / _pi;
-    double gran_nyquist = (double)image_width / (6.0 * _pi) * granule_correction;
-    double gran_amp = 1.0;
-    if (gran_scale > gran_nyquist)
-    {
-        gran_amp = fmax(0.25, gran_nyquist / gran_scale);
-        gran_scale = gran_nyquist;
-    }
-
-    double gran_dT = granulated
-        ? T_eff * 0.035 * sqrt(fmax(0.5, fmin(1.8, T_eff / sun_temp))) * gran_amp : 0.0;
-
-    double spot_base_deg = 0.35 + 7.0 * activity;
-    int num_groups = spotted ? (int)(activity * 7.0 + cel->cel_frand(0.8, 1.5)) : 0;
-    bool polar_regime = (rossby < 0.12);
-
     std::vector<Point> spot_axis;
     std::vector<double> spot_radius;
-    for (int gi = 0; gi < num_groups; gi++)
-    {
-        double glat;
-        if (polar_regime && cel->cel_frand(0, 1) < 0.55)
-            glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 55, half_pi);
-        else if (fully_convective)
-            glat = asin(cel->cel_frand(-1, 1));                          // uniform in area, not in latitude
-        else
-            glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 5, fiftyseventh * 35);
-
-        double glon = cel->cel_frand(0, _pi * 2);
-        double spread = fiftyseventh * spot_base_deg * cel->cel_frand(2.0, 5.0);
-        int members = 2 + (cel->cel_rand() % 4);
-
-        for (int mi = 0; mi < members; mi++)
-        {
-            // A group is much wider than it is tall: the spread in longitude dominates.
-            double slat = fmax(-half_pi, fmin(half_pi, glat + cel->cel_frand(-0.4, 0.4) * spread));
-            double slon = glon + cel->cel_frand(-1.0, 1.0) * spread * 2.2 / fmax(0.25, cos(glat));
-            double cos_slat = cos(slat);
-            spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
-
-            // The head of the group is the main spot; the rest are subordinate to it.
-            double rad_deg = spot_base_deg * (mi == 0 ? cel->cel_frand(0.8, 1.6) : cel->cel_frand(0.25, 0.7));
-            spot_radius.push_back(fiftyseventh * rad_deg);
-        }
-    }
-    int num_spots = (int)spot_axis.size();
-
-    bool has_faculae = spotted && (activity > 0.02);
+    bool fully_convective, convective_envelope, spotted, granulated, polar_regime, has_faculae;
+    int num_groups, num_spots;
+    Color ref_col;
     Map *fac = nullptr;
-    if (has_faculae && !cel->night_map)
-    {
-        fac = new Map(cel);
-        fac->image_height = image_height;
-        fac->image_width = image_width;
-        fac->allocated = allocated;
-        fac->red_data = new unsigned char[allocated];
-        fac->green_data = new unsigned char[allocated];
-        fac->blue_data = new unsigned char[allocated];
-        fac->lat_scale = lat_scale;
-        fac->lon_scale = lon_scale;
-        fac->inv_lat_scale = inv_lat_scale;
-        fac->inv_lon_scale = inv_lon_scale;
-        cel->night_map = fac;
-    }
-    double net_scale = fmax(0.7, gran_scale / 20.0);
-    double plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // excess over the photosphere
-    double net_gain = fmin(0.30, 0.08 + 0.35 * activity);
-
-    double mean_spot_rad = fiftyseventh * fmax(0.2, spot_base_deg);
-    double edge_scale = fmax(4.0, 2.5 / mean_spot_rad);
-    double edge_amount = cel->cel_frand(0.45, 0.7);
-    double fil_scale = edge_scale * 3.5;                         // penumbral filaments
 
     // Blackbody B-V, to vary the hue according to local temperature.
     auto bv_of = [](double T) -> double
     {
         return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
     };
+    
+    try
+    {
+        cel->randomize();
 
-    double bv_at_teff = bv_of(T_eff);
-    Color ref_col = Color::color_from_magnitude_indices(0, cel->BV_color);
-    double ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
-    double inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
+        std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+        mtx.lock();
+        generating_fic_texture = true;
+
+        image_height = cel->fictitious_map_height;
+        image_width = image_height * 2;
+        allocated = image_height * image_width;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        lat_scale = (double)image_height / _pi;
+        lon_scale = (double)image_width / (_pi * 2);
+        inv_lat_scale = 1.0 / lat_scale;
+        inv_lon_scale = 1.0 / lon_scale;
+        std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
+
+        stellar_regime_t regime = stellar_regime(cel);
+
+        T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+        if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
+
+        mass_solar = cel->mass / solar_mass;
+        fully_convective = (mass_solar > 0 && mass_solar < 0.35);
+        convective_envelope = (T_eff < 7000.0);
+        spotted = (regime == regime_stellar) && convective_envelope;
+
+        radius_m = (regime == regime_degenerate) ? Star::degenerate_radius(cel->mass)
+                                                        : cel->volumetric_mean_radius;
+        if (!(radius_m > 0)) radius_m = solar_radius;
+        mass_g = (cel->mass > 0) ? cel->mass : solar_mass;
+        surface_g = G * mass_g / (radius_m * radius_m);
+        logg_cgs = log10(fmax(1e-6, surface_g) * 100.0);
+
+        p_rot_days = cel->sidereal_rotational_period / oneday;
+        tau_conv_days = 12.0 * pow(fmax(3000.0, fmin(7000.0, T_eff)) / sun_temp, -2.5);
+        rossby = (p_rot_days > 0) ? (p_rot_days / tau_conv_days)
+                                        : ((logg_cgs < 3.5) ? cel->cel_frand(2.5, 9.0) : cel->cel_frand(0.4, 3.0));
+        activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
+        spot_dT = fmax(150.0, fmin(0.541 * T_eff - 1323.0, 0.45 * T_eff));
+        gd_beta = convective_envelope ? 0.08 : 0.25;
+        f_obl = fmax(0.0, fmin(0.45, cel->oblateness));
+        gd_mean = 1.0 - 4.0 * f_obl / 3.0;
+
+        scale_height = kB * T_eff / (1.3 * atomic_mass_unit * surface_g);
+        d_granule = 10.0 * scale_height;
+
+        granule_correction = 8;
+
+        if (d_granule > 0.5 * radius_m) d_granule = 0.5 * radius_m;
+        cells_across = 2.0 * radius_m / fmax(1.0, d_granule) * granule_correction;
+
+        granulated = (regime == regime_stellar) && convective_envelope;
+        gran_scale = cells_across / _pi;
+        gran_nyquist = (double)image_width / (6.0 * _pi) * granule_correction;
+        gran_amp = 1.0;
+        if (gran_scale > gran_nyquist)
+        {
+            gran_amp = fmax(0.25, gran_nyquist / gran_scale);
+            gran_scale = gran_nyquist;
+        }
+
+        gran_dT = granulated
+            ? T_eff * 0.035 * sqrt(fmax(0.5, fmin(1.8, T_eff / sun_temp))) * gran_amp : 0.0;
+
+        spot_base_deg = 0.35 + 7.0 * activity;
+        num_groups = spotted ? (int)(activity * 7.0 + cel->cel_frand(0.8, 1.5)) : 0;
+        polar_regime = (rossby < 0.12);
+
+        for (int gi = 0; gi < num_groups; gi++)
+        {
+            double glat;
+            if (polar_regime && cel->cel_frand(0, 1) < 0.55)
+                glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 55, half_pi);
+            else if (fully_convective)
+                glat = asin(cel->cel_frand(-1, 1));                          // uniform in area, not in latitude
+            else
+                glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 5, fiftyseventh * 35);
+
+            double glon = cel->cel_frand(0, _pi * 2);
+            double spread = fiftyseventh * spot_base_deg * cel->cel_frand(2.0, 5.0);
+            int members = 2 + (cel->cel_rand() % 4);
+
+            for (int mi = 0; mi < members; mi++)
+            {
+                // A group is much wider than it is tall: the spread in longitude dominates.
+                double slat = fmax(-half_pi, fmin(half_pi, glat + cel->cel_frand(-0.4, 0.4) * spread));
+                double slon = glon + cel->cel_frand(-1.0, 1.0) * spread * 2.2 / fmax(0.25, cos(glat));
+                double cos_slat = cos(slat);
+                spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
+
+                // The head of the group is the main spot; the rest are subordinate to it.
+                double rad_deg = spot_base_deg * (mi == 0 ? cel->cel_frand(0.8, 1.6) : cel->cel_frand(0.25, 0.7));
+                spot_radius.push_back(fiftyseventh * rad_deg);
+            }
+        }
+        num_spots = (int)spot_axis.size();
+
+        has_faculae = spotted && (activity > 0.02);
+        if (has_faculae && !cel->night_map)
+        {
+            fac = new Map(cel);
+            fac->image_height = image_height;
+            fac->image_width = image_width;
+            fac->allocated = allocated;
+            fac->red_data = new unsigned char[allocated];
+            fac->green_data = new unsigned char[allocated];
+            fac->blue_data = new unsigned char[allocated];
+            fac->lat_scale = lat_scale;
+            fac->lon_scale = lon_scale;
+            fac->inv_lat_scale = inv_lat_scale;
+            fac->inv_lon_scale = inv_lon_scale;
+            cel->night_map = fac;
+        }
+        net_scale = fmax(0.7, gran_scale / 20.0);
+        plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // excess over the photosphere
+        net_gain = fmin(0.30, 0.08 + 0.35 * activity);
+
+        mean_spot_rad = fiftyseventh * fmax(0.2, spot_base_deg);
+        edge_scale = fmax(4.0, 2.5 / mean_spot_rad);
+        edge_amount = cel->cel_frand(0.45, 0.7);
+        fil_scale = edge_scale * 3.5;                         // penumbral filaments
+
+        // Blackbody B-V, to vary the hue according to local temperature.
+        auto bv_of = [](double T) -> double
+        {
+            return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+        };
+
+        bv_at_teff = bv_of(T_eff);
+        ref_col = Color::color_from_magnitude_indices(0, cel->BV_color);
+        ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
+        inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
+    }
+    catch (...)
+    {
+        generating_fic_texture = false;
+        mtx.unlock();
+        return;
+    }
     mtx.unlock();
 
     double theta, phi, sin_theta, nx, ny, nz;
@@ -2744,30 +2839,40 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     cel_obj_class cls = cel->typeclass();
     assert(cls == class_planet || cls == class_moon);
 
-    cel->ring_map = this;
-    if (xmap) cel->ringx_map = xmap;
-    else xmap = cel->ringx_map;
+    try
+    {
+        cel->ring_map = this;
+        if (xmap) cel->ringx_map = xmap;
+        else xmap = cel->ringx_map;
 
-    assert(xmap);
-    cel->randomize();
+        assert(xmap);
+        cel->randomize();
 
-    mtx.lock();
-    generating_fic_texture = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+        mtx.lock();
+        generating_fic_texture = true;
 
-    xmap->image_height = image_height = 29;             // TODO: Decrease this for release.
-    xmap->image_width = image_width = res;
-    xmap->allocated = allocated = image_height * image_width;
-    red_data = new unsigned char[allocated];
-    green_data = new unsigned char[allocated];
-    blue_data = new unsigned char[allocated];
-    xmap->red_data = new unsigned char[allocated];
-    xmap->green_data = new unsigned char[allocated];
-    xmap->blue_data = new unsigned char[allocated];
-    xmap->lat_scale = lat_scale = (double)image_height / _pi;
-    xmap->lon_scale = lon_scale = (double)image_width / (_pi * 2);
-    xmap->inv_lat_scale = inv_lat_scale = 1.0 / lat_scale;
-    xmap->inv_lon_scale = inv_lon_scale = 1.0 / lon_scale;
-    std::cout << "Allocated " << allocated << " pixels for fictitious ring map." << std::endl;
+        xmap->image_height = image_height = 29;             // TODO: Decrease this for release.
+        xmap->image_width = image_width = res;
+        xmap->allocated = allocated = image_height * image_width;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        xmap->red_data = new unsigned char[allocated];
+        xmap->green_data = new unsigned char[allocated];
+        xmap->blue_data = new unsigned char[allocated];
+        xmap->lat_scale = lat_scale = (double)image_height / _pi;
+        xmap->lon_scale = lon_scale = (double)image_width / (_pi * 2);
+        xmap->inv_lat_scale = inv_lat_scale = 1.0 / lat_scale;
+        xmap->inv_lon_scale = inv_lon_scale = 1.0 / lon_scale;
+        std::cout << "Allocated " << allocated << " pixels for fictitious ring map." << std::endl;
+    }
+    catch (...)
+    {
+        generating_fic_texture = false;
+        mtx.unlock();
+        return;
+    }
     mtx.unlock();
     generating_fic_texture = false;
 
