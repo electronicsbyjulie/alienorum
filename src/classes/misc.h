@@ -280,7 +280,7 @@ extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, ob
     tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat, inside_galaxy_idx;
 extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz, viewer_home_tz, viewer_gamma, dev_dial, dev_dial_step;
-extern bool done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
+extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing,
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
