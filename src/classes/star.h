@@ -78,7 +78,7 @@ namespace alienorum
         void make_universally_visible();
         inline bool is_universally_visible() { return _is_always_visible; }
 
-        double estimate_temperature();              // Based on MK spectral type code
+        double estimate_temperature();              // Based on BV color
         double estimate_luminosity(double tempK);   // Based on radius and supplied temperature. Returns output scaled to absolute magnitude zero.
         double estimate_mass();
         void estimate_BV();                         // Blackbody value from estimated temperature from MK spectral type

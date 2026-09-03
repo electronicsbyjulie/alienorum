@@ -899,6 +899,14 @@ bool get_str(const json &j, const char *key, std::string &out)
     return true;
 }
 
+bool get_bool(const json &j, const char *key, bool &out)
+{
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_boolean()) return false;
+    out = it->get<bool>();
+    return true;
+}
+
 const json* get_obj(const json &j, const char *key)
 {
     auto it = j.find(key);
@@ -1369,17 +1377,19 @@ void SSCImport::note_dropped_fields(const json &fields, const json *atmos, const
     // lighting model we do not run; a light curve stated as a scattering law rather than as a
     // slope; the bond albedo, which we work out from the geometry instead; the flags and dates
     // and web pages an object can carry.
-    static const char *body_fields[] = {
+    static const char *body_fields[] =
+    {
         "Mesh", "MeshCenter", "MeshScale", "NormalizeMesh", "Orientation",
         "SpecularTexture", "SpecularColor", "SpecularPower", "OverlayTexture", "BlendTexture",
-        "LunarLambert", "BondAlbedo", "Emissive", "Visible", "InfoURL", "OrbitColor", "HazeColor",
+        "LunarLambert", "BondAlbedo", "Visible", "InfoURL", "OrbitColor", "HazeColor",
         "Beginning", "Ending", "Timeline",
         "CustomOrbit", "SpiceOrbit", "ScriptedOrbit", "FixedPosition",
         "SampledOrientation", "ScriptedRotation",
     };
     // A sky we build out of a pressure, a composition and a haze fraction, rather than out of
     // stated colours at stated heights.
-    static const char *atmos_fields[] = {
+    static const char *atmos_fields[] =
+    {
         "Height", "CloudHeight", "CloudSpeed", "CloudNormalMap", "Absorption",
         "MieScaleHeight", "MieAsymmetry", "Lower", "Upper", "Sky", "Sunset",
     };
@@ -1668,6 +1678,9 @@ CelestialObject* SSCImport::create_fictitious_star(const std::string &raw_name)
 cel_obj_class SSCImport::class_from_ssc(const json &fields, const CelestialObject *parent)
 {
     std::string cls;
+    bool emissive = false;
+    get_bool(fields, "Emissive", emissive);
+    std::cout << "Emissive: " << (emissive ? "Y" : "N") << std::endl;
     if (get_str(fields, "Class", cls))
     {
         cls = lowercased(cls);
@@ -1676,14 +1689,13 @@ cel_obj_class SSCImport::class_from_ssc(const json &fields, const CelestialObjec
         if (cls == "moon" || cls == "minormoon") return class_moon;
         if (cls == "planet" || cls == "dwarfplanet" || cls == "asteroid" || cls == "minorbody")
             return class_planet;
+        if (emissive) return class_star;
         return class_unknown;                           // surface, invisible, component, ...
     }
-    // With no Class stated, the source format calls a body of a star a planet and a body of anything else a
-    // moon -- but a block that names a Mesh is a model, and a body of a spacecraft is another
-    // spacecraft however the add-on wrote it. Both come up in this very add-on: the Vulcan Shuttle
-    // docked at the starbase states nothing but a mesh and an orbit.
+
     if (fields.contains("Mesh")) return class_satellite;
     if (parent && parent->typeclass() == class_satellite) return class_satellite;
+    if (emissive) return class_star;
     return (parent && parent->typeclass() == class_star) ? class_planet : class_moon;
 }
 
@@ -1722,6 +1734,18 @@ void SSCImport::apply_orbit(const json &orb, CelestialObject *cel, CelestialObje
 
     if (!cel->orbit->period && !cel->orbit->semimajor_axis)
         report.note(std::string(cel->name) + " has an orbit with neither a period nor a size; one will be invented.");
+    
+    cel->cenobj = cel->orbit->center;
+    int prevent_infloop_circref = 0;
+    while (cel->cenobj->orbit && cel->cenobj->orbit->center)
+    {
+        cel->cenobj = cel->cenobj->orbit->center;
+        prevent_infloop_circref++;
+        if (prevent_infloop_circref > 1000)
+        {
+            report.note(std::string(cel->name) + " has a circular reference in its orbit hierarchy.");
+        }
+    }
 }
 
 void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
@@ -1987,6 +2011,7 @@ bool SSCImport::read(const std::string &ssc_path)
             CelestialObject *cel = nullptr;
             switch (cls)
             {
+                case class_star:      cel = new Star();      cel->type = star;       break;
                 case class_planet:    cel = new Planet();    cel->type = rocky;      break;
                 case class_moon:      cel = new Moon();      cel->type = rocky;      break;
                 case class_comet:     cel = new Comet();     cel->type = icy_tailed; break;
@@ -2099,6 +2124,20 @@ bool SSCImport::read(const std::string &ssc_path)
             }
             fresh.push_back(cel);
             report.bodies_added++;
+
+            if (cls == class_star)
+            {
+                apply_color(blk.fields, cel);
+                Star *s = (Star*)cel;
+                s->temperature = s->estimate_temperature();
+                double lum = s->estimate_luminosity(s->temperature);
+                std::cout << "Fucking retard " << lum << std::endl;
+                s->absolute_magnitude = 4.85 - log(lum) * invlogmagnbase;
+                s->mass = s->estimate_mass();
+                s->make_universally_visible();
+                note_dropped_fields(blk.fields, nullptr, nullptr, name, "Atmosphere");
+                continue;
+            }
 
             if (cls == class_satellite)
             {
