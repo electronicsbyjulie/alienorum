@@ -460,7 +460,7 @@ void load_catalogs()
     if (have_astjson)
     {
         fstream fs(astjson.c_str(), std::ios::in);
-        Serialization::load_all(fs, cels, MAX_CELOBJS);
+        Serialization::load_all(fs, cels, MAX_CELOBJS, false);
         fs.close();
     }
     else
