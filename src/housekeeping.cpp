@@ -507,7 +507,7 @@ void compute_object_draw_coordinates()
                         }
                     }
 
-                    if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
+                    if (!isnan(add_flux) && !isinf(add_flux) && cels[i]->type != artificial) luminous_flux += add_flux;
                 }
             }
         }
