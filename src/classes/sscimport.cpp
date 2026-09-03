@@ -1410,8 +1410,8 @@ void SSCImport::note_dropped_fields(const json &fields, const json *atmos, const
     if (rings && rings->contains("Color")) add("Rings Color");
 
     if (dropped.size())
-        report.note("\"" + name + "\": the file also states " + dropped
-            + ", which we have nothing to say with; dropped.");
+        report.note("\"" + name + "\": the file also specifies " + dropped
+            + ", which we have no equivalent for; ignored.");
 }
 
 // A Location is a named place on a body's surface, and we have those: they are what the sun clock
