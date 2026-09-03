@@ -2972,7 +2972,7 @@ void draw_sat_window(ImGuiIO& io)
         i=0;
         if (updating_sats)
         {
-            ImGui::Selectable("Please wait...", false, flags);
+            ImGui::Selectable("Contacting CelesTrak for satellite data; please wait...", false, flags);
         }
         else for (n=0; n<nsats; n++)
         {

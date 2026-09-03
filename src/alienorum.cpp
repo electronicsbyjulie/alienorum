@@ -163,6 +163,8 @@ int main (int argc, char** argv)
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
 
+    firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());
+
     std::vector<CliCmd> cli_cmds;
     size_t cli_cmd_pos = 0;
     auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
@@ -573,7 +575,12 @@ int main (int argc, char** argv)
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
                 ImGui::SetWindowPos(ImVec2(left,splash_top));
-                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+35));
+                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+(firstrun ? 75 : 35)));
+                if (firstrun)
+                {
+                    ImGui::Text("Please be patient, Alienorum is running for the first time. After");
+                    ImGui::Text("downloading data, the application will load faster going forward.");
+                }
                 ImGui::Text("%s", lloadmsg);
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
                 ImVec2 canvas_p0 = ImGui::GetCursorScreenPos(), canvas_p1(canvas_p0.x+aspect_width, canvas_p0.y+splash_height);

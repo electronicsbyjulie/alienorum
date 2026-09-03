@@ -15,6 +15,7 @@
 using namespace alienorum;
 
 // IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
+bool firstrun = true;
 bool done = false;
 
 // Set when the app is shutting down while the catalog loader may still be running -- the loading
