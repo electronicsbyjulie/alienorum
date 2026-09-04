@@ -53,9 +53,9 @@ std::vector<std::string> known_catalog_names =
     "USNO", "SAO",
     "BSC", "BrightStarCatalog", "BrightStarCatalogue",
     "WD",
-    #if _USE_CCDM
+#if _USE_CCDM
     "CCDM",
-    #endif
+#endif
     "SB9",
     "GCVS",
     "2MASS",
@@ -81,9 +81,9 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
         {
             std::string entry_name = entry.path().filename().string();
             if (fs::is_directory(entry.path())
-                &&
-                std::find(known_catalog_names.begin(), known_catalog_names.end(), entry_name) != known_catalog_names.end()
-                )
+                    &&
+                    std::find(known_catalog_names.begin(), known_catalog_names.end(), entry_name) != known_catalog_names.end()
+               )
             {
                 results.push_back(path + _FSSTR + entry_name);
             }
@@ -484,23 +484,23 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->update_location(J2000_TIME_T);
             // Assumed 90 degree inclination for all extrasolar systems unless inclination known.
             s->location.equatorial_plane = s->location.local_system_plane =
-                align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
+                                               align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
         }
 
-        #if _debug_sbinaries_zetret
+#if _debug_sbinaries_zetret
         if (s->HD == 20766) zet1ret = s;
         else if (s->HD == 20807)
         {
             zet2ret = s;
             std::cout << "Gliese Zeta Reticuli separation:"
-                << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
-                << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
-                << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
-                << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
-                << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
-                << std::endl;
+                      << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
+                      << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
+                      << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
+                      << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
+                      << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
+                      << std::endl;
         }
-        #endif
+#endif
 
         if (num_read)
         {
@@ -605,7 +605,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     double f;
     // StarMulti *current_multi = nullptr;
     double current_multi_ra = -1e9, current_multi_decl = -1e9;
-    #define ra_dec_multi_limit (fiftyseventh / 60)
+#define ra_dec_multi_limit (fiftyseventh / 60)
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
 
@@ -726,9 +726,9 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             if (bayer.size())
             {
                 strcpy(s->Bayer, (bayer
-                + std::string(bayer.size() < 3 ? " " : "")
-                + std::string(bayer.size() < 4 ? " " : "")
-                + cons).c_str());
+                                  + std::string(bayer.size() < 3 ? " " : "")
+                                  + std::string(bayer.size() < 4 ? " " : "")
+                                  + cons).c_str());
 
                 strcpy(s->constellation, cons.c_str());
             }
@@ -736,10 +736,10 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             if (s->FlamsteedNo)
             {
                 strcpy(s->Flamsteed, (std::to_string(s->FlamsteedNo)
-                + std::string((s->FlamsteedNo < 10) ? " " : "")
-                + std::string((s->FlamsteedNo < 100) ? " " : "")
-                + std::string((s->FlamsteedNo < 1000) ? " " : "")
-                + cons).c_str());
+                                      + std::string((s->FlamsteedNo < 10) ? " " : "")
+                                      + std::string((s->FlamsteedNo < 100) ? " " : "")
+                                      + std::string((s->FlamsteedNo < 1000) ? " " : "")
+                                      + cons).c_str());
 
                 strcpy(s->constellation, cons.c_str());
             }
@@ -796,8 +796,8 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
         {
             if (fabs(current_multi_ra - s->right_ascension) > ra_dec_multi_limit
-                && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
-                )
+                    && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
+               )
             {
                 // current_multi = nullptr;
                 current_multi_ra = s->right_ascension;
@@ -871,22 +871,22 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         // Assumed 90 degree inclination for all extrasolar systems unless inclination known.
         if (!s->Gliese[0])
             s->location.equatorial_plane = s->location.local_system_plane =
-                align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
+                                               align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
 
-        #if _debug_sbinaries_zetret
+#if _debug_sbinaries_zetret
         if (s->HD == 20766) zet1ret = s;
         else if (s->HD == 20807)
         {
             zet2ret = s;
             std::cout << "BSC Zeta Reticuli separation:"
-                << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
-                << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
-                << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
-                << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
-                << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
-                << std::endl;
+                      << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
+                      << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
+                      << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
+                      << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
+                      << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
+                      << std::endl;
         }
-        #endif
+#endif
 
         // Register every component's own HD, not just the 'A'/primary one: each ADS component here
         // carries its own distinct HD number (e.g. Gam1Vel/HD68243 vs Gam2Vel/HD68273, comp 'B'/'A'
@@ -987,7 +987,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 420, 429, Cape);
         if (Cape[0] != ' ')
         {
-            dm_survey[0] = 'C'; dm_survey[1] = 'P';
+            dm_survey[0] = 'C';
+            dm_survey[1] = 'P';
             read_field_onebased(buffer, 421, 423, field);
             dm_sign = field[0];
             dm_decl = atoi(field);
@@ -996,7 +997,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
         else if (Cordoba[0] != ' ')
         {
-            dm_survey[0] = 'C'; dm_survey[1] = 'D';
+            dm_survey[0] = 'C';
+            dm_survey[1] = 'D';
             read_field_onebased(buffer, 410, 412, field);
             dm_sign = field[0];
             dm_decl = atoi(field);
@@ -1005,7 +1007,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
         else if (Bonn[0] != ' ')
         {
-            dm_survey[0] = 'B'; dm_survey[1] = 'D';
+            dm_survey[0] = 'B';
+            dm_survey[1] = 'D';
             read_field_onebased(buffer, 399, 401, field);
             dm_sign = field[0];
             dm_decl = atoi(field);
@@ -1031,15 +1034,15 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             // There are only a handful with no V magnitude; omit them.
             read_field_onebased(buffer, 42, 46, field);
             if (!trim(field).size()) continue;
-            #if _filter_Hipparcos_stars_absmag
+#if _filter_Hipparcos_stars_absmag
             double appmag = atof(field);
-            #endif
+#endif
 
-            #if _filter_Hipparcos_stars_appmag
+#if _filter_Hipparcos_stars_appmag
             f = atof(field);
             if (f > 9) continue;
-            #endif
-            #if _filter_Hipparcos_stars_absmag
+#endif
+#if _filter_Hipparcos_stars_absmag
             read_field_onebased(buffer, 80, 86, field);
             double parallax = atof(field);
             if (parallax <= 0) continue;
@@ -1047,7 +1050,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             double intrinsic_brightness = pow(magnbase, -appmag) * pow(fmax(AU, distance) / parsec / 10, 2);
             double absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
             if (absolute_magnitude > 8.5) continue;
-            #endif
+#endif
             s = new Star();
             is_new = true;
         }
@@ -1135,7 +1138,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
         if (f) s->proper_motion_RA = f;
 
-        //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS 
+        //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS
         read_field_onebased(buffer, 97, 104, field);
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
         if (f) s->proper_motion_decl = f;
@@ -1159,20 +1162,20 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 436, 447, field);
         if (trim(field).size()) strcpy(s->spectral_type, trim(field).c_str());
 
-        #if _debug_sbinaries_zetret
+#if _debug_sbinaries_zetret
         if (s->HD == 20766) zet1ret = s;
         else if (s->HD == 20807)
         {
             zet2ret = s;
             std::cout << "Hipparcos Zeta Reticuli separation:"
-                << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
-                << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
-                << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
-                << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
-                << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
-                << std::endl;
+                      << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
+                      << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
+                      << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
+                      << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
+                      << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
+                      << std::endl;
         }
-        #endif
+#endif
 
         s->gotta_be_named_something();
         s->estimate_radius();
@@ -1426,7 +1429,11 @@ static std::string squeeze_spaces(const char *s)
     bool gap = false;
     for (; *s; s++)
     {
-        if (isspace((unsigned char)*s)) { gap = !out.empty(); continue; }
+        if (isspace((unsigned char)*s))
+        {
+            gap = !out.empty();
+            continue;
+        }
         if (gap) out += ' ';
         gap = false;
         out += *s;
@@ -1666,7 +1673,7 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
         if (f) s->proper_motion_RA = f;
 
-        //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS 
+        //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS
         read_field_onebased(buffer, 97, 104, field);
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
         if (f) s->proper_motion_decl = f;
@@ -1770,10 +1777,10 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
         if (star_name.c_str()[1] >= 'A' && star_name.c_str()[1] <= 'Z')
         {
             if (strcmp(star_name.substr(0,2).c_str(), "HD")
-                && strcmp(star_name.substr(0,2).c_str(), "BD")
-                && strcmp(star_name.substr(0,2).c_str(), "CD")
-                && strcmp(star_name.substr(0,2).c_str(), "CP")
-                ) continue;
+                    && strcmp(star_name.substr(0,2).c_str(), "BD")
+                    && strcmp(star_name.substr(0,2).c_str(), "CD")
+                    && strcmp(star_name.substr(0,2).c_str(), "CP")
+               ) continue;
         }
 
         //  17- 26  A10    ---     WD       White Dwarf (WD) number
@@ -1839,8 +1846,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
             absmag = atof(field);
 
             if (fabs(vmag - ((Star*)cels[i])->apparent_magnitude) > 1.5
-                && fabs(absmag - ((Star*)cels[i])->absolute_magnitude) > 1.5
-                )
+                    && fabs(absmag - ((Star*)cels[i])->absolute_magnitude) > 1.5
+               )
             {
                 // Example: WD0114-027/HD7672 B: names entry is incorrect, verify vmag/absmag
                 // TODO: Find out if this happens just a few times and hard code (eww!) a workaround,
@@ -2154,15 +2161,15 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         if (!s)
         {
-            #if _ALLOW_CCDM_ADDITIONS
+#if _ALLOW_CCDM_ADDITIONS
             s = new Star();
             s->epoch = J2000 + (1991.25 - 2000);
 
             append_cel(s);
             offset++;
-            #else
+#else
             continue;
-            #endif
+#endif
         }
         if (s != A) s->make_companion_of(A, conccomp);
 
@@ -2258,7 +2265,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         mtx.lock();
         loading_msg = std::string("Loaded ") + std::to_string(num_read)
-            + std::string(" objects from Catalogue of the Components of Double and Multiple Stars...");
+                      + std::string(" objects from Catalogue of the Components of Double and Multiple Stars...");
         mtx.unlock();
     }
     return num_read;
@@ -2374,20 +2381,20 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
                 if (HIP && (s->HIP == HIP)) found = i;
                 else if (HD && (s->HD == HD)) found = i;
                 else if (Bonn == 'B' && s->Bonn_survey[0] == 'B' && s->Bonn_survey[1] == 'D'
-                    && s->Bonn_survey_sign == Bonn_sign
-                    && s->Bonn_survey_declination == Bonn_decl
-                    && s->Bonn_survey_sequential == Bonn_seq
-                    ) found = i;
+                         && s->Bonn_survey_sign == Bonn_sign
+                         && s->Bonn_survey_declination == Bonn_decl
+                         && s->Bonn_survey_sequential == Bonn_seq
+                        ) found = i;
                 else if (Bonn == 'C' && s->Bonn_survey[0] == 'C' && s->Bonn_survey[1] == 'D'
-                    && s->Bonn_survey_sign == Bonn_sign
-                    && s->Bonn_survey_declination == Bonn_decl
-                    && s->Bonn_survey_sequential == Bonn_seq
-                    ) found = i;
+                         && s->Bonn_survey_sign == Bonn_sign
+                         && s->Bonn_survey_declination == Bonn_decl
+                         && s->Bonn_survey_sequential == Bonn_seq
+                        ) found = i;
                 else if (Bonn == 'P' && s->Bonn_survey[0] == 'C' && s->Bonn_survey[1] == 'P'
-                    && s->Bonn_survey_sign == Bonn_sign
-                    && s->Bonn_survey_declination == Bonn_decl
-                    && s->Bonn_survey_sequential == Bonn_seq
-                    ) found = i;
+                         && s->Bonn_survey_sign == Bonn_sign
+                         && s->Bonn_survey_declination == Bonn_decl
+                         && s->Bonn_survey_sequential == Bonn_seq
+                        ) found = i;
                 if (found >= 0) break;
             }
             if (found < 0)
@@ -2506,9 +2513,9 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 124, 133, field);
         f = atof(field);
         B->orbit->semimajor_axis = (13751000 / oneday)              // convert to m/s
-            * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
-            * f
-            * B->orbit->period;
+                                   * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
+                                   * f
+                                   * B->orbit->period;
 
         // Star A is held stationary with B orbiting it, so the two semimajor axes are summed to
         // get the distance between the stars.
@@ -2516,9 +2523,9 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 148, 157, field);
         f = atof(field);
         B->orbit->semimajor_axis += (13751000 / oneday)             // convert to m/s
-            * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
-            * f
-            * B->orbit->period;
+                                    * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
+                                    * f
+                                    * B->orbit->period;
 
         num_read++;
         if (offset >= (max-1))
@@ -2529,7 +2536,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 
         mtx.lock();
         if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read)
-            + std::string(" objects from Stellar Binaries Catalogue...");
+                                                 + std::string(" objects from Stellar Binaries Catalogue...");
         mtx.unlock();
     }
     fclose(fp);
@@ -2742,25 +2749,25 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         }
 
         if ((asno > 4 || absmagn >= 8)
-            && asno != 55 && asno != 89 && asno != 105 && asno != 116 && asno != 490 && asno != 742 && asno != 896 
-            && asno != 1001 && asno != 1006 && asno != 1134 && asno != 1143 && asno != 1221 && asno != 1388 && asno != 1404 && asno != 1421
-            && asno != 1566 && asno != 1604 && asno != 1691 && asno != 1693 && asno != 1709 && asno != 1741 && asno != 1772 && asno != 1776 && asno != 1789
-            && asno != 1790 && asno != 1791 && asno != 1814 && asno != 1815 && asno != 1823 && asno != 1862 && asno != 1964 && asno != 1991
-            && asno != 2000 && asno != 2001 && asno != 2002 && asno != 2060 && asno != 2062 && asno != 2069 && asno != 2101 && asno != 2161
-            && asno != 2244 && asno != 2247 && asno != 2309 && asno != 2322 && asno != 2362 && asno != 2476 && asno != 2675 && asno != 2688 
-            && asno != 2709 && asno != 2769 && asno != 2801 && asno != 2807 && asno != 2810 && asno != 2830 && asno != 2937 && asno != 2985 && asno != 2999
-            && asno != 3130 && asno != 3142 && asno != 3153 && asno != 3163 && asno != 3313 && asno != 3350 && asno != 3351 && asno != 3352
-            && asno != 3353 && asno != 3354 && asno != 3355 && asno != 3356 && asno != 3366 && asno != 3412 && asno != 3524 && asno != 3534
-            && asno != 3600 && asno != 3768 && asno != 3838 && asno != 3895 && asno != 3905 && asno != 3948 
-            && asno != 4062 && asno != 4147 && asno != 4169 && asno != 4179 && asno != 4180 && asno != 4221 && asno != 4330 && asno != 4337
-            && asno != 4444 && asno != 4457 && asno != 4500 && asno != 4513 && asno != 4628 && asno != 4659 && asno != 4716 && asno != 4804 && asno != 4987 
-            && asno != 5000 && asno != 5020 && asno != 5370 && asno != 5471 && asno != 5535 && asno != 5668 && asno != 5747 && asno != 5773
-            && asno != 5790 && asno != 5803 && asno != 5811
-            && asno != 6006 && asno != 6032 && asno != 6123 && asno != 6143 && asno != 6186 && asno != 6433 && asno != 6469 && asno != 6470
-            && asno != 6471 && asno != 6486 && asno != 6493 && asno != 6701 && asno != 6714 && asno != 6826 && asno != 6875 && asno != 6914 && asno != 6999
-            && asno != 7000 && asno != 8000 && asno != 50000 && asno != 90377 && asno != 90482 && asno != 134340 && asno != 136108 && asno != 136199
-            && asno != 136472 && asno != 163693 && asno != 486958 && asno != 541132
-            )
+                && asno != 55 && asno != 89 && asno != 105 && asno != 116 && asno != 490 && asno != 742 && asno != 896
+                && asno != 1001 && asno != 1006 && asno != 1134 && asno != 1143 && asno != 1221 && asno != 1388 && asno != 1404 && asno != 1421
+                && asno != 1566 && asno != 1604 && asno != 1691 && asno != 1693 && asno != 1709 && asno != 1741 && asno != 1772 && asno != 1776 && asno != 1789
+                && asno != 1790 && asno != 1791 && asno != 1814 && asno != 1815 && asno != 1823 && asno != 1862 && asno != 1964 && asno != 1991
+                && asno != 2000 && asno != 2001 && asno != 2002 && asno != 2060 && asno != 2062 && asno != 2069 && asno != 2101 && asno != 2161
+                && asno != 2244 && asno != 2247 && asno != 2309 && asno != 2322 && asno != 2362 && asno != 2476 && asno != 2675 && asno != 2688
+                && asno != 2709 && asno != 2769 && asno != 2801 && asno != 2807 && asno != 2810 && asno != 2830 && asno != 2937 && asno != 2985 && asno != 2999
+                && asno != 3130 && asno != 3142 && asno != 3153 && asno != 3163 && asno != 3313 && asno != 3350 && asno != 3351 && asno != 3352
+                && asno != 3353 && asno != 3354 && asno != 3355 && asno != 3356 && asno != 3366 && asno != 3412 && asno != 3524 && asno != 3534
+                && asno != 3600 && asno != 3768 && asno != 3838 && asno != 3895 && asno != 3905 && asno != 3948
+                && asno != 4062 && asno != 4147 && asno != 4169 && asno != 4179 && asno != 4180 && asno != 4221 && asno != 4330 && asno != 4337
+                && asno != 4444 && asno != 4457 && asno != 4500 && asno != 4513 && asno != 4628 && asno != 4659 && asno != 4716 && asno != 4804 && asno != 4987
+                && asno != 5000 && asno != 5020 && asno != 5370 && asno != 5471 && asno != 5535 && asno != 5668 && asno != 5747 && asno != 5773
+                && asno != 5790 && asno != 5803 && asno != 5811
+                && asno != 6006 && asno != 6032 && asno != 6123 && asno != 6143 && asno != 6186 && asno != 6433 && asno != 6469 && asno != 6470
+                && asno != 6471 && asno != 6486 && asno != 6493 && asno != 6701 && asno != 6714 && asno != 6826 && asno != 6875 && asno != 6914 && asno != 6999
+                && asno != 7000 && asno != 8000 && asno != 50000 && asno != 90377 && asno != 90482 && asno != 134340 && asno != 136108 && asno != 136199
+                && asno != 136472 && asno != 163693 && asno != 486958 && asno != 541132
+           )
         {
             astorb.push_back(row);
             continue;
@@ -2875,12 +2882,18 @@ bool CatalogReader::load_comet(CometRow *r, char *buffer)
     c->orbit->inclination = atof(field) * fiftyseventh;
 
     // 487-521: the two light curves, total and nucleus.
-    read_field_onebased(buffer, 487, 491, field); c->H1 = atof(field);
-    read_field_onebased(buffer, 493, 497, field); c->R1 = atof(field);
-    read_field_onebased(buffer, 499, 503, field); c->D1 = atof(field);
-    read_field_onebased(buffer, 505, 509, field); c->H2 = atof(field);
-    read_field_onebased(buffer, 511, 515, field); c->R2 = atof(field);
-    read_field_onebased(buffer, 517, 521, field); c->D2 = atof(field);
+    read_field_onebased(buffer, 487, 491, field);
+    c->H1 = atof(field);
+    read_field_onebased(buffer, 493, 497, field);
+    c->R1 = atof(field);
+    read_field_onebased(buffer, 499, 503, field);
+    c->D1 = atof(field);
+    read_field_onebased(buffer, 505, 509, field);
+    c->H2 = atof(field);
+    read_field_onebased(buffer, 511, 515, field);
+    c->R2 = atof(field);
+    read_field_onebased(buffer, 517, 521, field);
+    c->D2 = atof(field);
 
     if (q_au <= 0) q_au = 1;
     c->orbit->eccentricity = e;
@@ -2962,7 +2975,11 @@ int CatalogReader::read_comets_catalog(CelestialObject **cels, int max)
     if (!fp) return 0;
 
     for (offset=0; offset<max && cels[offset]; offset++);
-    if (offset >= (max-1)) { fclose(fp); return 0; }
+    if (offset >= (max-1))
+    {
+        fclose(fp);
+        return 0;
+    }
 
     while (fgets(buffer, 1020, fp))
     {
@@ -3176,14 +3193,14 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             }
         }
 
-        #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
         std::cout << s->name;
         if (s->HD) std::cout << " HD " << s->HD;
         std::cout << std::endl;
 
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
         std::cout << "Star:   " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
-        #endif
+#endif
 
         n = pincls.size();
         int l=0;
@@ -3212,9 +3229,9 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 pmeannode = (m ? (pmeannode * (double)m/mnew) : pmeannode) + node * sini / mnew;
                 m = mnew;
             }
-            #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
             std::cout << "Planet: " << (pincls[i]*fiftyseven) << "," << (pnodes[i]*fiftyseven) << std::endl;
-            #endif
+#endif
         }
 
         if (l) pmeanincl /= l;
@@ -3244,16 +3261,16 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 cmeannode = (m ? (cmeannode * (double)m/mnew) : cmeannode) + node * sini / mnew;
                 m = mnew;
             }
-            #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
             std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
-            #endif
+#endif
         }
 
         if (l) cmeanincl /= l;
 
-        #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
         std::cout << std::endl;
-        #endif
+#endif
 
         // planets > system > star > comps
         if (pmeanincl && !sysincl) sysincl = pmeanincl;
@@ -3285,7 +3302,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             for (i=0; i<n; i++) if (!cnodes[i]) cnodes[i] = sysnode;
         }
 
-        #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
         std::cout << "Filled in:" << std::endl;
         std::cout << "System: " << (sysincl*fiftyseven) << "," << (sysnode*fiftyseven) << std::endl;
         std::cout << "Star:   " << (stincl*fiftyseven ) << "," << (stnode*fiftyseven ) << std::endl;
@@ -3296,20 +3313,20 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
         for (i=0; i<n; i++) std::cout << "Comp:   " << (cincls[i]*fiftyseven) << "," << (cnodes[i]*fiftyseven) << std::endl;
 
         std::cout << std::endl;
-        #endif
+#endif
 
         if (sysincl) s->planets_heliocen_inclination = sysincl;
         if (sysnode) s->planets_heliocen_node = sysnode;
 
         s->location.local_system_plane = system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? sysincl : half_pi,
-            sysnode, s->location.system_center);
+                                         sysnode, s->location.system_center);
         s->lock_system_plane = true;
 
-        #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
         double czincl, cznode;
         incl_and_node_from_system_plane(s->location.local_system_plane, czincl, cznode, s->location.system_center);
         std::cout << "Double check: " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
-        #endif
+#endif
 
         n = row.size();
         for (i=0; i<n; i++)
@@ -3318,34 +3335,34 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             if (planet_istars.find(p->origname) != planet_istars.end())
             {
                 stnode = pnodes[i] - planet_istars[p->origname]*fiftyseventh;
-                #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
                 std::cout << "Star:   " << (stincl*fiftyseven ) << "," << (stnode*fiftyseven ) << std::endl;
-                #endif
+#endif
             }
 
             elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi,
-                pnodes[i], s->location.system_center),
-                s->location.local_system_plane,
-                p->orbit->inclination, p->orbit->ascending_node);
+                                            pnodes[i], s->location.system_center),
+                                            s->location.local_system_plane,
+                                            p->orbit->inclination, p->orbit->ascending_node);
 
             p->location.local_system_plane = s->location.local_system_plane;
             p->lock_equatorial_plane = false;
 
-            #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
             p->update_location(simnow);
             double czincl, cznode;
             incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
             std::cout << "Double check " << p->name << ": " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
-            #endif
+#endif
 
             p->origname = p->name;
         }
 
         elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? stincl : half_pi,
-            stnode,
-            s->location.system_center),
-            s->location.local_system_plane,
-            s->obliquity, s->equinox);
+                                        stnode,
+                                        s->location.system_center),
+                                        s->location.local_system_plane,
+                                        s->obliquity, s->equinox);
 
         if (s->multisys)
         {
@@ -3358,27 +3375,27 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 {
                     assert(i<n);
                     elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? cincls[i] : half_pi,
-                        cnodes[i],
-                        s->location.system_center),
-                        s->location.local_system_plane,
-                        comp->orbit->inclination, comp->orbit->ascending_node);
+                                                    cnodes[i],
+                                                    s->location.system_center),
+                                                    s->location.local_system_plane,
+                                                    comp->orbit->inclination, comp->orbit->ascending_node);
 
                     comp->location.local_system_plane = s->location.local_system_plane;
 
-                    #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
                     comp->update_location(simnow);
                     double czincl, cznode;
                     incl_and_node_from_system_plane(comp->location.orbital_plane, czincl, cznode, comp->location.system_center);
                     std::cout << "Double check " << comp->name << ": " << (czincl*fiftyseven) << "," << (cznode*fiftyseven) << std::endl;
-                    #endif
+#endif
                     i++;
                 }
             }
         }
 
-        #if _debug_exoplanet_inclinations
+#if _debug_exoplanet_inclinations
         std::cout << std::endl << std::endl;
-        #endif
+#endif
     }
 }
 
@@ -3396,15 +3413,15 @@ bool CatalogReader::worth_searching(std::string star_name)
     if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) return true;
     if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
             || (star_name.c_str()[0] >= 'a' && star_name.c_str()[0] <= 'z')
-            )
+        )
             && star_name.c_str()[1] >= 'a' && star_name.c_str()[1] <= 'z'
             && star_name.c_str()[2] >= 'a' && star_name.c_str()[2] <= 'z'
-            )
+       )
         return true;
     int l = star_name.size();
     if ((star_name.c_str()[0] >= '1' && star_name.c_str()[0] <= '9')
             && (star_name.c_str()[l-1] >= 'A' && star_name.c_str()[l-1] <= 'z')
-            )
+       )
         return true;
 
     return false;
@@ -3432,9 +3449,9 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         {
             std::string entry_name = entry.path().filename().string();
             if (!fs::is_directory(entry.path())
-                &&
-                !strcmp(entry_name.substr(0, startswith.size()).c_str(), startswith.c_str())
-                )
+                    &&
+                    !strcmp(entry_name.substr(0, startswith.size()).c_str(), startswith.c_str())
+               )
             {
                 if (strcmp(entry_name.c_str(), candidate.c_str()) > 0) candidate = entry_name;
             }
@@ -3465,9 +3482,9 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     while (fgets(buffer, 2046, fp))
     {
         if (buffer[0] == '#' && buffer[2] == 'C' && buffer[3] == 'O'
-            && buffer[4] == 'L' && buffer[5] == 'U' && buffer[6] == 'M'
-            && buffer[7] == 'N'
-            )
+                && buffer[4] == 'L' && buffer[5] == 'U' && buffer[6] == 'M'
+                && buffer[7] == 'N'
+           )
         {
             char *colon = strchr(buffer, ':');
             if (!colon) continue;
@@ -3500,11 +3517,11 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
         else if (wasfirst == '#' && buffer[0] != '#')
         {
             if (col_plnm<0 || col_stnm<0 || col_hd<0 || col_orbper<0 || col_sma<0
-                || (col_rade<0 && col_radj<0) || (col_mass_e<0 && col_mass_j<0)
-                || col_eccn<0 || col_incl<0 || col_periepo<0 || col_argperi<0
-                || col_oblt<0 || col_srad<0 || col_smass<0
-                || col_ra<0 || col_decl<0 || col_vmag<0
-                )
+                    || (col_rade<0 && col_radj<0) || (col_mass_e<0 && col_mass_j<0)
+                    || col_eccn<0 || col_incl<0 || col_periepo<0 || col_argperi<0
+                    || col_oblt<0 || col_srad<0 || col_smass<0
+                    || col_ra<0 || col_decl<0 || col_vmag<0
+               )
             {
                 std::stringstream oss;
                 oss << "ERROR: Exoplanets file " << candidate << " missing one or more required columns!";
@@ -3613,7 +3630,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         std::cerr << "Columns out of sequence." << std::endl;
                         throw 0xbadda7a;
                     }
-                    else if (trim(field).size()) 
+                    else if (trim(field).size())
                     {
                         if (i == col_orbper)
                         {
@@ -3909,7 +3926,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         const char* bdystr = bdyname.c_str();
 
         Rotation new_orbital_plane = system_plane_from_incl_and_node(inclination, ascending_node,
-            A->location.system_center - cels[0]->location.system_center);
+                                     A->location.system_center - cels[0]->location.system_center);
         if (inclination || ascending_node)
         {
             if (!strcmp(bdystr, "(stellar rotation)"))
@@ -3938,10 +3955,10 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         s = nullptr;
         if (!strcmp(bdystr, "(system inclination)")
-            || strstr(bdystr, " disk") || strstr(bdystr, " disc")
-            || strstr(bdystr, " belt")
-            || !strcmp(bdystr, "(companion orbit)")
-            )
+                || strstr(bdystr, " disk") || strstr(bdystr, " disc")
+                || strstr(bdystr, " belt")
+                || !strcmp(bdystr, "(companion orbit)")
+           )
         {
             A->has_disk = A->known_poles;
             s = A;
@@ -4105,11 +4122,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                     mseqi /= mseqn;
                     // Filter out white dwarfs and brown dwarfs.
                     if (
-                            (!msun  || fabs(mseqim - mseqi) < 7 )
-                            && (!rsun  || fabs(mseqir - mseqi) < 7 )
-                            && (!lum   || fabs(mseqil - mseqi) < 7 )
-                            && (!tempK || fabs(mseqit - mseqi) < 7 )
-                        )
+                        (!msun  || fabs(mseqim - mseqi) < 7 )
+                        && (!rsun  || fabs(mseqir - mseqi) < 7 )
+                        && (!lum   || fabs(mseqil - mseqi) < 7 )
+                        && (!tempK || fabs(mseqit - mseqi) < 7 )
+                    )
                     {
                         if (!msun ) s->mass = Star::interpolate_mseq_mass(mseqi) * solar_mass;
                         if (!rsun ) s->volumetric_mean_radius = Star::interpolate_mseq_rad(mseqi) * solar_radius;
@@ -4128,12 +4145,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                     }
                 }
 
-                #if 0
+#if 0
                 if (A->HD == 205877) std::cout << s->name << ": " << msun << " " << rsun << " " << lum << " " << tempK
-                    << " | " << mseqi
-                    << " | " << Star::interpolate_mseq_temp(mseqi)
-                    << std::endl;
-                #endif
+                                                   << " | " << mseqi
+                                                   << " | " << Star::interpolate_mseq_temp(mseqi)
+                                                   << std::endl;
+#endif
             }
         }
         else if (!s || s == A)
@@ -4243,7 +4260,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
         {
             pl.at("BODYNAME").get_to(bodyname);
             cenname = "";
-            try { pl.at("CENTER_OF_ORBIT").get_to(cenname); } catch (...) { ; }
+            try
+            {
+                pl.at("CENTER_OF_ORBIT").get_to(cenname);
+            }
+            catch (...) { ; }
             j = cenname.size() ? -1 : find_object(bodyname.c_str(), false, 9e+29, 0);
             k = -1;
             if (cenname.size()) k = find_object(cenname.c_str(), false, 9e+29, 0);
@@ -4251,7 +4272,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             if (k>=0 && mustnt_orbit == cels[k]) continue;
 
             if (j < 0 || k >= 0)                // Name not taken or center of orbit,
-            {                                   // create new.
+            {
+                // create new.
                 if (k < 0) throw 0xbadda7a;     // Future expansion.
                 if (cels[k]->type == galaxy)
                     throw 0xbadda7a;            // Future expansion.
@@ -4281,7 +4303,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 createnew = true;
             }
             else                                // Name taken and no center specified,
-            {                                   // update existing.
+            {
+                // update existing.
                 p = (Planet*)cels[j];
                 m = (p->typeclass() == class_moon) ? ((Moon*)p) : nullptr;
                 createnew = false;
@@ -4300,43 +4323,162 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->location.equatorial_plane = align_points_3d(pole, yaxis, center);
                 p->lock_equatorial_plane = true;
                 p->known_poles = true;
-            } catch (...) { ; }
-            try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
-            try { pl.at("ArgPeri").get_to(p->orbit->arg_periapsis); p->orbit->arg_periapsis *= fiftyseventh; } catch (...) { ; }
-            try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("ABSMG").get_to(p->absolute_magnitude);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("ArgPeri").get_to(p->orbit->arg_periapsis);
+                p->orbit->arg_periapsis *= fiftyseventh;
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("AscNode").get_to(p->orbit->ascending_node);
+                p->orbit->ascending_node *= fiftyseventh;
+            }
+            catch (...) { ; }
 
-            try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
-            try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
-            try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
-            try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
-            try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
-            try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
-            try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
-            try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0; } catch (...) { ; }
-            try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
-            try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
-            try { pl.at("J2").get_to(p->J2); } catch (...) { ; }
-            try { pl.at("Lon_J2000_offset").get_to(p->lon_J2000_offset); p->lon_J2000_offset *= fiftyseventh; } catch (...) { ; }
+            try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ }
+            catch (...) { ; }
+            try
+            {
+                pl.at("BVmag").get_to(p->BV_color);
+            }
+            catch (...)
+            {
+                if (createnew) p->BV_color = p->orbit->center->BV_color;
+            }
+            try
+            {
+                pl.at("UBmag").get_to(p->UB_color);
+            }
+            catch (...)
+            {
+                if (createnew) p->UB_color = p->orbit->center->UB_color;
+            }
+            try
+            {
+                pl.at("Eccentricity").get_to(p->orbit->eccentricity);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("Epoch").get_to(p->epoch);
+                p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday);
+                p->orbit->epoch = p->epoch;
+            }
+            catch (...) { ; }
+            try
+            {
+                double pre;
+                pl.at("EqPrecession").get_to(pre);
+                p->precession = pre ? (_pi * 2 / pre / oneyear) : 0;
+            }
+            catch (...) { ; }
+            try
+            {
+                double pre;
+                pl.at("NodePrecession").get_to(pre);
+                p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0;
+            }
+            catch (...) { ; }
+            try
+            {
+                double pro;
+                pl.at("ArgPeriProcession").get_to(pro);
+                p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0;
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("Equinox").get_to(p->equinox);
+                p->equinox *= fiftyseventh;
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("Incl").get_to(p->orbit->inclination);
+                p->orbit->inclination *= fiftyseventh;
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("J2").get_to(p->J2);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("Lon_J2000_offset").get_to(p->lon_J2000_offset);
+                p->lon_J2000_offset *= fiftyseventh;
+            }
+            catch (...) { ; }
             try
             {
                 pl.at("Mass").get_to(p->mass);
                 p->mass *= 1000;
-            } catch (...) { ; }
-            try { pl.at("MeanAnom").get_to(p->orbit->mean_anomaly); p->orbit->mean_anomaly *= fiftyseventh; } catch (...) { ; }
-            try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
-            try { pl.at("Obliquity").get_to(p->obliquity); p->obliquity *= fiftyseventh; } catch (...) { ; }
-            try { pl.at("OrbitPeriod").get_to(p->orbit->period); } catch (...) { ; }
-            try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
-            try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("MeanAnom").get_to(p->orbit->mean_anomaly);
+                p->orbit->mean_anomaly *= fiftyseventh;
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("Oblateness").get_to(p->oblateness);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("Obliquity").get_to(p->obliquity);
+                p->obliquity *= fiftyseventh;
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("OrbitPeriod").get_to(p->orbit->period);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("RotationPeriod").get_to(p->sidereal_rotational_period);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis);
+            }
+            catch (...) { ; }
             // Atmosphere. Read into locals first and only build the object if the record really
             // carries something: most bodies in planets.json have no atmospheric keys at all and
             // must come out with atm == nullptr rather than the struct's one-atmosphere default.
             {
                 bool has_atm = false;
                 double a_pressure = 0, a_tau = 0, a_partic = 0;
-                try { pl.at("SurfacePressure").get_to(a_pressure); has_atm = true; } catch (...) { ; }
-                try { pl.at("AtmosphericTau").get_to(a_tau);       has_atm = true; } catch (...) { ; }
-                try { pl.at("Particulates").get_to(a_partic);      has_atm = true; } catch (...) { ; }
+                try
+                {
+                    pl.at("SurfacePressure").get_to(a_pressure);
+                    has_atm = true;
+                }
+                catch (...) { ; }
+                try
+                {
+                    pl.at("AtmosphericTau").get_to(a_tau);
+                    has_atm = true;
+                }
+                catch (...) { ; }
+                try
+                {
+                    pl.at("Particulates").get_to(a_partic);
+                    has_atm = true;
+                }
+                catch (...) { ; }
                 if (has_atm)
                 {
                     Atmosphere *a = p->ensure_atmosphere();
@@ -4351,22 +4493,56 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 {
                     json jc = pl.at("AtmosphereComposition");
                     p->ensure_atmosphere()->ensure_composition()->from_json(jc);
-                } catch (...) { ; }
+                }
+                catch (...) { ; }
 
                 // Or the whole thing as one "Atmosphere" object, optionally holding a
                 // "Composition". Read last so it wins over the flatter spellings above.
-                try { json ja = pl.at("Atmosphere"); p->ensure_atmosphere()->from_json(ja); } catch (...) { ; }
+                try
+                {
+                    json ja = pl.at("Atmosphere");
+                    p->ensure_atmosphere()->from_json(ja);
+                }
+                catch (...) { ; }
             }
-            try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
-            try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
+            try
+            {
+                pl.at("VolMeanRad").get_to(p->volumetric_mean_radius);
+            }
+            catch (...) { ; }
+            try
+            {
+                pl.at("RingRadius").get_to(p->ring_radius);
+                p->ring_radius *= 1000;
+            }
+            catch (...) { ; }
             // try { pl.at("").get_to(p->); } catch (...) { ; }
 
             if (m)
             {
-                try { pl.at("Depth" ).get_to(m->depth ); m->depth  *= 1000; } catch (...) { ; }
-                try { pl.at("Width" ).get_to(m->width ); m->width  *= 1000; } catch (...) { ; }
-                try { pl.at("Height").get_to(m->height); m->height *= 1000; } catch (...) { ; }
-                try { pl.at("Major" ).get_to(m->major_moon); } catch (...) { ; }
+                try
+                {
+                    pl.at("Depth" ).get_to(m->depth );
+                    m->depth  *= 1000;
+                }
+                catch (...) { ; }
+                try
+                {
+                    pl.at("Width" ).get_to(m->width );
+                    m->width  *= 1000;
+                }
+                catch (...) { ; }
+                try
+                {
+                    pl.at("Height").get_to(m->height);
+                    m->height *= 1000;
+                }
+                catch (...) { ; }
+                try
+                {
+                    pl.at("Major" ).get_to(m->major_moon);
+                }
+                catch (...) { ; }
                 if (!m->orbit) std::cout << "WARNING: " << m->name << " has no orbit." << std::endl << std::flush;
                 if (m->orbit && !m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
                 if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
@@ -4388,11 +4564,12 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                         std::string destfname;
                         if (!strcasecmp(mapurl.substr(mapurl.size()-4).c_str(), ".png"))
                             destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".png");
-                            else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
+                        else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
                         if (!file_exists(destfname.c_str()))
                             download_file(mapurl, destfname);
                     }
-                } catch (...) { ; }
+                }
+                catch (...) { ; }
             }
 
             if (p->orbit && p->orbit->center && createnew)
@@ -5043,8 +5220,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                         if (!A->lock_system_plane)
                         {
                             A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
-                                = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
-                                cels[i]->orbit->heliocentric_node, A->location.system_center);
+                                                           = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
+                                                                   cels[i]->orbit->heliocentric_node, A->location.system_center);
                             // A->lock_system_plane = true;
                         }
 
@@ -5122,9 +5299,9 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
 
     // Ensure baseline primary keys exist
     if (!row.contains("pl_name") || row["pl_name"].is_null()
-        || !row.contains("hostname") || row["hostname"].is_null()
-        || !row.contains("pl_orbsmax") || row["pl_orbsmax"].is_null()
-        || !row.contains("pl_orbper") || row["pl_orbper"].is_null()
+            || !row.contains("hostname") || row["hostname"].is_null()
+            || !row.contains("pl_orbsmax") || row["pl_orbsmax"].is_null()
+            || !row.contains("pl_orbper") || row["pl_orbper"].is_null()
        )
     {
         return r;
@@ -5133,8 +5310,16 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     r.pl_name = row["pl_name"].get<std::string>();
     r.hostname = row["hostname"].get<std::string>();
 
-    try { r.hd_name  = row.contains("hd_name" ) ? row["hd_name" ].get<std::string>() : ""; } catch (...) { ; }
-    try { r.hip_name = row.contains("hip_name") ? row["hip_name"].get<std::string>() : ""; } catch (...) { ; }
+    try
+    {
+        r.hd_name  = row.contains("hd_name" ) ? row["hd_name" ].get<std::string>() : "";
+    }
+    catch (...) { ; }
+    try
+    {
+        r.hip_name = row.contains("hip_name") ? row["hip_name"].get<std::string>() : "";
+    }
+    catch (...) { ; }
 
     auto getd = [&row](const char* key) -> double
     {
@@ -5519,7 +5704,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         {
             new_planet->mass = pl_msini / sin(st_incl);
             std::cout << "Mass of " << new_planet->name << " computed at " << (new_planet->mass / earth_mass)
-                << " m(Earth) based on system inclination " << (st_incl * fiftyseven) << std::endl;
+                      << " m(Earth) based on system inclination " << (st_incl * fiftyseven) << std::endl;
             pl_massknown = true;
         }
     }
@@ -5547,19 +5732,15 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 {
     unsigned int result = 0;
-
     bool do_download = true;
     std::map<int, std::vector<int>> planet_celids;
     static bool loaded_starsonly = false;
 
     const char* exocache = "catalogs/exoplanets.json";
-    // Derived caches holding only what each pass actually added last time (new host stars, then
-    // the planets). While at least as fresh as exocache, they let both passes skip parsing the
-    // much larger raw TAP dump entirely.
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
 
     std::stringstream lmss;
-    lmss << "Loading exoplanets from NASA via TAP...";
+    lmss << "Loading exoplanets from unified TAP sources...";
     mtx.lock();
     loading_msg = lmss.str();
     mtx.unlock();
@@ -5579,12 +5760,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             while (exorow_read_line(fp, row))
             {
                 if (ncelobjs >= MAX_CELOBJS) break;
-
                 bool was_new = false;
                 Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
                 if (!host_star) continue;
                 if (stars_only) continue;
-
                 add_exoplanet_from_row(row, host_star, planet_celids, result);
             }
             fclose(fp);
@@ -5595,63 +5774,217 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
     }
 
-    std::string readBuffer;
-    json planets_array;
+    std::string readBufferNASA;
+    std::string readBufferEU;
+    json planets_array = json::array(); // Unified array
 
     if (radio_silence) do_download = false;
-    if (do_download && !radio_silence)                  // Deliberately redundant.
+
+    if (do_download && !radio_silence)
     {
-        CURL* curl = curl_easy_init();
-        if (!curl)
+        // Reusable lambda to abstract libcurl boilerplate
+        auto fetch_tap = [&](const std::string& url, std::string& out_buffer) -> bool
         {
-            std::cerr << "Failed to initialize libcurl." << std::endl;
-            return false;
+            CURL* curl = curl_easy_init();
+            if (!curl) return false;
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out_buffer);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            CURLcode res = curl_easy_perform(curl);
+            curl_easy_cleanup(curl);
+            return res == CURLE_OK;
+        };
+
+        // 1. Fetch NASA Data
+        std::string nasa_url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?maxrec=20000&query="
+                               "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,pl_tranmid,"
+                               "pl_bmasse,pl_bmassj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
+                               "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
+                               "from+pscomppars+order+by+pl_name+asc&format=json";
+
+        if (!fetch_tap(nasa_url, readBufferNASA))
+        {
+            std::cerr << "NASA TAP Query failed." << std::endl;
         }
 
-        // Constructing the synchronous TAP ADQL query targeting the pscomppars table
-        // Selects core planetary and fallback/stellar fields
-        std::string url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query="
-                        "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,pl_tranmid,"
-                        "pl_bmasse,pl_bmassj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
-                        "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
-                        "from+pscomppars+order+by+pl_name+asc"
-                        "&format=json";
+        // 2. Fetch exoplanet.eu Data via PADC VESPA TAP
+        // ADQL column aliasing maps EU's schema directly onto NASA's nomenclature.
+        std::string eu_url = "http://voparis-tap-planeto.obspm.fr/tap/sync?"
+                             "request=doQuery&lang=ADQL&format=json&maxrec=20000&query="
+                             "select+target_name+as+pl_name,star_name+as+hostname,"
+                             "period+as+pl_orbper,semi_major_axis+as+pl_orbsmax,eccentricity+as+pl_orbeccen,inclination+as+pl_orbincl,"
+                             "periastron+as+pl_orblper,t_peri+as+pl_orbtper,"
+                             "mass+as+pl_bmassj,mass_sin_i+as+pl_msinij,radius+as+pl_radj,"
+                             "ra,dec,star_distance+as+sy_dist,mag_v+as+sy_vmag,"
+                             "star_mass+as+st_mass,star_radius+as+st_rad,star_teff+as+st_teff,star_spec_type+as+st_spectype+"
+                             "from+exoplanet.epn_core+order+by+target_name+asc";
 
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L); // Generous timeout for large dataset
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-        CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK)
+        if (!fetch_tap(eu_url, readBufferEU))
         {
-            std::cerr << "TAP Query failed via curl: " << curl_easy_strerror(res) << std::endl;
-            return 0;
-        }
-        planets_array = json::parse(readBuffer);
-    }
-    else
-    {
-        // std::cout << "Exoplanets file age: " << file_age(exocache) << " seconds." << std::endl;
-        std::fstream fs(exocache, std::ios::in);
-        if (!fs) return 0;
-        fs >> planets_array;
-        fs.close();
-    }
-
-    try
-    {
-        if (!planets_array.is_array())
-        {
-            std::cerr << "Unexpected JSON structural response format." << std::endl << std::endl << readBuffer << std::endl;
-            return 0;
+            std::cerr << "Exoplanet.eu TAP Query failed." << std::endl;
         }
 
-        if (do_download)
+        try
         {
+            // Utility lambdas for string parsing
+            auto normalize_name = [](std::string name) -> std::string
+            {
+                std::string res;
+                for (char c : name)
+                {
+                    if (c != ' ' && c != '-') res += std::tolower(c);
+                }
+                return res;
+            };
+
+            auto extract_letter = [](const std::string& name) -> std::string
+            {
+                size_t pos = name.find_last_of(" -");
+                if (pos != std::string::npos && pos + 1 < name.length())
+                {
+                    std::string tail = name.substr(pos + 1);
+                    bool lower = true;
+                    for (char c : tail) if (!std::islower(c)) lower = false;
+                    if (lower && !tail.empty()) return tail;
+                }
+                if (!name.empty() && std::islower(name.back())) return std::string(1, name.back());
+                return "";
+            };
+
+            auto extract_cat_num = [](const std::string& str, const std::string& prefix) -> int
+            {
+                std::string upper = str;
+                for (char& c : upper) c = std::toupper(c);
+                size_t pos = upper.find(prefix);
+                if (pos == std::string::npos) return -1;
+                pos += prefix.length();
+                while (pos < upper.length() && !std::isdigit(upper[pos])) pos++;
+                if (pos == upper.length()) return -1;
+                return std::stoi(upper.substr(pos));
+            };
+
+            std::unordered_map<std::string, std::string> primary_keys; // Maps aliases -> canonical target
+            std::unordered_map<std::string, json> merged_planets;
+
+            // Unified processing pipeline
+            auto register_planet = [&](const json& item)
+            {
+                std::string pl_name = item.value("pl_name", "");
+                if (pl_name.empty()) return;
+
+                std::string norm = normalize_name(pl_name);
+                std::string letter = extract_letter(pl_name);
+                std::string target_key = norm;
+
+                // 1. Resolve Aliases (HD / HIP / Name)
+                if (primary_keys.count(norm))
+                {
+                    target_key = primary_keys[norm];
+                }
+                else
+                {
+                    int hd = -1, hip = -1;
+
+                    // NASA provides explicit fields; EU relies on hostname/pl_name
+                    if (item.contains("hd_name") && item["hd_name"].is_string()) hd = extract_cat_num(item.value("hd_name", ""), "HD");
+                    if (item.contains("hip_name") && item["hip_name"].is_string()) hip = extract_cat_num(item.value("hip_name", ""), "HIP");
+
+                    std::string hostname = item.value("hostname", "");
+                    if (hd == -1) hd = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
+                    if (hip == -1) hip = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
+
+                    std::string hd_alias = hd != -1 ? "hd" + std::to_string(hd) + letter : "";
+                    std::string hip_alias = hip != -1 ? "hip" + std::to_string(hip) + letter : "";
+
+                    // Point to existing canonical record if an alias matches
+                    if (!hd_alias.empty() && primary_keys.count(hd_alias)) target_key = primary_keys[hd_alias];
+                    else if (!hip_alias.empty() && primary_keys.count(hip_alias)) target_key = primary_keys[hip_alias];
+
+                    // Register this planet's identifiers to the canonical target
+                    primary_keys[norm] = target_key;
+                    if (!hd_alias.empty()) primary_keys[hd_alias] = target_key;
+                    if (!hip_alias.empty()) primary_keys[hip_alias] = target_key;
+                }
+
+                // 2. Field-level Merge
+                if (merged_planets.find(target_key) != merged_planets.end())
+                {
+                    auto& existing = merged_planets[target_key];
+                    for (auto& [key, value] : item.items())
+                    {
+                        if (!value.is_null())
+                        {
+                            if (!existing.contains(key) || existing[key].is_null())
+                            {
+                                existing[key] = value;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    merged_planets[target_key] = item;
+                }
+            };
+
+            // Execute EU First (ensures EU's naming convention remains the canonical root)
+            if (!readBufferEU.empty())
+            {
+                json eu_json = json::parse(readBufferEU);
+                
+                if (eu_json.contains("data") && eu_json.contains("columns"))
+                {
+                    auto& columns = eu_json["columns"];
+                    for (const auto& row_array : eu_json["data"])
+                    {
+                        json obj;
+                        for (size_t i = 0; i < columns.size() && i < row_array.size(); ++i)
+                        {
+                            // Force the key to be a standard C++ string to prevent null-key crashes
+                            std::string key = columns[i].value("name", "unknown_key");
+                            
+                            // If the database returns null for a text field, replace it with an empty string.
+                            // This protects register_planet() from std::string conversion crashes.
+                            if (row_array[i].is_null() && columns[i].value("datatype", "") == "char")
+                            {
+                                obj[key] = "";
+                            }
+                            else
+                            {
+                                obj[key] = row_array[i];
+                            }
+                        }
+                        register_planet(obj);
+                    }
+                }
+            }
+
+            // Execute NASA Second (fills in the gaps)
+            if (!readBufferNASA.empty())
+            {
+                json nasa_json = json::parse(readBufferNASA);
+                
+                // NASA uses a flat JSON array of objects
+                if (nasa_json.is_array())
+                {
+                    for (const auto& item : nasa_json)
+                    {
+                        register_planet(item);
+                    }
+                }
+            }
+
+            if (merged_planets.empty())
+            {
+                std::cerr << "Both TAP queries failed or returned empty data." << std::endl;
+                return 0;
+            }
+
+            // Repackage to array
+            for (auto& [key, val] : merged_planets) planets_array.push_back(val);
+
             std::fstream fs(exocache, std::ios::out);
             if (fs)
             {
@@ -5659,57 +5992,62 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 fs.close();
             }
         }
-
-        // Rebuilding from the raw dump -- regenerate the derived cache for next time
-        // as a side effect of the walk we already have to do.
-        FILE* cachefp = fopen(derived_cache, "wb");
-
-        for (const auto& jrow : planets_array)
+        catch (const json::parse_error& e)
         {
-            // Guard against overflowing the global registry tracking array
-            if (ncelobjs >= MAX_CELOBJS)
-            {
-                std::cerr << "Warning: Maximum sequential object allocation threshold reached (" << MAX_CELOBJS << ")." << std::endl;
-                break;
-            }
+            std::cerr << "JSON Parsing Exception encountered: " << e.what() << std::endl << std::endl
+                << "NASA returned:" << std::endl << readBufferNASA << std::endl << std::endl
+                << "EU returned:" << std::endl << readBufferEU << std::endl << std::endl
+                ;
+            return 0;
+        }
+    }
+    else
+    {
+        std::fstream fs(exocache, std::ios::in);
+        if (!fs) return 0;
+        fs >> planets_array;
+        fs.close();
+    }
 
-            bool ok = false;
-            ExoRow row = exorow_from_json(jrow, &ok);
-            if (!ok) continue;
-
-            bool was_new = false;
-            Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
-            if (!host_star) continue;
-
-            if (stars_only)
-            {
-                if (was_new && cachefp) exorow_write_line(cachefp, row);
-                continue;
-            }
-
-            add_exoplanet_from_row(row, host_star, planet_celids, result);
-            if (cachefp) exorow_write_line(cachefp, row);
-
-            if (frand(0,1) < 0.01)
-            {
-                lmss.str("");
-                lmss << "Loaded " << result << " exoplanets from NASA via TAP...";
-                mtx.lock();
-                loading_msg = lmss.str();
-                mtx.unlock();
-            }
+    FILE* cachefp = fopen(derived_cache, "wb");
+    for (const auto& jrow : planets_array)
+    {
+        if (ncelobjs >= MAX_CELOBJS)
+        {
+            std::cerr << "Warning: Maximum sequential object allocation threshold reached (" << MAX_CELOBJS << ")." << std::endl;
+            break;
         }
 
-        if (cachefp) fclose(cachefp);
+        bool ok = false;
+        ExoRow row = exorow_from_json(jrow, &ok);
+        if (!ok) continue;
 
-        apply_exoplanet_names(planet_celids);
-        if (stars_only) loaded_starsonly = true;
+        bool was_new = false;
+        Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+        if (!host_star) continue;
+
+        if (stars_only)
+        {
+            if (was_new && cachefp) exorow_write_line(cachefp, row);
+            continue;
+        }
+
+        add_exoplanet_from_row(row, host_star, planet_celids, result);
+        if (cachefp) exorow_write_line(cachefp, row);
+
+        if (frand(0,1) < 0.01)
+        {
+            lmss.str("");
+            lmss << "Loaded " << result << " exoplanets from TAP catalogs...";
+            mtx.lock();
+            loading_msg = lmss.str();
+            mtx.unlock();
+        }
     }
-    catch (const json::parse_error& e)
-    {
-        std::cerr << "JSON Parsing Exception encountered: " << e.what() << std::endl;
-        return 0;
-    }
+
+    if (cachefp) fclose(cachefp);
+    apply_exoplanet_names(planet_celids);
+    if (stars_only) loaded_starsonly = true;
 
     return result;
 }
@@ -5844,19 +6182,29 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 1, 18, field);
         std::string raw_name = trim(field);
         snprintf(g->name, sizeof(g->name), "%s", normalize_galaxy_name(raw_name).c_str());
-        if (!strlen(g->name)) { delete g; continue; }
+        if (!strlen(g->name))
+        {
+            delete g;
+            continue;
+        }
 
         //  20-29 RA (h m s), 31-39 Dec (sign d m s), both J2000
-        read_field_onebased(buffer, 20, 21, field); double deg = atof(field) * 15;
-        read_field_onebased(buffer, 23, 24, field); double mnt = atof(field) * 15;
-        read_field_onebased(buffer, 26, 29, field); double sec = atof(field) * 15;
+        read_field_onebased(buffer, 20, 21, field);
+        double deg = atof(field) * 15;
+        read_field_onebased(buffer, 23, 24, field);
+        double mnt = atof(field) * 15;
+        read_field_onebased(buffer, 26, 29, field);
+        double sec = atof(field) * 15;
         g->right_ascension = (deg + mnt/60 + sec/3600) * fiftyseventh;
 
         read_field_onebased(buffer, 31, 31, field);
         int sgn = (field[0] == '-') ? -1 : 1;
-        read_field_onebased(buffer, 32, 33, field); deg = atof(field);
-        read_field_onebased(buffer, 35, 36, field); mnt = atof(field);
-        read_field_onebased(buffer, 38, 39, field); sec = atof(field);
+        read_field_onebased(buffer, 32, 33, field);
+        deg = atof(field);
+        read_field_onebased(buffer, 35, 36, field);
+        mnt = atof(field);
+        read_field_onebased(buffer, 38, 39, field);
+        sec = atof(field);
         g->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgn;
 
         place_galaxy(g, g->right_ascension, g->declination, dist_mpc);
@@ -5879,7 +6227,11 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
 
         //  99-100 T-type, 102-106 dwarf morphology
         read_field_onebased(buffer, 99, 100, field);
-        if (strlen(trim(field).c_str())) { g->morphological_T = atof(field); g->T_known = true; }
+        if (strlen(trim(field).c_str()))
+        {
+            g->morphological_T = atof(field);
+            g->T_known = true;
+        }
         read_field_onebased(buffer, 102, 106, field);
         snprintf(g->morph_type, sizeof(g->morph_type), "%s", trim(field).c_str());
 
@@ -5906,7 +6258,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             // inside, its ratio to the disc radius sets how far the bright half of the band
             // reaches, so that error moves the whole sky: use the measured value.
             place_galaxy(g, g->right_ascension, g->declination,
-                sun_to_galactic_center / (3.26156 * 1e+6));
+                         sun_to_galactic_center / (3.26156 * 1e+6));
 
             // a26 is blank too, and both renderers take the disc radius as
             // distance * angular_diameter / 2 -- so run that backwards from the radius we know.
@@ -5920,7 +6272,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             g->band.load_dat_file("catalogs" _FILESLASH "Milky_Way.dat");
         }
         g->location.equatorial_plane = g->location.local_system_plane
-            = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
+                                       = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
         g->cenobj = g;
         g->distance_known = true;
@@ -5953,7 +6305,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             ig->inclination = atof(field) * fiftyseventh;
             ig->location.equatorial_plane =
                 ig->location.local_system_plane =
-                system_plane_from_incl_and_node(ig->inclination, ig->position_angle, (Point)ig->location);
+                    system_plane_from_incl_and_node(ig->inclination, ig->position_angle, (Point)ig->location);
         }
         fclose(fp);
     }
@@ -6005,16 +6357,22 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         if (strlen(buffer) < 340) continue;
 
         //   1-  8 RA (h m s), 10-16 Dec (sign d m s), J2000
-        read_field_onebased(buffer, 1, 2, field); double deg = atof(field) * 15;
-        read_field_onebased(buffer, 3, 4, field); double mnt = atof(field) * 15;
-        read_field_onebased(buffer, 5, 8, field); double sec = atof(field) * 15;
+        read_field_onebased(buffer, 1, 2, field);
+        double deg = atof(field) * 15;
+        read_field_onebased(buffer, 3, 4, field);
+        double mnt = atof(field) * 15;
+        read_field_onebased(buffer, 5, 8, field);
+        double sec = atof(field) * 15;
         double ra = (deg + mnt/60 + sec/3600) * fiftyseventh;
 
         read_field_onebased(buffer, 10, 10, field);
         int sgn = (field[0] == '-') ? -1 : 1;
-        read_field_onebased(buffer, 11, 12, field); deg = atof(field);
-        read_field_onebased(buffer, 13, 14, field); mnt = atof(field);
-        read_field_onebased(buffer, 15, 16, field); sec = atof(field);
+        read_field_onebased(buffer, 11, 12, field);
+        deg = atof(field);
+        read_field_onebased(buffer, 13, 14, field);
+        mnt = atof(field);
+        read_field_onebased(buffer, 15, 16, field);
+        sec = atof(field);
         double decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgn;
 
         Galaxy *dup = nullptr;
@@ -6029,8 +6387,8 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         if (dup)
         {
             dup->inclination = dup->inclination
-                ? dup->inclination
-                : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known);
+                               ? dup->inclination
+                               : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known);
 
             // The UNGC entry stands, its measured distance being the better number -- but it has
             // no position angle and often no morphology, both of which the RC3 carries and an
@@ -6045,7 +6403,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                 }
             }
             dup->location.equatorial_plane = dup->location.local_system_plane =
-                system_plane_from_incl_and_node(dup->inclination, dup->position_angle, (Point)dup->location);
+                                                 system_plane_from_incl_and_node(dup->inclination, dup->position_angle, (Point)dup->location);
             if (!strlen(dup->morph_type))
             {
                 read_field_onebased(buffer, 118, 124, field);
@@ -6054,7 +6412,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             if (!dup->T_known)
             {
                 read_field_onebased(buffer, 132, 135, field);
-                if (strlen(trim(field).c_str())) { dup->morphological_T = atof(field); dup->T_known = true; }
+                if (strlen(trim(field).c_str()))
+                {
+                    dup->morphological_T = atof(field);
+                    dup->T_known = true;
+                }
             }
             continue;
         }
@@ -6095,7 +6457,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             read_field_onebased(buffer, 106, 116, field);
             nm = trim(field);
         }
-        if (!nm.size()) { delete g; continue; }
+        if (!nm.size())
+        {
+            delete g;
+            continue;
+        }
         // The RC3 pads its catalog numbers out ("NGC   224"); squeeze the run of spaces so the
         // name reads the way anyone would write it.
         std::string squeezed;
@@ -6118,7 +6484,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 118, 124, field);
         snprintf(g->morph_type, sizeof(g->morph_type), "%s", trim(field).c_str());
         read_field_onebased(buffer, 132, 135, field);
-        if (strlen(trim(field).c_str())) { g->morphological_T = atof(field); g->T_known = true; }
+        if (strlen(trim(field).c_str()))
+        {
+            g->morphological_T = atof(field);
+            g->T_known = true;
+        }
 
         // 152-155 log D25 and 162-165 log R25, both logarithms: D25 in units of 0.1 arcmin (so
         // that the entries stay positive), R25 the major/minor ratio. axis_ratio is its reciprocal.
@@ -6142,7 +6512,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             g->position_angle_known = true;
         }
         g->location.equatorial_plane = g->location.local_system_plane
-            = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
+                                       = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
         // 190-194 total B magnitude
         read_field_onebased(buffer, 190, 194, field);
