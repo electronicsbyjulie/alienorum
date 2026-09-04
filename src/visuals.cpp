@@ -1968,7 +1968,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     rgb.b = (int)(col.blue * divisor);
     if (whtbkgd) rgb.invert_luminance();
 
-    // Four rays around magnitude -10 and dimmer, filling in to a full circle by the Sun.
+    // Four rays around magnitude -10 and dimmer, when zoomed, filling in to a full circle if too bright.
     double fill = (vmag > -10.0) ? 0.0 : fmin(1.0, (-10.0 - vmag) / 16.0);
 
     // Glare scatters into a haze either because the source is overwhelmingly bright or
@@ -2027,11 +2027,12 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
         const double spike_rotation = azimuth - 0.3 * altitude; // 25.0 * fiftyseventh;
         double ray_len = base_len * (1.0 - 0.5 * haze);
         double halfwidth_base = (1.7 + flare * 0.006) * (1.0 + 2.5 * haze);
+        double priwt = (zoom < 9) ? 0.0 : fmin(1, (zoom-4)/16);
         for (int k=0; k<nslots; k++)
         {
             bool primary = !(k % 6);
             double weight;
-            if (primary) weight = 1.0;
+            if (primary) weight = priwt;
             else if (!(k % 3)) weight = fill;                    // diagonals fill in first
             else weight = fmax(0.0, fill * 2.0 - 1.0);           // the rest arrive last
             if (weight < 0.01) continue;
@@ -3580,7 +3581,7 @@ void draw_objects()
 
 void draw_system_view()
 {
-    int i, j, l, n = lsyscache.size();
+    int i, j, n = lsyscache.size();
 
     double padding = dispcy/20, selrad = 0;
     int num_stars = 0;
