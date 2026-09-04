@@ -5484,6 +5484,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     {
         if (loaded_starsonly) return nullptr;
         if (ncelobjs >= MAX_CELOBJS) return nullptr;
+        bool star_exists = false;
 
         host_star = new Star();
         host_star->type = star;
@@ -5499,14 +5500,30 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         else if (name_len >= 3 && strncmp(host_star->name, "HD ", 3) == 0)
         {
             host_star->HD = atoi(&host_star->name[3]);
-            if (host_star->HD <= MAX_HD && !hdcache[host_star->HD])
-                hdcache[host_star->HD] = host_star;
+            if (host_star->HD <= MAX_HD)
+            {
+                if (hdcache[host_star->HD])
+                {
+                    delete host_star;
+                    host_star = hdcache[host_star->HD];
+                    star_exists = true;
+                }
+                else hdcache[host_star->HD] = host_star;
+            }
         }
         else if (name_len >= 4 && strncmp(host_star->name, "HIP ", 4) == 0)
         {
             host_star->HIP = atoi(&host_star->name[4]);
-            if (host_star->HIP <= MAX_HIP && !hipcache[host_star->HIP])
-                hipcache[host_star->HIP] = host_star;
+            if (host_star->HIP <= MAX_HIP)
+            {
+                if (hipcache[host_star->HIP])
+                {
+                    delete host_star;
+                    host_star = hipcache[host_star->HIP];
+                    star_exists = true;
+                }
+                else hipcache[host_star->HIP] = host_star;
+            }
         }
 
         double sy_dist = isnan(row.sy_dist) ? 0 : row.sy_dist * parsec;
@@ -5576,8 +5593,8 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
         }
 
-        append_cel(host_star);
-        *was_new = true;
+        if (!star_exists) append_cel(host_star);
+        *was_new = !star_exists;
     }
 
     if (!isnan(row.st_mass))
@@ -5900,6 +5917,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 std::string target_key = norm;
 
                 // 1. Resolve Aliases (HD / HIP / Name)
+                // TODO: Luyten's Star's planets aren't being deduped.
                 if (primary_keys.count(norm))
                 {
                     target_key = primary_keys[norm];
