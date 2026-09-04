@@ -5446,6 +5446,9 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 {
     *was_new = false;
     std::string hostname = row.hostname;
+    char cinit = hostname.c_str()[0];
+
+    if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ") hostname = "Proxima Cen";
 
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
@@ -5911,6 +5914,12 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             {
                 std::string pl_name = item.value("pl_name", "");
                 if (pl_name.empty()) return;
+                char cinit = pl_name.c_str()[0];
+                if (cinit == 'L' && pl_name.substr(0, 14) == "Luyten's Star ") pl_name = std::string("GJ 273 ") + pl_name.substr(pl_name.size()-2, 1);
+                else if (cinit == 'T' && pl_name.substr(0, 12) == "Teegarden's ") pl_name = std::string("Teegarden's Star ") + pl_name.substr(pl_name.size()-2, 1);
+                else if (cinit == 'B' && (pl_name.substr(0, 15) == "Barnard's star " || pl_name.substr(0, 8) == "Barnard "))
+                    pl_name = std::string("Barnard's Star ") + pl_name.substr(pl_name.size()-2, 1);
+                else if (cinit == 'P' && pl_name.substr(0, 8) == "Proxima ") pl_name = std::string("Proxima ") + pl_name.substr(pl_name.size()-2, 1);
 
                 std::string norm = normalize_name(pl_name);
                 std::string letter = extract_letter(pl_name);
@@ -5918,6 +5927,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
                 // 1. Resolve Aliases (HD / HIP / Name)
                 // TODO: Luyten's Star's planets aren't being deduped.
+                // HD 148797's planets aren't loading at all.
                 if (primary_keys.count(norm))
                 {
                     target_key = primary_keys[norm];

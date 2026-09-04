@@ -3036,6 +3036,14 @@ bool append_cel(CelestialObject *cel)
     if (first_sat < 0 && cel->typeclass() == class_satellite) first_sat = ncelobjs;
     lsyscache.clear();
 
+    int j=0;
+    for (int i=ncelobjs-1; i>0; i--)
+    {
+        if (cels[i] == cel) return false;
+        j++;
+        if (j > 13) break;
+    }
+
     cels[ncelobjs] = cel;
     cel->seqno = ncelobjs;
     ncelobjs++;
