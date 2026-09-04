@@ -5449,6 +5449,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     char cinit = hostname.c_str()[0];
 
     if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ") hostname = "Proxima Cen";
+    else if (cinit == 'T' && hostname.substr(0, 11) == "Teegarden's") hostname = "Teegarden's Star";
 
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
@@ -5912,14 +5913,30 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             // Unified processing pipeline
             auto register_planet = [&](const json& item)
             {
-                std::string pl_name = item.value("pl_name", "");
+                json litem = item;
+                std::string pl_name = litem.value("pl_name", "");
                 if (pl_name.empty()) return;
                 char cinit = pl_name.c_str()[0];
-                if (cinit == 'L' && pl_name.substr(0, 14) == "Luyten's Star ") pl_name = std::string("GJ 273 ") + pl_name.substr(pl_name.size()-2, 1);
-                else if (cinit == 'T' && pl_name.substr(0, 12) == "Teegarden's ") pl_name = std::string("Teegarden's Star ") + pl_name.substr(pl_name.size()-2, 1);
+                if (cinit == 'L' && pl_name.substr(0, 14) == "Luyten's Star ")
+                {
+                    pl_name = std::string("GJ 273 ") + pl_name.substr(pl_name.size()-1, 1);
+                    litem["pl_name"] = pl_name;
+                }
+                else if (cinit == 'T' && pl_name.substr(0, 12) == "Teegarden's ")
+                {
+                    pl_name = std::string("Teegarden's Star ") + pl_name.substr(pl_name.size()-1, 1);
+                    litem["pl_name"] = pl_name;
+                }
                 else if (cinit == 'B' && (pl_name.substr(0, 15) == "Barnard's star " || pl_name.substr(0, 8) == "Barnard "))
-                    pl_name = std::string("Barnard's Star ") + pl_name.substr(pl_name.size()-2, 1);
-                else if (cinit == 'P' && pl_name.substr(0, 8) == "Proxima ") pl_name = std::string("Proxima ") + pl_name.substr(pl_name.size()-2, 1);
+                {
+                    pl_name = std::string("Barnard's Star ") + pl_name.substr(pl_name.size()-1, 1);
+                    litem["pl_name"] = pl_name;
+                }
+                else if (cinit == 'P' && pl_name.substr(0, 8) == "Proxima ")
+                {
+                    pl_name = std::string("Proxima ") + pl_name.substr(pl_name.size()-1, 1);
+                    litem["pl_name"] = pl_name;
+                }
 
                 std::string norm = normalize_name(pl_name);
                 std::string letter = extract_letter(pl_name);
@@ -5937,8 +5954,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     int hd = -1, hip = -1;
 
                     // NASA provides explicit fields; EU relies on hostname/pl_name
-                    if (item.contains("hd_name") && item["hd_name"].is_string()) hd = extract_cat_num(item.value("hd_name", ""), "HD");
-                    if (item.contains("hip_name") && item["hip_name"].is_string()) hip = extract_cat_num(item.value("hip_name", ""), "HIP");
+                    if (litem.contains("hd_name") && litem["hd_name"].is_string()) hd = extract_cat_num(litem.value("hd_name", ""), "HD");
+                    if (litem.contains("hip_name") && litem["hip_name"].is_string()) hip = extract_cat_num(litem.value("hip_name", ""), "HIP");
 
                     std::string hostname = item.value("hostname", "");
                     if (hd == -1) hd = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
@@ -5961,7 +5978,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 if (merged_planets.find(target_key) != merged_planets.end())
                 {
                     auto& existing = merged_planets[target_key];
-                    for (auto& [key, value] : item.items())
+                    for (auto& [key, value] : litem.items())
                     {
                         if (!value.is_null())
                         {
@@ -5974,7 +5991,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
                 else
                 {
-                    merged_planets[target_key] = item;
+                    merged_planets[target_key] = litem;
                 }
             };
 
