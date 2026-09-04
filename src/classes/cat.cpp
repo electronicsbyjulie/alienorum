@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <sstream>
+#include <cstring>
 #include <cstdlib>
 #include <stdio.h>
 #include <math.h>
@@ -5487,6 +5488,26 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         host_star = new Star();
         host_star->type = star;
         snprintf(host_star->name, sizeof(host_star->name), "%s", hostname.c_str());
+
+        // Fill in fields the search relies on.
+        size_t name_len = strlen(host_star->name);
+        if (name_len >= 3 && strncmp(host_star->name, "GJ ", 3) == 0)
+        {
+            strncpy(host_star->Gliese, host_star->name, sizeof(host_star->Gliese) - 1);
+            host_star->Gliese[sizeof(host_star->Gliese) - 1] = '\0';
+        }
+        else if (name_len >= 3 && strncmp(host_star->name, "HD ", 3) == 0)
+        {
+            host_star->HD = atoi(&host_star->name[3]);
+            if (host_star->HD <= MAX_HD && !hdcache[host_star->HD])
+                hdcache[host_star->HD] = host_star;
+        }
+        else if (name_len >= 4 && strncmp(host_star->name, "HIP ", 4) == 0)
+        {
+            host_star->HIP = atoi(&host_star->name[4]);
+            if (host_star->HIP <= MAX_HIP && !hipcache[host_star->HIP])
+                hipcache[host_star->HIP] = host_star;
+        }
 
         double sy_dist = isnan(row.sy_dist) ? 0 : row.sy_dist * parsec;
         double ra  = isnan(row.ra)  ? 0 : row.ra  * fiftyseventh;
