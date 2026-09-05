@@ -5952,6 +5952,28 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     litem["hd_name"] = "HD 20794";
                 }
+                else if (cinit == 'H' && pl_name.substr(0, 3) == "HD ")
+                {
+                    std::string hostname = litem.value("hostname", "");
+                    int HD = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
+                    if (HD < MAX_HD && hdcache[HD] && hdcache[HD]->Gliese[0])
+                    {
+                        hostname = hdcache[HD]->Gliese;
+                        pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
+                        litem["pl_name"] = pl_name;
+                    }
+                }
+                else if (cinit == 'H' && pl_name.substr(0, 4) == "HIP ")
+                {
+                    std::string hostname = litem.value("hostname", "");
+                    int HIP = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
+                    if (HIP < MAX_HIP && hipcache[HIP] && hipcache[HIP]->Gliese[0])
+                    {
+                        hostname = hipcache[HIP]->Gliese;
+                        pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
+                        litem["pl_name"] = pl_name;
+                    }
+                }
 
                 std::string norm = normalize_name(pl_name);
                 std::string letter = extract_letter(pl_name);
@@ -5972,7 +5994,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     if (litem.contains("hd_name") && litem["hd_name"].is_string()) hd = extract_cat_num(litem.value("hd_name", ""), "HD");
                     if (litem.contains("hip_name") && litem["hip_name"].is_string()) hip = extract_cat_num(litem.value("hip_name", ""), "HIP");
 
-                    std::string hostname = item.value("hostname", "");
+                    std::string hostname = litem.value("hostname", "");
                     if (hd == -1) hd = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
                     if (hip == -1) hip = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
 
