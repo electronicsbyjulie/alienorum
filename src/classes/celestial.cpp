@@ -1729,14 +1729,21 @@ void Map::generate_rocky_map(CelestialObject *cel)
         // Clausius-Clapeyron calculation
         double inv_T1 = 1.0 / Tboil;
         double gas_constant_ratio = R / DELTA_H_VAP;
-        double pressure_log = std::log(p->get_surface_pressure() / P1);
+        double pressure = p->get_surface_pressure();
+        double pressure_log = std::log(pressure / P1);
 
         bool life_possible = p->estimate_habitability();
 
-        if (!force_has_water && p->get_surface_pressure() >= 5*oneatm && T_surf >= 400)
+        if (!force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
             has_water = 0;
+            life_possible = false;
             want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
+        }
+        else if (!force_has_water && pressure < 150)
+        {
+            has_water = 0;
+            life_possible = false;
         }
 
         int octaves = 5 + (cel->cel_rand() % 4);
@@ -1799,7 +1806,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
-        if (has_water && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
+        if (has_water && life_possible && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
         {
             RGB3Byte veg_color = generate_vegetation_color(&cel->rng);
             vegetation_r = veg_color.r;
@@ -1807,6 +1814,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
             vegetation_b = veg_color.b;
         }
         if (has_water) inv_h2o_level = 1.0 / has_water;
+
+        if (!has_water) life_possible = false;
 
         bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && p->is_tidal_locked();
@@ -1820,11 +1829,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
         int num_provinces = 2 + (cel->cel_rand() % 3);                                    // 2-4 provinces
         double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
         double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
-        double mottle_zone = p->cel_frand(0.64, 1.3);                                   // how far the speckling reaches into each province
+        double mottle_zone = p->cel_frand(0.05, 0.25);                                  // how far the speckling reaches into each province; 1 = whole planet.
         unsigned int dither_seed = (unsigned int)cel->cel_rand();                         // per-planet salt for the per-pixel mottle hash
         double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
         double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
-        double province_variability = p->cel_frand(0.1, 0.25);
+        double province_variability = p->cel_frand(0.25, 0.65);
         double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
         double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
         double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
@@ -1835,14 +1844,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
             {
                 // Reddish-brown tholin staining: red retained, blue heavily suppressed.
                 double stain = p->cel_frand(0.5, 0.85);
-                province_rmult[p_i] = 1.0 - stain * 0.25;
-                province_gmult[p_i] = 1.0 - stain * 0.55;
-                province_bmult[p_i] = 1.0 - stain * 0.85;
+                province_rmult[p_i] = 1.0 - stain * 0.53;
+                province_gmult[p_i] = 1.0 - stain * 0.67;
+                province_bmult[p_i] = 1.0 - stain * 0.81;
             }
             else if (cold_icy_world)
             {
                 // Otherwise just brightness variation across the icy background -- no hue shift.
-                double p_mult = 0.9 - p->cel_frand(0, 0.2);
+                double p_mult = 0.9 - p->cel_frand(0, 0.4);
                 province_rmult[p_i] = p_mult;
                 province_gmult[p_i] = p_mult;
                 province_bmult[p_i] = p_mult;
@@ -1996,6 +2005,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 150 * bmult * r_weight);
                     }
                     else if (life_possible && T_local >= veg_min_temp
+                        && (vegetation_r || vegetation_g || vegetation_b)
                         && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
                     {   // Forests
                         red_data[idx] = fmin(255, vegetation_r * r_weight);

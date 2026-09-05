@@ -53,9 +53,12 @@ bool alienorum::Planet::estimate_habitability()
         has_water = 0;
     }
 
-    temperature = 0;
+    double press = get_surface_pressure();
+    if (press < 150) return false;
+
+    temperature = 0;            // force refresh
     double T_surf = estimate_surface_temperature();
-    const double Tboil = water_freezing+100;                                     // Reference pressure
+    const double Tboil = water_freezing+100;                                     // at reference pressure
 
     // Constants for water b.p.
     const double R = 8.314;                                         // J/(mol*K)
@@ -65,11 +68,11 @@ bool alienorum::Planet::estimate_habitability()
     // Clausius-Clapeyron calculation
     double inv_T1 = 1.0 / Tboil;
     double gas_constant_ratio = R / DELTA_H_VAP;
-    double pressure_log = std::log(get_surface_pressure() / P1);
+    double pressure_log = std::log(press / P1);
 
     double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
     double T_boil = 1.0 / inv_T2;
-    // std::cout << "At " << (get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
+    // std::cout << "At " << (press / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
     bool life_possible = false;
 
@@ -80,25 +83,27 @@ bool alienorum::Planet::estimate_habitability()
         if (life_possible)
         {
             if (!show_taucalc) ac->generate_fictitious_habitable();
-            atm->calculate_tau(get_surface_pressure());
-            temperature = 0;
+            press = get_surface_pressure();
+            atm->calculate_tau(press);
+            temperature = 0;            // force refresh
             T_surf = estimate_surface_temperature();
         }
         else if (!show_taucalc) ac->generate_fictitious_for_planet(type);
+        press = get_surface_pressure();
     }
     life_possible = (life_possible
-        && get_surface_pressure() >= 600
+        && press >= 600
         && T_surf > 0.9*water_freezing && T_surf < 320
-        && get_surface_pressure() < oneatm*2000);
+        && press < oneatm*2000);
 
-    if (atm) atm->calculate_tau(get_surface_pressure());
+    if (atm) atm->calculate_tau(press);
 
     if (life_possible)
     {
-        temperature = 0;
+        temperature = 0;        // force refresh
         T_surf = estimate_surface_temperature();
         #ifdef DEBUG
-            /*std::cout << "Surface pressure: " << (get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
+            /*std::cout << "Surface pressure: " << (press / 101325) << " atm." << std::endl << std::flush;
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
@@ -117,27 +122,29 @@ bool alienorum::Planet::estimate_habitability()
         }
 
         if (ac) ac->H2O_portion = 0.014 * has_water;
-        temperature = 0;
-        if (atm) atm->calculate_tau(get_surface_pressure());
+        temperature = 0;        // force refresh
+        if (atm) atm->calculate_tau(press);
         T_surf = estimate_surface_temperature();
 
         life_possible = (has_water >= 0.05
-            && get_surface_pressure() >= 600
+            && press >= 600
             && T_surf > 0.9*water_freezing && T_surf < 320
-            && get_surface_pressure() < oneatm*2000);
+            && press < oneatm*2000);
 
         if (randomize_txgen && ac)
         {
             if (life_possible)
             {
                 if (!show_taucalc) ac->generate_fictitious_habitable();
-                atm->calculate_tau(get_surface_pressure());
+                press = get_surface_pressure();
+                atm->calculate_tau(press);
             }
         }
     }
 
-    temperature = 0;
-    if (atm) atm->calculate_tau(get_surface_pressure());
+    temperature = 0;                    // force refresh
+    press = get_surface_pressure();     // just in case
+    if (atm) atm->calculate_tau(press);
     T_surf = estimate_surface_temperature();
 
     return life_possible;
