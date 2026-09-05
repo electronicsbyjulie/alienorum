@@ -164,14 +164,6 @@ WD 0806-661 b                           Ahra                    gas_giant       
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
 
 
-# NASA's Exoplanet Archive lists these planets using outdated lettering, and their "HD 20794 e" probably does not exist.
-# Here we've applied the standard sets of letters, along with the easier to remember popular name for the system.
-HD 20794 b                              82 Eri b
-HD 20794 d                              82 Eri c
-HD 20794 f                              82 Eri d
-# Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
-
-
 # Stars
           
 HD128620                                Rigil Kentaurus

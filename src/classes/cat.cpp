@@ -3410,6 +3410,7 @@ bool CatalogReader::worth_searching(std::string star_name)
     if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) return false;
     if (!strcmp(star_name.substr(0, 4).c_str(), "Wolf")) return false;
     if (!strcmp(star_name.c_str(), "Teegarden's Star")) return false;
+    if (!strcmp(star_name.substr(0, 6).c_str(), "82 Eri")) return true;
 
     if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) return true;
     if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
@@ -5451,8 +5452,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ") hostname = "Proxima Cen";
     else if (cinit == 'T' && hostname.substr(0, 11) == "Teegarden's") hostname = "Teegarden's Star";
 
+
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
+    if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache[20794]) host_star = hdcache[20794];
     if (!host_star && row.hd_name.size() > 2)
     {
         int HD = atoi(&(row.hd_name.c_str()[2]));
@@ -5936,6 +5939,18 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     pl_name = std::string("Proxima ") + pl_name.substr(pl_name.size()-1, 1);
                     litem["pl_name"] = pl_name;
+                }
+                else if (cinit == 'H' && pl_name.substr(0, 9) == "HD 20794 ")
+                {
+                    pl_name = std::string("82 Eri ") + pl_name.substr(pl_name.size()-1, 1);
+                    if (pl_name == "82 Eri d") pl_name = "82 Eri c";            // this will not affect exoplanet.eu's 82 Eri d because we're already filtering on the NASA nomenclature.
+                    else if (pl_name == "82 Eri f") pl_name = "82 Eri d";
+                    litem["pl_name"] = pl_name;
+                }
+
+                if (cinit == '8' && pl_name.substr(0, 7) == "82 Eri ")
+                {
+                    litem["hd_name"] = "HD 20794";
                 }
 
                 std::string norm = normalize_name(pl_name);

@@ -1788,7 +1788,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious rocky " << cel->name << " map." << std::endl;
 
         double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
-        double province_scale = scale * 0.4, albedo_value, grain_value, border_noise;
+        
+        // Lower multiplier creates massive, continental-scale province shifts
+        double province_scale = scale * 0.15; 
+        double warp_scale = scale * 0.5;     
+        double warp_strength = 0.8;          
+        double albedo_value, grain_value, border_noise;
+
         double province_pos, province_t, rmult, gmult, bmult;
         double edge_dist, mottle_strength, mottle_noise, hue_noise;
         unsigned int x, y;
@@ -1878,19 +1884,36 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     return;
                 }
 
-                // Get noise value for this point on the sphere
-                height_value = create_bump ? fBm(nx * scale, ny * scale, nz * scale, octaves, lacunarity, gain)
-                    : fmin(1, fmax(0, (inv_bump_scale * bump_data[idx] + 0.5)));
+                // Generate a low-frequency 3D warp vector
+                double warp_x = fBm(nx * warp_scale + 12.3, ny * warp_scale + 4.1, nz * warp_scale + 9.8, 3, lacunarity, 0.5);
+                double warp_y = fBm(nx * warp_scale + 3.1, ny * warp_scale + 19.2, nz * warp_scale + 2.4, 3, lacunarity, 0.5);
+                double warp_z = fBm(nx * warp_scale + 8.5, ny * warp_scale + 7.7, nz * warp_scale + 14.6, 3, lacunarity, 0.5);
+                
+                // Offset the primary coordinates using the warp vector
+                double wx = nx * scale + (warp_x - 0.5) * warp_strength;
+                double wy = ny * scale + (warp_y - 0.5) * warp_strength;
+                double wz = nz * scale + (warp_z - 0.5) * warp_strength;
+
+                // Spatially modulate roughness (0.0 = smooth maria, 1.0 = rugged highlands)
+                double roughness_mask = fBm(nx * province_scale * 0.8, ny * province_scale * 0.8, nz * province_scale * 0.8, 2, lacunarity, 0.5);
+                double local_gain = gain * (0.3 + 0.7 * roughness_mask); 
+
+                // Get warped, locally-modulated height value
+                height_value = create_bump ? fBm(wx, wy, wz, octaves, lacunarity, local_gain)
+                    : fmin(1.0, fmax(0.0, (inv_bump_scale * bump_data[idx] + 0.5)));
 
                 if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
 
-                albedo_value = fBm(nx * province_scale + 5.2, ny * province_scale + 1.3, nz * province_scale + 2.7,
-                    4, lacunarity, gain);
+                // Tie albedo directly into the warped coordinate space
+                albedo_value = fBm(wx * (province_scale / scale) + 5.2, wy * (province_scale / scale) + 1.3, wz * (province_scale / scale) + 2.7,
+                    4, lacunarity, local_gain);
 
                 if (enable_provinces)
                 {
-                    grain_value = ridged_fBm(nx * scale * 14.0 + 91.7, ny * scale * 14.0 + 43.1, nz * scale * 14.0 + 17.9,
-                        4, lacunarity, gain);
+                    // Apply warped coordinates and mask the high-frequency ridges
+                    grain_value = ridged_fBm(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
+                        4, lacunarity, local_gain);
+                    grain_value = (grain_value - 0.5) * roughness_mask + 0.5; 
                     r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
 
                     border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
@@ -1927,8 +1950,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
                 else
                 {
-                    grain_value = fBm(nx * scale * 6.0 + 91.7, ny * scale * 6.0 + 43.1, nz * scale * 6.0 + 17.9,
-                        2, lacunarity, gain);
+                    grain_value = fBm(wx * 6.0 + 91.7, wy * 6.0 + 43.1, wz * 6.0 + 17.9,
+                        2, lacunarity, local_gain);
+                    grain_value = (grain_value - 0.5) * roughness_mask + 0.5;
                     r_weight = fmin(1.0, fmax(0.0, 0.75 * albedo_value + 0.25 * grain_value));
                     rmult = gmult = bmult = 1.0;
                 }
