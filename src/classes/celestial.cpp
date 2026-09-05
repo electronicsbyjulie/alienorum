@@ -1862,6 +1862,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 double p_bmult = fmax(0.05, 0.8 + p->cel_frand(-province_variability, province_variability));
                 double lo = fmin(p_rmult, p_bmult), hi = fmax(p_rmult, p_bmult);
                 double p_gmult = p->cel_frand(lo, lo + 0.5 * (hi - lo));
+
+                // cap to prevent weird colors
+                p_bmult = fmin(p_bmult, 0.9 * p_gmult);
+
                 province_rmult[p_i] = p_rmult;
                 province_gmult[p_i] = p_gmult;
                 province_bmult[p_i] = p_bmult;

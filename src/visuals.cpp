@@ -3680,7 +3680,7 @@ void draw_system_view()
             }
         }
 
-        if (!i) draw_sphere(s, sdrad);
+        draw_sphere(s, sdrad);
 
         if (selected >= 0 && selrad)
         {
@@ -3688,6 +3688,21 @@ void draw_system_view()
             CelestialObject *csel = cels[selected];
             while (csel->typeclass() == class_moon && csel->orbit) csel = csel->orbit->center;
             draw_sphere(csel, selrad);
+            if (lbl_localsys)
+            {
+                const char *dispname = csel->name;
+                int disph = dispcy * 2;
+                ImFont *font = global_font;
+                double lfontsz = global_font_size;
+
+                ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                int dy = csel->drawny+selrad+1;
+                if (csel->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(csel->drawnx - lsz.x/2, dy),
+                    rgba_apply_redlight(Color::ensure_wcag_contrast(
+                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                    dispname);
+            }
 
             // Moons.
             double moonx = csel->drawnx;
