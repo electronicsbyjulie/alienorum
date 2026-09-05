@@ -2275,7 +2275,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
     cel->randomize();
-    double variability = cel->cel_frand(0, 0.666);
+    double variability = cel->cel_frand(0.1, 0.25);
     int num_bands = cel->cel_rand() % 9 + 7, i;
     if (cel->type == ice_giant)
     {
@@ -2285,7 +2285,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     auto bands = std::make_unique<RGB3Byte[]>(num_bands);
 
     bool add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
-    double stormlat, stormlon, distToStormX, distToStormY, stormDist = 1e29, stormSize = cel->cel_frand(0.29, 0.71);
+    double stormlat, stormlon, dist_to_storm_x, dist_to_storm_y, storm_dist = 1e29, storm_size = cel->cel_frand(0.29, 0.71);
 
     stormlat = cel->cel_frand(0.3, 0.7);
     stormlon = cel->cel_frand(0, 1);
@@ -2297,6 +2297,12 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
         rmult = 1.0 - cel->cel_frand(0, variability);
         bmult = 1.0 - cel->cel_frand(0, variability);
+        if (rgb.r > rgb.b && rmult < bmult)
+        {
+            double swap = bmult;
+            bmult = rmult;
+            rmult = swap;
+        }
         gmult = cel->cel_frand(fmin(rmult, bmult), fmax(rmult, bmult));
 
         bands[i].r = rgb.r * rmult;
@@ -2304,7 +2310,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         bands[i].b = rgb.b * bmult;
     }
 
-    double scale = 2.5, u, v, theta, phi, psi, sin_theta, nx, ny, nz, distortX, distortY, finalNoise, bandVal, t;
+    double scale = 2.5, u, v, theta, phi, psi, sin_theta, nx, ny, nz, distortX, distortY, final_noise, band_val, t;
     double zscale = tidal_locked_to_star ? scale : (scale * 1.5);
 
     for (unsigned int y = 0; y < image_height; ++y)
@@ -2339,56 +2345,56 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
             distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 1.3;
             // Apply distortion primarily along the X/longitude axis to emulate wind bands
-            finalNoise = fBm(nx + distortX * 4.0, ny + distortY * 2.5, nz, 6, 2.0, 0.55);
+            final_noise = fBm(nx + distortX * 4.0, ny + distortY * 2.5, nz, 6, 2.0, 0.55);
 
             if (add_storm)
             {
-                distToStormX = (u - stormlon) * 2.0 * _pi;
-                distToStormY = (v - stormlat) * _pi;
+                dist_to_storm_x = (u - stormlon) * 2.0 * _pi;
+                dist_to_storm_y = (v - stormlat) * _pi;
                 // Elliptical distance formula
-                stormDist = sqrt((distToStormX * distToStormX) * 2.5 + (distToStormY * distToStormY) * 10.0);
+                storm_dist = sqrt((dist_to_storm_x * dist_to_storm_x) * 2.5 + (dist_to_storm_y * dist_to_storm_y) * 10.0);
             }
 
             int idx = y * image_width + x;
 
-            if (stormDist < stormSize)
+            if (storm_dist < storm_size)
             {
                 // We are inside the storm; blend into dark colors
-                double stormBlend = (stormSize - stormDist) / stormSize; // 1 at center, 0 at edge
+                double storm_blend = (storm_size - storm_dist) / storm_size; // 1 at center, 0 at edge
                 // Swirl the storm inside
-                double stormNoise = fBm(nx * 3.0, ny * 3.0, nz * 3.0, 3, 2.0, 0.5);
+                double storm_noise = fBm(nx * 3.0, ny * 3.0, nz * 3.0, 3, 2.0, 0.5);
 
-                red_data[idx] = (unsigned char)(120 * stormNoise + 25);
-                green_data[idx] = (unsigned char)(90 * stormNoise + 15);
-                blue_data[idx] = (unsigned char)(60 * stormNoise + 10);
+                red_data[idx] = (unsigned char)(120 * storm_noise + 25);
+                green_data[idx] = (unsigned char)(90 * storm_noise + 15);
+                blue_data[idx] = (unsigned char)(60 * storm_noise + 10);
 
                 // Linear interpolation blending storm with background bands
-                red_data[idx] = (unsigned char)(red_data[idx] * stormBlend + bands[0].r * (1.0 - stormBlend));
-                green_data[idx] = (unsigned char)(green_data[idx] * stormBlend + bands[0].g * (1.0 - stormBlend));
-                blue_data[idx] = (unsigned char)(blue_data[idx] * stormBlend + bands[0].b * (1.0 - stormBlend));
+                red_data[idx] = (unsigned char)(red_data[idx] * storm_blend + bands[0].r * (1.0 - storm_blend));
+                green_data[idx] = (unsigned char)(green_data[idx] * storm_blend + bands[0].g * (1.0 - storm_blend));
+                blue_data[idx] = (unsigned char)(blue_data[idx] * storm_blend + bands[0].b * (1.0 - storm_blend));
             }
             else
             {
                 if (tidal_locked_to_star)
                 {
                     // Bands will occur in order of distance to the star, not by latitude as with solar system gas giants.
-                    bandVal = fmod(psi / _pi * num_bands + finalNoise * 1.3, num_bands);
+                    band_val = fmod(psi / _pi * num_bands + final_noise * 1.3, num_bands);
                 }
                 else
                 {
-                    bandVal = fmod(fabs(v - 0.5) * 2 * num_bands + finalNoise * 1.3, num_bands);
+                    band_val = fmod(fabs(v - 0.5) * 2 * num_bands + final_noise * 1.3, num_bands);
                 }
 
-                if (bandVal < 0) bandVal += num_bands;
-                int bandIdx = (int)floor(bandVal);
-                t = bandVal - bandIdx; // fractional part for linear interpolation
+                if (band_val < 0) band_val += num_bands;
+                int band_idx = (int)floor(band_val);
+                t = band_val - band_idx; // fractional part for linear interpolation
 
-                int nextBandIdx = (bandIdx + 1) % num_bands;
+                int next_band_idx = (band_idx + 1) % num_bands;
 
                 // Interpolate colors between bands for smooth transitions
-                red_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].r + t * bands[nextBandIdx].r);
-                green_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].g + t * bands[nextBandIdx].g);
-                blue_data[idx] = (unsigned char)((1.0 - t) * bands[bandIdx].b + t * bands[nextBandIdx].b);
+                red_data[idx] = (unsigned char)((1.0 - t) * bands[band_idx].r + t * bands[next_band_idx].r);
+                green_data[idx] = (unsigned char)((1.0 - t) * bands[band_idx].g + t * bands[next_band_idx].g);
+                blue_data[idx] = (unsigned char)((1.0 - t) * bands[band_idx].b + t * bands[next_band_idx].b);
             }
         }
     }
