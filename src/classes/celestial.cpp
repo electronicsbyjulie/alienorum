@@ -1803,7 +1803,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double albedo_value, grain_value, border_noise;
 
         double province_pos, province_t, rmult, gmult, bmult;
-        double edge_dist, mottle_strength, mottle_noise, hue_noise;
+        double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
         if (has_water && life_possible && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
@@ -1826,11 +1826,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
         // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
         // than one continuous gradient.
         const bool enable_provinces = true;
-        int num_provinces = 2 + (cel->cel_rand() % 3);                                    // 2-4 provinces
+        int num_provinces = 2 + (cel->cel_rand() % 3);                                  // 2-4 provinces
         double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
         double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
-        double mottle_zone = p->cel_frand(0.05, 0.25);                                  // how far the speckling reaches into each province; 1 = whole planet.
-        unsigned int dither_seed = (unsigned int)cel->cel_rand();                         // per-planet salt for the per-pixel mottle hash
+        double mottle_zone = p->cel_frand(0.1, 0.333);                                  // how far the speckling reaches into each province; 1 = whole planet.
+        unsigned int dither_seed = (unsigned int)cel->cel_rand();                       // per-planet salt for the per-pixel mottle hash
         double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
         double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
         double province_variability = p->cel_frand(0.25, 0.65);
@@ -1920,11 +1920,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 if (enable_provinces)
                 {
                     // Apply warped coordinates and mask the high-frequency ridges
-                    grain_value = ridged_fBm(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
+                    // Use standard fBm. ridged_fBm mathematically generates veins/marrow.
+                    grain_value = fBm(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
                         4, lacunarity, local_gain);
                     grain_value = (grain_value - 0.5) * roughness_mask + 0.5; 
                     r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
-
                     border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
                         3, lacunarity, gain);
 
@@ -1936,20 +1936,33 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     province_t = province_pos - province_idx;
 
                     edge_dist = fmin(province_t, 1.0 - province_t);
+                    
+                    // Cap mottle_zone below 0.5 so the blend finishes before the midpoint neighbor swap
+                    mottle_zone = fmin(mottle_zone, 0.49); 
                     mottle_strength = fmax(0.0, 1.0 - edge_dist / mottle_zone);
-                    {
-                        unsigned int mh = x * 374761393u + y * 668265263u + dither_seed;
-                        mh = (mh ^ (mh >> 13)) * 1274126177u;
-                        mh ^= (mh >> 16);
-                        mottle_noise = (double)(mh & 0xFFFFFFu) / (double)0xFFFFFFu;
-                    }
+                    
+                    unsigned int mh = x * 374761393u + y * 668265263u + dither_seed;
+                    mh = (mh ^ (mh >> 13)) * 1274126177u;
+                    mh ^= (mh >> 16);
+                    mottle_noise = (double)(mh & 0xFFFFFFu) / (double)0xFFFFFFu;
+
+                    // Map mottle_strength [0..1] to an offset of [-0.75 .. 0.0]
+                    // At the exact border (1.0), offset is 0.0 (pure 50/50 noise).
+                    // At the inner edge (0.0), offset is -0.75 (heavily clamped to base province).
+                    double blend_factor = mottle_noise + (mottle_strength - 1.0) * 0.75;
+                    
+                    blend_factor = fmax(0.0, fmin(1.0, blend_factor));
+                    blend_factor = blend_factor * blend_factor * (3.0 - 2.0 * blend_factor);
+
+                    double blend1 = 1.0 - blend_factor;
+                    
                     neighbor_province_idx = (province_t < 0.5)
                         ? (province_idx - 1 + num_provinces) % num_provinces
                         : (province_idx + 1) % num_provinces;
-                    mottled_idx = (mottle_noise < mottle_strength * 0.65) ? neighbor_province_idx : province_idx;
-                    rmult = province_rmult[mottled_idx];
-                    gmult = province_gmult[mottled_idx];
-                    bmult = province_bmult[mottled_idx];
+                    
+                    rmult = blend1 * province_rmult[province_idx] + blend_factor * province_rmult[neighbor_province_idx];
+                    gmult = blend1 * province_gmult[province_idx] + blend_factor * province_gmult[neighbor_province_idx];
+                    bmult = blend1 * province_bmult[province_idx] + blend_factor * province_bmult[neighbor_province_idx];
 
                     hue_noise = fBm(nx * hue_scale + 71.2, ny * hue_scale + 34.9, nz * hue_scale + 6.1,
                         3, lacunarity, gain);
@@ -1959,11 +1972,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
                 else
                 {
-                    grain_value = fBm(wx * 6.0 + 91.7, wy * 6.0 + 43.1, wz * 6.0 + 17.9,
-                        2, lacunarity, local_gain);
-                    grain_value = (grain_value - 0.5) * roughness_mask + 0.5;
-                    r_weight = fmin(1.0, fmax(0.0, 0.75 * albedo_value + 0.25 * grain_value));
-                    rmult = gmult = bmult = 1.0;
+                    grain_value = fBm(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
+                        4, lacunarity, local_gain);
+                    grain_value = (grain_value - 0.5) * roughness_mask + 0.5; 
+                    r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
+                    border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
+                        3, lacunarity, gain);
                 }
 
                 if (has_water)
