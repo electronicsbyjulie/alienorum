@@ -1502,7 +1502,7 @@
         "OrbitPeriod": 96968.06352,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 117600000,
-        "VolMeanRad": "209000.0179  ."
+        "VolMeanRad": 209000.0179
     },
     {
         "ABSMG": -1.3,
