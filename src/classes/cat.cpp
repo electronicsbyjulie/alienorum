@@ -4626,7 +4626,6 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     if (s->orbit && s->orbit->epoch && (s->orbit->mean_anomaly || (fabs(s->orbit->epoch - J2000) > 0.001)))
         line << std::scientific << std::setprecision(8) << s->orbit->epoch;
     l += 15;
-    std::string killaretard = line.str();
     line << std::string(l - line.str().size(), ' ');
 
     if (s->orbit && s->orbit->heliocentric_inclination)

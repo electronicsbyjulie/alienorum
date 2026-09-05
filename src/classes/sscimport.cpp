@@ -2131,7 +2131,6 @@ bool SSCImport::read(const std::string &ssc_path)
                 Star *s = (Star*)cel;
                 s->temperature = s->estimate_temperature();
                 double lum = s->estimate_luminosity(s->temperature);
-                std::cout << "Fucking retard " << lum << std::endl;
                 s->absolute_magnitude = 4.85 - log(lum) * invlogmagnbase;
                 s->mass = s->estimate_mass();
                 s->make_universally_visible();

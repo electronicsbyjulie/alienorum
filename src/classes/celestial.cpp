@@ -1351,7 +1351,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     return true;
 }
 
-bool Map::save_to_png(std::string filename)
+bool Map::save_to_png(std::string filename, bool as_bump)
 {
     if (!image_width || !image_height || !green_data)
     {
@@ -1423,6 +1423,19 @@ bool Map::save_to_png(std::string filename)
     // Create a buffer to hold the data to be written
     png_bytep buffer = (png_bytep)malloc(image_width * image_height * 3);
 
+    double bump_scale = 1;
+    double bump_max = -1e209, bump_min = 1e209;
+    if (as_bump)
+    {
+        for (unsigned long i=0; i<allocated; i++)
+        {
+            if (bump_data[i] > bump_max) bump_max = bump_data[i];
+            if (bump_data[i] < bump_min) bump_min = bump_data[i];
+        }
+
+        bump_scale = 255.0 / (bump_max-bump_min);
+    }
+
     // Populate the buffer with data.
     unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB3Byte
     for (unsigned int y = 0; y < image_height; y++)
@@ -1432,9 +1445,16 @@ bool Map::save_to_png(std::string filename)
         for (unsigned int x = 0; x < image_width; x++)
         {
             int rx = x*3;
-            buffer[ry + rx   ] = red_data[iy + x];
-            buffer[ry + rx +1] = green_data[iy + x];
-            buffer[ry + rx +2] = blue_data[iy + x];
+            if (as_bump)
+            {
+                buffer[ry + rx] = buffer[ry + rx +1] = buffer[ry + rx +2] = fmax(0, fmin(255, (bump_data[iy + x]-bump_min) * bump_scale));
+            }
+            else
+            {
+                buffer[ry + rx   ] = red_data[iy + x];
+                buffer[ry + rx +1] = green_data[iy + x];
+                buffer[ry + rx +2] = blue_data[iy + x];
+            }
         }
     }
 

@@ -224,7 +224,7 @@ namespace alienorum
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
-        bool save_to_png(std::string filename);
+        bool save_to_png(std::string filename, bool as_bump = false);
         void correct_colors(double rtot, double gtot, double btot);
         inline bool has_bump_data() { return bump_data && image_height; }
         inline bool has_rgb_data() { return red_data && green_data && blue_data && image_height; }
