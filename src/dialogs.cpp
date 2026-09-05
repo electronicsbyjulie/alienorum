@@ -2539,6 +2539,7 @@ void draw_system_explorer(ImGuiIO& io)
         view_mode = vm_system;
         statuswnd = false;
         explorer = false;
+        lbl_localsys = true;
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.

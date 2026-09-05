@@ -240,6 +240,10 @@ int main (int argc, char** argv)
         {
             show_dev_dial = true;
         }
+        else if (!strcmp(argv[l], "dds"))
+        {
+            if (const char* a = next_arg("zoom")) dev_dial_step = atof(a);
+        }
         else if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
         {
             argsfs = true;
