@@ -733,7 +733,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                     ImGui::TextColored(hzcolor, "          Habitable Zone");
                 }
                 ImGui::Text("Period:   %.2f d",   cels[i]->orbit->period / oneday);
-                ImGui::Text("Incl.:    %.2f deg", cels[i]->orbit->inclination * fiftyseven);
+                if (cels[i]->orbit->inclination || (i == iamhome)) ImGui::Text("Incl.:    %.2f deg", cels[i]->orbit->inclination * fiftyseven);
             }
             if (cels[i]->obliquity
                 && (!cels[i]->orbit || fabs(cels[i]->obliquity - cels[i]->orbit->inclination) > 1e-6)       // TODO: Fix moons.

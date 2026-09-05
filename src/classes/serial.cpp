@@ -527,7 +527,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 CelestialObject* lc = cels[i]->get_light_center();
                 Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
-                else if (!tally_stated.count(s))
+                else if (!tally_stated.count(s) && cels[i]->mass >= 0.01 * earth_mass)        // Do not count asteroids, KBOs in planetary system.
                 {
                     s->has_planets++;
                     if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
