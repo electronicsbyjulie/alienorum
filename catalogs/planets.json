@@ -554,17 +554,18 @@
         "ArgPeri": 272.349,
         "AscNode": 217.137,
         "BODYNAME": "Leda",
+        "BVmag": 0.66,
         "CENTER_OF_ORBIT": "Jupiter",
         "Eccentricity": 0.1636,
         "Epoch": 2000,
         "Incl": 27.457,
-        "Mass": 6.0E+15,
+        "Mass": 5.68E+15,
         "MeanAnom": 228.076,
         "Obliquity": 27.457,
         "OrbitPeriod": 20815488,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 11165000000,
-        "VolMeanRad": 10.8
+        "VolMeanRad": 21500
     },
     {
         "ABSMG": 8.23,

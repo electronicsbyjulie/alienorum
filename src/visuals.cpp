@@ -3694,6 +3694,22 @@ void draw_system_view()
             double moony = csel->drawny + selrad*2 + padding;
             double next_moony = moony;
             double moonrad;
+
+            // Count them.
+            int num_moons = 0;
+            for (j=num_stars; j<n; j++)
+            {
+                if (lsyscache[j]->typeclass() == class_moon)
+                {
+                    Moon *m = (Moon*)lsyscache[j];
+                    if (m->orbit && m->orbit->center == csel) num_moons++;
+                }
+            }
+
+            if (num_moons > 3)
+                moonx = fmax(moonx*0.5, moonx - 0.5*selrad*(num_moons-3));
+            double origmx = moonx;
+
             for (j=num_stars; j<n; j++)
             {
                 cel_obj_class cls = lsyscache[j]->typeclass();
@@ -3712,7 +3728,7 @@ void draw_system_view()
                 moonx += moonrad*2 + padding;
                 if (moonx > dispcx*2 - moonrad*2 - padding)
                 {
-                    moonx = csel->drawnx;
+                    moonx = origmx;
                     moony = next_moony;
                 }
 
