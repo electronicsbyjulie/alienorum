@@ -237,6 +237,11 @@ void save_textures(CelestialObject* cel)
     {
         mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_surf.png");
         cel->surf_map->save_to_png(mapfname);
+        if (cel->surf_map->has_bump_data())
+        {
+            mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_bump.png");
+            cel->surf_map->save_to_png(mapfname, true);
+        }
     }
     if (cel->cloud_map)
     {
