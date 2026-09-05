@@ -3740,8 +3740,9 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 bool HZ = p->is_in_con_HZ();
 
                 // Star's planet-hosting metrics.
-                ((Star*)s)->has_planets++;
-                if (HZ) ((Star*)s)->has_hz_planets++;
+                s->has_planets++;
+                if (HZ) s->has_hz_planets++;
+                s->pl_indices.push_back(p->seqno);
 
                 // Show distance to planet on mouse hover.
                 p->distance_known = true;
@@ -4595,6 +4596,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 {
                     s->has_planets++;
                     if (p->is_in_con_HZ()) s->has_hz_planets++;
+                    s->pl_indices.push_back(p->seqno);
                 }
             }
 
@@ -5716,6 +5718,28 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         }
     }
 
+    for (const int h : host_star->pl_indices)
+    {
+        if (!cels[h] || !cels[h]->orbit) continue;
+        if (fabs(cels[h]->orbit->period - orb->period) < 0.15 * fmin(cels[h]->orbit->period, orb->period)
+            && fabs(cels[h]->orbit->semimajor_axis - orb->semimajor_axis) < 0.15 * fmin(cels[h]->orbit->semimajor_axis, orb->semimajor_axis)
+            )
+        {
+            if (orb->inclination && !cels[h]->orbit->inclination) cels[h]->orbit->inclination = orb->inclination;
+            if (orb->arg_periapsis && !cels[h]->orbit->arg_periapsis) cels[h]->orbit->arg_periapsis = orb->arg_periapsis;
+            if ((orb->mean_anomaly && !cels[h]->orbit->mean_anomaly) || (orb->epoch != J2000 && cels[h]->orbit->epoch != J2000))
+            {
+                cels[h]->orbit->epoch = orb->epoch;
+                cels[h]->orbit->mean_anomaly = orb->mean_anomaly;
+            }
+            delete orb;
+            delete new_planet;
+            return;             // Skip adding a duplicate planet.
+            // std::cerr << "WARNING: " << row.pl_name << " is too similar to " << cels[h]->name << "; possible duplicate." << std::endl;
+            // break;
+        }
+    }
+
     new_planet->orbit = orb;
     new_planet->update_location(simnow);
 
@@ -5768,6 +5792,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     result++;
     host_star->has_planets++;
     if (new_planet->is_in_con_HZ()) host_star->has_hz_planets++;
+    host_star->pl_indices.push_back(new_planet->seqno);
 
     if (planet_celids.find(host_star->seqno) == planet_celids.end())
         planet_celids[host_star->seqno] = std::vector<int>();
@@ -5948,13 +5973,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     litem["pl_name"] = pl_name;
                 }
 
+                std::string hostname = litem.value("hostname", "");
                 if (cinit == '8' && pl_name.substr(0, 7) == "82 Eri ")
                 {
                     litem["hd_name"] = "HD 20794";
                 }
                 else if (cinit == 'H' && pl_name.substr(0, 3) == "HD ")
                 {
-                    std::string hostname = litem.value("hostname", "");
                     int HD = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
                     if (HD < MAX_HD && hdcache[HD] && hdcache[HD]->Gliese[0])
                     {
@@ -5965,7 +5990,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
                 else if (cinit == 'H' && pl_name.substr(0, 4) == "HIP ")
                 {
-                    std::string hostname = litem.value("hostname", "");
                     int HIP = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
                     if (HIP < MAX_HIP && hipcache[HIP] && hipcache[HIP]->Gliese[0])
                     {
@@ -5980,8 +6004,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 std::string target_key = norm;
 
                 // 1. Resolve Aliases (HD / HIP / Name)
-                // TODO: Luyten's Star's planets aren't being deduped.
-                // HD 148797's planets aren't loading at all.
+
                 if (primary_keys.count(norm))
                 {
                     target_key = primary_keys[norm];
@@ -6084,6 +6107,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 std::cerr << "Both TAP queries failed or returned empty data." << std::endl;
                 return 0;
             }
+
+            // TODO: dedup planets of the same star that have SMA or period within 15%.
 
             // Repackage to array
             for (auto& [key, val] : merged_planets) planets_array.push_back(val);

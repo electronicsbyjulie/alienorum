@@ -531,6 +531,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 {
                     s->has_planets++;
                     if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
+                    s->pl_indices.push_back(i);
                 }
             }
 
