@@ -4458,6 +4458,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis);
             }
             catch (...) { ; }
+            try
+            {
+                pl.at("SurfaceTemperature").get_to(p->temperature);
+            }
+            catch (...) { ; }
             // Atmosphere. Read into locals first and only build the object if the record really
             // carries something: most bodies in planets.json have no atmospheric keys at all and
             // must come out with atm == nullptr rather than the struct's one-atmosphere default.

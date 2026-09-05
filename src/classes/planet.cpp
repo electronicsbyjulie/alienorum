@@ -537,6 +537,7 @@ double Planet::equilibrium_temperature()
 
 double Planet::estimate_surface_temperature()
 {
+    if (temperature) return temperature;
     return temperature = temperature_at_pressure(get_surface_pressure());
 }
 

@@ -695,7 +695,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         else if (view_mode == vm_system)
         {
-            if (cels[i]->temperature) ImGui::Text("Temp:     %.2f K", cels[i]->temperature);
+            if (cels[i]->temperature) ImGui::Text("Temp:     %.2f K", cels[i]->temperature);      // TODO: Fix solar system planet temperatures.
             if ((cls == class_planet || cls == class_moon)
                 && (cels[i]->type == waterworld || cels[i]->type == hycean || cels[i]->type == icy || cels[i]->type == rocky || cels[i]->type == lavaworld))
                 ImGui::Text("Atmosph.  %.6f bar", ((Planet*)cels[i])->get_surface_pressure() / oneatm);
