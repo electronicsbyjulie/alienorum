@@ -4807,7 +4807,6 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     if (s->orbit && s->orbit->epoch && (s->orbit->mean_anomaly || (fabs(s->orbit->epoch - J2000) > 0.001)))
         line << std::scientific << std::setprecision(8) << s->orbit->epoch;
     l += 15;
-    std::string killaretard = line.str();
     line << std::string(l - line.str().size(), ' ');
 
     if (s->orbit && s->orbit->heliocentric_inclination)
@@ -5540,10 +5539,11 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         double dec = isnan(row.dec) ? 0 : row.dec * fiftyseventh;
         double st_lum = 0, sy_vmag = 1e290;
 
-        // La temperature d'abord : la conversion de st_lum juste en dessous en depend.
+        // Temperature that st_lum depends on.
         if (!isnan(row.st_teff))
         {
             host_star->temperature = row.st_teff;
+            host_star->estimate_BV(host_star->temperature);
         }
 
         if (!isnan(row.st_lum))
@@ -5611,7 +5611,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     if (!isnan(row.st_rad))
         host_star->volumetric_mean_radius = row.st_rad * solar_radius;
     if (row.st_spectype.size())
+    {
         strcpy(host_star->spectral_type, row.st_spectype.c_str());
+        if (!host_star->BV_color) host_star->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(host_star->spectral_type));
+    }
     if (!isnan(row.st_rotp))
         host_star->sidereal_rotational_period = row.st_rotp * oneday;
 
@@ -6055,7 +6058,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
             };
 
-            // Execute EU First (ensures EU's naming convention remains the canonical root)
+            // Read EU First (ensures EU's naming convention remains the canonical root)
             if (!readBufferEU.empty())
             {
                 json eu_json = json::parse(readBufferEU);
@@ -6087,7 +6090,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
             }
 
-            // Execute NASA Second (fills in the gaps)
+            // Read NASA Second (fills in the gaps)
             if (!readBufferNASA.empty())
             {
                 json nasa_json = json::parse(readBufferNASA);

@@ -163,6 +163,7 @@ int main (int argc, char** argv)
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
 
+    establish_project_root();
     firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());
 
     std::vector<CliCmd> cli_cmds;

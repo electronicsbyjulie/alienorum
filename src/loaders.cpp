@@ -260,7 +260,7 @@ void save_textures(CelestialObject* cel)
     }
 }
 
-static bool establish_project_root()
+bool establish_project_root()
 {
     namespace fs = std::filesystem;
     std::vector<fs::path> candidates;

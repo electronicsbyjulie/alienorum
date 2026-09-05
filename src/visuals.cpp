@@ -3746,6 +3746,7 @@ void draw_system_view()
                     moonx = origmx;
                     moony = next_moony;
                 }
+                if (!strcmp(csel->name, "Neptune")) std::cout << lsyscache[j]->name << " @ " << m->drawnx << "," << m->drawny << ", " << moonrad << std::endl;
 
                 if (lbl_localsys)
                 {

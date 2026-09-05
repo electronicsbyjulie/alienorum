@@ -101,7 +101,7 @@ bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, h
     have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
     noexo = false, nosats = false, radio_silence = false, keyprobe = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
-double bv_correction = 0;
+double bv_correction = -.625;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
