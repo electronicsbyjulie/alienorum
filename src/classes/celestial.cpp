@@ -1829,7 +1829,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         int num_provinces = 2 + (cel->cel_rand() % 3);                                  // 2-4 provinces
         double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
         double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
-        double mottle_zone = p->cel_frand(0.1, 0.333);                                  // how far the speckling reaches into each province; 1 = whole planet.
+        double mottle_zone = p->cel_frand(0.25, 0.4);                                   // how far the speckling reaches into each province; 1 = whole planet.
         unsigned int dither_seed = (unsigned int)cel->cel_rand();                       // per-planet salt for the per-pixel mottle hash
         double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
         double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
@@ -1925,7 +1925,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         4, lacunarity, local_gain);
                     grain_value = (grain_value - 0.5) * roughness_mask + 0.5; 
                     r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
-                    border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
+                    border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 29.6,
                         3, lacunarity, gain);
 
                     double albedo_stretched = fmin(1.0, fmax(0.0, (albedo_value - 0.5) * 2.2 + 0.5));
@@ -1940,11 +1940,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     // Cap mottle_zone below 0.5 so the blend finishes before the midpoint neighbor swap
                     mottle_zone = fmin(mottle_zone, 0.49); 
                     mottle_strength = fmax(0.0, 1.0 - edge_dist / mottle_zone);
+
+                    // Adjust the multiplier (e.g., 15.0 for large chunks, 50.0 for fine sand)
+                    double mottle_scale = scale * cel->cel_frand(60, 90); 
                     
-                    unsigned int mh = x * 374761393u + y * 668265263u + dither_seed;
-                    mh = (mh ^ (mh >> 13)) * 1274126177u;
-                    mh ^= (mh >> 16);
-                    mottle_noise = (double)(mh & 0xFFFFFFu) / (double)0xFFFFFFu;
+                    // Evaluate in 3D space with arbitrary offsets to prevent correlation
+                    mottle_noise = fBm(wx * mottle_scale + 11.1, wy * mottle_scale + 22.2, wz * mottle_scale + 33.3, 
+                                       3, lacunarity, local_gain);
 
                     // Map mottle_strength [0..1] to an offset of [-0.75 .. 0.0]
                     // At the exact border (1.0), offset is 0.0 (pure 50/50 noise).
