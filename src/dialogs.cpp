@@ -683,13 +683,24 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             ImGui::Text("RA:       %s", cels[i]->RA_as_hms(here, myeq).c_str());
             ImGui::Text("Decl:     %s", cels[i]->Decl_as_degms(here).c_str());
+            ImGui::Separator();
         }
         else if (view_mode == vm_sunclock)
         {
             double lat = cels[i]->Decl_as_radians(here), lon = cels[i]->RA_as_radians(here, cels[whereami]->timeofday());
             if (lon > _pi) lon -= _pi*2;
-            ImGui::Text("Lat:      %s", std::to_string(lat * fiftyseven).c_str());
-            ImGui::Text("Lon:      %s", std::to_string(lon * fiftyseven).c_str());
+            ImGui::Text("Lat:      %.3f", lat * fiftyseven);
+            ImGui::Text("Lon:      %.3f", lon * fiftyseven);
+            ImGui::Separator();
+        }
+        else if (view_mode == vm_system)
+        {
+            if (cels[i]->temperature) ImGui::Text("Temp:     %.2f K", cels[i]->temperature);
+            if ((cls == class_planet || cls == class_moon)
+                && (cels[i]->type == waterworld || cels[i]->type == hycean || cels[i]->type == icy || cels[i]->type == rocky || cels[i]->type == lavaworld))
+                ImGui::Text("Atmosph.  %.6f bar", ((Planet*)cels[i])->get_surface_pressure() / oneatm);
+            ImGui::Text("Gravity:  %.3f G", cels[i]->estimate_surface_gravity());
+            ImGui::Separator();
         }
         else
         {
@@ -701,33 +712,49 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             {
                 shown_alt = cels[i]->Decl_as_radians(here);
             }
-            ImGui::Text("Altitude: %s", std::to_string(shown_alt*fiftyseven).c_str());
-            ImGui::Text("Azimuth:  %s", std::to_string(objaz*fiftyseven).c_str());
+            ImGui::Text("Altitude: %.2f", shown_alt*fiftyseven);
+            ImGui::Text("Azimuth:  %.2f", objaz*fiftyseven);
+            ImGui::Separator();
         }
-        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite)
+        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite && view_mode != vm_system)
         {
-            oss << "Mag:      " << std::setprecision(4) << lmag;
-            ImGui::Text("%s", oss.str().c_str());
-            oss.str("");
-            oss.clear();
+            ImGui::Text("Mag:      %.2f", lmag);
+            ImGui::Separator();
         }
 
-        ImGui::Separator();
-        if (cels[i]->type == star)
+        if (view_mode == vm_system)
+        {
+            if (cels[i]->orbit)
+            {
+                ImGui::Text("SMA:      %.4f AU",  cels[i]->orbit->semimajor_axis / AU);
+                if ((cls == class_planet || cls == class_moon) && ((Planet*)cels[i])->is_in_con_HZ())
+                {
+                    ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
+                    ImGui::TextColored(hzcolor, "          Habitable Zone");
+                }
+                ImGui::Text("Period:   %.2f d",   cels[i]->orbit->period / oneday);
+                ImGui::Text("Incl.:    %.2f deg", cels[i]->orbit->inclination * fiftyseven);
+            }
+            if (cels[i]->obliquity
+                && (!cels[i]->orbit || fabs(cels[i]->obliquity - cels[i]->orbit->inclination) > 1e-6)       // TODO: Fix moons.
+                ) ImGui::Text("Obliq.:   %.2f deg", cels[i]->obliquity * fiftyseven);                       // TODO: Sun.
+            if (cels[i]->type == star)
+            {
+                Star* s = (Star*)cels[i];
+                ImGui::Text("SpTyp:    %s", s->spectral_type);
+                ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
+            }
+            ImGui::Separator();
+        }
+        else if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
+            ImGui::Text("SpTyp:    %s", s->spectral_type);
             if (s->distance_known || s->cenobj == mycenobj)
             {
-                oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit);
-                ImGui::Text("%s", oss.str().c_str());
-                oss.str("");
-                oss.clear();
-                oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude;
-                ImGui::Text("%s", oss.str().c_str());
-                oss.str("");
-                oss.clear();
+                ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here, sat_low_orbit).c_str());
+                ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
             }
-            ImGui::Text("SpTyp:    %s", s->spectral_type);
         }
         else if (cels[i]->type == galaxy)
         {
@@ -736,14 +763,9 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         else if (cels[i]->type == artificial)
         {
             if (view_mode == vm_sunclock && whereami >= 0)
-                oss << "Alt:      "
-                    << std::fixed << std::setprecision(3)
-                    << ((cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000)  // TODO: Compensate for oblateness.
-                    << " km";
-            else oss << "Dist:     " << cels[i]->scaled_distance(here);
-            ImGui::Text("%s", oss.str().c_str());
-            oss.str("");
-            oss.clear();
+                ImGui::Text("Alt:      %.3f km",
+                    (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
+            else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here));
         }
         else if (cels[i]->typeclass() == class_comet)
         {
@@ -771,7 +793,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                     oss.str("");
                     oss.clear();
                 }
-                else ImGui::Text("          Unbound; will not return");
+                else ImGui::Text("          Unbound; no return");
             }
         }
         else
@@ -800,7 +822,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / solar_mass) << " M(sun)";       // TODO: Fix Star::estimate_mass()
             else if (cls == class_planet || cls == class_moon)
             {
-                oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)";
+                oss << "Mass:     " << std::fixed << std::setprecision(4) << (cels[i]->mass / earth_mass) << " M(earth)";
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
@@ -810,13 +832,14 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 oss.clear();
             }
         }
+
         if (cels[i]->volumetric_mean_radius)
         {
             if (cls == class_star)
                 ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / solar_radius) << " R(sun)";       // TODO: Fix Star::estimate_radius()
             else if (cls == class_planet || cls == class_moon)
             {
-                oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
+                oss << "Radius:   " << std::fixed << std::setprecision(4) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
                     << " R(earth)";
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");

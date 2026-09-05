@@ -2201,7 +2201,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 
-    int num_craters = (int)((p->type == lavaworld ? 3 : 3000) * bombardment_factor);
+    int num_craters = (int)((p->type == lavaworld ? 3 : 300) * bombardment_factor);
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
