@@ -765,7 +765,6 @@ double alienorum::Planet::atmospheric_horizon_lift()
 
 double alienorum::Planet::mean_instellation()
 {
-    int i=0;
     CelestialObject *distancer = this;
 
     // Similar algorithm to get_light_center(), but bated one step back.
