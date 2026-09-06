@@ -4210,11 +4210,18 @@ void draw_horizon()
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
+        // If overcast sky, adjust for relative instellation.
+        if (p && p->cloud_map)
+        {
+            is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
+            is_day = fmin(1, is_day);
+        }
+
         Map *map = cel->surf_map;
         RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
-        rgb.r *= is_day;
-        rgb.g *= is_day;
-        rgb.b *= is_day;
+        rgb.r = fmin(255, is_day*rgb.r);
+        rgb.g = fmin(255, is_day*rgb.g);
+        rgb.b = fmin(255, is_day*rgb.b);
 
         bool is_water = (p->type == rocky)
             && (rgb.b > 0.8 * rgb.r)
@@ -4569,16 +4576,11 @@ void draw_cloudy_sky()
     double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
     // If overcast sky, adjust for relative instellation.
-    if (p && p->cloud_map)
-    {
-        std::cout << "Scammers should be executed: " << is_day << " x ";
-        is_day /= fmin(1, fmax(0.01, p->mean_instellation()));
-        std::cout << p->mean_instellation() << " = " << is_day << std::endl;
-    }
+    if (p && p->cloud_map) is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
 
-    rgb.r *= is_day;
-    rgb.g *= is_day;
-    rgb.b *= is_day;
+    rgb.r = fmin(255, is_day*rgb.r);
+    rgb.g = fmin(255, is_day*rgb.g);
+    rgb.b = fmin(255, is_day*rgb.b);
 
     ImU32 imc = IM_COL32(rgb.r, rgb.g, rgb.b, (dragging ? 128 : 255)*cloudiness);
     if (hz_y > 0 && (hz_y < dispcy*28 || altitude > 1)) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
