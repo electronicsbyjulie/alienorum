@@ -2446,6 +2446,7 @@ void draw_system_explorer(ImGuiIO& io)
         {
             whereami = celidx_sel_in_sysxplor;
             if (view_mode == vm_system) view_mode = vm_spaceship;
+            viewer_locale = "";
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
@@ -2719,6 +2720,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         if (neighb_celids[item_selected_idx] >= 0)
         {
             whereami = neighb_celids[item_selected_idx];
+            viewer_locale = "";
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
@@ -2944,6 +2946,7 @@ void draw_ast_window(ImGuiIO & io)
             if (ImGui::Button("Go##asteroid"))
             {
                 whereami = astorb[i].cel->seqno;
+                viewer_locale = "";
                 viewchanged = true;
             }
         }
@@ -3309,6 +3312,7 @@ void draw_comet_window(ImGuiIO & io)
             if (ImGui::Button("Go##comet"))
             {
                 whereami = comets[i].cel->seqno;
+                viewer_locale = "";
                 viewchanged = true;
             }
         }

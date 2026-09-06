@@ -1248,6 +1248,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 if (cls == class_star)
                 {
                     whereami = selected = trackidx = -1;
+                    viewer_locale = "";
                     here = cels[0]->location;
                     here.local_position.y -= AU;
                     velocity = Point(0,0,0);
@@ -1262,6 +1263,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 else if (cls == class_satellite)
                 {
                     whereami = cel->seqno;
+                    viewer_locale = "";
                     velocity = Point(0,0,0);
                     return 0;
                 }
@@ -1274,6 +1276,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     viewer_lat = -cel->Decl_as_radians(here);
                     viewer_tz = 0;
                     whereami = cel->seqno;
+                    viewer_locale = "";
                     velocity = Point(0,0,0);
                     view_mode = vm_horizon;
                     altitude = 0;
