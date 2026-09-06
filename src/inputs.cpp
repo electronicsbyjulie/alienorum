@@ -417,6 +417,7 @@ void process_key_cmd_char(char c)
         case 'N': cbolbls_selected_idx = lbltype_nearby; show_labels = true; break;
 
         case 'o':
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         if (selected < 0 && trackidx >= 0) selected = trackidx;
         if (selected >= 0)
         {

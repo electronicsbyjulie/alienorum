@@ -2397,7 +2397,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
         add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
         stormlat = cel->cel_frand(0.3, 0.7);
-        stormlon = cel->cel_frand(0, 1);
+        stormlon = cel->cel_frand(0.2, 0.8);            // storms get cut off if straddling the dateline
     }
     catch (...)
     {

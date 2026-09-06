@@ -2442,6 +2442,7 @@ void draw_system_explorer(ImGuiIO& io)
         if (celidx_sel_in_sysxplor >= 0)
         {
             whereami = celidx_sel_in_sysxplor;
+            if (view_mode == vm_system) view_mode = vm_spaceship;
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
