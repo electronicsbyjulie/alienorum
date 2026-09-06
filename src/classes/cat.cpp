@@ -5462,6 +5462,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
     if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache[20794]) host_star = hdcache[20794];
+    if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache[160691]) host_star = hdcache[160691];
     if (!host_star && row.hd_name.size() > 2)
     {
         int HD = atoi(&(row.hd_name.c_str()[2]));
@@ -6105,6 +6106,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     for (const auto& item : nasa_json)
                     {
+                        if (item.contains("hd_name") && item["hd_name"].is_string())
+                        {
+                            std::string hd = item["hd_name"];
+                            if (hd == "HD 160691") continue;
+                        }
                         register_planet(item);
                     }
                 }
