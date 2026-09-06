@@ -2375,6 +2375,12 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             }
             else
             {
+                double veff = v;
+                if (storm_dist < storm_size*2)
+                {
+                    veff += (stormlat-v) * (1.0 - (storm_dist - storm_size) / storm_size);
+                }
+
                 if (tidal_locked_to_star)
                 {
                     // Bands will occur in order of distance to the star, not by latitude as with solar system gas giants.
@@ -2382,7 +2388,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
                 }
                 else
                 {
-                    band_val = fmod(fabs(v - 0.5) * 2 * num_bands + final_noise * 1.3, num_bands);
+                    band_val = fmod(fabs(veff - 0.5) * 2 * num_bands + final_noise * 1.3, num_bands);
                 }
 
                 if (band_val < 0) band_val += num_bands;
