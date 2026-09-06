@@ -415,6 +415,7 @@ void process_key_cmd_char(char c)
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
+            viewer_locale = "";
             zoom = 1;
         }
         else if (selected_locale)
@@ -426,6 +427,8 @@ void process_key_cmd_char(char c)
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
         }
+        else break;
+
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         velocity = center;
         viewchanged = true;
@@ -521,6 +524,7 @@ void process_key_cmd_char(char c)
         took_off_from = whereami;
         tookoff_countdown = 5;
         whereami = -1;
+        viewer_locale = "";
         break;
 
         case 'W': whtbkgd = !whtbkgd; break;
@@ -600,6 +604,7 @@ void process_key_cmd_char(char c)
                 tookoff_countdown = 5;
             }
             whereami = -1;
+            viewer_locale = "";
         }
         viewchanged = true;
         break;
