@@ -2460,10 +2460,11 @@ void draw_system_explorer(ImGuiIO& io)
                 /*int n = round(frand(0.1, 1) * C);*/
 
                 double P = 0;
+                int j=1;
                 for (i=0; i<20; i++)
                 {
                     Moon *m = new Moon();
-                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
+                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
                     strcpy(m->name, mname.c_str());
                     m->namelen = 0;
                     m->user_added = true;
@@ -2475,7 +2476,6 @@ void draw_system_explorer(ImGuiIO& io)
                     m->cenobj = cel->cenobj;
                     m->epoch = J2000;
                     m->equinox = frand(0, _pi*2);
-                    m->obliquity = pow(frand(0, 1), 10) * half_pi;
                     m->major_moon = true;
                     m->orbit = new Orbit();
                     m->orbit->center = cel;
@@ -2483,19 +2483,23 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->ascending_node = frand(0, _pi*2);
                     m->orbit->eccentricity = pow(frand(0, 0.1), 10);
                     m->orbit->epoch = J2000;
-                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi; if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
                     m->orbit->mean_anomaly = frand(0, _pi*2);
                     if (!P)
                     {
+                        // First fictional moon of the planet. Base the SMA off the Roche limit.
                         double A = cel->Roche_limit(m) * (1.1 + pow(frand(0,1), 4) * 20);
                         m->orbit->semimajor_axis = A;
                         m->orbit->compute_period(m->mass);
                     }
                     else
                     {
+                        // Base the SMA off the previous moon.
                         m->orbit->period = frand(1.8, 2.2) * P;
                         m->orbit->compute_semimajor_axis(m->mass);
                     }
+                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi;
+                    if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
+                    m->obliquity = pow(frand(0, 1), 10) * half_pi;
 
                     if (frand(0,1) > D)
                     {
@@ -2525,6 +2529,7 @@ void draw_system_explorer(ImGuiIO& io)
                         break;
                     }
                     P = m->orbit->period;
+                    j++;
                 }
             }
         }
