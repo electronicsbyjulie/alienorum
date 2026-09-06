@@ -3590,6 +3590,8 @@ void draw_system_view()
 
     for (i=0; i<num_stars; i++)
     {
+        if (lsyscache[i]->deleted) continue;
+        selrad = 0;
         Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
         s->drawnx = -dispcx/29;
         s->drawny = dispcy + (2.0 * i - num_stars + 1) * (dispcy / num_stars);
@@ -3600,6 +3602,7 @@ void draw_system_view()
 
         for (j=num_stars; j<n; j++)
         {
+            if (lsyscache[j]->deleted) continue;
             cel_obj_class cls = lsyscache[j]->typeclass();
             if (cls != class_planet) continue;
 
@@ -3645,6 +3648,7 @@ void draw_system_view()
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
         {
+            if (lsyscache[j]->deleted) continue;
             cel_obj_class cls = lsyscache[j]->typeclass();
             if (cls != class_planet) continue;
 
@@ -3715,6 +3719,7 @@ void draw_system_view()
             int num_moons = 0;
             for (j=num_stars; j<n; j++)
             {
+                if (lsyscache[j]->deleted) continue;
                 if (lsyscache[j]->typeclass() == class_moon)
                 {
                     Moon *m = (Moon*)lsyscache[j];
@@ -3728,6 +3733,7 @@ void draw_system_view()
 
             for (j=num_stars; j<n; j++)
             {
+                if (lsyscache[j]->deleted) continue;
                 cel_obj_class cls = lsyscache[j]->typeclass();
                 if (cls != class_moon) continue;
 

@@ -827,6 +827,7 @@ void process_key_delete()
     // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
     if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
     else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
+    selected = -1;
 }
 
 void process_key_home()
