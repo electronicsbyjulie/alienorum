@@ -697,7 +697,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             if (cels[i]->temperature) ImGui::Text("Temp:     %.2f K", cels[i]->temperature);      // TODO: Fix solar system planet temperatures.
             if ((cls == class_planet || cls == class_moon)
-                && (cels[i]->type == waterworld || cels[i]->type == hycean || cels[i]->type == icy || cels[i]->type == rocky || cels[i]->type == lavaworld))
+                && uses_rocky_map(cels[i]->type))
                 ImGui::Text("Atmosph.  %.6f bar", ((Planet*)cels[i])->get_surface_pressure() / oneatm);
             ImGui::Text("Gravity:  %.3f G", cels[i]->estimate_surface_gravity());
             ImGui::Separator();
@@ -2113,7 +2113,10 @@ void draw_objedit_window(ImGuiIO& io)
                     }
                 }
 
-                ImGui::Text("Surface temperature: %fK", p->estimate_surface_temperature());
+                ImGui::Text(uses_gaseous_map(p->type)
+                        ? "Equilibrium temperature: %.2fK"
+                        : "Surface temperature: %.2fK",
+                    p->estimate_surface_temperature());
             }
 
             ImGui::Text("%s", "Texture");

@@ -1,12 +1,15 @@
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
 55 Cnc e                                Janssen                 lavaworld               3771
+55 Cnc Ae                               Janssen                 lavaworld               3771
 55 Cnc b                                Galileo                 hot_jupiter
 55 Cnc c                                Brahe                   gas_giant
 55 Cnc f                                Harriot                 hycean
 55 Cnc d                                Lipperhey               gas_giant
 GJ 367 b                                Tahay                   rocky
 14 And b                                Spe
+14 And Ab                               Spe
 18 Del b                                Arion
+18 Del Ab                               Arion
 HD 81688 b                              Arkas
 47 UMa b                                Taphao Thong
 47 UMa c                                Taphao Kaew
@@ -26,7 +29,9 @@ mu Ara d                                Rocinante
 mu Ara b                                Quijote
 mu Ara e                                Sancho
 HD 62509 b                              Thestias
+Pollux b                                Thestias
 ups And b                               Saffar                  hot_jupiter             1650            014.27
+ups And Ab                              Saffar                  hot_jupiter             1650            014.27
 ups And c                               Samh                                                            007.868     236.853
 ups And d                               Majriti                                          218            023.758     004.073
 xi Aql b                                Fortitudo
@@ -127,6 +132,7 @@ HAT-P-5 b                               Kráľomoc                              
 HD 146389 b                             Iztok                                                           089.69                  15
 WASP-62 b                               Krotoa                  hot_jupiter             1329.6          088.30                  19.4
 8 UMi b                                 Halla
+8 Umi b                                 Halla
 HD 149143 b                             Riosar                  hot_jupiter
 HD 205739 b                             Samagiya
 HD 102956 b                             Isagel

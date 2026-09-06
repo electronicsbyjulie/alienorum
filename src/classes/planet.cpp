@@ -256,7 +256,7 @@ void Planet::estimate_radius()
 {
     // https://doi.org/10.1051/0004-6361/202348690
     if ((mass < rocky_mass_cutoff)
-        || type == rocky || type == waterworld || type == hycean || type == icy)
+        || uses_rocky_map(type))
         volumetric_mean_radius = 1.02 * earth_radius * pow(mass/earth_mass, 0.27);
     else if (mass < giant_mass_cutoff) volumetric_mean_radius = 0.56 * earth_radius * pow(mass/earth_mass, 0.67);
     else if (type == hot_jupiter)
@@ -317,7 +317,7 @@ double Planet::phase_slope_parameter()
 // world whose dust does soften its phase curve without hiding the ground.
 double Planet::cloud_deck_fraction()
 {
-    if (type == gas_giant || type == ice_giant || type == hot_jupiter) return 1;
+    if (uses_gaseous_map(type)) return 1;
 
     double p_pa = get_surface_pressure();
     if (p_pa <= 100) return 0;
@@ -538,6 +538,7 @@ double Planet::equilibrium_temperature()
 double Planet::estimate_surface_temperature()
 {
     if (temperature) return temperature;
+    if (uses_gaseous_map(type)) return temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
     return temperature = temperature_at_pressure(get_surface_pressure());
 }
 

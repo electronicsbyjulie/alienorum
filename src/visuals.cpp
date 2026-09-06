@@ -696,9 +696,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
 
     // For gas giants, ice giants, and overcast worlds, most of that atmosphere is below the
     // opaque part, below the cloud tops.
-    if (pl->type == gas_giant || pl->type == ice_giant || pl->type == hot_jupiter
-        || (pressure >= 5*oneatm && pl->type != clearskies)
-        )
+    if (uses_gaseous_map(pl->type))
         pressure = fmin(5*oneatm, pressure/100);
 
     // Matches draw_sky_gradient() exactly: Rayleigh scattering in the fixed 0.37/0.58/0.81 blue-

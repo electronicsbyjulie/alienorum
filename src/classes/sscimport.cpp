@@ -2193,7 +2193,7 @@ bool SSCImport::read(const std::string &ssc_path)
             if (!cel->sidereal_rotational_period) pl->estimate_rotation();
 
             const json *atmos = get_obj(blk.fields, "Atmosphere");
-            bool all_weather = (pl->type == gas_giant || pl->type == ice_giant || pl->type == hot_jupiter);
+            bool all_weather = uses_gaseous_map(pl->type);
             if (atmos)
             {
                 // The cosmic shoreline is a model of what a terrestrial world can hold on to, and

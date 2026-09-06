@@ -3112,7 +3112,7 @@ double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
 
     // Multiplier constant changes based on rigidity
     bool is_fluid = orbiter && (orbiter->type == waterworld || orbiter->type == hycean
-        || orbiter->type == gas_giant || orbiter->type == ice_giant || orbiter->type == hot_jupiter || orbiter->type == star);
+        || uses_gaseous_map(orbiter->type) || orbiter->type == star);
     double constant = is_fluid ? 2.44 : std::cbrt(2.0);
 
     return constant * volumetric_mean_radius * std::cbrt(primary_density / orbiter_density);
