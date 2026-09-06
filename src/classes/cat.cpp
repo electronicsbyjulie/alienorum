@@ -5767,7 +5767,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         {
             double expected_mass = inclination ? (pl_msini / sin(inclination)) : pl_msini;
             bool consistent = fabs(pl_mass - expected_mass) <= mass_consistency_tolerance * expected_mass;
-            mass_untrustworthy = inclination ? !consistent : consistent;
+            mass_untrustworthy = (expected_mass < (earth_mass*4200)) && (inclination ? !consistent : consistent);
         }
     }
 
@@ -5777,7 +5777,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         if (host_star->disk_heliocen_inclination) st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
         else if (host_star->rot_heliocen_incl) st_incl = host_star->rot_heliocen_incl;                      // e.g. Alp Men
 
-        if (st_incl)
+        if (sin(st_incl) >= 0.1)
         {
             new_planet->mass = pl_msini / sin(st_incl);
             std::cout << "Mass of " << new_planet->name << " computed at " << (new_planet->mass / earth_mass)
