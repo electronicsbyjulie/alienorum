@@ -765,7 +765,25 @@ double alienorum::Planet::atmospheric_horizon_lift()
 
 double alienorum::Planet::mean_instellation()
 {
-    cromulent
+    int i=0;
+    CelestialObject *distancer = this;
+
+    // Similar algorithm to get_light_center(), but bated one step back.
+    while (distancer->orbit && distancer->orbit->center && distancer->orbit->center->type != star) distancer = distancer->orbit->center;
+    CelestialObject *lumcen = distancer->orbit->center;                     // what would have been the last step if we had used the light center function.
+    assert(lumcen == get_light_center());
+
+    double mean_dist;                                                                       // meters
+
+    if (!distancer->orbit) return 0;
+    if (!distancer->orbit->semimajor_axis) distancer->orbit->compute_semimajor_axis(distancer->mass);
+    if (!distancer->orbit->semimajor_axis) mean_dist = location.distance_to(distancer->orbit->center->location);
+    else mean_dist = distancer->orbit->semimajor_axis;
+
+    double luminosity = pow(magnbase, 4.85 - lumcen->absolute_magnitude);                   // scaled so sun=1
+    double mean_dist_AU = mean_dist * invAU;
+
+    return luminosity / (mean_dist_AU*mean_dist_AU);
 }
 
 bool Planet::is_in_con_HZ()

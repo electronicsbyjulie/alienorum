@@ -4325,6 +4325,7 @@ void draw_sky_gradient()
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
 
+            std::cout << "I will kill an asshole: " << p->mean_instellation() << std::endl;
             skylight /= fmin(1, fmax(0.1, p->mean_instellation()));
 
             double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),

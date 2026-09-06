@@ -337,6 +337,7 @@ void Orbit::compute_period(double mm)
 void Orbit::compute_semimajor_axis(double mm)
 {
     if (!center) return;
+    if (!period) return;
     if (is_open()) return;                               // An open orbit's scale is its perihelion, set where it is read.
     if (!center->mass)
     {
