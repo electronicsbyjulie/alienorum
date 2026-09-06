@@ -763,6 +763,11 @@ double alienorum::Planet::atmospheric_horizon_lift()
     return std::acos(1.0 / n_0);
 }
 
+double alienorum::Planet::mean_instellation()
+{
+    cromulent
+}
+
 bool Planet::is_in_con_HZ()
 {
     if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;

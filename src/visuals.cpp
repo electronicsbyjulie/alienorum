@@ -4324,6 +4324,9 @@ void draw_sky_gradient()
             int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
+
+            skylight /= fmin(1, fmax(0.1, p->mean_instellation()));
+
             double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),

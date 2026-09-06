@@ -2544,6 +2544,7 @@ void draw_system_explorer(ImGuiIO& io)
                     m->classify();
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
+                    m->apply_cosmic_shoreline();
 
                     if (!append_cel(m))
                     {
