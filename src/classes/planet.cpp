@@ -158,6 +158,20 @@ void Planet::set_color_from_type(bool HZ)
         if (HZ) BV_color = 0.2;                     // estimate same as Earth.
         else BV_color = 1;
     }
+    else if (type == clearskies)
+    {
+        double T = equilibrium_temperature();
+        
+        // Clamp the temperature within the Class III bounds for the calculation
+        double bounded_T = fmin(800.0, fmax(350.0, T));
+        
+        // Normalize the temperature to a 0.0 to 1.0 scale across the Class III window
+        double t_ratio = (bounded_T - 350.0) / (800.0 - 350.0);
+        
+        // At 350 K (t_ratio = 0), B-V is 0.4 (Neptune-like).
+        // At 800 K (t_ratio = 1), B-V drops to -0.15 (deep alkali azure).
+        BV_color = 0.4 - (0.55 * t_ratio);
+    }
     else if (type == hot_jupiter)
     {
         // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
@@ -171,7 +185,7 @@ void Planet::set_color_from_type(bool HZ)
         // https://www.aanda.org/articles/aa/full_html/2019/07/aa35089-19/aa35089-19.html
         // https://academic.oup.com/mnras/article/426/3/2483/989230
         // https://repository.arizona.edu/handle/10150/628273
-        double T = estimate_surface_temperature();
+        double T = equilibrium_temperature();
         BV_color = 0.98 + (bluest-0.98) / (1.0 + 0.002 * fabs(T-1200));
     }
     else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
@@ -214,6 +228,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         s = (Star*) orbit->center;
 
     double T = estimate_surface_temperature();
+    double Teq = equilibrium_temperature();
     if (mass < rocky_mass_cutoff                    // Mass cutoff between rocky planets and ice giants
         || (mass < jupiter_mass && mnrk && density > rocky_density_cutoff)
         )
@@ -239,17 +254,14 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         type = hot_jupiter;
         if (s) s->has_hot_jupiter = true;
     }
+    else if (Teq >= 350 && Teq < 800)
+    {
+        // Sudarsky Class III: Too hot for water clouds, too cold for alkali/silicate clouds.
+        type = clearskies;
+    }
     else type = gas_giant;
 
     if (!ck) set_color_from_type(HZ);
-
-    // classify() used to also reach for an atmosphere here, on its own separate copy of the same
-    // cosmic-shoreline math apply_cosmic_shoreline() already does properly (randomized within its
-    // range, one shared implementation). classify() runs from far more places than just exoplanet
-    // creation -- catalog loads, the edit dialog, procedural moon generation -- so that gave any
-    // of them a side-effect atmosphere assignment classify()'s name gives no reason to expect. Only
-    // apply_cosmic_shoreline() assigns one now, called explicitly by the load/creation paths that
-    // are supposed to (setup_atm_ring_props() for exoplanets, the Shift+A dialog for new bodies).
 }
 
 void Planet::estimate_radius()
@@ -470,6 +482,7 @@ void Planet::estimate_albedo_and_absmagn()
     double est_albedo = 0.3;
     if (type == gas_giant       ) est_albedo = 0.5;
     else if (type == hot_jupiter) est_albedo = 0.01;
+    else if (type == clearskies ) est_albedo = 0.1;
     else if (type == ice_giant  ) est_albedo = 0.3;
     else if (type == waterworld || type == hycean ) est_albedo = 0.4;
     else if (type == icy        ) est_albedo = 0.8;
