@@ -2266,11 +2266,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
 
     Planet *p = (Planet*)cel;
-    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-    RGB3Byte rgb = Color::rgb_from_color(col, p->albedo);
-
     p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
-
     bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
         && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
@@ -2280,9 +2276,12 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     if (cel->type == ice_giant)
     {
         num_bands = std::max(2, num_bands/4);
-        variability /= 4;
+        variability /= 2;
+        BV -= 0.5;
     }
     auto bands = std::make_unique<RGB3Byte[]>(num_bands);
+    Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+    RGB3Byte rgb = Color::rgb_from_color(col, p->albedo);
 
     bool add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
     double stormlat, stormlon, dist_to_storm_x, dist_to_storm_y, storm_dist = 1e29, storm_size = cel->cel_frand(0.29, 0.71);

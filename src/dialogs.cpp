@@ -2497,9 +2497,12 @@ void draw_system_explorer(ImGuiIO& io)
                         m->orbit->period = frand(1.8, 2.2) * P;
                         m->orbit->compute_semimajor_axis(m->mass);
                     }
-                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi;
+
+                    double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
+                    double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
+                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
                     if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
-                    m->obliquity = pow(frand(0, 1), 10) * half_pi;
+                    m->obliquity = pow(frand(0, 1), 10) * half_pi * tidal_modifier;
 
                     if (frand(0,1) > D)
                     {
