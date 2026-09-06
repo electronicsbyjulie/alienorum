@@ -640,7 +640,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         if (cls == class_star)
         {
             s = (Star*)cels[i];
-            if (s->local_name.size())
+            if ((s == mycenobj || s->cenobj == mycenobj) && s->local_name.size())
             {
                 ImGui::Text("%s", s->local_name.c_str());
             }
