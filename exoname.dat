@@ -1,12 +1,11 @@
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
-55 Cnc e                                Janssen                 lavaworld               3771
-55 Cnc b                                Galileo                 hot_jupiter
-55 Cnc c                                Brahe                   gas_giant
-55 Cnc f                                Harriot                 hycean
-55 Cnc d                                Lipperhey               gas_giant
+55 Cnc Ae                               Janssen                 lavaworld               3771
+55 Cnc Ab                               Galileo                 hot_jupiter
+55 Cnc Ac                               Brahe                   gas_giant
+55 Cnc Af                               Harriot                 hycean
+55 Cnc Ad                               Lipperhey               gas_giant
 GJ 367  b                               Tahay                   rocky
-14 And b                                Spe
-18 Del b                                Arion
+14 And Ab                               Spe
 18 Del Ab                               Arion
 HD 81688 b                              Arkas
 47 UMa b                                Taphao Thong
@@ -23,10 +22,9 @@ mu Ara d                                Rocinante
 mu Ara b                                Quijote
 mu Ara e                                Sancho
 GJ 286  b                               Thestias
-ups And b                               Saffar                  hot_jupiter             1650            014.27
 ups And Ab                              Saffar                  hot_jupiter             1650            014.27
-ups And c                               Samh                                                            007.868     236.853
-ups And d                               Majriti                                          218            023.758     004.073
+ups And Ac                              Samh                                                            007.868     236.853
+ups And Ad                              Majriti                                          218            023.758     004.073
 xi Aql b                                Fortitudo
 PSR B1257+12 b                          Draugr                                           266            050
 PSR B1257+12 c                          Poltergeist                                      193            053
@@ -37,7 +35,7 @@ HD 131496 b                             Madriu
 HD 48265 b                              Naqaỹa
 WASP-39 b                               Bocaprins               hot_jupiter                             087.83
 HD 38283 b                              Yanyan
-HAT-P-14 b                              Sissi                                           1566            084.1167
+HAT-P-14 Ab                             Sissi                                           1566            084.1167
 HD 152581 b                             Ganja
 HD 148427 b                             Tondra
 HD 49674 b                              Eburonia
@@ -95,7 +93,7 @@ HD 45350 b                              Peitruss
 HD 153950 b                             Trimobe                 gas_giant                325
 HD 20868 b                              Baiduri
 HAT-P-34 b                              Ġgantija
-WASP-72 b                               Cuptor                  hot_jupiter             2098                                    -7
+WASP-72 Ab                              Cuptor                  hot_jupiter             2098                                    -7
 HD 224693 b                             Xólotl
 WASP-161 b                              Isli                    hot_jupiter                             089.01
 HD 7199 b                               Hairu
@@ -107,7 +105,7 @@ GJ 9024  b                              Xolotlan
 HD 43197 b                              Equiano
 HD 68988 b                              Albmi                   hot_jupiter
 HD 99109 b                              Perwana
-HAT-P-23 b                              Jebus                   hot_jupiter             2154            085.1                   15              gray
+HAT-P-23 Ab                             Jebus                   hot_jupiter             2154            085.1                   15              gray
 WASP-79 b                               Pollera                 hot_jupiter             1747            085.52                  -95.2
 HD 108147 b                             Tumearandu
 HD 156411 b                             Sumajmajta
@@ -117,7 +115,7 @@ BD+14 4559 b                            Pirx                    gas_giant       
 HD 45652 b                              Viriato
 HIP 12961 b                             Aumatex
 XO-1 b                                  Negoiu                  hot_jupiter
-HAT-P-3 b                               Teberda
+HAT-P-3 Ab                              Teberda
 HD 181342 b                             Dopere
 WASP-60 b                               Vlasina                                                         086.05
 WASP-32 b                               Viculus                 hot_jupiter                                                     prograde
@@ -131,7 +129,7 @@ HD 102956 Ab                            Isagel
 HD 130322 b                             Eiger                   hot_jupiter
 GJ 736  b                               Ugarit
 HD 100655 Ab                            Sazum
-WASP-71 b                               Tanzanite                                                       085.8                   -1.9
+WASP-71 Ab                              Tanzanite                                                       085.8                   -1.9
 WASP-50 b                               Maeping                 hot_jupiter             1393            084.88                                              0.44
 WASP-64 b                               Agouto                  hot_jupiter             1989            086.57
 HD 96063 b                              Ramajay                 gas_giant
@@ -156,7 +154,7 @@ HIP 65426 b                             Najsakopajk             gas_giant       
 L 168-9 b                               Qingluan                rocky                    998            084.27
 LHS 3844 b                              Kua'kua                 rocky                   1000            088.90                                              0.14
 LTT 9779 b                              Cuancoá                 ice_giant               2260            076.55                                              0.73
-WASP-19 b                               Banksia                 hot_jupiter             2240            079.4                   -15                         0.16
+WASP-19 Ab                              Banksia                 hot_jupiter             2240            079.4                   -15                         0.16
 WASP-43 b                               Astrolábos              hot_jupiter             1479            082.33                                              0.06
 WASP-63 b                               Regoč                   hot_jupiter
 WASP-69 b                               Makombé

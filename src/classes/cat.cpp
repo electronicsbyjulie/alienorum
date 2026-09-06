@@ -5924,8 +5924,20 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             // Utility lambdas for string parsing
             auto normalize_name = [](std::string name) -> std::string
             {
+                const char* cstr = name.c_str();
+                const int namelen = name.size();
+                std::string name1 = name;
+
+                // Match if star is component A, e.g. ups And Ab matches ups And b.
+                if (namelen > 3)
+                {
+                    const char last1 = cstr[namelen-1], last2 = cstr[namelen-2], last3 = cstr[namelen-3];
+                    if (last1 >= 'b' && last1 <= 'z' && last2 == 'A' && last3 == ' ')
+                        name1 = name.substr(0, namelen-2) + std::string(1, last1);
+                }
+
                 std::string res;
-                for (char c : name)
+                for (char c : name1)
                 {
                     if (c != ' ' && c != '-') res += std::tolower(c);
                 }
