@@ -4325,9 +4325,6 @@ void draw_sky_gradient()
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
 
-            std::cout << "I will kill an asshole: " << p->mean_instellation() << std::endl;
-            skylight /= fmin(1, fmax(0.1, p->mean_instellation()));
-
             double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
@@ -4564,10 +4561,20 @@ void draw_cloudy_sky()
     if (whereami < 0) return;
     CelestialObject *cel = cels[whereami];
     if (!cel || !cel->cloud_map) return;
+    cel_obj_class cls = cel->typeclass();
+    Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
     RGB3Byte rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
     double cloudiness = sqrt(fmin(1,rgb.luminance()/192));
     double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
+
+    // If overcast sky, adjust for relative instellation.
+    if (p && p->cloud_map)
+    {
+        std::cout << "Scammers should be executed: " << is_day << " x ";
+        is_day /= fmin(1, fmax(0.01, p->mean_instellation()));
+        std::cout << p->mean_instellation() << " = " << is_day << std::endl;
+    }
 
     rgb.r *= is_day;
     rgb.g *= is_day;
