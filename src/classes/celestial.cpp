@@ -2289,6 +2289,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
     stormlat = cel->cel_frand(0.3, 0.7);
     stormlon = cel->cel_frand(0, 1);
+    int sgnstormlat = sgn(stormlat - 0.5);               // Negative for northern hemisphere; we'll see why when we do the swirl calculation.
     mtx.unlock();
 
     for (i=0; i<num_bands; i++)
@@ -2312,7 +2313,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
     double scale = 2.5, u, v, theta, phi, psi, sin_theta, nx, ny, nz, distortX, distortY, final_noise, band_val, t;
     double zscale = tidal_locked_to_star ? scale : (scale * 1.5);
-    double swirl_amount = 8;
+    double swirl_amount = 8 * sgnstormlat;
 
     for (unsigned int y = 0; y < image_height; ++y)
     {
@@ -2395,6 +2396,9 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
                 double sbl1 = 1.0 - storm_blend;
 
                 double swirlx = dist_to_storm_x / storm_dist, swirly = dist_to_storm_y / storm_dist;
+
+                // The following creates a clockwise swirl by default. Coriolis effect dictates CCW in the northern
+                // hemisphere, so that's why sgnstormlat has to go negative in the north.
                 double swirledx = swirlx * cos(storm_blend*swirl_amount) + swirly * sin(storm_blend*swirl_amount),
                        swirledy = swirly * cos(storm_blend*swirl_amount) - swirlx * sin(storm_blend*swirl_amount);
 
