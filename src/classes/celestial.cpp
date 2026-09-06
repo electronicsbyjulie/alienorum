@@ -2358,7 +2358,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     cel->randomize();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(123,259)));
     mtx.lock();
     try
     {
@@ -2379,12 +2379,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         inv_lon_scale = 1.0 / lon_scale;
         std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
 
-        col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-        rgb = Color::rgb_from_color(col, p->albedo);
-
         p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
-
-        tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
+        bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
         cel->randomize();
@@ -2394,8 +2390,12 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         {
             num_bands = std::max(2, num_bands/4);
             variability /= 4;
+            BV -= 0.5;
         }
         bands = std::make_unique<RGB3Byte[]>(num_bands);
+
+        col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
+        rgb = Color::rgb_from_color(col, p->albedo);
 
         add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
         stormlat = cel->cel_frand(0.3, 0.7);
