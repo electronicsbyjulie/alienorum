@@ -2345,11 +2345,11 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
 {
-    int num_bands, i;
+    int num_bands, i, lr;
     bool tidal_locked_to_star;
     bool add_storm;
-    double stormlat, stormlon, distToStormX, distToStormY, stormDist, stormSize;
-    double variability;
+    double stormlat, stormlon;
+    double variability, BV;
     Color col;
     RGB3Byte rgb;
     std::unique_ptr<alienorum::RGB3Byte []> bands;
@@ -2360,12 +2360,10 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     mtx.lock();
     try
     {
-        double variability = cel->cel_frand(0.1, 0.25);
-        int num_bands = cel->cel_rand() % 9 + 7, i;
-        if (cel->type == ice_giant)
         generating_fic_texture = true;
-        int lr = cel->fictitious_map_height;
-        double BV = cel->BV_color;
+
+        lr = cel->fictitious_map_height;
+        BV = cel->BV_color;
         image_height = lr;
         image_width = image_height * 2;
 
@@ -2388,7 +2386,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
         cel->randomize();
-        variability = cel->cel_frand(0, 0.666);
+        variability = cel->cel_frand(0.1, 0.25);
         num_bands = cel->cel_rand() % 9 + 7;
         if (cel->type == ice_giant)
         {
@@ -2398,8 +2396,6 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         bands = std::make_unique<RGB3Byte[]>(num_bands);
 
         add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
-        stormDist = 1e29;
-        stormSize = cel->cel_frand(0.29, 0.71);
         stormlat = cel->cel_frand(0.3, 0.7);
         stormlon = cel->cel_frand(0, 1);
     }
@@ -2412,9 +2408,6 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     mtx.unlock();
 
     double dist_to_storm_x, dist_to_storm_y, storm_dist = 1e29, storm_size = cel->cel_frand(0.29, 0.71);
-
-    stormlat = cel->cel_frand(0.3, 0.7);
-    stormlon = cel->cel_frand(0, 1);
     int sgnstormlat = sgn(stormlat - 0.5);               // Negative for northern hemisphere; we'll see why when we do the swirl calculation.
 
     for (i=0; i<num_bands; i++)
