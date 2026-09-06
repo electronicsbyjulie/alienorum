@@ -3036,6 +3036,8 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
     std::map<std::string, double> planet_istars;
     std::map<std::string, double> planet_bvcols;
     std::map<std::string, double> planet_albedines;
+    std::map<std::string, bool> planet_name_used;
+    bool any_planet_name_used = false;
 
     FILE *fp;
     char buffer[2048];
@@ -3072,6 +3074,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
             std::string friendly = trim(field);
 
             planet_names[designation] = friendly;
+            planet_name_used[designation] = false;
 
             if (strlen(buffer) < 65) continue;
             read_field_onebased(buffer, 65, 87, field);
@@ -3148,7 +3151,13 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 p_node = planet_nodes[designation] * fiftyseventh;
             pnodes.push_back(p_node);
 
-            if (planet_names.find(designation) != planet_names.end()) strcpy(p->name, planet_names[designation].c_str());
+            if (planet_names.find(designation) != planet_names.end())
+            {
+                strcpy(p->name, planet_names[designation].c_str());
+                planet_name_used[designation] = true;
+                any_planet_name_used = true;
+            }
+
             if (planet_types.find(designation) != planet_types.end())
             {
                 const char* ihavetomove = planet_types[designation].c_str();
@@ -3397,6 +3406,11 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
 #if _debug_exoplanet_inclinations
         std::cout << std::endl << std::endl;
 #endif
+    }
+
+    if (any_planet_name_used) for (auto& [designation, name] : planet_names)            // This line gets hit twice, once with no matches and once with hopably all matched.
+    {
+        if (!planet_name_used[designation]) std::cerr << "WARNING - exoname not matched: " << designation << " / " << name << std::endl;
     }
 }
 
@@ -6126,6 +6140,30 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             // Repackage to array
             for (auto& [key, val] : merged_planets) planets_array.push_back(val);
+
+            // Sort by host name
+            std::sort(planets_array.begin(), planets_array.end(), [](const json& a, const json& b)
+            {
+                if (a.contains("hostname") && b.contains("hostname")
+                    && a["hostname"].is_string() && b["hostname"].is_string()
+                    && a["hostname"] != b["hostname"]
+                    )
+                    return a["hostname"] < b["hostname"];
+
+                if (a.contains("pl_orbper") && b.contains("pl_orbper")
+                    && a["pl_orbper"].is_number() && b["pl_orbper"].is_number()
+                    && a["pl_orbper"] != b["pl_orbper"]
+                    )
+                    return a["pl_orbper"] < b["pl_orbper"];
+
+                if (a.contains("pl_orbsmax") && b.contains("pl_orbsmax")
+                    && a["pl_orbsmax"].is_number() && b["pl_orbsmax"].is_number()
+                    && a["pl_orbsmax"] != b["pl_orbsmax"]
+                    )
+                    return a["pl_orbsmax"] < b["pl_orbsmax"];
+                
+                return false;
+            });
 
             std::fstream fs(exocache, std::ios::out);
             if (fs)
