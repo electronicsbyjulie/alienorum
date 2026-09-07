@@ -152,11 +152,29 @@ bool alienorum::Planet::estimate_habitability()
 
 void Planet::set_color_from_type(bool HZ)
 {
-    if (type == gas_giant) BV_color = 0.98;         // average of Jupiter and Saturn.
+    if (type == gas_giant)
+    {
+        BV_color = 0.98;         // average of Jupiter and Saturn.
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " based on average of Jupiter and Saturn." << std::endl;
+        #endif
+    }
     else if (type == rocky)
     {
-        if (HZ) BV_color = 0.2;                     // estimate same as Earth.
-        else BV_color = 1;
+        if (HZ)
+        {
+            BV_color = 0.2;                     // estimate same as Earth.
+            #if debug_planet_class_color
+            std::cout << name << " B-V color defined as " << BV_color << " similar to Earth." << std::endl;
+            #endif
+        }
+        else
+        {
+            BV_color = 1;
+            #if debug_planet_class_color
+            std::cout << name << " B-V color defined as " << BV_color << " for a lifeless rocky planet." << std::endl;
+            #endif
+        }
     }
     else if (type == clearskies)
     {
@@ -172,6 +190,10 @@ void Planet::set_color_from_type(bool HZ)
         // At 350 K (t_ratio = 0), B-V is 0.4 (Neptune-like).
         // At 800 K (t_ratio = 1), B-V drops to -0.15 (deep alkali azure).
         BV_color = 0.4 - (0.55 * t_ratio);
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " based on eq temp " << T
+            << "." << std::endl;
+        #endif
     }
     else if (type == hot_jupiter)
     {
@@ -189,11 +211,39 @@ void Planet::set_color_from_type(bool HZ)
         // https://repository.arizona.edu/handle/10150/628273
         double T = equilibrium_temperature();
         BV_color = 0.98 + (bluest-0.98) / (1.0 + 0.002 * fabs(T-1200));
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " based on eq temp " << T
+            << "." << std::endl;
+        #endif
     }
-    else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
-    else if (type == icy) BV_color = 0.6;
-    else if (type == lavaworld) BV_color = 1.3;
-    else if (type == waterworld || type == hycean) BV_color = -0.3;
+    else if (type == ice_giant)
+    {
+        BV_color = 0.49;    // average of Uranus and Neptune.
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " average of Uranus and Neptune." << std::endl;
+        #endif
+    }
+    else if (type == icy)
+    {
+        BV_color = 0.6;
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " for an icy world." << std::endl;
+        #endif
+    }
+    else if (type == lavaworld)
+    {
+        BV_color = 1.3;
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " for a lava world." << std::endl;
+        #endif
+    }
+    else if (type == waterworld || type == hycean)
+    {
+        BV_color = -0.3;
+        #if debug_planet_class_color
+        std::cout << name << " B-V color defined as " << BV_color << " for an ocean world." << std::endl;
+        #endif
+    }
 }
 
 double alienorum::Planet::get_atmospheric_tau()
@@ -236,18 +286,44 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         )
     {
         if (mnrk && T < water_freezing && density < rocky_density_cutoff) type = icy;
-        else if (T > lava_T_cutoff) type = lavaworld;
-        else type = rocky;
+        else if (T > lava_T_cutoff)
+        {
+            type = lavaworld;
+            #if debug_planet_class_color
+            std::cout << name << " classified as lavaworld on basis of mass " << (mass/earth_mass)
+                << ", density " << density
+                << ", and temp " << T
+                << "." << std::endl;
+            #endif
+        }
+        else
+        {
+            type = rocky;
+            #if debug_planet_class_color
+            std::cout << name << " classified as rocky on basis of mass " << (mass/earth_mass)
+                << ", density " << density
+                << ", and temp " << T
+                << "." << std::endl;
+            #endif
+        }
     }
     else if (orbit && orbit->period < oneday*10)
     {
         type = hot_jupiter;
         if (s) s->has_hot_jupiter = true;
+        #if debug_planet_class_color
+        std::cout << name << " classified as hot jupiter on basis of orbit period " << (orbit->period/oneday)
+            << "." << std::endl;
+        #endif
     }
     else if (Teq >= 350 && Teq < 800)
     {
         // Sudarsky Class III: Too hot for water clouds, too cold for alkali/silicate clouds.
         type = clearskies;
+        #if debug_planet_class_color
+        std::cout << name << " classified as rocky on basis of eq. temp " << Teq
+            << "." << std::endl;
+        #endif
     }
     else if (mass < giant_mass_cutoff               // Mass cutoff between ice giants and gas giants
         && (!mnrk || density > giant_density_cutoff))
@@ -256,18 +332,54 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         {
             // If system has a hot Jupiter, estimate a waterworld.
             // https://doi.org/10.48550/arXiv.astro-ph/0701048
-            if (s && s->has_hot_jupiter) type = waterworld;
-            else type = ice_giant;
+            if (s && s->has_hot_jupiter)
+            {
+                type = waterworld;
+                #if debug_planet_class_color
+                std::cout << name << " classified as waterworld on basis of mass " << mass
+                    << ", density " << density
+                    << ", habitable zone"
+                    << ", and presence of a hot jupiter in the system."
+                    << std::endl;
+                #endif
+            }
+            else
+            {
+                type = ice_giant;
+                #if debug_planet_class_color
+                std::cout << name << " classified as ice giant on basis of mass " << mass
+                    << ", density " << density
+                    << ", and habitable zone."
+                    << std::endl;
+                #endif
+            }
         }
-        else type = ice_giant;
+        else
+        {
+            type = ice_giant;
+            #if debug_planet_class_color
+            std::cout << name << " classified as ice giant on basis of mass " << mass
+                << " and density " << density
+                << "." << std::endl;
+            #endif
+        }
     }
-    else type = gas_giant;
+    else
+    {
+        type = gas_giant;
+        #if debug_planet_class_color
+        std::cout << name << " classified as gas giant after ruling out other types." << std::endl;
+        #endif
+    }
 
     if (!ck)
     {
         set_color_from_type(HZ);
         classify(HZ, mnrk, true);                   // DANGER: recursion
         set_color_from_type(HZ);
+        #if debug_planet_class_color
+        std::cout << name << " B-V color set to " << BV_color << " based on type." << std::endl;
+        #endif
     }
 }
 

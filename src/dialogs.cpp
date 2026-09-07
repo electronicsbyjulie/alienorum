@@ -2210,7 +2210,7 @@ void draw_objedit_window(ImGuiIO& io)
                     Map *map = celmaps[i];
                     int x, y;
                     double xrad, yrad;
-                    RGB3Byte rgb;
+                    RGB3 rgb;
                     ImU32 imu;
 
                     if (map)

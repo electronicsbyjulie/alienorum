@@ -1423,7 +1423,7 @@ bool Map::save_to_png(std::string filename, bool as_bump)
         image_width,
         image_height,
         8,                          // 8 bits per channel
-        PNG_COLOR_TYPE_RGB,         // RGB3Byte channels (3 bytes per pixel)
+        PNG_COLOR_TYPE_RGB,         // RGB3 channels (3 bytes per pixel)
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_DEFAULT,
         PNG_FILTER_TYPE_DEFAULT
@@ -1456,7 +1456,7 @@ bool Map::save_to_png(std::string filename, bool as_bump)
     }
 
     // Populate the buffer with data.
-    unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB3Byte
+    unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB3
     for (unsigned int y = 0; y < image_height; y++)
     {
         int iy = image_width*y;
@@ -1654,9 +1654,9 @@ void Map::export_bump(float *out) const
         out[i] = bump_data ? (float)bump_data[i] : 0.0f;
 }
 
-RGB3Byte Map::color_at(double lat, double lon)
+RGB3 Map::color_at(double lat, double lon)
 {
-    RGB3Byte result;
+    RGB3 result;
     if (generating_fic_texture)
     {
         result.r = result.g = result.b = 255;
@@ -1770,7 +1770,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double scale = p->cel_frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
 
         Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-        RGB3Byte rgb = Color::rgb_from_color(col, -1);
+        RGB3 rgb = Color::rgb_from_color(col, -1);
 
         // Tholins only survive on cold, distant bodies (Pluto, Triton, the icy moons), staining an
         // otherwise pale crust. Elsewhere provinces stay a neutral tint of the base rock color.
@@ -1825,7 +1825,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         int idx, province_idx, neighbor_province_idx, mottled_idx;
         if (has_water && life_possible && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
         {
-            RGB3Byte veg_color = generate_vegetation_color(&cel->rng);
+            RGB3 veg_color = generate_vegetation_color(&cel->rng);
             vegetation_r = veg_color.r;
             vegetation_g = veg_color.g;
             vegetation_b = veg_color.b;
@@ -2148,7 +2148,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
         // Fill in glowing hot lava.
         int x, y, y1, idx;
         double height;
-        RGB3Byte rgb;
+        RGB3 rgb;
         for (y=0; y<image_height; y++)
         {
             y1 = y * image_width;
@@ -2349,8 +2349,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     double stormlat, stormlon;
     double variability, BV;
     Color col;
-    RGB3Byte rgb;
-    std::unique_ptr<alienorum::RGB3Byte []> bands;
+    RGB3 rgb;
+    std::unique_ptr<alienorum::RGB3 []> bands;
     Planet *p = (Planet*)cel;
     cel->randomize();
 
@@ -2380,7 +2380,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
         cel->randomize();
-        variability = cel->cel_frand(0.1, 0.25);
+        variability = cel->cel_frand(0.2, 0.4);
         num_bands = cel->cel_rand() % 9 + 7;
         if (cel->type == clearskies)
         {
@@ -2393,10 +2393,15 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             variability /= 4;
             BV -= 0.5;
         }
-        bands = std::make_unique<RGB3Byte[]>(num_bands);
+        bands = std::make_unique<RGB3[]>(num_bands);
 
         col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-        rgb = Color::rgb_from_color(col, p->albedo);
+        col.normalize(1);
+        bool rlm = redlight_mode;
+        redlight_mode = false;
+        rgb = Color::rgb_from_color(col, pow(p->albedo, 0.25));
+        redlight_mode = rlm;
+        // std::cout << cel->name << " color=" << col.red << "," << col.green << "," << col.blue << " albedo=" << p->albedo << " rgb=" << rgb << std::endl;
 
         add_storm = !tidal_locked_to_star && (cel->type != clearskies) && (cel->cel_frand(0, 1) < 0.2);
         stormlat = cel->cel_frand(0.3, 0.7);
@@ -2417,7 +2422,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     {
         double rmult, gmult, bmult;
 
-        rmult = 1.0 - cel->cel_frand(0, variability);
+        rmult = 1.0 - cel->cel_frand(0, 0.5*variability);
         bmult = 1.0 - cel->cel_frand(0, variability);
         if (rgb.r > rgb.b && rmult < bmult)
         {
@@ -2425,11 +2430,12 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             bmult = rmult;
             rmult = swap;
         }
-        gmult = cel->cel_frand(fmin(rmult, bmult), fmax(rmult, bmult));
+        gmult = cel->cel_frand( fmin(rmult, bmult), fmax(rmult, bmult) );
 
         bands[i].r = rgb.r * rmult;
         bands[i].g = rgb.g * gmult;
         bands[i].b = rgb.b * bmult;
+        // std::cout << "Band " << i << " " << bands[i] << std::endl;
     }
 
     double scale = 2.5, u, v, theta, phi, psi, sin_theta, nx, ny, nz, distortX, distortY, final_noise, band_val, t;
@@ -2563,7 +2569,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     Planet *p = (Planet*)cel;
     double zonal, scale, shear, sweep_exp, warp_amt, polar_k, contrast, mottle_scale, mottle_amt;
     bool tidal_locked_to_star;
-    RGB3Byte rgb, deep;
+    RGB3 rgb, deep;
 
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
     mtx.lock();
@@ -2584,14 +2590,14 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
         inv_lon_scale = 1.0 / lon_scale;
         std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
 
-        rgb = RGB3Byte( (unsigned char)cel->cel_frand(242, 249), (unsigned char)cel->cel_frand(234, 243), (unsigned char)cel->cel_frand(214, 228) );
+        rgb = RGB3( (unsigned char)cel->cel_frand(242, 249), (unsigned char)cel->cel_frand(234, 243), (unsigned char)cel->cel_frand(214, 228) );
 
         tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
         cel->randomize();
 
-        deep = RGB3Byte((unsigned char)(rgb.r * cel->cel_frand(0.78, 0.86)),
+        deep = RGB3((unsigned char)(rgb.r * cel->cel_frand(0.78, 0.86)),
                     (unsigned char)(rgb.g * cel->cel_frand(0.66, 0.75)),
                     (unsigned char)(rgb.b * cel->cel_frand(0.44, 0.56)));
 
@@ -2911,7 +2917,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
             double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
             double lum = pow(T_local / T_eff, 1.6);
 
-            RGB3Byte rgb = Color::rgb_from_color(
+            RGB3 rgb = Color::rgb_from_color(
                 Color::color_from_magnitude_indices(0, bv_local), lum * inv_ref_max);
 
             red_data[idx]   = rgb.r;
@@ -2980,7 +2986,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     mtx.unlock();
     generating_fic_texture = false;
 
-    RGB3Byte rgb, xrgb;
+    RGB3 rgb, xrgb;
     int x, y, idx;
     int inx = rir * image_width;
 

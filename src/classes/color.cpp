@@ -18,7 +18,7 @@ double global_brightness = default_brightness, sky_mag_shift = 0;
 double global_inverse_gamma = 1.0 / default_gamma;
 AlienStyle global_style;
 bool redlight_mode = false;
-std::map<int, RGB3Byte> sky_grad;
+std::map<int, RGB3> sky_grad;
 
 double Color::luminance()
 {
@@ -48,9 +48,9 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR)
     return c;
 }
 
-RGB3Byte Color::rgb_from_color(Color c, double mult)
+RGB3 Color::rgb_from_color(Color c, double mult)
 {
-    RGB3Byte result;
+    RGB3 result;
     int red, green, blue;
 
     if (mult < 0)
@@ -257,6 +257,12 @@ void alienorum::Color::saturate(double saturation)
     blue  = lum + saturation * (blue  - lum);
 }
 
+std::ostream &operator<<(std::ostream &os, const RGB3 &rgb)
+{
+    os << (int)rgb.r << "," << (int)rgb.g << "," << (int)rgb.b;
+    return os;
+}
+
 void set_gamma(double new_gamma)
 {
     global_inverse_gamma = 1.0 / new_gamma;
@@ -373,7 +379,7 @@ int col_rand(std::mt19937 *rng)
     return dist(*rng);
 }
 
-RGB3Byte generate_vegetation_color(std::mt19937 *rng)
+RGB3 generate_vegetation_color(std::mt19937 *rng)
 {
     // Don't assume alien vegetation is green!
 
@@ -726,7 +732,7 @@ void alienorum::Cloud::draw(double planet_radius)
     }
 }
 
-void alienorum::RGB3Byte::invert_luminance()
+void alienorum::RGB3::invert_luminance()
 {
     double least = fmin(fmin(r, g), b);
     r -= least;

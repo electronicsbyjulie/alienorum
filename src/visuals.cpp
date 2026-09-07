@@ -864,7 +864,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     Point basisY = undo_to_local(Point(0, 1, 0));
 
     Color col = Color::color_from_magnitude_indices(4.2, cel->BV_color);
-    RGB3Byte rgb = Color::rgb_from_color(col, -1);
+    RGB3 rgb = Color::rgb_from_color(col, -1);
     // Redlight (night-vision) mode is applied once, in the shader, after lighting/texturing --
     // applying it here too would double it up for the untextured fallback case.
     ImU32 solid_color = IM_COL32(rgb.r, rgb.g, rgb.b, 255);
@@ -1348,7 +1348,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (wireframe)
     {
         Color wcol = Color::color_from_magnitude_indices(0, cel->BV_color);
-        RGB3Byte wrgb = Color::rgb_from_color(wcol, -1);
+        RGB3 wrgb = Color::rgb_from_color(wcol, -1);
         gc = rgba_apply_redlight(IM_COL32(wrgb.r, wrgb.g, wrgb.b, 255));
     }
 
@@ -1449,7 +1449,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     else if (cel->surf_map) map = cel->surf_map;
     if (cel->night_map) nmap = cel->night_map;
     double night_illum = nmap ? 0 : starlight;
-    RGB3Byte rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
+    RGB3 rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
     Point cursor, land;
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
@@ -1641,7 +1641,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 if (dy2 > dy1 + 1.9 * dispcy) dy1 += dispcy*2;
                             }
 
-                            RGB3Byte rgblit = rgb;
+                            RGB3 rgblit = rgb;
                             rgblit.r *= daylight.red;
                             rgblit.g *= daylight.green;
                             rgblit.b *= daylight.blue;
@@ -1904,7 +1904,7 @@ static double flare_hash(int k)
 // ImGui has no radial gradient, and stacking translucent discs leaves a hard edge at every
 // disc, which is what made the halo read as a set of concentric rings. Drawing vertex-
 // coloured annuli hands the falloff to the hardware interpolator, so it comes out smooth.
-static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3Byte rgb,
+static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3 rgb,
     double peak_alpha, double falloff)
 {
     if (r_out <= r_in || peak_alpha < 1.0) return;
@@ -1963,7 +1963,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
         return;
 
     double divisor = 255.0 / fmax(fmax(col.blue, col.red), col.green);
-    RGB3Byte rgb;
+    RGB3 rgb;
     rgb.r = (int)(col.red * divisor);
     rgb.g = (int)(col.green* divisor);
     rgb.b = (int)(col.blue * divisor);
@@ -2080,7 +2080,7 @@ static void draw_corona(ImVec2 at, double sun_px, double obsc, double BV)
     // is essentially the star's, scattered by free electrons, which is a grey process.
     Color col = Color::color_from_magnitude_indices(0, BV);
     col.normalize(1);
-    RGB3Byte rgb;
+    RGB3 rgb;
     rgb.r = (int)(255 * (0.82 + 0.18*col.red));
     rgb.g = (int)(255 * (0.82 + 0.18*col.green));
     rgb.b = (int)(255 * (0.82 + 0.18*col.blue));
@@ -2295,7 +2295,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 
     Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
     col.normalize(255);
-    RGB3Byte rgb((unsigned char)col.red, (unsigned char)col.green, (unsigned char)col.blue);
+    RGB3 rgb((unsigned char)col.red, (unsigned char)col.green, (unsigned char)col.blue);
 
     // Type drives the whole pattern; an unknown one is treated as a middling spiral rather than
     // as an elliptical, since that is the commoner shape and the safer-looking mistake.
@@ -2967,7 +2967,7 @@ bool draw_one_object(int i)
         for (j=n-1; j>=0; j--)
         {
             jay = circradii[j];
-            RGB3Byte rgb = Color::rgb_from_color(col, circpixvals[j]);
+            RGB3 rgb = Color::rgb_from_color(col, circpixvals[j]);
             // if (i == 1075) std::cout << " draw radius " << jay << " pixel value * " << circpixvals[j] << std::endl;
             if (rgb.r >= 8 || rgb.b >= 8)
             {
@@ -3417,7 +3417,7 @@ void draw_objects()
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
         Color col = Color::color_from_magnitude_indices(vmag_cache[i] + 5, cels[i]->BV_color);
-        RGB3Byte rgb = Color::rgb_from_color(col, 1);
+        RGB3 rgb = Color::rgb_from_color(col, 1);
         if (whtbkgd) rgb.invert_luminance();
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
         CelestialLocation was = cels[i]->location;
@@ -3835,7 +3835,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
         objcol.normalize(255);
         int x, y;
-        RGB3Byte rgb;
+        RGB3 rgb;
         double theta, phi;
         for (y = -ico_sz; y <= ico_sz; y++)
         {
@@ -3847,7 +3847,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
                 phi = half_pi / xsz * x;
                 if (obj->cloud_map) rgb = obj->cloud_map->color_at(theta, phi);
                 else if (obj->surf_map) rgb = obj->surf_map->color_at(theta, phi);
-                else rgb = RGB3Byte(objcol.red, objcol.green, objcol.blue);
+                else rgb = RGB3(objcol.red, objcol.green, objcol.blue);
 
                 dx = objdxy.x + x;
                 dy = objdxy.y - y;
@@ -3959,7 +3959,7 @@ void draw_sunclock()
 
     Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
     Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
-    RGB3Byte prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
+    RGB3 prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
     daylight.normalize(1);
 
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
@@ -4227,7 +4227,7 @@ void draw_horizon()
         }
 
         Map *map = cel->surf_map;
-        RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
+        RGB3 rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3(0, 8, 24);
         rgb.r = fmin(255, is_day*rgb.r);
         rgb.g = fmin(255, is_day*rgb.g);
         rgb.b = fmin(255, is_day*rgb.b);
@@ -4238,7 +4238,7 @@ void draw_horizon()
 
         if (p && p->type == lavaworld && p->night_map)
         {
-            RGB3Byte nrgb = p->night_map->color_at(viewer_lat, viewer_lon);
+            RGB3 nrgb = p->night_map->color_at(viewer_lat, viewer_lon);
             double xlavabrt = 3.0 * pow(magnbase,  sky_mag_shift);
             rgb.r = std::fmin(255, (double)rgb.r + xlavabrt * nrgb.r);
             rgb.g = std::fmin(255, (double)rgb.g + xlavabrt * nrgb.g);
@@ -4333,7 +4333,7 @@ void draw_sky_gradient()
             float city_lights = 0;
             if (cels[whereami]->night_map)
             {
-                RGB3Byte rgb = cels[whereami]->night_map->color_at(viewer_lat, viewer_lon);
+                RGB3 rgb = cels[whereami]->night_map->color_at(viewer_lat, viewer_lon);
                 if (rgb.r > 0.7*rgb.b) city_lights = rgb.r;
             }
 
@@ -4377,7 +4377,7 @@ void draw_sky_gradient()
                 b *= 0.9999;
                 redden *= kSkyReddenVerticalFalloff;
 
-                sky_grad[y] = RGB3Byte(r255*a, g255*a, b255*a);
+                sky_grad[y] = RGB3(r255*a, g255*a, b255*a);
             }
         }
     }
@@ -4581,7 +4581,7 @@ void draw_cloudy_sky()
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
-    RGB3Byte rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
+    RGB3 rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
     double cloudiness = sqrt(fmin(1,rgb.luminance()/192));
     double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 

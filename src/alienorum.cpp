@@ -551,7 +551,7 @@ int main (int argc, char** argv)
                 Color col(192, 225, 255);
                 for (jay=splash_star_brghtness[i]; jay>=0; jay-=0.5)
                 {
-                    RGB3Byte rgb = Color::rgb_from_color(col, 1);
+                    RGB3 rgb = Color::rgb_from_color(col, 1);
                     if (rgb.r >= 16 || rgb.b >= 16)
                     {
                         ImGui::GetBackgroundDrawList()->AddCircleFilled(splash_star_positions[i],

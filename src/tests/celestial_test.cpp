@@ -711,7 +711,7 @@ TEST(MapTest, AnEmptyMapAnswersSafely)
     // answer for a map that is not ready -- it multiplies through the body's own color and
     // leaves it as it is, where a black would blot the body out while its textures are building.
     EXPECT_DOUBLE_EQ(m.elevation_at(0.5, 1.0), 0);
-    RGB3Byte c = m.color_at(0.5, 1.0);
+    RGB3 c = m.color_at(0.5, 1.0);
     EXPECT_EQ(c.r, 255);
     EXPECT_EQ(c.g, 255);
     EXPECT_EQ(c.b, 255);

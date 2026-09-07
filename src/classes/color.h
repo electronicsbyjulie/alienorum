@@ -16,15 +16,15 @@ namespace alienorum
 {
     // Not named RGB: that collides with a wingdi.h macro on Windows, and a namespace does not
     // help. https://stackoverflow.com/questions/26719529/class-called-rgb-in-visual-c
-    class RGB3Byte
+    class RGB3
     {
         public:
         unsigned char r = 0;
         unsigned char g = 0;
         unsigned char b = 0;
 
-        RGB3Byte() { r=g=b=0; }
-        RGB3Byte(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
+        RGB3() { r=g=b=0; }
+        RGB3(unsigned char red, unsigned char green, unsigned char blue) { r = red; g = green; b = blue; }
 
         inline double luminance() { return _lum_r_comp*r + _lum_g_comp*g + _lum_b_comp*b; }
         void invert_luminance();        // used for white background mode only.
@@ -41,8 +41,8 @@ namespace alienorum
         static Color color_from_magnitude_indices(double Vmag, double BV);
         static Color color_from_magnitude_indices(double Vmag, double BV, double VR);
 
-        static RGB3Byte rgb_from_color(Color c, double multiplier = 1);
-        static RGB3Byte disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
+        static RGB3 rgb_from_color(Color c, double multiplier = 1);
+        static RGB3 disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
         static ImU32 adjust_alpha(ImU32 input, double target_visibility);
@@ -140,7 +140,7 @@ namespace alienorum
         double width;                       // Meters.
         double height;                      // Meters.
         double distance;                    // Modified by code; do not edit.
-        RGB3Byte color;
+        RGB3 color;
         unsigned int seed;
 
         ImVec2 find_draw_coordinates(double planet_radius);
@@ -151,7 +151,8 @@ namespace alienorum
 extern double global_brightness, sky_mag_shift;
 extern bool redlight_mode;
 extern AlienStyle global_style;
-extern std::map<int, RGB3Byte> sky_grad;
+extern std::map<int, RGB3> sky_grad;
+extern std::ostream& operator<<(std::ostream& os, const RGB3& rgb);
 
 void set_gamma(double new_gamma);
 double get_gamma();
@@ -159,6 +160,6 @@ void rgb_apply_redlight(float *r, float *g, float *b);
 uint32_t rgba_apply_redlight(uint32_t input);
 ImVec4 rgba_apply_redlight(ImVec4 input);
 void apply_default_style();
-RGB3Byte generate_vegetation_color(std::mt19937 *rng);
+RGB3 generate_vegetation_color(std::mt19937 *rng);
 
 #endif

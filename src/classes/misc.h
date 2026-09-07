@@ -194,6 +194,10 @@ enum DST_Rule
     dst_nz
 };
 
+
+#define debug_planet_class_color 0
+
+
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
 extern uint32_t xonsm[13];

@@ -7,18 +7,18 @@ using namespace alienorum;
 using json = nlohmann::json;
 
 // =====================================================================
-// RGB3Byte Tests
+// RGB3 Tests
 // =====================================================================
 
 TEST(RGB3ByteTest, InitializationAndLuminance)
 {
-    RGB3Byte black;
+    RGB3 black;
     EXPECT_EQ(black.r, 0);
     EXPECT_EQ(black.g, 0);
     EXPECT_EQ(black.b, 0);
     EXPECT_DOUBLE_EQ(black.luminance(), 0.0);
 
-    RGB3Byte white(255, 255, 255);
+    RGB3 white(255, 255, 255);
     EXPECT_EQ(white.r, 255);
     EXPECT_EQ(white.g, 255);
     EXPECT_EQ(white.b, 255);
@@ -26,7 +26,7 @@ TEST(RGB3ByteTest, InitializationAndLuminance)
     // Luminance = 0.29*255 + 0.56*255 + 0.15*255 = 255.0
     EXPECT_DOUBLE_EQ(white.luminance(), 255.0);
     
-    RGB3Byte red_only(100, 0, 0);
+    RGB3 red_only(100, 0, 0);
     EXPECT_DOUBLE_EQ(red_only.luminance(), 29.0); // 100 * 0.29
 }
 
@@ -189,7 +189,7 @@ TEST(ColorProceduralTest, VegetationColorBounds)
     
     for (int i = 0; i < 100; i++)
     {
-        RGB3Byte veg = generate_vegetation_color(&rng);
+        RGB3 veg = generate_vegetation_color(&rng);
         
         EXPECT_GE(veg.r, 0);
         EXPECT_LE(veg.r, 255);
