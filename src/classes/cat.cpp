@@ -5107,7 +5107,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 }
             }
         }
-        if (!(i & 0xff)) loading_msg = std::string("Verifying ") + std::string(cels[i]->name) + std::string("...");
+        if (!(i & 0x7ff))
+        {
+            std::string dispname = (cels[i]->type == star) ? ((Star*)cels[i])->alienorumid : cels[i]->name;
+            loading_msg = std::string("Verifying ") + dispname + std::string("...");
+        }
     }
 
     return num_read;
