@@ -4448,8 +4448,8 @@ void draw_cons_lines()
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
             bool valid = !(dx < 0 || dy < 0);
-            if (draw_actual_conslines && (i % 2) == 1 && pvalid && valid)
-                wrapped_line(ImVec2(pdx, pdy), ImVec2(dx, dy), cbcol, io);
+            // TODO: Drawing boundaries kills performance.
+            // if (draw_actual_conslines && (i % 2) == 1 && pvalid && valid) wrapped_line(ImVec2(pdx, pdy), ImVec2(dx, dy), cbcol, io);
 
             pdx = dx; pdy = dy; pvalid = valid;
         }

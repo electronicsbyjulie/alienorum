@@ -729,11 +729,7 @@ bool CelestialObject::from_json(json j)
         orbit = new Orbit();
         orbit->from_json(j1);
     } catch (...) { ; }
-    // And back, with the same guard: a stated period of zero means the body has no precession, so
-    // the rate is zero. Ungarded, it made the rate infinite, and update_orbit_location() multiplies
-    // it by the seconds since epoch to get equinox_eff -- which at the epoch itself is inf*0, a
-    // NaN that takes the body's orientation with it. Files written before this carry that zero:
-    // 37 of the 38 objects in Koora.json do.
+
     try
     {
         j.at("precession").get_to(precession);
