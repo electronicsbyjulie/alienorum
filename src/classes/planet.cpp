@@ -160,6 +160,7 @@ void Planet::set_color_from_type(bool HZ)
     }
     else if (type == clearskies)
     {
+        BV_color = 0;                               // required for equilibrium_temperature.
         double T = equilibrium_temperature();
         
         // Clamp the temperature within the Class III bounds for the calculation
@@ -176,6 +177,7 @@ void Planet::set_color_from_type(bool HZ)
     {
         // https://en.wikipedia.org/wiki/HD_189733_b#/media/File:HD_189733b_blue_planet.png with universal B-V correction added.
         double bluest = -0.1;
+        BV_color = bluest;                          // required for equilibrium_temperature.
 
         // https://iopscience.iop.org/article/10.3847/1538-4357/aadd9e
         // https://experts.arizona.edu/en/publications/absorption-spectra-of-the-prototype-hot-jupiters-determination-of
@@ -237,6 +239,16 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         else if (T > lava_T_cutoff) type = lavaworld;
         else type = rocky;
     }
+    else if (orbit && orbit->period < oneday*10)
+    {
+        type = hot_jupiter;
+        if (s) s->has_hot_jupiter = true;
+    }
+    else if (Teq >= 350 && Teq < 800)
+    {
+        // Sudarsky Class III: Too hot for water clouds, too cold for alkali/silicate clouds.
+        type = clearskies;
+    }
     else if (mass < giant_mass_cutoff               // Mass cutoff between ice giants and gas giants
         && (!mnrk || density > giant_density_cutoff))
     {
@@ -249,19 +261,14 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         }
         else type = ice_giant;
     }
-    else if (orbit && orbit->period < oneday*10)
-    {
-        type = hot_jupiter;
-        if (s) s->has_hot_jupiter = true;
-    }
-    else if (Teq >= 350 && Teq < 800)
-    {
-        // Sudarsky Class III: Too hot for water clouds, too cold for alkali/silicate clouds.
-        type = clearskies;
-    }
     else type = gas_giant;
 
-    if (!ck) set_color_from_type(HZ);
+    if (!ck)
+    {
+        set_color_from_type(HZ);
+        classify(HZ, mnrk, true);                   // DANGER: recursion
+        set_color_from_type(HZ);
+    }
 }
 
 void Planet::estimate_radius()

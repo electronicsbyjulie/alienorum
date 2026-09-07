@@ -4577,6 +4577,7 @@ void draw_cloudy_sky()
     if (whereami < 0) return;
     CelestialObject *cel = cels[whereami];
     if (!cel || !cel->cloud_map) return;
+    if (cel->type == clearskies) return;
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 

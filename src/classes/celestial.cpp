@@ -2376,13 +2376,18 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
 
         p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
-        bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
+        tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
         cel->randomize();
         variability = cel->cel_frand(0.1, 0.25);
         num_bands = cel->cel_rand() % 9 + 7;
-        if (cel->type == ice_giant)
+        if (cel->type == clearskies)
+        {
+            variability = 0;
+            std::cout << p->name << " BV=" << BV << std::endl;
+        }
+        else if (cel->type == ice_giant)
         {
             num_bands = std::max(2, num_bands/4);
             variability /= 4;
@@ -2393,7 +2398,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
         rgb = Color::rgb_from_color(col, p->albedo);
 
-        add_storm = !tidal_locked_to_star && (cel->cel_frand(0, 1) < 0.2);
+        add_storm = !tidal_locked_to_star && (cel->type != clearskies) && (cel->cel_frand(0, 1) < 0.2);
         stormlat = cel->cel_frand(0.3, 0.7);
         stormlon = cel->cel_frand(0.2, 0.8);            // storms get cut off if straddling the dateline
     }

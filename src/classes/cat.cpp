@@ -3182,6 +3182,7 @@ void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet
                 p->albedo = planet_albedines[designation];
                 if (!p->volumetric_mean_radius) p->estimate_radius();
                 p->estimate_albedo_and_absmagn();
+                p->set_color_from_type(p->is_in_con_HZ());
             }
         }
 
@@ -3767,6 +3768,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
                 // Estimate albedo and absolute magnitude.
                 p->estimate_albedo_and_absmagn();
+                p->set_color_from_type(HZ);
 
                 // Estimate planet rotation.
                 p->estimate_rotation();
@@ -5072,14 +5074,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         append_cel(s);
         num_read++;
 
-        if (!num_read & 0xf) loading_msg = std::string("Loading star catalog (") + std::string(s->name) + std::string(")...");
+        if (!(num_read & 0x1fff)) loading_msg = std::string("Loading star catalog (") + std::string(s->alienorumid) + std::string(")...");
     }
 
     fclose(fp);
-
-
     ((Star*)cels[0])->distance_known = true;
 
+    loading_msg = std::string("Verifying star orbits...");
     for (i=0; cels[i]; i++)
     {
         if (cels[i]->orbit && cels[i]->orbit->center_name.size())
@@ -5110,6 +5111,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 }
             }
         }
+        if (!(i & 0xff)) loading_msg = std::string("Verifying ") + std::string(cels[i]->name) + std::string("...");
     }
 
     return num_read;
@@ -5664,6 +5666,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         new_planet->estimate_radius();
     }
     new_planet->estimate_albedo_and_absmagn();
+    new_planet->set_color_from_type(new_planet->is_in_con_HZ());
     new_planet->estimate_rotation();
     new_planet->setup_atm_ring_props();
 
@@ -5707,6 +5710,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (fp)
         {
             ExoRow row;
+            int addedexo = 0;
             while (exorow_read_line(fp, row))
             {
                 if (ncelobjs >= MAX_CELOBJS) break;
@@ -5715,6 +5719,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 if (!host_star) continue;
                 if (stars_only) continue;
                 add_exoplanet_from_row(row, host_star, planet_celids, result);
+                addedexo++;
+                if (!(addedexo & 0x7f)) loading_msg = std::string("Loaded ") + std::to_string(addedexo) + std::string(" exoplanets from cache...");
             }
             fclose(fp);
 
