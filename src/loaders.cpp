@@ -196,12 +196,12 @@ void load_textures(CelestialObject* cel)
     cel->looked_for_maps = true;
     cel->ignore_map_files = false;          // one-time use.
 
-    if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == hot_jupiter) && !cel->cloud_map)
+    if (uses_gaseous_map(cel->type) && !cel->cloud_map)
     {
         cel->cloud_map = new Map(cel);
         cel->cloud_map->generate_gas_giant_map(cel);
     }
-    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld || cel->type == hycean || cel->type == lavaworld) && !cel->surf_map)
+    else if (uses_rocky_map(cel->type) && !cel->surf_map)
     {
         cel->surf_map = new Map(cel);
         cel->surf_map->generate_rocky_map(cel);
@@ -265,7 +265,7 @@ void save_textures(CelestialObject* cel)
     }
 }
 
-static bool establish_project_root()
+bool establish_project_root()
 {
     namespace fs = std::filesystem;
     std::vector<fs::path> candidates;

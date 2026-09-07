@@ -37,6 +37,10 @@ namespace alienorum
     {
         return type == rocky || type == icy || type == waterworld || type == hycean || type == lavaworld;
     }
+    inline bool uses_gaseous_map(cel_obj_type type)
+    {
+        return type == gas_giant || type == ice_giant || type == hot_jupiter || type == clearskies;
+    }
 
     enum cel_obj_class
     {

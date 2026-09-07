@@ -424,7 +424,7 @@ void compute_object_draw_coordinates()
                 inside_galaxy_idx = i;
         }
 
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
         
         // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
         // a star out of its visible box would.

@@ -16,6 +16,8 @@ void draw_ra_dec_lines()
 {
     ImGuiIO& io = ImGui::GetIO();
     if (!cels[1]) return;
+    if (view_mode == vm_system) return;
+
     int i, j;
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color, 0.1));
@@ -694,9 +696,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
 
     // For gas giants, ice giants, and overcast worlds, most of that atmosphere is below the
     // opaque part, below the cloud tops.
-    if (pl->type == gas_giant || pl->type == ice_giant || pl->type == hot_jupiter
-        || (pressure >= 5*oneatm && pl->type != clearskies)
-        )
+    if (uses_gaseous_map(pl->type))
         pressure = fmin(5*oneatm, pressure/100);
 
     // Matches draw_sky_gradient() exactly: Rayleigh scattering in the fixed 0.37/0.58/0.81 blue-
@@ -814,6 +814,8 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
+    if (view_mode == vm_system) camera_space = display_space = Point(0, 0, R * 10);
+
     // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
     // planet for a tidally-locked moon; see SphereImpostorInput's own comment on axis_x/y/z).
     // Matches the CPU path's own two shaping cases exactly (visuals.cpp's CPU polygon loop,
@@ -838,6 +840,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         axis_y = R * (1.0 - cel->oblateness);
     }
     double bounding_r = fmax(axis_x, fmax(axis_y, axis_z));
+    // std::cout << cel->name << " bounding_r=" << bounding_r << std::endl;
 
     spawn_texture_load(cel);
 
@@ -917,12 +920,19 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     Point light_dir(0, 0, 1);
     if (!self_luminous)
     {
-        Point light_camera_space = rotate3D(
-            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
-            center, xaxis, altitude);
-        light_dir = light_camera_space - camera_space;
-        double mag = light_dir.magnitude();
-        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+        if (view_mode == vm_system)
+        {
+            light_dir = Point(0,0,-AU);
+        }
+        else
+        {
+            Point light_camera_space = rotate3D(
+                rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+                center, xaxis, altitude);
+            light_dir = light_camera_space - camera_space;
+            double mag = light_dir.magnitude();
+            if (mag > 0) light_dir = light_dir * (1.0 / mag);
+        }
     }
 
     Color daylight = Color::color_from_magnitude_indices(0, lightcen->BV_color);
@@ -1011,8 +1021,13 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         in.apply_sky_blend = true;
     }
 
-    double xmin, ymin, xmax, ymax;
-    bool ok = queue_sphere_impostor(in, zoom, dispcx, dispcy, &xmin, &ymin, &xmax, &ymax);
+    double xmin=1e29, ymin=1e29, xmax=0, ymax=0;
+    bool ok = queue_sphere_impostor(in,
+        (view_mode == vm_system) ? (arad*10.0/dispcx) : zoom,
+        (view_mode == vm_system) ? cel->drawnx : dispcx,
+        (view_mode == vm_system) ? cel->drawny : dispcy,
+        dispcx,
+        &xmin, &ymin, &xmax, &ymax);
     if (!ok) return 0;
 
     cel->drawnxmin = xmin;
@@ -1021,6 +1036,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     cel->drawnymax = ymax;
 
     ImGuiIO& io = ImGui::GetIO();
+    /*std::cout << cel->name << ": " << xmin << "," << ymin << " ~ " << xmax << "," << ymax
+        << " disp=" << io.DisplaySize.x << "," << io.DisplaySize.y
+        << std::endl;*/
     if (xmax > 0 && xmin < io.DisplaySize.x && ymax > 0 && ymin < io.DisplaySize.y)
         cel->onscreen = true;
 
@@ -1087,7 +1105,7 @@ void draw_ring_gpu(CelestialObject* cel)
     in.amt_lit = pl->amt_lit;
     in.redlight_mode = redlight_mode;
 
-    queue_ring_impostor(in, zoom, dispcx, dispcy);
+    queue_ring_impostor(in, zoom, dispcx, dispcy, dispcx);
 }
 
 // ---- Releasing the universe --------------------------------------------------------------
@@ -1204,7 +1222,8 @@ void reap_released_objects()
 
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    if (cel->seqno == whereami) return 0;
+    if ((cel->seqno == whereami) && (view_mode != vm_system)) return 0;
+    if (view_mode == vm_system) cel->tmprel = Point(AU, 0, 0);
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
 
@@ -1275,14 +1294,14 @@ int draw_sphere(CelestialObject* cel, double arad)
     cel->drawnxmin = cel->drawnxmax = cel->drawnx;
     cel->drawnymin = cel->drawnymax = cel->drawny;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
-    bool wireframe = dragging || !cel->onscreen || d < cel->volumetric_mean_radius;
+    bool wireframe = (view_mode != vm_system) && (dragging || !cel->onscreen || d < cel->volumetric_mean_radius);
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
 
     bool use_gpu_disc = false, use_gpu_ring = false;
 #if ALIENORUM_GPU_SPHERES
     // vm_skymap isn't a pinhole camera (see Cartesian2D in point.cpp), so the camera-space
     // math draw_sphere_gpu() relies on doesn't apply there; fall through to the CPU path.
-    use_gpu_disc = (!wireframe && view_mode != vm_skymap);
+    use_gpu_disc = (view_mode == vm_system) || (!wireframe && view_mode != vm_skymap);
 
     // Deliberately its own condition, not just "use_gpu_disc" -- independent of
     // cel->onscreen and the close-range "d < volumetric_mean_radius" check baked into
@@ -1950,7 +1969,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     rgb.b = (int)(col.blue * divisor);
     if (whtbkgd) rgb.invert_luminance();
 
-    // Four rays around magnitude -10 and dimmer, filling in to a full circle by the Sun.
+    // Four rays around magnitude -10 and dimmer, when zoomed, filling in to a full circle if too bright.
     double fill = (vmag > -10.0) ? 0.0 : fmin(1.0, (-10.0 - vmag) / 16.0);
 
     // Glare scatters into a haze either because the source is overwhelmingly bright or
@@ -2009,11 +2028,12 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
         const double spike_rotation = azimuth - 0.3 * altitude; // 25.0 * fiftyseventh;
         double ray_len = base_len * (1.0 - 0.5 * haze);
         double halfwidth_base = (1.7 + flare * 0.006) * (1.0 + 2.5 * haze);
+        double priwt = (zoom < 9) ? 0.0 : fmin(1, (zoom-4)/16);
         for (int k=0; k<nslots; k++)
         {
             bool primary = !(k % 6);
             double weight;
-            if (primary) weight = 1.0;
+            if (primary) weight = priwt;
             else if (!(k % 3)) weight = fill;                    // diagonals fill in first
             else weight = fmax(0.0, fill * 2.0 - 1.0);           // the rest arrive last
             if (weight < 0.01) continue;
@@ -2785,7 +2805,7 @@ bool draw_one_object(int i)
 {
         bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
-    if (i == whereami) return false;
+    if ((i == whereami) && (view_mode != vm_system)) return false;
     
     int j;
     double coma_px = 0;
@@ -3060,6 +3080,7 @@ struct BandCrossing
 void draw_galaxy_band()
 {
     if (!show_galaxy_band || inside_galaxy_idx < 0) return;
+    if (view_mode == vm_system) return;
 
     CelestialObject *cel = cels[inside_galaxy_idx];
     Galaxy *g = (Galaxy*)cel;
@@ -3352,6 +3373,13 @@ void draw_galaxy_band()
 void draw_objects()
 {
     if (!ncelobjs) return;
+
+    if (view_mode == vm_system)
+    {
+        draw_system_view();
+        return;
+    }
+
     int i, j, n, pass;
     double step, dispw = dispcx*2, disph = dispcy*2;
     double orbseg = 81;
@@ -3461,7 +3489,7 @@ void draw_objects()
     {
         if (cels[i]->deleted) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
 
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
@@ -3550,6 +3578,203 @@ void draw_objects()
         if (!cels[1]) return;
     }
 
+}
+
+void draw_system_view()
+{
+    int i, j, n = lsyscache.size();
+
+    double padding = dispcy/20, selrad = 0;
+    int num_stars = 0;
+    for (i=0; i<n; i++) if (lsyscache[i]->typeclass() == class_star) num_stars++;
+
+    for (i=0; i<num_stars; i++)
+    {
+        if (lsyscache[i]->deleted) continue;
+        selrad = 0;
+        Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
+        s->drawnx = -dispcx/29;
+        s->drawny = dispcy + (2.0 * i - num_stars + 1) * (dispcy / num_stars);
+
+        // dry run - find planetary system scaling
+        double sdrad = dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20;
+        double cursor = s->drawnx + sdrad + padding;
+
+        for (j=num_stars; j<n; j++)
+        {
+            if (lsyscache[j]->deleted) continue;
+            cel_obj_class cls = lsyscache[j]->typeclass();
+            if (cls != class_planet) continue;
+
+            Planet *p = (Planet*)lsyscache[j];
+            if (p->mass < 0.01 * earth_mass) continue;
+            if (!p->orbit || p->orbit->center != s) continue;
+            p->drawny = s->drawny;
+            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*20;
+            p->drawnx = cursor + pdrad;
+            // std::cout << p->name << " cursor=" << cursor << " + pdrad=" << pdrad << " + pdrad=" << pdrad;           // deliberately twice
+            cursor = p->drawnx + pdrad + padding;
+            // std::cout << " + padding=" << padding << " = " << cursor << std::endl;
+        }
+
+        // compute scaling
+        // std::cout << "cursor=" << cursor << ", width=" << (dispcx*2) << std::endl << std::endl;
+        double curscale = fmin(1, dispcx*2.0 / cursor);         // do not expand system if already fits
+
+        // actual draw with scaling applied
+        sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
+        draw_sphere(s, sdrad);
+        if (s->seqno == selected) selrad = sdrad;
+        if (selected == s->seqno)
+        {
+            ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(s->drawnx, s->drawny), sdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+        }
+        cursor = s->drawnx + sdrad + padding*curscale;
+        if (lbl_localsys)
+        {
+            const char *dispname = s->name;
+            int disph = dispcy * 2;
+            ImFont *font = global_font;
+            double lfontsz = global_font_size;
+
+            ImVec2 lsz = ImGui::CalcTextSize(dispname);
+            int dy = s->drawny+sdrad+1;
+            if (s->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+            ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(fmax(0, s->drawnx - lsz.x/2), dy),
+                rgba_apply_redlight(Color::ensure_wcag_contrast(
+                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                dispname);
+        }
+
+        for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
+        {
+            if (lsyscache[j]->deleted) continue;
+            cel_obj_class cls = lsyscache[j]->typeclass();
+            if (cls != class_planet) continue;
+
+            Planet *p = (Planet*)lsyscache[j];
+            if (!p->orbit || p->orbit->center != s) continue;
+            if (p->mass < 0.01 * earth_mass) continue;
+            p->drawny = s->drawny;
+            double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
+            p->drawnx = cursor + pdrad;
+            draw_sphere(p, pdrad);
+            if (p->seqno == selected || (selected > 0 && cels[selected] && cels[selected]->orbit && cels[selected]->orbit->center == p)) selrad = pdrad;
+            if (p->ring_radius) draw_ring_gpu(p);
+            if (selected == p->seqno)
+            {
+                ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(p->drawnx, p->drawny), pdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+            }
+            cursor = p->drawnx + pdrad + padding * curscale;
+            // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
+
+            if (lbl_localsys)
+            {
+                const char *dispname = p->name;
+                int disph = dispcy * 2;
+                ImFont *font = global_font;
+                double lfontsz = global_font_size;
+
+                ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                int dy = p->drawny+pdrad+1;
+                if (p->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(p->drawnx - lsz.x/2, dy),
+                    rgba_apply_redlight(Color::ensure_wcag_contrast(
+                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                    dispname);
+            }
+        }
+
+        draw_sphere(s, sdrad);
+
+        if (selected >= 0 && selrad)
+        {
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), IM_COL32(0,0,0,128));
+            CelestialObject *csel = cels[selected];
+            while (csel->typeclass() == class_moon && csel->orbit) csel = csel->orbit->center;
+            draw_sphere(csel, selrad);
+            if (lbl_localsys)
+            {
+                const char *dispname = csel->name;
+                int disph = dispcy * 2;
+                ImFont *font = global_font;
+                double lfontsz = global_font_size;
+
+                ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                int dy = csel->drawny+selrad+1;
+                if (csel->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(csel->drawnx - lsz.x/2, dy),
+                    rgba_apply_redlight(Color::ensure_wcag_contrast(
+                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                    dispname);
+            }
+
+            // Moons.
+            double moonx = csel->drawnx;
+            double moony = csel->drawny + selrad*2 + padding;
+            double next_moony = moony;
+            double moonrad;
+
+            // Count them.
+            int num_moons = 0;
+            for (j=num_stars; j<n; j++)
+            {
+                if (lsyscache[j]->deleted) continue;
+                if (lsyscache[j]->typeclass() == class_moon)
+                {
+                    Moon *m = (Moon*)lsyscache[j];
+                    if (m->orbit && m->orbit->center == csel) num_moons++;
+                }
+            }
+
+            if (num_moons > 3)
+                moonx = fmax(moonx*0.5, moonx - 0.5*selrad*(num_moons-3));
+            double origmx = moonx;
+
+            for (j=num_stars; j<n; j++)
+            {
+                if (lsyscache[j]->deleted) continue;
+                cel_obj_class cls = lsyscache[j]->typeclass();
+                if (cls != class_moon) continue;
+
+                Moon *m = (Moon*)lsyscache[j];
+                if (!m->orbit || m->orbit->center != csel) continue;
+
+                m->drawnx = moonx;
+                m->drawny = moony;
+                moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*5) * curscale;
+                draw_sphere(m, moonrad);
+                next_moony = fmax(next_moony, moony + moonrad*2 + padding);
+                if (m->seqno == selected) selrad = moonrad;
+
+                moonx += moonrad*2 + padding;
+                if (moonx > dispcx*2 - moonrad*2 - padding)
+                {
+                    moonx = origmx;
+                    moony = next_moony;
+                }
+
+                if (lbl_localsys)
+                {
+                    const char *dispname = m->name;
+                    int disph = dispcy * 2;
+                    ImFont *font = global_font;
+                    double lfontsz = global_font_size;
+
+                    ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                    int dy = m->drawny+moonrad+1;
+                    if (m->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                    ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(m->drawnx - lsz.x/2, dy),
+                        rgba_apply_redlight(Color::ensure_wcag_contrast(
+                            (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                        dispname);
+                }
+            }
+
+            csel = cels[selected];
+            ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(csel->drawnx, csel->drawny), selrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
+        }
+    }
 }
 
 ImVec2 sc_drawcoords(CelestialObject *obj, CelestialObject *cel, bool update_drawnxy = true)
@@ -3994,11 +4219,18 @@ void draw_horizon()
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
+        // If overcast sky, adjust for relative instellation.
+        if (p && p->cloud_map)
+        {
+            is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
+            is_day = fmin(1, is_day);
+        }
+
         Map *map = cel->surf_map;
         RGB3Byte rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3Byte(0, 8, 24);
-        rgb.r *= is_day;
-        rgb.g *= is_day;
-        rgb.b *= is_day;
+        rgb.r = fmin(255, is_day*rgb.r);
+        rgb.g = fmin(255, is_day*rgb.g);
+        rgb.b = fmin(255, is_day*rgb.b);
 
         bool is_water = (p->type == rocky)
             && (rgb.b > 0.8 * rgb.r)
@@ -4108,6 +4340,7 @@ void draw_sky_gradient()
             int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.001 * city_lights);
             sky_mag_shift = skylight * -10;
+
             double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
@@ -4153,6 +4386,8 @@ void draw_sky_gradient()
 void draw_cons_lines()
 {
     if (!cels[1]) return;
+    if (view_mode == vm_system) return;
+
     int i, l, m, n;
     double dispw = dispcx*2, disph = dispcy*2;
     ImGuiIO& io = ImGui::GetIO();
@@ -4342,14 +4577,19 @@ void draw_cloudy_sky()
     if (whereami < 0) return;
     CelestialObject *cel = cels[whereami];
     if (!cel || !cel->cloud_map) return;
+    cel_obj_class cls = cel->typeclass();
+    Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
     RGB3Byte rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
     double cloudiness = sqrt(fmin(1,rgb.luminance()/192));
     double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
-    rgb.r *= is_day;
-    rgb.g *= is_day;
-    rgb.b *= is_day;
+    // If overcast sky, adjust for relative instellation.
+    if (p && p->cloud_map) is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
+
+    rgb.r = fmin(255, is_day*rgb.r);
+    rgb.g = fmin(255, is_day*rgb.g);
+    rgb.b = fmin(255, is_day*rgb.b);
 
     ImU32 imc = IM_COL32(rgb.r, rgb.g, rgb.b, (dragging ? 128 : 255)*cloudiness);
     if (hz_y > 0 && (hz_y < dispcy*28 || altitude > 1)) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);

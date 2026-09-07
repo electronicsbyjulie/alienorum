@@ -394,7 +394,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
     {
         json allobj;
         fs >> allobj;
-        int i, j, n = allobj.size();
+        int i, j, l, n = allobj.size();
         for (i=0; cels[i]; i++);
         ncelobjs = i;
 
@@ -408,6 +408,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         // count below is left to the stars that did not -- which is every star in a file written
         // before these tallies were saved, so those load exactly as they always have.
         std::set<Star*> tally_stated;
+        l = 0;
         for (auto it = allobj.begin(); it != allobj.end(); ++it)
         {
             i = ncelobjs;
@@ -482,7 +483,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             cels[i]->seqno = i;
 
             mtx.lock();
-            loading_msg = std::string("Loaded ") + std::to_string(i+1) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
+            l++;
+            loading_msg = std::string("Loaded ") + std::to_string(l) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
             mtx.unlock();
 
             // Nothing below this point applies to a body with no orbit -- there is no center to
@@ -525,10 +527,11 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 CelestialObject* lc = cels[i]->get_light_center();
                 Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
-                else if (!tally_stated.count(s))
+                else if (cels[i]->typeclass() == class_planet && !tally_stated.count(s) && cels[i]->mass >= 0.01 * earth_mass)        // Do not count asteroids, moons, KBOs in planetary system.
                 {
                     s->has_planets++;
                     if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
+                    s->pl_indices.push_back(i);
                 }
             }
 

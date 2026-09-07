@@ -56,6 +56,7 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
+        std::vector<int> pl_indices;
         bool tmp_vis_flag = false;                  // Used only for rendering.
         bool has_disk = false;                      // E.g. dust, debris, cometary, asteroid belt, etc.
         bool rot_axis_known = false;

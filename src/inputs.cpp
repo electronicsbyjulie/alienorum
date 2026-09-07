@@ -43,6 +43,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     obj_magn_under_cursor = 1e9;
     int threshold = circle_size*1.3;
     bool selected_this_turn = false;
+    bool lsysonly = (view_mode == vm_system);
 
     if (trackidx >= 0)
     {
@@ -50,8 +51,9 @@ void identify_object_under_cursor(ImGuiIO& io)
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
+        if (lsysonly && cels[i]->cenobj != mycenobj) continue;
 
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
             && abs(io.MousePos.y - cels[i]->drawny) < threshold)
@@ -79,32 +81,39 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
     }
 
-    if (view_mode == vm_sunclock && is_an_obj_under_cursor < 0)
+    if (is_an_obj_under_cursor < 0)
     {
-        double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
-
-        if (mlon >  180) mlon -= 360;
-        if (mlon < -180) mlon += 360;
-
-        CelestialObject *cel = cels[whereami];
-        if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
+        if (view_mode == vm_sunclock)
         {
-            dlat = fabs(cel->locales[i].lat - mlat);
-            dlon = fabs(cel->locales[i].lon - mlon);
-            if (dlon < 3 && dlat < 3)
+            double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
+
+            if (mlon >  180) mlon -= 360;
+            if (mlon < -180) mlon += 360;
+
+            CelestialObject *cel = cels[whereami];
+            if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
             {
-                r = sqrt(dlat*dlat + dlon*dlon);
-                if (r < br)
+                dlat = fabs(cel->locales[i].lat - mlat);
+                dlon = fabs(cel->locales[i].lon - mlon);
+                if (dlon < 3 && dlat < 3)
                 {
-                    is_a_locale_under_cursor = &cel->locales[i];
-                    br = r;
+                    r = sqrt(dlat*dlat + dlon*dlon);
+                    if (r < br)
+                    {
+                        is_a_locale_under_cursor = &cel->locales[i];
+                        br = r;
+                    }
                 }
             }
-        }
 
-        if (is_click && !dragged)
+            if (is_click && !dragged)
+            {
+                selected_locale = is_a_locale_under_cursor;
+                if (!selected_this_turn) selected = -1;
+            }
+        }
+        else if (is_click && !dragged)
         {
-            selected_locale = is_a_locale_under_cursor;
             if (!selected_this_turn) selected = -1;
         }
     }
@@ -116,6 +125,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     double amount = 1;
     if (view_mode == vm_skymap) amount = 3;
     else if (view_mode == vm_sunclock) amount = 5;
+    else if (view_mode == vm_system) amount = -3;
 
     if (ImGui::IsMouseDown(2))
     {
@@ -407,6 +417,7 @@ void process_key_cmd_char(char c)
         case 'N': cbolbls_selected_idx = lbltype_nearby; show_labels = true; break;
 
         case 'o':
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         if (selected < 0 && trackidx >= 0) selected = trackidx;
         if (selected >= 0)
         {
@@ -430,6 +441,7 @@ void process_key_cmd_char(char c)
         else break;
 
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         velocity = center;
         viewchanged = true;
         refresh_star_visibilities();
@@ -815,6 +827,7 @@ void process_key_delete()
     // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
     if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
     else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
+    selected = -1;
 }
 
 void process_key_home()

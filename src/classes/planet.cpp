@@ -53,9 +53,12 @@ bool alienorum::Planet::estimate_habitability()
         has_water = 0;
     }
 
-    temperature = 0;
+    double press = get_surface_pressure();
+    if (press < 150) return false;
+
+    temperature = 0;            // force refresh
     double T_surf = estimate_surface_temperature();
-    const double Tboil = water_freezing+100;                                     // Reference pressure
+    const double Tboil = water_freezing+100;                                     // at reference pressure
 
     // Constants for water b.p.
     const double R = 8.314;                                         // J/(mol*K)
@@ -65,11 +68,11 @@ bool alienorum::Planet::estimate_habitability()
     // Clausius-Clapeyron calculation
     double inv_T1 = 1.0 / Tboil;
     double gas_constant_ratio = R / DELTA_H_VAP;
-    double pressure_log = std::log(get_surface_pressure() / P1);
+    double pressure_log = std::log(press / P1);
 
     double inv_T2 = inv_T1 - (gas_constant_ratio * pressure_log);
     double T_boil = 1.0 / inv_T2;
-    // std::cout << "At " << (get_surface_pressure() / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
+    // std::cout << "At " << (press / oneatm) << " atmospheres, water boils at " << T_boil << " K." << std::endl;
 
     bool life_possible = false;
 
@@ -80,26 +83,28 @@ bool alienorum::Planet::estimate_habitability()
         if (life_possible)
         {
             if (!show_taucalc) ac->generate_fictitious_habitable();
-            atm->calculate_tau(get_surface_pressure());
-            temperature = 0;
+            press = get_surface_pressure();
+            atm->calculate_tau(press);
+            temperature = 0;            // force refresh
             T_surf = estimate_surface_temperature();
         }
         else if (!show_taucalc) ac->generate_fictitious_for_planet(type);
+        press = get_surface_pressure();
     }
     life_possible = (life_possible
-        && get_surface_pressure() >= 600
+        && press >= 600
         && T_surf > 0.9*water_freezing && T_surf < 320
-        && get_surface_pressure() < oneatm*2000);
+        && press < oneatm*2000);
 
-    if (atm) atm->calculate_tau(get_surface_pressure());
+    if (atm) atm->calculate_tau(press);
 
     if (life_possible)
     {
-        temperature = 0;
+        temperature = 0;        // force refresh
         T_surf = estimate_surface_temperature();
         #ifdef DEBUG
-            std::cout << "Surface pressure: " << (get_surface_pressure() / 101325) << " atm." << std::endl << std::flush;
-            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;
+            /*std::cout << "Surface pressure: " << (press / 101325) << " atm." << std::endl << std::flush;
+            std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
         if (randomize_txgen)
@@ -117,27 +122,29 @@ bool alienorum::Planet::estimate_habitability()
         }
 
         if (ac) ac->H2O_portion = 0.014 * has_water;
-        temperature = 0;
-        if (atm) atm->calculate_tau(get_surface_pressure());
+        temperature = 0;        // force refresh
+        if (atm) atm->calculate_tau(press);
         T_surf = estimate_surface_temperature();
 
         life_possible = (has_water >= 0.05
-            && get_surface_pressure() >= 600
+            && press >= 600
             && T_surf > 0.9*water_freezing && T_surf < 320
-            && get_surface_pressure() < oneatm*2000);
+            && press < oneatm*2000);
 
         if (randomize_txgen && ac)
         {
             if (life_possible)
             {
                 if (!show_taucalc) ac->generate_fictitious_habitable();
-                atm->calculate_tau(get_surface_pressure());
+                press = get_surface_pressure();
+                atm->calculate_tau(press);
             }
         }
     }
 
-    temperature = 0;
-    if (atm) atm->calculate_tau(get_surface_pressure());
+    temperature = 0;                    // force refresh
+    press = get_surface_pressure();     // just in case
+    if (atm) atm->calculate_tau(press);
     T_surf = estimate_surface_temperature();
 
     return life_possible;
@@ -150,6 +157,20 @@ void Planet::set_color_from_type(bool HZ)
     {
         if (HZ) BV_color = 0.2;                     // estimate same as Earth.
         else BV_color = 1;
+    }
+    else if (type == clearskies)
+    {
+        double T = equilibrium_temperature();
+        
+        // Clamp the temperature within the Class III bounds for the calculation
+        double bounded_T = fmin(800.0, fmax(350.0, T));
+        
+        // Normalize the temperature to a 0.0 to 1.0 scale across the Class III window
+        double t_ratio = (bounded_T - 350.0) / (800.0 - 350.0);
+        
+        // At 350 K (t_ratio = 0), B-V is 0.4 (Neptune-like).
+        // At 800 K (t_ratio = 1), B-V drops to -0.15 (deep alkali azure).
+        BV_color = 0.4 - (0.55 * t_ratio);
     }
     else if (type == hot_jupiter)
     {
@@ -164,7 +185,7 @@ void Planet::set_color_from_type(bool HZ)
         // https://www.aanda.org/articles/aa/full_html/2019/07/aa35089-19/aa35089-19.html
         // https://academic.oup.com/mnras/article/426/3/2483/989230
         // https://repository.arizona.edu/handle/10150/628273
-        double T = estimate_surface_temperature();
+        double T = equilibrium_temperature();
         BV_color = 0.98 + (bluest-0.98) / (1.0 + 0.002 * fabs(T-1200));
     }
     else if (type == ice_giant) BV_color = 0.49;    // average of Uranus and Neptune.
@@ -207,6 +228,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         s = (Star*) orbit->center;
 
     double T = estimate_surface_temperature();
+    double Teq = equilibrium_temperature();
     if (mass < rocky_mass_cutoff                    // Mass cutoff between rocky planets and ice giants
         || (mass < jupiter_mass && mnrk && density > rocky_density_cutoff)
         )
@@ -232,24 +254,21 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         type = hot_jupiter;
         if (s) s->has_hot_jupiter = true;
     }
+    else if (Teq >= 350 && Teq < 800)
+    {
+        // Sudarsky Class III: Too hot for water clouds, too cold for alkali/silicate clouds.
+        type = clearskies;
+    }
     else type = gas_giant;
 
     if (!ck) set_color_from_type(HZ);
-
-    // classify() used to also reach for an atmosphere here, on its own separate copy of the same
-    // cosmic-shoreline math apply_cosmic_shoreline() already does properly (randomized within its
-    // range, one shared implementation). classify() runs from far more places than just exoplanet
-    // creation -- catalog loads, the edit dialog, procedural moon generation -- so that gave any
-    // of them a side-effect atmosphere assignment classify()'s name gives no reason to expect. Only
-    // apply_cosmic_shoreline() assigns one now, called explicitly by the load/creation paths that
-    // are supposed to (setup_atm_ring_props() for exoplanets, the Shift+A dialog for new bodies).
 }
 
 void Planet::estimate_radius()
 {
     // https://doi.org/10.1051/0004-6361/202348690
     if ((mass < rocky_mass_cutoff)
-        || type == rocky || type == waterworld || type == hycean || type == icy)
+        || uses_rocky_map(type))
         volumetric_mean_radius = 1.02 * earth_radius * pow(mass/earth_mass, 0.27);
     else if (mass < giant_mass_cutoff) volumetric_mean_radius = 0.56 * earth_radius * pow(mass/earth_mass, 0.67);
     else if (type == hot_jupiter)
@@ -310,7 +329,7 @@ double Planet::phase_slope_parameter()
 // world whose dust does soften its phase curve without hiding the ground.
 double Planet::cloud_deck_fraction()
 {
-    if (type == gas_giant || type == ice_giant || type == hot_jupiter) return 1;
+    if (uses_gaseous_map(type)) return 1;
 
     double p_pa = get_surface_pressure();
     if (p_pa <= 100) return 0;
@@ -463,6 +482,7 @@ void Planet::estimate_albedo_and_absmagn()
     double est_albedo = 0.3;
     if (type == gas_giant       ) est_albedo = 0.5;
     else if (type == hot_jupiter) est_albedo = 0.01;
+    else if (type == clearskies ) est_albedo = 0.1;
     else if (type == ice_giant  ) est_albedo = 0.3;
     else if (type == waterworld || type == hycean ) est_albedo = 0.4;
     else if (type == icy        ) est_albedo = 0.8;
@@ -530,7 +550,9 @@ double Planet::equilibrium_temperature()
 
 double Planet::estimate_surface_temperature()
 {
-    return temperature_at_pressure(get_surface_pressure());
+    if (temperature) return temperature;
+    if (uses_gaseous_map(type)) return temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
+    return temperature = temperature_at_pressure(get_surface_pressure());
 }
 
 double Planet::temperature_at_pressure(double pressure_pa)
@@ -752,6 +774,28 @@ double alienorum::Planet::atmospheric_horizon_lift()
     if (density_ratio <= 4.0) return 0.0;
     double n_0 = 1.0 + (0.000293 * density_ratio);
     return std::acos(1.0 / n_0);
+}
+
+double alienorum::Planet::mean_instellation()
+{
+    CelestialObject *distancer = this;
+
+    // Similar algorithm to get_light_center(), but bated one step back.
+    while (distancer->orbit && distancer->orbit->center && distancer->orbit->center->type != star) distancer = distancer->orbit->center;
+    CelestialObject *lumcen = distancer->orbit->center;                     // what would have been the last step if we had used the light center function.
+    assert(lumcen == get_light_center());
+
+    double mean_dist;                                                                       // meters
+
+    if (!distancer->orbit) return 0;
+    if (!distancer->orbit->semimajor_axis) distancer->orbit->compute_semimajor_axis(distancer->mass);
+    if (!distancer->orbit->semimajor_axis) mean_dist = location.distance_to(distancer->orbit->center->location);
+    else mean_dist = distancer->orbit->semimajor_axis;
+
+    double luminosity = pow(magnbase, 4.85 - lumcen->absolute_magnitude);                   // scaled so sun=1
+    double mean_dist_AU = mean_dist * invAU;
+
+    return luminosity / (mean_dist_AU*mean_dist_AU);
 }
 
 bool Planet::is_in_con_HZ()
