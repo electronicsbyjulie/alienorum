@@ -82,8 +82,8 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
         {
             std::string entry_name = entry.path().filename().string();
             if (fs::is_directory(entry.path())
-                    &&
-                    std::find(known_catalog_names.begin(), known_catalog_names.end(), entry_name) != known_catalog_names.end()
+                &&
+                std::find(known_catalog_names.begin(), known_catalog_names.end(), entry_name) != known_catalog_names.end()
                )
             {
                 results.push_back(path + _FSSTR + entry_name);
@@ -485,7 +485,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->update_location(J2000_TIME_T);
             // Assumed 90 degree inclination for all extrasolar systems unless inclination known.
             s->location.equatorial_plane = s->location.local_system_plane =
-                                               align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
+                align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
         }
 
 #if _debug_sbinaries_zetret
@@ -2882,19 +2882,13 @@ bool CatalogReader::load_comet(CometRow *r, char *buffer)
     read_field_onebased(buffer, 463, 485, field);
     c->orbit->inclination = atof(field) * fiftyseventh;
 
-    // 487-521: the two light curves, total and nucleus.
-    read_field_onebased(buffer, 487, 491, field);
-    c->H1 = atof(field);
-    read_field_onebased(buffer, 493, 497, field);
-    c->R1 = atof(field);
-    read_field_onebased(buffer, 499, 503, field);
-    c->D1 = atof(field);
-    read_field_onebased(buffer, 505, 509, field);
-    c->H2 = atof(field);
-    read_field_onebased(buffer, 511, 515, field);
-    c->R2 = atof(field);
-    read_field_onebased(buffer, 517, 521, field);
-    c->D2 = atof(field);
+    // 487-521: the two light curves: total and nucleus.
+    read_field_onebased(buffer, 487, 491, field);    c->H1 = atof(field);
+    read_field_onebased(buffer, 493, 497, field);    c->R1 = atof(field);
+    read_field_onebased(buffer, 499, 503, field);    c->D1 = atof(field);
+    read_field_onebased(buffer, 505, 509, field);    c->H2 = atof(field);
+    read_field_onebased(buffer, 511, 515, field);    c->R2 = atof(field);
+    read_field_onebased(buffer, 517, 521, field);    c->D2 = atof(field);
 
     if (q_au <= 0) q_au = 1;
     c->orbit->eccentricity = e;
@@ -4342,141 +4336,34 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->known_poles = true;
             }
             catch (...) { ; }
-            try
-            {
-                pl.at("ABSMG").get_to(p->absolute_magnitude);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("ArgPeri").get_to(p->orbit->arg_periapsis);
-                p->orbit->arg_periapsis *= fiftyseventh;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("AscNode").get_to(p->orbit->ascending_node);
-                p->orbit->ascending_node *= fiftyseventh;
-            }
-            catch (...) { ; }
+            try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
+            try { pl.at("ArgPeri").get_to(p->orbit->arg_periapsis); p->orbit->arg_periapsis *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
 
-            try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ }
-            catch (...) { ; }
-            try
-            {
-                pl.at("BVmag").get_to(p->BV_color);
-            }
-            catch (...)
-            {
-                if (createnew) p->BV_color = p->orbit->center->BV_color;
-            }
-            try
-            {
-                pl.at("UBmag").get_to(p->UB_color);
-            }
-            catch (...)
-            {
-                if (createnew) p->UB_color = p->orbit->center->UB_color;
-            }
-            try
-            {
-                pl.at("Eccentricity").get_to(p->orbit->eccentricity);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("Epoch").get_to(p->epoch);
-                p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday);
-                p->orbit->epoch = p->epoch;
-            }
-            catch (...) { ; }
-            try
-            {
-                double pre;
-                pl.at("EqPrecession").get_to(pre);
-                p->precession = pre ? (_pi * 2 / pre / oneyear) : 0;
-            }
-            catch (...) { ; }
-            try
-            {
-                double pre;
-                pl.at("NodePrecession").get_to(pre);
-                p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0;
-            }
-            catch (...) { ; }
-            try
-            {
-                double pro;
-                pl.at("ArgPeriProcession").get_to(pro);
-                p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("Equinox").get_to(p->equinox);
-                p->equinox *= fiftyseventh;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("Incl").get_to(p->orbit->inclination);
-                p->orbit->inclination *= fiftyseventh;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("J2").get_to(p->J2);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("Lon_J2000_offset").get_to(p->lon_J2000_offset);
-                p->lon_J2000_offset *= fiftyseventh;
-            }
-            catch (...) { ; }
+            try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
+            try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
+            try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
+            try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
+            try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
+            try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
+            try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0; } catch (...) { ; }
+            try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("J2").get_to(p->J2); } catch (...) { ; }
+            try { pl.at("Lon_J2000_offset").get_to(p->lon_J2000_offset); p->lon_J2000_offset *= fiftyseventh; } catch (...) { ; }
             try
             {
                 pl.at("Mass").get_to(p->mass);
                 p->mass *= 1000;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("MeanAnom").get_to(p->orbit->mean_anomaly);
-                p->orbit->mean_anomaly *= fiftyseventh;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("Oblateness").get_to(p->oblateness);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("Obliquity").get_to(p->obliquity);
-                p->obliquity *= fiftyseventh;
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("OrbitPeriod").get_to(p->orbit->period);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("RotationPeriod").get_to(p->sidereal_rotational_period);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("SurfaceTemperature").get_to(p->temperature);
-            }
-            catch (...) { ; }
+            } catch (...) { ; }
+            try { pl.at("MeanAnom").get_to(p->orbit->mean_anomaly); p->orbit->mean_anomaly *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("Oblateness").get_to(p->oblateness); } catch (...) { ; }
+            try { pl.at("Obliquity").get_to(p->obliquity); p->obliquity *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("OrbitPeriod").get_to(p->orbit->period); } catch (...) { ; }
+            try { pl.at("RotationPeriod").get_to(p->sidereal_rotational_period); } catch (...) { ; }
+            try { pl.at("SEMIMAJOR_AXIS").get_to(p->orbit->semimajor_axis); } catch (...) { ; }
+            try { pl.at("SurfaceTemperature").get_to(p->temperature); } catch (...) { ; }
             // Atmosphere. Read into locals first and only build the object if the record really
             // carries something: most bodies in planets.json have no atmospheric keys at all and
             // must come out with atm == nullptr rather than the struct's one-atmosphere default.
@@ -4527,44 +4414,17 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 }
                 catch (...) { ; }
             }
-            try
-            {
-                pl.at("VolMeanRad").get_to(p->volumetric_mean_radius);
-            }
-            catch (...) { ; }
-            try
-            {
-                pl.at("RingRadius").get_to(p->ring_radius);
-                p->ring_radius *= 1000;
-            }
-            catch (...) { ; }
+            
+            try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
+            try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
             // try { pl.at("").get_to(p->); } catch (...) { ; }
 
             if (m)
             {
-                try
-                {
-                    pl.at("Depth" ).get_to(m->depth );
-                    m->depth  *= 1000;
-                }
-                catch (...) { ; }
-                try
-                {
-                    pl.at("Width" ).get_to(m->width );
-                    m->width  *= 1000;
-                }
-                catch (...) { ; }
-                try
-                {
-                    pl.at("Height").get_to(m->height);
-                    m->height *= 1000;
-                }
-                catch (...) { ; }
-                try
-                {
-                    pl.at("Major" ).get_to(m->major_moon);
-                }
-                catch (...) { ; }
+                try { pl.at("Depth" ).get_to(m->depth ); m->depth  *= 1000; } catch (...) { ; }
+                try { pl.at("Width" ).get_to(m->width ); m->width  *= 1000; } catch (...) { ; }
+                try { pl.at("Height").get_to(m->height); m->height *= 1000; } catch (...) { ; }
+                try { pl.at("Major" ).get_to(m->major_moon); } catch (...) { ; }
                 if (!m->orbit) std::cout << "WARNING: " << m->name << " has no orbit." << std::endl << std::flush;
                 if (m->orbit && !m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
                 if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
