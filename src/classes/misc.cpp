@@ -792,7 +792,7 @@ bool extract_archive(const char* filename)
     // Open the .tar.gz or .gz file
     if ((r = archive_read_open_filename(a, filename, 10240)))
     {
-        std::cerr << "Failed to open " << filename << ": " << archive_error_string(a) << std::endl;
+        std::cerr << "Failed to open " << filename << " for reading: " << archive_error_string(a) << std::endl;
         return false;
     }
 

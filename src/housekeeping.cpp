@@ -587,7 +587,7 @@ void set_center_objects()
                             if (!current.size() || current == base)
                             {
                                 strcpy(s->name, (base + std::string(" ") + std::string(1, comp)).c_str());
-                                s->namelen = 0;
+                                s->namelen = strlen(s->name);
                             }
                         }
                     }

@@ -106,11 +106,11 @@ TEST(StarTest, DegenerateRadiusCalculation)
     EXPECT_DOUBLE_EQ(Star::degenerate_radius(0.0), Star::degenerate_radius(0.6 * solar_mass));
 }
 
+// TODO: This is not passing - if you are submitting a PR and seeing this fail, your code didn't break it.
 TEST(StarTest, TemperatureFromBV)
 {
     Star sun;
-    sun.estimate_BV(sun_temp);                      // uncorrected, since bv_correction is still 0
-    bv_correction = sun.BV_color - 0.65;            // the Sun is B-V 0.65 by definition
+    sun.estimate_BV(sun_temp);
 
     EXPECT_NEAR(Star::temperature_from_BV(0.65), sun_temp, 1.0);
 

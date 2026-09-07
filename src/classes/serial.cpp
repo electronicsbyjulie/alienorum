@@ -138,7 +138,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     n = constellations.size();
     if (match_cons) for (i=0; !cons2match && i<n; i++)
     {
-        if (!strcasecmp(match_cons, constellations[i].name.c_str())) cons2match = &constellations[i];
+        if (!strncasecmp(match_cons, constellations[i].name.c_str(), 3))
+            cons2match = &constellations[i];
     }
 
     bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))
@@ -264,6 +265,11 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
                 if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
             }
+            if (match_cons && s
+                && (    (s->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
+                    ||  (s->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
+                    ||  (s->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
+                )) continue;
 
             if (s && strlen(s->Gliese)                    // HOW MANY TIMES DO I HAVE TO BEAT THIS INTO YOU, COMPUTER.
                 && (lookstr[0]&0x5f) == 'W' && (lookstr[1]&0x5f) == 'O' && (lookstr[2]&0x5f) == 'L' && (lookstr[3]&0x5f) == 'F'

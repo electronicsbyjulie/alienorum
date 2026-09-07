@@ -952,7 +952,7 @@ void draw_addcel_window(ImGuiIO& io)
             if (cel)
             {
                 strcpy(cel->name, "new");
-                cel->namelen = 0;
+                cel->namelen = strlen(cel->name);
                 cel->user_added = true;
                 cels[addcenidx]->distance_known = true;
                 cel->distance_known = true;
@@ -1023,7 +1023,7 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::InputText("##edtname", edit_name, name_max_len, 0))
     {
         strcpy(cels[editidx]->name, edit_name);
-        cels[editidx]->namelen = 0;
+        cels[editidx]->namelen = strlen(cels[editidx]->name);
         cel->user_edited = true;
     }
     ImGui::SameLine(col3);
@@ -2493,7 +2493,7 @@ void draw_system_explorer(ImGuiIO& io)
                     Moon *m = new Moon();
                     std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
                     strcpy(m->name, mname.c_str());
-                    m->namelen = 0;
+                    m->namelen = strlen(m->name);
                     m->user_added = true;
                     m->user_edited = true;
                     m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;

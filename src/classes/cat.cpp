@@ -188,7 +188,7 @@ void CatalogReader::download_catalogs(bool hih)
 
             i = entry_name.size();
             j = i - 3;
-            if (!strcmp(".tar.gz", &entry_name.c_str()[j]))
+            if (j>4 && !strcmp(".tar.gz", &entry_name.c_str()[j-4]))
             {
                 std::string entry_path = destdir + _FSSTR + entry_name;
                 extract_archive(entry_path.c_str());
@@ -196,8 +196,9 @@ void CatalogReader::download_catalogs(bool hih)
             else if (!strcmp(".gz", &entry_name.c_str()[j]))
             {
                 std::string decompressed_name = entry_name.substr(0, entry_name.size()-3);
-                std::string entry_path = destdir + _FSSTR + decompressed_name;
-                if (!fs::exists(entry_path.c_str()))
+                std::string entry_path = destdir + _FSSTR + entry_name;
+                std::string decompressed_path = destdir + _FSSTR + decompressed_name;
+                if (!fs::exists((decompressed_path).c_str()))
                 {
                     extract_archive(entry_path.c_str());
                 }
@@ -320,7 +321,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         {
             strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
             strcpy(s->name, "55 Cnc B");
-            s->namelen = 0;
+            s->namelen = strlen(s->name);
             s->has_custom_name = true;
         }
         if (!strcmp(s->Gliese, "GJ 22 AC"))
@@ -705,7 +706,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         //   5- 14  A10    ---     Name     Name, generally Bayer and/or Flamsteed name
         read_field_onebased(buffer, 5, 14, field);
         if (strlen(trim(field).c_str())) strcpy(s->name, trim(field).c_str());
-        s->namelen = 0;
+        s->namelen = strlen(s->name);
 
         s->Bonn_survey[0] = dm_survey[0];
         s->Bonn_survey[1] = dm_survey[1];
@@ -858,7 +859,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         if (!strlen(s->name))
         {
             if (s->HD) strcpy(s->name, ((std::string)"HD" + std::to_string(s->HD)).c_str());
-            s->namelen = 0;
+            s->namelen = strlen(s->name);
         }
 
         s->VR_color = (s->RI_color + s->BV_color*2) / 3;      // VERY rough estimate
@@ -1416,7 +1417,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         std::string sname = trim(field);
         std::replace(sname.begin(), sname.end(), '_', ' ');
         strcpy(s->name, sname.c_str());
-        s->namelen = 0;
+        s->namelen = strlen(s->name);
     }
 
     fclose(fp);
@@ -1454,7 +1455,7 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
 
     if (!fp)
     {
-        std::string gzpath = path + ".gz";
+        std::string gzpath = path + std::string(".gz");
         if (file_exists(gzpath.c_str()))
         {
             extract_archive(gzpath.c_str());
@@ -1488,7 +1489,7 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
 
     if (!fp)
     {
-        std::string gzpath = path + ".gz";
+        std::string gzpath = path + std::string(".gz");
         if (file_exists(gzpath.c_str()))
         {
             extract_archive(gzpath.c_str());
@@ -1900,7 +1901,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
             if (!A) continue;
             s = new Star();
             strcpy(s->name, field);
-            s->namelen = 0;
+            s->namelen = strlen(s->name);
             s->make_companion_of(A, comp[star_name]);
             append_cel(s);
         }
@@ -1908,7 +1909,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
         {
             s = new Star();
             strcpy(s->name, field);
-            s->namelen = 0;
+            s->namelen = strlen(s->name);
             append_cel(s);
             A = nullptr;
         }
@@ -2194,14 +2195,14 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             if (!A->has_custom_name)
             {
                 strcpy(A->name, lop_component(A->name).c_str());
-                A->namelen = 0;
+                A->namelen = strlen(A->name);
             }
             if (!s->has_custom_name)
             {
                 s->assign_identifier_name();
                 if (!trim(s->name).size() || !strcmp(trim(s->name).c_str(), A->name))
                     strcpy(s->name, (std::string(A->name) + std::string(" B")).c_str() );
-                s->namelen = 0;
+                s->namelen = strlen(s->name);
             }
         }
 
@@ -2609,7 +2610,7 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     p->orbit = new Orbit();
     p->orbit->center = cels[0];
     strcpy(p->name, r->name.c_str());
-    p->namelen = 0;
+    p->namelen = strlen(p->name);
     p->absolute_magnitude = absmagn;
 
     //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
@@ -3618,7 +3619,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     {
                         s = new Star();
                         if (!s->has_custom_name) strcpy(s->name, star_name.c_str());
-                        s->namelen = 0;
+                        s->namelen = strlen(s->name);
                         s->cenobj = s;
                         s_is_new = true;
                     }
@@ -3627,7 +3628,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     {
                         p = new Planet();
                         if (planet_name.size()) strcpy(p->name, planet_name.c_str());
-                        p->namelen = 0;
+                        p->namelen = strlen(p->name);
                     }
                     if (!p->orbit) p->orbit = new Orbit();
                     p->orbit->center = p->cenobj = s;
@@ -3704,7 +3705,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
                 s->type = star;
                 if (!s->has_custom_name) strcpy(s->name, star_name.c_str());
-                s->namelen = 0;
+                s->namelen = strlen(s->name);
                 p->orbit->center = p->cenobj = s;
 
                 s->right_ascension = star_ra;
@@ -3851,7 +3852,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
                 if (s->has_custom_name) break;
 
                 strcpy(s->name, trim(field).c_str());
-                s->namelen = 0;
+                s->namelen = strlen(s->name);
                 s->has_custom_name = true;
                 num_read++;
 
@@ -3869,7 +3870,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
                         std::string base = lop_component(s->name);
                         if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
                             strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
-                        companion->namelen = 0;
+                        companion->namelen = strlen(companion->name);
                     }
                 }
 
@@ -3981,7 +3982,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
             read_field_onebased(buffer, 101, 111, field);
             str = trim(field);
-            last = '\0';
+            nxtlast = last = '\0';
             l = str.size();
             if (l) last = str.c_str()[l-1];
             if (l>1) nxtlast = str.c_str()[l-2];
@@ -4041,7 +4042,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             }
 
             strcpy(s->name, bdyname.c_str());
-            s->namelen = 0;
+            s->namelen = strlen(s->name);
             s->has_custom_name = true;
             s->distance_known = true;
             read_field_onebased(buffer, 161, 175, field);
@@ -4201,7 +4202,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         read_field_onebased(buffer, 101, 111, field);
         str = trim(field);
-        last = '\0';
+        nxtlast = last = '\0';
         l = str.size();
         if (l) last = str.c_str()[l-1];
         if (l>1) nxtlast = str.c_str()[l-2];
@@ -4301,7 +4302,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 }
                 memset(p->name, 0, 32);
                 strcpy(p->name, bodyname.c_str());
-                p->namelen = 0;
+                p->namelen = strlen(p->name);
                 if (k >= 0)
                 {
                     p->orbit = new Orbit;
@@ -4867,7 +4868,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         str = trim(field);
         strcpy(s->name, str.c_str());
-        s->namelen = 0;
+        s->namelen = strlen(s->name);
         s->origname = s->name;
 
         read_field_onebased(buffer, 56, 57, field);
@@ -5047,8 +5048,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 433, 433, field);
         if (field[0] == 'E') s->is_eclipsing_binary = true;
 
-        // 435-448  Durchmusterung (BD/CD/CP), written by write_condensed_star_cat_line(). Older
-        // caches predating this column simply read back empty here, same as any other blank field.
         read_field_onebased(buffer, 435, 436, field);
         str = trim(field);
         if (str.size() >= 2)
@@ -5067,15 +5066,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 
-        // 450  has_custom_name -- without this, every reload from this cache forgot which stars had
-        // a settled name (starname.dat, or a hardcoded exception), leaving them open to being
-        // silently renamed back to a Bayer/Flamsteed designation by whichever later pass runs
-        // unconditionally (make_companion_of() via read_star_orbits_dat(), in particular).
         read_field_onebased(buffer, 450, 450, field);
         if (field[0] == 'Y') s->has_custom_name = true;
 
         append_cel(s);
         num_read++;
+
+        if (!num_read & 0xf) loading_msg = std::string("Loading star catalog (") + std::string(s->name) + std::string(")...");
     }
 
     fclose(fp);
