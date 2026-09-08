@@ -2012,7 +2012,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     T_local = T_base - Tswing * fmax(0, height_value - has_water);
                     if (height_value < has_water && (T_local < water_freezing))
                     {
-                        // Polar and elevation ice
+                        // Polar ice
                         red_data[idx] = fmin(255, 167 + 67 * r_weight);
                         green_data[idx] = fmin(255, 181 + 57 * r_weight);
                         blue_data[idx] = fmin(255, 190 + 63 * r_weight);
@@ -2026,11 +2026,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 32+128*height_value);
                     }
                     // Biome allocation based on height thresholds
-                    else if (height_value < has_water && (T_local < Tboil))
+                    else if (height_value < has_water && T_local < Tboil)
                     {   // Ocean
                         sh = height_value*inv_h2o_level;
-                        sh *= (Tboil - T_base) / (Tboil - water_freezing);
-                        sh = pow(sh, 20);                                                           // shallowness multiplied to show water optical density
+                        // sh *= (Tboil - T_base) / (Tboil - water_freezing);
+                        sh = pow(sh, 3);                                                           // shallowness multiplied to show water optical density
                         red_data[idx] = fmin(255, 12+16*sh);
                         green_data[idx] = fmin(255, 24+168*sh);
                         blue_data[idx] = fmin(255, 192+32*sh);
@@ -2050,11 +2050,17 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         green_data[idx] = fmin(255, vegetation_g * r_weight);
                         blue_data[idx] = fmin(255, vegetation_b * r_weight);
                     }
-                    else
+                    else if (T_local > water_freezing)
                     {   // Mountains
                         red_data[idx] = fmin(255, 110 * rmult * r_weight);
                         green_data[idx] = fmin(255, 90 * gmult * r_weight);
                         blue_data[idx] = fmin(255, 75 * bmult * r_weight);
+                    }
+                    else
+                    {   // Elevation snow
+                        red_data[idx] = fmin(255, 192 + 63 * r_weight);
+                        green_data[idx] = fmin(255, 224 + 31 * r_weight);
+                        blue_data[idx] = fmin(255, 240 + 15 * r_weight);
                     }
                 }
                 else
