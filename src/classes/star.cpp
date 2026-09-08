@@ -220,22 +220,11 @@ void Star::rename_from_Bayer_Flamsteed()
     }
     else if (GouldNo > 0)
     {
-        // 82 Eridani is the one Gould star commonly cited bare, without "G." -- a fluke of fame
-        // (Project Ozma, and a fixture of SF ever since), not a rule that generalizes to other
-        // Gould numbers, so it's kept as this one narrow exception rather than a systemic pattern.
-        // It wins outright, ahead of GJ, same as any other named exception would.
-        //
-        // Otherwise: GJ outranks a plain Gould number -- a Gliese designation is the more
-        // recognizable way to refer to a nearby star in modern usage (e.g. GJ 86, not "13 G.
-        // Eridani"), whereas "G." earns its keep precisely by marking a designation as *not*
-        // Flamsteed's, including in far-southern constellations Flamsteed never covered at all
-        // (nobody drops the "G." from "10 G. Volantis" just because Volans has no Flamsteed
-        // numbers to be confused with).
         if (GouldNo == 82 && !strcmp(constellations[j].abbrev.c_str(), "Eri"))
-            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + constellations[j].genitive).c_str());
+            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + Gouldcons /* constellations[j].genitive)*/).c_str());
         else if (strlen(Gliese))
             strcpy(name, Gliese);
-        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + constellations[j].genitive).c_str());
+        else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + Gouldcons /* constellations[j].genitive*/).c_str());
     }
 
     if (multisys && multisys->get_member('A') == this)

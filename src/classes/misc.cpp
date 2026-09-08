@@ -844,6 +844,7 @@ bool extract_archive(const char* filename)
             }
         }
         archive_write_finish_entry(ext);
+        std::cout << "Wrote " << target_path << std::endl;
     }
 
     // Clean up

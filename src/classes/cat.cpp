@@ -1451,15 +1451,17 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
 
     char buffer[1024], field[256];
     std::string path = "catalogs" _FILESLASH "GCVS" _FILESLASH "crossid.dat";
-    FILE *fp = fopen(path.c_str(), "rb");
+    std::string path1 = "catalogs" _FILESLASH "GCVS" _FILESLASH "data";             // This catalog has to be a pain with the filenames.
+    FILE *fp = fopen(path1.c_str(), "rb");
 
     if (!fp)
     {
         std::string gzpath = path + std::string(".gz");
         if (file_exists(gzpath.c_str()))
         {
+            std::cout << "Extract " << gzpath << std::endl;
             extract_archive(gzpath.c_str());
-            fp = fopen(path.c_str(), "rb");
+            fp = fopen(path1.c_str(), "rb");
         }
     }
 
@@ -1738,7 +1740,11 @@ int alienorum::CatalogReader::read_Uranometria_catalog(CelestialObject **cels, i
 
         //   7-  9  A3   ---     cst     Three letter abbreviation of the constellation name under which the star appears in the
         read_field_onebased(buffer, 7, 9, field);
-        if (!strlen(s->constellation) && strlen(trim(field).c_str())) strcpy(s->constellation, field);
+        if (strlen(trim(field).c_str()))
+        {
+            strcpy(s->Gouldcons, field);
+            if (!strlen(s->constellation)) strcpy(s->constellation, field);
+        }
     }
 
     return num_read;
@@ -4568,6 +4574,10 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 4;
     line << std::string(l - line.str().size(), ' ');
 
+    if (s->Gouldcons[0] > 0) line << s->Gouldcons << std::flush;
+    l += 4;
+    line << std::string(l - line.str().size(), ' ');
+
     if (s->proper_motion_RA >= 0) line << " ";
     line << std::scientific << std::setprecision(4) << s->proper_motion_RA << std::flush;
     l += 12;
@@ -4941,6 +4951,9 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 170, 172, field);
         s->GouldNo = atoi(field);
 
+        read_field_onebased(buffer, 174, 176, field);
+        strcpy(s->Gouldcons, field);
+
         Constellation *mycons = nullptr;
         if (strlen(s->Bayer) || (s->FlamsteedNo > 0) || (s->GouldNo > 0))
         {
@@ -4962,42 +4975,42 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (mycons && s->BayerGrkno >= 0) mycons->Bayer_stars[s->BayerGrkno] = s;
         if (mycons && s->GouldNo > 0) mycons->Gould_stars[s->GouldNo] = s;
 
-        read_field_onebased(buffer, 174, 184, field);
+        read_field_onebased(buffer, 178, 188, field);
         s->proper_motion_RA = atof(field);
 
-        read_field_onebased(buffer, 186, 196, field);
+        read_field_onebased(buffer, 190, 200, field);
         s->proper_motion_decl = atof(field);
 
-        read_field_onebased(buffer, 198, 208, field);
+        read_field_onebased(buffer, 202, 212, field);
         s->radial_velocity = atof(field);
 
-        read_field_onebased(buffer, 210, 219, field);
+        read_field_onebased(buffer, 214, 223, field);
         s->parallax = atof(field);
 
-        read_field_onebased(buffer, 222, 231, field);
+        read_field_onebased(buffer, 224, 235, field);
         s->distance = atof(field) * light_year;
         s->update_location(simnow);
         if (s->parallax > 0) s->distance_known = true;
 
-        read_field_onebased(buffer, 234, 239, field);
+        read_field_onebased(buffer, 238, 243, field);
         s->absolute_magnitude = atof(field);
 
-        read_field_onebased(buffer, 241, 250, field);
+        read_field_onebased(buffer, 245, 254, field);
         s->mass = atof(field) * solar_mass;
         if (s->mass < jupiter_mass) s->mass = s->estimate_mass();
 
-        read_field_onebased(buffer, 253, 262, field);
+        read_field_onebased(buffer, 257, 266, field);
         s->volumetric_mean_radius = atof(field) * solar_radius;
         if (s->volumetric_mean_radius < 0.5 * jupiter_radius) s->volumetric_mean_radius = s->estimate_radius();
 
-        read_field_onebased(buffer, 264, 270, field);
+        read_field_onebased(buffer, 268, 274, field);
         s->temperature = atof(field);
 
-        read_field_onebased(buffer, 272, 281, field);
+        read_field_onebased(buffer, 276, 285, field);
         s->sidereal_rotational_period = atof(field) * oneday;
         if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
-        read_field_onebased(buffer, 283, 296, field);
+        read_field_onebased(buffer, 287, 300, field);
         str = trim(field);
         if (str.size())
         {
@@ -5005,66 +5018,66 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->center_name = str;
         }
 
-        read_field_onebased(buffer, 298, 308, field);
+        read_field_onebased(buffer, 302, 312, field);
         if (s->orbit) s->orbit->period = atof(field) * oneday;
 
-        read_field_onebased(buffer, 311, 322, field);
+        read_field_onebased(buffer, 315, 326, field);
         if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
 
-        read_field_onebased(buffer, 324, 330, field);
+        read_field_onebased(buffer, 328, 334, field);
         if (s->orbit) s->orbit->eccentricity = atof(field);
 
-        read_field_onebased(buffer, 337, 344, field);
+        read_field_onebased(buffer, 341, 348, field);
         if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 346, 353, field);
+        read_field_onebased(buffer, 350, 357, field);
         if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 355, 368, field);
+        read_field_onebased(buffer, 359, 372, field);
         if (s->orbit) s->orbit->epoch = atof(field);
 
-        read_field_onebased(buffer, 370, 377, field);
+        read_field_onebased(buffer, 374, 381, field);
         f = atof(field) * fiftyseventh;
         if (s->orbit) s->orbit->heliocentric_inclination = f;
 
-        read_field_onebased(buffer, 379, 386, field);
+        read_field_onebased(buffer, 383, 390, field);
         f = atof(field) * fiftyseventh;
         if (s->orbit) s->orbit->heliocentric_node = f;
 
-        read_field_onebased(buffer, 388, 399, field);
+        read_field_onebased(buffer, 392, 403, field);
         s->variability_period = atof(field) * oneday;
 
-        read_field_onebased(buffer, 401, 406, field);
+        read_field_onebased(buffer, 405, 410, field);
         s->minmag = atof(field);
 
-        read_field_onebased(buffer, 408, 413, field);
+        read_field_onebased(buffer, 412, 417, field);
         s->maxmag = atof(field);
 
-        read_field_onebased(buffer, 415, 431, field);
+        read_field_onebased(buffer, 419, 435, field);
         s->epoch_max_brightness = atof(field);
 
-        read_field_onebased(buffer, 433, 433, field);
+        read_field_onebased(buffer, 437, 437, field);
         if (field[0] == 'E') s->is_eclipsing_binary = true;
 
-        read_field_onebased(buffer, 435, 436, field);
+        read_field_onebased(buffer, 439, 440, field);
         str = trim(field);
         if (str.size() >= 2)
         {
             s->Bonn_survey[0] = str[0];
             s->Bonn_survey[1] = str[1];
 
-            read_field_onebased(buffer, 438, 441, field);
+            read_field_onebased(buffer, 442, 445, field);
             s->Bonn_survey_sign = field[0];
             s->Bonn_survey_declination = atoi(field);
 
-            read_field_onebased(buffer, 443, 448, field);
+            read_field_onebased(buffer, 447, 452, field);
             s->Bonn_survey_sequential = atoi(field);
 
             std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 
-        read_field_onebased(buffer, 450, 450, field);
+        read_field_onebased(buffer, 454, 454, field);
         if (field[0] == 'Y') s->has_custom_name = true;
 
         append_cel(s);

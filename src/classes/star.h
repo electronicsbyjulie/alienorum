@@ -35,6 +35,7 @@ namespace alienorum
         int GouldNo = -1;
         std::string alienorumid = "";
         char constellation[4] = {0,0,0,0};
+        char Gouldcons[4] = {0,0,0,0};
         std::string CCDM, WD;
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;

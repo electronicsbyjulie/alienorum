@@ -661,7 +661,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
             else if (strlen(s->Flamsteed)) ImGui::Text("%s", s->Flamsteed);
             else if (strlen(s->Bayer)) ImGui::Text("%s", s->Bayer);
-            if (s->GouldNo > 0) ImGui::Text("%s", (std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->constellation)).c_str());
+            if (s->GouldNo > 0) ImGui::Text("%s", (std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->Gouldcons)).c_str());
 
             if (strlen(s->Gliese)) ImGui::Text("%s", s->Gliese);
             if (s->HD) ImGui::Text("%s", ((std::string)"HD" + std::to_string(s->HD)).c_str());

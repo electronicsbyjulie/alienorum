@@ -136,6 +136,9 @@ Constellation* identify_cons_of_star(Star* s)
     {
         if (cons.bounds.empty()) continue;              // Safety check
 
+        if (s->constellation && !strcasecmp(s->constellation, cons.abbrev.c_str())) return &cons;
+        if (s->Gouldcons && !strcasecmp(s->Gouldcons, cons.abbrev.c_str())) return &cons;
+
         // Filter by constellation distance.
         // Calculate the RA distance between the star and the constellation center
         double d_ra = fabs(s->right_ascension - cons.RA_center);
