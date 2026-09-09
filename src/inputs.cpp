@@ -757,11 +757,15 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
     if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
     if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
+    if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
     if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
+    if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
+    if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
+    if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
     if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
 
