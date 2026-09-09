@@ -2733,13 +2733,15 @@ bool draw_one_object(int i)
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
     double f_ang = angular_radius[i]*zoom*dispcx;
     flare = fmin(max_flare, fmax(0, bloomrad - max_bloomrad) * 15 / fmax(1, f_ang));
+    bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
+    double cutoff_alt = gasball ? -25*fiftyseventh : 0;
 
     /*double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*13 : 0;
     double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 20.0;
     flare = fmin(max_flare, fmax(f_bloom, f_mag) / fmax(1, f_ang));*/
 
     // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
-    if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < -angular_radius[i]) flare = 0;
+    if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i]) flare = 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     if (cls == class_galaxy)
     {
@@ -3434,7 +3436,9 @@ void draw_objects()
         // Counterintuitive that we would process *more* objects during dragging and not *less*,
         // but since discs become transparent wireframes during drag, it only makes sense that the
         // ground should become transparent as well.
-        if (view_mode == vm_horizon && !dragging && cels[i]->viewrel.y < 0 && angular_radius[i] < sphere_rad_threshold)
+        bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
+        double cutoff_alt = gasball ? -25*fiftyseventh : 0;
+        if (view_mode == vm_horizon && !dragging && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
         {
             continue;
         }
