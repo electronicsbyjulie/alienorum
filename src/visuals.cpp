@@ -2814,11 +2814,13 @@ bool draw_one_object(int i)
     appmag = vmag_cache[i] - sky_mag_shift;
     double brght = pow(magnbase, -appmag);
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
-
-    double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*13 : 0;
-    double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 20.0;
     double f_ang = angular_radius[i]*zoom*dispcx;
-    flare = fmin(max_flare, fmax(f_bloom, f_mag) / fmax(1, f_ang));
+    flare = fmin(max_flare, fmax(0, bloomrad - max_bloomrad) * 15 / fmax(1, f_ang));
+
+    /*double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*13 : 0;
+    double f_mag = fmax(0.0, -1.0 - vmag_cache[i]) * 20.0;
+    flare = fmin(max_flare, fmax(f_bloom, f_mag) / fmax(1, f_ang));*/
+
     // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
     if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < -angular_radius[i]) flare = 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);

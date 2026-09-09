@@ -104,7 +104,7 @@ HD13445                 Gliese 86 B             3e+9            234.2       126.
 # https://en.wikipedia.org/wiki/Fomalhaut#/media/File:NASA's_Hubble_Reveals_Rogue_Planetary_Orbit_For_Fomalhaut_B.jpg
 HD216956                (debris disks)                          202         066.1
 
-#Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
+#Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK       Rotation
 
 # https://en.wikipedia.org
 HD3651                  (stellar rotation)                                  083
@@ -115,8 +115,8 @@ HD43834                 (stellar rotation)                      250.87?     021
 HD43834                 Alp Men B               5.9e+9?         250.87?     021?                    4.5e+12                                                     M3.5-6.5V       +12.415         0.169       0.19                     3054
 
 # https://en.wikipedia.org
-HD61421                 (companion orbit)                       100.683     031.408
-HD201092                (companion orbit)                       355.73      052.99
+HD61421                 Procyon B               40.840y         100.683     031.408     089.23      15.137AU    .39785      0                   1968.076                                        0.592       0.01234     0.00049      7740
+HD201092                61 Cyg B                707.1y          355.73      052.99      150.61      86.76AU     .4424       0                   JD2596496                                       0.6289      0.594       0.097        4174       34.55d
 HD209100                Eps Ind B               2.0e+12?        148?        102?                    2.2e+14                                                                                     0.06386     0.081       2.04e-5      1312
 Eps Ind B               Eps Ind C               3.5e+8          147.959     077.082     328.27      3.5990e+11  .54042                                                                          0.05081     0.083       5.97e-6       972
 Gliese 866 AB           (companion orbit)                       162.1       112.4
@@ -326,6 +326,19 @@ HD219916                Omi Cep B               1505y           004.5       016.
 HD83808                 Omi Leo B               14.498068d      191.6       057.8       214         0.1834AU    .0007       0                   JD2450623.9                                     1.841       2.43        17.8         7600
 HD104979                Omi Vir B               50.70y          034         147.8       180         21.1AU      .12         0                   JD2460663                                       0.94
 HD10360                 HD10361                 394y            006.8       141         360         7.24s       .576        0                   1817                                            0.76        0.72        0.31         5076
+HD6811                  Phi And B               554.3y          337.2       142.2       112.6       0.573s      .385        0                   JD2417740
+HD10516                 Phi Per B               126.6731d       295.7       077.6                   0.00589s                0                   JD2456110.03                                    1.14        1.3         6310        53000
+HD85235                 Phi UMa B               104.6y          132.5       019.4       033.3       0.329s      .436        0                   1987.52
+HD212571                Pi Aqr B                84.07d          076.7       070         0           0.96AU      0           0                   JD2450318.5                                     0.65
+HD98718                 Pi Cen B                39.0y           327.8       019.4       340.3       0.2263s     .8530       0                   2010.410                                        3.68
+HD212087                Pi1 Gru B               6200y                                               460AU                                                                                       1.06        1.10        1.35         5930
+HD212087                Pi1 Gru C               11.76y          101         011                     6.81AU      0           0                   2016.39                                         1.18        1.31        2.25         6100
+HD141652                Pi2 UMi B               171.62y         123.4       135.2       274.0       0.464s      .961        0                   1904.15
+HD224427                Psi Peg B               55.06y          046.6       065.6       159.7       0.170s      .19         0                   2001.83
+HD82434                 Psi Vel B               34.11y          288.24      058.45      047.76      0.8110s     .4375       0                   2004.062                                        1.34        1.54        3.05         6148
+HD6456                  HD6457
+HD6456                  Psi1 Psc C              14.44y          134.8       077.43      305.4       114.3s      .519        0                   2007.512                                        1.7
+QZ Ser                  QZ Ser B                7185.12                     032                     6.78e+8                                                                                     0.15        0.1923
 
 
 
