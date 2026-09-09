@@ -4195,9 +4195,6 @@ void draw_horizon()
         }
         else for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j];
 
-        const int fadelength = 250;
-        const double fademult = 255.0 / fadelength;
-
         double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
         bool faded = !dragging && gaseous;
@@ -4205,6 +4202,11 @@ void draw_horizon()
 
         if (faded) 
         {
+            const double bluing = 0.9;
+            const int fadelength = 250 * zoom, fader = (1.0 - bluing)*rgb.r, fadeg = (1.0 - 0.5*bluing)*rgb.g;
+            const double fademult = 255.0 / fadelength,
+                fademr = (double)(rgb.r - fader) / fadelength, fademg = (double)(rgb.g - fadeg) / fadelength;
+
             for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
             {
                 j1 = j%hznodes;
@@ -4218,7 +4220,7 @@ void draw_horizon()
             {
                 for (l=0; l<=fadelength; l++)
                 {
-                    ImU32 fadecol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, fademult*l));
+                    ImU32 fadecol = rgba_apply_redlight(IM_COL32(fader + fademr*l, fadeg + fademg*l, rgb.b, fademult*l));
                     points[0] = ImVec2(dispcx*2, hz_y1);
                     points[1] = ImVec2(0, hz_y);
                     points[2] = ImVec2(0, hz_y+2);
