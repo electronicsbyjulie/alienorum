@@ -265,6 +265,7 @@ void show_menu()
             if (ImGui::MenuItem("Advance One Century", "Z")) { process_key_cmd_char('z'); menu_clicked = true; }
             if (ImGui::MenuItem("Rewind One Century", "Shift+Z")) { process_key_cmd_char('Z'); menu_clicked = true; }
             if (ImGui::MenuItem("Return to Present", "@")) { process_key_cmd_char('@'); menu_clicked = true; }
+            if (ImGui::MenuItem("Local Timestep", "F10", local_tmstep)) { process_key_F10(); menu_clicked = true; }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
@@ -369,9 +370,9 @@ void process_key_cmd_char(char c)
     if (local_tmstep && (whereami >= 0))
     {
         CelestialObject *cel = cels[whereami];
-        daystep = cel->stellar_day();
+        daystep = cel->stellar_day() / oneday;
         hourstep = daystep / 24;
-        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period;
+        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
         monthstep = yearstep / 12;
     }
 
@@ -761,6 +762,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
     if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
+    if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
     if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
 
     if (io.KeyCtrl)
