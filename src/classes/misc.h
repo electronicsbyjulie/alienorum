@@ -289,7 +289,7 @@ extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, sho
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
-    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
+    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep;
 extern std::atomic<bool> abort_load;
 extern std::atomic<int> texture_loads_pending;
 extern std::string objname, viewer_locale;

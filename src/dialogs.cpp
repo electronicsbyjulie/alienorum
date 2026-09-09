@@ -413,6 +413,8 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
     }
 
+    ImGui::Text(local_tmstep ? "Local Timestep" : "Earth Timestep");
+
     ImGui::Separator();
 
     std::string numobjs;

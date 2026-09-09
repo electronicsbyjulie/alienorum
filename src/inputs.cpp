@@ -238,6 +238,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); menu_clicked = true; }
+            if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('O'); menu_clicked = true; }
             if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Spaceflight/Speed Up", "+")) { process_key_cmd_char('+'); menu_clicked = true; }
@@ -364,6 +365,16 @@ void process_key_cmd_char(char c)
     // dev dial, which is a development aid the end user has no business finding, and ':' is a
     // placeholder for the unimplemented vm_model view mode.
 
+    double daystep = 1, hourstep = 1.0/24, monthstep = 30, yearstep = oneyear/oneday;
+    if (local_tmstep && (whereami >= 0))
+    {
+        CelestialObject *cel = cels[whereami];
+        daystep = cel->stellar_day();
+        hourstep = daystep / 24;
+        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period;
+        monthstep = yearstep / 12;
+    }
+
     switch (c)
     {
         case 'a': cbolbls_selected_idx = lbltype_brightest; show_labels = true; break;
@@ -385,8 +396,8 @@ void process_key_cmd_char(char c)
         case 'B': global_brightness *= 0.9; viewchanged = true; break;
         case 'c': show_consln = !show_consln; break;
         case 'C': cbolbls_selected_idx = lbltype_sunlike; show_labels = true; break;
-        case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'd': JDnow += daystep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'D': JDnow -= daystep; viewchanged = true; compute_object_draw_coordinates(); break;
 
         case 'e': explorer = !explorer; break;
 
@@ -401,8 +412,8 @@ void process_key_cmd_char(char c)
 
         case 'g': show_grid = !show_grid; break;
         case 'G': cbolbls_selected_idx = lbltype_Gould; show_labels = true; break;
-        case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'h': JDnow += hourstep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'H': JDnow -= hourstep; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'j': show_sats = !show_sats; break;
@@ -411,8 +422,8 @@ void process_key_cmd_char(char c)
         case 'K': show_galaxy_band = !show_galaxy_band; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = lbltype_planethz; show_labels = true; break;
-        case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'M': JDnow -= 30; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'm': JDnow += monthstep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'M': JDnow -= monthstep; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'n': objinfwnd = !objinfwnd; break;
         case 'N': cbolbls_selected_idx = lbltype_nearby; show_labels = true; break;
 
@@ -547,10 +558,10 @@ void process_key_cmd_char(char c)
         break;
         case 'X': cbolbls_selected_idx = lbltype_knpole; show_labels = true; break;
 
-        case 'y': JDnow += (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Y': JDnow -= (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'z': JDnow += (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'y': JDnow += yearstep; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Y': JDnow -= yearstep; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'z': JDnow += yearstep*100; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Z': JDnow -= yearstep*100; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '0': neighborhood = !neighborhood; break;
 
@@ -713,6 +724,11 @@ void process_key_cmd_ctrl_char(char c)
         case 'L': vplane_mode = vplane_local; break;
         case 'T': show_terrain = !show_terrain; viewchanged = true; break;
         case 'W': done = true; break;
+
+        case 'O':
+        local_tmstep = true;
+        process_key_cmd_char('o');
+        break;
 
         default:
         ;
@@ -941,6 +957,7 @@ void process_key_F9()
 
 void process_key_F10()
 {
+    local_tmstep = !local_tmstep;
 }
 
 void process_key_F11()

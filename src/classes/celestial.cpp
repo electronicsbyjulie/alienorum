@@ -39,6 +39,13 @@ double alienorum::CelestialObject::cel_frand(double min, double max)
     return dist(rng);
 }
 
+double alienorum::CelestialObject::stellar_day()
+{
+    if (!sidereal_rotational_period || !orbit || !orbit->period) return sidereal_rotational_period;
+    double year_fraction = sidereal_rotational_period / orbit->period;
+    return sidereal_rotational_period * (1.0 + year_fraction * ((obliquity > _pi) ? -1 : 1));
+}
+
 CelestialObject::CelestialObject()
 {
     memset(name, 0, 32*sizeof(char));
