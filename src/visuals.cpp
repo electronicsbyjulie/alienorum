@@ -4207,11 +4207,12 @@ void draw_horizon()
     // See find_horizon() for why the whereami test has to be here as well as the view_mode one.
     if (view_mode == vm_horizon && whereami >= 0)
     {
-        int i, j, j1;
+        int i, j, j1, l;
         CelestialObject *cel = cels[whereami];
         if (!cel) return;
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
+        bool gaseous = uses_gaseous_map(p->type);
     
         if (p->ring_radius) draw_ring_gpu(cel);                     // TODO: Rings appear in front of atmosphere - bad - but if we move this to draw_sky_gradient() it cuts them off.
 
@@ -4226,7 +4227,7 @@ void draw_horizon()
             is_day = fmin(1, is_day);
         }
 
-        Map *map = cel->surf_map;
+        Map *map = gaseous ? cel->cloud_map : cel->surf_map;
         RGB3 rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3(0, 8, 24);
         rgb.r = fmin(255, is_day*rgb.r);
         rgb.g = fmin(255, is_day*rgb.g);
@@ -4246,7 +4247,7 @@ void draw_horizon()
         }
 
         double hzheight[hznodes];
-        if (show_terrain && (cels[whereami]->type >= (rocky & 0xfffffff0)) && !is_water)
+        if (show_terrain && !gaseous && !is_water)
         {
             // The raw noise shape only depends on where the viewer is standing, not on which way
             // they're looking or how far they've zoomed -- so it's cached and only regenerated
@@ -4280,22 +4281,42 @@ void draw_horizon()
         }
         else for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j];
 
-        double hz_fx = -1e9, hz_fy = 1e9;
+        const int fadelength = 250;
+        const double fademult = 255.0 / fadelength;
+
+        double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
+        bool faded = !dragging && gaseous;
+        ImU32 terraincol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255));
         for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
         {
             j1 = j%hznodes;
             if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
             {
                 if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
+                hz_y = hzheight[j1];
+                hz_y1 = hz_fy;
 
-                points[0] = ImVec2(hz_fx, hz_fy);
-                points[1] = ImVec2(hz_dx[j1]+1, hzheight[j1]);
+                if (faded) for (l=0; l<=fadelength; l++)
+                {
+                    ImU32 fadecol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, fademult*l));
+                    points[0] = ImVec2(hz_fx, hz_y1);
+                    points[1] = ImVec2(hz_dx[j1], hz_y);
+                    points[2] = ImVec2(hz_dx[j1], hz_y+2);
+                    points[3] = ImVec2(hz_fx, hz_y1+2);
+                
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, fadecol);
+
+                    hz_y += 1;
+                    hz_y1 += 1;
+                }
+
+                points[0] = ImVec2(hz_fx, hz_y1);
+                points[1] = ImVec2(hz_dx[j1]+1, hz_y);
                 points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
                 points[3] = ImVec2(hz_fx, dispcy*2);
 
-                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4,
-                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255)));
+                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
             }
 
             _skip_hz_element:
@@ -4323,6 +4344,7 @@ void draw_sky_gradient()
     if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
     {
         Planet *p = (Planet*)cels[whereami];
+        if (uses_gaseous_map(p->type)) return;
         if (p->get_surface_pressure())
         {
             double particulates = p->get_particulates();
@@ -4577,7 +4599,7 @@ void draw_cloudy_sky()
     if (whereami < 0) return;
     CelestialObject *cel = cels[whereami];
     if (!cel || !cel->cloud_map) return;
-    if (cel->type == clearskies) return;
+    if (uses_gaseous_map(cel->type)) return;
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
