@@ -5339,11 +5339,11 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 {
     *was_new = false;
     std::string hostname = row.hostname;
+    if (hostname == "QZ Ser (AB)") hostname = "QZ Ser";
     char cinit = hostname.c_str()[0];
 
     if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ") hostname = "Proxima Cen";
     else if (cinit == 'T' && hostname.substr(0, 11) == "Teegarden's") hostname = "Teegarden's Star";
-
 
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;

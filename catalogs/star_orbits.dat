@@ -339,7 +339,13 @@ HD82434                 Psi Vel B               34.11y          288.24      058.
 HD6456                  HD6457
 HD6456                  Psi1 Psc C              14.44y          134.8       077.43      305.4       114.3s      .519        0                   2007.512                                        1.7
 QZ Ser                  QZ Ser B                7185.12                     032                     6.78e+8                                                                                     0.15        0.1923
-
+HD194943                Rho Cap B               278y            162.0       113.3       144.5       1.877s      .91         0                   1965.0
+HIP63510                Ross 458 B              13.63y          056.25      130.3       157.5       4.93AU      .245        0                   2007.67                                         0.0849      0.106                    2994
+HIP30920                Ross 614 B              16.586y         210.385     052.918     220.898     4.187AU     .382        0                   JD2445226.863                                   0.089731    0.11        0.001        3145
+HD106111                S Mus B                 506.3d          099.6       144.7       194.8       2.53AU      .088        0                   JD2457165.9                                     3.98                                17000
+Scholz's Star           Scholz's Star B         8.06y           240.21      106.9       240.21      2.173AU     .240        0                   2015.7096                                       0.063       0.0845      .00001549    1250
+HD149630                Sig Her B               2706.19d        014.95      105.25      184.97      0.07621s    .5135       0                   JD2450665.4                                     1.5                     7.4
+HD175191                Sig Sgr B               134.779d        045.9       019.7       076.4       1.26AU      .492        0                   JD2448588.1                                     6.3         3.9                     18500
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
