@@ -590,6 +590,8 @@ double CelestialObject::Decl_as_radians(CelestialLocation seen_from)
 
 double alienorum::CelestialObject::Decl_as_radians_refracted(CelestialLocation seen_from)
 {
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
+    if (!airy_rock) return Decl_as_radians(seen_from);
     Point relloc = (location.galactic_center - seen_from.galactic_center) * light_year * 1e+6
         + (location.system_center - seen_from.system_center)
         + (location.local_position - seen_from.local_position);

@@ -404,6 +404,8 @@ void compute_object_draw_coordinates()
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
+
     luminous_flux = cels[1] ? 0 : 1e10;
     inside_galaxy_idx = -1;
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
@@ -474,7 +476,7 @@ void compute_object_draw_coordinates()
 
         if (view_mode == vm_horizon)
         {
-            rel = refract_true_point(rel);
+            if (airy_rock) rel = refract_true_point(rel);
 
             if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
             {

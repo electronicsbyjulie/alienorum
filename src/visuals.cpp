@@ -17,6 +17,7 @@ void draw_ra_dec_lines()
     ImGuiIO& io = ImGui::GetIO();
     if (!cels[1]) return;
     if (view_mode == vm_system) return;
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     int i, j;
     Cartesian2D prev, zdes;
@@ -48,7 +49,7 @@ void draw_ra_dec_lines()
                 jadolzhnaperejexatdoma = to_viewer_plane(jadolzhnaperejexatdoma, 1);
                 jadolzhnaperejexatdoma = rotate3D(jadolzhnaperejexatdoma, center, yaxis, -azimuth_correction);
             }
-            if (view_mode == vm_horizon) jadolzhnaperejexatdoma = refract_true_point(jadolzhnaperejexatdoma);
+            if (airy_rock) jadolzhnaperejexatdoma = refract_true_point(jadolzhnaperejexatdoma);
             zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -92,7 +93,7 @@ void draw_ra_dec_lines()
                 umenjanetdeneg = to_viewer_plane(umenjanetdeneg, 1);
                 umenjanetdeneg = rotate3D(umenjanetdeneg, center, yaxis, -azimuth_correction);
             }
-            if (view_mode == vm_horizon) umenjanetdeneg = refract_true_point(umenjanetdeneg);
+            if (airy_rock) umenjanetdeneg = refract_true_point(umenjanetdeneg);
             zdes = Cartesian2D(umenjanetdeneg, azimuth, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -133,7 +134,7 @@ void draw_ra_dec_lines()
             Point pt = Point::from_ra_dec(fiftyseventh * i, 0, AU);
             pt = rotate3D(pt, center, here.orbital_plane.v, -here.orbital_plane.a);
             pt = to_viewer_plane(pt);
-            if (view_mode == vm_horizon) pt = refract_true_point(pt);
+            if (airy_rock) pt = refract_true_point(pt);
 
             zdes = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
 
@@ -143,7 +144,7 @@ void draw_ra_dec_lines()
                 continue;
             }
 
-            if (view_mode == vm_horizon && pt.y<0)
+            if (airy_rock && pt.y<0)
             {
                 prev = zdes;
                 prev_valid = true;
@@ -778,50 +779,18 @@ static Point ring_plane_normal(CelestialObject *cel)
         center, xaxis, altitude);
 }
 
-// GPU sphere impostor path (see GPU_SPHERE_RENDERING_PLAN.md). Only reached when
-// ALIENORUM_GPU_SPHERES is 1, and only for non-wireframe, non-skymap draws (draw_sphere()
-// keeps handling wireframe mode itself in both configurations, and vm_skymap is excluded at
-// the dispatch point below) -- see the dispatch point in draw_sphere().
-//
-// The screen placement is derived from the object's exact camera-space position and radius,
-// not from a screen-space "projected center + scalar radius" circle: that circle
-// approximation only holds when the object is far enough away (or small enough on screen)
-// that perspective distortion across its own silhouette is negligible, and breaks down badly
-// at close range / large angular size -- e.g. a low-orbit satellite looking at a planet, where
-// the true projected shape is neither centered on the projected 3D center nor circular. See
-// sphere_impostor.cpp for the tangent-line bounding geometry and per-pixel ray-sphere
-// intersection that replace it; this function's job is just to hand that code the object's
-// exact position and radius in the same "camera space" Cartesian2D itself works in (see
-// point.cpp) -- after to_viewer_plane() and the azimuth/altitude rotation, before the
-// perspective divide.
 int draw_sphere_gpu(CelestialObject* cel, double arad)
 {
-    // camera_space is the object's true physical position, used for lighting below. display_space
-    // is where it actually appears once atmospheric refraction bends the light on its way to the
-    // observer -- the same bending refract_true_point()/atmospheric_refraction() (planet.cpp)
-    // already applies to point-rendered stars in housekeeping.cpp and to grid lines in
-    // draw_ra_dec_lines(). Inserted here between the azimuth and altitude rotations, same as both
-    // of those call sites, so yaxis still means "zenith" at the moment refract_true_point()
-    // measures the object's true altitude off it -- Cartesian2D's own altitude rotation is the
-    // step that stops yaxis meaning zenith, so refraction has to land before it. Only the position
-    // is bent: basisX/basisY (orientation) and bounding_r (shape) are physical properties of the
-    // object itself, not of the light path to the observer, so they stay derived from the true
-    // position.
     Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
     Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
     Point display_space = (view_mode == vm_horizon)
-        ? rotate3D(refract_true_point(cel_azrot), center, xaxis, altitude)
+        ? rotate3D(airy_rock ? refract_true_point(cel_azrot) : cel_azrot, center, xaxis, altitude)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
     if (view_mode == vm_system) camera_space = display_space = Point(0, 0, R * 10);
 
-    // Local-frame semi-axes (X, Y, Z -- Y is polar; Z is lon=0, the axis pointing at the host
-    // planet for a tidally-locked moon; see SphereImpostorInput's own comment on axis_x/y/z).
-    // Matches the CPU path's own two shaping cases exactly (visuals.cpp's CPU polygon loop,
-    // the "dwh"/"obl" locals): a moon with known depth/width/height (tidally locked, generally
-    // triaxial and often stretched along the planet-pointing axis) uses those directly; every
-    // other object (including planets) is a plain oblate spheroid, flattened only at the poles.
     cel_obj_class cls = cel->typeclass();
     bool dwh = (cls == class_moon)
         && ((Moon*)cel)->depth > zero_isnt_really_zero
@@ -844,13 +813,6 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     spawn_texture_load(cel);
 
-    // The object's local +X/+Y axes (Point::from_ra_dec's convention: x=-sin(lon)cos(lat),
-    // y=sin(lat)), expressed in camera space -- i.e. run through the exact inverse of the
-    // chain that places a point on the object's surface (spin, axial tilt, viewer-plane,
-    // camera rotation -- see the CPU polygon loop further down in this file for the forward
-    // version), applied here to the standard basis vectors rather than a surface point.
-    // sphere_impostor.cpp's shader uses these (plus their cross product for local +Z) to
-    // rotate a camera-space hit normal back into the object's own frame and recover lat/lon.
     auto undo_to_local = [&](Point p) -> Point
     {
         p = rotate3D(p, center, xaxis, -altitude);
@@ -1045,38 +1007,19 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     return fmax(xmax - xmin, ymax - ymin) / 2;
 }
 
-// GPU ring impostor path -- companion to draw_sphere_gpu() above, called from the "// Rings"
-// block further down in draw_sphere() whenever that same call is using the GPU disc path (see
-// sphere_impostor.cpp's "Ring impostor" section for why this exists and how it replicates the
-// CPU ring code's occlusion/shadow logic analytically instead of via a polygon mesh). Mirrors
-// draw_sphere_gpu()'s own structure: recomputes the object's camera-space position and basis
-// independently rather than receiving them from the caller, since it's meant to be a
-// self-contained drop-in the same way draw_sphere_gpu() is.
 void draw_ring_gpu(CelestialObject* cel)
 {
     Planet *pl = (Planet*)cel;
-    // display_space vs camera_space: see draw_sphere_gpu()'s own comment just above this
-    // function -- same refraction treatment, same reason light_dir below stays on camera_space.
     Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
     Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
-    // Standing on the ringed world itself -- draw_horizon()'s call, and the usual way these rings
-    // are ever seen -- cel_azrot points from the observer straight down at the planet's own centre.
-    // That is not a body in the sky whose light bends on its way in; it is the geometric anchor of
-    // the ring plane, so refracting it models nothing. It is also exactly the degenerate input
-    // refract_true_point() now guards against (see its comment in planet.cpp): the rotation axis is
-    // a cross product that has vanished into rounding noise. Either change alone stops the ring
-    // from jumping around the screen; this one records that the question should never have been
-    // asked. Rings on a planet viewed from anywhere else still refract as before.
     bool standing_on_it = (whereami >= 0 && cel->seqno == whereami);
     Point display_space = (view_mode == vm_horizon && !standing_on_it)
-        ? rotate3D(refract_true_point(cel_azrot), center, xaxis, altitude)
+        ? rotate3D(airy_rock ? refract_true_point(cel_azrot) : cel_azrot, center, xaxis, altitude)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
-    // See ring_plane_normal() above for what this is and why it is emphatically not the same
-    // vector as the sphere impostor's own basisY. The planet's disc shader is handed the very
-    // same normal, to shadow the planet with these rings.
     Point normal = ring_plane_normal(cel);
 
     CelestialObject *lightcen = cel->get_light_center();
@@ -1226,6 +1169,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (view_mode == vm_system) cel->tmprel = Point(AU, 0, 0);
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     if (d > light_year*zoom) return 0;
 
@@ -1406,7 +1350,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 prev_valid = false;
                 continue;
             }
-            if (view_mode == vm_horizon) cursor = refract_true_point(cursor);
+            if (airy_rock) cursor = refract_true_point(cursor);
             zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -1524,7 +1468,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
-            if (view_mode == vm_horizon) cursor = refract_true_point(cursor);
+            if (airy_rock) cursor = refract_true_point(cursor);
             zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
             if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
             {
@@ -1796,7 +1740,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     continue;
                 }
 
-                if (view_mode == vm_horizon) cursor = refract_true_point(cursor);
+                if (airy_rock) cursor = refract_true_point(cursor);
                 zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
                 if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
                 {
@@ -2241,6 +2185,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     Galaxy *g = (Galaxy*)cel;
     if (g->angular_diameter <= 0) return 0;
     if (inside_galaxy_idx == cel->seqno) return 0;
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
     if (!(g->volumetric_mean_radius > 0)) return 0;
@@ -2269,7 +2214,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         double t = s * (_pi * 2.0 / nseg);
         Point p = cel->tmprel + (e1 * (g->volumetric_mean_radius * cos(t))) + (e2 * (g->volumetric_mean_radius * sin(t)));
         p = to_viewer_plane(p);
-        if (view_mode == vm_horizon) p = refract_true_point(p);
+        if (airy_rock) p = refract_true_point(p);
         Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
         rim[s] = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
         if (z.x < -1e4 || z.y < -1e4)
@@ -2311,7 +2256,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     ImVec2 mid(dispcx + 0, dispcy + 0);
     {
         Point p = to_viewer_plane(cel->tmprel);
-        if (view_mode == vm_horizon) p = refract_true_point(p);
+        if (airy_rock) p = refract_true_point(p);
         Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
         mid = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
     }
@@ -2414,7 +2359,8 @@ static Point comet_cross(Point a, Point b)
 static bool comet_project(Point rel, const Rotation &viewer_plane, ImVec2 &out)
 {
     Point p = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
-    if (view_mode == vm_horizon) p = refract_true_point(p);
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
+    if (airy_rock) p = refract_true_point(p);
     Cartesian2D c(p, azimuth + azimuth_correction, altitude, zoom);
     if (c.x < -1e4 || c.y < -1e4) return false;                 // behind the camera
     out = ImVec2(dispcx + c.x * dispcx, dispcy + c.y * dispcx);
@@ -3085,6 +3031,7 @@ void draw_galaxy_band()
     CelestialObject *cel = cels[inside_galaxy_idx];
     Galaxy *g = (Galaxy*)cel;
     if (g->tmprel.magnitude() > g->volumetric_mean_radius) return;
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     int h, i, n;
 
@@ -3144,7 +3091,7 @@ void draw_galaxy_band()
                 else g->band.road1_dist[i] = road_dist;
             }
             pt = to_viewer_plane(pt, 1);
-            pt = refract_true_point(pt);
+            if (airy_rock) pt = refract_true_point(pt);
 
             // azimuth_correction, not just azimuth: in horizon mode set_viewer_surface_location()
             // sets it to -npaz, the azimuth of the planet's own north pole, which is what ties the
@@ -4416,6 +4363,7 @@ void draw_cons_lines()
 
     // Hide lines if more than 10 l.y. from Sun.
     draw_actual_conslines = here.distance_to(cels[0]->location) < light_year*10;
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     n = constellations.size();
     for (i=0; i<n; i++)
@@ -4464,7 +4412,7 @@ void draw_cons_lines()
         {
             Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
             cbd = to_viewer_plane(cbd);
-            cbd = refract_true_point(cbd);
+            if (airy_rock) cbd = refract_true_point(cbd);
             lconsdir += cbd;
             Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
@@ -4498,7 +4446,7 @@ void draw_cons_lines()
         for (i=0; i<6; i++)
         {
             Point laxdir = to_viewer_plane(axisdir[i]);
-            laxdir = refract_true_point(laxdir);
+            if (airy_rock) laxdir = refract_true_point(laxdir);
             Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
             float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
