@@ -57,7 +57,9 @@ double eclipse_illumination(CelestialObject *cel);
 extern CelestialObject *eclipsed_light;
 extern double eclipsed_fraction;
 
-#define max_bloomrad 10
+// NEVER bloom point sources into a giant disc - keep this constant low.
+#define max_bloomrad 3
+
 #define global_font_size (8.647 * 1.776)
 
 extern double hz_y, jay, appmag, bloomrad, flare, theta, lmasslim;
