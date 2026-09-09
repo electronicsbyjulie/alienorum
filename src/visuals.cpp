@@ -2122,32 +2122,9 @@ int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol)
 }
 
 double global_magshift;
-// A galaxy as a soft, oriented ellipse.
-//
-// The ellipse is not drawn as a 2D shape rotated by the catalogued position angle: instead the
-// galaxy's actual disc -- a circle of radius R lying in the plane that read_UNGC/RC3_catalog built
-// from its inclination and position angle -- is projected through the same chain everything else
-// uses. The foreshortening then produces the ellipse on its own, at the right angle, and keeps
-// producing the right one as the viewer flies around it. A rotated 2D ellipse would be correct only
-// from Earth.
-//
-// Brightness is per unit area rather than total: a galaxy's flux is spread over its whole disc, so
-// M31 covering three degrees has to come out far fainter per pixel than a compact one of the same
-// magnitude. Without that, every large nearby galaxy renders as a flat white blob.
-// Surface brightness at fractional radius f (0 at the nucleus, 1 at the rim) and disc-plane angle
-// t, for a galaxy of Hubble stage T. This is what turns the soft ellipse into something that reads
-// as a galaxy: a concentrated bulge, an exponential disc, and a pair of logarithmic arms wound at
-// a pitch that follows the type -- tight for an Sa, open for an Sc, which is most of what the
-// Hubble sequence actually describes.
-//
-// Everything here is in the disc's OWN polar coordinates, which is why it lands correctly on the
-// projected ellipse: the mesh's segment index is the disc angle by construction, and its ring
-// index the fractional radius, so the pattern foreshortens along with the disc instead of being
-// painted flat onto the screen.
+
 static double galaxy_surface_intensity(double f, double t, double T, bool barred)
 {
-    // An elliptical has no disc to put arms on -- see the inclination discussion: it is a triaxial
-    // spheroid, and its light falls off far more steeply than a disc's.
     if (T < 0) return pow(fmax(0.0, 1.0 - f), 3.4);
 
     // Pitch angle: about 8 degrees at S0a, opening to roughly 29 by Sd. Arms are logarithmic
@@ -2190,23 +2167,17 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
     if (!(g->volumetric_mean_radius > 0)) return 0;
 
-    // In-plane basis: the disc plane's own axes, rotated out into world space. local_system_plane
-    // maps world to plane, so the inverse rotation takes the plane's x and z back out.
     Rotation pl = cel->location.local_system_plane;
     Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
     Point e2 = rotate3D(zaxis, center, pl.v, -pl.a);
     e1.scale(1);
     e2.scale(1);
 
-    // Mesh resolution follows the on-screen size: a galaxy five pixels across gains nothing from
-    // 64 segments, and at high zoom the magnitude limit lets hundreds of them through at once.
-    // Estimated analytically because the rim below cannot be built until the count is chosen.
     const int kMaxSeg = 72;
     double est_px = g->angular_diameter * zoom * dispcx;
     int nseg = (int)fmin((double)kMaxSeg, fmax(12.0, est_px * 1.1));
     int nring = (int)fmin(18.0, fmax(4.0, est_px * 0.25));
 
-    // Screen extent of the rim, both to size the falloff and to reject the offscreen cheaply.
     double xmin = 1e30, xmax = -1e30, ymin = 1e30, ymax = -1e30;
     ImVec2 rim[kMaxSeg];
     for (int s = 0; s < nseg; s++)
@@ -4113,13 +4084,9 @@ void find_horizon()
 
         Planet *p;
         double horizon_lift_rad = 0;
-        if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+        if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
         {
             p = (Planet*)cel;
-
-            // Shared with atmospheric_refraction() (planet.cpp) -- see its own comment: star
-            // refraction near the horizon is calibrated against this same lift, so a star at the
-            // true horizon doesn't render as if it were behind the visually-raised ground.
             horizon_lift_rad = p->atmospheric_horizon_lift();
         }
 
@@ -4235,7 +4202,45 @@ void draw_horizon()
         ImVec2 points[4];
         bool faded = !dragging && gaseous;
         ImU32 terraincol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255));
-        for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+
+        if (faded) 
+        {
+            for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+            {
+                j1 = j%hznodes;
+                if (hzheight[j1] > -1e4)
+                {
+                    hz_y = hz_y1 = hzheight[j1];
+                    break;
+                }
+            }
+            if (hz_y < dispcy*2)
+            {
+                for (l=0; l<=fadelength; l++)
+                {
+                    ImU32 fadecol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, fademult*l));
+                    points[0] = ImVec2(dispcx*2, hz_y1);
+                    points[1] = ImVec2(0, hz_y);
+                    points[2] = ImVec2(0, hz_y+2);
+                    points[3] = ImVec2(dispcx*2, hz_y1+2);
+                
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, fadecol);
+
+                    hz_y += 1;
+                    hz_y1 += 1;
+                }
+
+                points[0] = ImVec2(dispcx*2, hz_y1);
+                points[1] = ImVec2(0, hz_y);
+                points[2] = ImVec2(0, dispcy*2);
+                points[3] = ImVec2(dispcx*2, dispcy*2);
+
+                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
+            }
+
+            hz_fy = hz_y;
+        }
+        else for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
         {
             j1 = j%hznodes;
             if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
@@ -4243,20 +4248,6 @@ void draw_horizon()
                 if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
                 hz_y = hzheight[j1];
                 hz_y1 = hz_fy;
-
-                if (faded) for (l=0; l<=fadelength; l++)
-                {
-                    ImU32 fadecol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, fademult*l));
-                    points[0] = ImVec2(hz_fx, hz_y1);
-                    points[1] = ImVec2(hz_dx[j1], hz_y);
-                    points[2] = ImVec2(hz_dx[j1], hz_y+2);
-                    points[3] = ImVec2(hz_fx, hz_y1+2);
-                
-                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, fadecol);
-
-                    hz_y += 1;
-                    hz_y1 += 1;
-                }
 
                 points[0] = ImVec2(hz_fx, hz_y1);
                 points[1] = ImVec2(hz_dx[j1]+1, hz_y);
