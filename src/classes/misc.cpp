@@ -39,6 +39,7 @@ const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "C
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_spaceship;
+int wkday = 0;
 int ncelobjs = 0;
 int nsatobjs = 0;
 int selected = -1, trackidx = -1;

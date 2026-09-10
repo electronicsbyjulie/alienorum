@@ -645,6 +645,9 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
+        case '<': planets_lblcut--; break;
+        case '>': planets_lblcut++; break;
+
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
 
