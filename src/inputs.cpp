@@ -373,9 +373,9 @@ void process_key_cmd_char(char c)
 
     // IMPORTANT: Any keyboard shortcuts added here should also be added to show_menu().
     //
-    // Three are deliberately absent from the menu and should stay that way: 'q' and 'Q' drive the
-    // dev dial, which is a development aid the end user has no business finding, and ':' is a
-    // placeholder for the unimplemented vm_model view mode.
+    // Three are deliberately absent from the menu and should stay that way: 'q' and 'Q'
+    // drive the dev dial, which is a development aid the end user has no use for, and
+    // ':' is a placeholder for the unimplemented vm_model view mode.
 
     double daystep = 1, hourstep = 1.0/24, monthstep = 30, yearstep = oneyear/oneday;
     if (local_tmstep && (whereami >= 0))
@@ -385,6 +385,8 @@ void process_key_cmd_char(char c)
         hourstep = daystep / 24;
         if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
         monthstep = yearstep / 12;
+        if (monthstep >= daystep*2) monthstep = daystep * (int)(monthstep / daystep);
+        if (yearstep >= daystep*2) yearstep = daystep * (int)(yearstep / daystep);
     }
 
     switch (c)
