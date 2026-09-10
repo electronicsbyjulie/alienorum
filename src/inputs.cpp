@@ -420,8 +420,16 @@ void process_key_cmd_char(char c)
         if (selected >= 0) editidx = selected;
         else if (trackidx >= 0) editidx = trackidx;
         else if (whereami >= 0) editidx = whereami;
-        objedtwnd = (editidx >= 0);
+        if (objedtwnd = (editidx >= 0))                     // assignment not comparison
+        {
+            CelestialObject *cel = cels[editidx];
+            if (cel->type == star) cbo_edt_units = 1;
+            else if (uses_gaseous_map(cel->type)) cbo_edt_units = 2;
+            else if (uses_rocky_map(cel->type)) cbo_edt_units = 3;
+            else cbo_edt_units = 0;
+        }
         break;
+
         case 'f': cbolbls_selected_idx = lbltype_Flamsteed; show_labels = true; break;
         case 'F': cbolbls_selected_idx = lbltype_Bayer; show_labels = true; break;
 

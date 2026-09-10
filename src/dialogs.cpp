@@ -996,7 +996,7 @@ void draw_addcel_window(ImGuiIO& io)
 
 double rp, ra;
 int last_edit_idx = -1;
-static int cbo_edt_units = 0;
+
 #define cbo_edt_num_units 4
 const char* mass_units[cbo_edt_num_units] = {"kg", "Sun", "Jup.", "Earth"};
 const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mass, earth_mass};

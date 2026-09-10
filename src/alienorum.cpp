@@ -27,7 +27,7 @@ using namespace alienorum;
 // of everything typed before it.
 struct CliCmd
 {
-    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_fkey, k_char, k_import } kind;
+    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_import } kind;
     std::string s;
     int fkey = 0;
     char c = 0;
@@ -236,6 +236,14 @@ int main (int argc, char** argv)
         else if (!strcmp(argv[l], "go"))
         {
             if (const char* a = next_arg("go")) push_str(CliCmd::k_go, a);
+        }
+        else if (!strcmp(argv[l], "alt"))
+        {
+            if (const char* a = next_arg("alt")) push_str(CliCmd::k_alt, a);
+        }
+        else if (!strcmp(argv[l], "az"))
+        {
+            if (const char* a = next_arg("az")) push_str(CliCmd::k_az, a);
         }
         else if (!strcmp(argv[l], "zoom"))
         {
@@ -828,6 +836,14 @@ int main (int argc, char** argv)
                         // No report window on this path. The same commentary has just gone to the
                         // console, where a scripted run can read it, and a window sitting over the
                         // view is exactly what a scripted run does not want.
+                        viewchanged = true;
+                        break;
+                    case CliCmd::k_alt:
+                        altitude = atof(cmd.s.c_str()) * fiftyseventh;
+                        viewchanged = true;
+                        break;
+                    case CliCmd::k_az:
+                        azimuth = atof(cmd.s.c_str()) * fiftyseventh;
                         viewchanged = true;
                         break;
                     case CliCmd::k_zoom:

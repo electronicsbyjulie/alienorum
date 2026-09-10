@@ -63,6 +63,7 @@ bool draggable, dragging, dragged, editing, viewchanged, randomize_txgen=true, u
 DST_Rule viewer_dst = dst_none, viewer_home_dst = dst_none;
 bool generating_fic_texture = false;
 int lmx, lmy, whereami=0, iamhome=0, took_off_from=0, tookoff_countdown=0;
+int cbo_edt_units = 0;
 double velocmag;
 double simnow = std::time(nullptr);
 double JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
