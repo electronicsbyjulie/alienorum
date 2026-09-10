@@ -41,9 +41,13 @@ double alienorum::CelestialObject::cel_frand(double min, double max)
 
 double alienorum::CelestialObject::stellar_day()
 {
-    if (!sidereal_rotational_period || !orbit || !orbit->period) return sidereal_rotational_period;
-    double year_fraction = sidereal_rotational_period / orbit->period;
-    return sidereal_rotational_period * (1.0 + year_fraction * ((obliquity > _pi) ? -1 : 1));
+    if (!sidereal_rotational_period || !orbit || !orbit->period) 
+        return sidereal_rotational_period;
+    bool is_retrograde = (obliquity > _pi);
+    double adjustment = is_retrograde ? (1.0 + (sidereal_rotational_period / orbit->period))
+                                      : (1.0 - (sidereal_rotational_period / orbit->period));
+    if (adjustment == 0.0) return sidereal_rotational_period;               // if tidal locked
+    return sidereal_rotational_period / adjustment;
 }
 
 CelestialObject::CelestialObject()
