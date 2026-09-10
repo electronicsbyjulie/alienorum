@@ -166,6 +166,10 @@ int main (int argc, char** argv)
     establish_project_root();
     firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());
 
+    std::time_t now = std::time(nullptr);
+    struct tm *loc_time = std::localtime(&now);
+    wkday = loc_time->tm_wday;
+
     std::vector<CliCmd> cli_cmds;
     size_t cli_cmd_pos = 0;
     auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
@@ -466,8 +470,6 @@ int main (int argc, char** argv)
         alienr = 0.003921569 * ((alien_color & 0xff)),
         aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
-    std::time_t now = std::time(nullptr);
-    struct tm *loc_time = std::localtime(&now);
     bool nlo = (loc_time->tm_mon == 3 && loc_time->tm_mday == 1);
     ImVec2 ovni(2061, 123), nlorad(54, 29);
     double dxovni = -1.3, dyovni = -0.0029;
