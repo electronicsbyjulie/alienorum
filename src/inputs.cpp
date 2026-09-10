@@ -382,6 +382,7 @@ void process_key_cmd_char(char c)
     {
         CelestialObject *cel = cels[whereami];
         daystep = cel->stellar_day() / oneday;
+        if (daystep <= 0) daystep = 1;
         hourstep = daystep / 24;
         if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
         monthstep = yearstep / 12;
