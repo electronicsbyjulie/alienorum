@@ -2189,6 +2189,12 @@ void draw_objedit_window(ImGuiIO& io)
                 }
             }
             ImGui::SameLine();
+            if (!generating_fic_texture && ImGui::Button("Reseed"))
+            {
+                cel->rnd_seed = 0;
+                cel->randomize();
+            }
+            ImGui::SameLine();
             ImGui::Text("Map Height");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(txtwid);
