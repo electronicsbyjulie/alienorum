@@ -329,6 +329,17 @@ void show_menu()
                 if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L", cbolbls_selected_idx == lbltype_planethz)) { process_key_cmd_char('L'); menu_clicked = true; }
                 if (ImGui::MenuItem("Stars with Known Poles", "Shift+X", cbolbls_selected_idx == lbltype_knpole)) { process_key_cmd_char('X'); menu_clicked = true; }
                 if (ImGui::MenuItem("Binary Systems", "2", cbolbls_selected_idx == lbltype_binary)) { process_key_cmd_char('2'); menu_clicked = true; }
+
+                if (cbolbls_selected_idx == lbltype_brightest
+                    || cbolbls_selected_idx == lbltype_intrinsic
+                    || cbolbls_selected_idx == lbltype_nearby
+                    || cbolbls_selected_idx == lbltype_planets
+                    )
+                {
+                    if (ImGui::MenuItem("Tighten Threshold", ">")) { process_key_cmd_char('>'); menu_clicked = true; }
+                    if (ImGui::MenuItem("Loosen Threshold", "<")) { process_key_cmd_char('<'); menu_clicked = true; }
+                }
+
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
@@ -645,8 +656,21 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
-        case '<': planets_lblcut--; break;
-        case '>': planets_lblcut++; break;
+        case '<':
+        if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut += 0.1;
+        else if (cbolbls_selected_idx == lbltype_intrinsic) absmagn_lblcut += 0.1;
+        else if (cbolbls_selected_idx == lbltype_nearby) distance_lblcut += light_year*5;
+        else if (cbolbls_selected_idx == lbltype_planets) planets_lblcut--;
+        if (planets_lblcut < 1) planets_lblcut = 1;
+        break;
+        
+        case '>':
+        if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut -= 0.1;
+        else if (cbolbls_selected_idx == lbltype_intrinsic) absmagn_lblcut -= 0.1;
+        else if (cbolbls_selected_idx == lbltype_nearby) distance_lblcut -= light_year*5;
+        else if (cbolbls_selected_idx == lbltype_planets) planets_lblcut++;
+        if (distance_lblcut < light_year*5) distance_lblcut = light_year*5;
+        break;
 
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
         case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
