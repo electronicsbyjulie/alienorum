@@ -2547,9 +2547,9 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
                 double storm_noise = fBm(swirledx * 2.0, swirledy * 2.0, nz * 1.0, 5, 2.0, 0.5) /* * sbl1 * 3 */;
                 double sn1 = 1.0 - storm_noise;
 
-                double storm_red   = (unsigned char)fmin(255, bands[next_band_idx].r * storm_noise + 64);
-                double storm_green = (unsigned char)fmin(255, bands[next_band_idx].g * storm_noise + 76);
-                double storm_blue  = (unsigned char)fmin(255, bands[next_band_idx].b * storm_noise + 80);
+                double storm_red   = (unsigned char)fmin(255, bands[next_band_idx].r * storm_noise + 128);
+                double storm_green = (unsigned char)fmin(255, bands[next_band_idx].g * storm_noise + 72);
+                double storm_blue  = (unsigned char)fmin(255, bands[next_band_idx].b * storm_noise + 40);
 
                 // Linear interpolation blending storm with background bands
                 red_data[idx]   = (unsigned char)(storm_red   * storm_blend + red_data[idx]   * sbl1);
