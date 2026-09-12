@@ -762,7 +762,15 @@ void process_key_cmd_ctrl_char(char c)
         case 'I': vplane_mode = vplane_ICRF; break;
         case 'L': vplane_mode = vplane_local; break;
         case 'T': show_terrain = !show_terrain; viewchanged = true; break;
-        case 'V': break;
+    
+        case 'V':
+        if (!mycenobj) return;
+        view_mode = vm_system;
+        statuswnd = false;
+        explorer = false;
+        lbl_localsys = true;
+        break;
+
         case 'W': done = true; break;
 
         case 'O':

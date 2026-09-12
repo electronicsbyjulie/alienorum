@@ -1837,11 +1837,6 @@ void draw_objedit_window(ImGuiIO& io)
                 double edit_surf_presh = p->get_surface_pressure() / oneatm;
                 if (isinf(edit_surf_presh)) edit_surf_presh = 0;
                 ImGui::Text("%s", "Pressure, atm");
-                ImGui::SameLine();
-                if (ImGui::Button("Cosm.Shoreln.##edtpresh"))
-                {
-                    p->apply_cosmic_shoreline();
-                }
                 ImGui::SameLine(col1);
                 ImGui::SetNextItemWidth(txtwid);
                 bool update_taucalc = false;
@@ -1854,6 +1849,11 @@ void draw_objedit_window(ImGuiIO& io)
                     if (cel->typeclass() == class_planet
                         || cel->typeclass() == class_moon               // See Kepler-1625b.
                         ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cosm.Shoreln.##edtpresh"))
+                {
+                    p->apply_cosmic_shoreline();
                 }
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "Total tau");
@@ -2335,6 +2335,7 @@ void draw_system_explorer(ImGuiIO& io)
             if (cel->deleted) continue;
         #endif
             s = (cel->typeclass() == class_star) ? (Star*)cel : nullptr;
+            if (cel->seqno == selected) item_selected_idx = j;
 
             bool is_selected = (item_selected_idx == j);
 
@@ -2585,12 +2586,9 @@ void draw_system_explorer(ImGuiIO& io)
         process_key_cmd_char('^');
     }
     ImGui::SameLine();
-    if (ImGui::Button("Visualize##explored"))
+    if (ImGui::Button("Visualize (Ctrl+V)##explored"))
     {
-        view_mode = vm_system;
-        statuswnd = false;
-        explorer = false;
-        lbl_localsys = true;
+        process_key_cmd_ctrl_char('V');
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
