@@ -374,7 +374,9 @@ namespace alienorum
         "    float b = sqrt(d2);\n"
         "    float atmRel = uAtm[0].w;\n"
         "    float atmR = 1.0 + atmRel;\n"
-        "    bool solid = (d2 <= 1.0);\n"
+        "    float delta = max(fwidth(b), 1e-6);\n"
+        "    float solidCoverage = clamp((1.0 - b) / delta + 0.5, 0.0, 1.0);\n"
+        "    bool solid = (solidCoverage > 0.0);\n"
         "    bool inAir = (atmRel > 0.0 && b < atmR && tca > 0.0 && vFlags.x < 0.5);\n"
         "    if (!solid && !inAir) discard;\n"
         "\n"
@@ -431,7 +433,8 @@ namespace alienorum
         "        return;\n"
         "    }\n"
         "\n"
-        "    float thc = sqrt(1.0 - d2);\n"
+        "    float d2Clamped = min(d2, 1.0);\n"
+        "    float thc = sqrt(max(0.0, 1.0 - d2Clamped));\n"
         "    float t = (tca - thc) / DlocLen;\n"
         "    if (t < 0.0) discard;\n"
         "    vec3 hit = dir * t;\n"
@@ -709,7 +712,23 @@ namespace alienorum
         "        : 0.0;\n"
         "    outColor += air_tint(groundSun, phase) * haze;\n"
         "\n"
-        "    FragColor = vec4(finish_color(outColor), vColor.a);\n"
+        "    vec3 surfColor = finish_color(outColor);\n"
+        "    if (inAir && solidCoverage < 1.0)\n"
+        "    {\n"
+        "        float alt = max(0.0, b - 1.0);\n"
+        "        float hs = max(atmRel*0.25, 1e-9);\n"
+        "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
+        "        vec3 airLocal = -perp * vRadii;\n"
+        "        vec3 airN = normalize(vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal)));\n"
+        "        float sunElev = dot(airN, vLightDir);\n"
+        "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
+        "        vec3 airColor = finish_color(air_tint(sunElev, phase));\n"
+        "        FragColor = vec4(mix(airColor, surfColor, solidCoverage), mix(airAmt, 1.0, solidCoverage) * vColor.a);\n"
+        "    }\n"
+        "    else\n"
+        "    {\n"
+        "        FragColor = vec4(surfColor, solidCoverage * vColor.a);\n"
+        "    }\n"
         "}\n";
 
     static GLuint compile_shader(GLenum type, const char *src)
@@ -1028,7 +1047,9 @@ namespace alienorum
         // returned bounding box all still describe the solid body.
         double mean_r = (in.axis_x + in.axis_y + in.axis_z) / 3.0;
         double atm_h = (in.atmosphere_height > 0 && mean_r > 0) ? in.atmosphere_height : 0.0;
-        double quad_r = r + atm_h;
+        double d_center = sqrt(cx*cx + cy*cy + cz*cz);
+        double pixel_pad = (lzoom * scalex > 0 && d_center > 0) ? 2.0 * d_center / (lzoom * scalex) : 0.0;
+        double quad_r = r + atm_h + pixel_pad;
 
         double zdesXmin=0, zdesXmax=0, zdesYmin=0, zdesYmax=0;
         // std::cout << cx << "," << cy << "," << cz << " @ " << quad_r << " * " << lzoom << std::endl;
@@ -1330,7 +1351,9 @@ namespace alienorum
         "    vec3 p = dirN * s;\n"
         "    vec3 rel = p - vCenter;\n"
         "    float ringDist = length(rel);\n"
-        "    if (ringDist < vRhoInner || ringDist > vRhoOuter) discard;\n"
+        "    float dR = max(fwidth(ringDist), 1e-6);\n"
+        "    float ringCoverage = clamp(min((ringDist - vRhoInner) / dR, (vRhoOuter - ringDist) / dR) + 0.5, 0.0, 1.0);\n"
+        "    if (ringCoverage <= 0.0) discard;\n"
         "\n"
         "    vec3 dirS = dirN + vNormal * (dot(dirN, vNormal) * (vInvFlatten - 1.0));\n"
         "    vec3 cenS = vCenter + vNormal * (dot(vCenter, vNormal) * (vInvFlatten - 1.0));\n"
@@ -1339,11 +1362,21 @@ namespace alienorum
         "    float tca = dot(cenS, dirSN);\n"
         "    vec3 perp = cenS - dirSN * tca;\n"
         "    float d2 = dot(perp, perp);\n"
-        "    if (vRhoInner < 0.999 && d2 < vRhoInner*vRhoInner)\n"
+        "    if (vRhoInner < 0.999)\n"
         "    {\n"
-        "        float thc = sqrt(vRhoInner*vRhoInner - d2);\n"
-        "        float tSphereNear = (tca - thc) / dirSLen;\n"
-        "        if (tSphereNear > 0.0 && tSphereNear < s) discard;\n"
+        "        float dPlanet = sqrt(max(0.0, d2));\n"
+        "        float dP = max(fwidth(dPlanet), 1e-6);\n"
+        "        float unoccluded = clamp((dPlanet - vRhoInner) / dP + 0.5, 0.0, 1.0);\n"
+        "        if (unoccluded < 1.0)\n"
+        "        {\n"
+        "            float thc = sqrt(max(0.0, vRhoInner*vRhoInner - min(d2, vRhoInner*vRhoInner)));\n"
+        "            float tSphereNear = (tca - thc) / dirSLen;\n"
+        "            if (tSphereNear > 0.0 && tSphereNear < s)\n"
+        "            {\n"
+        "                if (unoccluded <= 0.0) discard;\n"
+        "                ringCoverage *= unoccluded;\n"
+        "            }\n"
+        "        }\n"
         "    }\n"
         "\n"
         "    // Radial fraction across the ring width: 0 at the inner edge (immediately\n"
@@ -1373,7 +1406,7 @@ namespace alienorum
         // strictly monotonic -- brighter overall, same relative density ordering preserved
         // (thin stays visibly thinner than dense, it's just that "dense" now actually reads as
         // dense instead of merely translucent).
-        "    opacity = pow(opacity, 0.4);\n"
+        "    opacity = pow(opacity, 0.4) * ringCoverage;\n"
         "\n"
         "    float isDay;\n"
         "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
@@ -1456,7 +1489,9 @@ namespace alienorum
         "    dvec3 p = dirN * s;\n"
         "    dvec3 rel = p - cen;\n"
         "    double ringDist = length(rel);\n"
-        "    if (ringDist < rhoInner || ringDist > rhoOuter) discard;\n"
+        "    float dR = max(fwidth(float(ringDist)), 1e-6);\n"
+        "    float ringCoverage = clamp(min(float(ringDist - rhoInner) / dR, float(rhoOuter - ringDist) / dR) + 0.5, 0.0, 1.0);\n"
+        "    if (ringCoverage <= 0.0) discard;\n"
         "\n"
         "    // See the float shader's identical comment: skipped near vRhoInner==1 (camera\n"
         "    // essentially on the occluder's own surface -- horizon mode) where this test is\n"
@@ -1473,11 +1508,21 @@ namespace alienorum
         "    double tca = dot(cenS, dirSN);\n"
         "    dvec3 perp = cenS - dirSN * tca;\n"
         "    double d2 = dot(perp, perp);\n"
-        "    if (rhoInner < 0.999lf && d2 < rhoInner*rhoInner)\n"
+        "    if (rhoInner < 0.999lf)\n"
         "    {\n"
-        "        double thc = sqrt(rhoInner*rhoInner - d2);\n"
-        "        double tSphereNear = (tca - thc) / dirSLen;\n"
-        "        if (tSphereNear > 0.0lf && tSphereNear < s) discard;\n"
+        "        float dPlanet = float(sqrt(max(0.0lf, d2)));\n"
+        "        float dP = max(fwidth(dPlanet), 1e-6);\n"
+        "        float unoccluded = clamp((dPlanet - float(rhoInner)) / dP + 0.5, 0.0, 1.0);\n"
+        "        if (unoccluded < 1.0)\n"
+        "        {\n"
+        "            double thc = sqrt(max(0.0lf, rhoInner*rhoInner - min(d2, rhoInner*rhoInner)));\n"
+        "            double tSphereNear = (tca - thc) / dirSLen;\n"
+        "            if (tSphereNear > 0.0lf && tSphereNear < s)\n"
+        "            {\n"
+        "                if (unoccluded <= 0.0) discard;\n"
+        "                ringCoverage *= unoccluded;\n"
+        "            }\n"
+        "        }\n"
         "    }\n"
         "\n"
         "    float u = float(clamp((ringDist - rhoInner) / (rhoOuter - rhoInner), 0.0lf, 1.0lf));\n"
@@ -1486,7 +1531,7 @@ namespace alienorum
         "    float opacity = (vHasRingXTex > 0.5)\n"
         "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
         "        : 0.5;\n"
-        "    opacity = pow(opacity, 0.4);\n"
+        "    opacity = pow(opacity, 0.4) * ringCoverage;\n"
         "\n"
         "    float isDay;\n"
         "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
@@ -1719,9 +1764,11 @@ namespace alienorum
         // over-estimates a tilted ring's true elliptical extent (never under-estimates it), and
         // the fragment shader discards everything outside the true annulus regardless, so the
         // slack just costs some cheap discarded fragments.
+        double pixel_pad = (lzoom * scalex > 0) ? 2.0 * d0 / (lzoom * scalex) : 0.0;
+        double quad_r = r + pixel_pad;
         double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
-        tangent_bounds(cx, cz, r, lzoom, false, &zdesXmin, &zdesXmax);
-        tangent_bounds(cy, cz, r, lzoom, true,  &zdesYmin, &zdesYmax);
+        tangent_bounds(cx, cz, quad_r, lzoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, quad_r, lzoom, true,  &zdesYmin, &zdesYmax);
 
         double xmin = dispcx + zdesXmin * scalex, xmax = dispcx + zdesXmax * scalex;
         double ymin = dispcy + zdesYmin * scalex, ymax = dispcy + zdesYmax * scalex;
