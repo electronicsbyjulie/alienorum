@@ -1057,15 +1057,19 @@ bool save_user_json()
     {
         json j;
 
+        std::fstream fsi("user.json", std::ios::in);
+        fsi >> j;
+        fsi.close();
+
         j["Latitude"] = viewer_lat * fiftyseven;
         j["Longitude"] = viewer_lon * fiftyseven;
         j["Timezone"] = (int)(viewer_home_tz / 60);
         j["Theme"] = viewer_theme;
         j["Gamma"] = global_gamma;
 
-        std::fstream fs("user.json", std::ios::out);
-        fs << j.dump(4);
-        fs.close();
+        std::fstream fso("user.json", std::ios::out);
+        fso << j.dump(4);
+        fso.close();
 
         return true;
     }
