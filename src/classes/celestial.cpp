@@ -2420,8 +2420,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         redlight_mode = false;
         rgb = Color::rgb_from_color(col, pow(p->albedo, 0.25));
         redlight_mode = rlm;
-        std::cout << cel->name << " BV=" << BV
-            << " color=" << col.red << "," << col.green << "," << col.blue << " albedo=" << p->albedo << " rgb=" << rgb << std::endl;
+        /* std::cout << cel->name << " BV=" << BV
+            << " color=" << col.red << "," << col.green << "," << col.blue << " albedo=" << p->albedo << " rgb=" << rgb << std::endl; */
 
         add_storm = !tidal_locked_to_star && (cel->type != clearskies) && (cel->cel_frand(0, 1) < 0.2);
         stormlat = cel->cel_frand(0.3, 0.7);

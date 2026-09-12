@@ -3767,7 +3767,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 if (!p->orbit->semimajor_axis) p->orbit->compute_semimajor_axis(p->mass);
 
                 // Estimate planet type.
-                p->classify(HZ);
+                p->classify(HZ, p->mass && p->volumetric_mean_radius);
 
                 // Estimate radius if unknown.
                 if (!p->volumetric_mean_radius) p->estimate_radius();
@@ -5672,12 +5672,13 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
             pl_massknown = true;
         }
     }
-    new_planet->classify(new_planet->is_in_con_HZ(), pl_massknown && pl_radknown);
 
-    if (new_planet->mass > 0 && new_planet->volumetric_mean_radius == 0)
+    if (new_planet->mass > 0 && !pl_radknown)
     {
         new_planet->estimate_radius();
     }
+    new_planet->classify(new_planet->is_in_con_HZ(), (pl_massknown || pl_msini_known) && pl_radknown);
+
     new_planet->estimate_albedo_and_absmagn();
     new_planet->set_color_from_type(new_planet->is_in_con_HZ());
     new_planet->estimate_rotation();

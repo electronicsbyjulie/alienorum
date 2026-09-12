@@ -275,17 +275,24 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     if (lock_type) return;
     Star *s = nullptr;
     double density = mnrk ? (mass / sphere_volume(volumetric_mean_radius) * 1e-6) : 0;
+    if (density) cached_density = density;
+    else if (cached_density) density = cached_density;
+
+    /* if (!strcmp(name, "K2-309 Ad"))
+        std::cout << name << " has mass " << mass << " vs. rocky cutoff " << rocky_mass_cutoff
+            << " density " << density
+            << std::endl; */
 
     if (orbit && orbit->center && orbit->center->typeclass() == class_star)
         s = (Star*) orbit->center;
 
-    double T = estimate_surface_temperature();
     double Teq = equilibrium_temperature();
+    double T = estimate_surface_temperature();
     if (mass < rocky_mass_cutoff                    // Mass cutoff between rocky planets and ice giants
         || (mass < jupiter_mass && mnrk && density > rocky_density_cutoff)
         )
     {
-        if (mnrk && T < water_freezing && density < rocky_density_cutoff) type = icy;
+        if (mnrk && T < water_freezing && density > 0 && density < rocky_density_cutoff) type = icy;
         else if (T > lava_T_cutoff)
         {
             type = lavaworld;
@@ -332,7 +339,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         {
             // If system has a hot Jupiter, estimate a waterworld.
             // https://doi.org/10.48550/arXiv.astro-ph/0701048
-            if (s && s->has_hot_jupiter)
+            if (s && s->has_hot_jupiter && density > waterworld_min_density)
             {
                 type = waterworld;
                 #if debug_planet_class_color
@@ -370,6 +377,12 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         #if debug_planet_class_color
         std::cout << name << " classified as gas giant after ruling out other types." << std::endl;
         #endif
+    }
+
+    if (mass && !volumetric_mean_radius && !mnrk)
+    {
+        estimate_radius();
+        cached_density = (mass / sphere_volume(volumetric_mean_radius) * 1e-6);
     }
 
     if (!ck)

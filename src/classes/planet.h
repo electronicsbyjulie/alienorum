@@ -85,6 +85,7 @@ namespace alienorum
     protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;
+        double cached_density = 0;
 
         // Everything atmospheric_refraction() computes that does not depend on the altitude it is
         // asked about -- which is all of it bar the final curve evaluation. Reaching those values
