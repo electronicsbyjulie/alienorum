@@ -1841,7 +1841,7 @@ int draw_sphere(CelestialObject* cel, double arad)
 // corona keeps the same shape from frame to frame instead of shimmering.
 static double flare_hash(int k)
 {
-    double s = sin(k * 12.9898) * 43758.5453;
+    double s = sin(k * 12.9898 + 1e-4 * altitude) * 43758.5453 + azimuth;
     return s - floor(s);
 }
 
