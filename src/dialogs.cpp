@@ -1837,6 +1837,11 @@ void draw_objedit_window(ImGuiIO& io)
                 double edit_surf_presh = p->get_surface_pressure() / oneatm;
                 if (isinf(edit_surf_presh)) edit_surf_presh = 0;
                 ImGui::Text("%s", "Pressure, atm");
+                ImGui::SameLine();
+                if (ImGui::Button("Cosm.Shoreln.##edtpresh"))
+                {
+                    p->apply_cosmic_shoreline();
+                }
                 ImGui::SameLine(col1);
                 ImGui::SetNextItemWidth(txtwid);
                 bool update_taucalc = false;
