@@ -38,7 +38,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *this);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
         if (isinf(max_atm_pressure)) max_atm_pressure = 0;
-        ensure_atmosphere()->surface_pressure = cel_frand(0.1, 1) * max_atm_pressure;
+        ensure_atmosphere()->surface_pressure = /*cel_frand(0.1, 1) **/ max_atm_pressure;
     }
 }
 

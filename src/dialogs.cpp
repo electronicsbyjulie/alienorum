@@ -1851,7 +1851,7 @@ void draw_objedit_window(ImGuiIO& io)
                         ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Cosm.Shoreln.##edtpresh"))
+                if (ImGui::Button("Cosm.Shln.##edtpresh"))
                 {
                     p->apply_cosmic_shoreline();
                 }
