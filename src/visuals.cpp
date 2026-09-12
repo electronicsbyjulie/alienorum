@@ -4140,8 +4140,8 @@ void draw_horizon()
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
-        // If overcast sky, adjust for relative instellation.
-        if (p && p->cloud_map)
+        // Adjust for relative instellation.
+        if (p)
         {
             is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
             is_day = fmin(1, is_day);
@@ -4153,7 +4153,7 @@ void draw_horizon()
         rgb.g = fmin(255, is_day*rgb.g);
         rgb.b = fmin(255, is_day*rgb.b);
 
-        bool is_water = (p->type == rocky)
+        bool is_water = uses_rocky_map(p->type)
             && (rgb.b > 0.8 * rgb.r)
             && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
