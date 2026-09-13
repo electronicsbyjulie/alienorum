@@ -65,6 +65,10 @@ void identify_object_under_cursor(ImGuiIO& io)
         {
             // Prioritize by brightness.
             double lmag = vmag_cache[i];
+
+            // Prioritize stars, planets, etc over galaxies.
+            if (cels[i]->type == galaxy) lmag += 6;
+
             if (lmag < obj_magn_under_cursor)
             {
                 is_an_obj_under_cursor = i;
