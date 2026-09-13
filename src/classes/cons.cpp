@@ -47,6 +47,7 @@ void Constellation::build_constellation_perimeter()
     // Walk from point to nearest point
     while (!unvisited.empty()) 
     {
+        if (abort_load) return;
         const ConsBoundary& current = perimeter.back();
 
         auto nearest_it = unvisited.begin();

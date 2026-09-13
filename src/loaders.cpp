@@ -1010,11 +1010,13 @@ void load_stuff()
     mtx.lock();
     loading_msg = "Done!";
     splash = false;
+    load_completed = true;
     mtx.unlock();
 }
 
 void reload_stuff()
 {
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Refreshing spectral types...";
     mtx.unlock();
@@ -1023,15 +1025,20 @@ void reload_stuff()
     CatalogReader cr;
     constellations.clear();
 
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Refreshing constellations...";
     mtx.unlock();
     read_cons_lines();
     cr.read_cons_boundaries();
+
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Assigning stars to constellations...";
     mtx.unlock();
     cache_cons_lines();
+
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Refreshing star orbits...";
     mtx.unlock();

@@ -1905,6 +1905,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
         for (y = 0; y < image_height; ++y)
         {
+            if (done || abort_load) { generating_fic_texture = false; return; }
             // Convert screen pixel coordinates to spherical angles
             v = (double)y / image_height;
             theta = v * _pi; // Latitude angle from 0 to PI
@@ -2170,6 +2171,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
         RGB3 rgb;
         for (y=0; y<image_height; y++)
         {
+            if (done || abort_load) { generating_fic_texture = false; return; }
             y1 = y * image_width;
             for (x=0; x<image_width; x++)
             {
@@ -2228,6 +2230,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     std::vector<Crater> craters(num_craters);
     for (int i = 0; i < num_craters; ++i)
     {
+        if (done || abort_load) { generating_fic_texture = false; return; }
         Crater &c = craters[i];
 
         double z = cel->cel_frand(-1, 1), phi = cel->cel_frand(0, 2 * _pi), r = sqrt(fmax(0.0, 1 - z * z));
@@ -2464,6 +2467,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
 
     for (unsigned int y = 0; y < image_height; ++y)
     {
+        if (done || abort_load) { generating_fic_texture = false; return; }
         v = (double)y / image_height;
         theta = v * _pi;
 
@@ -2648,6 +2652,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 
     for (y = 0; y < image_height; ++y)
     {
+        if (done || abort_load) { generating_fic_texture = false; return; }
         v = (double)y / image_height;
         theta = v * _pi;
         sin_theta = sin(theta);
@@ -2799,6 +2804,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
         for (int gi = 0; gi < num_groups; gi++)
         {
+            if (done || abort_load) { generating_fic_texture = false; return; }
             double glat;
             if (polar_regime && cel->cel_frand(0, 1) < 0.55)
                 glat = (cel->cel_frand(0, 1) < 0.5 ? 1 : -1) * cel->cel_frand(fiftyseventh * 55, half_pi);
@@ -3016,6 +3022,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     double inv_img_wid = 1.0 / image_width;
     for (x=0; x<image_width; x++)
     {
+        if (done || abort_load) { generating_fic_texture = false; return; }
         double fx = inv_img_wid * x;
 
         // keep colors pale like Saturn, just change redness

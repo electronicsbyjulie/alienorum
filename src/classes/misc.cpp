@@ -23,6 +23,7 @@ bool done = false;
 // instead of tearing `cels` down underneath it. See load_catalogs() and the Escape handler in
 // alienorum.cpp.
 std::atomic<bool> abort_load{false};
+std::atomic<bool> load_completed{false};
 
 // How many detached load_textures() threads are currently running. Only spawn_texture_load()
 // increments it (before the thread starts, so there is no window in which a load is pending but
@@ -597,6 +598,9 @@ bool download_file(std::string URL, std::string save_path)
             easy.setOpt(CURLOPT_WRITEDATA, &buffer);
             easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
         }
+
+        easy.setOpt(CURLOPT_CONNECTTIMEOUT, 10L);
+        easy.setOpt(CURLOPT_TIMEOUT, 30L);
 
         easy.perform();
 

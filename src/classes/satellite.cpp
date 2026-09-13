@@ -178,6 +178,7 @@ bool SatSource::read_csv_data()
 
     while (fgets(buffer, 16382, fp))
     {
+        if (abort_load) { fclose(fp); return false; }
         std::vector<std::string> row = parse_csv_row(buffer);
         i = 0;
 

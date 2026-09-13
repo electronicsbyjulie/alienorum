@@ -343,7 +343,8 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
             std::string key = "";
             key = std::string(cels[i]->name);
             CelestialObject *cursor = cels[i];
-            while (cursor->orbit && cursor->orbit->center)
+            int depth = 0;
+            while (cursor->orbit && cursor->orbit->center && depth++ < 100)
             {
                 cursor = cursor->orbit->center;
                 key = std::string(cursor->name) + std::string(".") + key;

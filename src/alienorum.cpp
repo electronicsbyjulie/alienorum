@@ -514,11 +514,15 @@ int main (int argc, char** argv)
         while (SDL_PollEvent(&event))
         {
             ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT)
+            if (event.type == SDL_QUIT ||
+                (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)))
+            {
+                abort_load = true;
                 done = true;
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
-                done = true;
+                SDL_HideWindow(window);
+            }
         }
+        if (done) break;
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
         {
             SDL_Delay(10);
@@ -613,6 +617,7 @@ int main (int argc, char** argv)
             {
                 abort_load = true;
                 done = true;
+                SDL_HideWindow(window);
             }
         }
         else
@@ -1051,13 +1056,15 @@ int main (int argc, char** argv)
         }
     }
 
-    // Stop the loader and wait for it before touching anything it writes to. This has to come
-    // ahead of save_universe() as well as ahead of the deletes: the loader appends to `cels` as
-    // it goes, and Serialization::save_all() walks that same array.
     abort_load = true;
+    SDL_HideWindow(window);
     if (t1.joinable()) t1.join();
 
-    if (cels[1]) save_universe();
+    if (load_completed && cels[1]) save_universe();
+
+    int wait_limit = 100;
+    while (texture_loads_pending > 0 && --wait_limit > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     for (i=0; cels[i]; i++)
     {
@@ -1081,5 +1088,13 @@ int main (int argc, char** argv)
     delete[] discinstead;
     if (hdcache) delete[] hdcache;
     if (hipcache) delete[] hipcache;
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
+    SDL_GL_DeleteContext(gl_context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 0;
 }

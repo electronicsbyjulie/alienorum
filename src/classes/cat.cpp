@@ -2066,6 +2066,7 @@ int alienorum::CatalogReader::read_cons_boundaries()
 
     while (fgets(buffer, 1020, fp))
     {
+        if (abort_load) { fclose(fp); return 0; }
         ConsBoundary cb;
 
         //  1- 11   F11.7   deg     RAdeg   [0/360] Right ascension in degrees (J2000)
@@ -2088,9 +2089,11 @@ int alienorum::CatalogReader::read_cons_boundaries()
             }
         }
     }
+    fclose(fp);
 
     for (i=0; i<n; i++)
     {
+        if (abort_load) return 0;
         constellations[i].build_constellation_perimeter();
     }
 
@@ -4868,6 +4871,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     while (fgets(buffer, 1022, fp))
     {
+        if (abort_load) { fclose(fp); return num_read; }
         Star *s = new Star();
         read_field_onebased(buffer, 1, 14, field);
         s->alienorumid = trim(field);
@@ -5727,6 +5731,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             int addedexo = 0;
             while (exorow_read_line(fp, row))
             {
+                if (abort_load) break;
                 if (ncelobjs >= MAX_CELOBJS) break;
                 bool was_new = false;
                 Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
@@ -5738,6 +5743,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             }
             fclose(fp);
 
+            if (abort_load) return result;
             apply_exoplanet_names(planet_celids);
             if (stars_only) loaded_starsonly = true;
             return result;
@@ -6422,6 +6428,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
 
     while (fgets(buffer, sizeof(buffer)-2, fp))
     {
+        if (abort_load) { fclose(fp); return num_read; }
         if (ncelobjs >= max-1) break;
         if (strlen(buffer) < 340) continue;
 

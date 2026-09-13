@@ -292,6 +292,7 @@ extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, sho
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep;
 extern std::atomic<bool> abort_load;
+extern std::atomic<bool> load_completed;
 extern std::atomic<int> texture_loads_pending;
 extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
