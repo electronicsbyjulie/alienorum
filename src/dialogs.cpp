@@ -2362,7 +2362,7 @@ void draw_system_explorer(ImGuiIO& io)
             if (cel->deleted) continue;
         #endif
             s = (cel->typeclass() == class_star) ? (Star*)cel : nullptr;
-            if (cel->seqno == selected) item_selected_idx = j;
+            if (view_mode == vm_system && cel->seqno == selected) item_selected_idx = j;
 
             bool is_selected = (item_selected_idx == j);
 
@@ -2448,7 +2448,10 @@ void draw_system_explorer(ImGuiIO& io)
 
             ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.c_str(), is_selected, flags))
+            {
                 item_selected_idx = j;
+                if (view_mode == vm_system) selected = list_item_celids[item_selected_idx];
+            }
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
             if (is_selected)
