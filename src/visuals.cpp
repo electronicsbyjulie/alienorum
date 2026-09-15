@@ -2720,7 +2720,8 @@ static double draw_comet(CelestialObject *cel, double appmag)
 
 bool draw_one_object(int i)
 {
-        bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
+    cels[i]->label_shown = false;
+    bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
     if ((i == whereami) && (view_mode != vm_system)) return false;
     
@@ -2978,6 +2979,13 @@ bool draw_one_object(int i)
         }
         else if (cls == class_star && cels[i]->cenobj == mycenobj && ((Star*)cels[i])->local_name.size())
             dispname = ((Star*)cels[i])->local_name.c_str();
+        else if (cls == class_star && shortnames)
+        {
+            Star *s = (Star*)cels[i];
+            if (strlen(s->Bayer)) dispname = squeeze_spaces(s->Bayer).c_str();
+            else if (strlen(s->Flamsteed)) dispname = squeeze_spaces(s->Flamsteed).c_str();
+            else if (s->GouldNo > 0) dispname = (std::to_string(s->GouldNo) + std::string("G ") + std::string(s->Gouldcons)).c_str();
+        }
 
         ImVec2 sz = ImGui::CalcTextSize(dispname);
         int dy = cels[i]->drawny+bloomrad+1;
@@ -2986,6 +2994,7 @@ bool draw_one_object(int i)
             rgba_apply_redlight(Color::ensure_wcag_contrast(
                 (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
             dispname);
+        cels[i]->label_shown = true;
     }
     return true;
 }
@@ -4428,14 +4437,15 @@ void draw_cons_lines()
         float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
 
         if (dx < 0 || dy < 0) continue;
-        ImVec2 sz = ImGui::CalcTextSize(constellations[l].name.c_str());
+        std::string dispname = (shortnames ? constellations[l].abbrev : constellations[l].name);
+        ImVec2 sz = ImGui::CalcTextSize(dispname.c_str());
         dx -= sz.x/2;
         dy -= sz.y/2;
         if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 4.5, -1, true)),
-                constellations[l].name.c_str());
+                dispname.c_str() );
         }
     }
 

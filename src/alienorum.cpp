@@ -27,7 +27,7 @@ using namespace alienorum;
 // of everything typed before it.
 struct CliCmd
 {
-    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_import } kind;
+    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_ctrl_char, k_import } kind;
     std::string s;
     int fkey = 0;
     char c = 0;
@@ -175,6 +175,7 @@ int main (int argc, char** argv)
     auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
     auto push_fkey = [&](int n) { CliCmd cmd; cmd.kind = CliCmd::k_fkey; cmd.fkey = n; cli_cmds.push_back(cmd); };
     auto push_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_char; cmd.c = c; cli_cmds.push_back(cmd); };
+    auto push_ctrl_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_ctrl_char; cmd.c = c; cli_cmds.push_back(cmd); };
 
     auto next_arg = [&](const char* opt) -> const char*
     {
@@ -204,7 +205,12 @@ int main (int argc, char** argv)
             continue;
         }
 
-        if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))
+        else if (n == 2 && argv[l][0] == '^')
+        {
+            push_ctrl_char(argv[l][1] & 0x5f);
+        }
+
+        else if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))
         {
             const char* ucpdhahzs = "\x2b\x85\xe9\x80\x57\xe4\x70\x00";
             i = 0;
@@ -875,6 +881,9 @@ int main (int argc, char** argv)
                     case CliCmd::k_char:
                         process_key_cmd_char(cmd.c);
                         break;
+                    case CliCmd::k_ctrl_char:
+                        process_key_cmd_ctrl_char(cmd.c);
+                        break;
                 }
             }
 
@@ -985,6 +994,9 @@ int main (int argc, char** argv)
                 ? cels[nameidx]->name
                 : "snapshot"
                 ;
+            
+            if (view_mode == vm_skymap) snapname += ".skymap";
+            if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             shnapsot_fname << snapdir << _FILESLASH
                 << snapname

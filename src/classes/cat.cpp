@@ -1424,25 +1424,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
-// Collapses runs of whitespace, so gcvs_cat's padded "T     And" matches crossid's "T And".
-static std::string squeeze_spaces(const char *s)
-{
-    std::string out;
-    bool gap = false;
-    for (; *s; s++)
-    {
-        if (isspace((unsigned char)*s))
-        {
-            gap = !out.empty();
-            continue;
-        }
-        if (gap) out += ' ';
-        gap = false;
-        out += *s;
-    }
-    return out;
-}
-
 // GCVS 5.1, for the variables Hipparcos never fitted. It carries no HIP or HD column of its own,
 // so stars are matched through the cross-identifications in crossid.dat.
 int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)

@@ -174,8 +174,8 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     flagstr = (std::string)"Brghtns (B): " + std::to_string(global_brightness);
     ImGui::Text("%s", flagstr.c_str());
 
-    flagstr = (std::string)"Gamma (`): " + std::to_string(get_gamma());
-    ImGui::Text("%s", flagstr.c_str());
+    /* flagstr = (std::string)"Gamma (`): " + std::to_string(get_gamma());
+    ImGui::Text("%s", flagstr.c_str()); */
 
     ImGui::Separator();
 
@@ -213,7 +213,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     ImGui::Separator();
 
     flagstr = (std::string)"Labels (L): "
-        + std::string(show_labels ? "ON" : "OFF");
+        + std::string(show_labels ? (shortnames ? "SHORT" : "ON") : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
     // Pass in the preview value visible before opening the combo (it could technically be different contents or not pulled from items[])
@@ -851,6 +851,33 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
+            }
+        }
+
+        if (cls == class_star)
+        {
+            ImGui::Separator();
+            
+            const char *plural_s = (s->has_planets == 1) ? "" : "s",
+                 *plural_s_hz = (s->has_hz_planets == 1) ? "" : "s";
+            if (s->has_planets)
+            {
+                ImGui::Text("%d planet%s.", s->has_planets, plural_s);
+                if (s->has_hz_planets)
+                {
+                    ImGui::Text("%d planet%s in HZ:", s->has_hz_planets, plural_s_hz);
+
+                    int spli, spln = s->pl_indices.size();
+
+                    for (spli=0; spli<spln; spli++)
+                    {
+                        Planet *lp = (Planet*) cels[s->pl_indices[spli]];
+                        if (lp->is_in_con_HZ())
+                        {
+                            ImGui::Text("%.2f Earth masses", lp->mass / earth_mass);
+                        }
+                    }
+                }
             }
         }
 

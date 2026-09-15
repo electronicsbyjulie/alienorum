@@ -68,6 +68,7 @@ void identify_object_under_cursor(ImGuiIO& io)
 
             // Prioritize stars, planets, etc over galaxies.
             if (cels[i]->type == galaxy) lmag += 6;
+            else if (cels[i]->label_shown) lmag -= 5;               // Prioritize labeled objects.
 
             if (lmag < obj_magn_under_cursor)
             {
@@ -348,6 +349,7 @@ void show_menu()
 
                 ImGui::EndMenu();
             }
+            if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('S'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
@@ -511,7 +513,7 @@ void process_key_cmd_char(char c)
         global_gamma = viewer_gamma;
         neighb_rthresh = 25 * light_year;
         show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = label_galaxies = show_galaxy_band = true;
-        show_orbits = false;
+        show_orbits = shortnames = false;
         cbolbls_selected_idx = lbltype_brightest;
         appmagn_lblcut = 2.5;
         absmagn_lblcut = -3.5;
@@ -765,6 +767,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'G': vplane_mode = vplane_galactic; break;
         case 'I': vplane_mode = vplane_ICRF; break;
         case 'L': vplane_mode = vplane_local; break;
+        case 'S': shortnames = !shortnames; viewchanged = true; break;
         case 'T': show_terrain = !show_terrain; viewchanged = true; break;
     
         case 'V':

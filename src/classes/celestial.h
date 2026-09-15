@@ -336,6 +336,7 @@ namespace alienorum
         bool looked_for_maps = false, ignore_map_files = false;
         unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
         bool onscreen = false;
+        bool label_shown = false;
 
         CelestialObject();
         virtual ~CelestialObject() = default;

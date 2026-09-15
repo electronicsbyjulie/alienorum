@@ -83,6 +83,7 @@ bool show_terrain = true;
 bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;
+bool shortnames = false;
 double myeq = 0;
 
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.
@@ -167,6 +168,25 @@ double blackbody_flux(double T, double nu)
 double compute_time_dilation(double velocity)
 {
     return sqrt(1.0 - (velocity*velocity)/(speed_of_light*speed_of_light));
+}
+
+// Collapses runs of whitespace, so gcvs_cat's padded "T     And" matches crossid's "T And".
+std::string squeeze_spaces(const char *s)
+{
+    std::string out;
+    bool gap = false;
+    for (; *s; s++)
+    {
+        if (isspace((unsigned char)*s))
+        {
+            gap = !out.empty();
+            continue;
+        }
+        if (gap) out += ' ';
+        gap = false;
+        out += *s;
+    }
+    return out;
 }
 
 // Solve Kepler's Equation: M = E - e*sin(E) using Newton's Method
