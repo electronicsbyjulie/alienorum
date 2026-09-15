@@ -637,3 +637,35 @@ TEST(StarTest, NoStarMadeBrighterThanCatalog)
     double effective_appmag = s.absolute_magnitude + 5.0 * (log10(s.distance / (parsec * 10.0)));
     EXPECT_GE(effective_appmag, s.apparent_magnitude - 0.01);
 }
+
+TEST(StarTest, K2151BNotCorruptedIntoGiant)
+{
+    Star::load_main_seq_dat();
+
+    // K2-151 B: M1.5V, teff = 3659 K, rad = 0.458 Rsun, mass = 0.455 Msun, dist = 69.48 pc, missing sy_vmag and st_lum.
+    Star k2_151b;
+    strcpy(k2_151b.name, "K2-151 B");
+    strcpy(k2_151b.spectral_type, "M1.5V");
+    k2_151b.temperature = 3659;
+    k2_151b.volumetric_mean_radius = 0.458 * solar_radius;
+    k2_151b.mass = 0.455 * solar_mass;
+    k2_151b.distance = 69.48 * parsec;
+    k2_151b.distance_known = true;
+
+    // Radius and temperature via Stefan-Boltzmann yield M_V ≈ 8.87 - 9.9, NOT -4.21
+    double r_sun = k2_151b.volumetric_mean_radius / solar_radius;
+    double t_ratio = k2_151b.temperature / sun_temp;
+    double lum = r_sun * r_sun * pow(t_ratio, 4.0);
+    double m_bol = 4.74 - log(lum) / log(magnbase);
+    k2_151b.absolute_magnitude = m_bol - Star::bolometric_correction(k2_151b.temperature);
+    k2_151b.apparent_magnitude = k2_151b.absolute_magnitude + 5.0 * (log10(k2_151b.distance / (parsec * 10.0)));
+
+    EXPECT_NEAR(k2_151b.absolute_magnitude, 8.87, 0.5);
+    EXPECT_GT(k2_151b.apparent_magnitude, 12.0);
+
+    // Running correct_main_sequence_absmag should NOT corrupt it into a giant
+    EXPECT_FALSE(k2_151b.correct_main_sequence_absmag());
+    EXPECT_STREQ(k2_151b.spectral_type, "M1.5V");
+    EXPECT_LT(k2_151b.volumetric_mean_radius, 1.0 * solar_radius);
+    EXPECT_GT(k2_151b.absolute_magnitude, 7.0);
+}

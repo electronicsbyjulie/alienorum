@@ -66,6 +66,7 @@ void Star::set_component(char comp, Star* compA)
 Star::Star()
 {
     _class = class_star;
+    apparent_magnitude = 1e29;
     memset(spectral_type, 0, 32*sizeof(char));
     memset(Bayer, 0, 32*sizeof(char));
     memset(Flamsteed, 0, 32*sizeof(char));
@@ -857,7 +858,7 @@ bool Star::correct_main_sequence_absmag(double threshold)
     }
 
     // Check if distance and apparent magnitude are available
-    bool has_appmag = (!isnan(apparent_magnitude) && apparent_magnitude > -30 && apparent_magnitude < 60);
+    bool has_appmag = (!isnan(apparent_magnitude) && !isinf(apparent_magnitude) && apparent_magnitude > -30.0 && apparent_magnitude < 60.0 && apparent_magnitude != 0.0);
     bool has_dist = (!isnan(distance) && !isinf(distance) && distance > 0);
 
     double m_obs = 1e29;
@@ -903,7 +904,12 @@ bool Star::correct_main_sequence_absmag(double threshold)
     // which makes M_obs much brighter than a dwarf (e.g. G1V with M_V = 1.15).
     // The star is NOT main-sequence; it is an evolved star (giant/subgiant).
     // To remain consistent with observed values: keep M_obs and distance, but correct the luminosity class!
-    if (m_obs < 1e28 && (exp_mag - m_obs >= threshold) && distance_known)
+    // Never apply to verified dwarfs (sub-solar radius or mass, or M dwarfs).
+    bool is_verified_dwarf = (volumetric_mean_radius > 0 && volumetric_mean_radius < 1.2 * solar_radius)
+                          || (mass > 0 && mass < 0.6 * solar_mass)
+                          || (spectral_type[0] == 'M')
+                          || (spectral_type[0] == 'd' && spectral_type[1] == 'M');
+    if (!is_verified_dwarf && m_obs < 1e28 && (exp_mag - m_obs >= threshold) && distance_known)
     {
         absolute_magnitude = m_obs;
 

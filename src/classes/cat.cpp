@@ -5414,9 +5414,8 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         double sy_dist = isnan(row.sy_dist) ? 0 : row.sy_dist * parsec;
         double ra  = isnan(row.ra)  ? 0 : row.ra  * fiftyseventh;
         double dec = isnan(row.dec) ? 0 : row.dec * fiftyseventh;
-        double st_lum = 0, sy_vmag = 1e290;
 
-        // Temperature that st_lum depends on.
+        // Physical properties from row
         if (row.st_spectype.size())
         {
             strcpy(host_star->spectral_type, row.st_spectype.c_str());
@@ -5432,31 +5431,22 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->estimate_BV(host_star->temperature);
         }
 
-        if (!isnan(row.st_lum))
+        if (!isnan(row.st_mass))
         {
-            st_lum = row.st_lum;
-            double lum = pow(10, st_lum);
-            if (lum)
-            {
-                // st_lum is BOLOMETRIC (log10 L/Lsol), but absolute_magnitude is VISUAL
-                // everywhere else in the program. Subtract the correction est_bolometric_flux()
-                // will add back, or the bolometric correction gets counted twice (harmless for a
-                // G star, a factor of 42 for an M dwarf).
-                double m_bol = 4.74 - log(lum) / log(magnbase);
-                host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
-            }
-        }
-        else
-        {
-            host_star->absolute_magnitude = std::numeric_limits<double>::infinity();
+            host_star->mass = row.st_mass * solar_mass;
         }
 
-        if (!isnan(row.sy_vmag))
+        if (!isnan(row.st_rad))
         {
-            sy_vmag = row.sy_vmag;
-            host_star->apparent_magnitude = sy_vmag;
+            host_star->volumetric_mean_radius = row.st_rad * solar_radius;
         }
 
+        if (!isnan(row.st_rotp))
+        {
+            host_star->sidereal_rotational_period = row.st_rotp * oneday;
+        }
+
+        // Position and distance
         if (sy_dist && (ra || dec))
         {
             host_star->distance = sy_dist;
@@ -5465,12 +5455,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->update_location(simnow);
             host_star->distance_known = true;
         }
-        else if (ra && dec && st_lum && sy_vmag < 1e203)
+        else if (ra && dec && !isnan(row.st_lum) && !isnan(row.sy_vmag) && row.sy_vmag < 1e203)
         {
-            host_star->distance = host_star->distance_from_magnitudes(host_star->apparent_magnitude, host_star->absolute_magnitude);
             host_star->right_ascension = ra;
             host_star->declination = dec;
-            host_star->update_location(simnow);
         }
         else
         {
@@ -5479,29 +5467,72 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             return nullptr;
         }
 
-        if (!isnan(row.st_teff))
+        // Apparent magnitude from row if present
+        bool has_row_vmag = (!isnan(row.sy_vmag) && row.sy_vmag > -30.0 && row.sy_vmag < 60.0);
+        if (has_row_vmag)
         {
-            host_star->estimate_BV(row.st_teff);
-        }
-        else if (isnan(row.sy_vmag))
-        {
-            host_star->apparent_magnitude = 11;
+            host_star->apparent_magnitude = row.sy_vmag;
         }
 
-        if (isinf(host_star->absolute_magnitude) || host_star->absolute_magnitude == 0)
+        // Absolute magnitude
+        if (!isnan(row.st_lum))
         {
-            if (host_star->apparent_magnitude < 100 && host_star->distance > 0)
+            double lum = pow(10.0, row.st_lum);
+            if (lum > 0)
             {
-                double intrinsic_brightness = pow(magnbase, -host_star->apparent_magnitude) * pow(fmax(AU, host_star->distance) / parsec / 10, 2);
-                host_star->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+                double m_bol = 4.74 - log(lum) / log(magnbase);
+                double teff = (host_star->temperature > 0) ? host_star->temperature : sun_temp;
+                host_star->absolute_magnitude = m_bol - Star::bolometric_correction(teff);
+            }
+        }
+        else if (has_row_vmag && host_star->distance > 0)
+        {
+            // Case B: st_lum missing, but observed apparent magnitude and distance are known (e.g. K2-106).
+            // Compute true absolute magnitude from distance modulus.
+            double intrinsic_brightness = pow(magnbase, -host_star->apparent_magnitude) * pow(fmax(AU, host_star->distance) / parsec / 10.0, 2);
+            host_star->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        }
+        else if (host_star->volumetric_mean_radius > 0 && host_star->temperature > 0)
+        {
+            // Case C: Neither st_lum nor sy_vmag is known (e.g. K2-151 B), but radius and temperature are known.
+            // Calculate luminosity via Stefan-Boltzmann: L = (R/R_sun)^2 * (T/T_sun)^4
+            double r_sun = host_star->volumetric_mean_radius / solar_radius;
+            double t_ratio = host_star->temperature / sun_temp;
+            double lum = r_sun * r_sun * pow(t_ratio, 4.0);
+            if (lum > 0)
+            {
+                double m_bol = 4.74 - log(lum) / log(magnbase);
+                host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
+            }
+        }
+        else
+        {
+            // Case D: Fall back to expected main sequence magnitude based on spectral type / temp
+            host_star->absolute_magnitude = host_star->expected_main_sequence_absmag();
+            if (isinf(host_star->absolute_magnitude) || isnan(host_star->absolute_magnitude) || host_star->absolute_magnitude > 50.0)
+            {
+                host_star->absolute_magnitude = 10.0;
+            }
+        }
+
+        // Complete apparent magnitude or distance if one was missing
+        if (!has_row_vmag)
+        {
+            if (host_star->distance > 0 && !isinf(host_star->absolute_magnitude) && !isnan(host_star->absolute_magnitude))
+            {
+                host_star->apparent_magnitude = host_star->absolute_magnitude + 5.0 * (log10(fmax(AU, host_star->distance) / (parsec * 10.0)));
             }
             else
             {
-                host_star->absolute_magnitude = host_star->expected_main_sequence_absmag();
+                host_star->apparent_magnitude = 11.0;
             }
         }
 
-        host_star->correct_main_sequence_absmag();
+        if (host_star->distance <= 0)
+        {
+            host_star->distance = host_star->distance_from_magnitudes(host_star->apparent_magnitude, host_star->absolute_magnitude);
+            host_star->update_location(simnow);
+        }
 
         if (!star_exists)
         {
@@ -5510,15 +5541,15 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         *was_new = !star_exists;
     }
 
-    if (!isnan(row.st_mass))
+    if (!isnan(row.st_mass) && host_star->mass <= 0)
     {
         host_star->mass = row.st_mass * solar_mass;
     }
-    if (!isnan(row.st_rad))
+    if (!isnan(row.st_rad) && host_star->volumetric_mean_radius <= 0)
     {
         host_star->volumetric_mean_radius = row.st_rad * solar_radius;
     }
-    if (row.st_spectype.size())
+    if (row.st_spectype.size() && !host_star->spectral_type[0])
     {
         strcpy(host_star->spectral_type, row.st_spectype.c_str());
         if (!host_star->BV_color)
@@ -5526,12 +5557,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(host_star->spectral_type));
         }
     }
-    if (!isnan(row.st_rotp))
+    if (!isnan(row.st_rotp) && host_star->sidereal_rotational_period <= 0)
     {
         host_star->sidereal_rotational_period = row.st_rotp * oneday;
     }
-
-    host_star->correct_main_sequence_absmag();
 
     return host_star;
 }

@@ -17,7 +17,7 @@ namespace alienorum
         double proper_motion_RA = 0;                // radians / second
         double proper_motion_decl = 0;              // radians / second
         double radial_velocity = 0;                 // meters / second
-        double apparent_magnitude = 0;              // visual/550nm
+        double apparent_magnitude = 1e29;           // visual/550nm
         double parallax = 0;                        // radians
 
         double minmag = 0;                          // apparent V mag
