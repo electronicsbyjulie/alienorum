@@ -4117,7 +4117,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 }
                 if (tempK)
                 {
-                    mseqi += (mseqit = Star::get_mseqidx_from_lum(tempK));
+                    mseqi += (mseqit = Star::get_mseqidx_from_temp(tempK));
                     mseqn++;
                 }
 
@@ -5417,6 +5417,15 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         double st_lum = 0, sy_vmag = 1e290;
 
         // Temperature that st_lum depends on.
+        if (row.st_spectype.size())
+        {
+            strcpy(host_star->spectral_type, row.st_spectype.c_str());
+            if (!host_star->BV_color)
+            {
+                host_star->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(host_star->spectral_type));
+            }
+        }
+
         if (!isnan(row.st_teff))
         {
             host_star->temperature = row.st_teff;
@@ -5437,7 +5446,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
                 host_star->absolute_magnitude = m_bol - Star::bolometric_correction(host_star->temperature);
             }
         }
-        else host_star->absolute_magnitude = 10;
+        else
+        {
+            host_star->absolute_magnitude = std::numeric_limits<double>::infinity();
+        }
 
         if (!isnan(row.sy_vmag))
         {
@@ -5471,29 +5483,55 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         {
             host_star->estimate_BV(row.st_teff);
         }
-        else host_star->apparent_magnitude = 11;
-
-        if (isinf(host_star->absolute_magnitude))
+        else if (isnan(row.sy_vmag))
         {
-            double intrinsic_brightness = pow(magnbase, -host_star->apparent_magnitude) * pow(fmax(AU, host_star->distance) / parsec / 10, 2);
-            host_star->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+            host_star->apparent_magnitude = 11;
         }
 
-        if (!star_exists) append_cel(host_star);
+        if (isinf(host_star->absolute_magnitude) || host_star->absolute_magnitude == 0)
+        {
+            if (host_star->apparent_magnitude < 100 && host_star->distance > 0)
+            {
+                double intrinsic_brightness = pow(magnbase, -host_star->apparent_magnitude) * pow(fmax(AU, host_star->distance) / parsec / 10, 2);
+                host_star->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+            }
+            else
+            {
+                host_star->absolute_magnitude = host_star->expected_main_sequence_absmag();
+            }
+        }
+
+        host_star->correct_main_sequence_absmag();
+
+        if (!star_exists)
+        {
+            append_cel(host_star);
+        }
         *was_new = !star_exists;
     }
 
     if (!isnan(row.st_mass))
+    {
         host_star->mass = row.st_mass * solar_mass;
+    }
     if (!isnan(row.st_rad))
+    {
         host_star->volumetric_mean_radius = row.st_rad * solar_radius;
+    }
     if (row.st_spectype.size())
     {
         strcpy(host_star->spectral_type, row.st_spectype.c_str());
-        if (!host_star->BV_color) host_star->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(host_star->spectral_type));
+        if (!host_star->BV_color)
+        {
+            host_star->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(host_star->spectral_type));
+        }
     }
     if (!isnan(row.st_rotp))
+    {
         host_star->sidereal_rotational_period = row.st_rotp * oneday;
+    }
+
+    host_star->correct_main_sequence_absmag();
 
     return host_star;
 }

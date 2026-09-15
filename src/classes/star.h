@@ -103,6 +103,13 @@ namespace alienorum
         static double interpolate_mseq_temp(double mseqidx);
         static double interpolate_mseq_BV(double mseqidx);
 
+        bool is_hot_ob_star() const;
+        bool is_main_sequence() const;
+        double expected_main_sequence_absmag() const;
+        bool is_mseq_absmag_outlier(double threshold = 1.5, double* diff = nullptr) const;
+        bool correct_main_sequence_absmag(double threshold = 1.5);
+        static int audit_and_correct_main_sequence_stars(CelestialObject** cels, double threshold = 1.5);
+
         double estimate_radius(bool skip_mainseq = true);
 
         static double temperature_from_BV(double BV);

@@ -4,6 +4,7 @@
 #include <math.h>
 #include <cstdio>
 #include "cons.h"
+#include "planet.h"
 
 using namespace alienorum;
 
@@ -712,22 +713,350 @@ double alienorum::Star::interpolate_mseq_BV(double mseqidx)
     return coeff0 * msq_BV[i] + coeff1 * msq_BV[i+1];
 }
 
+bool Star::is_hot_ob_star() const
+{
+    if (spectral_type[0] == 'O' || spectral_type[0] == 'B')
+    {
+        return true;
+    }
+    if (spectral_type[0] == 'd' && (spectral_type[1] == 'O' || spectral_type[1] == 'B'))
+    {
+        return true;
+    }
+    double msqi = get_mseqidx_from_sptyp(spectral_type);
+    if (msqi >= 0 && msqi < 20.0)
+    {
+        return true;
+    }
+    if (temperature >= 10000.0)
+    {
+        return true;
+    }
+    if (BV_color < -0.05 && BV_color != 0.0)
+    {
+        return true;
+    }
+    return false;
+}
+
+bool Star::is_main_sequence() const
+{
+    if (!spectral_type[0])
+    {
+        return false;
+    }
+
+    // Check for 'd' prefix (e.g. "dM3", "dK5", "dG2")
+    if (spectral_type[0] == 'd' && spectral_type[1] >= 'A' && spectral_type[1] <= 'M')
+    {
+        return true;
+    }
+
+    // Look for luminosity class 'V'
+    for (int i = 0; spectral_type[i]; i++)
+    {
+        if (spectral_type[i] == 'V')
+        {
+            // Avoid "IV" (subgiant) or "VI" (subdwarf)
+            bool prev_I = (i > 0 && spectral_type[i - 1] == 'I');
+            bool next_I = (spectral_type[i + 1] == 'I');
+            if (!prev_I && !next_I)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+double Star::expected_main_sequence_absmag() const
+{
+    if (is_hot_ob_star())
+    {
+        return 1e29;
+    }
+
+    double msqi = -1.0;
+
+    if (spectral_type[0])
+    {
+        msqi = get_mseqidx_from_sptyp(spectral_type);
+    }
+    if (msqi < mseqmin || msqi > mseqmax)
+    {
+        if (temperature > 0)
+        {
+            msqi = get_mseqidx_from_temp(temperature);
+        }
+        else if (BV_color != 0)
+        {
+            msqi = get_mseqidx_from_BV(BV_color);
+        }
+    }
+
+    if (msqi >= 20.0 && msqi <= mseqmax)
+    {
+        double lum = interpolate_mseq_lum(msqi);
+        if (lum > 0)
+        {
+            return 4.85 - log(lum) / log(magnbase);
+        }
+    }
+    return 1e29;
+}
+
+bool Star::is_mseq_absmag_outlier(double threshold, double* diff) const
+{
+    if (!is_main_sequence() || is_hot_ob_star())
+    {
+        return false;
+    }
+
+    double exp_mag = expected_main_sequence_absmag();
+    if (exp_mag > 1e28 || isnan(exp_mag) || isinf(exp_mag))
+    {
+        return false;
+    }
+
+    if (isnan(absolute_magnitude) || isinf(absolute_magnitude))
+    {
+        if (diff)
+        {
+            *diff = 1e29;
+        }
+        return true;
+    }
+
+    double d = absolute_magnitude - exp_mag;
+    if (diff)
+    {
+        *diff = d;
+    }
+    return (fabs(d) >= threshold);
+}
+
+bool Star::correct_main_sequence_absmag(double threshold)
+{
+    if (!is_main_sequence() || is_hot_ob_star())
+    {
+        return false;
+    }
+
+    double exp_mag = expected_main_sequence_absmag();
+    if (exp_mag > 1e28 || isnan(exp_mag) || isinf(exp_mag))
+    {
+        return false;
+    }
+
+    // Check if the current magnitude is an outlier or unphysical
+    bool is_invalid = (isnan(absolute_magnitude) || isinf(absolute_magnitude) || absolute_magnitude == 0 || absolute_magnitude > 50);
+    double diff = is_invalid ? 1e29 : (absolute_magnitude - exp_mag);
+    if (!is_invalid && fabs(diff) < threshold)
+    {
+        return false;
+    }
+
+    // Check if distance and apparent magnitude are available
+    bool has_appmag = (!isnan(apparent_magnitude) && apparent_magnitude > -30 && apparent_magnitude < 60);
+    bool has_dist = (!isnan(distance) && !isinf(distance) && distance > 0);
+
+    double m_obs = 1e29;
+    if (has_appmag && has_dist)
+    {
+        double intrinsic_brightness = pow(magnbase, -apparent_magnitude) * pow(fmax(AU, distance) / parsec / 10.0, 2);
+        if (intrinsic_brightness > 0)
+        {
+            m_obs = -log(intrinsic_brightness) * invlogmagnbase;
+        }
+    }
+
+    double old_absmag = absolute_magnitude;
+    double old_distance = distance;
+
+    // Case 1: Observed distance modulus matches the main-sequence expectation (within threshold).
+    // This is the K2-106 pattern: distance and apparent magnitude are correct and yield the
+    // expected main-sequence magnitude, but absolute_magnitude was set to a bogus fallback (e.g. 10).
+    if (m_obs < 1e28 && fabs(m_obs - exp_mag) < threshold)
+    {
+        absolute_magnitude = m_obs;
+        if (volumetric_mean_radius <= 0)
+        {
+            double msqi = get_mseqidx_from_sptyp(spectral_type);
+            if (msqi >= mseqmin && msqi <= mseqmax)
+            {
+                volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
+            }
+            else
+            {
+                volumetric_mean_radius = estimate_radius(false);
+            }
+        }
+        if (mass <= 0)
+        {
+            mass = estimate_mass();
+        }
+        return true;
+    }
+
+    // Case 2: Observed distance modulus is also an outlier, strongly brighter than main sequence.
+    // This is the HD 7229 pattern: star has trigonometric parallax (known distance) and apparent magnitude,
+    // which makes M_obs much brighter than a dwarf (e.g. G1V with M_V = 1.15).
+    // The star is NOT main-sequence; it is an evolved star (giant/subgiant).
+    // To remain consistent with observed values: keep M_obs and distance, but correct the luminosity class!
+    if (m_obs < 1e28 && (exp_mag - m_obs >= threshold) && distance_known)
+    {
+        absolute_magnitude = m_obs;
+
+        // Determine evolved luminosity class based on M_obs
+        const char* new_class = (m_obs <= 2.5) ? "III" : "IV";
+
+        // Replace 'V' with the new luminosity class in spectral_type
+        for (int i = 0; spectral_type[i]; i++)
+        {
+            if (spectral_type[i] == 'V')
+            {
+                bool prev_I = (i > 0 && spectral_type[i - 1] == 'I');
+                bool next_I = (spectral_type[i + 1] == 'I');
+                if (!prev_I && !next_I)
+                {
+                    char remainder[32] = {0};
+                    strncpy(remainder, &spectral_type[i + 1], sizeof(remainder) - 1);
+                    spectral_type[i] = '\0';
+                    strncat(spectral_type, new_class, sizeof(spectral_type) - strlen(spectral_type) - 1);
+                    strncat(spectral_type, remainder, sizeof(spectral_type) - strlen(spectral_type) - 1);
+                    break;
+                }
+            }
+        }
+
+        // Re-estimate radius from Stefan-Boltzmann: L = 10^(-0.4 * (M_V - 4.83))
+        double T = estimate_temperature();
+        if (T > 0)
+        {
+            double lum = pow(magnbase, -(absolute_magnitude - 4.83));
+            volumetric_mean_radius = sqrt(lum) * pow(sun_temp / T, 2.0) * solar_radius;
+        }
+        return true;
+    }
+
+    // Case 3: Distance was NOT measured trigonometrically (or invalid/unreliable).
+    // The spectral classification is trusted, so assign the expected main-sequence magnitude,
+    // and compute the photometric distance so that apparent magnitude matches the catalog.
+    if (!distance_known || !has_dist)
+    {
+        absolute_magnitude = exp_mag;
+        if (has_appmag)
+        {
+            distance = distance_from_magnitudes(apparent_magnitude, absolute_magnitude);
+            distance_known = true;
+            update_location(simnow);
+        }
+        if (volumetric_mean_radius <= 0)
+        {
+            double msqi = get_mseqidx_from_sptyp(spectral_type);
+            if (msqi >= mseqmin && msqi <= mseqmax)
+            {
+                volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
+            }
+            else
+            {
+                volumetric_mean_radius = estimate_radius(false);
+            }
+        }
+        if (mass <= 0)
+        {
+            mass = estimate_mass();
+        }
+        return true;
+    }
+
+    // If distance IS known from parallax, and absolute_magnitude was corrupted (did not match m_obs),
+    // recover m_obs so that apparent magnitude matches catalog:
+    if (m_obs < 1e28 && fabs(absolute_magnitude - m_obs) >= threshold)
+    {
+        absolute_magnitude = m_obs;
+        return true;
+    }
+
+    // Universal invariant guard:
+    // No star should ever end up with a significantly brighter apparent magnitude than what's in the catalogs.
+    if (has_appmag && has_dist && distance > 0)
+    {
+        double effective_appmag = absolute_magnitude + 5.0 * (log10(distance / (parsec * 10.0)));
+        if (effective_appmag < apparent_magnitude - 0.25)
+        {
+            absolute_magnitude = old_absmag;
+            distance = old_distance;
+            return false;
+        }
+    }
+
+    return false;
+}
+
+int Star::audit_and_correct_main_sequence_stars(CelestialObject** cels, double threshold)
+{
+    if (!cels)
+    {
+        return 0;
+    }
+
+    int count = 0;
+    for (int i = 0; cels[i]; i++)
+    {
+        if (cels[i]->type == star)
+        {
+            Star* s = (Star*)cels[i];
+            if (s->is_main_sequence() && s->is_mseq_absmag_outlier(threshold))
+            {
+                if (s->correct_main_sequence_absmag(threshold))
+                {
+                    count++;
+                    if (s->has_planets)
+                    {
+                        for (int j = 0; cels[j]; j++)
+                        {
+                            if (cels[j]->typeclass() == class_planet && cels[j]->cenobj == s)
+                            {
+                                Planet* p = (Planet*)cels[j];
+                                p->classify();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return count;
+}
+
 double Star::estimate_radius(bool sms)
 {
     if (!sms)
     {
-        double msqi = get_mseqidx_from_BV(BV_color);
-        if (msqi >= mseqmin && msqi <= mseqmax) return volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
+        double msqi = -1.0;
+        if (spectral_type[0])
+        {
+            msqi = get_mseqidx_from_sptyp(spectral_type);
+        }
+        if (msqi < mseqmin || msqi > mseqmax)
+        {
+            msqi = get_mseqidx_from_BV(BV_color);
+        }
+        if (msqi >= mseqmin && msqi <= mseqmax)
+        {
+            return volumetric_mean_radius = interpolate_mseq_rad(msqi) * solar_radius;
+        }
     }
 
-    if (!cels[0])
-    {
-        std::cerr << "Called Star::estimate_radius() before loading Sun." << std::endl;
-        throw 0xbadc0de;
-    }
+    double sun_absmag = (cels[0] ? cels[0]->absolute_magnitude : 4.83);
     double T = estimate_temperature();
+    if (T <= 0)
+    {
+        T = 5800.0;
+    }
     // 1. Calculate Luminosity relative to the Sun (L/L_sun)
-    double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
+    double logL = (sun_absmag - absolute_magnitude);
     double luminosity = std::pow(magnbase, logL);
 
     // 2. Calculate radius relative to the Sun (R/R_sun) using Stefan-Boltzmann then scale to meters
@@ -949,17 +1278,27 @@ void Star::make_companion_of(Star *A, char comp)
 
 double Star::estimate_mass()
 {
-    // double msqi = get_mseqidx_from_sptyp(spectral_type);
-    double msqi = get_mseqidx_from_BV(BV_color);
-    if (msqi >= mseqmin && msqi <= mseqmax) return mass = interpolate_mseq_mass(msqi) * solar_mass;
-
-    if (!cels[0])
+    double msqi = -1.0;
+    if (spectral_type[0])
     {
-        std::cerr << "Called Star::estimate_mass() before loading Sun." << std::endl;
-        throw 0xbadc0de;
+        msqi = get_mseqidx_from_sptyp(spectral_type);
     }
+    if (msqi < mseqmin || msqi > mseqmax)
+    {
+        msqi = get_mseqidx_from_BV(BV_color);
+    }
+    if (msqi >= mseqmin && msqi <= mseqmax)
+    {
+        return mass = interpolate_mseq_mass(msqi) * solar_mass;
+    }
+
+    double sun_absmag = (cels[0] ? cels[0]->absolute_magnitude : 4.83);
     double T = estimate_temperature();
-    double logL = (cels[0]->absolute_magnitude - absolute_magnitude);
+    if (T <= 0)
+    {
+        T = 5800.0;
+    }
+    double logL = (sun_absmag - absolute_magnitude);
     double luminosity = std::pow(magnbase, logL);
     double radius = (volumetric_mean_radius ? volumetric_mean_radius : estimate_radius()) / solar_radius;
 

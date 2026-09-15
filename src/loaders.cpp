@@ -984,7 +984,15 @@ void load_stuff()
 
     // load_catalogs() returns early on abort, so cels[0] may not exist -- everything below here
     // assumes the Sun is loaded (see the bv_correction line, which reads cels[0] directly).
-    if (load_aborted() || !cels[0]) return;
+    if (load_aborted() || !cels[0])
+    {
+        return;
+    }
+
+    mtx.lock();
+    loading_msg = "Auditing main sequence stars...";
+    mtx.unlock();
+    Star::audit_and_correct_main_sequence_stars(cels);
     mtx.lock();
     loading_msg = "Assigning constellations...";
     mtx.unlock();
