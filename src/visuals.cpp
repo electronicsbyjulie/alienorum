@@ -925,14 +925,14 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.limb_b = limb_b;
     in.night_illum = cel->night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
-    if (self_luminous) { in.num_casters = 0; in.light_angular_radius = 0; }
-    else collect_eclipse_casters(in, cel, lightcen, camera_space, bounding_r);
-
     // The band of lit air on this world's own limb. Its height is the world's own pressure
     // scale height (so a hydrogen giant's is puffy and Mars's is thin), and its colors come from
     // the same place its skies do -- see atmosphere_colors() above.
     in.atmosphere_height = 0;
-    for (int k = 0; k < 3; k++) in.atmosphere_color[k] = in.atmosphere_low_color[k] = 0;
+    for (int k = 0; k < 3; k++)
+    {
+        in.atmosphere_color[k] = in.atmosphere_low_color[k] = 0;
+    }
     if (!self_luminous && (cls == class_planet || cls == class_moon))
     {
         Planet *pl = (Planet*)cel;
@@ -943,6 +943,16 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
             double umbra_unused[3];
             atmosphere_colors(pl, in.atmosphere_color, in.atmosphere_low_color, umbra_unused);
         }
+    }
+
+    if (self_luminous)
+    {
+        in.num_casters = 0;
+        in.light_angular_radius = 0;
+    }
+    else
+    {
+        collect_eclipse_casters(in, cel, lightcen, camera_space, bounding_r + in.atmosphere_height);
     }
 
     // A ringed planet shadowed by its own rings -- Saturn's dark band across the winter

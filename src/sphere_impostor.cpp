@@ -319,6 +319,64 @@ namespace alienorum
         "    }\n"
         "    return c;\n"
         "}\n"
+        "void calc_shadow(vec3 pos, out float shadow, out float umbraAmt, out vec3 umbraTint)\n"
+        "{\n"
+        "    shadow = 1.0;\n"
+        "    umbraAmt = 0.0;\n"
+        "    umbraTint = vec3(0.0);\n"
+        "    if (uRing[1].x > 0.0)\n"
+        "    {\n"
+        "        vec3 ringN = uRing[0].xyz;\n"
+        "        float denom = dot(ringN, vLightDir);\n"
+        "        if (abs(denom) > 1e-9)\n"
+        "        {\n"
+        "            float s = -dot(ringN, pos) / denom;\n"
+        "            if (s > 0.0)\n"
+        "            {\n"
+        "                float rr = length(pos + vLightDir*s);\n"
+        "                if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
+        "                {\n"
+        "                    float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
+        "                    float opacity = (uRing[1].y > 0.5)\n"
+        "                        ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
+        "                        : 0.5;\n"
+        "                    shadow *= 1.0 - pow(opacity, RING_SHADOW_DENSITY);\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    float eclipsed = 1.0;\n"
+        "    if (vBumpLimb.w > 0.0)\n"
+        "    {\n"
+        "        for (int i = 0; i < 4; i++)\n"
+        "        {\n"
+        "            vec4 caster = uCasters[i];\n"
+        "            if (caster.w <= 0.0)\n"
+        "            {\n"
+        "                continue;\n"
+        "            }\n"
+        "            vec3 toCaster = caster.xyz - pos;\n"
+        "            float dist = length(toCaster);\n"
+        "            if (dist <= caster.w)\n"
+        "            {\n"
+        "                eclipsed = 0.0;\n"
+        "                break;\n"
+        "            }\n"
+        "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
+        "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
+        "            float cover = disc_overlap(vBumpLimb.w, casterAng, sep);\n"
+        "            float refracted = cover * uCasterAtm[i].w * UMBRA_REFRACTION;\n"
+        "            if (refracted > umbraAmt)\n"
+        "            {\n"
+        "                umbraAmt = refracted;\n"
+        "                umbraTint = uCasterAtm[i].xyz;\n"
+        "            }\n"
+        "            eclipsed = min(eclipsed, 1.0 - cover);\n"
+        "        }\n"
+        "    }\n"
+        "    shadow *= eclipsed;\n"
+        "}\n"
         "void main()\n"
         "{\n"
         "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
@@ -426,10 +484,23 @@ namespace alienorum
         "        float hs = max(atmRel*0.25, 1e-9);\n"
         "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
         "        vec3 airLocal = -perp * vRadii;\n"
-        "        vec3 airN = normalize(vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal)));\n"
+        "        vec3 airPos = vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal));\n"
+        "        vec3 airN = normalize(airPos);\n"
         "        float sunElev = dot(airN, vLightDir);\n"
         "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
-        "        FragColor = vec4(finish_color(air_tint(sunElev, phase)), airAmt*vColor.a);\n"
+        "        float airShadow = (sunElev > -0.35) ? 1.0 : 0.0;\n"
+        "        float airUmbraAmt = 0.0;\n"
+        "        vec3 airUmbraTint = vec3(0.0);\n"
+        "        if (vFlags.x < 0.5 && sunElev > -0.35 && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "        {\n"
+        "            calc_shadow(airPos, airShadow, airUmbraAmt, airUmbraTint);\n"
+        "        }\n"
+        "        float airIllum = airShadow + airUmbraAmt;\n"
+        "        airAmt *= airIllum;\n"
+        "        vec3 airCol = (airIllum > 1e-6)\n"
+        "            ? (air_tint(sunElev, phase) * airShadow + airUmbraTint * airUmbraAmt) / airIllum\n"
+        "            : vec3(0.0);\n"
+        "        FragColor = vec4(finish_color(airCol), airAmt*vColor.a);\n"
         "        return;\n"
         "    }\n"
         "\n"
@@ -562,91 +633,11 @@ namespace alienorum
         "    float shadow = 1.0;\n"
         "    float umbraAmt = 0.0;\n"
         "    vec3 umbraTint = vec3(0.0);\n"
-        "    if (vFlags.x < 0.5 && mu > 0.0)\n"
+        "    if (vFlags.x < 0.5 && (mu > 0.0 || (atmRel > 0.0 && costerm > -0.05)) && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
         "    {\n"
         "        vec3 surfLocal = hitLocal * vRadii;\n"
         "        vec3 surf = vec3(dot(vBasisX, surfLocal), dot(vBasisY, surfLocal), dot(basisZ, surfLocal));\n"
-        "\n"
-        // The planet's own rings, shadowing it: leave this surface point towards the light and
-        // see whether the trip crosses the ring plane while still inside the annulus. The plane
-        // passes through the planet's center, which is the origin of `surf`'s own frame, so the
-        // crossing point's distance from the origin *is* its ring radius -- no projection, and
-        // s > 0 restricts it to a crossing between the surface and the light, which is
-        // what confines the shadow to the hemisphere on the far side of the ring plane from the
-        // sun, exactly as it does on the real Saturn.
-        //
-        // Opacity comes from the same texture and the same curve the ring impostor shades the
-        // rings themselves with, so a ring's shadow is always as dense as the ring casting it:
-        // the Cassini division lets light through onto the cloud tops as a bright line inside
-        // the dark band, and a gossamer outer ring barely marks the planet at all.
-        "        if (uRing[1].x > 0.0)\n"
-        "        {\n"
-        "            vec3 ringN = uRing[0].xyz;\n"
-        "            float denom = dot(ringN, vLightDir);\n"
-        "            if (abs(denom) > 1e-9)\n"
-        "            {\n"
-        "                float s = -dot(ringN, surf) / denom;\n"
-        "                if (s > 0.0)\n"
-        "                {\n"
-        "                    float rr = length(surf + vLightDir*s);\n"
-        "                    if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
-        "                    {\n"
-        "                        float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
-        "                        float opacity = (uRing[1].y > 0.5)\n"
-        "                            ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
-        "                            : 0.5;\n"
-        "                        shadow *= 1.0 - pow(opacity, RING_SHADOW_DENSITY);\n"
-        "                    }\n"
-        "                }\n"
-        "            }\n"
-        "        }\n"
-        "\n"
-        // Multiplied against any eclipse shadow below rather than min()'d with it, unlike two
-        // eclipse casters against each other: a ring and a moon hide unrelated parts of the
-        // star's disc, so their transmissions genuinely compound, where two moons' shadows
-        // would overlap on the same part of it.
-        //
-        // The ring's shadow edge is hard here, while a real one is softened over the star's own
-        // angular size the way an eclipse penumbra is -- roughly a thousand kilometers of blur
-        // at Saturn, against a shadow band tens of thousands wide. The ring opacity's own radial
-        // gradient covers for it nearly everywhere; the sharpness only really shows at a clean
-        // ring edge.
-        "        float eclipsed = 1.0;\n"
-        "        if (vBumpLimb.w > 0.0)\n"
-        "        for (int i = 0; i < 4; i++)\n"
-        "        {\n"
-        "            vec4 caster = uCasters[i];\n"
-        "            if (caster.w <= 0.0) continue;\n"
-        "            vec3 toCaster = caster.xyz - surf;\n"
-        "            float dist = length(toCaster);\n"
-        "            if (dist <= caster.w) { eclipsed = 0.0; break; }\n"   // surface point inside the caster
-        "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
-        "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
-        // What a body with an atmosphere lets into its own shadow. Standing in the umbra of an
-        // airless caster you would see the star cleanly hidden behind a black disc; standing in
-        // the umbra of one with air, that disc is ringed by a thin band of its atmosphere lit
-        // from behind -- every sunrise and sunset on that world at once -- and the light bent
-        // inwards from that ring is what falls on you. It is red because that is the only part
-        // of it that survives a path that long through air, which is why the totally eclipsed
-        // Moon turns copper instead of going out, and why an eclipsed moon of an airless world
-        // would simply vanish.
-        //
-        // Scaled by the same coverage the shadow itself uses, so it arrives exactly as the
-        // direct light leaves, and it is at its strongest where the star is most completely
-        // hidden. Tracked as the deepest single contribution rather than a sum, matching how
-        // `eclipsed` itself combines casters just below.
-        "            float cover = disc_overlap(vBumpLimb.w, casterAng, sep);\n"
-        "            float refracted = cover * uCasterAtm[i].w * UMBRA_REFRACTION;\n"
-        "            if (refracted > umbraAmt) { umbraAmt = refracted; umbraTint = uCasterAtm[i].xyz; }\n"
-        // min(), not a product: two casters overlapping the same patch of sky hide overlapping
-        // parts of the same disc, so multiplying their two fractions would darken the overlap
-        // twice over. Taking the deepest of them is exact whenever one caster's silhouette
-        // contains the other's and a slight under-estimate otherwise -- and the "otherwise" is
-        // two bodies eclipsing the same point of the same third body simultaneously, which is
-        // not a thing anyone will be waiting to see.
-        "            eclipsed = min(eclipsed, 1.0 - cover);\n"
-        "        }\n"
-        "        shadow *= eclipsed;\n"
+        "        calc_shadow(surf, shadow, umbraAmt, umbraTint);\n"
         "    }\n"
         // A self-luminous body gets a real quadratic limb-darkening law, whose coefficients come
         // from the star's own T_eff and log g (Star::limb_darkening_coefficients). The fixed
@@ -660,12 +651,10 @@ namespace alienorum
         "        float om = 1.0 - mu;\n"
         "        isDay = clamp(1.0 - vBumpLimb.y*om - vBumpLimb.z*om*om, 0.0, 1.0);\n"
         "    }\n"
-        // The shadow scales the *direct* light only, leaving vFlags.y (the ambient night floor)
-        // alone: an eclipsed patch of ground falls to exactly the brightness the object's own
-        // night side has, which is what it physically is -- night, arriving early and leaving in
-        // the wrong direction. On a body with a night map that also means its city lights come up
-        // inside the umbra, for free, through the same isDay blend the terminator already uses.
-        "    else isDay = clamp(pow(mu, 1.0/3.0)*shadow + vFlags.y, 0.0, 1.0);\n"
+        "    else\n"
+        "    {\n"
+        "        isDay = clamp(pow(mu, 1.0/3.0)*shadow + vFlags.y, 0.0, 1.0);\n"
+        "    }\n"
         "\n"
         // albedo kept separate from baseColor -- the surface's own color, before the light
         // source's white-balance tint is multiplied in. Direct sunlight gets that tint (it *is*
@@ -710,7 +699,7 @@ namespace alienorum
         "        ? clamp((hazePath/maxpath) * (1.0 - cosView) * ATM_GLOW, 0.0, 1.0)\n"
         "            * smoothstep(-0.05, 0.35, groundSun)\n"
         "        : 0.0;\n"
-        "    outColor += air_tint(groundSun, phase) * haze;\n"
+        "    outColor += (air_tint(groundSun, phase) * shadow + umbraAmt * umbraTint) * haze;\n"
         "\n"
         "    vec3 surfColor = finish_color(outColor);\n"
         "    if (inAir && solidCoverage < 1.0)\n"
@@ -719,11 +708,28 @@ namespace alienorum
         "        float hs = max(atmRel*0.25, 1e-9);\n"
         "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
         "        vec3 airLocal = -perp * vRadii;\n"
-        "        vec3 airN = normalize(vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal)));\n"
+        "        vec3 airPos = vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal));\n"
+        "        vec3 airN = normalize(airPos);\n"
         "        float sunElev = dot(airN, vLightDir);\n"
         "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
-        "        vec3 airColor = finish_color(air_tint(sunElev, phase));\n"
-        "        FragColor = vec4(mix(airColor, surfColor, solidCoverage), mix(airAmt, 1.0, solidCoverage) * vColor.a);\n"
+        "        float airShadow = (sunElev > -0.35) ? 1.0 : 0.0;\n"
+        "        float airUmbraAmt = 0.0;\n"
+        "        vec3 airUmbraTint = vec3(0.0);\n"
+        "        if (vFlags.x < 0.5 && sunElev > -0.35 && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "        {\n"
+        "            calc_shadow(airPos, airShadow, airUmbraAmt, airUmbraTint);\n"
+        "        }\n"
+        "        float airIllum = airShadow + airUmbraAmt;\n"
+        "        airAmt *= airIllum;\n"
+        "        vec3 airCol = (airIllum > 1e-6)\n"
+        "            ? (air_tint(sunElev, phase) * airShadow + airUmbraTint * airUmbraAmt) / airIllum\n"
+        "            : vec3(0.0);\n"
+        "        vec3 airColor = finish_color(airCol);\n"
+        "        float totalAlpha = mix(airAmt, 1.0, solidCoverage);\n"
+        "        vec3 edgeColor = (totalAlpha > 1e-6)\n"
+        "            ? (solidCoverage * surfColor + (1.0 - solidCoverage) * airAmt * airColor) / totalAlpha\n"
+        "            : surfColor;\n"
+        "        FragColor = vec4(edgeColor, totalAlpha * vColor.a);\n"
         "    }\n"
         "    else\n"
         "    {\n"
