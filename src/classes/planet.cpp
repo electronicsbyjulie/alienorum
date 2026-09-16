@@ -303,9 +303,19 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
                 << "." << std::endl;
             #endif
         }
-        else
+        else if (T > water_freezing)
         {
             type = rocky;
+            #if debug_planet_class_color
+            std::cout << name << " classified as rocky on basis of mass " << (mass/earth_mass)
+                << ", density " << density
+                << ", and temp " << T
+                << "." << std::endl;
+            #endif
+        }
+        else
+        {
+            type = icy;
             #if debug_planet_class_color
             std::cout << name << " classified as rocky on basis of mass " << (mass/earth_mass)
                 << ", density " << density

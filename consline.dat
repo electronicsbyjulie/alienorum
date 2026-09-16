@@ -76,7 +76,9 @@ Iot Cep, Zet Cep, Alp Cep, Bet Cep, Iot Cep, Gam Cep, Bet Cep
 Gam Cet, Alp Cet, Lam Cet, Mu  Cet, Xi 2Cet, Gam Cet, Del Cet, Omi Cet, Zet Cet, Tau Cet, Bet Cet, Iot Cet, Eta Cet, The Cet, Omi Cet
 Tau Cet, Ups Cet
 ~Cha, Chamaeleon, Chamaeleontis
-Alp Cha, Gam Cha, Eps Cha, Bet Cha, Del2Cha, The Cha, Alp Cha
+Nu  Cha, Alp Cha, Gam Cha, Pi  Cha, Kap Cha
+Gam Mus, Kap Cha, Eps Cha, Del2Cha, The Cha, Alp Cha
+Del2Cha, Bet Cha, Mu1 Cha, Mu2 Cha, Zet Cha, Iot Cha, Eta Cha, The Cha
 ~Cir, Circinus, Circini
 Gam Cir, Alp Cir, Bet Cir
 ~Col, Columba, Columbae
@@ -145,7 +147,8 @@ Eps Her, Del Her, Lam Her, Mu  Her, Xi  Her, Omi Her, 109 Her, 110 Her, 111 Her
 Zet Her, Bet Her, Gam Her
 Bet Her, Alp2Her
 ~Hor, Horologium, Horologii
-Alp Hor, Zet Hor, Mu  Hor, Bet Hor
+Alp Hor, Del Hor, Zet Hor, Alp Hor
+Mu  Hor, Bet Hor, Nu  Hor, Lam Hor, Eta Hor, Iot Hor, Mu  Hor
 ~Hya, Hydra, Hydrae
 Zet Hya, Eps Hya, Del Hya, Sig Hya, Eta Hya, Zet Hya, The Hya, Iot Hya, Alp Hya, Ups1Hya, Lam Hya, Mu  Hya, Nu  Hya, Xi  Hya, Bet Hya, Gam Hya, Pi  Hya
 ~Hyi, Hydrus, Hydri
@@ -278,7 +281,7 @@ Kap Sco, Lam Sco
 Alp Scl, Del Scl, Bet Scl, Xi  Scl, Alp Scl
 Gam Scl, Mu  Scl
 ~Sct, Scutum, Scuti
-Bet Sct, Alp Sct, Gam Sct
+Bet Sct, Alp Sct, Gam Sct, 10G Sct, Del Sct, Eps Sct, Eta Sct, Bet Sct
 Alp Sct, Zet Sct
 ~Ser, Serpens, Serpentis
 ~Ser1, Serpens Caput, Serpentis
