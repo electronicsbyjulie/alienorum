@@ -954,6 +954,7 @@ void load_stuff()
         try { j.at("Timezone").get_to(dbl); viewer_tz = viewer_home_tz = dbl * 60; } catch(...) { ; }
         try { j.at("Theme").get_to(viewer_theme); } catch(...) { ; }
         try { j.at( (std::string("Theme") + std::to_string(wkday)).c_str() ).get_to(viewer_theme); } catch(...) { ; }
+        try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
         fs.close();
     }
