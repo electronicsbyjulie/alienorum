@@ -3009,306 +3009,294 @@ bool draw_one_object(int i)
     return true;
 }
 
-// One horizontal crossing of the band's outline: the scanline it lands on, and where along it.
-struct BandCrossing
-{
-    int y;
-    float x;
-    bool dir;
-};
-
 void draw_galaxy_band()
 {
-    if (!show_galaxy_band || inside_galaxy_idx < 0) return;
-    if (view_mode == vm_system) return;
+    if (!show_galaxy_band || inside_galaxy_idx < 0)
+    {
+        return;
+    }
+    if (view_mode == vm_system)
+    {
+        return;
+    }
+    if (whtbkgd)
+    {
+        return;
+    }
 
     CelestialObject *cel = cels[inside_galaxy_idx];
     Galaxy *g = (Galaxy*)cel;
-    if (g->tmprel.magnitude() > g->volumetric_mean_radius) return;
-    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
+    if (g->tmprel.magnitude() > g->volumetric_mean_radius)
+    {
+        return;
+    }
+    bool airy_rock = (view_mode == vm_horizon) && (whereami > 0) && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
-    int h, i, n;
-
-    // The .dat file's longitude runs in galactic coordinates with 0 at the galactic center, so
-    // the seam at the +-pi wraparound naturally falls 180 degrees from it -- but only once the
-    // pattern is spun so that longitude 0 points where the CURRENT viewer actually sees the
-    // center, not where Sol does. local_system_plane only encodes that fixed Sol-relative
-    // orientation of the disc, so the extra spin has to be measured in the disc's own local
-    // frame (canonical zaxis = longitude 0), the same way incl_and_node_from_system_plane
-    // recovers an ascending node.
     Rotation pl = g->location.local_system_plane;
     Point viewer_dir = rotate3D(g->tmprel, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
-    double gbrt = (view_mode == vm_horizon) ? (8 * pow(magnbase, sky_mag_shift)) : 6;
-    if (gbrt < 2) return;
 
-    // gcol, the band's outline colour, went with the outline pass that used to sit at the bottom
-    // of this function behind an "if (1)" that made it unreachable.
-    ImU32 fillcol = rgba_apply_redlight(
-        whtbkgd
-        ? IM_COL32(0, 0, 0, 20)
-        : IM_COL32(192, 224, 255, (int)gbrt));      // subtle glow filling the band. TODO: Galaxy color.
-
-    ImGuiIO& io = ImGui::GetIO();
-
-    // Project both boundary roads (road1 = north edge, road2 = south edge) to screen space once,
-    // up front, so the fill pass below and the outline pass further down share the same points
-    // instead of re-deriving them twice.
-    std::vector<ImVec2> screen[2];
-    std::vector<bool> good[2];
-
-    std::vector<Point> viewspace[2];
-    bool camera_is_directional = (view_mode != vm_skymap);
-
-    for (h=0; h<2; h++)
+    double sky_factor = (view_mode == vm_horizon) ? pow(magnbase, sky_mag_shift) : 1.0;
+    if (sky_factor < 0.005)
     {
-        n = h ? g->band.road2_gra.size() : g->band.road1_gra.size();
-        screen[h].assign(n, ImVec2());
-        good[h].assign(n, false);
-        if (camera_is_directional) viewspace[h].assign(n, Point());
+        return;
+    }
 
-        for (i=0; i<n; i++)
+    GLuint tex_id = gputex_milky_way();
+    if (!tex_id)
+    {
+        return;
+    }
+
+    const int N_lon = 240;
+    const int N_lat = 24;
+
+    struct BandVertex
+    {
+        ImVec2 pos;
+        ImVec2 uv;
+        ImU32 col;
+        bool valid;
+    };
+
+    std::vector<BandVertex> grid((N_lon + 1) * (N_lat + 1));
+
+    double az = azimuth + azimuth_correction;
+    double alt = altitude;
+
+    for (int j = 0; j <= N_lat; j++)
+    {
+        float v = (float)j / (float)N_lat;
+        double lat = (0.5 - (double)v) * (_pi / 3.0); // +pi/6 at j=0 down to -pi/6 at j=N_lat
+
+        double lat_deg = fabs(lat) * fiftyseven;
+        double edge_fade = 1.0;
+        if (lat_deg > 22.5)
         {
-            double road_dist = h ? g->band.road2_dist[i] : g->band.road1_dist[i];
-            Point pt = Point::from_ra_dec(
-                h ? g->band.road2_gra[i] : g->band.road1_gra[i],
-                h ? g->band.road2_gdecl[i] : g->band.road1_gdecl[i],
-                g->volumetric_mean_radius, 0);
-            if (road_dist) pt.y *= road_dist / g->volumetric_mean_radius;
+            double t = (30.0 - lat_deg) / 7.5;
+            if (t < 0.0)
+            {
+                t = 0.0;
+            }
+            edge_fade = t * t * (3.0 - 2.0 * t);
+        }
+
+        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * 0.333));
+        if (alpha < 0)
+        {
+            alpha = 0;
+        }
+        if (alpha > 255)
+        {
+            alpha = 255;
+        }
+        ImU32 vcol = rgba_apply_redlight(IM_COL32(255, 255, 255, alpha));
+
+        for (int i = 0; i <= N_lon; i++)
+        {
+            float u = (float)i / (float)N_lon;
+            double lon = ((double)u - 0.5) * (2.0 * _pi); // -pi at i=0 to +pi at i=N_lon
+
+            Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
             pt = rotate3D(pt, center, yaxis, gyaw);
             pt = rotate3D(pt, center, pl.v, -pl.a);
-            pt += g->tmprel;
-            if (!road_dist)
-            {
-                road_dist = pt.magnitude();
-                if (h) g->band.road2_dist[i] = road_dist;
-                else g->band.road1_dist[i] = road_dist;
-            }
             pt = to_viewer_plane(pt, 1);
-            if (airy_rock) pt = refract_true_point(pt);
-
-            // azimuth_correction, not just azimuth: in horizon mode set_viewer_surface_location()
-            // sets it to -npaz, the azimuth of the planet's own north pole, which is what ties the
-            // horizon frame's zero of azimuth to true north.
-            Cartesian2D cart(pt, azimuth + azimuth_correction, altitude, zoom);
-            if (cart.x > -1e21 && cart.y > -1e21)
+            if (airy_rock)
             {
-                screen[h][i].x = dispcx + dispcx * cart.x;
-                screen[h][i].y = dispcy + dispcx * cart.y;
-                good[h][i] = true;
+                pt = refract_true_point(pt);
             }
 
-            if (camera_is_directional)
+            BandVertex& vtx = grid[j * (N_lon + 1) + i];
+            vtx.uv = ImVec2(u, v);
+            vtx.col = vcol;
+
+            if (view_mode == vm_skymap)
             {
-                // Mirrors the rotation Cartesian2D just did internally (its "else" branch, taken
-                // whenever view_mode != vm_skymap) so viewspace[] lands in the same camera-facing
-                // frame its own pt.z < 0 test used -- without this exact match, clipping the fill
-                // outline against z=0 would clip against the wrong plane.
+                Cartesian2D cart(pt, az, alt, zoom);
+                vtx.pos.x = (float)(dispcx + dispcx * cart.x);
+                vtx.pos.y = (float)(dispcy + dispcx * cart.y);
+                vtx.valid = true;
+            }
+            else
+            {
                 Point vp = pt;
-                if (azimuth + azimuth_correction) vp = rotate3D(vp, center, yaxis, -(azimuth + azimuth_correction));
-                if (altitude) vp = rotate3D(vp, center, xaxis, altitude);
-                viewspace[h][i] = vp;
+                if (az)
+                {
+                    vp = rotate3D(vp, center, yaxis, -az);
+                }
+                if (alt)
+                {
+                    vp = rotate3D(vp, center, xaxis, alt);
+                }
+
+                if (vp.z > 0.02)
+                {
+                    vtx.pos.x = (float)(dispcx + dispcx * (vp.x / vp.z * zoom));
+                    vtx.pos.y = (float)(dispcy + dispcx * (-vp.y / vp.z * zoom));
+                    vtx.valid = true;
+                }
+                else
+                {
+                    vtx.pos.x = 0;
+                    vtx.pos.y = 0;
+                    vtx.valid = false;
+                }
             }
         }
     }
 
-    // Fill, by scanline; we cannot simply stitch a ribbon of triangles between the two roads,
-    // because the band's edges are not a smooth corridor. The two roads run the full sweep of
-    // longitude from -pi to +pi as open curves whose endpoints meet on the sky, and each has
-    // deep fjord-like notches. The roads also have different point counts.
-    //
-    // Scanline conversion sidesteps the pairing question entirely by finding  where the outline
-    // crosses each row of pixels. Sort those crossings along the row and fill between alternate
-    // pairs -- the even-odd rule -- and the interior falls out correctly no matter how sinuous
-    // or notched the outline is.
-    // Also, the spans are one pixel tall and never overlap, so a translucent fill stays at
-    // exactly its own alpha.
-    int disph = (int)(dispcy*2), dispw = (int)(dispcx*2);
-    int dcx = (int)io.DisplaySize.x / 2;
+    ImDrawList *list = ImGui::GetBackgroundDrawList();
+    list->PushTexture((ImTextureID)(intptr_t)tex_id);
 
-    std::vector<BandCrossing> crossings;
-    // Walk the closed outline: road1 forward, then road2 backward. That traversal is what makes
-    // the two roads bound one region rather than two open curves -- and because road1's ends and
-    // road2's ends coincide on the sky, the joins between them are zero-length, so the ring
-    // closes without any artificial seam edge being invented.
-    int n1 = screen[0].size(), n2 = screen[1].size();
-    int total = n1 + n2;
-    if (n1 >= 2 && n2 >= 2)
+    float dispw = dispcx * 2.0f;
+    float disph = dispcy * 2.0f;
+
+    for (int j = 0; j < N_lat; j++)
     {
-        // Accumulate every scanline this edge crosses. Sampling at pixel centres (y+0.5) with a
-        // half-open rule on the endpoints is what keeps parity exact: a vertex landing precisely
-        // on a scanline is counted by one of its two edges, never both and never neither.
-        auto emit_edge = [&](ImVec2 p, ImVec2 q)
+        for (int i = 0; i < N_lon; i++)
         {
-            if (p.y == q.y) return;
-            if (fabs(p.x) > 1e6 || fabs(q.x) > 1e6) return;
+            const BandVertex& v00 = grid[j * (N_lon + 1) + i];
+            const BandVertex& v10 = grid[j * (N_lon + 1) + (i + 1)];
+            const BandVertex& v11 = grid[(j + 1) * (N_lon + 1) + (i + 1)];
+            const BandVertex& v01 = grid[(j + 1) * (N_lon + 1) + i];
 
-            bool py_qy_dir = (p.y > q.y);
-            if (py_qy_dir) { ImVec2 t = p; p = q; q = t; }
-
-            int y0 = (int)ceil(p.y - 0.5), y1 = (int)ceil(q.y - 0.5) - 1;
-            if (y0 < 0) y0 = 0;
-            if (y1 > disph-1) y1 = disph-1;
-
-            double slope = (q.x - p.x) / (q.y - p.y);
-            for (int y = y0; y <= y1; y++)
+            if (!v00.valid || !v10.valid || !v11.valid || !v01.valid)
             {
-                BandCrossing c;
-                c.y = y;
-                c.x = (float)(p.x + slope * ((y + 0.5) - p.y));
-                c.dir = py_qy_dir;
-                crossings.push_back(c);
+                continue;
             }
-        };
 
-        // Same seam rule as wrapped_line(): an edge that leaps the width of the sky is really the
-        // band wrapping round behind the viewer, so hand the scanline both halves of it. Their
-        // crossings sit outside the screen on one side each, which is harmless -- parity is
-        // counted over every crossing, and only the drawing is clipped to the display.
-        auto emit_wrapped = [&](ImVec2 p, ImVec2 q)
-        {
-            if ((view_mode == vm_skymap || view_mode == vm_sunclock)
-                && fabs(p.x - q.x) > zoom*dcx
-                && ((p.x < dcx && q.x > dcx) || (p.x > dcx && q.x < dcx)))
+            if ((v00.col & IM_COL32_A_MASK) == 0 &&
+                (v10.col & IM_COL32_A_MASK) == 0 &&
+                (v11.col & IM_COL32_A_MASK) == 0 &&
+                (v01.col & IM_COL32_A_MASK) == 0)
             {
-                ImVec2 q2 = q, p2 = p;
-                q2.x += (q2.x > dcx) ? -dcx*2 : dcx*2;
-                p2.x += (p2.x > dcx) ? -dcx*2 : dcx*2;
-                emit_edge(p, q2);
-                emit_edge(p2, q);
+                continue;
             }
-            else emit_edge(p, q);
-        };
 
-        // Index into the concatenated outline: road1 forward, then road2 in reverse. This is what
-        // makes the two roads bound one region rather than two open curves -- and because road1's
-        // ends and road2's ends coincide on the sky, the join between them is zero-length, so the
-        // ring closes without an artificial seam edge being invented.
-        auto outline_point = [&](int i) -> const Point&
-        {
-            int hh = (i < n1) ? 0 : 1, ii = (i < n1) ? i : (n2-1 - (i - n1));
-            return viewspace[hh][ii];
-        };
-
-        if (!camera_is_directional)
-        {
-            // vm_skymap never culls by depth (its projection is the flat equirectangular one, no
-            // camera plane to be behind), so every road point is already valid and the previous
-            // per-edge walk is exact as it stands.
-            for (i=0; i<total; i++)
+            if (view_mode == vm_skymap)
             {
-                int ha = (i < n1) ? 0 : 1, ia = (i < n1) ? i : (n2-1 - (i - n1));
-                int k = (i+1) % total;
-                int hb = (k < n1) ? 0 : 1, ib = (k < n1) ? k : (n2-1 - (k - n1));
-
-                if (good[ha][ia] && good[hb][ib])
-                    emit_wrapped(screen[ha][ia], screen[hb][ib]);
-            }
-        }
-        else
-        {
-            // Everywhere else, Cartesian2D refuses points behind the camera plane (pt.z < 0), and
-            // we cannot simply leave those vertices out of the walk with a closed outline: dropping
-            // a vertex does not remove its two edges, it reconnects its neighbours across whatever
-            // the vertex used to separate, so a stretch of missing vertices silently rewires the
-            // polygon's boundary and desyncs the even-odd parity for every scanline downstream of
-            // the gap, causing the band fill to vanish in some frames and fill everywhere BUT the
-            // band in others. And the band circles the whole sky, so very close to half its vertices
-            // are behind the camera at any moment, regardless of zoom.
-            //
-            // The fix is to clip the loop against the camera plane (pt.z == 0) properly, inserting
-            // a new vertex exactly where each edge crosses it rather than dropping either endpoint.
-            // This is the standard Sutherland-Hodgman clip of a closed polygon against a single
-            // plane, and it always yields a new, still-closed polygon -- so the scanline pass below
-            // never has to special-case a gap.
-            const double eps = g->volumetric_mean_radius * 1e-6;
-            std::vector<Point> clipped;
-            clipped.reserve(total + 8);
-
-            for (i=0; i<total; i++)
-            {
-                const Point& curr = outline_point(i);
-                const Point& prev = outline_point((i-1+total) % total);
-                bool curr_in = curr.z >= eps, prev_in = prev.z >= eps;
-
-                if (curr_in != prev_in)
+                float wrap_thresh = (float)(dispcx * zoom);
+                bool wrapped = (fabs(v00.pos.x - v10.pos.x) > wrap_thresh) ||
+                               (fabs(v01.pos.x - v11.pos.x) > wrap_thresh);
+                if (wrapped)
                 {
-                    double t = (eps - prev.z) / (curr.z - prev.z);
-                    clipped.push_back(Point(
-                        prev.x + t*(curr.x-prev.x),
-                        prev.y + t*(curr.y-prev.y),
-                        eps));
+                    float wrap_w = (float)(2.0 * dispcx * zoom);
+
+                    // Piece 1: shifted to right for points left of center
+                    ImVec2 p00_1 = v00.pos;
+                    if (p00_1.x < dispcx)
+                    {
+                        p00_1.x += wrap_w;
+                    }
+                    ImVec2 p10_1 = v10.pos;
+                    if (p10_1.x < dispcx)
+                    {
+                        p10_1.x += wrap_w;
+                    }
+                    ImVec2 p11_1 = v11.pos;
+                    if (p11_1.x < dispcx)
+                    {
+                        p11_1.x += wrap_w;
+                    }
+                    ImVec2 p01_1 = v01.pos;
+                    if (p01_1.x < dispcx)
+                    {
+                        p01_1.x += wrap_w;
+                    }
+
+                    list->PrimReserve(6, 4);
+                    ImDrawIdx idx = (ImDrawIdx)list->_VtxCurrentIdx;
+                    list->PrimWriteIdx(idx);
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 1));
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                    list->PrimWriteIdx(idx);
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 3));
+                    list->PrimWriteVtx(p00_1, v00.uv, v00.col);
+                    list->PrimWriteVtx(p10_1, v10.uv, v10.col);
+                    list->PrimWriteVtx(p11_1, v11.uv, v11.col);
+                    list->PrimWriteVtx(p01_1, v01.uv, v01.col);
+
+                    // Piece 2: shifted to left for points right of center
+                    ImVec2 p00_2 = v00.pos;
+                    if (p00_2.x > dispcx)
+                    {
+                        p00_2.x -= wrap_w;
+                    }
+                    ImVec2 p10_2 = v10.pos;
+                    if (p10_2.x > dispcx)
+                    {
+                        p10_2.x -= wrap_w;
+                    }
+                    ImVec2 p11_2 = v11.pos;
+                    if (p11_2.x > dispcx)
+                    {
+                        p11_2.x -= wrap_w;
+                    }
+                    ImVec2 p01_2 = v01.pos;
+                    if (p01_2.x > dispcx)
+                    {
+                        p01_2.x -= wrap_w;
+                    }
+
+                    list->PrimReserve(6, 4);
+                    idx = (ImDrawIdx)list->_VtxCurrentIdx;
+                    list->PrimWriteIdx(idx);
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 1));
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                    list->PrimWriteIdx(idx);
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 3));
+                    list->PrimWriteVtx(p00_2, v00.uv, v00.col);
+                    list->PrimWriteVtx(p10_2, v10.uv, v10.col);
+                    list->PrimWriteVtx(p11_2, v11.uv, v11.col);
+                    list->PrimWriteVtx(p01_2, v01.uv, v01.col);
                 }
-                if (curr_in) clipped.push_back(curr);
-            }
-
-            int cn = clipped.size();
-            for (i=0; i<cn; i++)
-            {
-                const Point& p = clipped[i];
-                const Point& q = clipped[(i+1) % cn];
-                ImVec2 sp(dispcx + dispcx * (p.x/p.z*zoom), dispcy + dispcx * (-p.y/p.z*zoom));
-                ImVec2 sq(dispcx + dispcx * (q.x/q.z*zoom), dispcy + dispcx * (-q.y/q.z*zoom));
-                emit_wrapped(sp, sq);
-            }
-        }
-    }
-
-    // The scanline fill, unconditionally. This used to be "if (1) // camera_is_directional)" with
-    // an else that drew the band as a pair of outlines instead -- unreachable as written, and
-    // superseded: the fill covers both projections now that the vm_skymap case is handled by
-    // emit_wrapped() and the directional case by the polygon clip above. The outline pass is in
-    // the history if it is ever wanted back.
-    {
-        if (crossings.size() >= 2)
-        {
-            std::sort(crossings.begin(), crossings.end(),
-                [](const BandCrossing& a, const BandCrossing& b)
-                { return (a.y != b.y) ? (a.y < b.y) : (a.x < b.x); });
-
-            ImDrawList *list = ImGui::GetBackgroundDrawList();
-            size_t s = 0;
-            while (s < crossings.size())
-            {
-                size_t e = s;
-                while (e < crossings.size() && crossings[e].y == crossings[s].y) e++;
-
-                // An odd number of crossings means the outline was left open on this row -- points
-                // dropped by the projection behind the viewer, most often. That used to be
-                // described here as a reason to skip the row, and a count was taken for it, but
-                // the skip itself was never written and the count went unread. What actually
-                // happens is below: drawable is padded out to an even length with the right-hand
-                // edge of the screen, so an open row fills to the edge rather than being dropped.
-                std::vector<double> drawable;
-                bool first = true;
-                for (int k = s; k < e; k++)
+                else
                 {
-                    if (first && crossings[k].dir) drawable.push_back(0); // k++;
-                    if (crossings[k].x > -1e6 && crossings[k].x < 1e6)
-                        drawable.push_back(crossings[k].x);
-                    first = false;
+                    list->PrimReserve(6, 4);
+                    ImDrawIdx idx = (ImDrawIdx)list->_VtxCurrentIdx;
+                    list->PrimWriteIdx(idx);
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 1));
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                    list->PrimWriteIdx(idx);
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                    list->PrimWriteIdx((ImDrawIdx)(idx + 3));
+                    list->PrimWriteVtx(v00.pos, v00.uv, v00.col);
+                    list->PrimWriteVtx(v10.pos, v10.uv, v10.col);
+                    list->PrimWriteVtx(v11.pos, v11.uv, v11.col);
+                    list->PrimWriteVtx(v01.pos, v01.uv, v01.col);
                 }
-                std::sort(drawable.begin(), drawable.end()); // , std::greater<double>());
-                int drawable_sz = drawable.size()-1;     // since we're counting by twos, ensure we don't overflow if the number is odd.
-                if (!(drawable_sz & 0x1))
+            }
+            else
+            {
+                float min_x = std::min({v00.pos.x, v10.pos.x, v11.pos.x, v01.pos.x});
+                float max_x = std::max({v00.pos.x, v10.pos.x, v11.pos.x, v01.pos.x});
+                float min_y = std::min({v00.pos.y, v10.pos.y, v11.pos.y, v01.pos.y});
+                float max_y = std::max({v00.pos.y, v10.pos.y, v11.pos.y, v01.pos.y});
+
+                if (max_x < 0.0f || min_x > dispw || max_y < 0.0f || min_y > disph)
                 {
-                    drawable.push_back(dispw);
-                    drawable_sz++;
+                    continue;
                 }
 
-                float y = (float)crossings[s].y;
-                for (int k = 0; k < drawable_sz; k+=2)
-                {
-                    float x0 = drawable[k], x1 = drawable[k+1];
-                    if (x0 < 0) x0 = 0;
-                    if (x1 > dispw) x1 = (float)dispw;
-                    list->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y+1.0f), fillcol);
-                }
-
-                s = e;
+                list->PrimReserve(6, 4);
+                ImDrawIdx idx = (ImDrawIdx)list->_VtxCurrentIdx;
+                list->PrimWriteIdx(idx);
+                list->PrimWriteIdx((ImDrawIdx)(idx + 1));
+                list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                list->PrimWriteIdx(idx);
+                list->PrimWriteIdx((ImDrawIdx)(idx + 2));
+                list->PrimWriteIdx((ImDrawIdx)(idx + 3));
+                list->PrimWriteVtx(v00.pos, v00.uv, v00.col);
+                list->PrimWriteVtx(v10.pos, v10.uv, v10.col);
+                list->PrimWriteVtx(v11.pos, v11.uv, v11.col);
+                list->PrimWriteVtx(v01.pos, v01.uv, v01.col);
             }
         }
     }
+
+    list->PopTexture();
 }
 
 void draw_objects()
