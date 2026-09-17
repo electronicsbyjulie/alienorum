@@ -17,7 +17,7 @@ namespace alienorum
         double proper_motion_RA = 0;                // radians / second
         double proper_motion_decl = 0;              // radians / second
         double radial_velocity = 0;                 // meters / second
-        double apparent_magnitude = 0;              // visual/550nm
+        double apparent_magnitude = 1e29;           // visual/550nm
         double parallax = 0;                        // radians
 
         double minmag = 0;                          // apparent V mag
@@ -35,6 +35,7 @@ namespace alienorum
         int GouldNo = -1;
         std::string alienorumid = "";
         char constellation[4] = {0,0,0,0};
+        char Gouldcons[4] = {0,0,0,0};
         std::string CCDM, WD;
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;
@@ -56,6 +57,7 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
+        std::vector<int> pl_indices;
         bool tmp_vis_flag = false;                  // Used only for rendering.
         bool has_disk = false;                      // E.g. dust, debris, cometary, asteroid belt, etc.
         bool rot_axis_known = false;
@@ -78,7 +80,7 @@ namespace alienorum
         void make_universally_visible();
         inline bool is_universally_visible() { return _is_always_visible; }
 
-        double estimate_temperature();              // Based on MK spectral type code
+        double estimate_temperature();              // Based on BV color
         double estimate_luminosity(double tempK);   // Based on radius and supplied temperature. Returns output scaled to absolute magnitude zero.
         double estimate_mass();
         void estimate_BV();                         // Blackbody value from estimated temperature from MK spectral type
@@ -100,6 +102,13 @@ namespace alienorum
         static double interpolate_mseq_lum(double mseqidx);
         static double interpolate_mseq_temp(double mseqidx);
         static double interpolate_mseq_BV(double mseqidx);
+
+        bool is_hot_ob_star() const;
+        bool is_main_sequence() const;
+        double expected_main_sequence_absmag() const;
+        bool is_mseq_absmag_outlier(double threshold = 1.5, double* diff = nullptr) const;
+        bool correct_main_sequence_absmag(double threshold = 1.5);
+        static int audit_and_correct_main_sequence_stars(CelestialObject** cels, double threshold = 1.5);
 
         double estimate_radius(bool skip_mainseq = true);
 

@@ -3,6 +3,7 @@
 #include "cons.h"
 
 std::vector<Constellation> constellations;
+Constellation *cons4lbl = nullptr;
 
 // Helper to calculate true angular distance between two points on the celestial sphere
 double get_angular_distance(const ConsBoundary& a, const ConsBoundary& b) 
@@ -46,6 +47,7 @@ void Constellation::build_constellation_perimeter()
     // Walk from point to nearest point
     while (!unvisited.empty()) 
     {
+        if (abort_load) return;
         const ConsBoundary& current = perimeter.back();
 
         auto nearest_it = unvisited.begin();
@@ -134,6 +136,9 @@ Constellation* identify_cons_of_star(Star* s)
     for (auto& cons : constellations) 
     {
         if (cons.bounds.empty()) continue;              // Safety check
+
+        if (s->constellation && !strcasecmp(s->constellation, cons.abbrev.c_str())) return &cons;
+        if (s->Gouldcons && !strcasecmp(s->Gouldcons, cons.abbrev.c_str())) return &cons;
 
         // Filter by constellation distance.
         // Calculate the RA distance between the star and the constellation center

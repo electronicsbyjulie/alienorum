@@ -43,6 +43,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     obj_magn_under_cursor = 1e9;
     int threshold = circle_size*1.3;
     bool selected_this_turn = false;
+    bool lsysonly = (view_mode == vm_system);
 
     if (trackidx >= 0)
     {
@@ -50,8 +51,9 @@ void identify_object_under_cursor(ImGuiIO& io)
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
+        if (lsysonly && cels[i]->cenobj != mycenobj) continue;
 
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
             && abs(io.MousePos.y - cels[i]->drawny) < threshold)
@@ -63,6 +65,11 @@ void identify_object_under_cursor(ImGuiIO& io)
         {
             // Prioritize by brightness.
             double lmag = vmag_cache[i];
+
+            // Prioritize stars, planets, etc over galaxies.
+            if (cels[i]->type == galaxy) lmag += 6;
+            else if (cels[i]->label_shown) lmag -= 5;               // Prioritize labeled objects.
+
             if (lmag < obj_magn_under_cursor)
             {
                 is_an_obj_under_cursor = i;
@@ -79,32 +86,39 @@ void identify_object_under_cursor(ImGuiIO& io)
         }
     }
 
-    if (view_mode == vm_sunclock && is_an_obj_under_cursor < 0)
+    if (is_an_obj_under_cursor < 0)
     {
-        double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
-
-        if (mlon >  180) mlon -= 360;
-        if (mlon < -180) mlon += 360;
-
-        CelestialObject *cel = cels[whereami];
-        if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
+        if (view_mode == vm_sunclock)
         {
-            dlat = fabs(cel->locales[i].lat - mlat);
-            dlon = fabs(cel->locales[i].lon - mlon);
-            if (dlon < 3 && dlat < 3)
+            double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
+
+            if (mlon >  180) mlon -= 360;
+            if (mlon < -180) mlon += 360;
+
+            CelestialObject *cel = cels[whereami];
+            if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
             {
-                r = sqrt(dlat*dlat + dlon*dlon);
-                if (r < br)
+                dlat = fabs(cel->locales[i].lat - mlat);
+                dlon = fabs(cel->locales[i].lon - mlon);
+                if (dlon < 3 && dlat < 3)
                 {
-                    is_a_locale_under_cursor = &cel->locales[i];
-                    br = r;
+                    r = sqrt(dlat*dlat + dlon*dlon);
+                    if (r < br)
+                    {
+                        is_a_locale_under_cursor = &cel->locales[i];
+                        br = r;
+                    }
                 }
             }
-        }
 
-        if (is_click && !dragged)
+            if (is_click && !dragged)
+            {
+                selected_locale = is_a_locale_under_cursor;
+                if (!selected_this_turn) selected = -1;
+            }
+        }
+        else if (is_click && !dragged)
         {
-            selected_locale = is_a_locale_under_cursor;
             if (!selected_this_turn) selected = -1;
         }
     }
@@ -116,6 +130,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     double amount = 1;
     if (view_mode == vm_skymap) amount = 3;
     else if (view_mode == vm_sunclock) amount = 5;
+    else if (view_mode == vm_system) amount = -3;
 
     if (ImGui::IsMouseDown(2))
     {
@@ -228,6 +243,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); menu_clicked = true; }
+            if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('O'); menu_clicked = true; }
             if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Spaceflight/Speed Up", "+")) { process_key_cmd_char('+'); menu_clicked = true; }
@@ -254,6 +270,7 @@ void show_menu()
             if (ImGui::MenuItem("Advance One Century", "Z")) { process_key_cmd_char('z'); menu_clicked = true; }
             if (ImGui::MenuItem("Rewind One Century", "Shift+Z")) { process_key_cmd_char('Z'); menu_clicked = true; }
             if (ImGui::MenuItem("Return to Present", "@")) { process_key_cmd_char('@'); menu_clicked = true; }
+            if (ImGui::MenuItem("Local Timestep", "F10", local_tmstep)) { process_key_F10(); menu_clicked = true; }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
@@ -319,8 +336,20 @@ void show_menu()
                 if (ImGui::MenuItem("Stars with Planets in HZ", "Shift+L", cbolbls_selected_idx == lbltype_planethz)) { process_key_cmd_char('L'); menu_clicked = true; }
                 if (ImGui::MenuItem("Stars with Known Poles", "Shift+X", cbolbls_selected_idx == lbltype_knpole)) { process_key_cmd_char('X'); menu_clicked = true; }
                 if (ImGui::MenuItem("Binary Systems", "2", cbolbls_selected_idx == lbltype_binary)) { process_key_cmd_char('2'); menu_clicked = true; }
+
+                if (cbolbls_selected_idx == lbltype_brightest
+                    || cbolbls_selected_idx == lbltype_intrinsic
+                    || cbolbls_selected_idx == lbltype_nearby
+                    || cbolbls_selected_idx == lbltype_planets
+                    )
+                {
+                    if (ImGui::MenuItem("Tighten Threshold", ">")) { process_key_cmd_char('>'); menu_clicked = true; }
+                    if (ImGui::MenuItem("Loosen Threshold", "<")) { process_key_cmd_char('<'); menu_clicked = true; }
+                }
+
                 ImGui::EndMenu();
             }
+            if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('S'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
@@ -350,9 +379,22 @@ void process_key_cmd_char(char c)
 
     // IMPORTANT: Any keyboard shortcuts added here should also be added to show_menu().
     //
-    // Three are deliberately absent from the menu and should stay that way: 'q' and 'Q' drive the
-    // dev dial, which is a development aid the end user has no business finding, and ':' is a
-    // placeholder for the unimplemented vm_model view mode.
+    // Three are deliberately absent from the menu and should stay that way: 'q' and 'Q'
+    // drive the dev dial, which is a development aid the end user has no use for, and
+    // ':' is a placeholder for the unimplemented vm_model view mode.
+
+    double daystep = 1, hourstep = 1.0/24, monthstep = 30, yearstep = oneyear/oneday;
+    if (local_tmstep && (whereami >= 0))
+    {
+        CelestialObject *cel = cels[whereami];
+        daystep = cel->stellar_day() / oneday;
+        if (daystep <= 0) daystep = 1;
+        hourstep = daystep / 24;
+        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
+        monthstep = yearstep / 12;
+        if (monthstep >= daystep*2) monthstep = daystep * (int)(monthstep / daystep);
+        if (yearstep >= daystep*2) yearstep = daystep * (int)(yearstep / daystep);
+    }
 
     switch (c)
     {
@@ -375,8 +417,8 @@ void process_key_cmd_char(char c)
         case 'B': global_brightness *= 0.9; viewchanged = true; break;
         case 'c': show_consln = !show_consln; break;
         case 'C': cbolbls_selected_idx = lbltype_sunlike; show_labels = true; break;
-        case 'd': JDnow += 1; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'D': JDnow -= 1; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'd': JDnow += daystep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'D': JDnow -= daystep; viewchanged = true; compute_object_draw_coordinates(); break;
 
         case 'e': explorer = !explorer; break;
 
@@ -384,15 +426,23 @@ void process_key_cmd_char(char c)
         if (selected >= 0) editidx = selected;
         else if (trackidx >= 0) editidx = trackidx;
         else if (whereami >= 0) editidx = whereami;
-        objedtwnd = (editidx >= 0);
+        if (objedtwnd = (editidx >= 0))                     // assignment not comparison
+        {
+            CelestialObject *cel = cels[editidx];
+            if (cel->type == star) cbo_edt_units = 1;
+            else if (uses_gaseous_map(cel->type)) cbo_edt_units = 2;
+            else if (uses_rocky_map(cel->type)) cbo_edt_units = 3;
+            else cbo_edt_units = 0;
+        }
         break;
+
         case 'f': cbolbls_selected_idx = lbltype_Flamsteed; show_labels = true; break;
         case 'F': cbolbls_selected_idx = lbltype_Bayer; show_labels = true; break;
 
         case 'g': show_grid = !show_grid; break;
         case 'G': cbolbls_selected_idx = lbltype_Gould; show_labels = true; break;
-        case 'h': JDnow += 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'H': JDnow -= 1.0/24; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'h': JDnow += hourstep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'H': JDnow -= hourstep; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'j': show_sats = !show_sats; break;
@@ -401,12 +451,13 @@ void process_key_cmd_char(char c)
         case 'K': show_galaxy_band = !show_galaxy_band; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = lbltype_planethz; show_labels = true; break;
-        case 'm': JDnow += 30; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'M': JDnow -= 30; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'm': JDnow += monthstep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'M': JDnow -= monthstep; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'n': objinfwnd = !objinfwnd; break;
         case 'N': cbolbls_selected_idx = lbltype_nearby; show_labels = true; break;
 
         case 'o':
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         if (selected < 0 && trackidx >= 0) selected = trackidx;
         if (selected >= 0)
         {
@@ -415,6 +466,7 @@ void process_key_cmd_char(char c)
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
+            viewer_locale = "";
             zoom = 1;
         }
         else if (selected_locale)
@@ -426,7 +478,10 @@ void process_key_cmd_char(char c)
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
         }
+        else break;
+
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         velocity = center;
         viewchanged = true;
         refresh_star_visibilities();
@@ -458,7 +513,7 @@ void process_key_cmd_char(char c)
         global_gamma = viewer_gamma;
         neighb_rthresh = 25 * light_year;
         show_consln = show_grid = show_labels = lbl_localsys = show_localsys = show_sats = statuswnd = objinfwnd = label_galaxies = show_galaxy_band = true;
-        show_orbits = false;
+        show_orbits = shortnames = false;
         cbolbls_selected_idx = lbltype_brightest;
         appmagn_lblcut = 2.5;
         absmagn_lblcut = -3.5;
@@ -521,6 +576,7 @@ void process_key_cmd_char(char c)
         took_off_from = whereami;
         tookoff_countdown = 5;
         whereami = -1;
+        viewer_locale = "";
         break;
 
         case 'W': whtbkgd = !whtbkgd; break;
@@ -531,13 +587,19 @@ void process_key_cmd_char(char c)
         break;
         case 'X': cbolbls_selected_idx = lbltype_knpole; show_labels = true; break;
 
-        case 'y': JDnow += (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Y': JDnow -= (oneyear/oneday); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'z': JDnow += (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Z': JDnow -= (oneyear/864); redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'y': JDnow += yearstep; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Y': JDnow -= yearstep; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'z': JDnow += yearstep*100; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Z': JDnow -= yearstep*100; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         case '0': neighborhood = !neighborhood; break;
-        case '1': show_consln = show_grid = show_labels = lbl_localsys = statuswnd = objinfwnd = show_localsys = label_galaxies = true; break;
+
+        case '1':
+        show_consln = show_grid = show_labels = label_galaxies = true;
+        show_localsys = lbl_localsys = statuswnd = objinfwnd = (view_mode != vm_skymap);
+        if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut = (view_mode == vm_skymap) ? 2.1 : 2.5;
+        break;
+
         case '2': cbolbls_selected_idx = lbltype_binary; show_labels = true; break;
 
         case '3':
@@ -594,6 +656,7 @@ void process_key_cmd_char(char c)
                 tookoff_countdown = 5;
             }
             whereami = -1;
+            viewer_locale = "";
         }
         viewchanged = true;
         break;
@@ -620,6 +683,22 @@ void process_key_cmd_char(char c)
         vm = velocity.magnitude();
         velocity.scale(vm * 0.666);
         viewchanged = true;
+        break;
+
+        case '<':
+        if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut += 0.1;
+        else if (cbolbls_selected_idx == lbltype_intrinsic) absmagn_lblcut += 0.1;
+        else if (cbolbls_selected_idx == lbltype_nearby) distance_lblcut += light_year*5;
+        else if (cbolbls_selected_idx == lbltype_planets) planets_lblcut--;
+        if (planets_lblcut < 1) planets_lblcut = 1;
+        break;
+        
+        case '>':
+        if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut -= 0.1;
+        else if (cbolbls_selected_idx == lbltype_intrinsic) absmagn_lblcut -= 0.1;
+        else if (cbolbls_selected_idx == lbltype_nearby) distance_lblcut -= light_year*5;
+        else if (cbolbls_selected_idx == lbltype_planets) planets_lblcut++;
+        if (distance_lblcut < light_year*5) distance_lblcut = light_year*5;
         break;
 
         case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
@@ -688,8 +767,23 @@ void process_key_cmd_ctrl_char(char c)
         case 'G': vplane_mode = vplane_galactic; break;
         case 'I': vplane_mode = vplane_ICRF; break;
         case 'L': vplane_mode = vplane_local; break;
+        case 'S': shortnames = !shortnames; viewchanged = true; break;
         case 'T': show_terrain = !show_terrain; viewchanged = true; break;
+    
+        case 'V':
+        if (!mycenobj) return;
+        view_mode = vm_system;
+        statuswnd = false;
+        explorer = false;
+        lbl_localsys = true;
+        break;
+
         case 'W': done = true; break;
+
+        case 'O':
+        local_tmstep = true;
+        process_key_cmd_char('o');
+        break;
 
         default:
         ;
@@ -717,11 +811,16 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
     if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
     if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
+    if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
     if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
+    if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
+    if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
+    if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
+    if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
     if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
 
     if (io.KeyCtrl)
@@ -804,6 +903,7 @@ void process_key_delete()
     // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
     if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
     else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
+    selected = -1;
 }
 
 void process_key_home()
@@ -917,6 +1017,7 @@ void process_key_F9()
 
 void process_key_F10()
 {
+    local_tmstep = !local_tmstep;
 }
 
 void process_key_F11()

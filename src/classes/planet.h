@@ -71,6 +71,7 @@ namespace alienorum
         void incline_exo_orbit(double sys_solincl, double sys_solnode);
         double atmospheric_refraction(double altitiude);
         double atmospheric_horizon_lift();
+        double mean_instellation();                         // relative to Earth=1
 
         Planet();
         ~Planet() { if (orbit) delete orbit; if (atm) delete atm; }
@@ -84,6 +85,7 @@ namespace alienorum
     protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;
+        double cached_density = 0;
 
         // Everything atmospheric_refraction() computes that does not depend on the altitude it is
         // asked about -- which is all of it bar the final curve evaluation. Reaching those values

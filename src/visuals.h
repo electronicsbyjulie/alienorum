@@ -19,6 +19,7 @@ int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol);
 bool draw_one_object(int i); // return false if not drawn for any reason
 void draw_galaxy_band();     // the disc the viewer is standing inside, wrapped across the sky
 void draw_objects();
+void draw_system_view();
 void draw_sunclock();
 void find_horizon();
 void draw_horizon();
@@ -56,7 +57,9 @@ double eclipse_illumination(CelestialObject *cel);
 extern CelestialObject *eclipsed_light;
 extern double eclipsed_fraction;
 
-#define max_bloomrad 10
+// NEVER bloom point sources into a giant disc - keep this constant low.
+#define max_bloomrad 3
+
 #define global_font_size (8.647 * 1.776)
 
 extern double hz_y, jay, appmag, bloomrad, flare, theta, lmasslim;

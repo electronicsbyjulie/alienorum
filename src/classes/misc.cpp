@@ -15,6 +15,7 @@
 using namespace alienorum;
 
 // IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
+bool firstrun = true;
 bool done = false;
 
 // Set when the app is shutting down while the catalog loader may still be running -- the loading
@@ -22,6 +23,7 @@ bool done = false;
 // instead of tearing `cels` down underneath it. See load_catalogs() and the Escape handler in
 // alienorum.cpp.
 std::atomic<bool> abort_load{false};
+std::atomic<bool> load_completed{false};
 
 // How many detached load_textures() threads are currently running. Only spawn_texture_load()
 // increments it (before the thread starts, so there is no window in which a load is pending but
@@ -38,6 +40,7 @@ const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "C
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_spaceship;
+int wkday = 0;
 int ncelobjs = 0;
 int nsatobjs = 0;
 int selected = -1, trackidx = -1;
@@ -52,6 +55,7 @@ bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = tru
 bool satview_upsidedown = false;
 int cursor_size = 8, circle_size = 2, xaorngsim = 0;
 int is_an_obj_under_cursor = -1;
+int npointedstar = 4;
 double obj_magn_under_cursor;
 std::string objname, viewer_locale;
 bool is_mouse_over_window;
@@ -61,6 +65,7 @@ bool draggable, dragging, dragged, editing, viewchanged, randomize_txgen=true, u
 DST_Rule viewer_dst = dst_none, viewer_home_dst = dst_none;
 bool generating_fic_texture = false;
 int lmx, lmy, whereami=0, iamhome=0, took_off_from=0, tookoff_countdown=0;
+int cbo_edt_units = 0;
 double velocmag;
 double simnow = std::time(nullptr);
 double JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
@@ -79,6 +84,7 @@ bool show_terrain = true;
 bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;
+bool shortnames = false;
 double myeq = 0;
 
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.
@@ -98,9 +104,9 @@ const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
     have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
-    noexo = false, nosats = false, radio_silence = false, keyprobe = false;
+    noexo = false, nosats = false, radio_silence = false, keyprobe = false, local_tmstep = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
-double bv_correction = 0;
+double bv_correction = -.625;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
@@ -163,6 +169,25 @@ double blackbody_flux(double T, double nu)
 double compute_time_dilation(double velocity)
 {
     return sqrt(1.0 - (velocity*velocity)/(speed_of_light*speed_of_light));
+}
+
+// Collapses runs of whitespace, so gcvs_cat's padded "T     And" matches crossid's "T And".
+std::string squeeze_spaces(const char *s)
+{
+    std::string out;
+    bool gap = false;
+    for (; *s; s++)
+    {
+        if (isspace((unsigned char)*s))
+        {
+            gap = !out.empty();
+            continue;
+        }
+        if (gap) out += ' ';
+        gap = false;
+        out += *s;
+    }
+    return out;
 }
 
 // Solve Kepler's Equation: M = E - e*sin(E) using Newton's Method
@@ -563,6 +588,7 @@ bool download_file(std::string URL, std::string save_path)
 {
     if (radio_silence) return false;
     curlpp::init();
+    std::cout << "Download to " << save_path << " from " << URL << std::endl;
 
     try
     {
@@ -593,6 +619,9 @@ bool download_file(std::string URL, std::string save_path)
             easy.setOpt(CURLOPT_WRITEDATA, &buffer);
             easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
         }
+
+        easy.setOpt(CURLOPT_CONNECTTIMEOUT, 10L);
+        easy.setOpt(CURLOPT_TIMEOUT, 30L);
 
         easy.perform();
 
@@ -790,7 +819,7 @@ bool extract_archive(const char* filename)
     // Open the .tar.gz or .gz file
     if ((r = archive_read_open_filename(a, filename, 10240)))
     {
-        std::cerr << "Failed to open " << filename << ": " << archive_error_string(a) << std::endl;
+        std::cerr << "Failed to open " << filename << " for reading: " << archive_error_string(a) << std::endl;
         return false;
     }
 
@@ -842,6 +871,7 @@ bool extract_archive(const char* filename)
             }
         }
         archive_write_finish_entry(ext);
+        std::cout << "Wrote " << target_path << std::endl;
     }
 
     // Clean up

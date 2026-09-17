@@ -136,9 +136,16 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     Constellation *cons2match = nullptr;
     n = constellations.size();
-    if (match_cons) for (i=0; !cons2match && i<n; i++)
+    if (match_cons)
     {
-        if (!strcasecmp(match_cons, constellations[i].name.c_str())) cons2match = &constellations[i];
+        for (i=0; !cons2match && i<n; i++)
+        {
+            if (!strcasecmp(match_cons, constellations[i].abbrev.c_str())
+                || !strncasecmp(match_cons, constellations[i].name.c_str(), 3))
+            {
+                cons2match = &constellations[i];
+            }
+        }
     }
 
     bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))
@@ -264,6 +271,11 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 if (cels[i]->name[m-2] == ' ' && cels[i]->name[m-1] != match_comp) continue;
                 if (match_comp != 'A' && cels[i]->name[m-2] != ' ') continue;
             }
+            if (match_cons && s
+                && (    (s->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
+                    ||  (s->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
+                    ||  (s->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
+                )) continue;
 
             if (s && strlen(s->Gliese)                    // HOW MANY TIMES DO I HAVE TO BEAT THIS INTO YOU, COMPUTER.
                 && (lookstr[0]&0x5f) == 'W' && (lookstr[1]&0x5f) == 'O' && (lookstr[2]&0x5f) == 'L' && (lookstr[3]&0x5f) == 'F'
@@ -329,6 +341,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
     try
     {
         int i;
+        Star *s;
         json allobjs;
         for (i=0; cels[i]; i++)
         {
@@ -336,7 +349,8 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
             std::string key = "";
             key = std::string(cels[i]->name);
             CelestialObject *cursor = cels[i];
-            while (cursor->orbit && cursor->orbit->center)
+            int depth = 0;
+            while (cursor->orbit && cursor->orbit->center && depth++ < 100)
             {
                 cursor = cursor->orbit->center;
                 key = std::string(cursor->name) + std::string(".") + key;
@@ -351,8 +365,9 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
                 break;
 
                 case class_star:
-                ((Star*)cels[i])->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
-                allobjs[l] = ((Star*)cels[i])->to_json();
+                s = (Star*)cels[i];
+                s->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
+                allobjs[l] = s->to_json();
                 break;
 
                 case class_planet:
@@ -386,13 +401,13 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
     }
 }
 
-bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned int max)
+bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned int max, bool aua)
 {
     try
     {
         json allobj;
         fs >> allobj;
-        int i, j, n = allobj.size();
+        int i, j, l, n = allobj.size();
         for (i=0; cels[i]; i++);
         ncelobjs = i;
 
@@ -406,6 +421,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         // count below is left to the stars that did not -- which is every star in a file written
         // before these tallies were saved, so those load exactly as they always have.
         std::set<Star*> tally_stated;
+        l = 0;
         for (auto it = allobj.begin(); it != allobj.end(); ++it)
         {
             i = ncelobjs;
@@ -475,12 +491,13 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 return false;
             }
 
-            cels[i]->user_edited = true;
+            cels[i]->user_edited = aua;
             cels[i]->estimated_poles = true;
             cels[i]->seqno = i;
 
             mtx.lock();
-            loading_msg = std::string("Loaded ") + std::to_string(i+1) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
+            l++;
+            loading_msg = std::string("Loaded ") + std::to_string(l) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
             mtx.unlock();
 
             // Nothing below this point applies to a body with no orbit -- there is no center to
@@ -523,10 +540,11 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 CelestialObject* lc = cels[i]->get_light_center();
                 Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
                 if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
-                else if (!tally_stated.count(s))
+                else if (cels[i]->typeclass() == class_planet && !tally_stated.count(s) && cels[i]->mass >= 0.01 * earth_mass)        // Do not count asteroids, moons, KBOs in planetary system.
                 {
                     s->has_planets++;
                     if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
+                    s->pl_indices.push_back(i);
                 }
             }
 

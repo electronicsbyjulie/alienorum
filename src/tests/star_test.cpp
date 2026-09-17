@@ -106,11 +106,11 @@ TEST(StarTest, DegenerateRadiusCalculation)
     EXPECT_DOUBLE_EQ(Star::degenerate_radius(0.0), Star::degenerate_radius(0.6 * solar_mass));
 }
 
+// TODO: This is not passing - if you are submitting a PR and seeing this fail, your code didn't break it.
 TEST(StarTest, TemperatureFromBV)
 {
     Star sun;
-    sun.estimate_BV(sun_temp);                      // uncorrected, since bv_correction is still 0
-    bv_correction = sun.BV_color - 0.65;            // the Sun is B-V 0.65 by definition
+    sun.estimate_BV(sun_temp);
 
     EXPECT_NEAR(Star::temperature_from_BV(0.65), sun_temp, 1.0);
 
@@ -385,4 +385,287 @@ TEST(StarTest, ComponentLettersAndUnlinking)
     EXPECT_EQ(tertiary.multisys, nullptr);
     EXPECT_EQ(system->num_members(), 0);
     delete system;
+}
+
+TEST(StarTest, IsMainSequenceDetection)
+{
+    Star s;
+
+    strcpy(s.spectral_type, "G5 V");
+    EXPECT_TRUE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "G1V...");
+    EXPECT_TRUE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "F8V");
+    EXPECT_TRUE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "dM3");
+    EXPECT_TRUE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "F8IV");
+    EXPECT_FALSE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "G8VI");
+    EXPECT_FALSE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "K1III");
+    EXPECT_FALSE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "B2Ia");
+    EXPECT_FALSE(s.is_main_sequence());
+
+    strcpy(s.spectral_type, "");
+    EXPECT_FALSE(s.is_main_sequence());
+}
+
+TEST(StarTest, ExpectedMainSequenceAbsmag)
+{
+    Star::load_main_seq_dat();
+
+    Star sun;
+    strcpy(sun.spectral_type, "G2V");
+    EXPECT_NEAR(sun.expected_main_sequence_absmag(), 4.83, 0.05);
+
+    Star k2_106;
+    strcpy(k2_106.spectral_type, "G5 V");
+    EXPECT_NEAR(k2_106.expected_main_sequence_absmag(), 4.99, 0.05);
+
+    Star hd7229;
+    strcpy(hd7229.spectral_type, "G1V...");
+    EXPECT_NEAR(hd7229.expected_main_sequence_absmag(), 4.66, 0.05);
+}
+
+TEST(StarTest, MainSequenceAbsmagOutlierCheck)
+{
+    Star::load_main_seq_dat();
+
+    Star sun;
+    strcpy(sun.spectral_type, "G2V");
+    sun.absolute_magnitude = 4.83;
+    EXPECT_FALSE(sun.is_mseq_absmag_outlier(1.5));
+
+    Star k2_106;
+    strcpy(k2_106.spectral_type, "G5 V");
+    k2_106.absolute_magnitude = 10.0;
+    double diff = 0;
+    EXPECT_TRUE(k2_106.is_mseq_absmag_outlier(1.5, &diff));
+    EXPECT_NEAR(diff, 5.01, 0.1);
+
+    Star hd7229;
+    strcpy(hd7229.spectral_type, "G1V...");
+    hd7229.absolute_magnitude = 1.15;
+    EXPECT_TRUE(hd7229.is_mseq_absmag_outlier(1.5, &diff));
+    EXPECT_NEAR(diff, -3.51, 0.1);
+}
+
+TEST(StarTest, CorrectMainSequenceK2106)
+{
+    Star::load_main_seq_dat();
+
+    Star k2_106;
+    strcpy(k2_106.name, "K2-106");
+    strcpy(k2_106.spectral_type, "G5 V");
+    k2_106.apparent_magnitude = 12.1;
+    k2_106.distance = 246.1 * parsec;
+    k2_106.distance_known = true;
+    k2_106.absolute_magnitude = 10.0;
+    k2_106.temperature = 5617;
+
+    EXPECT_TRUE(k2_106.correct_main_sequence_absmag(1.5));
+    EXPECT_NEAR(k2_106.absolute_magnitude, 5.15, 0.05);
+    EXPECT_STREQ(k2_106.spectral_type, "G5 V");
+}
+
+TEST(StarTest, CorrectMainSequenceHD7229)
+{
+    Star::load_main_seq_dat();
+
+    Star hd7229;
+    strcpy(hd7229.name, "HD7229");
+    strcpy(hd7229.spectral_type, "G1V...");
+    hd7229.apparent_magnitude = 6.24;
+    hd7229.distance = 104.38 * parsec;
+    hd7229.distance_known = true;
+    hd7229.absolute_magnitude = 1.15;
+    hd7229.temperature = 4800;
+
+    EXPECT_TRUE(hd7229.correct_main_sequence_absmag(1.5));
+    EXPECT_NEAR(hd7229.absolute_magnitude, 1.15, 0.01);
+    EXPECT_STREQ(hd7229.spectral_type, "G1III...");
+    EXPECT_GT(hd7229.volumetric_mean_radius, 5.0 * solar_radius);
+}
+
+TEST(StarTest, AuditAndCorrectMainSequenceStars)
+{
+    Star::load_main_seq_dat();
+
+    Star normal_sun;
+    strcpy(normal_sun.name, "Sol");
+    strcpy(normal_sun.spectral_type, "G2V");
+    normal_sun.apparent_magnitude = -26.74;
+    normal_sun.distance = AU;
+    normal_sun.distance_known = true;
+    normal_sun.absolute_magnitude = 4.83;
+
+    Star k2_106;
+    strcpy(k2_106.name, "K2-106");
+    strcpy(k2_106.spectral_type, "G5 V");
+    k2_106.apparent_magnitude = 12.1;
+    k2_106.distance = 246.1 * parsec;
+    k2_106.distance_known = true;
+    k2_106.absolute_magnitude = 10.0;
+    k2_106.temperature = 5617;
+
+    Star hd7229;
+    strcpy(hd7229.name, "HD7229");
+    strcpy(hd7229.spectral_type, "G1V...");
+    hd7229.apparent_magnitude = 6.24;
+    hd7229.distance = 104.38 * parsec;
+    hd7229.distance_known = true;
+    hd7229.absolute_magnitude = 1.15;
+    hd7229.temperature = 4800;
+
+    CelestialObject* stars[] = {&normal_sun, &k2_106, &hd7229, nullptr};
+
+    int corrected = Star::audit_and_correct_main_sequence_stars(stars, 1.5);
+    EXPECT_EQ(corrected, 2);
+
+    EXPECT_NEAR(normal_sun.absolute_magnitude, 4.83, 0.01);
+    EXPECT_STREQ(normal_sun.spectral_type, "G2V");
+
+    EXPECT_NEAR(k2_106.absolute_magnitude, 5.15, 0.05);
+    EXPECT_STREQ(k2_106.spectral_type, "G5 V");
+
+    EXPECT_NEAR(hd7229.absolute_magnitude, 1.15, 0.01);
+    EXPECT_STREQ(hd7229.spectral_type, "G1III...");
+}
+
+TEST(StarTest, HotOBStarsTurnedDown)
+{
+    Star::load_main_seq_dat();
+
+    // 10 Lacertae: O9V, V = 4.89, d = 324.6 pc, M_V = -2.67
+    Star lac10;
+    strcpy(lac10.name, "10 Lacertae");
+    strcpy(lac10.spectral_type, "O9V");
+    lac10.apparent_magnitude = 4.89;
+    lac10.distance = 324.6 * parsec;
+    lac10.distance_known = true;
+    lac10.absolute_magnitude = -2.67;
+    lac10.temperature = 33300;
+
+    // Sigma Orionis: O9.5V..., V = 3.77, d = 352.1 pc, M_V = -3.96
+    Star sigOri;
+    strcpy(sigOri.name, "Sigma Orionis");
+    strcpy(sigOri.spectral_type, "O9.5V...");
+    sigOri.apparent_magnitude = 3.77;
+    sigOri.distance = 352.1 * parsec;
+    sigOri.distance_known = true;
+    sigOri.absolute_magnitude = -3.96;
+    sigOri.temperature = 32000;
+
+    // 23 Orionis: B1V, V = 4.99, d = 295.0 pc, M_V = -2.36
+    Star ori23;
+    strcpy(ori23.name, "23 Orionis");
+    strcpy(ori23.spectral_type, "B1V");
+    ori23.apparent_magnitude = 4.99;
+    ori23.distance = 295.0 * parsec;
+    ori23.distance_known = true;
+    ori23.absolute_magnitude = -2.36;
+    ori23.temperature = 26000;
+
+    // HD193322: O9V, V = 5.83, d = 476.2 pc, M_V = -2.56
+    Star hd193322;
+    strcpy(hd193322.name, "HD193322");
+    strcpy(hd193322.spectral_type, "O9V");
+    hd193322.apparent_magnitude = 5.83;
+    hd193322.distance = 476.2 * parsec;
+    hd193322.distance_known = true;
+    hd193322.absolute_magnitude = -2.56;
+    hd193322.temperature = 33300;
+
+    EXPECT_TRUE(lac10.is_hot_ob_star());
+    EXPECT_TRUE(sigOri.is_hot_ob_star());
+    EXPECT_TRUE(ori23.is_hot_ob_star());
+    EXPECT_TRUE(hd193322.is_hot_ob_star());
+
+    // Expected main sequence absmag should be disabled (>= 1e28) for hot O and B stars
+    EXPECT_GT(lac10.expected_main_sequence_absmag(), 1e28);
+    EXPECT_GT(sigOri.expected_main_sequence_absmag(), 1e28);
+    EXPECT_GT(ori23.expected_main_sequence_absmag(), 1e28);
+    EXPECT_GT(hd193322.expected_main_sequence_absmag(), 1e28);
+
+    // They must NOT be flagged as outliers
+    EXPECT_FALSE(lac10.is_mseq_absmag_outlier());
+    EXPECT_FALSE(sigOri.is_mseq_absmag_outlier());
+    EXPECT_FALSE(ori23.is_mseq_absmag_outlier());
+    EXPECT_FALSE(hd193322.is_mseq_absmag_outlier());
+
+    // Correction must not touch them
+    EXPECT_FALSE(lac10.correct_main_sequence_absmag());
+    EXPECT_FALSE(sigOri.correct_main_sequence_absmag());
+    EXPECT_FALSE(ori23.correct_main_sequence_absmag());
+    EXPECT_FALSE(hd193322.correct_main_sequence_absmag());
+
+    EXPECT_NEAR(lac10.absolute_magnitude, -2.67, 0.001);
+    EXPECT_NEAR(sigOri.absolute_magnitude, -3.96, 0.001);
+    EXPECT_NEAR(ori23.absolute_magnitude, -2.36, 0.001);
+    EXPECT_NEAR(hd193322.absolute_magnitude, -2.56, 0.001);
+}
+
+TEST(StarTest, NoStarMadeBrighterThanCatalog)
+{
+    Star::load_main_seq_dat();
+
+    // A main sequence star with measured distance and apparent magnitude that is fainter than textbook
+    // (e.g. reddened / interstellar extinction in the galactic plane).
+    Star s;
+    strcpy(s.name, "ExtinctedDwarf");
+    strcpy(s.spectral_type, "G2V");
+    s.apparent_magnitude = 10.0;
+    s.distance = 50.0 * parsec; // distance modulus = 5 * log10(5) = 3.50 -> m_obs = 6.50
+    s.distance_known = true;
+    s.absolute_magnitude = 6.50; // textbook G2V is 4.83, but star is extincted to 6.50
+    s.temperature = 5778;
+
+    // It should not be forced brighter to 4.83, because that would make apparent magnitude 4.83 + 3.50 = 8.33 (brighter than catalog 10.0)!
+    EXPECT_FALSE(s.correct_main_sequence_absmag());
+    EXPECT_NEAR(s.absolute_magnitude, 6.50, 0.001);
+
+    // Double check effective apparent magnitude:
+    double effective_appmag = s.absolute_magnitude + 5.0 * (log10(s.distance / (parsec * 10.0)));
+    EXPECT_GE(effective_appmag, s.apparent_magnitude - 0.01);
+}
+
+TEST(StarTest, K2151BNotCorruptedIntoGiant)
+{
+    Star::load_main_seq_dat();
+
+    // K2-151 B: M1.5V, teff = 3659 K, rad = 0.458 Rsun, mass = 0.455 Msun, dist = 69.48 pc, missing sy_vmag and st_lum.
+    Star k2_151b;
+    strcpy(k2_151b.name, "K2-151 B");
+    strcpy(k2_151b.spectral_type, "M1.5V");
+    k2_151b.temperature = 3659;
+    k2_151b.volumetric_mean_radius = 0.458 * solar_radius;
+    k2_151b.mass = 0.455 * solar_mass;
+    k2_151b.distance = 69.48 * parsec;
+    k2_151b.distance_known = true;
+
+    // Radius and temperature via Stefan-Boltzmann yield M_V ≈ 8.87 - 9.9, NOT -4.21
+    double r_sun = k2_151b.volumetric_mean_radius / solar_radius;
+    double t_ratio = k2_151b.temperature / sun_temp;
+    double lum = r_sun * r_sun * pow(t_ratio, 4.0);
+    double m_bol = 4.74 - log(lum) / log(magnbase);
+    k2_151b.absolute_magnitude = m_bol - Star::bolometric_correction(k2_151b.temperature);
+    k2_151b.apparent_magnitude = k2_151b.absolute_magnitude + 5.0 * (log10(k2_151b.distance / (parsec * 10.0)));
+
+    EXPECT_NEAR(k2_151b.absolute_magnitude, 8.87, 0.5);
+    EXPECT_GT(k2_151b.apparent_magnitude, 12.0);
+
+    // Running correct_main_sequence_absmag should NOT corrupt it into a giant
+    EXPECT_FALSE(k2_151b.correct_main_sequence_absmag());
+    EXPECT_STREQ(k2_151b.spectral_type, "M1.5V");
+    EXPECT_LT(k2_151b.volumetric_mean_radius, 1.0 * solar_radius);
+    EXPECT_GT(k2_151b.absolute_magnitude, 7.0);
 }

@@ -178,6 +178,7 @@ bool SatSource::read_csv_data()
 
     while (fgets(buffer, 16382, fp))
     {
+        if (abort_load) { fclose(fp); return false; }
         std::vector<std::string> row = parse_csv_row(buffer);
         i = 0;
 
@@ -337,7 +338,7 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
 
     SatRecord& sr = sat_data[idx];
     strcpy(sat->name, sr.OBJECT_NAME.c_str());
-    sat->namelen = 0;
+    sat->namelen = strlen(sat->name);
     if (!sat->orbit) sat->orbit = new Orbit;
     int cenidx;
 

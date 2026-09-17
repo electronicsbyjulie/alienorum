@@ -37,16 +37,20 @@ namespace alienorum
     {
         return type == rocky || type == icy || type == waterworld || type == hycean || type == lavaworld;
     }
+    inline bool uses_gaseous_map(cel_obj_type type)
+    {
+        return type == gas_giant || type == ice_giant || type == hot_jupiter || type == clearskies;
+    }
 
     enum cel_obj_class
     {
-        class_unknown,
-        class_galaxy,
+        class_galaxy = 1,
         class_star,
         class_planet,
         class_moon,
         class_comet,
-        class_satellite
+        class_satellite,
+        class_unknown = 10000
     };
 
 
@@ -224,14 +228,14 @@ namespace alienorum
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
-        bool save_to_png(std::string filename);
+        bool save_to_png(std::string filename, bool as_bump = false);
         void correct_colors(double rtot, double gtot, double btot);
         inline bool has_bump_data() { return bump_data && image_height; }
         inline bool has_rgb_data() { return red_data && green_data && blue_data && image_height; }
         void resample_bump_data(unsigned int new_resolution);
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
-        RGB3Byte color_at(double latitude, double longitude);
+        RGB3 color_at(double latitude, double longitude);
         double elevation_at(double latitude, double longitude);     // Returns meters.
         void generate_rocky_map(CelestialObject *cel);
         void generate_lava_map(CelestialObject *cel);
@@ -306,6 +310,7 @@ namespace alienorum
         std::mt19937 rng;
         int cel_rand();
         double cel_frand(double min, double max);
+        double stellar_day();                       // solar day if from any of the Sun's planets
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;
@@ -331,6 +336,7 @@ namespace alienorum
         bool looked_for_maps = false, ignore_map_files = false;
         unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
         bool onscreen = false;
+        bool label_shown = false;
 
         CelestialObject();
         virtual ~CelestialObject() = default;
@@ -368,6 +374,8 @@ namespace alienorum
         json to_json();
         bool from_json(json j);
 
+        bool operator<(const CelestialObject& other) const;
+
         protected:
         int read_locales_json(json from_json);
         void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
@@ -392,5 +400,7 @@ extern double *vmag_cache, *bloomrad_cache, *angular_radius;
 extern CelestialLocation here;
 extern double azimuth_correction;
 extern Locale *is_a_locale_under_cursor, *selected_locale;
+
+extern std::vector<CelestialObject*> lsyscache;
 
 #endif

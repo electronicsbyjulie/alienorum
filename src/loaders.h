@@ -12,6 +12,7 @@
 void load_textures(CelestialObject *cel);
 void spawn_texture_load(CelestialObject *cel);
 void save_textures(CelestialObject *cel);
+bool establish_project_root();
 bool look_for_catalogs();
 bool save_universe();
 // The default belongs here rather than on the definition in loaders.cpp: put there, it is only

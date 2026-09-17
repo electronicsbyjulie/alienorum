@@ -174,8 +174,8 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     flagstr = (std::string)"Brghtns (B): " + std::to_string(global_brightness);
     ImGui::Text("%s", flagstr.c_str());
 
-    flagstr = (std::string)"Gamma (`): " + std::to_string(get_gamma());
-    ImGui::Text("%s", flagstr.c_str());
+    /* flagstr = (std::string)"Gamma (`): " + std::to_string(get_gamma());
+    ImGui::Text("%s", flagstr.c_str()); */
 
     ImGui::Separator();
 
@@ -213,7 +213,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     ImGui::Separator();
 
     flagstr = (std::string)"Labels (L): "
-        + std::string(show_labels ? "ON" : "OFF");
+        + std::string(show_labels ? (shortnames ? "SHORT" : "ON") : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
     // Pass in the preview value visible before opening the combo (it could technically be different contents or not pulled from items[])
@@ -239,24 +239,16 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::EndCombo();
     }
 
-    flagstr = (std::string)"Galaxy labels (K): "
-        + std::string(label_galaxies ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
-    flagstr = (std::string)"Galaxy band (Sh+K): "
-        + std::string(show_galaxy_band ? "ON" : "OFF");
-    ImGui::Text("%s", flagstr.c_str());
-
     if (cbolbls_selected_idx == lbltype_brightest)
     {
-        ImGui::Text("%s", "Mag limit:");
+        ImGui::Text("%s", "Lbl mag:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
         ImGui::InputDouble("##appmaglim", &appmagn_lblcut, 0, 0, "%.2f");
     }
     else if (cbolbls_selected_idx == lbltype_intrinsic)
     {
-        ImGui::Text("%s", "Mag limit:");
+        ImGui::Text("%s", "Lbl mag:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(67);
         ImGui::InputDouble("##absmaglim", &absmagn_lblcut, 0, 0, "%.2f");
@@ -278,6 +270,35 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::InputInt("##npltlim", &planets_lblcut, 1, 0);
         if (planets_lblcut < 1) planets_lblcut = 1;
     }
+    else if (cbolbls_selected_idx == lbltype_Bayer || cbolbls_selected_idx == lbltype_Flamsteed || cbolbls_selected_idx == lbltype_Gould)
+    {
+        ImGui::Text("%s", "Cons:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(123);
+        if (ImGui::BeginCombo("##lblconsstars", cons4lbl ? cons4lbl->name.c_str() : "(all)"))
+        {
+            if (ImGui::Selectable("(all)", !cons4lbl)) cons4lbl = nullptr;
+            
+            int i, n = constellations.size();
+            for (i=0; i<n; i++)
+            {
+                const bool is_selected = (cons4lbl == &constellations[i]);
+                if (ImGui::Selectable(constellations[i].name.c_str(), is_selected))
+                    cons4lbl = &constellations[i];
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    flagstr = (std::string)"Galaxy labels (K): "
+        + std::string(label_galaxies ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
+
+    flagstr = (std::string)"Galaxy band (Sh+K): "
+        + std::string(show_galaxy_band ? "ON" : "OFF");
+    ImGui::Text("%s", flagstr.c_str());
 
     flagstr = (std::string)"Lbl planets (P): "
         + std::string(lbl_localsys ? "ON" : "OFF");
@@ -392,6 +413,8 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
     }
 
+    ImGui::Text(local_tmstep ? "Local Timestep (F10)" : "Earth Timestep (F10)");
+
     ImGui::Separator();
 
     std::string numobjs;
@@ -427,7 +450,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     if (whereami >= 0 && cels[whereami]->typeclass() != class_satellite)
     {
         ImGuiComboFlags cbovm_flags = 0;
-        const char* combo_vm_value = vmtext[view_mode];
+        const char* combo_vm_value = (view_mode == vm_system) ? "System" : vmtext[view_mode];
         ImGui::Text("%s", "View Mode:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(123);
@@ -622,7 +645,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         if (cls == class_star)
         {
             s = (Star*)cels[i];
-            if (s->local_name.size())
+            if ((s == mycenobj || s->cenobj == mycenobj) && s->local_name.size())
             {
                 ImGui::Text("%s", s->local_name.c_str());
             }
@@ -643,7 +666,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
             else if (strlen(s->Flamsteed)) ImGui::Text("%s", s->Flamsteed);
             else if (strlen(s->Bayer)) ImGui::Text("%s", s->Bayer);
-            if (s->GouldNo > 0) ImGui::Text("%s", (std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->constellation)).c_str());
+            if (s->GouldNo > 0) ImGui::Text("%s", (std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->Gouldcons)).c_str());
 
             if (strlen(s->Gliese)) ImGui::Text("%s", s->Gliese);
             if (s->HD) ImGui::Text("%s", ((std::string)"HD" + std::to_string(s->HD)).c_str());
@@ -665,13 +688,24 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             ImGui::Text("RA:       %s", cels[i]->RA_as_hms(here, myeq).c_str());
             ImGui::Text("Decl:     %s", cels[i]->Decl_as_degms(here).c_str());
+            ImGui::Separator();
         }
         else if (view_mode == vm_sunclock)
         {
             double lat = cels[i]->Decl_as_radians(here), lon = cels[i]->RA_as_radians(here, cels[whereami]->timeofday());
             if (lon > _pi) lon -= _pi*2;
-            ImGui::Text("Lat:      %s", std::to_string(lat * fiftyseven).c_str());
-            ImGui::Text("Lon:      %s", std::to_string(lon * fiftyseven).c_str());
+            ImGui::Text("Lat:      %.3f", lat * fiftyseven);
+            ImGui::Text("Lon:      %.3f", lon * fiftyseven);
+            ImGui::Separator();
+        }
+        else if (view_mode == vm_system)
+        {
+            if (cels[i]->temperature) ImGui::Text("Temp:     %.2f K", cels[i]->temperature);      // TODO: Fix solar system planet temperatures.
+            if ((cls == class_planet || cls == class_moon)
+                && uses_rocky_map(cels[i]->type))
+                ImGui::Text("Atmosph.  %.6f bar", ((Planet*)cels[i])->get_surface_pressure() / oneatm);
+            ImGui::Text("Gravity:  %.3f G", cels[i]->estimate_surface_gravity());
+            ImGui::Separator();
         }
         else
         {
@@ -683,33 +717,50 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             {
                 shown_alt = cels[i]->Decl_as_radians(here);
             }
-            ImGui::Text("Altitude: %s", std::to_string(shown_alt*fiftyseven).c_str());
-            ImGui::Text("Azimuth:  %s", std::to_string(objaz*fiftyseven).c_str());
+            ImGui::Text("Altitude: %.2f", shown_alt*fiftyseven);
+            ImGui::Text("Azimuth:  %.2f", objaz*fiftyseven);
+            ImGui::Separator();
         }
-        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite)
+        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite && view_mode != vm_system)
         {
-            oss << "Mag:      " << std::setprecision(4) << lmag;
-            ImGui::Text("%s", oss.str().c_str());
-            oss.str("");
-            oss.clear();
+            ImGui::Text("Mag:      %.2f", lmag);
+            ImGui::Separator();
         }
 
-        ImGui::Separator();
-        if (cels[i]->type == star)
+        if (view_mode == vm_system)
+        {
+            if (cels[i]->orbit)
+            {
+                ImGui::Text("SMA:      %.4f AU",  cels[i]->orbit->semimajor_axis / AU);
+                if ((cls == class_planet || cls == class_moon) && ((Planet*)cels[i])->is_in_con_HZ())
+                {
+                    ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
+                    ImGui::TextColored(hzcolor, "          Habitable Zone");
+                }
+                ImGui::Text("Eccentr.: %.4f d",   cels[i]->orbit->eccentricity);
+                ImGui::Text("Period:   %.2f d",   cels[i]->orbit->period / oneday);
+                if (cels[i]->orbit->inclination || (i == iamhome)) ImGui::Text("Incl.:    %.2f deg", cels[i]->orbit->inclination * fiftyseven);
+            }
+            if (cels[i]->obliquity
+                && (!cels[i]->orbit || fabs(cels[i]->obliquity - cels[i]->orbit->inclination) > 1e-6)       // TODO: Fix moons.
+                ) ImGui::Text("Obliq.:   %.2f deg", cels[i]->obliquity * fiftyseven);                       // TODO: Sun.
+            if (cels[i]->type == star)
+            {
+                Star* s = (Star*)cels[i];
+                ImGui::Text("SpTyp:    %s", s->spectral_type);
+                ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
+            }
+            ImGui::Separator();
+        }
+        else if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
+            ImGui::Text("SpTyp:    %s", s->spectral_type);
             if (s->distance_known || s->cenobj == mycenobj)
             {
-                oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit);
-                ImGui::Text("%s", oss.str().c_str());
-                oss.str("");
-                oss.clear();
-                oss << "AbsMag:   " << std::setprecision(4) << s->absolute_magnitude;
-                ImGui::Text("%s", oss.str().c_str());
-                oss.str("");
-                oss.clear();
+                ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here, sat_low_orbit).c_str());
+                ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
             }
-            ImGui::Text("SpTyp:    %s", s->spectral_type);
         }
         else if (cels[i]->type == galaxy)
         {
@@ -718,14 +769,9 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         else if (cels[i]->type == artificial)
         {
             if (view_mode == vm_sunclock && whereami >= 0)
-                oss << "Alt:      "
-                    << std::fixed << std::setprecision(3)
-                    << ((cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000)  // TODO: Compensate for oblateness.
-                    << " km";
-            else oss << "Dist:     " << cels[i]->scaled_distance(here);
-            ImGui::Text("%s", oss.str().c_str());
-            oss.str("");
-            oss.clear();
+                ImGui::Text("Alt:      %.3f km",
+                    (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
+            else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here));
         }
         else if (cels[i]->typeclass() == class_comet)
         {
@@ -753,7 +799,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                     oss.str("");
                     oss.clear();
                 }
-                else ImGui::Text("          Unbound; will not return");
+                else ImGui::Text("          Unbound; no return");
             }
         }
         else
@@ -782,7 +828,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / solar_mass) << " M(sun)";       // TODO: Fix Star::estimate_mass()
             else if (cls == class_planet || cls == class_moon)
             {
-                oss << "Mass:     " << std::setprecision(2) << (cels[i]->mass / cels[iamhome]->mass) << " M(earth)";
+                oss << "Mass:     " << std::fixed << std::setprecision(4) << (cels[i]->mass / earth_mass) << " M(earth)";
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
@@ -792,13 +838,14 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 oss.clear();
             }
         }
+
         if (cels[i]->volumetric_mean_radius)
         {
             if (cls == class_star)
                 ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / solar_radius) << " R(sun)";       // TODO: Fix Star::estimate_radius()
             else if (cls == class_planet || cls == class_moon)
             {
-                oss << "Radius:   " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
+                oss << "Radius:   " << std::fixed << std::setprecision(4) << (cels[i]->volumetric_mean_radius / cels[iamhome]->volumetric_mean_radius)
                     << " R(earth)";
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
@@ -807,6 +854,33 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
+            }
+        }
+
+        if (cls == class_star)
+        {
+            ImGui::Separator();
+            
+            const char *plural_s = (s->has_planets == 1) ? "" : "s",
+                 *plural_s_hz = (s->has_hz_planets == 1) ? "" : "s";
+            if (s->has_planets)
+            {
+                ImGui::Text("%d planet%s.", s->has_planets, plural_s);
+                if (s->has_hz_planets)
+                {
+                    ImGui::Text("%d planet%s in HZ:", s->has_hz_planets, plural_s_hz);
+
+                    int spli, spln = s->pl_indices.size();
+
+                    for (spli=0; spli<spln; spli++)
+                    {
+                        Planet *lp = (Planet*) cels[s->pl_indices[spli]];
+                        if (lp->is_in_con_HZ())
+                        {
+                            ImGui::Text("%.2f Earth masses", lp->mass / earth_mass);
+                        }
+                    }
+                }
             }
         }
 
@@ -911,7 +985,7 @@ void draw_addcel_window(ImGuiIO& io)
             if (cel)
             {
                 strcpy(cel->name, "new");
-                cel->namelen = 0;
+                cel->namelen = strlen(cel->name);
                 cel->user_added = true;
                 cels[addcenidx]->distance_known = true;
                 cel->distance_known = true;
@@ -952,7 +1026,7 @@ void draw_addcel_window(ImGuiIO& io)
 
 double rp, ra;
 int last_edit_idx = -1;
-static int cbo_edt_units = 0;
+
 #define cbo_edt_num_units 4
 const char* mass_units[cbo_edt_num_units] = {"kg", "Sun", "Jup.", "Earth"};
 const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mass, earth_mass};
@@ -982,7 +1056,7 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::InputText("##edtname", edit_name, name_max_len, 0))
     {
         strcpy(cels[editidx]->name, edit_name);
-        cels[editidx]->namelen = 0;
+        cels[editidx]->namelen = strlen(cels[editidx]->name);
         cel->user_edited = true;
     }
     ImGui::SameLine(col3);
@@ -1806,6 +1880,11 @@ void draw_objedit_window(ImGuiIO& io)
                         || cel->typeclass() == class_moon               // See Kepler-1625b.
                         ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 }
+                ImGui::SameLine();
+                if (ImGui::Button("Cosm.Shln.##edtpresh"))
+                {
+                    p->apply_cosmic_shoreline();
+                }
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "Total tau");
                 ImGui::SameLine(col3);
@@ -2072,7 +2151,10 @@ void draw_objedit_window(ImGuiIO& io)
                     }
                 }
 
-                ImGui::Text("Surface temperature: %fK", p->estimate_surface_temperature());
+                ImGui::Text(uses_gaseous_map(p->type)
+                        ? "Equilibrium temperature: %.2fK"
+                        : "Surface temperature: %.2fK",
+                    p->estimate_surface_temperature());
             }
 
             ImGui::Text("%s", "Texture");
@@ -2142,6 +2224,12 @@ void draw_objedit_window(ImGuiIO& io)
                 }
             }
             ImGui::SameLine();
+            if (!generating_fic_texture && ImGui::Button("Reseed"))
+            {
+                cel->rnd_seed = 0;
+                cel->randomize();
+            }
+            ImGui::SameLine();
             ImGui::Text("Map Height");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(txtwid);
@@ -2166,7 +2254,7 @@ void draw_objedit_window(ImGuiIO& io)
                     Map *map = celmaps[i];
                     int x, y;
                     double xrad, yrad;
-                    RGB3Byte rgb;
+                    RGB3 rgb;
                     ImU32 imu;
 
                     if (map)
@@ -2260,27 +2348,41 @@ void draw_system_explorer(ImGuiIO& io)
     ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, e          HZ?");
     if (ImGui::BeginListBox("##syslist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
+        CelestialObject *cel;
+        Star *s;
         j = 0;
+        #if 0
         for (i=0; cels[i]; i++)
         {
-            if (cels[i]->deleted) continue;
-            if (cels[i]->cenobj != mycenobj) continue;
+            cel = cels[i];
+            if (cel->deleted) continue;
+            if (cel->cenobj != mycenobj) continue;
+        #else
+        int nlsc = lsyscache.size();
+        for (i=0; i<nlsc; i++)
+        {
+            cel = lsyscache[i];
+            if (cel->deleted) continue;
+        #endif
+            s = (cel->typeclass() == class_star) ? (Star*)cel : nullptr;
+            if (view_mode == vm_system && cel->seqno == selected) item_selected_idx = j;
+
             bool is_selected = (item_selected_idx == j);
 
-            cel_obj_class cls = cels[i]->typeclass();
+            cel_obj_class cls = cel->typeclass();
             if (cls == class_satellite && !list_sats) continue;
             if (cls == class_moon && !list_moons) continue;
             if (cls == class_planet)
             {
-                if (cels[i]->mass > 0.05 * earth_mass)
+                if (cel->mass > 0.05 * earth_mass)
                 {
                     if (!list_planets) continue;
                 }
                 else
                 {
-                    if (cels[i]->orbit)
+                    if (cel->orbit)
                     {
-                        if (cels[i]->orbit->period < (60000.0*oneday))
+                        if (cel->orbit->period < (60000.0*oneday))
                         {
                             if (!list_asteroids) continue;
                         }
@@ -2293,32 +2395,32 @@ void draw_system_explorer(ImGuiIO& io)
             }
             if (cls == class_comet && !list_comets) continue;
 
-            std::string dispname = cels[i]->name;
-            if (cls == class_star && ((Star*)cels[i])->local_name.size()) dispname = ((Star*)cels[i])->local_name;
+            std::string dispname = cel->name;
+            if (s && s->local_name.size()) dispname = s->local_name;
 
             std::string line = dispname.substr(0, 20);
             l = 36 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->orbit && cels[i]->orbit->center)
+            if (cel->orbit && cel->orbit->center)
             {
-                std::string cenname = cels[i]->orbit->center->name;
-                if (cels[i]->orbit->center->typeclass() == class_star && ((Star*)cels[i]->orbit->center)->local_name.size())
-                    cenname = ((Star*)cels[i]->orbit->center)->local_name;
+                std::string cenname = cel->orbit->center->name;
+                if (cel->orbit->center->typeclass() == class_star && ((Star*)cel->orbit->center)->local_name.size())
+                    cenname = ((Star*)cel->orbit->center)->local_name;
                 line += cenname.substr(0, 18);
             }
             else line += std::string("-");
 
             if (xplorlen && !strcasestr(line.c_str(), xplorfor)) continue;
-            list_item_celids.push_back(i);
+            list_item_celids.push_back(cel->seqno);
 
             l = 70 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->orbit && cels[i]->orbit->period)
+            if (cel->orbit && cel->orbit->period)
             {
                 stringstream pss;
-                pss << setprecision(7) << (cels[i]->orbit->period/oneday);
+                pss << setprecision(7) << (cel->orbit->period/oneday);
                 line += pss.str();
             }
             else line += std::string("-");
@@ -2326,9 +2428,9 @@ void draw_system_explorer(ImGuiIO& io)
             l = 86 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->mass)
+            if (cel->mass)
             {
-                double f = cels[i]->mass / earth_mass;
+                double f = cel->mass / earth_mass;
                 stringstream mss;
                 mss << (f >= 0.1 ? std::fixed : std::scientific) << setprecision(3) << f;
                 line += mss.str();
@@ -2338,10 +2440,10 @@ void draw_system_explorer(ImGuiIO& io)
             l = 105 - line.size();
             if (l > 0) line += std::string(l, ' ');
 
-            if (cels[i]->orbit && cels[i]->orbit->period)
+            if (cel->orbit && cel->orbit->period)
             {
-                cel_obj_class cls = cels[i]->typeclass();
-                if ((cls == class_planet || cls == class_moon) && ((Planet*)cels[i])->is_in_con_HZ())
+                cel_obj_class cls = cel->typeclass();
+                if ((cls == class_planet || cls == class_moon) && ((Planet*)cel)->is_in_con_HZ())
                     line += "Y";
                 else line += std::string("");
             }
@@ -2349,7 +2451,10 @@ void draw_system_explorer(ImGuiIO& io)
 
             ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.c_str(), is_selected, flags))
+            {
                 item_selected_idx = j;
+                if (view_mode == vm_system) selected = list_item_celids[item_selected_idx];
+            }
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
             if (is_selected)
@@ -2388,6 +2493,8 @@ void draw_system_explorer(ImGuiIO& io)
         if (celidx_sel_in_sysxplor >= 0)
         {
             whereami = celidx_sel_in_sysxplor;
+            if (view_mode == vm_system) view_mode = vm_spaceship;
+            viewer_locale = "";
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
@@ -2428,12 +2535,13 @@ void draw_system_explorer(ImGuiIO& io)
                 /*int n = round(frand(0.1, 1) * C);*/
 
                 double P = 0;
+                int j=1;
                 for (i=0; i<20; i++)
                 {
                     Moon *m = new Moon();
-                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(i+1);
+                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
                     strcpy(m->name, mname.c_str());
-                    m->namelen = 0;
+                    m->namelen = strlen(m->name);
                     m->user_added = true;
                     m->user_edited = true;
                     m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;
@@ -2443,7 +2551,6 @@ void draw_system_explorer(ImGuiIO& io)
                     m->cenobj = cel->cenobj;
                     m->epoch = J2000;
                     m->equinox = frand(0, _pi*2);
-                    m->obliquity = pow(frand(0, 1), 10) * half_pi;
                     m->major_moon = true;
                     m->orbit = new Orbit();
                     m->orbit->center = cel;
@@ -2451,19 +2558,26 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->ascending_node = frand(0, _pi*2);
                     m->orbit->eccentricity = pow(frand(0, 0.1), 10);
                     m->orbit->epoch = J2000;
-                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi; if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
                     m->orbit->mean_anomaly = frand(0, _pi*2);
                     if (!P)
                     {
+                        // First fictional moon of the planet. Base the SMA off the Roche limit.
                         double A = cel->Roche_limit(m) * (1.1 + pow(frand(0,1), 4) * 20);
                         m->orbit->semimajor_axis = A;
                         m->orbit->compute_period(m->mass);
                     }
                     else
                     {
+                        // Base the SMA off the previous moon.
                         m->orbit->period = frand(1.8, 2.2) * P;
                         m->orbit->compute_semimajor_axis(m->mass);
                     }
+
+                    double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
+                    double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
+                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
+                    if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
+                    m->obliquity = pow(frand(0, 1), 10) * half_pi * tidal_modifier;
 
                     if (frand(0,1) > D)
                     {
@@ -2486,6 +2600,7 @@ void draw_system_explorer(ImGuiIO& io)
                     m->classify();
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
+                    m->apply_cosmic_shoreline();
 
                     if (!append_cel(m))
                     {
@@ -2493,6 +2608,7 @@ void draw_system_explorer(ImGuiIO& io)
                         break;
                     }
                     P = m->orbit->period;
+                    j++;
                 }
             }
         }
@@ -2501,6 +2617,11 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Add Satellite...##explored"))
     {
         process_key_cmd_char('^');
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Visualize (Ctrl+V)##explored"))
+    {
+        process_key_cmd_ctrl_char('V');
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
@@ -2652,6 +2773,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         if (neighb_celids[item_selected_idx] >= 0)
         {
             whereami = neighb_celids[item_selected_idx];
+            viewer_locale = "";
             set_viewer_location_and_plane();
             selected = trackidx = -1;
             global_brightness = default_brightness;
@@ -2877,6 +2999,7 @@ void draw_ast_window(ImGuiIO & io)
             if (ImGui::Button("Go##asteroid"))
             {
                 whereami = astorb[i].cel->seqno;
+                viewer_locale = "";
                 viewchanged = true;
             }
         }
@@ -2934,7 +3057,7 @@ void draw_sat_window(ImGuiIO& io)
         i=0;
         if (updating_sats)
         {
-            ImGui::Selectable("Please wait...", false, flags);
+            ImGui::Selectable("Contacting CelesTrak for satellite data; please wait...", false, flags);
         }
         else for (n=0; n<nsats; n++)
         {
@@ -3242,6 +3365,7 @@ void draw_comet_window(ImGuiIO & io)
             if (ImGui::Button("Go##comet"))
             {
                 whereami = comets[i].cel->seqno;
+                viewer_locale = "";
                 viewchanged = true;
             }
         }

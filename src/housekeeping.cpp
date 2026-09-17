@@ -99,7 +99,11 @@ void set_viewer_location_and_plane()
         }
     }
 
-    if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
+    if (view_mode == vm_system)
+    {
+        if (mycenobj) here = mycenobj->location;
+    }
+    else if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
     {
         // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
         // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;
@@ -369,6 +373,29 @@ void compute_object_draw_coordinates()
     {
         here.system_center = mycenobj->location.system_center;
         here.galactic_center = mycenobj->location.galactic_center;
+
+        static CelestialObject *llmycen = nullptr;
+        if (llmycen != mycenobj)
+        {
+            lsyscache.clear();
+            llmycen = mycenobj;
+        }
+        if ((explorer || view_mode == vm_system) && !lsyscache.size())
+        {
+            for (i=0; cels[i]; i++)
+            {
+                if (cels[i]->cenobj != mycenobj) continue;
+                lsyscache.push_back(cels[i]);
+            }
+
+            std::sort(lsyscache.begin(), lsyscache.end(), [](const CelestialObject* a, const CelestialObject* b)
+            {
+                if (!a) return b != nullptr; 
+                if (!b) return false;
+                
+                return *a < *b;
+            });
+        }
     }
 
     set_viewer_location_and_plane();
@@ -376,6 +403,8 @@ void compute_object_draw_coordinates()
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
+
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     luminous_flux = cels[1] ? 0 : 1e10;
     inside_galaxy_idx = -1;
@@ -397,7 +426,7 @@ void compute_object_draw_coordinates()
                 inside_galaxy_idx = i;
         }
 
-        if (i == whereami) continue;
+        if ((i == whereami) && (view_mode != vm_system)) continue;
         
         // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
         // a star out of its visible box would.
@@ -447,7 +476,7 @@ void compute_object_draw_coordinates()
 
         if (view_mode == vm_horizon)
         {
-            rel = refract_true_point(rel);
+            if (airy_rock) rel = refract_true_point(rel);
 
             if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
             {
@@ -480,7 +509,7 @@ void compute_object_draw_coordinates()
                         }
                     }
 
-                    if (!isnan(add_flux) && !isinf(add_flux)) luminous_flux += add_flux;
+                    if (!isnan(add_flux) && !isinf(add_flux) && cels[i]->type != artificial) luminous_flux += add_flux;
                 }
             }
         }
@@ -560,7 +589,7 @@ void set_center_objects()
                             if (!current.size() || current == base)
                             {
                                 strcpy(s->name, (base + std::string(" ") + std::string(1, comp)).c_str());
-                                s->namelen = 0;
+                                s->namelen = strlen(s->name);
                             }
                         }
                     }

@@ -15,7 +15,7 @@ namespace alienorum
     {
         public:
         static bool save_all(std::fstream& fs, CelestialObject **cels, bool only_edited = false);
-        static bool load_all(std::fstream& fs, CelestialObject **cels, unsigned int max);
+        static bool load_all(std::fstream& fs, CelestialObject **cels, unsigned int max, bool as_user_added = true);
     };
 }
 

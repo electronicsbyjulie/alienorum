@@ -63,6 +63,7 @@ using json = nlohmann::json;
 #define giant_mass_cutoff (127.0 * earth_mass)
 #define rocky_density_cutoff 3.0
 #define giant_density_cutoff 1.8
+#define waterworld_min_density 1.0
 #define icy_T_cutoff 200
 #define lava_T_cutoff 1300
 
@@ -168,7 +169,8 @@ enum ViewMode
     vm_horizon = 1,
     vm_sunclock = 2,
     vm_skymap = 3,
-    vm_model = 4                // Not implemented yet.
+    vm_system = 4,
+    vm_model = 5                // Not implemented yet.
 };
 
 #define NUM_VPLANES 4
@@ -192,6 +194,10 @@ enum DST_Rule
     dst_au,
     dst_nz
 };
+
+
+#define debug_planet_class_color 0
+
 
 extern double magnbase, invlogmagnbase;
 extern std::string Greek_letter[24];
@@ -227,6 +233,8 @@ bool extract_archive(const char *filename);
 
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);
+
+std::string squeeze_spaces(const char *s);
 
 // For orbits. Three conics, three equations: an ellipse closes and has a mean anomaly that runs
 // round and round, while a comet on a parabola or a hyperbola passes once and never returns, so
@@ -279,19 +287,20 @@ extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, ob
     tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat, inside_galaxy_idx;
 extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
     neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz, viewer_home_tz, viewer_gamma, dev_dial, dev_dial_step;
-extern bool done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
+extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing,
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
-    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence;
+    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames;
 extern std::atomic<bool> abort_load;
+extern std::atomic<bool> load_completed;
 extern std::atomic<int> texture_loads_pending;
 extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern float has_water, veg_min_temp, veg_max_temp;
-extern int menu_ht, vegetation_r, vegetation_g, vegetation_b;
+extern int wkday, menu_ht, cbo_edt_units, npointedstar, vegetation_r, vegetation_g, vegetation_b;
 extern const char* compass[16];
 extern PerlinNoise pn;
 

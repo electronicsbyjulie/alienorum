@@ -39,7 +39,7 @@ namespace alienorum
     {
         // Quad corners, NDC.
         float ndc_x0, ndc_y0, ndc_x1, ndc_y1;
-        // "ray xy" (X/Z, Y/Z, i.e. zdes/zoom) at each of the 4 corners, in the same order as
+        // "ray xy" (X/Z, Y/Z, i.e. zdes/lzoom) at each of the 4 corners, in the same order as
         // the NDC corners above -- these interpolate exactly across the quad because they're
         // computed directly from (and proportional to, modulo the fixed dispcx/dispcy affine
         // map) the screen position itself, so no perspective-correction subtlety applies; the
@@ -319,6 +319,64 @@ namespace alienorum
         "    }\n"
         "    return c;\n"
         "}\n"
+        "void calc_shadow(vec3 pos, out float shadow, out float umbraAmt, out vec3 umbraTint)\n"
+        "{\n"
+        "    shadow = 1.0;\n"
+        "    umbraAmt = 0.0;\n"
+        "    umbraTint = vec3(0.0);\n"
+        "    if (uRing[1].x > 0.0)\n"
+        "    {\n"
+        "        vec3 ringN = uRing[0].xyz;\n"
+        "        float denom = dot(ringN, vLightDir);\n"
+        "        if (abs(denom) > 1e-9)\n"
+        "        {\n"
+        "            float s = -dot(ringN, pos) / denom;\n"
+        "            if (s > 0.0)\n"
+        "            {\n"
+        "                float rr = length(pos + vLightDir*s);\n"
+        "                if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
+        "                {\n"
+        "                    float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
+        "                    float opacity = (uRing[1].y > 0.5)\n"
+        "                        ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
+        "                        : 0.5;\n"
+        "                    shadow *= 1.0 - pow(opacity, RING_SHADOW_DENSITY);\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    float eclipsed = 1.0;\n"
+        "    if (vBumpLimb.w > 0.0)\n"
+        "    {\n"
+        "        for (int i = 0; i < 4; i++)\n"
+        "        {\n"
+        "            vec4 caster = uCasters[i];\n"
+        "            if (caster.w <= 0.0)\n"
+        "            {\n"
+        "                continue;\n"
+        "            }\n"
+        "            vec3 toCaster = caster.xyz - pos;\n"
+        "            float dist = length(toCaster);\n"
+        "            if (dist <= caster.w)\n"
+        "            {\n"
+        "                eclipsed = 0.0;\n"
+        "                break;\n"
+        "            }\n"
+        "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
+        "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
+        "            float cover = disc_overlap(vBumpLimb.w, casterAng, sep);\n"
+        "            float refracted = cover * uCasterAtm[i].w * UMBRA_REFRACTION;\n"
+        "            if (refracted > umbraAmt)\n"
+        "            {\n"
+        "                umbraAmt = refracted;\n"
+        "                umbraTint = uCasterAtm[i].xyz;\n"
+        "            }\n"
+        "            eclipsed = min(eclipsed, 1.0 - cover);\n"
+        "        }\n"
+        "    }\n"
+        "    shadow *= eclipsed;\n"
+        "}\n"
         "void main()\n"
         "{\n"
         "    vec3 dir = vec3(vRayXY.x, -vRayXY.y, 1.0);\n"
@@ -374,7 +432,9 @@ namespace alienorum
         "    float b = sqrt(d2);\n"
         "    float atmRel = uAtm[0].w;\n"
         "    float atmR = 1.0 + atmRel;\n"
-        "    bool solid = (d2 <= 1.0);\n"
+        "    float delta = max(fwidth(b), 1e-6);\n"
+        "    float solidCoverage = clamp((1.0 - b) / delta + 0.5, 0.0, 1.0);\n"
+        "    bool solid = (solidCoverage > 0.0);\n"
         "    bool inAir = (atmRel > 0.0 && b < atmR && tca > 0.0 && vFlags.x < 0.5);\n"
         "    if (!solid && !inAir) discard;\n"
         "\n"
@@ -424,14 +484,28 @@ namespace alienorum
         "        float hs = max(atmRel*0.25, 1e-9);\n"
         "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
         "        vec3 airLocal = -perp * vRadii;\n"
-        "        vec3 airN = normalize(vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal)));\n"
+        "        vec3 airPos = vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal));\n"
+        "        vec3 airN = normalize(airPos);\n"
         "        float sunElev = dot(airN, vLightDir);\n"
         "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
-        "        FragColor = vec4(finish_color(air_tint(sunElev, phase)), airAmt*vColor.a);\n"
+        "        float airShadow = (sunElev > -0.35) ? 1.0 : 0.0;\n"
+        "        float airUmbraAmt = 0.0;\n"
+        "        vec3 airUmbraTint = vec3(0.0);\n"
+        "        if (vFlags.x < 0.5 && sunElev > -0.35 && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "        {\n"
+        "            calc_shadow(airPos, airShadow, airUmbraAmt, airUmbraTint);\n"
+        "        }\n"
+        "        float airIllum = airShadow + airUmbraAmt;\n"
+        "        airAmt *= airIllum;\n"
+        "        vec3 airCol = (airIllum > 1e-6)\n"
+        "            ? (air_tint(sunElev, phase) * airShadow + airUmbraTint * airUmbraAmt) / airIllum\n"
+        "            : vec3(0.0);\n"
+        "        FragColor = vec4(finish_color(airCol), airAmt*vColor.a);\n"
         "        return;\n"
         "    }\n"
         "\n"
-        "    float thc = sqrt(1.0 - d2);\n"
+        "    float d2Clamped = min(d2, 1.0);\n"
+        "    float thc = sqrt(max(0.0, 1.0 - d2Clamped));\n"
         "    float t = (tca - thc) / DlocLen;\n"
         "    if (t < 0.0) discard;\n"
         "    vec3 hit = dir * t;\n"
@@ -559,91 +633,11 @@ namespace alienorum
         "    float shadow = 1.0;\n"
         "    float umbraAmt = 0.0;\n"
         "    vec3 umbraTint = vec3(0.0);\n"
-        "    if (vFlags.x < 0.5 && mu > 0.0)\n"
+        "    if (vFlags.x < 0.5 && (mu > 0.0 || (atmRel > 0.0 && costerm > -0.05)) && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
         "    {\n"
         "        vec3 surfLocal = hitLocal * vRadii;\n"
         "        vec3 surf = vec3(dot(vBasisX, surfLocal), dot(vBasisY, surfLocal), dot(basisZ, surfLocal));\n"
-        "\n"
-        // The planet's own rings, shadowing it: leave this surface point towards the light and
-        // see whether the trip crosses the ring plane while still inside the annulus. The plane
-        // passes through the planet's center, which is the origin of `surf`'s own frame, so the
-        // crossing point's distance from the origin *is* its ring radius -- no projection, and
-        // s > 0 restricts it to a crossing between the surface and the light, which is
-        // what confines the shadow to the hemisphere on the far side of the ring plane from the
-        // sun, exactly as it does on the real Saturn.
-        //
-        // Opacity comes from the same texture and the same curve the ring impostor shades the
-        // rings themselves with, so a ring's shadow is always as dense as the ring casting it:
-        // the Cassini division lets light through onto the cloud tops as a bright line inside
-        // the dark band, and a gossamer outer ring barely marks the planet at all.
-        "        if (uRing[1].x > 0.0)\n"
-        "        {\n"
-        "            vec3 ringN = uRing[0].xyz;\n"
-        "            float denom = dot(ringN, vLightDir);\n"
-        "            if (abs(denom) > 1e-9)\n"
-        "            {\n"
-        "                float s = -dot(ringN, surf) / denom;\n"
-        "                if (s > 0.0)\n"
-        "                {\n"
-        "                    float rr = length(surf + vLightDir*s);\n"
-        "                    if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
-        "                    {\n"
-        "                        float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
-        "                        float opacity = (uRing[1].y > 0.5)\n"
-        "                            ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
-        "                            : 0.5;\n"
-        "                        shadow *= 1.0 - pow(opacity, RING_SHADOW_DENSITY);\n"
-        "                    }\n"
-        "                }\n"
-        "            }\n"
-        "        }\n"
-        "\n"
-        // Multiplied against any eclipse shadow below rather than min()'d with it, unlike two
-        // eclipse casters against each other: a ring and a moon hide unrelated parts of the
-        // star's disc, so their transmissions genuinely compound, where two moons' shadows
-        // would overlap on the same part of it.
-        //
-        // The ring's shadow edge is hard here, while a real one is softened over the star's own
-        // angular size the way an eclipse penumbra is -- roughly a thousand kilometers of blur
-        // at Saturn, against a shadow band tens of thousands wide. The ring opacity's own radial
-        // gradient covers for it nearly everywhere; the sharpness only really shows at a clean
-        // ring edge.
-        "        float eclipsed = 1.0;\n"
-        "        if (vBumpLimb.w > 0.0)\n"
-        "        for (int i = 0; i < 4; i++)\n"
-        "        {\n"
-        "            vec4 caster = uCasters[i];\n"
-        "            if (caster.w <= 0.0) continue;\n"
-        "            vec3 toCaster = caster.xyz - surf;\n"
-        "            float dist = length(toCaster);\n"
-        "            if (dist <= caster.w) { eclipsed = 0.0; break; }\n"   // surface point inside the caster
-        "            float casterAng = asin(clamp(caster.w / dist, 0.0, 1.0));\n"
-        "            float sep = acos(clamp(dot(toCaster / dist, vLightDir), -1.0, 1.0));\n"
-        // What a body with an atmosphere lets into its own shadow. Standing in the umbra of an
-        // airless caster you would see the star cleanly hidden behind a black disc; standing in
-        // the umbra of one with air, that disc is ringed by a thin band of its atmosphere lit
-        // from behind -- every sunrise and sunset on that world at once -- and the light bent
-        // inwards from that ring is what falls on you. It is red because that is the only part
-        // of it that survives a path that long through air, which is why the totally eclipsed
-        // Moon turns copper instead of going out, and why an eclipsed moon of an airless world
-        // would simply vanish.
-        //
-        // Scaled by the same coverage the shadow itself uses, so it arrives exactly as the
-        // direct light leaves, and it is at its strongest where the star is most completely
-        // hidden. Tracked as the deepest single contribution rather than a sum, matching how
-        // `eclipsed` itself combines casters just below.
-        "            float cover = disc_overlap(vBumpLimb.w, casterAng, sep);\n"
-        "            float refracted = cover * uCasterAtm[i].w * UMBRA_REFRACTION;\n"
-        "            if (refracted > umbraAmt) { umbraAmt = refracted; umbraTint = uCasterAtm[i].xyz; }\n"
-        // min(), not a product: two casters overlapping the same patch of sky hide overlapping
-        // parts of the same disc, so multiplying their two fractions would darken the overlap
-        // twice over. Taking the deepest of them is exact whenever one caster's silhouette
-        // contains the other's and a slight under-estimate otherwise -- and the "otherwise" is
-        // two bodies eclipsing the same point of the same third body simultaneously, which is
-        // not a thing anyone will be waiting to see.
-        "            eclipsed = min(eclipsed, 1.0 - cover);\n"
-        "        }\n"
-        "        shadow *= eclipsed;\n"
+        "        calc_shadow(surf, shadow, umbraAmt, umbraTint);\n"
         "    }\n"
         // A self-luminous body gets a real quadratic limb-darkening law, whose coefficients come
         // from the star's own T_eff and log g (Star::limb_darkening_coefficients). The fixed
@@ -657,12 +651,10 @@ namespace alienorum
         "        float om = 1.0 - mu;\n"
         "        isDay = clamp(1.0 - vBumpLimb.y*om - vBumpLimb.z*om*om, 0.0, 1.0);\n"
         "    }\n"
-        // The shadow scales the *direct* light only, leaving vFlags.y (the ambient night floor)
-        // alone: an eclipsed patch of ground falls to exactly the brightness the object's own
-        // night side has, which is what it physically is -- night, arriving early and leaving in
-        // the wrong direction. On a body with a night map that also means its city lights come up
-        // inside the umbra, for free, through the same isDay blend the terminator already uses.
-        "    else isDay = clamp(pow(mu, 1.0/3.0)*shadow + vFlags.y, 0.0, 1.0);\n"
+        "    else\n"
+        "    {\n"
+        "        isDay = clamp(pow(mu, 1.0/3.0)*shadow + vFlags.y, 0.0, 1.0);\n"
+        "    }\n"
         "\n"
         // albedo kept separate from baseColor -- the surface's own color, before the light
         // source's white-balance tint is multiplied in. Direct sunlight gets that tint (it *is*
@@ -707,9 +699,42 @@ namespace alienorum
         "        ? clamp((hazePath/maxpath) * (1.0 - cosView) * ATM_GLOW, 0.0, 1.0)\n"
         "            * smoothstep(-0.05, 0.35, groundSun)\n"
         "        : 0.0;\n"
-        "    outColor += air_tint(groundSun, phase) * haze;\n"
+        "    outColor += (air_tint(groundSun, phase) * shadow + umbraAmt * umbraTint) * haze;\n"
         "\n"
-        "    FragColor = vec4(finish_color(outColor), vColor.a);\n"
+        "    vec3 surfColor = finish_color(outColor);\n"
+        "    if (inAir && solidCoverage < 1.0)\n"
+        "    {\n"
+        "        float alt = max(0.0, b - 1.0);\n"
+        "        float hs = max(atmRel*0.25, 1e-9);\n"
+        "        float airAmt = clamp((2.0*sqrt(max(0.0, atmR*atmR - d2))/maxpath) * exp(-alt/hs) * ATM_GLOW, 0.0, 1.0);\n"
+        "        vec3 airLocal = -perp * vRadii;\n"
+        "        vec3 airPos = vec3(dot(vBasisX, airLocal), dot(vBasisY, airLocal), dot(basisZ, airLocal));\n"
+        "        vec3 airN = normalize(airPos);\n"
+        "        float sunElev = dot(airN, vLightDir);\n"
+        "        airAmt *= smoothstep(-0.35, 0.25, sunElev);\n"
+        "        float airShadow = (sunElev > -0.35) ? 1.0 : 0.0;\n"
+        "        float airUmbraAmt = 0.0;\n"
+        "        vec3 airUmbraTint = vec3(0.0);\n"
+        "        if (vFlags.x < 0.5 && sunElev > -0.35 && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "        {\n"
+        "            calc_shadow(airPos, airShadow, airUmbraAmt, airUmbraTint);\n"
+        "        }\n"
+        "        float airIllum = airShadow + airUmbraAmt;\n"
+        "        airAmt *= airIllum;\n"
+        "        vec3 airCol = (airIllum > 1e-6)\n"
+        "            ? (air_tint(sunElev, phase) * airShadow + airUmbraTint * airUmbraAmt) / airIllum\n"
+        "            : vec3(0.0);\n"
+        "        vec3 airColor = finish_color(airCol);\n"
+        "        float totalAlpha = mix(airAmt, 1.0, solidCoverage);\n"
+        "        vec3 edgeColor = (totalAlpha > 1e-6)\n"
+        "            ? (solidCoverage * surfColor + (1.0 - solidCoverage) * airAmt * airColor) / totalAlpha\n"
+        "            : surfColor;\n"
+        "        FragColor = vec4(edgeColor, totalAlpha * vColor.a);\n"
+        "    }\n"
+        "    else\n"
+        "    {\n"
+        "        FragColor = vec4(surfColor, solidCoverage * vColor.a);\n"
+        "    }\n"
         "}\n";
 
     static GLuint compile_shader(GLenum type, const char *src)
@@ -956,20 +981,20 @@ namespace alienorum
     // Y/Z ratios) -- it exists purely to avoid literal inf/NaN reaching the arithmetic below,
     // not to define how far offscreen the resulting quad edge ends up. That's what the
     // screen-relative clamp in queue_sphere_impostor is for; a raw slope this large, run
-    // through *zoom and the pixel/NDC conversion, would otherwise land at NDC coordinates in
+    // through *lzoom and the pixel/NDC conversion, would otherwise land at NDC coordinates in
     // the thousands, which is large enough to trip GPU clipping/rasterization guard-band
     // limits on some implementations and get the whole primitive culled instead of clipped
     // (this was bug: Jupiter disappearing from Adrastea/Metis whenever enough of it was
     // offscreen to require this fallback).
-    static void tangent_bounds(double u, double w, double r, double zoom, bool flip_sign,
+    static void tangent_bounds(double u, double w, double r, double lzoom, bool flip_sign,
         double *out_min, double *out_max)
     {
         double L = sqrt(u*u + w*w);
         const double kFiniteBound = 1e4;
         if (L < 1e-6)   // object dead-on along the axis this slice ignores (e.g. straight up)
         {
-            *out_min = -kFiniteBound * zoom;
-            *out_max = kFiniteBound * zoom;
+            *out_min = -kFiniteBound * lzoom;
+            *out_max = kFiniteBound * lzoom;
             return;
         }
         // r >= L here means the camera sits inside this axis-pair's shadow of the sphere --
@@ -990,8 +1015,8 @@ namespace alienorum
         // entirely rather than trying to patch its sign heuristic.
         if (r >= L)
         {
-            *out_min = -kFiniteBound * zoom;
-            *out_max = kFiniteBound * zoom;
+            *out_min = -kFiniteBound * lzoom;
+            *out_max = kFiniteBound * lzoom;
             return;
         }
         double alpha = asin(std::min(1.0, r / L));
@@ -1004,7 +1029,7 @@ namespace alienorum
             double c = cos(alpha);
             double tu = cu*c - cw*s;
             double tw = cu*s + cw*c;
-            double v = (tw > 1e-6) ? (tu / tw) * zoom : (tu >= 0 ? kFiniteBound : -kFiniteBound) * zoom;
+            double v = (tw > 1e-6) ? (tu / tw) * lzoom : (tu >= 0 ? kFiniteBound : -kFiniteBound) * lzoom;
             if (flip_sign) v = -v;
             vals[i] = v;
         }
@@ -1012,12 +1037,12 @@ namespace alienorum
         *out_max = std::max(vals[0], vals[1]);
     }
 
-    bool queue_sphere_impostor(const SphereImpostorInput &in, double zoom,
-        double dispcx, double dispcy,
+    bool queue_sphere_impostor(const SphereImpostorInput &in, double lzoom,
+        double dispcx, double dispcy, double scalex,
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax)
     {
         double cx = in.cx, cy = in.cy, cz = in.cz, r = in.r;
-        if (r <= 0 || zoom <= 0) return false;
+        if (r <= 0 || lzoom <= 0) return false;
         if (in.axis_x <= 0 || in.axis_y <= 0 || in.axis_z <= 0) return false;   // shader divides by each
         if (cx*cx + cy*cy + cz*cz <= r*r) return false;   // camera genuinely inside the sphere
 
@@ -1028,18 +1053,23 @@ namespace alienorum
         // returned bounding box all still describe the solid body.
         double mean_r = (in.axis_x + in.axis_y + in.axis_z) / 3.0;
         double atm_h = (in.atmosphere_height > 0 && mean_r > 0) ? in.atmosphere_height : 0.0;
-        double quad_r = r + atm_h;
+        double d_center = sqrt(cx*cx + cy*cy + cz*cz);
+        double pixel_pad = (lzoom * scalex > 0 && d_center > 0) ? 2.0 * d_center / (lzoom * scalex) : 0.0;
+        double quad_r = r + atm_h + pixel_pad;
 
-        double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
-        tangent_bounds(cx, cz, quad_r, zoom, false, &zdesXmin, &zdesXmax);
-        tangent_bounds(cy, cz, quad_r, zoom, true,  &zdesYmin, &zdesYmax);   // Cartesian2D negates Y
+        double zdesXmin=0, zdesXmax=0, zdesYmin=0, zdesYmax=0;
+        // std::cout << cx << "," << cy << "," << cz << " @ " << quad_r << " * " << lzoom << std::endl;
+        tangent_bounds(cx, cz, quad_r, lzoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, quad_r, lzoom, true,  &zdesYmin, &zdesYmax);   // Cartesian2D negates Y
+        // std::cout << zdesXmin << "," << zdesYmin << " ~ " << zdesXmax << "," << zdesYmax << std::endl;
 
-        double xmin = dispcx + zdesXmin * dispcx, xmax = dispcx + zdesXmax * dispcx;
-        double ymin = dispcy + zdesYmin * dispcx, ymax = dispcy + zdesYmax * dispcx;
+        double xmin = dispcx + zdesXmin * scalex, xmax = dispcx + zdesXmax * scalex;
+        double ymin = dispcy + zdesYmin * scalex, ymax = dispcy + zdesYmax * scalex;
 
         ImGuiIO &io = ImGui::GetIO();
         float W = io.DisplaySize.x, H = io.DisplaySize.y;
         if (W <= 0 || H <= 0) return false;
+        // float W2 = W*0.5, H2 = H*0.5;
 
         // Clamp the final pixel bounds to a generous but screen-relative margin. Anything past
         // this is invisible regardless of the "true" tangent-line answer, so clamping here
@@ -1054,8 +1084,8 @@ namespace alienorum
         // consistent with its actual screen position -- otherwise the fragment shader's
         // per-pixel interpolation of ray direction across the quad would be wrong wherever
         // clamping actually changed a corner.
-        zdesXmin = (xmin - dispcx) / dispcx; zdesXmax = (xmax - dispcx) / dispcx;
-        zdesYmin = (ymin - dispcy) / dispcx; zdesYmax = (ymax - dispcy) / dispcx;
+        zdesXmin = (xmin - dispcx) / scalex; zdesXmax = (xmax - dispcx) / scalex;
+        zdesYmin = (ymin - dispcy) / scalex; zdesYmax = (ymax - dispcy) / scalex;
 
         if (out_xmin) *out_xmin = xmin;
         if (out_ymin) *out_ymin = ymin;
@@ -1074,14 +1104,14 @@ namespace alienorum
 
         // Corner order matches render_sphere_impostor(): (x0,y0) (x1,y0) (x1,y1) (x0,y1), i.e.
         // (xmin,ymax) (xmax,ymax) (xmax,ymin) (xmin,ymin) in screen pixel terms once the Y flip
-        // above is accounted for -- each corner's ray direction is just its own zdes/zoom.
+        // above is accounted for -- each corner's ray direction is just its own zdes/lzoom.
         double cornerZdesX[4] = {zdesXmin, zdesXmax, zdesXmax, zdesXmin};
         double cornerZdesY[4] = {zdesYmax, zdesYmax, zdesYmin, zdesYmin};
         double cornerScreenY[4] = {ymax, ymax, ymin, ymin};
         for (int i = 0; i < 4; i++)
         {
-            p->rayxy[i][0] = (float)(cornerZdesX[i] / zoom);
-            p->rayxy[i][1] = (float)(cornerZdesY[i] / zoom);
+            p->rayxy[i][0] = (float)(cornerZdesX[i] / lzoom);
+            p->rayxy[i][1] = (float)(cornerZdesY[i] / lzoom);
             p->screeny[i] = (float)cornerScreenY[i];
         }
 
@@ -1327,7 +1357,9 @@ namespace alienorum
         "    vec3 p = dirN * s;\n"
         "    vec3 rel = p - vCenter;\n"
         "    float ringDist = length(rel);\n"
-        "    if (ringDist < vRhoInner || ringDist > vRhoOuter) discard;\n"
+        "    float dR = max(fwidth(ringDist), 1e-6);\n"
+        "    float ringCoverage = clamp(min((ringDist - vRhoInner) / dR, (vRhoOuter - ringDist) / dR) + 0.5, 0.0, 1.0);\n"
+        "    if (ringCoverage <= 0.0) discard;\n"
         "\n"
         "    vec3 dirS = dirN + vNormal * (dot(dirN, vNormal) * (vInvFlatten - 1.0));\n"
         "    vec3 cenS = vCenter + vNormal * (dot(vCenter, vNormal) * (vInvFlatten - 1.0));\n"
@@ -1336,11 +1368,21 @@ namespace alienorum
         "    float tca = dot(cenS, dirSN);\n"
         "    vec3 perp = cenS - dirSN * tca;\n"
         "    float d2 = dot(perp, perp);\n"
-        "    if (vRhoInner < 0.999 && d2 < vRhoInner*vRhoInner)\n"
+        "    if (vRhoInner < 0.999)\n"
         "    {\n"
-        "        float thc = sqrt(vRhoInner*vRhoInner - d2);\n"
-        "        float tSphereNear = (tca - thc) / dirSLen;\n"
-        "        if (tSphereNear > 0.0 && tSphereNear < s) discard;\n"
+        "        float dPlanet = sqrt(max(0.0, d2));\n"
+        "        float dP = max(fwidth(dPlanet), 1e-6);\n"
+        "        float unoccluded = clamp((dPlanet - vRhoInner) / dP + 0.5, 0.0, 1.0);\n"
+        "        if (unoccluded < 1.0)\n"
+        "        {\n"
+        "            float thc = sqrt(max(0.0, vRhoInner*vRhoInner - min(d2, vRhoInner*vRhoInner)));\n"
+        "            float tSphereNear = (tca - thc) / dirSLen;\n"
+        "            if (tSphereNear > 0.0 && tSphereNear < s)\n"
+        "            {\n"
+        "                if (unoccluded <= 0.0) discard;\n"
+        "                ringCoverage *= unoccluded;\n"
+        "            }\n"
+        "        }\n"
         "    }\n"
         "\n"
         "    // Radial fraction across the ring width: 0 at the inner edge (immediately\n"
@@ -1370,7 +1412,7 @@ namespace alienorum
         // strictly monotonic -- brighter overall, same relative density ordering preserved
         // (thin stays visibly thinner than dense, it's just that "dense" now actually reads as
         // dense instead of merely translucent).
-        "    opacity = pow(opacity, 0.4);\n"
+        "    opacity = pow(opacity, 0.4) * ringCoverage;\n"
         "\n"
         "    float isDay;\n"
         "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
@@ -1453,7 +1495,9 @@ namespace alienorum
         "    dvec3 p = dirN * s;\n"
         "    dvec3 rel = p - cen;\n"
         "    double ringDist = length(rel);\n"
-        "    if (ringDist < rhoInner || ringDist > rhoOuter) discard;\n"
+        "    float dR = max(fwidth(float(ringDist)), 1e-6);\n"
+        "    float ringCoverage = clamp(min(float(ringDist - rhoInner) / dR, float(rhoOuter - ringDist) / dR) + 0.5, 0.0, 1.0);\n"
+        "    if (ringCoverage <= 0.0) discard;\n"
         "\n"
         "    // See the float shader's identical comment: skipped near vRhoInner==1 (camera\n"
         "    // essentially on the occluder's own surface -- horizon mode) where this test is\n"
@@ -1470,11 +1514,21 @@ namespace alienorum
         "    double tca = dot(cenS, dirSN);\n"
         "    dvec3 perp = cenS - dirSN * tca;\n"
         "    double d2 = dot(perp, perp);\n"
-        "    if (rhoInner < 0.999lf && d2 < rhoInner*rhoInner)\n"
+        "    if (rhoInner < 0.999lf)\n"
         "    {\n"
-        "        double thc = sqrt(rhoInner*rhoInner - d2);\n"
-        "        double tSphereNear = (tca - thc) / dirSLen;\n"
-        "        if (tSphereNear > 0.0lf && tSphereNear < s) discard;\n"
+        "        float dPlanet = float(sqrt(max(0.0lf, d2)));\n"
+        "        float dP = max(fwidth(dPlanet), 1e-6);\n"
+        "        float unoccluded = clamp((dPlanet - float(rhoInner)) / dP + 0.5, 0.0, 1.0);\n"
+        "        if (unoccluded < 1.0)\n"
+        "        {\n"
+        "            double thc = sqrt(max(0.0lf, rhoInner*rhoInner - min(d2, rhoInner*rhoInner)));\n"
+        "            double tSphereNear = (tca - thc) / dirSLen;\n"
+        "            if (tSphereNear > 0.0lf && tSphereNear < s)\n"
+        "            {\n"
+        "                if (unoccluded <= 0.0) discard;\n"
+        "                ringCoverage *= unoccluded;\n"
+        "            }\n"
+        "        }\n"
         "    }\n"
         "\n"
         "    float u = float(clamp((ringDist - rhoInner) / (rhoOuter - rhoInner), 0.0lf, 1.0lf));\n"
@@ -1483,7 +1537,7 @@ namespace alienorum
         "    float opacity = (vHasRingXTex > 0.5)\n"
         "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
         "        : 0.5;\n"
-        "    opacity = pow(opacity, 0.4);\n"
+        "    opacity = pow(opacity, 0.4) * ringCoverage;\n"
         "\n"
         "    float isDay;\n"
         "    if (vSelfLuminous > 0.5) isDay = 1.0;\n"
@@ -1695,10 +1749,10 @@ namespace alienorum
         // reset once per frame rather than freed per callback.
     }
 
-    bool queue_ring_impostor(const RingImpostorInput &in, double zoom, double dispcx, double dispcy)
+    bool queue_ring_impostor(const RingImpostorInput &in, double lzoom, double dispcx, double dispcy, double scalex)
     {
         double cx = in.cx, cy = in.cy, cz = in.cz, r = in.outer_r;
-        if (r <= 0 || zoom <= 0 || in.inner_r <= 0 || in.inner_r >= in.outer_r) return false;
+        if (r <= 0 || lzoom <= 0 || in.inner_r <= 0 || in.inner_r >= in.outer_r) return false;
         // NOT "camera inside outer_r" -- that was copied from the sphere impostor's genuine
         // camera-inside-the-solid-sphere bail-out, but a ring is a flat zero-thickness annulus,
         // not a solid volume the camera can be "inside" in any meaningful sense. ring_radius is
@@ -1716,12 +1770,14 @@ namespace alienorum
         // over-estimates a tilted ring's true elliptical extent (never under-estimates it), and
         // the fragment shader discards everything outside the true annulus regardless, so the
         // slack just costs some cheap discarded fragments.
+        double pixel_pad = (lzoom * scalex > 0) ? 2.0 * d0 / (lzoom * scalex) : 0.0;
+        double quad_r = r + pixel_pad;
         double zdesXmin, zdesXmax, zdesYmin, zdesYmax;
-        tangent_bounds(cx, cz, r, zoom, false, &zdesXmin, &zdesXmax);
-        tangent_bounds(cy, cz, r, zoom, true,  &zdesYmin, &zdesYmax);
+        tangent_bounds(cx, cz, quad_r, lzoom, false, &zdesXmin, &zdesXmax);
+        tangent_bounds(cy, cz, quad_r, lzoom, true,  &zdesYmin, &zdesYmax);
 
-        double xmin = dispcx + zdesXmin * dispcx, xmax = dispcx + zdesXmax * dispcx;
-        double ymin = dispcy + zdesYmin * dispcx, ymax = dispcy + zdesYmax * dispcx;
+        double xmin = dispcx + zdesXmin * scalex, xmax = dispcx + zdesXmax * scalex;
+        double ymin = dispcy + zdesYmin * scalex, ymax = dispcy + zdesYmax * scalex;
 
         ImGuiIO &io = ImGui::GetIO();
         float W = io.DisplaySize.x, H = io.DisplaySize.y;
@@ -1732,8 +1788,8 @@ namespace alienorum
         ymin = std::max(ymin, -margin); ymax = std::min(ymax, H + margin);
         if (xmax <= xmin || ymax <= ymin) return false;
 
-        zdesXmin = (xmin - dispcx) / dispcx; zdesXmax = (xmax - dispcx) / dispcx;
-        zdesYmin = (ymin - dispcy) / dispcx; zdesYmax = (ymax - dispcy) / dispcx;
+        zdesXmin = (xmin - dispcx) / scalex; zdesXmax = (xmax - dispcx) / scalex;
+        zdesYmin = (ymin - dispcy) / scalex; zdesYmax = (ymax - dispcy) / scalex;
 
         if (s_ring_used == s_ring_pool.size()) s_ring_pool.emplace_back();
         RingImpostorParams *p = &s_ring_pool[s_ring_used++];
@@ -1747,8 +1803,8 @@ namespace alienorum
         double cornerZdesY[4] = {zdesYmax, zdesYmax, zdesYmin, zdesYmin};
         for (int i = 0; i < 4; i++)
         {
-            p->rayxy[i][0] = (float)(cornerZdesX[i] / zoom);
-            p->rayxy[i][1] = (float)(cornerZdesY[i] / zoom);
+            p->rayxy[i][0] = (float)(cornerZdesX[i] / lzoom);
+            p->rayxy[i][1] = (float)(cornerZdesY[i] / lzoom);
         }
 
         // Same 1/d scaling as SphereImpostorParams::ccx/rho -- see this file's top-of-section

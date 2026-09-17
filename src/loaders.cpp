@@ -3,6 +3,8 @@
 #include "housekeeping.h"
 #include "classes/cons.h"
 #include <cstdlib>
+#include <unordered_map>
+#include <string_view>
 
 using namespace alienorum;
 
@@ -196,12 +198,12 @@ void load_textures(CelestialObject* cel)
     cel->looked_for_maps = true;
     cel->ignore_map_files = false;          // one-time use.
 
-    if ((cel->type == gas_giant || cel->type == ice_giant || cel->type == hot_jupiter) && !cel->cloud_map)
+    if (uses_gaseous_map(cel->type) && !cel->cloud_map)
     {
         cel->cloud_map = new Map(cel);
         cel->cloud_map->generate_gas_giant_map(cel);
     }
-    else if ((cel->type == rocky || cel->type == icy || cel->type == waterworld || cel->type == hycean || cel->type == lavaworld) && !cel->surf_map)
+    else if (uses_rocky_map(cel->type) && !cel->surf_map)
     {
         cel->surf_map = new Map(cel);
         cel->surf_map->generate_rocky_map(cel);
@@ -237,6 +239,11 @@ void save_textures(CelestialObject* cel)
     {
         mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_surf.png");
         cel->surf_map->save_to_png(mapfname);
+        if (cel->surf_map->has_bump_data())
+        {
+            mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_bump.png");
+            cel->surf_map->save_to_png(mapfname, true);
+        }
     }
     if (cel->cloud_map)
     {
@@ -260,7 +267,7 @@ void save_textures(CelestialObject* cel)
     }
 }
 
-static bool establish_project_root()
+bool establish_project_root()
 {
     namespace fs = std::filesystem;
     std::vector<fs::path> candidates;
@@ -383,6 +390,7 @@ void load_catalogs()
 {
     int i, j, m, n;
     time_t began = time(NULL);
+    bool have_astjson = false;
 
     cels[0] = nullptr;
 
@@ -409,7 +417,7 @@ void load_catalogs()
 
     // TODO: Read data from more star catalogs.
     if (load_aborted()) return;
-    cr.download_catalogs();
+    cr.download_catalogs(ihsc);
     std::vector<std::string> cats = cr.find_catalogs("catalogs");
 
     n = cats.size();
@@ -446,19 +454,48 @@ void load_catalogs()
     loading_msg = std::string("Loading solar system...");
     mtx.unlock();
 
+    int npl = 0;
     cout << "Reading local planets..." << endl << flush;
-    int npl = cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
+    npl += cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
     num_planets += npl;
     for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
-    if (load_aborted()) return;
-    int nastorb = 0;
-    if (have_astorb)
+    std::string astjson = std::string("catalogs") + _FILESLASH + std::string("asteroids.json");
+    have_astjson = file_exists(astjson.c_str());
+
+    if (have_astjson)
     {
-        cout << "Reading astorb catalog..." << endl << flush;
-        nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
-        cout << "Read " << nastorb << " objects." << endl << flush;
+        fstream fs(astjson.c_str(), std::ios::in);
+        Serialization::load_all(fs, cels, MAX_CELOBJS, false);
+        fs.close();
+    }
+    else
+    {
+        if (load_aborted()) return;
+        int nastorb = 0;
+        if (have_astorb)
+        {
+            cout << "Reading astorb catalog..." << endl << flush;
+            nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
+            cout << "Read " << nastorb << " objects." << endl << flush;
+        }
+
+        json asts;
+        for (i=0; cels[i]; i++)
+        {
+            cel_obj_class cls = cels[i]->typeclass();
+            if (cls != class_planet && cls != class_moon) continue;
+
+            std::string key = std::string(cels[i]->name);
+            const char* l = key.c_str();
+
+            if (cls == class_planet) asts[l] = ((Planet*)cels[i])->to_json();
+            if (cls == class_moon  ) asts[l] = ((Moon*  )cels[i])->to_json();
+        }
+
+        fstream fs(astjson.c_str(), std::ios::out);
+        fs << asts.dump(4);
     }
 
     if (load_aborted()) return;
@@ -636,7 +673,7 @@ void load_catalogs()
             double magnitude = -1.0 + 0.1 * i;
             Star* s = new Star();
             strcpy(s->name, ((std::string)"Test "+std::to_string(magnitude)).c_str());
-            s->namelen = 0;
+            s->namelen = strlen(s->name);
             s->right_ascension = fiftyseventh * i;
             s->declination = -2.59 * fiftyseventh;
             s->apparent_magnitude = s->absolute_magnitude = magnitude;
@@ -684,7 +721,7 @@ void load_catalogs()
         {
             if (load_aborted()) return;
             // std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
-            if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
+            // if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
             mtx.lock();
             loading_msg = std::string("Loading ") + sat_sources[sources_sorted[i]].local_name + std::string(" satellite data...");
             mtx.unlock();
@@ -806,10 +843,11 @@ void read_cons_lines()
 
 void cache_cons_lines()
 {
-    int i, j, l, n, ncons, nln;
+    int ncons = constellations.size();
+    std::unordered_map<std::string, int> resolved_cache;
+    resolved_cache.reserve(1024);
 
-    ncons = constellations.size();
-    for (i=0; i<ncons; i++)
+    for (int i = 0; i < ncons; i++)
     {
         double mag_limit = (i == 34) ? 7.5 : 6.5;
 
@@ -817,38 +855,67 @@ void cache_cons_lines()
         loading_msg = std::string("Assigning ") + constellations[i].name + std::string("...");
         mtx.unlock();
 
-        nln = constellations[i].lines.size();
-        for (l=0; l<nln; l++)
+        std::unordered_map<std::string_view, int> cons_stars;
+        if (constellation_index.count(constellations[i].abbrev))
         {
-            int founda = -1, foundb = -1, rechercher;
-            if (constellation_index.count(constellations[i].abbrev))
+            const auto& cstars = constellation_index[constellations[i].abbrev];
+            cons_stars.reserve(cstars.size() * 2);
+            for (CelestialObject* co : cstars)
             {
-                n = constellation_index[constellations[i].abbrev].size();
-                for (j=0; j<n; j++)
+                Star* s = (Star*)co;
+                if (s->apparent_magnitude > mag_limit)
                 {
-                    Star* s = (Star*) constellation_index[constellations[i].abbrev][j];
-                    if (s->apparent_magnitude > mag_limit) continue;
-                    if ((founda<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnamea.c_str()))
-                        founda = s->seqno;
-                    if ((founda<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnamea.c_str()))
-                        founda = s->seqno;
-                    if ((foundb<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnameb.c_str()))
-                        foundb = s->seqno;
-                    if ((foundb<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnameb.c_str()))
-                        foundb = s->seqno;
+                    continue;
+                }
+                if (s->Bayer[0])
+                {
+                    cons_stars.emplace(s->Bayer, s->seqno);
+                }
+                if (s->Flamsteed[0])
+                {
+                    cons_stars.emplace(s->Flamsteed, s->seqno);
+                }
+                if (s->name[0])
+                {
+                    cons_stars.emplace(s->name, s->seqno);
                 }
             }
+        }
 
-            if (founda<0 || foundb<0)
+        auto resolve_endpoint = [&](const std::string& starname) -> int
+        {
+            auto it_cached = resolved_cache.find(starname);
+            if (it_cached != resolved_cache.end())
             {
-                rechercher = find_object(constellations[i].lines[l].starnamea.c_str(), true, mag_limit);
-                if (rechercher >= 0) founda = rechercher;
-                rechercher = find_object(constellations[i].lines[l].starnameb.c_str(), true, mag_limit);
-                if (rechercher >= 0) foundb = rechercher;
+                return it_cached->second;
             }
 
-            if (founda < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
-            if (foundb < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
+            auto it_local = cons_stars.find(starname);
+            if (it_local != cons_stars.end())
+            {
+                resolved_cache.emplace(starname, it_local->second);
+                return it_local->second;
+            }
+
+            int found = find_object(starname.c_str(), true, mag_limit);
+            resolved_cache.emplace(starname, found);
+            return found;
+        };
+
+        int nln = constellations[i].lines.size();
+        for (int l = 0; l < nln; l++)
+        {
+            int founda = resolve_endpoint(constellations[i].lines[l].starnamea);
+            int foundb = resolve_endpoint(constellations[i].lines[l].starnameb);
+
+            if (founda < 0)
+            {
+                std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
+            }
+            if (foundb < 0)
+            {
+                std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
+            }
 
             if (founda >= 0)
             {
@@ -924,6 +991,8 @@ void load_stuff()
         try { j.at("Longitude").get_to(dbl); viewer_lon = viewer_home_lon = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Timezone").get_to(dbl); viewer_tz = viewer_home_tz = dbl * 60; } catch(...) { ; }
         try { j.at("Theme").get_to(viewer_theme); } catch(...) { ; }
+        try { j.at( (std::string("Theme") + std::to_string(wkday)).c_str() ).get_to(viewer_theme); } catch(...) { ; }
+        try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
         fs.close();
     }
@@ -954,7 +1023,15 @@ void load_stuff()
 
     // load_catalogs() returns early on abort, so cels[0] may not exist -- everything below here
     // assumes the Sun is loaded (see the bv_correction line, which reads cels[0] directly).
-    if (load_aborted() || !cels[0]) return;
+    if (load_aborted() || !cels[0])
+    {
+        return;
+    }
+
+    mtx.lock();
+    loading_msg = "Auditing main sequence stars...";
+    mtx.unlock();
+    Star::audit_and_correct_main_sequence_stars(cels);
     mtx.lock();
     loading_msg = "Assigning constellations...";
     mtx.unlock();
@@ -980,11 +1057,13 @@ void load_stuff()
     mtx.lock();
     loading_msg = "Done!";
     splash = false;
+    load_completed = true;
     mtx.unlock();
 }
 
 void reload_stuff()
 {
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Refreshing spectral types...";
     mtx.unlock();
@@ -993,15 +1072,20 @@ void reload_stuff()
     CatalogReader cr;
     constellations.clear();
 
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Refreshing constellations...";
     mtx.unlock();
     read_cons_lines();
     cr.read_cons_boundaries();
+
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Assigning stars to constellations...";
     mtx.unlock();
     cache_cons_lines();
+
+    if (abort_load) return;
     mtx.lock();
     loading_msg = "Refreshing star orbits...";
     mtx.unlock();
@@ -1027,15 +1111,19 @@ bool save_user_json()
     {
         json j;
 
+        std::fstream fsi("user.json", std::ios::in);
+        fsi >> j;
+        fsi.close();
+
         j["Latitude"] = viewer_lat * fiftyseven;
         j["Longitude"] = viewer_lon * fiftyseven;
         j["Timezone"] = (int)(viewer_home_tz / 60);
         j["Theme"] = viewer_theme;
         j["Gamma"] = global_gamma;
 
-        std::fstream fs("user.json", std::ios::out);
-        fs << j.dump(4);
-        fs.close();
+        std::fstream fso("user.json", std::ios::out);
+        fso << j.dump(4);
+        fso.close();
 
         return true;
     }

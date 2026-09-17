@@ -27,7 +27,7 @@ using namespace alienorum;
 // of everything typed before it.
 struct CliCmd
 {
-    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_fkey, k_char, k_import } kind;
+    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_ctrl_char, k_import } kind;
     std::string s;
     int fkey = 0;
     char c = 0;
@@ -163,11 +163,19 @@ int main (int argc, char** argv)
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
 
+    establish_project_root();
+    firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());
+
+    std::time_t now = std::time(nullptr);
+    struct tm *loc_time = std::localtime(&now);
+    wkday = loc_time->tm_wday;
+
     std::vector<CliCmd> cli_cmds;
     size_t cli_cmd_pos = 0;
     auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
     auto push_fkey = [&](int n) { CliCmd cmd; cmd.kind = CliCmd::k_fkey; cmd.fkey = n; cli_cmds.push_back(cmd); };
     auto push_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_char; cmd.c = c; cli_cmds.push_back(cmd); };
+    auto push_ctrl_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_ctrl_char; cmd.c = c; cli_cmds.push_back(cmd); };
 
     auto next_arg = [&](const char* opt) -> const char*
     {
@@ -197,7 +205,12 @@ int main (int argc, char** argv)
             continue;
         }
 
-        if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))
+        else if (n == 2 && argv[l][0] == '^')
+        {
+            push_ctrl_char(argv[l][1] & 0x5f);
+        }
+
+        else if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))
         {
             const char* ucpdhahzs = "\x2b\x85\xe9\x80\x57\xe4\x70\x00";
             i = 0;
@@ -230,9 +243,25 @@ int main (int argc, char** argv)
         {
             if (const char* a = next_arg("go")) push_str(CliCmd::k_go, a);
         }
+        else if (!strcmp(argv[l], "alt"))
+        {
+            if (const char* a = next_arg("alt")) push_str(CliCmd::k_alt, a);
+        }
+        else if (!strcmp(argv[l], "az"))
+        {
+            if (const char* a = next_arg("az")) push_str(CliCmd::k_az, a);
+        }
         else if (!strcmp(argv[l], "zoom"))
         {
             if (const char* a = next_arg("zoom")) push_str(CliCmd::k_zoom, a);
+        }
+        else if (!strcmp(argv[l], "devdial") || !strcmp(argv[l], "dd"))
+        {
+            show_dev_dial = true;
+        }
+        else if (!strcmp(argv[l], "dds"))
+        {
+            if (const char* a = next_arg("zoom")) dev_dial_step = atof(a);
         }
         else if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
         {
@@ -455,8 +484,6 @@ int main (int argc, char** argv)
         alienr = 0.003921569 * ((alien_color & 0xff)),
         aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
-    std::time_t now = std::time(nullptr);
-    struct tm *loc_time = std::localtime(&now);
     bool nlo = (loc_time->tm_mon == 3 && loc_time->tm_mday == 1);
     ImVec2 ovni(2061, 123), nlorad(54, 29);
     double dxovni = -1.3, dyovni = -0.0029;
@@ -493,11 +520,15 @@ int main (int argc, char** argv)
         while (SDL_PollEvent(&event))
         {
             ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT)
+            if (event.type == SDL_QUIT ||
+                (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)))
+            {
+                abort_load = true;
                 done = true;
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
-                done = true;
+                SDL_HideWindow(window);
+            }
         }
+        if (done) break;
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
         {
             SDL_Delay(10);
@@ -540,7 +571,7 @@ int main (int argc, char** argv)
                 Color col(192, 225, 255);
                 for (jay=splash_star_brghtness[i]; jay>=0; jay-=0.5)
                 {
-                    RGB3Byte rgb = Color::rgb_from_color(col, 1);
+                    RGB3 rgb = Color::rgb_from_color(col, 1);
                     if (rgb.r >= 16 || rgb.b >= 16)
                     {
                         ImGui::GetBackgroundDrawList()->AddCircleFilled(splash_star_positions[i],
@@ -573,7 +604,12 @@ int main (int argc, char** argv)
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
                 ImGui::SetWindowPos(ImVec2(left,splash_top));
-                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+35));
+                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+(firstrun ? 75 : 35)));
+                if (firstrun)
+                {
+                    ImGui::Text("Please be patient, Alienorum is running for the first time. After");
+                    ImGui::Text("downloading data, the application will load faster going forward.");
+                }
                 ImGui::Text("%s", lloadmsg);
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
                 ImVec2 canvas_p0 = ImGui::GetCursorScreenPos(), canvas_p1(canvas_p0.x+aspect_width, canvas_p0.y+splash_height);
@@ -587,6 +623,7 @@ int main (int argc, char** argv)
             {
                 abort_load = true;
                 done = true;
+                SDL_HideWindow(window);
             }
         }
         else
@@ -812,6 +849,14 @@ int main (int argc, char** argv)
                         // view is exactly what a scripted run does not want.
                         viewchanged = true;
                         break;
+                    case CliCmd::k_alt:
+                        altitude = atof(cmd.s.c_str()) * fiftyseventh;
+                        viewchanged = true;
+                        break;
+                    case CliCmd::k_az:
+                        azimuth = atof(cmd.s.c_str()) * fiftyseventh;
+                        viewchanged = true;
+                        break;
                     case CliCmd::k_zoom:
                         zoom = atof(cmd.s.c_str());
                         viewchanged = true;
@@ -835,6 +880,9 @@ int main (int argc, char** argv)
                         break;
                     case CliCmd::k_char:
                         process_key_cmd_char(cmd.c);
+                        break;
+                    case CliCmd::k_ctrl_char:
+                        process_key_cmd_ctrl_char(cmd.c);
                         break;
                 }
             }
@@ -946,6 +994,9 @@ int main (int argc, char** argv)
                 ? trim(cels[nameidx]->name)
                 :*/ "snapshot"
                 ;
+            
+            if (view_mode == vm_skymap) snapname += ".skymap";
+            if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             shnapsot_fname << snapdir << _FILESLASH
                 << snapname
@@ -1017,13 +1068,15 @@ int main (int argc, char** argv)
         }
     }
 
-    // Stop the loader and wait for it before touching anything it writes to. This has to come
-    // ahead of save_universe() as well as ahead of the deletes: the loader appends to `cels` as
-    // it goes, and Serialization::save_all() walks that same array.
     abort_load = true;
+    SDL_HideWindow(window);
     if (t1.joinable()) t1.join();
 
-    if (cels[1]) save_universe();
+    if (load_completed && cels[1]) save_universe();
+
+    int wait_limit = 100;
+    while (texture_loads_pending > 0 && --wait_limit > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     for (i=0; cels[i]; i++)
     {
@@ -1047,5 +1100,13 @@ int main (int argc, char** argv)
     delete[] discinstead;
     if (hdcache) delete[] hdcache;
     if (hipcache) delete[] hipcache;
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
+    SDL_GL_DeleteContext(gl_context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 0;
 }

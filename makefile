@@ -47,17 +47,21 @@ TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 
 BIN = bin
 OBJ = obj
+OBJIMGUI = $(OBJ)/imgui
+OBJIGFD = $(OBJ)/igfd
+OBJINT = $(OBJ)/internal
 UNAME_S := $(shell uname -s)
 LIBS = -lSDL2_image -ljpeg -lpng -lcurl -larchive
 LIBS_GTEST = -lgtest -lgtest_main -pthread
 LINUX_GL_LIBS = -lGL
 
 # Dynamically track all object files cleanly
-IMGUI_OBJS = $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IMGUI_SRC)))))
+IMGUI_OBJS = $(addsuffix .o, $(addprefix $(OBJIMGUI)/, $(basename $(notdir $(IMGUI_SRC)))))
 OBJS = $(IMGUI_OBJS)
-OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(IGFD_SRC)))))
-OBJS += $(addsuffix .o, $(addprefix $(OBJ)/, $(basename $(notdir $(CLASSES_SRC)))))
-OBJS += $(OBJ)/globals.o $(OBJ)/loaders.o $(OBJ)/housekeeping.o $(OBJ)/inputs.o $(OBJ)/dialogs.o $(OBJ)/visuals.o $(OBJ)/gputex.o $(OBJ)/sphere_impostor.o
+OBJS += $(addsuffix .o, $(addprefix $(OBJIGFD)/, $(basename $(notdir $(IGFD_SRC)))))
+OBJS += $(addsuffix .o, $(addprefix $(OBJINT)/, $(basename $(notdir $(CLASSES_SRC)))))
+OBJS += $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
+	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 
@@ -94,7 +98,7 @@ ifeq ($(OS), Windows_NT)
     CFLAGS = $(CPPFLAGS)
 endif
 
-all: $(BIN) $(OBJ) objs apps
+all: $(BIN) $(OBJ) $(OBJIMGUI) $(OBJIGFD) $(OBJINT) objs apps
 	@echo $(ECHO_MESSAGE)
 
 # Robust cross-platform directory generation
@@ -104,14 +108,32 @@ $(BIN):
 $(OBJ):
 	mkdir -p $(OBJ)
 
+$(OBJIMGUI):
+	mkdir -p $(OBJIMGUI)
+
+$(OBJIGFD):
+	mkdir -p $(OBJIGFD)
+
+$(OBJINT):
+	mkdir -p $(OBJINT)
+
 clean:
-	rm -Rf $(OBJ)/*.o
-	rm -Rf $(OBJ)/*.d
+	rm -Rf $(OBJINT)/*.o
+	rm -Rf $(OBJINT)/*.d
+	rm -Rf $(BIN)/*
+
+deepclean:
+	rm -Rf $(OBJIMGUI)/*.o
+	rm -Rf $(OBJIMGUI)/*.d
+	rm -Rf $(OBJIGFD)/*.o
+	rm -Rf $(OBJIGFD)/*.d
+	rm -Rf $(OBJINT)/*.o
+	rm -Rf $(OBJINT)/*.d
 	rm -Rf $(BIN)/*
 
 apps: alienorum
 
-objs: $(OBJS)
+objs: $(OBJS) $(OBJIMGUI) $(OBJIGFD) $(OBJINT)
 
 # Runs every test binary and does not stop at the first one that fails: a single failing suite used
 # to hide the state of every suite after it, which is exactly when you most want to see them. The
@@ -140,106 +162,106 @@ alienorum: $(BIN)/alienorum
 
 
 %.o:$(IMGUI_DIR)/backends/%.cpp
-	$(CPP) $(CPPFLAGS) -c -o $(OBJ)/$@ $<
+	$(CPP) $(CPPFLAGS) -c -o $(OBJIMGUI)/$@ $<
 
-$(OBJ)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp
-	$(CPP) $(IMGUI_DIR)/imgui_demo.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_demo.o
+$(OBJIMGUI)/imgui_demo.o:$(IMGUI_DIR)/imgui_demo.cpp
+	$(CPP) $(IMGUI_DIR)/imgui_demo.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui_demo.o
 
-$(OBJ)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp
-	$(CPP) $(IMGUI_DIR)/imgui_draw.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_draw.o
+$(OBJIMGUI)/imgui_draw.o:$(IMGUI_DIR)/imgui_draw.cpp
+	$(CPP) $(IMGUI_DIR)/imgui_draw.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui_draw.o
 
-$(OBJ)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp
-	$(CPP) $(IMGUI_DIR)/imgui_tables.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_tables.o
+$(OBJIMGUI)/imgui_tables.o:$(IMGUI_DIR)/imgui_tables.cpp
+	$(CPP) $(IMGUI_DIR)/imgui_tables.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui_tables.o
 
-$(OBJ)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp
-	$(CPP) $(IMGUI_DIR)/imgui_widgets.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_widgets.o
+$(OBJIMGUI)/imgui_widgets.o:$(IMGUI_DIR)/imgui_widgets.cpp
+	$(CPP) $(IMGUI_DIR)/imgui_widgets.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui_widgets.o
 
-$(OBJ)/imgui.o:$(IMGUI_DIR)/imgui.cpp
-	$(CPP) $(IMGUI_DIR)/imgui.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui.o
+$(OBJIMGUI)/imgui.o:$(IMGUI_DIR)/imgui.cpp
+	$(CPP) $(IMGUI_DIR)/imgui.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui.o
 
-$(OBJ)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
-	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_opengl3.o
+$(OBJIMGUI)/imgui_impl_opengl3.o:$(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui_impl_opengl3.o
 
-$(OBJ)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp
-	$(CPP) $(IGFD_DIR)/ImGuiFileDialog.cpp $(CPPFLAGS) -c -o $(OBJ)/ImGuiFileDialog.o
+$(OBJIMGUI)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
+	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJIMGUI)/imgui_impl_sdl2.o
 
-$(OBJ)/imgui_impl_sdl2.o:$(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
-	$(CPP) $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(CPPFLAGS) -c -o $(OBJ)/imgui_impl_sdl2.o
+$(OBJIGFD)/ImGuiFileDialog.o:$(IGFD_DIR)/ImGuiFileDialog.cpp
+	$(CPP) $(IGFD_DIR)/ImGuiFileDialog.cpp $(CPPFLAGS) -c -o $(OBJIGFD)/ImGuiFileDialog.o
 
-$(OBJ)/misc.o: $(CLASSES_DIR)/misc.cpp
-	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJ)/misc.o
+$(OBJINT)/misc.o: $(CLASSES_DIR)/misc.cpp
+	$(CPP) $(CLASSES_DIR)/misc.cpp $(CPPFLAGS) -c -o $(OBJINT)/misc.o
 
-$(OBJ)/noise.o: $(CLASSES_DIR)/noise.cpp
-	$(CPP) $(CLASSES_DIR)/noise.cpp $(CPPFLAGS) -c -o $(OBJ)/noise.o
+$(OBJINT)/noise.o: $(CLASSES_DIR)/noise.cpp
+	$(CPP) $(CLASSES_DIR)/noise.cpp $(CPPFLAGS) -c -o $(OBJINT)/noise.o
 
-$(OBJ)/patch.o: $(CLASSES_DIR)/patch.cpp
-	$(CPP) $(CLASSES_DIR)/patch.cpp $(CPPFLAGS) -c -o $(OBJ)/patch.o
+$(OBJINT)/patch.o: $(CLASSES_DIR)/patch.cpp
+	$(CPP) $(CLASSES_DIR)/patch.cpp $(CPPFLAGS) -c -o $(OBJINT)/patch.o
 
-$(OBJ)/color.o: $(CLASSES_DIR)/color.cpp
-	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJ)/color.o
+$(OBJINT)/color.o: $(CLASSES_DIR)/color.cpp
+	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJINT)/color.o
 
-$(OBJ)/point.o: $(CLASSES_DIR)/point.cpp
-	$(CPP) $(CLASSES_DIR)/point.cpp $(CPPFLAGS) -c -o $(OBJ)/point.o
+$(OBJINT)/point.o: $(CLASSES_DIR)/point.cpp
+	$(CPP) $(CLASSES_DIR)/point.cpp $(CPPFLAGS) -c -o $(OBJINT)/point.o
 
-$(OBJ)/celestial.o: $(CLASSES_DIR)/celestial.cpp
-	$(CPP) $(CLASSES_DIR)/celestial.cpp $(CPPFLAGS) -c -o $(OBJ)/celestial.o
+$(OBJINT)/celestial.o: $(CLASSES_DIR)/celestial.cpp
+	$(CPP) $(CLASSES_DIR)/celestial.cpp $(CPPFLAGS) -c -o $(OBJINT)/celestial.o
 
-$(OBJ)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp
-	$(CPP) $(CLASSES_DIR)/galaxy.cpp $(CPPFLAGS) -c -o $(OBJ)/galaxy.o
+$(OBJINT)/galaxy.o: $(CLASSES_DIR)/galaxy.cpp
+	$(CPP) $(CLASSES_DIR)/galaxy.cpp $(CPPFLAGS) -c -o $(OBJINT)/galaxy.o
 
-$(OBJ)/comet.o: $(CLASSES_DIR)/comet.cpp
-	$(CPP) $(CLASSES_DIR)/comet.cpp $(CPPFLAGS) -c -o $(OBJ)/comet.o
+$(OBJINT)/comet.o: $(CLASSES_DIR)/comet.cpp
+	$(CPP) $(CLASSES_DIR)/comet.cpp $(CPPFLAGS) -c -o $(OBJINT)/comet.o
 
-$(OBJ)/star.o: $(CLASSES_DIR)/star.cpp
-	$(CPP) $(CLASSES_DIR)/star.cpp $(CPPFLAGS) -c -o $(OBJ)/star.o
+$(OBJINT)/star.o: $(CLASSES_DIR)/star.cpp
+	$(CPP) $(CLASSES_DIR)/star.cpp $(CPPFLAGS) -c -o $(OBJINT)/star.o
 
-$(OBJ)/cons.o: $(CLASSES_DIR)/cons.cpp
-	$(CPP) $(CLASSES_DIR)/cons.cpp $(CPPFLAGS) -c -o $(OBJ)/cons.o
+$(OBJINT)/cons.o: $(CLASSES_DIR)/cons.cpp
+	$(CPP) $(CLASSES_DIR)/cons.cpp $(CPPFLAGS) -c -o $(OBJINT)/cons.o
 
-$(OBJ)/sscimport.o: $(CLASSES_DIR)/sscimport.cpp
-	$(CPP) $(CLASSES_DIR)/sscimport.cpp $(CPPFLAGS) -c -o $(OBJ)/sscimport.o
+$(OBJINT)/sscimport.o: $(CLASSES_DIR)/sscimport.cpp
+	$(CPP) $(CLASSES_DIR)/sscimport.cpp $(CPPFLAGS) -c -o $(OBJINT)/sscimport.o
 
-$(OBJ)/planet.o: $(CLASSES_DIR)/planet.cpp
-	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJ)/planet.o
+$(OBJINT)/planet.o: $(CLASSES_DIR)/planet.cpp
+	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJINT)/planet.o
 
-$(OBJ)/moon.o: $(CLASSES_DIR)/moon.cpp
-	$(CPP) $(CLASSES_DIR)/moon.cpp $(CPPFLAGS) -c -o $(OBJ)/moon.o
+$(OBJINT)/moon.o: $(CLASSES_DIR)/moon.cpp
+	$(CPP) $(CLASSES_DIR)/moon.cpp $(CPPFLAGS) -c -o $(OBJINT)/moon.o
 
-$(OBJ)/satellite.o: $(CLASSES_DIR)/satellite.cpp
-	$(CPP) $(CLASSES_DIR)/satellite.cpp $(CPPFLAGS) -c -o $(OBJ)/satellite.o
+$(OBJINT)/satellite.o: $(CLASSES_DIR)/satellite.cpp
+	$(CPP) $(CLASSES_DIR)/satellite.cpp $(CPPFLAGS) -c -o $(OBJINT)/satellite.o
 
-$(OBJ)/shore.o: $(CLASSES_DIR)/shore.cpp
-	$(CPP) $(CLASSES_DIR)/shore.cpp $(CPPFLAGS) -c -o $(OBJ)/shore.o
+$(OBJINT)/shore.o: $(CLASSES_DIR)/shore.cpp
+	$(CPP) $(CLASSES_DIR)/shore.cpp $(CPPFLAGS) -c -o $(OBJINT)/shore.o
 
-$(OBJ)/cat.o: $(CLASSES_DIR)/cat.cpp
-	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJ)/cat.o
+$(OBJINT)/cat.o: $(CLASSES_DIR)/cat.cpp
+	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJINT)/cat.o
 
-$(OBJ)/serial.o: $(CLASSES_DIR)/serial.cpp
-	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJ)/serial.o
+$(OBJINT)/serial.o: $(CLASSES_DIR)/serial.cpp
+	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJINT)/serial.o
 
-$(OBJ)/globals.o: src/globals.cpp
-	$(CPP) src/globals.cpp $(CPPFLAGS) -c -o $(OBJ)/globals.o
+$(OBJINT)/globals.o: src/globals.cpp
+	$(CPP) src/globals.cpp $(CPPFLAGS) -c -o $(OBJINT)/globals.o
 
-$(OBJ)/loaders.o: src/loaders.cpp
-	$(CPP) src/loaders.cpp $(CPPFLAGS) -c -o $(OBJ)/loaders.o
+$(OBJINT)/loaders.o: src/loaders.cpp
+	$(CPP) src/loaders.cpp $(CPPFLAGS) -c -o $(OBJINT)/loaders.o
 
-$(OBJ)/housekeeping.o: src/housekeeping.cpp
-	$(CPP) src/housekeeping.cpp $(CPPFLAGS) -c -o $(OBJ)/housekeeping.o
+$(OBJINT)/housekeeping.o: src/housekeeping.cpp
+	$(CPP) src/housekeeping.cpp $(CPPFLAGS) -c -o $(OBJINT)/housekeeping.o
 
-$(OBJ)/inputs.o: src/inputs.cpp
-	$(CPP) src/inputs.cpp $(CPPFLAGS) -c -o $(OBJ)/inputs.o
+$(OBJINT)/inputs.o: src/inputs.cpp
+	$(CPP) src/inputs.cpp $(CPPFLAGS) -c -o $(OBJINT)/inputs.o
 
-$(OBJ)/dialogs.o: src/dialogs.cpp
-	$(CPP) src/dialogs.cpp $(CPPFLAGS) -c -o $(OBJ)/dialogs.o
+$(OBJINT)/dialogs.o: src/dialogs.cpp
+	$(CPP) src/dialogs.cpp $(CPPFLAGS) -c -o $(OBJINT)/dialogs.o
 
-$(OBJ)/visuals.o: src/visuals.cpp
-	$(CPP) src/visuals.cpp $(CPPFLAGS) -c -o $(OBJ)/visuals.o
+$(OBJINT)/visuals.o: src/visuals.cpp
+	$(CPP) src/visuals.cpp $(CPPFLAGS) -c -o $(OBJINT)/visuals.o
 
-$(OBJ)/gputex.o: src/gputex.cpp
-	$(CPP) src/gputex.cpp $(CPPFLAGS) -c -o $(OBJ)/gputex.o
+$(OBJINT)/gputex.o: src/gputex.cpp
+	$(CPP) src/gputex.cpp $(CPPFLAGS) -c -o $(OBJINT)/gputex.o
 
-$(OBJ)/sphere_impostor.o: src/sphere_impostor.cpp
-	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJ)/sphere_impostor.o
+$(OBJINT)/sphere_impostor.o: src/sphere_impostor.cpp
+	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJINT)/sphere_impostor.o
 
 
 # Every test binary links the whole object set, so $(OBJS) has to be a prerequisite of each of
