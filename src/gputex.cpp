@@ -165,13 +165,149 @@ namespace alienorum
         return entry.tex;
     }
 
+    static GLuint milky_way_tex = 0;
+    static GLuint milky_way_inv_tex = 0;
+    static bool milky_way_attempted = false;
+
+    GLuint gputex_milky_way(bool inverted)
+    {
+        if (inverted && milky_way_inv_tex)
+        {
+            return milky_way_inv_tex;
+        }
+        if (!inverted && milky_way_tex)
+        {
+            return milky_way_tex;
+        }
+        if (milky_way_attempted)
+        {
+            return 0;
+        }
+        milky_way_attempted = true;
+
+        SDL_Surface* surf = IMG_Load("galaxies/Milky Way.jpg");
+        if (!surf)
+        {
+            surf = IMG_Load("galaxies" _FILESLASH "Milky Way.jpg");
+        }
+        if (!surf)
+        {
+            std::cerr << "Could not load galaxies/Milky Way.jpg: " << IMG_GetError() << std::endl;
+            return 0;
+        }
+
+        SDL_Surface* rgba_surf = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_FreeSurface(surf);
+        if (!rgba_surf)
+        {
+            return 0;
+        }
+
+        int w = rgba_surf->w;
+        int h = rgba_surf->h;
+        unsigned char* data = (unsigned char*)rgba_surf->pixels;
+
+        static GLint max_tex_size = 0;
+        if (!max_tex_size)
+        {
+            glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+            if (max_tex_size <= 0)
+            {
+                max_tex_size = 4096;
+            }
+        }
+
+        std::vector<unsigned char> down;
+        unsigned char* upload_ptr = data;
+        if ((long)w > max_tex_size || (long)h > max_tex_size)
+        {
+            double scale = std::min((double)max_tex_size / w, (double)max_tex_size / h);
+            unsigned long nw = std::max(1UL, (unsigned long)(w * scale));
+            unsigned long nh = std::max(1UL, (unsigned long)(h * scale));
+
+            down.resize(nw * nh * 4);
+            for (unsigned long y = 0; y < nh; y++)
+            {
+                unsigned long sy = std::min((unsigned long)(h - 1), (unsigned long)((double)y * h / nh));
+                for (unsigned long x = 0; x < nw; x++)
+                {
+                    unsigned long sx = std::min((unsigned long)(w - 1), (unsigned long)((double)x * w / nw));
+                    for (int c = 0; c < 4; c++)
+                    {
+                        down[(y * nw + x) * 4 + c] = data[(sy * w + sx) * 4 + c];
+                    }
+                }
+            }
+            w = (int)nw;
+            h = (int)nh;
+            upload_ptr = down.data();
+        }
+
+        glGenTextures(1, &milky_way_tex);
+        glBindTexture(GL_TEXTURE_2D, milky_way_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, upload_ptr);
+        gputex_generate_mipmap(GL_TEXTURE_2D);
+
+        // Create inverted version for white background mode
+        std::vector<unsigned char> inv((size_t)w * h * 4);
+        for (size_t p = 0; p < (size_t)w * h; p++)
+        {
+            for (int c = 0; c < 3; c++)
+            {
+                int val = upload_ptr[p * 4 + c];
+                int scaled = std::min(255, (int)(val * 2.2f));
+                inv[p * 4 + c] = (unsigned char)(255 - scaled);
+            }
+            inv[p * 4 + 3] = upload_ptr[p * 4 + 3];
+        }
+
+        glGenTextures(1, &milky_way_inv_tex);
+        glBindTexture(GL_TEXTURE_2D, milky_way_inv_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, inv.data());
+        gputex_generate_mipmap(GL_TEXTURE_2D);
+
+        SDL_FreeSurface(rgba_surf);
+        return inverted ? milky_way_inv_tex : milky_way_tex;
+    }
+
     void gputex_clear_cache()
     {
         for (auto &[map, entry] : gputex_cache)
-            if (entry.tex) glDeleteTextures(1, &entry.tex);
+        {
+            if (entry.tex)
+            {
+                glDeleteTextures(1, &entry.tex);
+            }
+        }
         gputex_cache.clear();
         for (auto &[map, entry] : gpubumptex_cache)
-            if (entry.tex) glDeleteTextures(1, &entry.tex);
+        {
+            if (entry.tex)
+            {
+                glDeleteTextures(1, &entry.tex);
+            }
+        }
         gpubumptex_cache.clear();
+        if (milky_way_tex)
+        {
+            glDeleteTextures(1, &milky_way_tex);
+            milky_way_tex = 0;
+        }
+        if (milky_way_inv_tex)
+        {
+            glDeleteTextures(1, &milky_way_inv_tex);
+            milky_way_inv_tex = 0;
+        }
+        milky_way_attempted = false;
     }
 }

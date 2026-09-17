@@ -12,6 +12,8 @@
 #include <time.h>
 #include <ctime>
 #include <map>
+#include <unordered_map>
+#include <string_view>
 #include <string.h>
 #include "cat.h"
 #include "serial.h"
@@ -3011,7 +3013,7 @@ int CatalogReader::read_comets_catalog(CelestialObject **cels, int max)
 }
 
 #define _debug_exoplanet_inclinations 0
-void CatalogReader::apply_exoplanet_names(std::map<int, std::vector<int>> planet_celids)
+void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids)
 {
     std::map<std::string, std::string> planet_names;
     std::map<std::string, std::string> planet_types;
@@ -5075,40 +5077,54 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     ((Star*)cels[0])->distance_known = true;
 
     loading_msg = std::string("Verifying star orbits...");
-    for (i=0; cels[i]; i++)
+
+    std::unordered_map<std::string_view, Star*> id_to_star;
+    id_to_star.reserve(num_read + 100);
+
+    std::vector<Star*> orbiting_stars;
+    orbiting_stars.reserve(16384);
+
+    for (i = 0; cels[i]; i++)
     {
-        if (cels[i]->orbit && cels[i]->orbit->center_name.size())
+        if (cels[i]->type == star)
         {
-            for (j=0; cels[j]; j++)
+            Star *s = (Star*)cels[i];
+            id_to_star.emplace(s->alienorumid, s);
+            if (s->orbit && !s->orbit->center_name.empty())
             {
-                if (j==i) continue;
-                if (!strcmp(((Star*)cels[j])->alienorumid.c_str(), cels[i]->orbit->center_name.c_str()))
-                {
-                    Star *A = (Star*)cels[j];
-                    cels[i]->orbit->center = A;
-                    cels[i]->origcenname = A->name;
-
-                    A->update_location(simnow);
-                    if (cels[i]->orbit->heliocentric_inclination || cels[i]->orbit->heliocentric_node)
-                    {
-                        if (!A->lock_system_plane)
-                        {
-                            A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
-                                                           = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
-                                                                   cels[i]->orbit->heliocentric_node, A->location.system_center);
-                            // A->lock_system_plane = true;
-                        }
-
-                        cels[i]->known_poles = A->known_poles = true;
-                    }
-                    break;
-                }
+                orbiting_stars.push_back(s);
             }
         }
-        if (!(i & 0xff))
+    }
+
+    for (size_t k = 0; k < orbiting_stars.size(); k++)
+    {
+        Star *s = orbiting_stars[k];
+        auto it = id_to_star.find(s->orbit->center_name);
+        if (it != id_to_star.end() && it->second != s)
         {
-            std::string dispname = (cels[i]->type == star) ? ((Star*)cels[i])->alienorumid : cels[i]->name;
-            loading_msg = std::string("Verifying ") + dispname + std::string("...");
+            Star *A = it->second;
+            s->orbit->center = A;
+            s->origcenname = A->name;
+
+            A->update_location(simnow);
+            if (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node)
+            {
+                if (!A->lock_system_plane)
+                {
+                    A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
+                                                   = system_plane_from_incl_and_node(s->orbit->heliocentric_inclination ?: half_pi,
+                                                           s->orbit->heliocentric_node, A->location.system_center);
+                    // A->lock_system_plane = true;
+                }
+
+                s->known_poles = A->known_poles = true;
+            }
+        }
+
+        if (!(k & 0xff))
+        {
+            loading_msg = std::string("Verifying ") + s->alienorumid + std::string("...");
         }
     }
 
@@ -5177,32 +5193,36 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     *ok = false;
 
     // Ensure baseline primary keys exist
-    if (!row.contains("pl_name") || row["pl_name"].is_null()
-            || !row.contains("hostname") || row["hostname"].is_null()
-            || !row.contains("pl_orbsmax") || row["pl_orbsmax"].is_null()
-            || !row.contains("pl_orbper") || row["pl_orbper"].is_null()
+    auto it_pl = row.find("pl_name");
+    auto it_host = row.find("hostname");
+    auto it_smax = row.find("pl_orbsmax");
+    auto it_per = row.find("pl_orbper");
+
+    if (it_pl == row.end() || it_pl->is_null()
+            || it_host == row.end() || it_host->is_null()
+            || it_smax == row.end() || it_smax->is_null()
+            || it_per == row.end() || it_per->is_null()
        )
     {
         return r;
     }
 
-    r.pl_name = row["pl_name"].get<std::string>();
-    r.hostname = row["hostname"].get<std::string>();
+    r.pl_name = it_pl->get<std::string>();
+    r.hostname = it_host->get<std::string>();
 
-    try
+    auto gets = [&row](const char* key) -> std::string
     {
-        r.hd_name  = row.contains("hd_name" ) ? row["hd_name" ].get<std::string>() : "";
-    }
-    catch (...) { ; }
-    try
-    {
-        r.hip_name = row.contains("hip_name") ? row["hip_name"].get<std::string>() : "";
-    }
-    catch (...) { ; }
+        auto it = row.find(key);
+        return (it != row.end() && !it->is_null() && it->is_string()) ? it->get<std::string>() : "";
+    };
+
+    r.hd_name  = gets("hd_name");
+    r.hip_name = gets("hip_name");
 
     auto getd = [&row](const char* key) -> double
     {
-        return (row.contains(key) && !row[key].is_null()) ? row[key].get<double>() : NAN;
+        auto it = row.find(key);
+        return (it != row.end() && !it->is_null() && it->is_number()) ? it->get<double>() : NAN;
     };
 
     r.sy_dist = getd("sy_dist");
@@ -5215,11 +5235,15 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     r.st_rad = getd("st_rad");
     r.st_rotp = getd("st_rotp");
 
-    if (row.contains("st_spectype") && !row["st_spectype"].is_null())
+    auto it_spec = row.find("st_spectype");
+    if (it_spec != row.end() && !it_spec->is_null() && it_spec->is_string())
     {
-        r.st_spectype = row["st_spectype"].get<std::string>();
+        r.st_spectype = it_spec->get<std::string>();
         size_t pos = r.st_spectype.find("&plusmn;");
-        if (pos != std::string::npos) r.st_spectype.replace(pos, 8, "\xf1");
+        if (pos != std::string::npos)
+        {
+            r.st_spectype.replace(pos, 8, "\xf1");
+        }
     }
 
     r.pl_orbincl = getd("pl_orbincl");
@@ -5743,8 +5767,6 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     if (new_planet->is_in_con_HZ()) host_star->has_hz_planets++;
     host_star->pl_indices.push_back(new_planet->seqno);
 
-    if (planet_celids.find(host_star->seqno) == planet_celids.end())
-        planet_celids[host_star->seqno] = std::vector<int>();
     planet_celids[host_star->seqno].push_back(new_planet->seqno);
 }
 
@@ -5777,23 +5799,60 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         {
             ExoRow row;
             int addedexo = 0;
+            Star* last_host_star = nullptr;
+            std::string last_hostname;
+
             while (exorow_read_line(fp, row))
             {
-                if (abort_load) break;
-                if (ncelobjs >= MAX_CELOBJS) break;
+                if (abort_load)
+                {
+                    break;
+                }
+                if (ncelobjs >= MAX_CELOBJS)
+                {
+                    break;
+                }
+
+                Star* host_star = nullptr;
                 bool was_new = false;
-                Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
-                if (!host_star) continue;
-                if (stars_only) continue;
+
+                if (!row.hostname.empty() && row.hostname == last_hostname && last_host_star)
+                {
+                    host_star = last_host_star;
+                }
+                else
+                {
+                    host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+                    last_host_star = host_star;
+                    last_hostname = row.hostname;
+                }
+
+                if (!host_star)
+                {
+                    continue;
+                }
+                if (stars_only)
+                {
+                    continue;
+                }
                 add_exoplanet_from_row(row, host_star, planet_celids, result);
                 addedexo++;
-                if (!(addedexo & 0x7f)) loading_msg = std::string("Loaded ") + std::to_string(addedexo) + std::string(" exoplanets from cache...");
+                if (!(addedexo & 0x7f))
+                {
+                    loading_msg = std::string("Loaded ") + std::to_string(addedexo) + std::string(" exoplanets from cache...");
+                }
             }
             fclose(fp);
 
-            if (abort_load) return result;
+            if (abort_load)
+            {
+                return result;
+            }
             apply_exoplanet_names(planet_celids);
-            if (stars_only) loaded_starsonly = true;
+            if (stars_only)
+            {
+                loaded_starsonly = true;
+            }
             return result;
         }
     }
@@ -6133,6 +6192,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     }
 
     FILE* cachefp = fopen(derived_cache, "wb");
+    char cache_io_buf[65536];
+    if (cachefp)
+    {
+        setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
+    }
+
+    Star* last_host_star = nullptr;
+    std::string last_hostname;
+
     for (const auto& jrow : planets_array)
     {
         if (ncelobjs >= MAX_CELOBJS)
@@ -6143,22 +6211,47 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
         bool ok = false;
         ExoRow row = exorow_from_json(jrow, &ok);
-        if (!ok) continue;
+        if (!ok)
+        {
+            continue;
+        }
 
+        Star* host_star = nullptr;
         bool was_new = false;
-        Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
-        if (!host_star) continue;
+
+        // Check consecutive-row cache first (planets are grouped by hostname)
+        if (!row.hostname.empty() && row.hostname == last_hostname && last_host_star)
+        {
+            host_star = last_host_star;
+        }
+        else
+        {
+            host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+            last_host_star = host_star;
+            last_hostname = row.hostname;
+        }
+
+        if (!host_star)
+        {
+            continue;
+        }
 
         if (stars_only)
         {
-            if (was_new && cachefp) exorow_write_line(cachefp, row);
+            if (was_new && cachefp)
+            {
+                exorow_write_line(cachefp, row);
+            }
             continue;
         }
 
         add_exoplanet_from_row(row, host_star, planet_celids, result);
-        if (cachefp) exorow_write_line(cachefp, row);
+        if (cachefp)
+        {
+            exorow_write_line(cachefp, row);
+        }
 
-        if (frand(0,1) < 0.01)
+        if (!(result & 0x7f))
         {
             lmss.str("");
             lmss << "Loaded " << result << " exoplanets from TAP catalogs...";
@@ -6168,7 +6261,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
     }
 
-    if (cachefp) fclose(cachefp);
+    if (cachefp)
+    {
+        fclose(cachefp);
+    }
     apply_exoplanet_names(planet_celids);
     if (stars_only) loaded_starsonly = true;
 

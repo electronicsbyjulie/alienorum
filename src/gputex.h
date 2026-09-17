@@ -20,6 +20,10 @@ namespace alienorum
     // false) -- most maps never load one; this is not the common case gputex_for() is.
     GLuint gputex_bump_for(Map* map);
 
+    // Returns a cached OpenGL texture name for the Milky Way backdrop (galaxies/Milky Way.jpg)
+    // When inverted is true, returns an inverted version for white background mode.
+    GLuint gputex_milky_way(bool inverted = false);
+
     // Frees every cached texture. Not required in normal operation (stale entries are simply
     // replaced as their Map changes) -- provided for explicit teardown if ever necessary.
     void gputex_clear_cache();

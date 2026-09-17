@@ -3,6 +3,8 @@
 #include "housekeeping.h"
 #include "classes/cons.h"
 #include <cstdlib>
+#include <unordered_map>
+#include <string_view>
 
 using namespace alienorum;
 
@@ -835,10 +837,11 @@ void read_cons_lines()
 
 void cache_cons_lines()
 {
-    int i, j, l, n, ncons, nln;
+    int ncons = constellations.size();
+    std::unordered_map<std::string, int> resolved_cache;
+    resolved_cache.reserve(1024);
 
-    ncons = constellations.size();
-    for (i=0; i<ncons; i++)
+    for (int i = 0; i < ncons; i++)
     {
         double mag_limit = (i == 34) ? 7.5 : 6.5;
 
@@ -846,38 +849,67 @@ void cache_cons_lines()
         loading_msg = std::string("Assigning ") + constellations[i].name + std::string("...");
         mtx.unlock();
 
-        nln = constellations[i].lines.size();
-        for (l=0; l<nln; l++)
+        std::unordered_map<std::string_view, int> cons_stars;
+        if (constellation_index.count(constellations[i].abbrev))
         {
-            int founda = -1, foundb = -1, rechercher;
-            if (constellation_index.count(constellations[i].abbrev))
+            const auto& cstars = constellation_index[constellations[i].abbrev];
+            cons_stars.reserve(cstars.size() * 2);
+            for (CelestialObject* co : cstars)
             {
-                n = constellation_index[constellations[i].abbrev].size();
-                for (j=0; j<n; j++)
+                Star* s = (Star*)co;
+                if (s->apparent_magnitude > mag_limit)
                 {
-                    Star* s = (Star*) constellation_index[constellations[i].abbrev][j];
-                    if (s->apparent_magnitude > mag_limit) continue;
-                    if ((founda<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnamea.c_str()))
-                        founda = s->seqno;
-                    if ((founda<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnamea.c_str()))
-                        founda = s->seqno;
-                    if ((foundb<0) && !strcmp(s->Bayer, constellations[i].lines[l].starnameb.c_str()))
-                        foundb = s->seqno;
-                    if ((foundb<0) && !strcmp(s->Flamsteed, constellations[i].lines[l].starnameb.c_str()))
-                        foundb = s->seqno;
+                    continue;
+                }
+                if (s->Bayer[0])
+                {
+                    cons_stars.emplace(s->Bayer, s->seqno);
+                }
+                if (s->Flamsteed[0])
+                {
+                    cons_stars.emplace(s->Flamsteed, s->seqno);
+                }
+                if (s->name[0])
+                {
+                    cons_stars.emplace(s->name, s->seqno);
                 }
             }
+        }
 
-            if (founda<0 || foundb<0)
+        auto resolve_endpoint = [&](const std::string& starname) -> int
+        {
+            auto it_cached = resolved_cache.find(starname);
+            if (it_cached != resolved_cache.end())
             {
-                rechercher = find_object(constellations[i].lines[l].starnamea.c_str(), true, mag_limit);
-                if (rechercher >= 0) founda = rechercher;
-                rechercher = find_object(constellations[i].lines[l].starnameb.c_str(), true, mag_limit);
-                if (rechercher >= 0) foundb = rechercher;
+                return it_cached->second;
             }
 
-            if (founda < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
-            if (foundb < 0) std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
+            auto it_local = cons_stars.find(starname);
+            if (it_local != cons_stars.end())
+            {
+                resolved_cache.emplace(starname, it_local->second);
+                return it_local->second;
+            }
+
+            int found = find_object(starname.c_str(), true, mag_limit);
+            resolved_cache.emplace(starname, found);
+            return found;
+        };
+
+        int nln = constellations[i].lines.size();
+        for (int l = 0; l < nln; l++)
+        {
+            int founda = resolve_endpoint(constellations[i].lines[l].starnamea);
+            int foundb = resolve_endpoint(constellations[i].lines[l].starnameb);
+
+            if (founda < 0)
+            {
+                std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnamea << " for constellation lines." << std::endl;
+            }
+            if (foundb < 0)
+            {
+                std::cerr << "Warning: Failed to identify " << constellations[i].lines[l].starnameb << " for constellation lines." << std::endl;
+            }
 
             if (founda >= 0)
             {

@@ -187,3 +187,107 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogNameIsStable)
     EXPECT_GT(name.size(), 0u);
     EXPECT_EQ(name, cr.get_condensed_starcat_name());
 }
+
+class TestCatalogReader : public CatalogReader
+{
+public:
+    using CatalogReader::resolve_or_create_exostar;
+};
+
+TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStars)
+{
+    if (!hdcache)
+    {
+        hdcache = new Star*[MAX_HD + 1]();
+    }
+    if (!hipcache)
+    {
+        hipcache = new Star*[MAX_HIP + 1]();
+    }
+
+    Star* tau_cet = make_star("tau Cet");
+    tau_cet->HD = 10700;
+    hdcache[10700] = tau_cet;
+
+    Star* tau_gem = make_star("tau Gem");
+    tau_gem->HD = 54719;
+    hdcache[54719] = tau_gem;
+
+    Star* star_81cet = make_star("81 Cet");
+    star_81cet->HD = 16400;
+    hdcache[16400] = star_81cet;
+
+    Star* star_82eri = make_star("82 Eri");
+    star_82eri->HD = 20794;
+    hdcache[20794] = star_82eri;
+
+    Star* cnc_a = make_star("55 Cnc A");
+    Star* cnc_b = make_star("GJ 324 B");
+
+    std::string last_hostname;
+    Star* last_host_star = nullptr;
+    TestCatalogReader tcr;
+
+    auto process_host = [&](const ExoRow& row) -> Star*
+    {
+        Star* host_star = nullptr;
+        bool was_new = false;
+        if (!row.hostname.empty() && row.hostname == last_hostname && last_host_star)
+        {
+            host_star = last_host_star;
+        }
+        else
+        {
+            host_star = tcr.resolve_or_create_exostar(row, false, &was_new);
+            last_host_star = host_star;
+            last_hostname = row.hostname;
+        }
+        return host_star;
+    };
+
+    // 1. tau Cet (7 chars) -> tau Gem (7 chars)
+    ExoRow row_cet;
+    row_cet.hostname = "tau Cet";
+    row_cet.hd_name = "HD 10700";
+    Star* resolved_cet = process_host(row_cet);
+    EXPECT_EQ(resolved_cet, tau_cet);
+
+    ExoRow row_gem;
+    row_gem.hostname = "tau Gem";
+    row_gem.hd_name = "HD 54719";
+    Star* resolved_gem = process_host(row_gem);
+    EXPECT_EQ(resolved_gem, tau_gem);
+    EXPECT_NE(resolved_gem, tau_cet);
+
+    // 2. 81 Cet (6 chars) -> 82 Eri (6 chars)
+    ExoRow row_81cet;
+    row_81cet.hostname = "81 Cet";
+    row_81cet.hd_name = "HD 16400";
+    Star* resolved_81cet = process_host(row_81cet);
+    EXPECT_EQ(resolved_81cet, star_81cet);
+
+    ExoRow row_82eri;
+    row_82eri.hostname = "82 Eri";
+    row_82eri.hd_name = "HD 20794";
+    Star* resolved_82eri = process_host(row_82eri);
+    EXPECT_EQ(resolved_82eri, star_82eri);
+    EXPECT_NE(resolved_82eri, star_81cet);
+
+    // 3. 55 Cnc A (8 chars) -> 55 Cnc B (8 chars)
+    ExoRow row_cnca;
+    row_cnca.hostname = "55 Cnc A";
+    Star* resolved_cnca = process_host(row_cnca);
+    EXPECT_EQ(resolved_cnca, cnc_a);
+
+    ExoRow row_cncb;
+    row_cncb.hostname = "55 Cnc B";
+    Star* resolved_cncb = process_host(row_cncb);
+    EXPECT_EQ(resolved_cncb, cnc_b);
+    EXPECT_NE(resolved_cncb, cnc_a);
+
+    hdcache[10700] = nullptr;
+    hdcache[54719] = nullptr;
+    hdcache[16400] = nullptr;
+    hdcache[20794] = nullptr;
+    delete_the_universe();
+}

@@ -136,10 +136,16 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
 
     Constellation *cons2match = nullptr;
     n = constellations.size();
-    if (match_cons) for (i=0; !cons2match && i<n; i++)
+    if (match_cons)
     {
-        if (!strncasecmp(match_cons, constellations[i].name.c_str(), 3))
-            cons2match = &constellations[i];
+        for (i=0; !cons2match && i<n; i++)
+        {
+            if (!strcasecmp(match_cons, constellations[i].abbrev.c_str())
+                || !strncasecmp(match_cons, constellations[i].name.c_str(), 3))
+            {
+                cons2match = &constellations[i];
+            }
+        }
     }
 
     bool is_Bayer = ((search_term[0] >= 'A' && search_term[0] <= 'Z') || (search_term[0] >= 'a' && search_term[0] <= 'z'))

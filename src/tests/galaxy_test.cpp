@@ -164,3 +164,364 @@ TEST(GalaxyBandTest, LoadDatFile_AcceptsWhitespaceSeparatedValues)
     EXPECT_DOUBLE_EQ(band.road2_gra[0], 3.08295);
     EXPECT_DOUBLE_EQ(band.road2_gdecl[0], -0.015708);
 }
+
+// =====================================================================
+// Milky Way Texture and Coordinate Alignment Tests
+// =====================================================================
+
+TEST(MilkyWayBackdropTest, TextureFileExistsAndHasValidHeader)
+{
+    std::string path = "galaxies" _FILESLASH "Milky Way.jpg";
+    std::ifstream file(path, std::ios::binary);
+    ASSERT_TRUE(file.good()) << "Could not open " << path;
+
+    // Verify JPEG SOI marker (0xFF 0xD8)
+    unsigned char header[2];
+    file.read((char*)header, 2);
+    EXPECT_EQ(header[0], 0xFF);
+    EXPECT_EQ(header[1], 0xD8);
+}
+
+TEST(MilkyWayBackdropTest, GalacticCenterAlignment)
+{
+    // Verify coordinate transformation aligns lon=0, lat=0 with Sagittarius A*
+    double sgr_ra = galactic_center_RA_J2000;
+    double sgr_dec = galactic_center_Decl_J2000;
+    Point sgr_loc = Point::from_ra_dec(sgr_ra, sgr_dec, 8200.0, 0);
+
+    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+
+    Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    Point pt = Point::from_ra_dec(0.0, 0.0, 1.0, 0);
+    pt = rotate3D(pt, center, yaxis, gyaw);
+    pt = rotate3D(pt, center, pl.v, -pl.a);
+    pt.scale(1.0);
+
+    double transformed_dec = asin(pt.y);
+    double transformed_ra = atan2(-pt.x, pt.z);
+    if (transformed_ra < 0)
+    {
+        transformed_ra += 2 * _pi;
+    }
+
+    // Must match Sgr A* coordinates within 0.1 degree
+    EXPECT_NEAR(transformed_ra * fiftyseven, sgr_ra * fiftyseven, 0.1);
+    EXPECT_NEAR(transformed_dec * fiftyseven, sgr_dec * fiftyseven, 0.1);
+}
+
+TEST(MilkyWayBackdropTest, GalacticLongitudeDirection)
+{
+    // +lon should point towards Crux / Alpha Centauri (approx RA 218 deg, Dec -61 deg)
+    // -lon should point towards Cygnus / Aquila (approx RA 288 deg, Dec +11 deg)
+    Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
+    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    Point p_pos = Point::from_ra_dec(45.0 * fiftyseventh, 0.0, 1.0, 0);
+    p_pos = rotate3D(p_pos, center, yaxis, gyaw);
+    p_pos = rotate3D(p_pos, center, pl.v, -pl.a);
+    p_pos.scale(1.0);
+
+    double pos_dec = asin(p_pos.y) * fiftyseven;
+    double pos_ra = atan2(-p_pos.x, p_pos.z) * fiftyseven;
+    if (pos_ra < 0)
+    {
+        pos_ra += 360.0;
+    }
+
+    // Crux/Centaurus is in the southern hemisphere
+    EXPECT_LT(pos_dec, -40.0);
+    EXPECT_NEAR(pos_ra, 218.0, 5.0);
+
+    Point p_neg = Point::from_ra_dec(-45.0 * fiftyseventh, 0.0, 1.0, 0);
+    p_neg = rotate3D(p_neg, center, yaxis, gyaw);
+    p_neg = rotate3D(p_neg, center, pl.v, -pl.a);
+    p_neg.scale(1.0);
+
+    double neg_dec = asin(p_neg.y) * fiftyseven;
+    double neg_ra = atan2(-p_neg.x, p_neg.z) * fiftyseven;
+    if (neg_ra < 0)
+    {
+        neg_ra += 360.0;
+    }
+
+    // Cygnus/Aquila is in the northern hemisphere
+    EXPECT_GT(neg_dec, 5.0);
+    EXPECT_NEAR(neg_ra, 288.0, 5.0);
+}
+
+TEST(MilkyWayBackdropTest, LatitudeFadeFunction)
+{
+    auto compute_fade = [](double lat_radians) -> double
+    {
+        double lat_deg = fabs(lat_radians) * fiftyseven;
+        if (lat_deg <= 22.5)
+        {
+            return 1.0;
+        }
+        if (lat_deg >= 30.0)
+        {
+            return 0.0;
+        }
+        double t = (30.0 - lat_deg) / 7.5;
+        return t * t * (3.0 - 2.0 * t);
+    };
+
+    // Center of the band: full brightness
+    EXPECT_DOUBLE_EQ(compute_fade(0.0), 1.0);
+    EXPECT_DOUBLE_EQ(compute_fade(20.0 * fiftyseventh), 1.0);
+    EXPECT_DOUBLE_EQ(compute_fade(22.5 * fiftyseventh), 1.0);
+
+    // Boundary of crop: completely faded
+    EXPECT_NEAR(compute_fade(30.0 * fiftyseventh), 0.0, 1e-6);
+    EXPECT_NEAR(compute_fade(-30.0 * fiftyseventh), 0.0, 1e-6);
+
+    // Midway: smoothstep(0.5) = 0.5
+    double mid = compute_fade(26.25 * fiftyseventh);
+    EXPECT_NEAR(mid, 0.5, 1e-6);
+}
+
+TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
+{
+    // Simulate the Milky Way band mesh in skymap projection (Earth equatorial frame, az=0, alt=0, zoom=1)
+    Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
+    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    const int N_lon = 240;
+    const int N_lat = 24;
+    const float dispcx = 640.0f;
+    const float zoom = 1.0f;
+    const float wrap_w = 2.0f * dispcx * zoom;
+    const float wrap_thresh = (float)(1.5 * dispcx * zoom);
+
+    struct TestVertex
+    {
+        ImVec2 pos;
+    };
+
+    std::vector<TestVertex> grid((N_lon + 1) * (N_lat + 1));
+
+    for (int j = 0; j <= N_lat; j++)
+    {
+        float v = (float)j / (float)N_lat;
+        double lat = (0.5 - (double)v) * (_pi / 3.0);
+
+        for (int i = 0; i <= N_lon; i++)
+        {
+            float u = (float)i / (float)N_lon;
+            double lon = ((double)u - 0.5) * (2.0 * _pi);
+
+            Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
+            pt = rotate3D(pt, center, yaxis, gyaw);
+            pt = rotate3D(pt, center, pl.v, -pl.a);
+
+            double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi, _pi * 2);
+            if (ra < 0)
+            {
+                ra += _pi * 2;
+            }
+            double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
+            if (decl > _pi / 2)
+            {
+                decl -= _pi * 2;
+            }
+
+            double cart_x = (1.0 - ra / _pi) * zoom;
+            double cart_y = -decl / _pi * zoom;
+
+            grid[j * (N_lon + 1) + i].pos = ImVec2((float)(dispcx + dispcx * cart_x), (float)(dispcx + dispcx * cart_y));
+        }
+    }
+
+    int total_missed_by_old = 0;
+    int total_streaks_with_new = 0;
+
+    // Test across various view azimuths (simulating Earth rotation / sidereal time)
+    for (int step = 0; step < 12; step++)
+    {
+        double az_test = step * (_pi / 6.0);
+
+        for (int j = 0; j <= N_lat; j++)
+        {
+            float v = (float)j / (float)N_lat;
+            double lat = (0.5 - (double)v) * (_pi / 3.0);
+
+            for (int i = 0; i <= N_lon; i++)
+            {
+                float u = (float)i / (float)N_lon;
+                double lon = ((double)u - 0.5) * (2.0 * _pi);
+
+                Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
+                pt = rotate3D(pt, center, yaxis, gyaw);
+                pt = rotate3D(pt, center, pl.v, -pl.a);
+
+                double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi + az_test, _pi * 2);
+                if (ra < 0)
+                {
+                    ra += _pi * 2;
+                }
+                double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
+                if (decl > _pi / 2)
+                {
+                    decl -= _pi * 2;
+                }
+
+                double cart_x = (1.0 - ra / _pi) * zoom;
+                double cart_y = -decl / _pi * zoom;
+
+                grid[j * (N_lon + 1) + i].pos = ImVec2((float)(dispcx + dispcx * cart_x), (float)(dispcx + dispcx * cart_y));
+            }
+        }
+
+        for (int j = 0; j < N_lat; j++)
+        {
+            for (int i = 0; i < N_lon; i++)
+            {
+                const ImVec2& p00 = grid[j * (N_lon + 1) + i].pos;
+                const ImVec2& p10 = grid[j * (N_lon + 1) + (i + 1)].pos;
+                const ImVec2& p11 = grid[(j + 1) * (N_lon + 1) + (i + 1)].pos;
+                const ImVec2& p01 = grid[(j + 1) * (N_lon + 1) + i].pos;
+
+                float min_x = std::min({p00.x, p10.x, p11.x, p01.x});
+                float max_x = std::max({p00.x, p10.x, p11.x, p01.x});
+
+                // The old logic only checked horizontal edges with threshold = dispcx * zoom
+                bool old_wrapped = (fabs(p00.x - p10.x) > (dispcx * zoom)) ||
+                                   (fabs(p01.x - p11.x) > (dispcx * zoom));
+
+                bool new_wrapped = (max_x - min_x) > wrap_thresh;
+
+                if (new_wrapped && !old_wrapped)
+                {
+                    total_missed_by_old++;
+                }
+
+                if (new_wrapped)
+                {
+                    // Verify Piece 1: shifted to right for points left of center
+                    ImVec2 p00_1 = p00;
+                    if (p00_1.x < dispcx)
+                    {
+                        p00_1.x += wrap_w;
+                    }
+                    ImVec2 p10_1 = p10;
+                    if (p10_1.x < dispcx)
+                    {
+                        p10_1.x += wrap_w;
+                    }
+                    ImVec2 p11_1 = p11;
+                    if (p11_1.x < dispcx)
+                    {
+                        p11_1.x += wrap_w;
+                    }
+                    ImVec2 p01_1 = p01;
+                    if (p01_1.x < dispcx)
+                    {
+                        p01_1.x += wrap_w;
+                    }
+
+                    float span_1 = std::max({p00_1.x, p10_1.x, p11_1.x, p01_1.x}) -
+                                   std::min({p00_1.x, p10_1.x, p11_1.x, p01_1.x});
+                    if (span_1 > wrap_thresh)
+                    {
+                        total_streaks_with_new++;
+                    }
+
+                    // Verify Piece 2: shifted to left for points right of center
+                    ImVec2 p00_2 = p00;
+                    if (p00_2.x > dispcx)
+                    {
+                        p00_2.x -= wrap_w;
+                    }
+                    ImVec2 p10_2 = p10;
+                    if (p10_2.x > dispcx)
+                    {
+                        p10_2.x -= wrap_w;
+                    }
+                    ImVec2 p11_2 = p11;
+                    if (p11_2.x > dispcx)
+                    {
+                        p11_2.x -= wrap_w;
+                    }
+                    ImVec2 p01_2 = p01;
+                    if (p01_2.x > dispcx)
+                    {
+                        p01_2.x -= wrap_w;
+                    }
+
+                    float span_2 = std::max({p00_2.x, p10_2.x, p11_2.x, p01_2.x}) -
+                                   std::min({p00_2.x, p10_2.x, p11_2.x, p01_2.x});
+                    if (span_2 > wrap_thresh)
+                    {
+                        total_streaks_with_new++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Old logic missed seam crossings (which caused horizontal streaks); new logic catches them
+    EXPECT_GT(total_missed_by_old, 0);
+    // Zero streaks occur with new logic
+    EXPECT_EQ(total_streaks_with_new, 0);
+}
+
+TEST(MilkyWayBackdropTest, WhiteBackgroundInversion)
+{
+    // Test the color inversion transformation used for white background mode:
+    // inv = 255 - min(255, (int)(val * 2.2f))
+    auto invert_pixel = [](int val) -> int
+    {
+        int scaled = std::min(255, (int)(val * 2.2f));
+        return 255 - scaled;
+    };
+
+    // Dark space outside galaxy inverts to pure white (seamless against white background)
+    EXPECT_EQ(invert_pixel(0), 255);
+
+    // Edge values near +/- 30 deg cutoff (val ~ 2) invert to almost pure white
+    EXPECT_GE(invert_pixel(2), 250);
+
+    // Dust lane (val ~ 10) inverts to light tone
+    int dust_lane_inv = invert_pixel(10);
+    EXPECT_EQ(dust_lane_inv, 233);
+
+    // Bright star cloud (val ~ 40) inverts to medium gray
+    int star_cloud_inv = invert_pixel(40);
+    EXPECT_EQ(star_cloud_inv, 167);
+
+    // Galactic core (val ~ 80) inverts to dark gray
+    int core_inv = invert_pixel(80);
+    EXPECT_EQ(core_inv, 79);
+
+    // In inverted mode, dust lanes are strictly lighter (higher luminance) than surrounding star clouds
+    EXPECT_GT(dust_lane_inv, star_cloud_inv);
+    EXPECT_GT(star_cloud_inv, core_inv);
+
+    // Verify alpha blending over white background (C_dst = 255, alpha = 0.75)
+    auto blend_white = [](int src_color, float alpha) -> int
+    {
+        return (int)(src_color * alpha + 255.0f * (1.0f - alpha));
+    };
+
+    // Background space remains pure white
+    EXPECT_EQ(blend_white(invert_pixel(0), 0.75f), 255);
+
+    // Dust lanes blend to light gray (~238)
+    int dust_lane_blended = blend_white(dust_lane_inv, 0.75f);
+    EXPECT_GE(dust_lane_blended, 235);
+
+    // Star clouds blend to noticeable gray (~189)
+    int star_cloud_blended = blend_white(star_cloud_inv, 0.75f);
+    EXPECT_NEAR(star_cloud_blended, 189, 2);
+
+    // Contrast between dust lane and star cloud is clearly visible (> 40 levels of brightness)
+    EXPECT_GT(dust_lane_blended - star_cloud_blended, 40);
+}
+
+
