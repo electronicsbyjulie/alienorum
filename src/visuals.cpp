@@ -3175,9 +3175,10 @@ void draw_galaxy_band()
 
             if (view_mode == vm_skymap)
             {
-                float wrap_thresh = (float)(dispcx * zoom);
-                bool wrapped = (fabs(v00.pos.x - v10.pos.x) > wrap_thresh) ||
-                               (fabs(v01.pos.x - v11.pos.x) > wrap_thresh);
+                float min_x = std::min({v00.pos.x, v10.pos.x, v11.pos.x, v01.pos.x});
+                float max_x = std::max({v00.pos.x, v10.pos.x, v11.pos.x, v01.pos.x});
+                float wrap_thresh = (float)(1.5 * dispcx * zoom);
+                bool wrapped = (max_x - min_x) > wrap_thresh;
                 if (wrapped)
                 {
                     float wrap_w = (float)(2.0 * dispcx * zoom);

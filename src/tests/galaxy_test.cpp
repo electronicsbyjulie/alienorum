@@ -284,3 +284,190 @@ TEST(MilkyWayBackdropTest, LatitudeFadeFunction)
     EXPECT_NEAR(mid, 0.5, 1e-6);
 }
 
+TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
+{
+    // Simulate the Milky Way band mesh in skymap projection (Earth equatorial frame, az=0, alt=0, zoom=1)
+    Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
+    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    const int N_lon = 240;
+    const int N_lat = 24;
+    const float dispcx = 640.0f;
+    const float zoom = 1.0f;
+    const float wrap_w = 2.0f * dispcx * zoom;
+    const float wrap_thresh = (float)(1.5 * dispcx * zoom);
+
+    struct TestVertex
+    {
+        ImVec2 pos;
+    };
+
+    std::vector<TestVertex> grid((N_lon + 1) * (N_lat + 1));
+
+    for (int j = 0; j <= N_lat; j++)
+    {
+        float v = (float)j / (float)N_lat;
+        double lat = (0.5 - (double)v) * (_pi / 3.0);
+
+        for (int i = 0; i <= N_lon; i++)
+        {
+            float u = (float)i / (float)N_lon;
+            double lon = ((double)u - 0.5) * (2.0 * _pi);
+
+            Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
+            pt = rotate3D(pt, center, yaxis, gyaw);
+            pt = rotate3D(pt, center, pl.v, -pl.a);
+
+            double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi, _pi * 2);
+            if (ra < 0)
+            {
+                ra += _pi * 2;
+            }
+            double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
+            if (decl > _pi / 2)
+            {
+                decl -= _pi * 2;
+            }
+
+            double cart_x = (1.0 - ra / _pi) * zoom;
+            double cart_y = -decl / _pi * zoom;
+
+            grid[j * (N_lon + 1) + i].pos = ImVec2((float)(dispcx + dispcx * cart_x), (float)(dispcx + dispcx * cart_y));
+        }
+    }
+
+    int total_missed_by_old = 0;
+    int total_streaks_with_new = 0;
+
+    // Test across various view azimuths (simulating Earth rotation / sidereal time)
+    for (int step = 0; step < 12; step++)
+    {
+        double az_test = step * (_pi / 6.0);
+
+        for (int j = 0; j <= N_lat; j++)
+        {
+            float v = (float)j / (float)N_lat;
+            double lat = (0.5 - (double)v) * (_pi / 3.0);
+
+            for (int i = 0; i <= N_lon; i++)
+            {
+                float u = (float)i / (float)N_lon;
+                double lon = ((double)u - 0.5) * (2.0 * _pi);
+
+                Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
+                pt = rotate3D(pt, center, yaxis, gyaw);
+                pt = rotate3D(pt, center, pl.v, -pl.a);
+
+                double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi + az_test, _pi * 2);
+                if (ra < 0)
+                {
+                    ra += _pi * 2;
+                }
+                double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
+                if (decl > _pi / 2)
+                {
+                    decl -= _pi * 2;
+                }
+
+                double cart_x = (1.0 - ra / _pi) * zoom;
+                double cart_y = -decl / _pi * zoom;
+
+                grid[j * (N_lon + 1) + i].pos = ImVec2((float)(dispcx + dispcx * cart_x), (float)(dispcx + dispcx * cart_y));
+            }
+        }
+
+        for (int j = 0; j < N_lat; j++)
+        {
+            for (int i = 0; i < N_lon; i++)
+            {
+                const ImVec2& p00 = grid[j * (N_lon + 1) + i].pos;
+                const ImVec2& p10 = grid[j * (N_lon + 1) + (i + 1)].pos;
+                const ImVec2& p11 = grid[(j + 1) * (N_lon + 1) + (i + 1)].pos;
+                const ImVec2& p01 = grid[(j + 1) * (N_lon + 1) + i].pos;
+
+                float min_x = std::min({p00.x, p10.x, p11.x, p01.x});
+                float max_x = std::max({p00.x, p10.x, p11.x, p01.x});
+
+                // The old logic only checked horizontal edges with threshold = dispcx * zoom
+                bool old_wrapped = (fabs(p00.x - p10.x) > (dispcx * zoom)) ||
+                                   (fabs(p01.x - p11.x) > (dispcx * zoom));
+
+                bool new_wrapped = (max_x - min_x) > wrap_thresh;
+
+                if (new_wrapped && !old_wrapped)
+                {
+                    total_missed_by_old++;
+                }
+
+                if (new_wrapped)
+                {
+                    // Verify Piece 1: shifted to right for points left of center
+                    ImVec2 p00_1 = p00;
+                    if (p00_1.x < dispcx)
+                    {
+                        p00_1.x += wrap_w;
+                    }
+                    ImVec2 p10_1 = p10;
+                    if (p10_1.x < dispcx)
+                    {
+                        p10_1.x += wrap_w;
+                    }
+                    ImVec2 p11_1 = p11;
+                    if (p11_1.x < dispcx)
+                    {
+                        p11_1.x += wrap_w;
+                    }
+                    ImVec2 p01_1 = p01;
+                    if (p01_1.x < dispcx)
+                    {
+                        p01_1.x += wrap_w;
+                    }
+
+                    float span_1 = std::max({p00_1.x, p10_1.x, p11_1.x, p01_1.x}) -
+                                   std::min({p00_1.x, p10_1.x, p11_1.x, p01_1.x});
+                    if (span_1 > wrap_thresh)
+                    {
+                        total_streaks_with_new++;
+                    }
+
+                    // Verify Piece 2: shifted to left for points right of center
+                    ImVec2 p00_2 = p00;
+                    if (p00_2.x > dispcx)
+                    {
+                        p00_2.x -= wrap_w;
+                    }
+                    ImVec2 p10_2 = p10;
+                    if (p10_2.x > dispcx)
+                    {
+                        p10_2.x -= wrap_w;
+                    }
+                    ImVec2 p11_2 = p11;
+                    if (p11_2.x > dispcx)
+                    {
+                        p11_2.x -= wrap_w;
+                    }
+                    ImVec2 p01_2 = p01;
+                    if (p01_2.x > dispcx)
+                    {
+                        p01_2.x -= wrap_w;
+                    }
+
+                    float span_2 = std::max({p00_2.x, p10_2.x, p11_2.x, p01_2.x}) -
+                                   std::min({p00_2.x, p10_2.x, p11_2.x, p01_2.x});
+                    if (span_2 > wrap_thresh)
+                    {
+                        total_streaks_with_new++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Old logic missed seam crossings (which caused horizontal streaks); new logic catches them
+    EXPECT_GT(total_missed_by_old, 0);
+    // Zero streaks occur with new logic
+    EXPECT_EQ(total_streaks_with_new, 0);
+}
+
