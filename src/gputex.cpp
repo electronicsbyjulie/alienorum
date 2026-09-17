@@ -166,11 +166,16 @@ namespace alienorum
     }
 
     static GLuint milky_way_tex = 0;
+    static GLuint milky_way_inv_tex = 0;
     static bool milky_way_attempted = false;
 
-    GLuint gputex_milky_way()
+    GLuint gputex_milky_way(bool inverted)
     {
-        if (milky_way_tex)
+        if (inverted && milky_way_inv_tex)
+        {
+            return milky_way_inv_tex;
+        }
+        if (!inverted && milky_way_tex)
         {
             return milky_way_tex;
         }
@@ -248,8 +253,31 @@ namespace alienorum
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, upload_ptr);
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
+        // Create inverted version for white background mode
+        std::vector<unsigned char> inv((size_t)w * h * 4);
+        for (size_t p = 0; p < (size_t)w * h; p++)
+        {
+            for (int c = 0; c < 3; c++)
+            {
+                int val = upload_ptr[p * 4 + c];
+                int scaled = std::min(255, (int)(val * 2.2f));
+                inv[p * 4 + c] = (unsigned char)(255 - scaled);
+            }
+            inv[p * 4 + 3] = upload_ptr[p * 4 + 3];
+        }
+
+        glGenTextures(1, &milky_way_inv_tex);
+        glBindTexture(GL_TEXTURE_2D, milky_way_inv_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, inv.data());
+        gputex_generate_mipmap(GL_TEXTURE_2D);
+
         SDL_FreeSurface(rgba_surf);
-        return milky_way_tex;
+        return inverted ? milky_way_inv_tex : milky_way_tex;
     }
 
     void gputex_clear_cache()
@@ -274,7 +302,12 @@ namespace alienorum
         {
             glDeleteTextures(1, &milky_way_tex);
             milky_way_tex = 0;
-            milky_way_attempted = false;
         }
+        if (milky_way_inv_tex)
+        {
+            glDeleteTextures(1, &milky_way_inv_tex);
+            milky_way_inv_tex = 0;
+        }
+        milky_way_attempted = false;
     }
 }

@@ -471,3 +471,57 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
     EXPECT_EQ(total_streaks_with_new, 0);
 }
 
+TEST(MilkyWayBackdropTest, WhiteBackgroundInversion)
+{
+    // Test the color inversion transformation used for white background mode:
+    // inv = 255 - min(255, (int)(val * 2.2f))
+    auto invert_pixel = [](int val) -> int
+    {
+        int scaled = std::min(255, (int)(val * 2.2f));
+        return 255 - scaled;
+    };
+
+    // Dark space outside galaxy inverts to pure white (seamless against white background)
+    EXPECT_EQ(invert_pixel(0), 255);
+
+    // Edge values near +/- 30 deg cutoff (val ~ 2) invert to almost pure white
+    EXPECT_GE(invert_pixel(2), 250);
+
+    // Dust lane (val ~ 10) inverts to light tone
+    int dust_lane_inv = invert_pixel(10);
+    EXPECT_EQ(dust_lane_inv, 233);
+
+    // Bright star cloud (val ~ 40) inverts to medium gray
+    int star_cloud_inv = invert_pixel(40);
+    EXPECT_EQ(star_cloud_inv, 167);
+
+    // Galactic core (val ~ 80) inverts to dark gray
+    int core_inv = invert_pixel(80);
+    EXPECT_EQ(core_inv, 79);
+
+    // In inverted mode, dust lanes are strictly lighter (higher luminance) than surrounding star clouds
+    EXPECT_GT(dust_lane_inv, star_cloud_inv);
+    EXPECT_GT(star_cloud_inv, core_inv);
+
+    // Verify alpha blending over white background (C_dst = 255, alpha = 0.75)
+    auto blend_white = [](int src_color, float alpha) -> int
+    {
+        return (int)(src_color * alpha + 255.0f * (1.0f - alpha));
+    };
+
+    // Background space remains pure white
+    EXPECT_EQ(blend_white(invert_pixel(0), 0.75f), 255);
+
+    // Dust lanes blend to light gray (~238)
+    int dust_lane_blended = blend_white(dust_lane_inv, 0.75f);
+    EXPECT_GE(dust_lane_blended, 235);
+
+    // Star clouds blend to noticeable gray (~189)
+    int star_cloud_blended = blend_white(star_cloud_inv, 0.75f);
+    EXPECT_NEAR(star_cloud_blended, 189, 2);
+
+    // Contrast between dust lane and star cloud is clearly visible (> 40 levels of brightness)
+    EXPECT_GT(dust_lane_blended - star_cloud_blended, 40);
+}
+
+

@@ -3019,10 +3019,6 @@ void draw_galaxy_band()
     {
         return;
     }
-    if (whtbkgd)
-    {
-        return;
-    }
 
     CelestialObject *cel = cels[inside_galaxy_idx];
     Galaxy *g = (Galaxy*)cel;
@@ -3042,7 +3038,7 @@ void draw_galaxy_band()
         return;
     }
 
-    GLuint tex_id = gputex_milky_way();
+    GLuint tex_id = gputex_milky_way(whtbkgd);
     if (!tex_id)
     {
         return;
@@ -3064,6 +3060,12 @@ void draw_galaxy_band()
     double az = azimuth + azimuth_correction;
     double alt = altitude;
 
+    float bg_mult = 0.333f;
+    if (whtbkgd)
+    {
+        bg_mult = 0.75f;
+    }
+
     for (int j = 0; j <= N_lat; j++)
     {
         float v = (float)j / (float)N_lat;
@@ -3081,7 +3083,7 @@ void draw_galaxy_band()
             edge_fade = t * t * (3.0 - 2.0 * t);
         }
 
-        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * 0.333));
+        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * bg_mult));
         if (alpha < 0)
         {
             alpha = 0;
