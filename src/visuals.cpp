@@ -3066,6 +3066,7 @@ void draw_galaxy_band()
         bg_mult = 0.75f;
     }
 
+    double invrootzoom = 1.0 / sqrt(zoom);
     for (int j = 0; j <= N_lat; j++)
     {
         float v = (float)j / (float)N_lat;
@@ -3083,7 +3084,7 @@ void draw_galaxy_band()
             edge_fade = t * t * (3.0 - 2.0 * t);
         }
 
-        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * bg_mult));
+        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * bg_mult * invrootzoom ));
         if (alpha < 0)
         {
             alpha = 0;
