@@ -1977,7 +1977,8 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     double spike_str = pow(1.0 - haze * 0.9, 1.6) * zf;
     if (spike_str > 0.02)
     {
-        const int nslots = 24, nlayers = 5;
+        const int nslots = npointedstar * floor(25/npointedstar), primod = nslots / npointedstar, nlayers = 5;
+
         // Off cardinal/diagonal so the four points don't look like a cross.
         const double spike_rotation = azimuth - 0.3 * altitude; // 25.0 * fiftyseventh;
         double ray_len = base_len * (1.0 - 0.5 * haze);
@@ -1985,7 +1986,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
         double priwt = (zoom < 9) ? 0.0 : fmin(1, (zoom-4)/16);
         for (int k=0; k<nslots; k++)
         {
-            bool primary = !(k % 6);
+            bool primary = !(k % primod);
             double weight;
             if (primary) weight = priwt;
             else if (!(k % 3)) weight = fill;                    // diagonals fill in first

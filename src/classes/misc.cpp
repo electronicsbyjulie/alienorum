@@ -55,6 +55,7 @@ bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = tru
 bool satview_upsidedown = false;
 int cursor_size = 8, circle_size = 2, xaorngsim = 0;
 int is_an_obj_under_cursor = -1;
+int npointedstar = 4;
 double obj_magn_under_cursor;
 std::string objname, viewer_locale;
 bool is_mouse_over_window;
