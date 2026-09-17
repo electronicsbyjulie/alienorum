@@ -12,6 +12,8 @@
 #include <time.h>
 #include <ctime>
 #include <map>
+#include <unordered_map>
+#include <string_view>
 #include <string.h>
 #include "cat.h"
 #include "serial.h"
@@ -5075,40 +5077,54 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     ((Star*)cels[0])->distance_known = true;
 
     loading_msg = std::string("Verifying star orbits...");
-    for (i=0; cels[i]; i++)
+
+    std::unordered_map<std::string_view, Star*> id_to_star;
+    id_to_star.reserve(num_read + 100);
+
+    std::vector<Star*> orbiting_stars;
+    orbiting_stars.reserve(16384);
+
+    for (i = 0; cels[i]; i++)
     {
-        if (cels[i]->orbit && cels[i]->orbit->center_name.size())
+        if (cels[i]->type == star)
         {
-            for (j=0; cels[j]; j++)
+            Star *s = (Star*)cels[i];
+            id_to_star.emplace(s->alienorumid, s);
+            if (s->orbit && !s->orbit->center_name.empty())
             {
-                if (j==i) continue;
-                if (!strcmp(((Star*)cels[j])->alienorumid.c_str(), cels[i]->orbit->center_name.c_str()))
-                {
-                    Star *A = (Star*)cels[j];
-                    cels[i]->orbit->center = A;
-                    cels[i]->origcenname = A->name;
-
-                    A->update_location(simnow);
-                    if (cels[i]->orbit->heliocentric_inclination || cels[i]->orbit->heliocentric_node)
-                    {
-                        if (!A->lock_system_plane)
-                        {
-                            A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
-                                                           = system_plane_from_incl_and_node(cels[i]->orbit->heliocentric_inclination ?: half_pi,
-                                                                   cels[i]->orbit->heliocentric_node, A->location.system_center);
-                            // A->lock_system_plane = true;
-                        }
-
-                        cels[i]->known_poles = A->known_poles = true;
-                    }
-                    break;
-                }
+                orbiting_stars.push_back(s);
             }
         }
-        if (!(i & 0xff))
+    }
+
+    for (size_t k = 0; k < orbiting_stars.size(); k++)
+    {
+        Star *s = orbiting_stars[k];
+        auto it = id_to_star.find(s->orbit->center_name);
+        if (it != id_to_star.end() && it->second != s)
         {
-            std::string dispname = (cels[i]->type == star) ? ((Star*)cels[i])->alienorumid : cels[i]->name;
-            loading_msg = std::string("Verifying ") + dispname + std::string("...");
+            Star *A = it->second;
+            s->orbit->center = A;
+            s->origcenname = A->name;
+
+            A->update_location(simnow);
+            if (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node)
+            {
+                if (!A->lock_system_plane)
+                {
+                    A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
+                                                   = system_plane_from_incl_and_node(s->orbit->heliocentric_inclination ?: half_pi,
+                                                           s->orbit->heliocentric_node, A->location.system_center);
+                    // A->lock_system_plane = true;
+                }
+
+                s->known_poles = A->known_poles = true;
+            }
+        }
+
+        if (!(k & 0xff))
+        {
+            loading_msg = std::string("Verifying ") + s->alienorumid + std::string("...");
         }
     }
 
