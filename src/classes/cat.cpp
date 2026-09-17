@@ -5800,9 +5800,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             ExoRow row;
             int addedexo = 0;
             Star* last_host_star = nullptr;
-            std::string_view last_hostname;
-            std::unordered_map<std::string_view, Star*> exostar_cache;
-            exostar_cache.reserve(8192);
+            std::string last_hostname;
 
             while (exorow_read_line(fp, row))
             {
@@ -5824,19 +5822,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
                 else
                 {
-                    auto it = exostar_cache.find(row.hostname);
-                    if (it != exostar_cache.end())
-                    {
-                        host_star = it->second;
-                    }
-                    else
-                    {
-                        host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
-                        if (host_star)
-                        {
-                            exostar_cache.emplace(host_star->name, host_star);
-                        }
-                    }
+                    host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
                     last_host_star = host_star;
                     last_hostname = row.hostname;
                 }
@@ -6212,11 +6198,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
     }
 
-    std::unordered_map<std::string_view, Star*> exostar_cache;
-    exostar_cache.reserve(8192);
-
     Star* last_host_star = nullptr;
-    std::string_view last_hostname;
+    std::string last_hostname;
 
     for (const auto& jrow : planets_array)
     {
@@ -6243,19 +6226,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
         else
         {
-            auto it = exostar_cache.find(row.hostname);
-            if (it != exostar_cache.end())
-            {
-                host_star = it->second;
-            }
-            else
-            {
-                host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
-                if (host_star)
-                {
-                    exostar_cache.emplace(host_star->name, host_star);
-                }
-            }
+            host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
             last_host_star = host_star;
             last_hostname = row.hostname;
         }
