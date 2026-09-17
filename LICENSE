@@ -70,6 +70,15 @@ The Uranus ring textures are courtesy NASA, ESA, CSA, STScI, J. DePasquale (STSc
 derived from the image at https://esawebb.org/images/weic2310a/,
 licensed under CC-BY-4.0 International, https://creativecommons.org/licenses/by/4.0/
 
+Galaxy images in galaxies/processed/ are derived from the Digitized Sky Survey (DSS2),
+courtesy of the Space Telescope Science Institute (STScI), the Association of Universities
+for Research in Astronomy (AURA), the European Southern Observatory (ESO), the California
+Institute of Technology / Palomar Observatory, the UK Schmidt Telescope, and the Centre de
+Données astronomiques de Strasbourg (CDS).
+https://archive.stsci.edu/dss/
+https://aladin.cds.unistra.fr/
+
+
 
 The following license applies to Alienorum code unless otherwise specified:
 
