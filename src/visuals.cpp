@@ -3060,11 +3060,13 @@ void draw_galaxy_band()
     double az = azimuth + azimuth_correction;
     double alt = altitude;
 
-    float bg_mult = 0.333f;
+    float bg_mult = global_brightness * 0.15f;
     if (whtbkgd)
     {
-        bg_mult = 0.75f;
+        bg_mult = 0.25f;
     }
+
+    bg_mult = fmin(1.0, pow(bg_mult, global_inverse_gamma));
 
     double invrootzoom = 1.0 / sqrt(zoom);
     for (int j = 0; j <= N_lat; j++)
@@ -3084,7 +3086,7 @@ void draw_galaxy_band()
             edge_fade = t * t * (3.0 - 2.0 * t);
         }
 
-        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * bg_mult * invrootzoom ));
+        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, bg_mult * invrootzoom ));
         if (alpha < 0)
         {
             alpha = 0;

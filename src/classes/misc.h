@@ -253,6 +253,9 @@ std::string elapsed_time(time_t start, time_t end);
 std::string cons_from_alienorumid(const std::string alienorumid);
 int grkno_from_abbrev(const char *abbrev);
 
+std::string radians_to_hms(double r);
+std::string radians_to_degms(double r);
+
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide
     double ch4_fraction,        // Methane
