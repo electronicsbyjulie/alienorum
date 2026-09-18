@@ -579,7 +579,7 @@ TEST(GalaxyInternalMapTest, MajorGalaxiesAndCompanionsHaveValidJpegHeader)
 {
     const std::vector<std::string> test_galaxies =
     {
-        "M31", "M81", "M101", "NGC_1097", "NGC_4435", "NGC_4490", "NGC_5194", "NGC_5195"
+        "M31", "M81", "M101", "NGC_1097", "NGC_4435", "NGC_4490", "NGC_4627", "NGC_5194", "NGC_5195"
     };
 
     for (const auto &gname : test_galaxies)
