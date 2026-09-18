@@ -186,14 +186,14 @@ namespace alienorum
         }
         milky_way_attempted = true;
 
-        SDL_Surface* surf = IMG_Load("galaxies/Milky Way.jpg");
+        SDL_Surface* surf = IMG_Load("galaxies/internal/Milky Way.jpg");
         if (!surf)
         {
-            surf = IMG_Load("galaxies" _FILESLASH "Milky Way.jpg");
+            surf = IMG_Load("galaxies" _FILESLASH "internal" _FILESLASH "Milky Way.jpg");
         }
         if (!surf)
         {
-            std::cerr << "Could not load galaxies/Milky Way.jpg: " << IMG_GetError() << std::endl;
+            std::cerr << "Could not load galaxies/internal/Milky Way.jpg: " << IMG_GetError() << std::endl;
             return 0;
         }
 

@@ -171,7 +171,7 @@ TEST(GalaxyBandTest, LoadDatFile_AcceptsWhitespaceSeparatedValues)
 
 TEST(MilkyWayBackdropTest, TextureFileExistsAndHasValidHeader)
 {
-    std::string path = "galaxies" _FILESLASH "Milky Way.jpg";
+    std::string path = "galaxies" _FILESLASH "internal" _FILESLASH "Milky Way.jpg";
     std::ifstream file(path, std::ios::binary);
     ASSERT_TRUE(file.good()) << "Could not open " << path;
 
