@@ -524,4 +524,74 @@ TEST(MilkyWayBackdropTest, WhiteBackgroundInversion)
     EXPECT_GT(dust_lane_blended - star_cloud_blended, 40);
 }
 
+// =====================================================================
+// Galaxy Face-on Map Tests
+// =====================================================================
 
+TEST(GalaxyFaceonMapTest, MajorGalaxiesAndMilkyWayHaveValidJpegHeader)
+{
+    const std::vector<std::string> test_galaxies =
+    {
+        "M31", "M81", "M101", "NGC_1097", "NGC_1316", "NGC_1365", "NGC_253", "Milky Way"
+    };
+
+    for (const auto &gname : test_galaxies)
+    {
+        std::string path = "galaxies" _FILESLASH "faceon" _FILESLASH + gname + ".jpg";
+        std::ifstream file(path, std::ios::binary);
+        ASSERT_TRUE(file.good()) << "Missing face-on map for " << gname << " at " << path;
+
+        // Verify JPEG SOI marker (0xFF 0xD8)
+        unsigned char header[2];
+        file.read((char*)header, 2);
+        EXPECT_EQ(header[0], 0xFF);
+        EXPECT_EQ(header[1], 0xD8);
+    }
+}
+
+TEST(GalaxyFaceonMapTest, AccessoryCompanionsExist)
+{
+    // Verify companion galaxies identified and extracted as accessories
+    const std::vector<std::string> companions =
+    {
+        "NGC_1317", "NGC_4435", "NGC_4485", "NGC_4627", "NGC_5195"
+    };
+
+    for (const auto &cname : companions)
+    {
+        std::string path = "galaxies" _FILESLASH "faceon" _FILESLASH + cname + ".jpg";
+        std::ifstream file(path, std::ios::binary);
+        EXPECT_TRUE(file.good()) << "Accessory companion face-on map missing: " << path;
+
+        // Verify JPEG SOI marker (0xFF 0xD8)
+        unsigned char header[2];
+        file.read((char*)header, 2);
+        EXPECT_EQ(header[0], 0xFF);
+        EXPECT_EQ(header[1], 0xD8);
+    }
+}
+
+// =====================================================================
+// Galaxy Internal 360-degree Panorama Tests
+// =====================================================================
+
+TEST(GalaxyInternalMapTest, MajorGalaxiesAndCompanionsHaveValidJpegHeader)
+{
+    const std::vector<std::string> test_galaxies =
+    {
+        "M31", "M81", "M101", "NGC_1097", "NGC_4435", "NGC_4490", "NGC_5194", "NGC_5195"
+    };
+
+    for (const auto &gname : test_galaxies)
+    {
+        std::string path = "galaxies" _FILESLASH "internal" _FILESLASH + gname + ".jpg";
+        std::ifstream file(path, std::ios::binary);
+        ASSERT_TRUE(file.good()) << "Missing internal map for " << gname << " at " << path;
+
+        // Verify JPEG SOI marker (0xFF 0xD8)
+        unsigned char header[2];
+        file.read((char*)header, 2);
+        EXPECT_EQ(header[0], 0xFF);
+        EXPECT_EQ(header[1], 0xD8);
+    }
+}

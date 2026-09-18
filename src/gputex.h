@@ -24,6 +24,15 @@ namespace alienorum
     // When inverted is true, returns an inverted version for white background mode.
     GLuint gputex_milky_way(bool inverted = false);
 
+    // Returns a cached OpenGL texture name for a galaxy's face-on map (galaxies/faceon/<name>.png).
+    // Returns 0 if no face-on map exists for the specified galaxy name.
+    GLuint gputex_galaxy_faceon(const std::string &name);
+
+    // Returns a cached OpenGL texture name for a galaxy's internal 360-degree panorama
+    // (galaxies/internal/<name>.jpg). If no custom internal map is found, returns the Milky Way
+    // map as fallback. Supports inverted mode for white background.
+    GLuint gputex_galaxy_internal(const std::string &name, bool inverted = false);
+
     // Frees every cached texture. Not required in normal operation (stale entries are simply
     // replaced as their Map changes) -- provided for explicit teardown if ever necessary.
     void gputex_clear_cache();
