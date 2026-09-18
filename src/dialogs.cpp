@@ -776,7 +776,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         else if (cels[i]->type == galaxy)
         {
-            // TODO:
+            ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here, sat_low_orbit).c_str());
         }
         else if (cels[i]->type == artificial)
         {

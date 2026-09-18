@@ -542,7 +542,17 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
     if (is_low_orbit_sat) r -= volumetric_mean_radius;
     std::string units = " m";
 
-    if (r >= light_year)
+    if (r >= light_year * 1e9)
+    {
+        dispr = (r / light_year) * 1e-9;
+        units = " Gly";
+    }
+    else if (r >= light_year * 1e6)
+    {
+        dispr = (r / light_year) * 1e-6;
+        units = " Mly";
+    }
+    else if (r >= light_year)
     {
         dispr = r / light_year;
         units = " ly";
@@ -559,7 +569,7 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
     }
 
     std::ostringstream oss;
-    oss << std::setprecision(5) << dispr << units;
+    oss << std::fixed << std::setprecision(5) << dispr << units;
     return oss.str();
 }
 
