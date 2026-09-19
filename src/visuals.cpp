@@ -2217,7 +2217,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
     double area = fmax(4.0, _pi * wide * tall * 0.25);
     double total = pow(magnbase, -appmag) * global_brightness * zoom * zoom * 1e+4;
-    double peak = fmin(210.0, total / area * 255.0);
+    double peak = fmin(210.0, pow(total / area, global_inverse_gamma) * 255.0);
     if (peak < 2.0) return 0;
 
     Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
