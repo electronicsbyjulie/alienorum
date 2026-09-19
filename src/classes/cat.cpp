@@ -6495,6 +6495,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
 
         g->cenobj = g;
         g->distance_known = true;
+        g->known_poles = g->position_angle_known;
         g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
         g->BV_color = -bv_correction;
         by_raw_name[raw_name] = g;
@@ -6622,6 +6623,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                     dup->position_angle_known = true;
                 }
             }
+            dup->known_poles = dup->position_angle_known;
             dup->location.equatorial_plane = dup->location.local_system_plane =
                                                  system_plane_from_incl_and_node(dup->inclination, dup->position_angle, (Point)dup->location);
             if (!strlen(dup->morph_type))
@@ -6731,6 +6733,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             g->position_angle = atof(field) * fiftyseventh;
             g->position_angle_known = true;
         }
+        g->known_poles = g->position_angle_known;
         g->location.equatorial_plane = g->location.local_system_plane
                                        = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 

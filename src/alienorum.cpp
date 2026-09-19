@@ -720,6 +720,7 @@ int main (int argc, char** argv)
             {
                 viewer_lat = (double)(dispcy - io.MousePos.y) * sclk_scale + altitude;
                 viewer_lon = (double)(io.MousePos.x - dispcx) * sclk_scale + azimuth;
+                azimuth = (viewer_lat > 0) ? _pi : 0;
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;

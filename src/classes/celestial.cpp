@@ -408,99 +408,22 @@ void Orbit::compute_center_mass(double mm)
 
 std::string CelestialObject::RA_as_hms(double seen_equinox)
 {
-    double RA = right_ascension * fiftyseven / 15 - seen_equinox;
-    int hours = floor(RA);
-    RA = (RA-hours) * 60;
-    int minutes = floor(RA);
-    double seconds = (RA-minutes) * 60;
-
-    // The stream below rounds to a tenth, so 59.97 would be printed as "60.0". Carry it here
-    // instead, where the hours can carry too.
-    if (seconds >= 59.95) { seconds = 0; minutes++; }
-    if (minutes >= 60) { minutes -= 60; hours++; }
-    if (hours >= 24) hours -= 24;
-
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << seconds;
-    std::string sec = oss.str();
-
-    return std::string(hours<10 ? "0" : "")
-        + std::to_string(hours) + std::string(":")
-        + std::string(minutes<10 ? "0" : "")
-        + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<9.95 ? "0" : "")
-        + sec;
+    return radians_to_hms(right_ascension * fiftyseven / 15 - seen_equinox);
 }
 
 std::string CelestialObject::Decl_as_degms()
 {
-    int sign = (declination < 0) ? -1 : 1;
-    double decl = fabs(declination * fiftyseven);
-    int degrees = floor(decl);
-    decl = (decl-degrees) * 60;
-    int minutes = floor(decl);
-    double seconds = (decl-minutes) * 60;
-
-    // Rounded, and carried if the rounding fills the field: 59.7 seconds is a minute, not ":60".
-    int isec = (int)llround(seconds);
-    if (isec >= 60) { isec -= 60; minutes++; }
-    if (minutes >= 60) { minutes -= 60; degrees++; }
-
-    return std::string( sign < 0 ? "-" : "+" )
-        + std::string(degrees<10 ? "0" : "")
-        + std::to_string(degrees) + std::string(":")
-        + std::string(minutes<10 ? "0" : "")
-        + std::to_string(minutes) + std::string(":")
-        + std::string(isec<10 ? "0" : "")
-        + std::to_string(isec);
+    return radians_to_degms(declination);
 }
 
 std::string CelestialObject::RA_as_hms(CelestialLocation seen_from, double seen_equinox)
 {
-    double relRA = RA_as_radians(seen_from, seen_equinox) * fiftyseven / 15;
-    int hours = floor(relRA);
-    relRA = (relRA-hours) * 60;
-    int minutes = floor(relRA);
-    double seconds = (relRA-minutes) * 60;
-
-    if (seconds >= 59.95) { seconds = 0; minutes++; }   // as above
-    if (minutes >= 60) { minutes -= 60; hours++; }
-    if (hours >= 24) hours -= 24;
-
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << seconds;
-    std::string sec = oss.str();
-
-    return std::string(hours<10 ? "0" : "")
-        + std::to_string(hours) + std::string(":")
-        + std::string(minutes<10 ? "0" : "")
-        + std::to_string(minutes) + std::string(":")
-        + std::string(seconds<10 ? "0" : "")
-        + sec;
+    return radians_to_hms(RA_as_radians(seen_from, seen_equinox));
 }
 
 std::string CelestialObject::Decl_as_degms(CelestialLocation seen_from)
 {
-    double relDecl = Decl_as_radians(seen_from) * fiftyseven;
-    if (relDecl > 90) relDecl -= 360;
-    int sign = (relDecl < 0) ? -1 : 1;
-    double decl = fabs(relDecl);
-    int degrees = floor(decl);
-    decl = (decl-degrees) * 60;
-    int minutes = floor(decl);
-    double seconds = (decl-minutes) * 60;
-
-    int isec = (int)llround(seconds);                   // as above: rounded, and carried
-    if (isec >= 60) { isec -= 60; minutes++; }
-    if (minutes >= 60) { minutes -= 60; degrees++; }
-
-    return std::string( sign < 0 ? "-" : "+" )
-        + std::string(degrees<10 ? "0" : "")
-        + std::to_string(degrees) + std::string(":")
-        + std::string(minutes<10 ? "0" : "")
-        + std::to_string(minutes) + std::string(":")
-        + std::string(isec<10 ? "0" : "")
-        + std::to_string(isec);
+    return radians_to_degms(Decl_as_radians(seen_from));
 }
 
 void CelestialObject::RA_from_hms(std::string ra_hms)
@@ -619,7 +542,17 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
     if (is_low_orbit_sat) r -= volumetric_mean_radius;
     std::string units = " m";
 
-    if (r >= light_year)
+    if (r >= light_year * 1e9)
+    {
+        dispr = (r / light_year) * 1e-9;
+        units = " Gly";
+    }
+    else if (r >= light_year * 1e6)
+    {
+        dispr = (r / light_year) * 1e-6;
+        units = " Mly";
+    }
+    else if (r >= light_year)
     {
         dispr = r / light_year;
         units = " ly";
@@ -636,7 +569,7 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
     }
 
     std::ostringstream oss;
-    oss << std::setprecision(5) << dispr << units;
+    oss << std::fixed << std::setprecision(5) << dispr << units;
     return oss.str();
 }
 

@@ -2217,7 +2217,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
     double area = fmax(4.0, _pi * wide * tall * 0.25);
     double total = pow(magnbase, -appmag) * global_brightness * zoom * zoom * 1e+4;
-    double peak = fmin(210.0, total / area * 255.0);
+    double peak = fmin(210.0, pow(total / area, global_inverse_gamma) * 255.0);
     if (peak < 2.0) return 0;
 
     Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
@@ -2243,20 +2243,6 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         mid = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
     }
 
-    // Alpha now varies with the segment as well as the ring, so it is worked out per vertex of the
-    // (nring+1) x nseg lattice once and reused by the four quads that meet at each.
-    std::vector<unsigned char> lattice((nring+1) * nseg);
-    for (int r = 0; r <= nring; r++)
-    {
-        double f = (double)r / nring;
-        for (int s = 0; s < nseg; s++)
-        {
-            double v = galaxy_surface_intensity(f, s * (_pi * 2.0 / nseg), T, barred) * peak;
-            lattice[r*nseg + s] = (unsigned char)fmin(255.0, fmax(0.0, v));
-        }
-    }
-    #define galaxy_vtx_col(rho, sigma) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(rho)*nseg + (sigma)]))
-
     // PrimReserve commits the vertex and index counts up front, so any quad the loop below skips
     // would leave four vertices and six indices of uninitialised buffer behind it -- stale geometry
     // from an earlier frame, drawn with whatever colours happened to still be sitting in it. That
@@ -2267,39 +2253,114 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     int nvalid = 0;
     for (int s = 0; s < nseg; s++)
     {
-        int s1 = (s+1) % nseg;
-        if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4) continue;
+        int s1 = (s + 1) % nseg;
+        if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4)
+        {
+            continue;
+        }
         nvalid++;
     }
-    if (!nvalid) return 0;
-
-    dl->PrimReserve(nring*nvalid*6, nring*nvalid*4);
-    for (int r = 0; r < nring; r++)
+    if (!nvalid)
     {
-        double f0 = (double)r / nring, f1 = (double)(r+1) / nring;
-        int r1 = r+1;
-        for (int s = 0; s < nseg; s++)
+        return 0;
+    }
+
+    GLuint tex_id = gputex_galaxy_faceon(cel->name);
+    if (tex_id)
+    {
+        dl->PushTexture((ImTextureID)(intptr_t)tex_id);
+        dl->PrimReserve(nring * nvalid * 6, nring * nvalid * 4);
+        int alpha_val = (int)fmin(255.0, fmax(0.0, peak));
+        ImU32 vcol = rgba_apply_redlight(IM_COL32(255, 255, 255, alpha_val));
+
+        for (int r = 0; r < nring; r++)
         {
-            int s1 = (s+1) % nseg;
-            if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4) continue;
-            // Each rim point scaled towards the centre gives the inner rings for free, and keeps
-            // them concentric in SCREEN space, which is what the projected disc actually is.
-            ImVec2 a0(mid.x + (rim[s ].x - mid.x)*f0, mid.y + (rim[s ].y - mid.y)*f0);
-            ImVec2 a1(mid.x + (rim[s1].x - mid.x)*f0, mid.y + (rim[s1].y - mid.y)*f0);
-            ImVec2 b1(mid.x + (rim[s1].x - mid.x)*f1, mid.y + (rim[s1].y - mid.y)*f1);
-            ImVec2 b0(mid.x + (rim[s ].x - mid.x)*f1, mid.y + (rim[s ].y - mid.y)*f1);
-            unsigned int base = dl->_VtxCurrentIdx;
-            dl->PrimWriteVtx(a0, uv, galaxy_vtx_col(r,   s ));
-            dl->PrimWriteVtx(a1, uv, galaxy_vtx_col(r,   s1));
-            dl->PrimWriteVtx(b1, uv, galaxy_vtx_col(r1, s1));
-            dl->PrimWriteVtx(b0, uv, galaxy_vtx_col(r1, s ));
-            dl->PrimWriteIdx((ImDrawIdx)(base+0));
-            dl->PrimWriteIdx((ImDrawIdx)(base+1));
-            dl->PrimWriteIdx((ImDrawIdx)(base+2));
-            dl->PrimWriteIdx((ImDrawIdx)(base+0));
-            dl->PrimWriteIdx((ImDrawIdx)(base+2));
-            dl->PrimWriteIdx((ImDrawIdx)(base+3));
+            double f0 = (double)r / nring;
+            double f1 = (double)(r + 1) / nring;
+            for (int s = 0; s < nseg; s++)
+            {
+                int s1 = (s + 1) % nseg;
+                if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4)
+                {
+                    continue;
+                }
+
+                ImVec2 a0(mid.x + (rim[s ].x - mid.x) * f0, mid.y + (rim[s ].y - mid.y) * f0);
+                ImVec2 a1(mid.x + (rim[s1].x - mid.x) * f0, mid.y + (rim[s1].y - mid.y) * f0);
+                ImVec2 b1(mid.x + (rim[s1].x - mid.x) * f1, mid.y + (rim[s1].y - mid.y) * f1);
+                ImVec2 b0(mid.x + (rim[s ].x - mid.x) * f1, mid.y + (rim[s ].y - mid.y) * f1);
+
+                double t0 = s * (_pi * 2.0 / nseg);
+                double t1 = s1 * (_pi * 2.0 / nseg);
+
+                ImVec2 uv_a0((float)(0.5 + 0.5 * f0 * cos(t0)), (float)(0.5 + 0.5 * f0 * sin(t0)));
+                ImVec2 uv_a1((float)(0.5 + 0.5 * f0 * cos(t1)), (float)(0.5 + 0.5 * f0 * sin(t1)));
+                ImVec2 uv_b1((float)(0.5 + 0.5 * f1 * cos(t1)), (float)(0.5 + 0.5 * f1 * sin(t1)));
+                ImVec2 uv_b0((float)(0.5 + 0.5 * f1 * cos(t0)), (float)(0.5 + 0.5 * f1 * sin(t0)));
+
+                unsigned int base = dl->_VtxCurrentIdx;
+                dl->PrimWriteVtx(a0, uv_a0, vcol);
+                dl->PrimWriteVtx(a1, uv_a1, vcol);
+                dl->PrimWriteVtx(b1, uv_b1, vcol);
+                dl->PrimWriteVtx(b0, uv_b0, vcol);
+                dl->PrimWriteIdx((ImDrawIdx)(base + 0));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 1));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 2));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 0));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 2));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 3));
+            }
         }
+        dl->PopTexture();
+    }
+    else
+    {
+        // Alpha now varies with the segment as well as the ring, so it is worked out per vertex of the
+        // (nring+1) x nseg lattice once and reused by the four quads that meet at each.
+        std::vector<unsigned char> lattice((nring + 1) * nseg);
+        for (int r = 0; r <= nring; r++)
+        {
+            double f = (double)r / nring;
+            for (int s = 0; s < nseg; s++)
+            {
+                double v = galaxy_surface_intensity(f, s * (_pi * 2.0 / nseg), T, barred) * peak;
+                lattice[r * nseg + s] = (unsigned char)fmin(255.0, fmax(0.0, v));
+            }
+        }
+        #define galaxy_vtx_col(rho, sigma) rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, lattice[(rho)*nseg + (sigma)]))
+
+        dl->PrimReserve(nring * nvalid * 6, nring * nvalid * 4);
+        for (int r = 0; r < nring; r++)
+        {
+            double f0 = (double)r / nring, f1 = (double)(r + 1) / nring;
+            int r1 = r + 1;
+            for (int s = 0; s < nseg; s++)
+            {
+                int s1 = (s + 1) % nseg;
+                if (rim[s].x < -1e4 || rim[s].y < -1e4 || rim[s1].x < -1e4 || rim[s1].y < -1e4)
+                {
+                    continue;
+                }
+                // Each rim point scaled towards the centre gives the inner rings for free, and keeps
+                // them concentric in SCREEN space, which is what the projected disc actually is.
+                ImVec2 a0(mid.x + (rim[s ].x - mid.x) * f0, mid.y + (rim[s ].y - mid.y) * f0);
+                ImVec2 a1(mid.x + (rim[s1].x - mid.x) * f0, mid.y + (rim[s1].y - mid.y) * f0);
+                ImVec2 b1(mid.x + (rim[s1].x - mid.x) * f1, mid.y + (rim[s1].y - mid.y) * f1);
+                ImVec2 b0(mid.x + (rim[s ].x - mid.x) * f1, mid.y + (rim[s ].y - mid.y) * f1);
+                unsigned int base = dl->_VtxCurrentIdx;
+                dl->PrimWriteVtx(a0, uv, galaxy_vtx_col(r,   s ));
+                dl->PrimWriteVtx(a1, uv, galaxy_vtx_col(r,   s1));
+                dl->PrimWriteVtx(b1, uv, galaxy_vtx_col(r1, s1));
+                dl->PrimWriteVtx(b0, uv, galaxy_vtx_col(r1, s ));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 0));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 1));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 2));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 0));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 2));
+                dl->PrimWriteIdx((ImDrawIdx)(base + 3));
+            }
+        }
+        #undef galaxy_vtx_col
     }
 
     cel->drawnxmin = xmin; cel->drawnxmax = xmax;
@@ -3039,7 +3100,7 @@ void draw_galaxy_band()
         return;
     }
 
-    GLuint tex_id = gputex_milky_way(whtbkgd);
+    GLuint tex_id = gputex_galaxy_internal(cel->name, whtbkgd);
     if (!tex_id)
     {
         return;
@@ -3061,11 +3122,13 @@ void draw_galaxy_band()
     double az = azimuth + azimuth_correction;
     double alt = altitude;
 
-    float bg_mult = 0.333f;
+    float bg_mult = global_brightness * 0.1f;
     if (whtbkgd)
     {
-        bg_mult = 0.75f;
+        bg_mult = 0.25f;
     }
+
+    bg_mult = fmin(1.0, pow(bg_mult, global_inverse_gamma));
 
     double invrootzoom = 1.0 / sqrt(zoom);
     for (int j = 0; j <= N_lat; j++)
@@ -3085,7 +3148,7 @@ void draw_galaxy_band()
             edge_fade = t * t * (3.0 - 2.0 * t);
         }
 
-        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, global_brightness * bg_mult * invrootzoom ));
+        int alpha = (int)(255.0 * edge_fade * sky_factor * std::min(1.0, bg_mult * invrootzoom ));
         if (alpha < 0)
         {
             alpha = 0;
