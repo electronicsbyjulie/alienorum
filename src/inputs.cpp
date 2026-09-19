@@ -420,7 +420,10 @@ void process_key_cmd_char(char c)
         case 'd': JDnow += daystep; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'D': JDnow -= daystep; viewchanged = true; compute_object_draw_coordinates(); break;
 
-        case 'e': explorer = !explorer; break;
+        case 'e':
+        explorer = !explorer;
+        if (explorer) process_key_cmd_ctrl_char('V');
+        break;
 
         case 'E':
         if (selected >= 0) editidx = selected;
@@ -774,7 +777,7 @@ void process_key_cmd_ctrl_char(char c)
         if (!mycenobj) return;
         view_mode = vm_system;
         statuswnd = false;
-        explorer = false;
+        // explorer = false;
         lbl_localsys = true;
         break;
 

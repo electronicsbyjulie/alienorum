@@ -2631,7 +2631,7 @@ void draw_system_explorer(ImGuiIO& io)
         process_key_cmd_char('^');
     }
     ImGui::SameLine();
-    if (ImGui::Button("Visualize (Ctrl+V)##explored"))
+    if (0 && ImGui::Button("Visualize (Ctrl+V)##explored"))
     {
         process_key_cmd_ctrl_char('V');
     }

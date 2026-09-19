@@ -3122,7 +3122,7 @@ void draw_galaxy_band()
     double az = azimuth + azimuth_correction;
     double alt = altitude;
 
-    float bg_mult = global_brightness * 0.15f;
+    float bg_mult = global_brightness * 0.1f;
     if (whtbkgd)
     {
         bg_mult = 0.25f;
