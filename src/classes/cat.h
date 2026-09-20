@@ -71,6 +71,7 @@ namespace alienorum
         unsigned int load_exoplanets_from_tap(bool stars_only = false);         // If stars_only, just verify stars/add new stars don't attempt planets.
         int read_exoplanets_catalog(CelestialObject** cels, int max);           // Old method requiring manual download
         static void reconcile_exoplanet_inclinations(Star* host_star, const std::vector<Planet*>& planets, std::vector<double>& pincls, std::vector<double>& pnodes);
+        static void dedup_planets(json& planets_array);
 
         // Internal Catalogs
         int read_starname_dat(CelestialObject** cels);                          // No max because we are not adding stars, only setting names.
@@ -95,7 +96,7 @@ namespace alienorum
         static void exorow_write_line(FILE* fp, const ExoRow& row);
         static bool exorow_read_line(FILE* fp, ExoRow& row);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new);
-        void add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
+        bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
     };
 }
 

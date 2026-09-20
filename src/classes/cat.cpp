@@ -5731,6 +5731,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     // If the star doesn't exist, instantiate it
     if (!host_star)
     {
+        if (loaded_starsonly)
+        {
+            return nullptr;
+        }
         if (ncelobjs >= MAX_CELOBJS)
         {
             return nullptr;
@@ -5937,7 +5941,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     return host_star;
 }
 
-void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
+bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
 {
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
@@ -6064,7 +6068,7 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
             }
             delete orb;
             delete new_planet;
-            return;             // Skip adding a duplicate planet.
+            return false;             // Skip adding a duplicate planet.
             // std::cerr << "WARNING: " << row.pl_name << " is too similar to " << cels[h]->name << "; possible duplicate." << std::endl;
             // break;
         }
@@ -6127,6 +6131,447 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     host_star->pl_indices.push_back(new_planet->seqno);
 
     planet_celids[host_star->seqno].push_back(new_planet->seqno);
+    return true;
+}
+
+void CatalogReader::dedup_planets(json& planets_array)
+{
+    if (!planets_array.is_array() || planets_array.empty())
+    {
+        return;
+    }
+
+    struct PlanetCandidate
+    {
+        size_t orig_idx;
+        double ra;
+        double dec;
+        bool has_coords;
+        double per;
+        double sma;
+        std::string comp;
+        std::string letter;
+        std::string hostname;
+        std::string pl_name;
+    };
+
+    auto extract_comp = [](const std::string& pl_name, const std::string& host) -> std::string
+    {
+        for (const std::string& s : {pl_name, host})
+        {
+            if (s.find("(AB)") != std::string::npos || s.find("(ab)") != std::string::npos ||
+                s.find("(Ab)") != std::string::npos || s.find("(aB)") != std::string::npos)
+            {
+                return "AB";
+            }
+            size_t ab_pos = s.find("AB");
+            while (ab_pos != std::string::npos)
+            {
+                bool prev_b = (ab_pos == 0 || s[ab_pos - 1] == ' ' || s[ab_pos - 1] == '(');
+                bool next_b = (ab_pos + 2 == s.length() || s[ab_pos + 2] == ' ' || s[ab_pos + 2] == ')');
+                if (prev_b && next_b)
+                {
+                    return "AB";
+                }
+                ab_pos = s.find("AB", ab_pos + 1);
+            }
+        }
+
+        auto check_str = [](const std::string& s, bool is_pl) -> char
+        {
+            if (s.empty())
+            {
+                return 0;
+            }
+            for (char c : {'A', 'B', 'C', 'D'})
+            {
+                std::string spaced = std::string(" ") + c;
+                size_t pos = s.find(spaced);
+                while (pos != std::string::npos)
+                {
+                    size_t nxt = pos + spaced.length();
+                    if (nxt == s.length() || s[nxt] == ' ')
+                    {
+                        return c;
+                    }
+                    if (is_pl)
+                    {
+                        if (s[nxt] >= 'b' && s[nxt] <= 'z')
+                        {
+                            if (nxt + 1 == s.length() || s[nxt + 1] == ' ')
+                            {
+                                return c;
+                            }
+                        }
+                        else if (s[nxt] == ' ' && nxt + 1 < s.length() && s[nxt + 1] >= 'b' && s[nxt + 1] <= 'z')
+                        {
+                            if (nxt + 2 == s.length() || s[nxt + 2] == ' ')
+                            {
+                                return c;
+                            }
+                        }
+                    }
+                    pos = s.find(spaced, pos + 1);
+                }
+            }
+            if (s.length() >= 2 && s[s.length() - 2] == ' ' && s.back() >= 'A' && s.back() <= 'D')
+            {
+                return s.back();
+            }
+            return 0;
+        };
+
+        char c = check_str(host, false);
+        if (c)
+        {
+            return std::string(1, c);
+        }
+        c = check_str(pl_name, true);
+        if (c)
+        {
+            return std::string(1, c);
+        }
+        return "";
+    };
+
+    auto extract_let = [](const std::string& name) -> std::string
+    {
+        for (char sep : {' ', '-'})
+        {
+            size_t pos = name.rfind(sep);
+            if (pos != std::string::npos && pos + 1 < name.length())
+            {
+                std::string tail = name.substr(pos + 1);
+                bool lower = true;
+                for (char c : tail)
+                {
+                    if (!std::islower(c))
+                    {
+                        lower = false;
+                        break;
+                    }
+                }
+                if (lower && !tail.empty())
+                {
+                    return tail;
+                }
+            }
+        }
+        if (!name.empty() && std::islower(name.back()))
+        {
+            return std::string(1, name.back());
+        }
+        return "";
+    };
+
+    auto get_sma = [](const json& item) -> double
+    {
+        if (item.contains("pl_orbsmax") && item["pl_orbsmax"].is_number())
+        {
+            double v = item["pl_orbsmax"].get<double>();
+            if (v > 0)
+            {
+                return v;
+            }
+        }
+        if (item.contains("pl_orbper") && item["pl_orbper"].is_number())
+        {
+            double p = item["pl_orbper"].get<double>();
+            if (p > 0)
+            {
+                double per_yr = p / 365.25;
+                double st_m = (item.contains("st_mass") && item["st_mass"].is_number()) ? item["st_mass"].get<double>() : 1.0;
+                if (st_m <= 0)
+                {
+                    st_m = 1.0;
+                }
+                return cbrt(st_m * per_yr * per_yr);
+            }
+        }
+        return 0.0;
+    };
+
+    size_t n = planets_array.size();
+    std::vector<PlanetCandidate> candidates(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        const auto& item = planets_array[i];
+        candidates[i].orig_idx = i;
+        candidates[i].has_coords = false;
+        candidates[i].ra = 0.0;
+        candidates[i].dec = 0.0;
+        if (item.contains("ra") && item["ra"].is_number() &&
+            item.contains("dec") && item["dec"].is_number())
+        {
+            candidates[i].ra = item["ra"].get<double>();
+            candidates[i].dec = item["dec"].get<double>();
+            candidates[i].has_coords = true;
+        }
+        candidates[i].hostname = item.value("hostname", "");
+        candidates[i].pl_name = item.value("pl_name", "");
+        candidates[i].per = (item.contains("pl_orbper") && item["pl_orbper"].is_number()) ? item["pl_orbper"].get<double>() : 0.0;
+        candidates[i].sma = get_sma(item);
+        candidates[i].comp = extract_comp(candidates[i].pl_name, candidates[i].hostname);
+        candidates[i].letter = extract_let(candidates[i].pl_name);
+    }
+
+    auto is_single_comp = [](const std::string& c) -> bool
+    {
+        return c == "A" || c == "B" || c == "C" || c == "D";
+    };
+
+    std::vector<size_t> coord_indices;
+    coord_indices.reserve(n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (candidates[i].has_coords)
+        {
+            coord_indices.push_back(i);
+        }
+    }
+    std::sort(coord_indices.begin(), coord_indices.end(), [&](size_t a, size_t b)
+    {
+        return candidates[a].dec < candidates[b].dec;
+    });
+
+    std::vector<bool> removed(n, false);
+
+    // 1. Spatial matching among coordinate-bearing planets
+    size_t n_coords = coord_indices.size();
+    for (size_t i = 0; i < n_coords; ++i)
+    {
+        size_t idx1 = coord_indices[i];
+        if (removed[idx1])
+        {
+            continue;
+        }
+
+        double dec1 = candidates[idx1].dec;
+        double ra1 = candidates[idx1].ra;
+
+        for (size_t j = i + 1; j < n_coords; ++j)
+        {
+            size_t idx2 = coord_indices[j];
+            if (candidates[idx2].dec - dec1 > 0.02)
+            {
+                break;
+            }
+            if (removed[idx2])
+            {
+                continue;
+            }
+
+            double cosdec = cos((dec1 + candidates[idx2].dec) * 0.5 * fiftyseventh);
+            double d_ra = fabs(ra1 - candidates[idx2].ra) * cosdec;
+            if (d_ra > 0.02)
+            {
+                continue;
+            }
+
+            double dist_arcsec = hypot(d_ra, candidates[idx2].dec - dec1) * 3600.0;
+            if (dist_arcsec > 30.0)
+            {
+                continue;
+            }
+
+            // Stellar companion protection:
+            // If binary member A vs member B, DO NOT merge!
+            if (is_single_comp(candidates[idx1].comp) && is_single_comp(candidates[idx2].comp) &&
+                candidates[idx1].comp != candidates[idx2].comp)
+            {
+                continue;
+            }
+            if ((candidates[idx1].comp == "AB" && candidates[idx2].comp == "B") ||
+                (candidates[idx1].comp == "B" && candidates[idx2].comp == "AB"))
+            {
+                continue;
+            }
+
+            // Planet letter protection: 'b' vs 'c'
+            if (!candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
+                candidates[idx1].letter != candidates[idx2].letter)
+            {
+                continue;
+            }
+
+            // Orbit match check:
+            bool orbit_match = false;
+            double per1 = candidates[idx1].per, per2 = candidates[idx2].per;
+            double sma1 = candidates[idx1].sma, sma2 = candidates[idx2].sma;
+            if (per1 > 0 && per2 > 0)
+            {
+                double max_p = std::max(per1, per2);
+                if (max_p > 0 && fabs(per1 - per2) / max_p <= 0.15)
+                {
+                    orbit_match = true;
+                }
+            }
+            else if (sma1 > 0 && sma2 > 0)
+            {
+                double max_s = std::max(sma1, sma2);
+                if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.15)
+                {
+                    orbit_match = true;
+                }
+            }
+
+            if (orbit_match)
+            {
+                auto& p1_json = planets_array[idx1];
+                const auto& p2_json = planets_array[idx2];
+                for (auto& [key, val] : p2_json.items())
+                {
+                    if (!val.is_null())
+                    {
+                        if (!p1_json.contains(key) || p1_json[key].is_null())
+                        {
+                            p1_json[key] = val;
+                        }
+                    }
+                }
+                if (candidates[idx1].per <= 0 && per2 > 0)
+                {
+                    candidates[idx1].per = per2;
+                }
+                if (candidates[idx1].sma <= 0 && sma2 > 0)
+                {
+                    candidates[idx1].sma = sma2;
+                }
+                removed[idx2] = true;
+            }
+        }
+    }
+
+    // 2. Same-host matching for planets where coordinates might be missing,
+    // grouped by hostname
+    std::unordered_map<std::string, std::vector<size_t>> by_host;
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (removed[i])
+        {
+            continue;
+        }
+        if (!candidates[i].hostname.empty())
+        {
+            by_host[candidates[i].hostname].push_back(i);
+        }
+    }
+
+    for (auto& [hname, indices] : by_host)
+    {
+        if (indices.size() < 2)
+        {
+            continue;
+        }
+        for (size_t i = 0; i < indices.size(); ++i)
+        {
+            size_t idx1 = indices[i];
+            if (removed[idx1])
+            {
+                continue;
+            }
+            for (size_t j = i + 1; j < indices.size(); ++j)
+            {
+                size_t idx2 = indices[j];
+                if (removed[idx2])
+                {
+                    continue;
+                }
+
+                if (is_single_comp(candidates[idx1].comp) && is_single_comp(candidates[idx2].comp) &&
+                    candidates[idx1].comp != candidates[idx2].comp)
+                {
+                    continue;
+                }
+                if ((candidates[idx1].comp == "AB" && candidates[idx2].comp == "B") ||
+                    (candidates[idx1].comp == "B" && candidates[idx2].comp == "AB"))
+                {
+                    continue;
+                }
+                if (!candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
+                    candidates[idx1].letter != candidates[idx2].letter)
+                {
+                    continue;
+                }
+
+                bool orbit_match = false;
+                double per1 = candidates[idx1].per, per2 = candidates[idx2].per;
+                double sma1 = candidates[idx1].sma, sma2 = candidates[idx2].sma;
+                if (per1 > 0 && per2 > 0)
+                {
+                    double max_p = std::max(per1, per2);
+                    if (max_p > 0 && fabs(per1 - per2) / max_p <= 0.15)
+                    {
+                        orbit_match = true;
+                    }
+                }
+                else if (sma1 > 0 && sma2 > 0)
+                {
+                    double max_s = std::max(sma1, sma2);
+                    if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.15)
+                    {
+                        orbit_match = true;
+                    }
+                }
+
+                if (orbit_match)
+                {
+                    auto& p1_json = planets_array[idx1];
+                    const auto& p2_json = planets_array[idx2];
+                    for (auto& [key, val] : p2_json.items())
+                    {
+                        if (!val.is_null())
+                        {
+                            if (!p1_json.contains(key) || p1_json[key].is_null())
+                            {
+                                p1_json[key] = val;
+                            }
+                        }
+                    }
+                    if (candidates[idx1].per <= 0 && per2 > 0)
+                    {
+                        candidates[idx1].per = per2;
+                    }
+                    if (candidates[idx1].sma <= 0 && sma2 > 0)
+                    {
+                        candidates[idx1].sma = sma2;
+                    }
+                    removed[idx2] = true;
+                }
+            }
+        }
+    }
+
+    json new_array = json::array();
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (!removed[i])
+        {
+            new_array.push_back(std::move(planets_array[i]));
+        }
+    }
+    planets_array = std::move(new_array);
+
+    // Sort by host name and then by sma
+    std::sort(planets_array.begin(), planets_array.end(), [get_sma](const json& a, const json& b)
+    {
+        if (a.contains("hostname") && b.contains("hostname")
+            && a["hostname"].is_string() && b["hostname"].is_string()
+            && a["hostname"] != b["hostname"]
+            )
+        {
+            return a["hostname"] < b["hostname"];
+        }
+
+        double sma_a = get_sma(a);
+        double sma_b = get_sma(b);
+        if (sma_a != sma_b)
+        {
+            return sma_a < sma_b;
+        }
+
+        return false;
+    });
 }
 
 unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
@@ -6204,8 +6649,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     continue;
                 }
-                add_exoplanet_from_row(row, host_star, planet_celids, result);
-                addedexo++;
+                if (add_exoplanet_from_row(row, host_star, planet_celids, result))
+                {
+                    addedexo++;
+                }
                 if (!(addedexo & 0x7f))
                 {
                     loading_msg = std::string("Loaded ") + std::to_string(addedexo) + std::string(" exoplanets from cache...");
@@ -6287,12 +6734,22 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 const int namelen = name.size();
                 std::string name1 = name;
 
-                // Match if star is component A, e.g. ups And Ab matches ups And b.
+                // Match if star is component A, e.g. ups And Ab matches ups And b, or ups And A b matches ups And b.
                 if (namelen > 3)
                 {
-                    const char last1 = cstr[namelen-1], last2 = cstr[namelen-2], last3 = cstr[namelen-3];
+                    const char last1 = cstr[namelen - 1], last2 = cstr[namelen - 2], last3 = cstr[namelen - 3];
                     if (last1 >= 'b' && last1 <= 'z' && last2 == 'A' && last3 == ' ')
-                        name1 = name.substr(0, namelen-2) + std::string(1, last1);
+                    {
+                        name1 = name.substr(0, namelen - 2) + std::string(1, last1);
+                    }
+                }
+                if (namelen > 4)
+                {
+                    const char last1 = cstr[namelen - 1], last2 = cstr[namelen - 2], last3 = cstr[namelen - 3], last4 = cstr[namelen - 4];
+                    if (last1 >= 'b' && last1 <= 'z' && last2 == ' ' && last3 == 'A' && last4 == ' ')
+                    {
+                        name1 = name.substr(0, namelen - 4) + " " + std::string(1, last1);
+                    }
                 }
 
                 std::string res;
@@ -6507,46 +6964,14 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 return 0;
             }
 
-            // TODO: dedup planets of the same star that have SMA or period within 15%.
-
             // Repackage to array
-            for (auto& [key, val] : merged_planets) planets_array.push_back(val);
-
-            // Sort by host name
-            std::sort(planets_array.begin(), planets_array.end(), [](const json& a, const json& b)
+            for (auto& [key, val] : merged_planets)
             {
-                if (a.contains("hostname") && b.contains("hostname")
-                    && a["hostname"].is_string() && b["hostname"].is_string()
-                    && a["hostname"] != b["hostname"]
-                    )
-                {
-                    return a["hostname"] < b["hostname"];
-                }
+                planets_array.push_back(val);
+            }
 
-                auto get_sma = [](const json& item) -> double
-                {
-                    if (item.contains("pl_orbsmax") && item["pl_orbsmax"].is_number())
-                    {
-                        return item["pl_orbsmax"].get<double>();
-                    }
-                    if (item.contains("pl_orbper") && item["pl_orbper"].is_number())
-                    {
-                        double per_yr = item["pl_orbper"].get<double>() / 365.25;
-                        double st_m = (item.contains("st_mass") && item["st_mass"].is_number()) ? item["st_mass"].get<double>() : 1.0;
-                        return cbrt(st_m * per_yr * per_yr);
-                    }
-                    return 0.0;
-                };
-
-                double sma_a = get_sma(a);
-                double sma_b = get_sma(b);
-                if (sma_a != sma_b)
-                {
-                    return sma_a < sma_b;
-                }
-
-                return false;
-            });
+            // Deduplicate across catalogs with spatial and orbital matching
+            dedup_planets(planets_array);
 
             std::fstream fs(exocache, std::ios::out);
             if (fs)
@@ -6567,9 +6992,23 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     else
     {
         std::fstream fs(exocache, std::ios::in);
-        if (!fs) return 0;
+        if (!fs)
+        {
+            return 0;
+        }
         fs >> planets_array;
         fs.close();
+        size_t prev_size = planets_array.size();
+        dedup_planets(planets_array);
+        if (planets_array.size() < prev_size)
+        {
+            std::fstream out_fs(exocache, std::ios::out);
+            if (out_fs)
+            {
+                out_fs << planets_array.dump(4);
+                out_fs.close();
+            }
+        }
     }
 
     std::string tmp_cache = std::string(derived_cache) + ".tmp";
@@ -6597,12 +7036,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (!ok)
         {
             continue;
-        }
-
-        if (!stars_only && cachefp)
-        {
-            exorow_write_line(cachefp, row);
-            rows_written++;
         }
 
         Star* host_star = nullptr;
@@ -6635,7 +7068,14 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             continue;
         }
 
-        add_exoplanet_from_row(row, host_star, planet_celids, result);
+        if (add_exoplanet_from_row(row, host_star, planet_celids, result))
+        {
+            if (cachefp)
+            {
+                exorow_write_line(cachefp, row);
+                rows_written++;
+            }
+        }
 
         if (!(result & 0x7f))
         {

@@ -296,6 +296,7 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
 {
     CatalogReader cr;
     radio_silence = true;
+    cr.load_exoplanets_from_tap(true);
     unsigned int nexo = cr.load_exoplanets_from_tap();
     EXPECT_GT(nexo, 5000u);
 
@@ -316,6 +317,79 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
     EXPECT_GE(idx_c, 0);
 
     delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, DedupPlanetsPreservesBinaryCompanions)
+{
+    // Test 1: Binary star with planet around member A and member B (identical orbit parameters)
+    // MUST NOT MERGE!
+    json binary_planets = json::array();
+
+    json pl_a;
+    pl_a["pl_name"] = "BinaryTest A b";
+    pl_a["hostname"] = "BinaryTest A";
+    pl_a["ra"] = 120.0;
+    pl_a["dec"] = -30.0;
+    pl_a["pl_orbper"] = 100.0;
+    pl_a["pl_orbsmax"] = 1.0;
+    binary_planets.push_back(pl_a);
+
+    json pl_b;
+    pl_b["pl_name"] = "BinaryTest B b";
+    pl_b["hostname"] = "BinaryTest B";
+    pl_b["ra"] = 120.0001;
+    pl_b["dec"] = -30.0001;
+    pl_b["pl_orbper"] = 100.0;
+    pl_b["pl_orbsmax"] = 1.0;
+    binary_planets.push_back(pl_b);
+
+    CatalogReader::dedup_planets(binary_planets);
+    EXPECT_EQ(binary_planets.size(), 2u);
+
+    // Test 2: Binary star with unspecified orbits around member A and member B
+    json binary_unspec = json::array();
+    json unspec_a;
+    unspec_a["pl_name"] = "2MASS J1450-7841 A";
+    unspec_a["hostname"] = "2MASS J1450-7841 A";
+    unspec_a["ra"] = 222.67;
+    unspec_a["dec"] = -78.69;
+    binary_unspec.push_back(unspec_a);
+
+    json unspec_b;
+    unspec_b["pl_name"] = "2MASS J1450-7841 B";
+    unspec_b["hostname"] = "2MASS J1450-7841 B";
+    unspec_b["ra"] = 222.67;
+    unspec_b["dec"] = -78.69;
+    binary_unspec.push_back(unspec_b);
+
+    CatalogReader::dedup_planets(binary_unspec);
+    EXPECT_EQ(binary_unspec.size(), 2u);
+
+    // Test 3: Duplicate planet across catalogs (e.g. EU vs NASA) with differing identifiers
+    json dup_planets = json::array();
+    json pl_eu;
+    pl_eu["pl_name"] = "Alpha Cet b";
+    pl_eu["hostname"] = "Alpha Cet";
+    pl_eu["ra"] = 45.0;
+    pl_eu["dec"] = 10.0;
+    pl_eu["pl_orbper"] = 50.0;
+    pl_eu["pl_orbsmax"] = 0.5;
+    dup_planets.push_back(pl_eu);
+
+    json pl_nasa;
+    pl_nasa["pl_name"] = "HD 12345 b";
+    pl_nasa["hostname"] = "HD 12345";
+    pl_nasa["hd_name"] = "HD 12345";
+    pl_nasa["ra"] = 45.0002;
+    pl_nasa["dec"] = 10.0001;
+    pl_nasa["pl_orbper"] = 50.5; // within 15%
+    pl_nasa["pl_orbsmax"] = 0.505;
+    dup_planets.push_back(pl_nasa);
+
+    CatalogReader::dedup_planets(dup_planets);
+    EXPECT_EQ(dup_planets.size(), 1u);
+    EXPECT_EQ(dup_planets[0]["pl_name"], "Alpha Cet b");
+    EXPECT_EQ(dup_planets[0]["hd_name"], "HD 12345");
 }
 
 
