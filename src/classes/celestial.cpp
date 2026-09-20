@@ -2043,13 +2043,26 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->cloud_map = new Map(cel);
         p->cloud_map->generate_overcast_sky(cel);
     }
-    p->generate_ring_parameters();
+    if (cel->typeclass() == class_planet)
+    {
+        p->generate_ring_parameters();
+    }
+    else
+    {
+        p->ring_radius = 0;
+    }
 
     if (p->ring_radius)
     {
         // Generate a ring texture and a ring transparency map using ring_inner_radius/ring_radius and ring_mean_opacity.
-        if (p->ring_map) delete p->ring_map;
-        if (p->ringx_map) delete p->ringx_map;
+        if (p->ring_map)
+        {
+            delete p->ring_map;
+        }
+        if (p->ringx_map)
+        {
+            delete p->ringx_map;
+        }
 
         p->ring_map = new Map(p);
         p->ringx_map = new Map(p);
@@ -2906,7 +2919,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
 {
     assert(cel);
     cel_obj_class cls = cel->typeclass();
-    assert(cls == class_planet || cls == class_moon);
+    assert(cls == class_planet);
 
     try
     {

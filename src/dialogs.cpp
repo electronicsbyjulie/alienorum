@@ -2573,8 +2573,13 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->mean_anomaly = frand(0, _pi*2);
                     if (!P)
                     {
-                        // First fictional moon of the planet. Base the SMA off the Roche limit.
-                        double A = cel->Roche_limit(m) * (1.1 + pow(frand(0,1), 4) * 20);
+                        // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
+                        double inner_bound = cel->Roche_limit(m);
+                        if (((Planet*)cel)->ring_radius > inner_bound)
+                        {
+                            inner_bound = ((Planet*)cel)->ring_radius;
+                        }
+                        double A = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
                         m->orbit->semimajor_axis = A;
                         m->orbit->compute_period(m->mass);
                     }

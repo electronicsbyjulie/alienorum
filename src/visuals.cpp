@@ -4209,7 +4209,10 @@ void draw_horizon()
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
         bool gaseous = uses_gaseous_map(p->type);
     
-        if (p->ring_radius) draw_ring_gpu(cel);                     // TODO: Rings appear in front of atmosphere - bad - but if we move this to draw_sky_gradient() it cuts them off.
+        if (cls == class_planet && p && p->ring_radius)
+        {
+            draw_ring_gpu(cel);                     // TODO: Rings appear in front of atmosphere - bad - but if we move this to draw_sky_gradient() it cuts them off.
+        }
 
         spawn_texture_load(cel);
 
