@@ -14,6 +14,7 @@ namespace alienorum
     {
         public:
         double albedo = 0;
+        double msini = 0;
 
         // Null means the body genuinely has no atmosphere, which is what the three former
         // members (surface_pressure, atmospheric_tau, atmospheric_particulates) used to say by

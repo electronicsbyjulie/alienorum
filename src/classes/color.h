@@ -148,7 +148,7 @@ namespace alienorum
     };
 }
 
-extern double global_brightness, sky_mag_shift;
+extern double global_brightness, global_inverse_gamma, sky_mag_shift;
 extern bool redlight_mode;
 extern AlienStyle global_style;
 extern std::map<int, RGB3> sky_grad;

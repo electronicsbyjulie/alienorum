@@ -138,7 +138,7 @@ void load_textures(CelestialObject* cel)
 
         cel_obj_class cls = cel->typeclass();
 
-        if (cls == class_planet || cls == class_moon)
+        if (cls == class_planet)
         {
             Planet *p = (Planet*)cel;
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.jpg";
