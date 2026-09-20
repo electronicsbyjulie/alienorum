@@ -292,3 +292,30 @@ TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStar
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
+{
+    CatalogReader cr;
+    radio_silence = true;
+    unsigned int nexo = cr.load_exoplanets_from_tap();
+    EXPECT_GT(nexo, 5000u);
+
+    int idx_e = find_object("PDS 70 e", false);
+    EXPECT_GE(idx_e, 0);
+    if (idx_e >= 0)
+    {
+        Planet* pe = (Planet*)cels[idx_e];
+        ASSERT_NE(pe->orbit, nullptr);
+        double pe_incl_deg = pe->orbit->inclination * fiftyseven;
+        EXPECT_NEAR(pe_incl_deg, 180.0, 1.0);
+    }
+
+    int idx_b = find_object("PDS 70 b", false);
+    EXPECT_GE(idx_b, 0);
+
+    int idx_c = find_object("PDS 70 c", false);
+    EXPECT_GE(idx_c, 0);
+
+    delete_the_universe();
+}
+
+

@@ -1036,7 +1036,12 @@ TEST(ExoplanetInclinationTest, SupplementaryAngleNormalization)
         130.5 * fiftyseventh,
         49.5 * fiftyseventh
     };
-    std::vector<double> pnodes = { 0, 0, 0 };
+    std::vector<double> pnodes =
+    {
+        30.0 * fiftyseventh,
+        30.0 * fiftyseventh,
+        30.0 * fiftyseventh
+    };
 
     CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
 
@@ -1049,6 +1054,16 @@ TEST(ExoplanetInclinationTest, SupplementaryAngleNormalization)
     EXPECT_NEAR(i0, 131.0, 0.1);
     EXPECT_NEAR(i1, 130.5, 0.1);
     EXPECT_NEAR(i2, 49.5, 0.1);
+
+    // Ascending node of planet e must be rotated 180 degrees relative to b and c
+    // so the orbits remain physically coplanar in 3D space.
+    double n0 = pnodes[0] * fiftyseven;
+    double n1 = pnodes[1] * fiftyseven;
+    double n2 = pnodes[2] * fiftyseven;
+
+    EXPECT_NEAR(n0, 30.0, 0.1);
+    EXPECT_NEAR(n1, 30.0, 0.1);
+    EXPECT_NEAR(n2, 210.0, 0.1);
 
     // Verify their spatial planes agree within 1.0 deg
     double plane_tilt_c = 180.0 - i1;

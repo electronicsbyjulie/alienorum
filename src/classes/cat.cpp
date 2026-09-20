@@ -3167,28 +3167,7 @@ void CatalogReader::reconcile_exoplanet_inclinations(
                     double new_sin = sin(corrected_incl);
                     if (new_sin > 0.05 && p->msini > 0)
                     {
-                        double catalog_incl = pincls[i];
-                        double old_sin = (catalog_incl > 0) ? sin(catalog_incl) : 1.0;
-                        double expected_from_msini = (old_sin > 0.05) ? (p->msini / old_sin) : p->msini;
-
-                        bool is_derived_mass = false;
-                        if (p->mass > 0)
-                        {
-                            if ((fabs(p->mass - expected_from_msini) <= 0.10 * expected_from_msini) ||
-                                (fabs(p->mass - p->msini) <= 0.02 * p->mass))
-                            {
-                                is_derived_mass = true;
-                            }
-                        }
-                        else
-                        {
-                            is_derived_mass = true;
-                        }
-
-                        if (is_derived_mass)
-                        {
-                            p->mass = p->msini / new_sin;
-                        }
+                        p->mass = p->msini / new_sin;
                     }
                 }
 
@@ -3200,6 +3179,13 @@ void CatalogReader::reconcile_exoplanet_inclinations(
                 if (!pnodes[i] && host_star)
                 {
                     pnodes[i] = host_star->planets_heliocen_node;
+                }
+            }
+            else if (fold_delta < direct_delta)
+            {
+                if (pnodes[i] > 0)
+                {
+                    pnodes[i] = fmod(pnodes[i] + _pi, 2.0 * _pi);
                 }
             }
         }
@@ -3233,17 +3219,47 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 
             if (buffer[0] == 'H' && buffer[1] == 'D')
             {
-                // A bare "HD nnnnnn" designation names the star itself; anything trailing the
+                // A bare "HD nnnnnn" or "HDnnnnnn" designation names the star itself; anything trailing the
                 // number ("HD nnnnnn b") is one of its planets, and belongs to the pass below.
                 read_field_onebased(buffer, 1, 39, field);
                 std::string desig = trim(field);
                 int HD = 0;
-                if (desig.find_first_not_of("0123456789 ", 2) == std::string::npos) HD = atoi(&desig[2]);
+                if (desig.find_first_not_of("0123456789 ", 2) == std::string::npos)
+                {
+                    HD = atoi(&desig[2]);
+                }
 
-                if (HD > 0 && HD <= MAX_HD && hdcache && hdcache[HD])
+                if (HD > 0)
                 {
                     read_field_onebased(buffer, 41, 63, field);
-                    hdcache[HD]->local_name = trim(field);
+                    std::string friendly = trim(field);
+                    Star* target_star = nullptr;
+                    if (HD <= MAX_HD && hdcache && hdcache[HD])
+                    {
+                        target_star = hdcache[HD];
+                    }
+                    else
+                    {
+                        std::string s_hd1 = "HD " + std::to_string(HD);
+                        std::string s_hd2 = "HD" + std::to_string(HD);
+                        int obj_idx = find_object(s_hd1.c_str(), true);
+                        if (obj_idx < 0)
+                        {
+                            obj_idx = find_object(s_hd2.c_str(), true);
+                        }
+                        if (obj_idx >= 0 && cels[obj_idx]->typeclass() == class_star)
+                        {
+                            target_star = (Star*)cels[obj_idx];
+                            if (HD <= MAX_HD && hdcache)
+                            {
+                                hdcache[HD] = target_star;
+                            }
+                        }
+                    }
+                    if (target_star)
+                    {
+                        target_star->local_name = friendly;
+                    }
                     continue;
                 }
             }
@@ -3317,11 +3333,38 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         std::vector<double> cincls, cnodes;
 
         int i, n = row.size();
-        for (i=0; i<n; i++)
+        for (i = 0; i < n; i++)
         {
             Planet *p = (Planet*)cels[row[i]];
             std::string designation = p->name;
             p->origname = designation;
+
+            if (planet_names.find(designation) == planet_names.end())
+            {
+                for (auto const& [dkey, fname] : planet_names)
+                {
+                    std::string s1, s2;
+                    for (char c : designation)
+                    {
+                        if (c != ' ')
+                        {
+                            s1 += c;
+                        }
+                    }
+                    for (char c : dkey)
+                    {
+                        if (c != ' ')
+                        {
+                            s2 += c;
+                        }
+                    }
+                    if (s1 == s2)
+                    {
+                        designation = dkey;
+                        break;
+                    }
+                }
+            }
 
             if (planet_incls.find(designation) != planet_incls.end())
                 pincls.push_back(planet_incls[designation] * fiftyseventh);
@@ -3505,16 +3548,34 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         if (!sysnode && stnode) sysnode = stnode;
         if (cmeannode && !sysnode) sysnode = cmeannode;
         if (!sysnode && s->orbit && s->orbit->heliocentric_node) sysnode = s->orbit->heliocentric_node;
-        if (sysnode)
+        if (!stnode && sysnode)
         {
-            if (!stnode) stnode = sysnode;
-            n = pnodes.size();
-            for (i=0; i<n; i++)
+            stnode = sysnode;
+        }
+        n = pnodes.size();
+        for (i = 0; i < n; i++)
+        {
+            if (!pnodes[i])
             {
-                if (!pnodes[i]) pnodes[i] = sysnode;
+                double direct_delta = fabs(pincls[i] - sysincl);
+                double fold_delta = fabs((_pi - pincls[i]) - sysincl);
+                if (fold_delta < direct_delta)
+                {
+                    pnodes[i] = fmod(sysnode + _pi, 2.0 * _pi);
+                }
+                else
+                {
+                    pnodes[i] = sysnode;
+                }
             }
-            n = cnodes.size();
-            for (i=0; i<n; i++) if (!cnodes[i]) cnodes[i] = sysnode;
+        }
+        n = cnodes.size();
+        for (i = 0; i < n; i++)
+        {
+            if (!cnodes[i])
+            {
+                cnodes[i] = sysnode;
+            }
         }
 
 #if _debug_exoplanet_inclinations
@@ -5585,34 +5646,84 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
-    if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache && hdcache[20794]) host_star = hdcache[20794];
-    if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache && hdcache[160691]) host_star = hdcache[160691];
-    if (!host_star && row.hd_name.size() > 2)
+    if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache && hdcache[20794])
     {
-        int HD = atoi(&(row.hd_name.c_str()[2]));
-        if (hdcache && HD <= MAX_HD && hdcache[HD]) host_star = hdcache[HD];
+        host_star = hdcache[20794];
     }
-    if (!host_star && row.hip_name.size() > 3)
+    if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache && hdcache[160691])
     {
-        int HIP = atoi(&(row.hip_name.c_str()[3]));
-        if (hipcache && HIP <= MAX_HIP && hipcache[HIP]) host_star = hipcache[HIP];
+        host_star = hdcache[160691];
     }
+
+    int HD = 0;
+    if (row.hd_name.size() > 2)
+    {
+        HD = atoi(&(row.hd_name.c_str()[2]));
+    }
+    if (!HD && hostname.size() >= 3 && hostname[0] == 'H' && hostname[1] == 'D')
+    {
+        HD = atoi(hostname.c_str() + ((hostname[2] == ' ') ? 3 : 2));
+    }
+    if (!host_star && HD > 0 && HD <= MAX_HD && hdcache && hdcache[HD])
+    {
+        host_star = hdcache[HD];
+    }
+
+    int HIP = 0;
+    if (row.hip_name.size() > 3)
+    {
+        HIP = atoi(&(row.hip_name.c_str()[3]));
+    }
+    if (!HIP && hostname.size() >= 4 && hostname[0] == 'H' && hostname[1] == 'I' && hostname[2] == 'P')
+    {
+        HIP = atoi(hostname.c_str() + ((hostname[3] == ' ') ? 4 : 3));
+    }
+    if (!host_star && HIP > 0 && HIP <= MAX_HIP && hipcache && hipcache[HIP])
+    {
+        host_star = hipcache[HIP];
+    }
+
     if (!host_star)
     {
         if (loaded_starsonly || worth_searching(hostname))
         {
-            if (!strcmp(hostname.c_str(), "55 Cnc B")) hostname = "GJ 324 B";
+            if (!strcmp(hostname.c_str(), "55 Cnc B"))
+            {
+                hostname = "GJ 324 B";
+            }
             int i = find_object(hostname.c_str(), true);
-            if (i>0) host_star = (Star*)cels[i];
+            if (i > 0)
+            {
+                host_star = (Star*)cels[i];
+            }
+            else
+            {
+                // Check if trailing component letter was present, e.g. "HD 100655 A" -> "HD 100655"
+                size_t hlen = hostname.size();
+                if (hlen > 2 && hostname[hlen - 2] == ' ' && hostname[hlen - 1] >= 'A' && hostname[hlen - 1] <= 'Z')
+                {
+                    std::string base_host = hostname.substr(0, hlen - 2);
+                    int bi = find_object(base_host.c_str(), true);
+                    if (bi > 0 && cels[bi]->typeclass() == class_star)
+                    {
+                        host_star = (Star*)cels[bi];
+                    }
+                }
+            }
         }
         else
         {
-            for (int i=1; !host_star && (i<=10); i++)
+            for (int i = 1; !host_star && (i <= 10); i++)
             {
-                int j = ncelobjs-i;
-                if (j<0) continue;
+                int j = ncelobjs - i;
+                if (j < 0)
+                {
+                    continue;
+                }
                 if (cels[j]->type == star && !strcmp(cels[j]->name, hostname.c_str()))
+                {
                     host_star = (Star*)cels[j];
+                }
             }
         }
     }
@@ -5620,8 +5731,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     // If the star doesn't exist, instantiate it
     if (!host_star)
     {
-        if (loaded_starsonly) return nullptr;
-        if (ncelobjs >= MAX_CELOBJS) return nullptr;
+        if (ncelobjs >= MAX_CELOBJS)
+        {
+            return nullptr;
+        }
         bool star_exists = false;
 
         host_star = new Star();
@@ -6486,6 +6599,12 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             continue;
         }
 
+        if (!stars_only && cachefp)
+        {
+            exorow_write_line(cachefp, row);
+            rows_written++;
+        }
+
         Star* host_star = nullptr;
         bool was_new = false;
 
@@ -6517,11 +6636,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
 
         add_exoplanet_from_row(row, host_star, planet_celids, result);
-        if (cachefp)
-        {
-            exorow_write_line(cachefp, row);
-            rows_written++;
-        }
 
         if (!(result & 0x7f))
         {
