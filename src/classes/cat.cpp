@@ -3012,6 +3012,200 @@ int CatalogReader::read_comets_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+void CatalogReader::reconcile_exoplanet_inclinations(
+    Star* host_star,
+    const std::vector<Planet*>& planets,
+    std::vector<double>& pincls,
+    std::vector<double>& pnodes)
+{
+    int n = (int)planets.size();
+    if (n < 2 || pincls.size() != (size_t)n || pnodes.size() != (size_t)n)
+    {
+        return;
+    }
+
+    // Step 1: Detect Hot Jupiters to exempt from forced coplanarity
+    std::vector<bool> is_exempt(n, false);
+    for (int i = 0; i < n; i++)
+    {
+        Planet* p = planets[i];
+        if (!p)
+        {
+            continue;
+        }
+
+        if (p->type == hot_jupiter ||
+            (p->mass >= 0.2 * jupiter_mass && p->orbit && p->orbit->period > 0 && p->orbit->period < 10.0 * oneday))
+        {
+            is_exempt[i] = true;
+        }
+    }
+
+    // Step 2: Identify dominant reference anchor inclination
+    double anchor_incl = 0;
+    int anchor_votes = 0;
+
+    // Check for transit anchor: planets with inclinations within [80 deg, 100 deg]
+    double transit_sum = 0;
+    int transit_count = 0;
+    for (int i = 0; i < n; i++)
+    {
+        if (pincls[i] >= (80.0 * fiftyseventh) && pincls[i] <= (100.0 * fiftyseventh))
+        {
+            transit_sum += pincls[i];
+            transit_count++;
+        }
+    }
+    if (transit_count >= 1)
+    {
+        anchor_incl = transit_sum / transit_count;
+        anchor_votes = transit_count;
+    }
+
+    // If no transiting planets, check for majority cluster (planets whose planes mutually agree within 4 deg)
+    if (!anchor_incl)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            if (pincls[i] <= 0)
+            {
+                continue;
+            }
+            int cluster_count = 0;
+            int direct_votes = 0;
+            double cluster_sum = 0;
+            for (int j = 0; j < n; j++)
+            {
+                if (pincls[j] <= 0)
+                {
+                    continue;
+                }
+                double direct_diff = fabs(pincls[i] - pincls[j]);
+                double fold_diff = fabs((_pi - pincls[i]) - pincls[j]);
+                if (direct_diff < (4.0 * fiftyseventh))
+                {
+                    cluster_count++;
+                    direct_votes++;
+                    cluster_sum += pincls[j];
+                }
+                else if (fold_diff < (4.0 * fiftyseventh))
+                {
+                    cluster_count++;
+                    cluster_sum += (_pi - pincls[j]);
+                }
+            }
+            if (cluster_count > anchor_votes || (cluster_count == anchor_votes && direct_votes > anchor_votes / 2))
+            {
+                anchor_votes = cluster_count;
+                anchor_incl = cluster_sum / cluster_count;
+            }
+        }
+    }
+
+    // If still unanchored, check circumstellar disc
+    if (!anchor_incl && host_star && host_star->has_disk && host_star->disk_heliocen_inclination > 0)
+    {
+        anchor_incl = host_star->disk_heliocen_inclination;
+        anchor_votes = 1;
+    }
+
+    // Fallback: median of valid inclinations
+    if (!anchor_incl)
+    {
+        std::vector<double> valid_incls;
+        for (int i = 0; i < n; i++)
+        {
+            if (pincls[i] > 0)
+            {
+                valid_incls.push_back(pincls[i]);
+            }
+        }
+        if (!valid_incls.empty())
+        {
+            std::sort(valid_incls.begin(), valid_incls.end());
+            anchor_incl = valid_incls[valid_incls.size() / 2];
+            anchor_votes = 1;
+        }
+    }
+
+    // Step 3: Realign outliers to the anchor plane while preserving retrograde direction
+    if (anchor_incl > 0)
+    {
+        if (host_star)
+        {
+            host_star->planets_heliocen_inclination = anchor_incl;
+        }
+
+        double anchor_tilt = (anchor_incl > half_pi) ? (_pi - anchor_incl) : anchor_incl;
+
+        for (int i = 0; i < n; i++)
+        {
+            if (is_exempt[i])
+            {
+                continue;
+            }
+
+            double direct_delta = fabs(pincls[i] - anchor_incl);
+            double fold_delta = fabs((_pi - pincls[i]) - anchor_incl);
+            double plane_delta = std::min(direct_delta, fold_delta);
+
+            bool is_dummy = (pincls[i] < (2.0 * fiftyseventh) && anchor_tilt > (30.0 * fiftyseventh));
+            bool is_outlier = (plane_delta > (15.0 * fiftyseventh));
+
+            if (is_dummy || is_outlier)
+            {
+                double jitter = ((double)(i % 5) - 2.0) * (0.25 * fiftyseventh);
+                double corrected_incl = anchor_incl + jitter;
+                if (corrected_incl < (0.5 * fiftyseventh))
+                {
+                    corrected_incl = anchor_incl;
+                }
+
+                Planet* p = planets[i];
+                if (p)
+                {
+                    double new_sin = sin(corrected_incl);
+                    if (new_sin > 0.05 && p->msini > 0)
+                    {
+                        double catalog_incl = pincls[i];
+                        double old_sin = (catalog_incl > 0) ? sin(catalog_incl) : 1.0;
+                        double expected_from_msini = (old_sin > 0.05) ? (p->msini / old_sin) : p->msini;
+
+                        bool is_derived_mass = false;
+                        if (p->mass > 0)
+                        {
+                            if ((fabs(p->mass - expected_from_msini) <= 0.10 * expected_from_msini) ||
+                                (fabs(p->mass - p->msini) <= 0.02 * p->mass))
+                            {
+                                is_derived_mass = true;
+                            }
+                        }
+                        else
+                        {
+                            is_derived_mass = true;
+                        }
+
+                        if (is_derived_mass)
+                        {
+                            p->mass = p->msini / new_sin;
+                        }
+                    }
+                }
+
+                pincls[i] = corrected_incl;
+                if (p && p->orbit)
+                {
+                    p->orbit->inclination = corrected_incl;
+                }
+                if (!pnodes[i] && host_star)
+                {
+                    pnodes[i] = host_star->planets_heliocen_node;
+                }
+            }
+        }
+    }
+}
+
 #define _debug_exoplanet_inclinations 0
 void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids)
 {
@@ -3046,7 +3240,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                 int HD = 0;
                 if (desig.find_first_not_of("0123456789 ", 2) == std::string::npos) HD = atoi(&desig[2]);
 
-                if (HD > 0 && HD <= MAX_HD && hdcache[HD])
+                if (HD > 0 && HD <= MAX_HD && hdcache && hdcache[HD])
                 {
                     read_field_onebased(buffer, 41, 63, field);
                     hdcache[HD]->local_name = trim(field);
@@ -3200,6 +3394,13 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         std::cout << "Star:   " << (stincl*fiftyseven) << "," << (stnode*fiftyseven) << std::endl;
 #endif
 
+        std::vector<Planet*> sys_planets;
+        for (i = 0; i < (int)row.size(); i++)
+        {
+            sys_planets.push_back((Planet*)cels[row[i]]);
+        }
+        reconcile_exoplanet_inclinations(s, sys_planets, pincls, pnodes);
+
         n = pincls.size();
         int l=0;
         double m=0;
@@ -3271,10 +3472,26 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 #endif
 
         // planets > system > star > comps
-        if (pmeanincl && !sysincl) sysincl = pmeanincl;
-        if (!sysincl && stincl) sysincl = stincl;
-        if (cmeanincl && !sysincl) sysincl = cmeanincl;
-        if (!sysincl && s->orbit && s->orbit->heliocentric_inclination) sysincl = s->orbit->heliocentric_inclination;
+        if (s->planets_heliocen_inclination && !sysincl)
+        {
+            sysincl = s->planets_heliocen_inclination;
+        }
+        if (pmeanincl && !sysincl)
+        {
+            sysincl = pmeanincl;
+        }
+        if (!sysincl && stincl)
+        {
+            sysincl = stincl;
+        }
+        if (cmeanincl && !sysincl)
+        {
+            sysincl = cmeanincl;
+        }
+        if (!sysincl && s->orbit && s->orbit->heliocentric_inclination)
+        {
+            sysincl = s->orbit->heliocentric_inclination;
+        }
         if (sysincl)
         {
             if (!stincl) stincl = sysincl;
@@ -5198,10 +5415,12 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     auto it_smax = row.find("pl_orbsmax");
     auto it_per = row.find("pl_orbper");
 
-    if (it_pl == row.end() || it_pl->is_null()
-            || it_host == row.end() || it_host->is_null()
-            || it_smax == row.end() || it_smax->is_null()
-            || it_per == row.end() || it_per->is_null()
+    bool has_smax = (it_smax != row.end() && !it_smax->is_null() && it_smax->is_number());
+    bool has_per = (it_per != row.end() && !it_per->is_null() && it_per->is_number());
+
+    if (it_pl == row.end() || it_pl->is_null() || !it_pl->is_string() || it_pl->get<std::string>().empty()
+            || it_host == row.end() || it_host->is_null() || !it_host->is_string() || it_host->get<std::string>().empty()
+            || (!has_smax && !has_per)
        )
     {
         return r;
@@ -5260,6 +5479,16 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     r.pl_orbper = getd("pl_orbper");
     r.pl_orbsmax = getd("pl_orbsmax");
     r.pl_orbeccen = getd("pl_orbeccen");
+
+    if (isnan(r.pl_orbper) && !isnan(r.pl_orbsmax) && !isnan(r.st_mass) && r.st_mass > 0)
+    {
+        r.pl_orbper = 365.25 * sqrt(r.pl_orbsmax * r.pl_orbsmax * r.pl_orbsmax / r.st_mass);
+    }
+    else if (isnan(r.pl_orbsmax) && !isnan(r.pl_orbper) && !isnan(r.st_mass) && r.st_mass > 0)
+    {
+        double per_yr = r.pl_orbper / 365.25;
+        r.pl_orbsmax = cbrt(r.st_mass * per_yr * per_yr);
+    }
 
     *ok = true;
     return r;
@@ -5356,17 +5585,17 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
-    if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache[20794]) host_star = hdcache[20794];
-    if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache[160691]) host_star = hdcache[160691];
+    if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache && hdcache[20794]) host_star = hdcache[20794];
+    if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache && hdcache[160691]) host_star = hdcache[160691];
     if (!host_star && row.hd_name.size() > 2)
     {
         int HD = atoi(&(row.hd_name.c_str()[2]));
-        if (hdcache[HD]) host_star = hdcache[HD];
+        if (hdcache && HD <= MAX_HD && hdcache[HD]) host_star = hdcache[HD];
     }
     if (!host_star && row.hip_name.size() > 3)
     {
         int HIP = atoi(&(row.hip_name.c_str()[3]));
-        if (hipcache[HIP]) host_star = hipcache[HIP];
+        if (hipcache && HIP <= MAX_HIP && hipcache[HIP]) host_star = hipcache[HIP];
     }
     if (!host_star)
     {
@@ -5411,13 +5640,16 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->HD = atoi(&host_star->name[3]);
             if (host_star->HD <= MAX_HD)
             {
-                if (hdcache[host_star->HD])
+                if (hdcache && hdcache[host_star->HD])
                 {
                     delete host_star;
                     host_star = hdcache[host_star->HD];
                     star_exists = true;
                 }
-                else hdcache[host_star->HD] = host_star;
+                else if (hdcache)
+                {
+                    hdcache[host_star->HD] = host_star;
+                }
             }
         }
         else if (name_len >= 4 && strncmp(host_star->name, "HIP ", 4) == 0)
@@ -5425,13 +5657,16 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->HIP = atoi(&host_star->name[4]);
             if (host_star->HIP <= MAX_HIP)
             {
-                if (hipcache[host_star->HIP])
+                if (hipcache && hipcache[host_star->HIP])
                 {
                     delete host_star;
                     host_star = hipcache[host_star->HIP];
                     star_exists = true;
                 }
-                else hipcache[host_star->HIP] = host_star;
+                else if (hipcache)
+                {
+                    hipcache[host_star->HIP] = host_star;
+                }
             }
         }
 
@@ -5605,12 +5840,14 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         new_planet->mass = row.pl_msinij * jupiter_mass;
         pl_msini_known = true;
         pl_msini = new_planet->mass;
+        new_planet->msini = pl_msini;
     }
     else if (!isnan(row.pl_msinie))
     {
         new_planet->mass = row.pl_msinie * earth_mass;
         pl_msini_known = true;
         pl_msini = new_planet->mass;
+        new_planet->msini = pl_msini;
     }
 
     if (!isnan(row.pl_bmassj))
@@ -5658,6 +5895,15 @@ void CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         orb->semimajor_axis = row.pl_orbsmax * AU;
     if (!isnan(row.pl_orbeccen))
         orb->eccentricity = row.pl_orbeccen;
+
+    if (orb->period == 0 && orb->semimajor_axis > 0)
+    {
+        orb->compute_period(new_planet->mass);
+    }
+    else if (orb->semimajor_axis == 0 && orb->period > 0)
+    {
+        orb->compute_semimajor_axis(new_planet->mass);
+    }
 
     orb->inclination = inclination;
     if (inclination)
@@ -5786,9 +6032,19 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     loading_msg = lmss.str();
     mtx.unlock();
 
-    if (file_exists(exocache) && file_age(exocache) < 7*86400) do_download = false;
+    const int cache_max_age_seconds = 12 * 3600; // 12 hours
+    if (file_exists(exocache) && file_age(exocache) < cache_max_age_seconds)
+    {
+        do_download = false;
+    }
 
-    if (!do_download && file_exists(derived_cache))
+    // A derived cache (.dat) is valid only if it exists, the json cache exists,
+    // and the .dat file is not older than the json cache.
+    bool derived_cache_valid = file_exists(derived_cache) &&
+                               file_exists(exocache) &&
+                               (file_age(derived_cache) <= file_age(exocache) + 60);
+
+    if (!do_download && derived_cache_valid)
     {
         mtx.lock();
         loading_msg = std::string("Loading exoplanets from cache...");
@@ -6006,7 +6262,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 else if (cinit == 'H' && pl_name.substr(0, 3) == "HD ")
                 {
                     int HD = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
-                    if (HD < MAX_HD && hdcache[HD] && hdcache[HD]->Gliese[0])
+                    if (HD < MAX_HD && hdcache && hdcache[HD] && hdcache[HD]->Gliese[0])
                     {
                         hostname = hdcache[HD]->Gliese;
                         pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
@@ -6016,7 +6272,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 else if (cinit == 'H' && pl_name.substr(0, 4) == "HIP ")
                 {
                     int HIP = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
-                    if (HIP < MAX_HIP && hipcache[HIP] && hipcache[HIP]->Gliese[0])
+                    if (HIP < MAX_HIP && hipcache && hipcache[HIP] && hipcache[HIP]->Gliese[0])
                     {
                         hostname = hipcache[HIP]->Gliese;
                         pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
@@ -6150,20 +6406,32 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     && a["hostname"].is_string() && b["hostname"].is_string()
                     && a["hostname"] != b["hostname"]
                     )
+                {
                     return a["hostname"] < b["hostname"];
+                }
 
-                if (a.contains("pl_orbper") && b.contains("pl_orbper")
-                    && a["pl_orbper"].is_number() && b["pl_orbper"].is_number()
-                    && a["pl_orbper"] != b["pl_orbper"]
-                    )
-                    return a["pl_orbper"] < b["pl_orbper"];
+                auto get_sma = [](const json& item) -> double
+                {
+                    if (item.contains("pl_orbsmax") && item["pl_orbsmax"].is_number())
+                    {
+                        return item["pl_orbsmax"].get<double>();
+                    }
+                    if (item.contains("pl_orbper") && item["pl_orbper"].is_number())
+                    {
+                        double per_yr = item["pl_orbper"].get<double>() / 365.25;
+                        double st_m = (item.contains("st_mass") && item["st_mass"].is_number()) ? item["st_mass"].get<double>() : 1.0;
+                        return cbrt(st_m * per_yr * per_yr);
+                    }
+                    return 0.0;
+                };
 
-                if (a.contains("pl_orbsmax") && b.contains("pl_orbsmax")
-                    && a["pl_orbsmax"].is_number() && b["pl_orbsmax"].is_number()
-                    && a["pl_orbsmax"] != b["pl_orbsmax"]
-                    )
-                    return a["pl_orbsmax"] < b["pl_orbsmax"];
-                
+                double sma_a = get_sma(a);
+                double sma_b = get_sma(b);
+                if (sma_a != sma_b)
+                {
+                    return sma_a < sma_b;
+                }
+
                 return false;
             });
 
@@ -6191,13 +6459,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         fs.close();
     }
 
-    FILE* cachefp = fopen(derived_cache, "wb");
+    std::string tmp_cache = std::string(derived_cache) + ".tmp";
+    FILE* cachefp = fopen(tmp_cache.c_str(), "wb");
     char cache_io_buf[65536];
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
     }
 
+    int rows_written = 0;
     Star* last_host_star = nullptr;
     std::string last_hostname;
 
@@ -6241,6 +6511,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             if (was_new && cachefp)
             {
                 exorow_write_line(cachefp, row);
+                rows_written++;
             }
             continue;
         }
@@ -6249,6 +6520,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (cachefp)
         {
             exorow_write_line(cachefp, row);
+            rows_written++;
         }
 
         if (!(result & 0x7f))
@@ -6264,6 +6536,14 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         fclose(cachefp);
+        if (!abort_load && rows_written > 0)
+        {
+            std::rename(tmp_cache.c_str(), derived_cache);
+        }
+        else
+        {
+            std::remove(tmp_cache.c_str());
+        }
     }
     apply_exoplanet_names(planet_celids);
     if (stars_only) loaded_starsonly = true;

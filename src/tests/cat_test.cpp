@@ -291,3 +291,4 @@ TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStar
     hdcache[20794] = nullptr;
     delete_the_universe();
 }
+

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "../classes/cat.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -18,6 +19,7 @@ TEST(PlanetTest, DefaultInitialization)
     
     // Check initialized variables
     EXPECT_DOUBLE_EQ(p.albedo, 0.0);
+    EXPECT_DOUBLE_EQ(p.msini, 0.0);
     EXPECT_DOUBLE_EQ(p.opposition_surge, 0.0);
     EXPECT_DOUBLE_EQ(p.amt_lit, 0.0);
     EXPECT_DOUBLE_EQ(p.J2, 0.0);
@@ -92,6 +94,7 @@ TEST(PlanetTest, JsonSerializationRoundTrip)
     original.opposition_surge = 0.5;
     original.asteroid_no = 42;
     original.lock_type = true;
+    original.msini = 1.23e27;
     
     // Instantiate atmosphere to ensure it serializes
     Atmosphere* atm = original.ensure_atmosphere();
@@ -105,6 +108,7 @@ TEST(PlanetTest, JsonSerializationRoundTrip)
     EXPECT_TRUE(success);
     EXPECT_DOUBLE_EQ(restored.albedo, 0.35);
     EXPECT_DOUBLE_EQ(restored.opposition_surge, 0.5);
+    EXPECT_DOUBLE_EQ(restored.msini, 1.23e27);
 
     EXPECT_EQ(restored.asteroid_no, 42);
     EXPECT_TRUE(restored.lock_type);
@@ -114,6 +118,7 @@ TEST(PlanetTest, JsonSerializationRoundTrip)
     json jmp = major_planet.to_json();
     EXPECT_FALSE(jmp.contains("asteroid_no"));
     EXPECT_FALSE(jmp.contains("lock_type"));
+    EXPECT_FALSE(jmp.contains("msini"));
     
     // Ensure the atmosphere was recreated and populated
     ASSERT_NE(restored.atm, nullptr);
@@ -881,3 +886,207 @@ TEST(PlanetEstimationTest, SurfaceGravityAndDensityAgree)
     EXPECT_NEAR(bigger.density(), earth.density(), 1e-9);
     EXPECT_NEAR(bigger.estimate_surface_gravity(), 2.0, 1e-9);
 }
+
+// =====================================================================
+// Exoplanet Inclination Reconciliation Tests
+// =====================================================================
+
+TEST(ExoplanetInclinationTest, GJ876_ReconcilesAstrometricGaiaClash)
+{
+    Star host;
+    snprintf(host.name, sizeof(host.name), "GJ 876");
+
+    Planet pb, pc, pd, pe;
+    snprintf(pd.name, sizeof(pd.name), "GJ 876 d");
+    snprintf(pc.name, sizeof(pc.name), "GJ 876 c");
+    snprintf(pb.name, sizeof(pb.name), "GJ 876 b");
+    snprintf(pe.name, sizeof(pe.name), "GJ 876 e");
+
+    pd.orbit = new Orbit();
+    pc.orbit = new Orbit();
+    pb.orbit = new Orbit();
+    pe.orbit = new Orbit();
+
+    pd.orbit->period = 1.9378 * oneday;
+    pc.orbit->period = 30.088 * oneday;
+    pb.orbit->period = 61.116 * oneday;
+    pe.orbit->period = 124.69 * oneday;
+
+    pd.mass = 6.8 * earth_mass;
+    pc.mass = 227.0 * earth_mass;
+    pb.mass = 730.0 * earth_mass;
+    pe.mass = 15.0 * earth_mass;
+
+    pd.type = rocky;
+    pc.type = gas_giant;
+    pb.type = gas_giant;
+    pe.type = gas_giant;
+
+    std::vector<Planet*> planets = { &pd, &pc, &pb, &pe };
+    // b has 101.0 deg from Gaia DR3, while d, c, e have 59.0 deg from dynamical fits
+    std::vector<double> pincls = 
+    {
+        59.0 * fiftyseventh,
+        59.0 * fiftyseventh,
+        101.0 * fiftyseventh,
+        59.0 * fiftyseventh
+    };
+    std::vector<double> pnodes = { 0, 0, 0, 0 };
+
+    CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
+
+    // All planets must be reconciled to the 59 deg dynamical consensus within 1.5 deg
+    for (int i = 0; i < 4; i++)
+    {
+        EXPECT_NEAR(pincls[i] * fiftyseven, 59.0, 1.5);
+    }
+}
+
+TEST(ExoplanetInclinationTest, HD3167_AlignsUnconstrainedRVPlanetsToTransitPlane)
+{
+    Star host;
+    snprintf(host.name, sizeof(host.name), "HD 3167");
+
+    Planet pb, pd, pc, pe;
+    snprintf(pb.name, sizeof(pb.name), "HD 3167 b");
+    snprintf(pd.name, sizeof(pd.name), "HD 3167 d");
+    snprintf(pc.name, sizeof(pc.name), "HD 3167 c");
+    snprintf(pe.name, sizeof(pe.name), "HD 3167 e");
+
+    pb.orbit = new Orbit();
+    pd.orbit = new Orbit();
+    pc.orbit = new Orbit();
+    pe.orbit = new Orbit();
+
+    pb.orbit->period = 0.9596 * oneday;
+    pd.orbit->period = 8.509 * oneday;
+    pc.orbit->period = 29.845 * oneday;
+    pe.orbit->period = 102.09 * oneday;
+
+    double mass_d_orig = 6.9 * earth_mass;
+    double mass_e_orig = 8.5 * earth_mass;
+
+    pb.mass = 5.0 * earth_mass;
+    pd.mass = mass_d_orig;
+    pc.mass = 9.8 * earth_mass;
+    pe.mass = mass_e_orig;
+    pd.msini = mass_d_orig * sin(39.0 * fiftyseventh);
+    pe.msini = mass_e_orig * sin(41.0 * fiftyseventh);
+
+    pb.type = rocky;
+    pd.type = rocky;
+    pc.type = ice_giant;
+    pe.type = ice_giant;
+
+    std::vector<Planet*> planets = { &pb, &pd, &pc, &pe };
+    // b & c are transiting (83.4, 89.5 deg), d & e are unconstrained RV posteriors (39.0, 41.0 deg)
+    std::vector<double> pincls =
+    {
+        83.4 * fiftyseventh,
+        39.0 * fiftyseventh,
+        89.5 * fiftyseventh,
+        41.0 * fiftyseventh
+    };
+    std::vector<double> pnodes = { 0, 0, 0, 0 };
+
+    CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
+
+    // d and e must be realigned into the transit plane (around 86.5 deg +/- 2.0 deg)
+    EXPECT_NEAR(pincls[1] * fiftyseven, 86.5, 2.0);
+    EXPECT_NEAR(pincls[3] * fiftyseven, 86.5, 2.0);
+
+    // The unconstrained masses of d and e must scale down to undo sin(40 deg) inflation
+    EXPECT_LT(pd.mass, mass_d_orig);
+    EXPECT_LT(pe.mass, mass_e_orig);
+    EXPECT_NEAR(pd.mass / earth_mass, 4.35, 0.5);
+    EXPECT_NEAR(pe.mass / earth_mass, 5.60, 0.5);
+}
+
+TEST(ExoplanetInclinationTest, SupplementaryAngleNormalization)
+{
+    Star host;
+    snprintf(host.name, sizeof(host.name), "PDS 70");
+
+    Planet pb, pc, pe;
+    snprintf(pb.name, sizeof(pb.name), "PDS 70 b");
+    snprintf(pc.name, sizeof(pc.name), "PDS 70 c");
+    snprintf(pe.name, sizeof(pe.name), "PDS 70 e");
+
+    pb.orbit = new Orbit();
+    pc.orbit = new Orbit();
+    pe.orbit = new Orbit();
+
+    pb.orbit->period = 43800.0 * oneday;
+    pc.orbit->period = 80300.0 * oneday;
+    pe.orbit->period = 120000.0 * oneday;
+
+    pb.mass = 3.0 * jupiter_mass;
+    pc.mass = 2.0 * jupiter_mass;
+    pe.mass = 1.0 * jupiter_mass;
+
+    pb.type = gas_giant;
+    pc.type = gas_giant;
+    pe.type = gas_giant;
+
+    std::vector<Planet*> planets = { &pb, &pc, &pe };
+    // b & c published as ~131 deg, e published as 49.5 deg (180 - 130.5 deg)
+    std::vector<double> pincls =
+    {
+        131.0 * fiftyseventh,
+        130.5 * fiftyseventh,
+        49.5 * fiftyseventh
+    };
+    std::vector<double> pnodes = { 0, 0, 0 };
+
+    CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
+
+    // Planet e must preserve its 49.5 deg prograde inclination without being mutated,
+    // while remaining spatially coplanar with retrograde b and c (180 - 130.5 = 49.5 deg).
+    double i0 = pincls[0] * fiftyseven;
+    double i1 = pincls[1] * fiftyseven;
+    double i2 = pincls[2] * fiftyseven;
+
+    EXPECT_NEAR(i0, 131.0, 0.1);
+    EXPECT_NEAR(i1, 130.5, 0.1);
+    EXPECT_NEAR(i2, 49.5, 0.1);
+
+    // Verify their spatial planes agree within 1.0 deg
+    double plane_tilt_c = 180.0 - i1;
+    EXPECT_NEAR(fabs(plane_tilt_c - i2), 0.0, 1.0);
+}
+
+TEST(ExoplanetInclinationTest, PreservesHotJupiterExemption)
+{
+    Star host;
+    snprintf(host.name, sizeof(host.name), "WASP-107");
+
+    Planet pb, pc;
+    snprintf(pb.name, sizeof(pb.name), "WASP-107 b");
+    snprintf(pc.name, sizeof(pc.name), "WASP-107 c");
+
+    pb.orbit = new Orbit();
+    pc.orbit = new Orbit();
+
+    pb.orbit->period = 5.72 * oneday;
+    pc.orbit->period = 1088.0 * oneday;
+
+    pb.mass = 0.12 * jupiter_mass;
+    pc.mass = 0.36 * jupiter_mass;
+
+    pb.type = hot_jupiter;
+    pc.type = gas_giant;
+
+    std::vector<Planet*> planets = { &pb, &pc };
+    std::vector<double> pincls =
+    {
+        89.5 * fiftyseventh,
+        45.0 * fiftyseventh
+    };
+    std::vector<double> pnodes = { 0, 0 };
+
+    CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
+
+    // The hot jupiter b must preserve its distinct orbital inclination
+    EXPECT_NEAR(pincls[0] * fiftyseven, 89.5, 0.1);
+}
+

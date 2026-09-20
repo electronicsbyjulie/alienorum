@@ -1094,6 +1094,10 @@ json Planet::to_json()
     // fields above, they are written only when they say something.
     if (asteroid_no) towrite["asteroid_no"] = asteroid_no;
     if (lock_type) towrite["lock_type"] = lock_type;
+    if (msini)
+    {
+        towrite["msini"] = msini;
+    }
 
     // A ring system's geometry used not to be written at all, on the understanding that
     // generate_ring_parameters() would invent one again on the next load. That is fine for a body
@@ -1115,6 +1119,14 @@ bool Planet::from_json(json j)
 {
     CelestialObject::from_json(j);
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
+    try
+    {
+        j.at("msini").get_to(msini);
+    }
+    catch (...)
+    {
+        ;
+    }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
     // Fetch the node into a local FIRST. Written as ensure_atmosphere()->from_json(j.at(...)),
     // C++17 sequences the postfix-expression before the argument, so ensure_atmosphere() runs and
