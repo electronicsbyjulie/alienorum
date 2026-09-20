@@ -1199,11 +1199,6 @@ Point refract_true_point(Point pt, double alt_rad)
 // Evaluates the probability of a ring system existing based on mass and temperature.
 bool Planet::guess_has_rings()
 {
-    if (typeclass() == class_moon)
-    {
-        return false;
-    }
-
     double probability = 0.0;
 
     // 1. Mass factor: Jovians have a much higher capture/retention rate
@@ -1255,12 +1250,6 @@ bool Planet::guess_has_rings()
  */
 void Planet::generate_ring_parameters(bool gr)
 {
-    if (typeclass() == class_moon)
-    {
-        ring_radius = 0;
-        return;
-    }
-
     if (!gr && !guess_has_rings())
     {
         ring_radius = 0;

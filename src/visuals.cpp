@@ -762,10 +762,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
 // *row* of R used as a *column* of that reconstruction -- a transpose identity, not a literal
 // "axis expressed in camera space"). What a ring plane requires is a genuine forward transform,
 // R*(0,1,0) -- a different vector from R^-1*(0,1,0) whenever R isn't symmetric, which is
-// generally the case. An earlier version of draw_ring_gpu() used the inverse version and
-// produced a ring plane that visibly wobbled with camera azimuth/altitude (bug: rings
-// misaligned with the visible disc, plane appearing to flip depending on viewing angle), since
-// R^-1*(0,1,0) has no reason to track the camera's own orientation the way R*(0,1,0) does.
+// generally the case.
 //
 // Shared by draw_ring_gpu() (which draws the rings) and draw_sphere_gpu() (which shadows the
 // planet with them) precisely so the two can never disagree about where the ring plane is: a
@@ -1673,7 +1670,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     }
 
     // Rings
-    if (cls == class_planet && ((Planet*)cel)->ring_radius)
+    if ((cls == class_planet || cls == class_moon) && ((Planet*)cel)->ring_radius)
     {
 #if ALIENORUM_GPU_SPHERES
         // Analytic ray/plane impostor, matching the disc's own GPU treatment -- see
@@ -4209,7 +4206,7 @@ void draw_horizon()
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
         bool gaseous = uses_gaseous_map(p->type);
     
-        if (cls == class_planet && p && p->ring_radius)
+        if ((cls == class_planet || cls == class_moon) && p && p->ring_radius)
         {
             draw_ring_gpu(cel);                     // TODO: Rings appear in front of atmosphere - bad - but if we move this to draw_sky_gradient() it cuts them off.
         }
