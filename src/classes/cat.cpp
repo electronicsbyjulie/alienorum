@@ -3341,26 +3341,90 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 
             if (planet_names.find(designation) == planet_names.end())
             {
-                for (auto const& [dkey, fname] : planet_names)
+                std::vector<std::string> candidate_desigs;
+                candidate_desigs.push_back(designation);
+
+                if (designation.size() > 2)
                 {
-                    std::string s1, s2;
-                    for (char c : designation)
+                    char p_let = designation.back();
+                    if (p_let >= 'b' && p_let <= 'z')
                     {
-                        if (c != ' ')
+                        size_t dlen = designation.size();
+                        if (dlen >= 3 && (designation[dlen - 2] == 'A' || designation[dlen - 2] == 'B'))
                         {
-                            s1 += c;
+                            candidate_desigs.push_back(designation.substr(0, dlen - 2) + p_let);
+                        }
+                        if (dlen >= 4 && (designation[dlen - 2] == 'A' || designation[dlen - 2] == 'B') && designation[dlen - 3] == ' ')
+                        {
+                            candidate_desigs.push_back(designation.substr(0, dlen - 3) + " " + p_let);
                         }
                     }
-                    for (char c : dkey)
+                }
+                if (designation.rfind("gamma Cephei", 0) == 0)
+                {
+                    candidate_desigs.push_back("gam Cep " + std::string(1, designation.back()));
+                }
+                if (s)
+                {
+                    char p_let = designation.empty() ? 'b' : designation.back();
+                    if (p_let >= 'b' && p_let <= 'z')
                     {
-                        if (c != ' ')
+                        if (s->Gliese[0])
                         {
-                            s2 += c;
+                            candidate_desigs.push_back(std::string(s->Gliese) + " " + p_let);
+                            candidate_desigs.push_back(std::string(s->Gliese) + "  " + p_let);
+                        }
+                        if (!strcmp(s->name, "Pollux"))
+                        {
+                            candidate_desigs.push_back(std::string("GJ 286 ") + p_let);
+                            candidate_desigs.push_back(std::string("GJ 286  ") + p_let);
+                        }
+                        if (s->HD)
+                        {
+                            candidate_desigs.push_back("HD " + std::to_string(s->HD) + " " + p_let);
+                        }
+                        if (s->HIP)
+                        {
+                            candidate_desigs.push_back("HIP " + std::to_string(s->HIP) + " " + p_let);
                         }
                     }
-                    if (s1 == s2)
+                }
+
+                bool found = false;
+                for (const auto& cdesig : candidate_desigs)
+                {
+                    if (planet_names.find(cdesig) != planet_names.end())
                     {
-                        designation = dkey;
+                        designation = cdesig;
+                        found = true;
+                        break;
+                    }
+                    for (auto const& [dkey, fname] : planet_names)
+                    {
+                        std::string s1, s2;
+                        for (char c : cdesig)
+                        {
+                            if (c != ' ')
+                            {
+                                s1 += c;
+                            }
+                        }
+                        for (char c : dkey)
+                        {
+                            if (c != ' ')
+                            {
+                                s2 += c;
+                            }
+                        }
+                        if (s1 == s2)
+                        {
+                            designation = dkey;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found)
+                    {
                         break;
                     }
                 }
@@ -5487,6 +5551,16 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
         return r;
     }
 
+    std::string pl_name_check = it_pl->get<std::string>();
+    if (!has_smax || !has_per)
+    {
+        bool is_special_imaging = (pl_name_check == "PDS 70 e" || pl_name_check == "HIP 65426 b" || pl_name_check == "WD 0806-661 b");
+        if (!is_special_imaging)
+        {
+            return r;
+        }
+    }
+
     r.pl_name = it_pl->get<std::string>();
     r.hostname = it_host->get<std::string>();
 
@@ -5731,10 +5805,6 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     // If the star doesn't exist, instantiate it
     if (!host_star)
     {
-        if (loaded_starsonly)
-        {
-            return nullptr;
-        }
         if (ncelobjs >= MAX_CELOBJS)
         {
             return nullptr;
@@ -6141,6 +6211,57 @@ void CatalogReader::dedup_planets(json& planets_array)
         return;
     }
 
+    auto get_sma = [](const json& item) -> double
+    {
+        if (item.contains("pl_orbsmax") && item["pl_orbsmax"].is_number())
+        {
+            double v = item["pl_orbsmax"].get<double>();
+            if (v > 0)
+            {
+                return v;
+            }
+        }
+        if (item.contains("pl_orbper") && item["pl_orbper"].is_number())
+        {
+            double p = item["pl_orbper"].get<double>();
+            if (p > 0)
+            {
+                double per_yr = p / 365.25;
+                double st_m = (item.contains("st_mass") && item["st_mass"].is_number()) ? item["st_mass"].get<double>() : 1.0;
+                if (st_m <= 0)
+                {
+                    st_m = 1.0;
+                }
+                return cbrt(st_m * per_yr * per_yr);
+            }
+        }
+        return 0.0;
+    };
+
+    // Prune invalid or unbound items
+    json pruned_array = json::array();
+    for (auto& item : planets_array)
+    {
+        std::string pl_name = item.value("pl_name", "");
+        std::string hostname = item.value("hostname", "");
+        if (pl_name.empty() || hostname.empty())
+        {
+            continue;
+        }
+        if (pl_name.rfind("Exocomet", 0) == 0)
+        {
+            continue;
+        }
+        double per = (item.contains("pl_orbper") && item["pl_orbper"].is_number()) ? item["pl_orbper"].get<double>() : 0.0;
+        double sma = get_sma(item);
+        if (per <= 0 && sma > 100.0 && pl_name != "WD 0806-661 b")
+        {
+            continue;
+        }
+        pruned_array.push_back(std::move(item));
+    }
+    planets_array = std::move(pruned_array);
+
     struct PlanetCandidate
     {
         size_t orig_idx;
@@ -6153,6 +6274,7 @@ void CatalogReader::dedup_planets(json& planets_array)
         std::string letter;
         std::string hostname;
         std::string pl_name;
+        std::string norm_h;
     };
 
     auto extract_comp = [](const std::string& pl_name, const std::string& host) -> std::string
@@ -6264,31 +6386,30 @@ void CatalogReader::dedup_planets(json& planets_array)
         return "";
     };
 
-    auto get_sma = [](const json& item) -> double
+    auto normalize_host = [](const std::string& host) -> std::string
     {
-        if (item.contains("pl_orbsmax") && item["pl_orbsmax"].is_number())
+        std::string h = host;
+        while (!h.empty() && (h.back() == ' ' || h.back() == '\t'))
         {
-            double v = item["pl_orbsmax"].get<double>();
-            if (v > 0)
+            h.pop_back();
+        }
+        if (h.length() >= 2 && h[h.length() - 2] == ' ' && h.back() >= 'A' && h.back() <= 'D')
+        {
+            h = h.substr(0, h.length() - 2);
+            while (!h.empty() && (h.back() == ' ' || h.back() == '\t'))
             {
-                return v;
+                h.pop_back();
             }
         }
-        if (item.contains("pl_orbper") && item["pl_orbper"].is_number())
+        std::string res;
+        for (char c : h)
         {
-            double p = item["pl_orbper"].get<double>();
-            if (p > 0)
+            if (c != ' ' && c != '-')
             {
-                double per_yr = p / 365.25;
-                double st_m = (item.contains("st_mass") && item["st_mass"].is_number()) ? item["st_mass"].get<double>() : 1.0;
-                if (st_m <= 0)
-                {
-                    st_m = 1.0;
-                }
-                return cbrt(st_m * per_yr * per_yr);
+                res += std::tolower(c);
             }
         }
-        return 0.0;
+        return res;
     };
 
     size_t n = planets_array.size();
@@ -6308,6 +6429,7 @@ void CatalogReader::dedup_planets(json& planets_array)
             candidates[i].has_coords = true;
         }
         candidates[i].hostname = item.value("hostname", "");
+        candidates[i].norm_h = normalize_host(candidates[i].hostname);
         candidates[i].pl_name = item.value("pl_name", "");
         candidates[i].per = (item.contains("pl_orbper") && item["pl_orbper"].is_number()) ? item["pl_orbper"].get<double>() : 0.0;
         candidates[i].sma = get_sma(item);
@@ -6352,7 +6474,7 @@ void CatalogReader::dedup_planets(json& planets_array)
         for (size_t j = i + 1; j < n_coords; ++j)
         {
             size_t idx2 = coord_indices[j];
-            if (candidates[idx2].dec - dec1 > 0.02)
+            if (candidates[idx2].dec - dec1 > 0.04)
             {
                 break;
             }
@@ -6362,14 +6484,19 @@ void CatalogReader::dedup_planets(json& planets_array)
             }
 
             double cosdec = cos((dec1 + candidates[idx2].dec) * 0.5 * fiftyseventh);
-            double d_ra = fabs(ra1 - candidates[idx2].ra) * cosdec;
-            if (d_ra > 0.02)
+            double d_ra_deg = fabs(ra1 - candidates[idx2].ra);
+            if (d_ra_deg > 180.0)
+            {
+                d_ra_deg = 360.0 - d_ra_deg;
+            }
+            double d_ra = d_ra_deg * cosdec;
+            if (d_ra > 0.04)
             {
                 continue;
             }
 
             double dist_arcsec = hypot(d_ra, candidates[idx2].dec - dec1) * 3600.0;
-            if (dist_arcsec > 30.0)
+            if (dist_arcsec > 90.0)
             {
                 continue;
             }
@@ -6401,15 +6528,15 @@ void CatalogReader::dedup_planets(json& planets_array)
             if (per1 > 0 && per2 > 0)
             {
                 double max_p = std::max(per1, per2);
-                if (max_p > 0 && fabs(per1 - per2) / max_p <= 0.15)
+                if (max_p > 0 && fabs(per1 - per2) / max_p <= 0.18)
                 {
                     orbit_match = true;
                 }
             }
-            else if (sma1 > 0 && sma2 > 0)
+            if (!orbit_match && sma1 > 0 && sma2 > 0)
             {
                 double max_s = std::max(sma1, sma2);
-                if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.15)
+                if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.18)
                 {
                     orbit_match = true;
                 }
@@ -6443,7 +6570,7 @@ void CatalogReader::dedup_planets(json& planets_array)
     }
 
     // 2. Same-host matching for planets where coordinates might be missing,
-    // grouped by hostname
+    // grouped by normalized hostname
     std::unordered_map<std::string, std::vector<size_t>> by_host;
     for (size_t i = 0; i < n; ++i)
     {
@@ -6451,9 +6578,9 @@ void CatalogReader::dedup_planets(json& planets_array)
         {
             continue;
         }
-        if (!candidates[i].hostname.empty())
+        if (!candidates[i].norm_h.empty())
         {
-            by_host[candidates[i].hostname].push_back(i);
+            by_host[candidates[i].norm_h].push_back(i);
         }
     }
 
@@ -6500,15 +6627,15 @@ void CatalogReader::dedup_planets(json& planets_array)
                 if (per1 > 0 && per2 > 0)
                 {
                     double max_p = std::max(per1, per2);
-                    if (max_p > 0 && fabs(per1 - per2) / max_p <= 0.15)
+                    if (max_p > 0 && fabs(per1 - per2) / max_p <= 0.18)
                     {
                         orbit_match = true;
                     }
                 }
-                else if (sma1 > 0 && sma2 > 0)
+                if (!orbit_match && sma1 > 0 && sma2 > 0)
                 {
                     double max_s = std::max(sma1, sma2);
-                    if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.15)
+                    if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.18)
                     {
                         orbit_match = true;
                     }
@@ -6712,13 +6839,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         // ADQL column aliasing maps EU's schema directly onto NASA's nomenclature.
         std::string eu_url = "http://voparis-tap-planeto.obspm.fr/tap/sync?"
                              "request=doQuery&lang=ADQL&format=json&maxrec=20000&query="
-                             "select+target_name+as+pl_name,star_name+as+hostname,"
+                             "select+target_name+as+pl_name,alt_target_name,star_name+as+hostname,"
                              "period+as+pl_orbper,semi_major_axis+as+pl_orbsmax,eccentricity+as+pl_orbeccen,inclination+as+pl_orbincl,"
                              "periastron+as+pl_orblper,t_peri+as+pl_orbtper,"
                              "mass+as+pl_bmassj,mass_sin_i+as+pl_msinij,radius+as+pl_radj,"
                              "ra,dec,star_distance+as+sy_dist,mag_v+as+sy_vmag,"
                              "star_mass+as+st_mass,star_radius+as+st_rad,star_teff+as+st_teff,star_spec_type+as+st_spectype+"
-                             "from+exoplanet.epn_core+order+by+target_name+asc";
+                             "from+exoplanet.epn_core+where+publication_status='Published+in+a+refereed+paper'+order+by+target_name+asc";
 
         if (!fetch_tap(eu_url, readBufferEU))
         {
@@ -6862,27 +6989,112 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
                 else
                 {
+                    if (litem.contains("alt_target_name") && litem["alt_target_name"].is_string())
+                    {
+                        std::string alt_str = litem.value("alt_target_name", "");
+                        std::stringstream ss(alt_str);
+                        std::string item_token;
+                        while (std::getline(ss, item_token, '#'))
+                        {
+                            std::stringstream ss2(item_token);
+                            std::string sub_tok;
+                            while (std::getline(ss2, sub_tok, ','))
+                            {
+                                std::string norm_alt = normalize_name(sub_tok);
+                                if (!norm_alt.empty() && primary_keys.count(norm_alt))
+                                {
+                                    target_key = primary_keys[norm_alt];
+                                    break;
+                                }
+                            }
+                            if (target_key != norm)
+                            {
+                                break;
+                            }
+                        }
+                    }
+
                     int hd = -1, hip = -1;
 
                     // NASA provides explicit fields; EU relies on hostname/pl_name
-                    if (litem.contains("hd_name") && litem["hd_name"].is_string()) hd = extract_cat_num(litem.value("hd_name", ""), "HD");
-                    if (litem.contains("hip_name") && litem["hip_name"].is_string()) hip = extract_cat_num(litem.value("hip_name", ""), "HIP");
+                    if (litem.contains("hd_name") && litem["hd_name"].is_string())
+                    {
+                        hd = extract_cat_num(litem.value("hd_name", ""), "HD");
+                    }
+                    if (litem.contains("hip_name") && litem["hip_name"].is_string())
+                    {
+                        hip = extract_cat_num(litem.value("hip_name", ""), "HIP");
+                    }
 
                     std::string hostname = litem.value("hostname", "");
-                    if (hd == -1) hd = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
-                    if (hip == -1) hip = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
+                    if (hd == -1)
+                    {
+                        hd = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
+                    }
+                    if (hip == -1)
+                    {
+                        hip = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
+                    }
+
+                    if (litem.contains("alt_target_name") && litem["alt_target_name"].is_string())
+                    {
+                        std::string alt_str = litem.value("alt_target_name", "");
+                        if (!alt_str.empty())
+                        {
+                            if (hd == -1)
+                            {
+                                hd = extract_cat_num(alt_str, "HD");
+                            }
+                            if (hip == -1)
+                            {
+                                hip = extract_cat_num(alt_str, "HIP");
+                            }
+                        }
+                    }
 
                     std::string hd_alias = hd != -1 ? "hd" + std::to_string(hd) + letter : "";
                     std::string hip_alias = hip != -1 ? "hip" + std::to_string(hip) + letter : "";
 
                     // Point to existing canonical record if an alias matches
-                    if (!hd_alias.empty() && primary_keys.count(hd_alias)) target_key = primary_keys[hd_alias];
-                    else if (!hip_alias.empty() && primary_keys.count(hip_alias)) target_key = primary_keys[hip_alias];
+                    if (!hd_alias.empty() && primary_keys.count(hd_alias))
+                    {
+                        target_key = primary_keys[hd_alias];
+                    }
+                    else if (!hip_alias.empty() && primary_keys.count(hip_alias))
+                    {
+                        target_key = primary_keys[hip_alias];
+                    }
 
                     // Register this planet's identifiers to the canonical target
                     primary_keys[norm] = target_key;
-                    if (!hd_alias.empty()) primary_keys[hd_alias] = target_key;
-                    if (!hip_alias.empty()) primary_keys[hip_alias] = target_key;
+                    if (!hd_alias.empty())
+                    {
+                        primary_keys[hd_alias] = target_key;
+                    }
+                    if (!hip_alias.empty())
+                    {
+                        primary_keys[hip_alias] = target_key;
+                    }
+
+                    if (litem.contains("alt_target_name") && litem["alt_target_name"].is_string())
+                    {
+                        std::string alt_str = litem.value("alt_target_name", "");
+                        std::stringstream ss(alt_str);
+                        std::string item_token;
+                        while (std::getline(ss, item_token, '#'))
+                        {
+                            std::stringstream ss2(item_token);
+                            std::string sub_tok;
+                            while (std::getline(ss2, sub_tok, ','))
+                            {
+                                std::string norm_alt = normalize_name(sub_tok);
+                                if (!norm_alt.empty())
+                                {
+                                    primary_keys[norm_alt] = target_key;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // 2. Field-level Merge
