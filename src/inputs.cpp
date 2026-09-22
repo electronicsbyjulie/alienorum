@@ -12,6 +12,7 @@ void center_selected()
 {
     if (selected >= 0)
     {
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[selected]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
@@ -25,6 +26,7 @@ void center_tracked()
 {
     if (trackidx >= 0)
     {
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[trackidx]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
@@ -533,7 +535,7 @@ void process_key_cmd_char(char c)
 
         case 'R': redlight_mode = !redlight_mode; apply_default_style(); break;
         case 's': statuswnd = !statuswnd; break;
-        case 'S': selected = -1; break;
+        case 'S': selected = -1; if (view_mode == vm_system) view_mode = vm_spaceship; break;
 
         case 't':
         if (trackidx >= 0)
@@ -548,6 +550,7 @@ void process_key_cmd_char(char c)
             trackidx = selected;
             selected = -1;
         }
+        if (view_mode == vm_system) view_mode = vm_spaceship; 
         viewchanged = true;
         break;
 
@@ -856,7 +859,7 @@ void process_key_arrowup()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, -steering_rate);
+    steer(pitch, steering_rate);
     if (trackidx<0) altitude += steering_rate;
     if (altitude > half_pi) altitude = half_pi;
     enforce_y_pan_limit();
@@ -870,7 +873,7 @@ void process_key_arrowdn()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, steering_rate);
+    steer(pitch, -steering_rate);
     if (trackidx<0) altitude -= steering_rate;
     if (altitude < -half_pi) altitude = -half_pi;
     enforce_y_pan_limit();

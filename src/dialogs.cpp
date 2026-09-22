@@ -2483,12 +2483,14 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Select##explored"))
     {
         selected = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         viewchanged = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Find##explored"))
     {
         selected = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         center_selected();
         viewchanged = true;
     }
@@ -2496,6 +2498,7 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Track##explored"))
     {
         trackidx = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         center_tracked();
         viewchanged = true;
     }
@@ -2634,11 +2637,6 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Add Satellite...##explored"))
     {
         process_key_cmd_char('^');
-    }
-    ImGui::SameLine();
-    if (0 && ImGui::Button("Visualize (Ctrl+V)##explored"))
-    {
-        process_key_cmd_ctrl_char('V');
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
