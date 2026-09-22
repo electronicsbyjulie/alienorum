@@ -397,8 +397,9 @@ Point to_viewer_plane(Point pt, int sign = 1);
 
 extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
+extern CelestialObject *biggest_cel;
 extern CelestialLocation here;
-extern double azimuth_correction;
+extern double azimuth_correction, bigcel_sz;
 extern Locale *is_a_locale_under_cursor, *selected_locale;
 
 extern std::vector<CelestialObject*> lsyscache;

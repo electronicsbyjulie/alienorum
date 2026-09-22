@@ -23,9 +23,10 @@ std::vector<CelestialObject*> lsyscache;
 bool *celskip, *discinstead;
 double *vmag_cache, *bloomrad_cache, *angular_radius;
 CelestialLocation here;
-double azimuth_correction = 0;
+double azimuth_correction = 0, bigcel_sz = 0;
 typedef struct my_jpeg_error_mgr * my_error_ptr;
 Locale *is_a_locale_under_cursor = nullptr, *selected_locale = nullptr;
+CelestialObject *biggest_cel = nullptr;
 
 int alienorum::CelestialObject::cel_rand()
 {

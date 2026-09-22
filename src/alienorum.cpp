@@ -995,13 +995,18 @@ int main (int argc, char** argv)
                 ? cels[nameidx]->name
                 : "snapshot"
                 ;
+
+            std::string subject = (biggest_cel && (bigcel_sz >= 4))
+                ? (std::string(biggest_cel->name) + std::string("."))
+                : std::string("")
+                ;
             
             if (view_mode == vm_skymap) snapname += ".skymap";
             if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             shnapsot_fname << snapdir << _FILESLASH
-                << snapname
-                << "." 
+                << subject
+                << snapname << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";
 

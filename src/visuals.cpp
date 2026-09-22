@@ -2206,10 +2206,16 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         if (rim[s].y > ymax) ymax = rim[s].y;
     }
 
-    double wide = xmax - xmin, tall = ymax - ymin;
+    double wide = xmax - xmin, tall = ymax - ymin, sz3 = sqrt(wide*wide+tall*tall)/3;
     // std::cout << cel->name << " wide=" << wide << " tall=" << tall << std::endl;
     if (wide < 1.5 && tall < 1.5) return 0;                     // smaller than a pixel: the point path has it
     if (xmax < 0 || ymax < 0 || xmin > dispcx*2 || ymin > dispcy*2) return 0;
+
+    if (sz3)
+    {
+        biggest_cel = cel;
+        bigcel_sz = sz3;
+    }
 
     // Total flux spread over the projected area, then a cap so a big nearby galaxy stays readable.
     double area = fmax(4.0, _pi * wide * tall * 0.25);
@@ -2853,6 +2859,11 @@ bool draw_one_object(int i)
         if (show_labels || lbl_localsys || show_consln || show_grid)
         {
             bloomrad_cache[i] = bloomrad = draw_satellite_icon(xycoord, satcol);
+            if (bloomrad > bigcel_sz)
+            {
+                biggest_cel = cels[i];
+                bigcel_sz = bloomrad;
+            }
         }
         else
         {
@@ -2863,6 +2874,11 @@ bool draw_one_object(int i)
     else if (cls == class_comet)
     {
         coma_px = draw_comet(cels[i], appmag);
+        if (coma_px > bigcel_sz)
+        {
+            biggest_cel = cels[i];
+            bigcel_sz = coma_px;
+        }
         if (coma_px > 0)
         {
             // What the coma and the tail did not take is the condensation at the head, and the
@@ -2888,6 +2904,11 @@ bool draw_one_object(int i)
 
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
+        if (bloomrad > bigcel_sz)
+        {
+            biggest_cel = cels[i];
+            bigcel_sz = bloomrad;
+        }
         discinstead[i] = false;
         if (!cels[1]) return false;
         
@@ -2912,7 +2933,16 @@ bool draw_one_object(int i)
             col.blue = effect*col.green + effect1*col.blue;
         }
         
-        if (flare) draw_flare(flare, col, vmag_cache[i], 0);
+        if (flare)
+        {
+            draw_flare(flare, col, vmag_cache[i], 0);
+            double f3 = flare / 3;
+            if (f3 > bigcel_sz)
+            {
+                biggest_cel = cels[i];
+                bigcel_sz = f3;
+            }
+        }
 
         brght = pow(magnbase, -appmag) * global_brightness * 50;
         double circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
@@ -3367,6 +3397,9 @@ void draw_galaxy_band()
 void draw_objects()
 {
     if (!ncelobjs) return;
+
+    biggest_cel = nullptr;
+    bigcel_sz = 0;
 
     if (view_mode == vm_system)
     {
