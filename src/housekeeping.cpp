@@ -210,7 +210,32 @@ bool compute_object_location(CelestialObject* cel)
                     cel->drawnx = cel->drawny = -1e9;
                     return false;
                 }
-                if (!redo_proper_motions && !cel->orbit && !((Star*)cel)->variability_period) return false;
+                Star *s = (Star*)cel;
+                bool should_update_motion = redo_proper_motions
+                    || cel->orbit
+                    || s->variability_period
+                    || (viewer_distance < 100.0 * light_year)
+                    || (s->distance < 50.0 * light_year);
+                if (!should_update_motion)
+                {
+                    double pm = sqrt(s->proper_motion_RA * s->proper_motion_RA + s->proper_motion_decl * s->proper_motion_decl);
+                    static double last_proper_motion_simnow = 0;
+                    double dt = fabs(simnow - last_proper_motion_simnow);
+                    if (dt == 0 || last_proper_motion_simnow == 0)
+                    {
+                        dt = 1.0;
+                    }
+                    double px_shift = pm * dt * zoom * dispcx;
+                    if (px_shift >= 0.25)
+                    {
+                        should_update_motion = true;
+                    }
+                }
+                if (!should_update_motion)
+                {
+                    cel->drawnx = cel->drawny = -1e9;
+                    return false;
+                }
                 if (cel->orbit && cel->orbit->center && (whereami < 0 || cel->orbit->center != cels[whereami])
                     && (cel->orbit->center->drawnx < 0 || cel->orbit->center->drawny < 0
                         || cel->orbit->center->drawnx > dispw || cel->orbit->center->drawny > disph
@@ -307,23 +332,349 @@ bool compute_object_location(CelestialObject* cel)
     return true;
 }
 
+void update_visible_cels()
+{
+    if (!cels || !ncelobjs)
+    {
+        visible_cels.clear();
+        return;
+    }
+
+    static CelestialLocation last_here;
+    static double last_azimuth = -1e9, last_altitude = -1e9, last_zoom = -1e9;
+    static double last_brightness = -1e9, last_simnow = -1e9;
+    static int last_whereami = -999, last_selected = -999, last_trackidx = -999, last_editidx = -999;
+    static int last_ncelobjs = -1;
+    static ViewMode last_vmode = (ViewMode)-1;
+
+    double dt = fabs(simnow - last_simnow);
+    bool state_changed = viewchanged
+        || redo_proper_motions
+        || visible_cels.empty()
+        || (ncelobjs != last_ncelobjs)
+        || (view_mode != last_vmode)
+        || (whereami != last_whereami)
+        || (selected != last_selected)
+        || (trackidx != last_trackidx)
+        || (editidx != last_editidx)
+        || (zoom != last_zoom)
+        || (global_brightness != last_brightness)
+        || (azimuth != last_azimuth)
+        || (altitude != last_altitude)
+        || (dt > 1.0)
+        || (here.distance_to(last_here) > 10.0);
+
+    if (!state_changed)
+    {
+        return;
+    }
+
+    last_here = here;
+    last_azimuth = azimuth;
+    last_altitude = altitude;
+    last_zoom = zoom;
+    last_brightness = global_brightness;
+    last_simnow = simnow;
+    last_whereami = whereami;
+    last_selected = selected;
+    last_trackidx = trackidx;
+    last_editidx = editidx;
+    last_ncelobjs = ncelobjs;
+    last_vmode = view_mode;
+
+    visible_cels.clear();
+    visible_cels.reserve(8192);
+
+    dispw = dispcx * 2;
+    disph = dispcy * 2;
+    celmasslim = lbllsys_mass_lim * 1000;
+    mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit) * zoom) * invlogmagnbase;
+
+    double brightness_shift = (global_brightness > 0) ? log(global_brightness) * invlogmagnbase : 0.0;
+    double cutoff_mag = mag_limit_adjusted + brightness_shift + 1.5;
+    if (view_mode == vm_spaceship)
+    {
+        cutoff_mag += 1.5;
+    }
+
+    Point viewer_pole = to_viewer_plane(yaxis);
+    Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
+
+    std::vector<CelestialObject*> whereami_ancestors;
+    if (whereami >= 0 && whereami < MAX_CELOBJS && cels[whereami])
+    {
+        CelestialObject *cur = cels[whereami];
+        while (cur)
+        {
+            whereami_ancestors.push_back(cur);
+            if (cur->orbit && cur->orbit->center && cur->orbit->center != cur)
+            {
+                cur = cur->orbit->center;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    {
+        CelestialObject *cel = cels[i];
+        if (cel->deleted)
+        {
+            cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+            continue;
+        }
+
+        if (i == 0 || i == whereami || cel == mycenobj || i == selected || i == trackidx || i == editidx)
+        {
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        bool is_ancestor = false;
+        for (CelestialObject *anc : whereami_ancestors)
+        {
+            if (anc == cel)
+            {
+                is_ancestor = true;
+                break;
+            }
+        }
+        if (is_ancestor)
+        {
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        cel_obj_class cls = cel->typeclass();
+
+        if (cls == class_galaxy)
+        {
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        if ((view_mode == vm_system || explorer) && cel->cenobj == mycenobj)
+        {
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        if (cls == class_moon)
+        {
+            CelestialObject *parent = cel->orbit ? cel->orbit->center : nullptr;
+            if (!parent || parent == cel)
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+
+            if (whereami >= 0 && (cels[whereami] == parent || cels[whereami]->cenobj == parent))
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+
+            double parent_dist = parent->location.distance_to(here);
+            if (parent_dist <= 0)
+            {
+                parent_dist = 1.0;
+            }
+
+            if (parent_dist < 100.0 * parent->volumetric_mean_radius)
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+
+            double parent_rad_px = (parent->volumetric_mean_radius / parent_dist) * zoom * dispcx;
+            double orbit_px = (cel->orbit->semimajor_axis / parent_dist) * zoom * dispcx;
+            if (orbit_px < std::max(2.5, parent_rad_px + 1.0))
+            {
+                cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                    = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                continue;
+            }
+
+            if (cel->absolute_magnitude && mycenobj)
+            {
+                double vmag = ((Planet*)cel)->viewer_reflectance_magnitude(here, 0, mycenobj->absolute_magnitude);
+                if (vmag > cutoff_mag)
+                {
+                    cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                        = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                    continue;
+                }
+            }
+
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        if (cls == class_planet)
+        {
+            if (cel->cenobj != mycenobj)
+            {
+                cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                    = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                continue;
+            }
+
+            bool is_asteroid = (((Planet*)cel)->asteroid_no > 0) || (cel->mass < celmasslim);
+            if (is_asteroid)
+            {
+                if (cel->absolute_magnitude && mycenobj)
+                {
+                    double vmag = ((Planet*)cel)->viewer_reflectance_magnitude(here, 0, mycenobj->absolute_magnitude);
+                    double dist = cel->location.distance_to(here);
+                    double ang_rad = (dist > 0) ? fabs(atan2(cel->volumetric_mean_radius, dist)) : 0;
+                    if (ang_rad * zoom < sphere_rad_threshold && vmag > cutoff_mag)
+                    {
+                        cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                            = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                        continue;
+                    }
+                }
+            }
+
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        if (cls == class_comet)
+        {
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        if (cls == class_satellite)
+        {
+            if (cel->cenobj == mycenobj)
+            {
+                visible_cels.push_back(cel);
+            }
+            else
+            {
+                cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                    = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+            }
+            continue;
+        }
+
+        if (cls == class_star)
+        {
+            Star *s = (Star*)cel;
+            if (s->is_universally_visible())
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+
+            if ((cbolbls_selected_idx == lbltype_planets && s->has_planets >= planets_lblcut)
+                || (cbolbls_selected_idx == lbltype_planethz && s->has_hz_planets))
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+
+            double dist = s->location.distance_to(here);
+            if (view_mode == vm_spaceship && dist < 100.0 * light_year)
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+            if (s->distance < 25.0 * light_year)
+            {
+                visible_cels.push_back(cel);
+                continue;
+            }
+
+            double appmag;
+            if (s->absolute_magnitude != 0)
+            {
+                double r_10pc = dist / (parsec * 10.0);
+                appmag = s->absolute_magnitude + 5.0 * log10(std::max(1e-10, r_10pc));
+            }
+            else
+            {
+                double r_ratio = (s->distance > 0) ? (dist / s->distance) : 1.0;
+                appmag = s->apparent_magnitude + 5.0 * log10(std::max(1e-10, r_ratio));
+            }
+
+            if (s->variability_period > 0 && s->minmag < appmag)
+            {
+                appmag = s->minmag;
+            }
+
+            if (appmag > cutoff_mag)
+            {
+                cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                    = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                continue;
+            }
+
+            if (view_mode != vm_skymap && view_mode != vm_system && zoom >= 0.8)
+            {
+                CelestialLocation rel_loc = s->location - here;
+                Point rel(rel_loc);
+                rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
+                if (azimuth + azimuth_correction)
+                {
+                    rel = rotate3D(rel, center, yaxis, -(azimuth + azimuth_correction));
+                }
+                if (altitude)
+                {
+                    rel = rotate3D(rel, center, xaxis, altitude);
+                }
+
+                if (rel.z <= 0)
+                {
+                    cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                        = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                    continue;
+                }
+
+                double sx = rel.x / rel.z * zoom;
+                double sy = rel.y / rel.z * zoom;
+                if (fabs(sx) > 1.5 || fabs(sy) > 1.5)
+                {
+                    cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                        = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+                    continue;
+                }
+            }
+
+            visible_cels.push_back(cel);
+            continue;
+        }
+
+        visible_cels.push_back(cel);
+    }
+}
+
 void compute_object_draw_coordinates()
 {
     num_stars_in_box = 0;
-    if (!ncelobjs) return;
+    if (!ncelobjs)
+    {
+        return;
+    }
 
     int i, j, n;
     dispw = dispcx*2;
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
 
-    refresh_eclipse_casters();
     eclipsed_light = nullptr;
     eclipsed_fraction = 0;
-    if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
+    if (whereami >= 0)
+    {
+        mycenobj = cels[whereami]->cenobj;
+    }
     double mycenobj_distsq = mycenobj ? mycenobj->location.squared_distance_to(here) : 0;
-    // The bounding-cube pre-filter in the loop below compares against a length, not a squared
-    // one, so take the root once here rather than per object.
     double mycenobj_dist = sqrt(mycenobj_distsq);
     if (whereami >= 0)
     {
@@ -340,31 +691,43 @@ void compute_object_draw_coordinates()
         for (i=0; i<2; i++)
         {
             for (j=0; j<n; j++)
+            {
                 compute_object_location(have_to_know[j]);
+            }
 
             set_viewer_location_and_plane();
         }
     }
 
-    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
-    {
-        if (cels[i]->deleted) continue;
-        if (!compute_object_location(cels[i])) continue;
+    update_visible_cels();
+    refresh_eclipse_casters();
 
-        CelestialLocation tmp = cels[i]->location - here;
-        cels[i]->tmprel = Point(tmp);                           // fix race condition: tmprel must come AFTER tmp, not before.
+    for (size_t vi = 0; vi < visible_cels.size(); vi++)
+    {
+        CelestialObject *cel = visible_cels[vi];
+        if (!cel || cel->deleted)
+        {
+            continue;
+        }
+        if (!compute_object_location(cel))
+        {
+            continue;
+        }
+
+        CelestialLocation tmp = cel->location - here;
+        cel->tmprel = Point(tmp);
 
         // If entering a new star system, change allegiance to new center object.
-        if (whereami < 0 && cels[i]->type == star
-            && fabs(cels[i]->tmprel.x) < mycenobj_dist
-            && fabs(cels[i]->tmprel.y) < mycenobj_dist
-            && fabs(cels[i]->tmprel.z) < mycenobj_dist
-            && cels[i]->tmprel.squared_magnitude() < mycenobj_distsq)
+        if (whereami < 0 && cel->type == star
+            && fabs(cel->tmprel.x) < mycenobj_dist
+            && fabs(cel->tmprel.y) < mycenobj_dist
+            && fabs(cel->tmprel.z) < mycenobj_dist
+            && cel->tmprel.squared_magnitude() < mycenobj_distsq)
         {
-            mycenobj = cels[i]->cenobj;
+            mycenobj = cel->cenobj;
             CelestialLocation was_here = here;
-            here.galactic_center = cels[i]->location.galactic_center;           // TODO:
-            here.system_center = cels[i]->location.system_center;
+            here.galactic_center = cel->location.galactic_center;
+            here.system_center = cel->location.system_center;
             here.local_position = Point(was_here) - here.system_center;
         }
     }
@@ -384,14 +747,23 @@ void compute_object_draw_coordinates()
         {
             for (i=0; cels[i]; i++)
             {
-                if (cels[i]->cenobj != mycenobj) continue;
+                if (cels[i]->cenobj != mycenobj)
+                {
+                    continue;
+                }
                 lsyscache.push_back(cels[i]);
             }
 
             std::sort(lsyscache.begin(), lsyscache.end(), [](const CelestialObject* a, const CelestialObject* b)
             {
-                if (!a) return b != nullptr; 
-                if (!b) return false;
+                if (!a)
+                {
+                    return b != nullptr;
+                }
+                if (!b)
+                {
+                    return false;
+                }
                 
                 return *a < *b;
             });
@@ -399,7 +771,10 @@ void compute_object_draw_coordinates()
     }
 
     set_viewer_location_and_plane();
-    if (trackidx >= 0) center_tracked();
+    if (trackidx >= 0)
+    {
+        center_tracked();
+    }
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
@@ -408,31 +783,44 @@ void compute_object_draw_coordinates()
 
     luminous_flux = cels[1] ? 0 : 1e10;
     inside_galaxy_idx = -1;
-    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    for (size_t vi = 0; vi < visible_cels.size(); vi++)
     {
+        CelestialObject *cel = visible_cels[vi];
+        if (!cel || cel->deleted)
+        {
+            continue;
+        }
 
+        int i = cel->seqno;
         vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
-        if (cels[i]->deleted) continue;
-        cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
-            = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
-        if (isnan(cels[i]->tmprel.x)) continue;
+        cel->drawnx = cel->drawnxmin = cel->drawnxmax
+            = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
+        if (isnan(cel->tmprel.x))
+        {
+            continue;
+        }
         
         // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
         // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
-        if (cels[i]->typeclass() == class_galaxy)
+        if (cel->typeclass() == class_galaxy)
         {
-            double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
-            if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
+            double gr = cel->distance * ((Galaxy*)cel)->angular_diameter * 0.5;
+            if (gr > 0 && cel->tmprel.squared_magnitude() < gr * gr * 1.44)
+            {
                 inside_galaxy_idx = i;
+            }
         }
 
-        if ((i == whereami) && (view_mode != vm_system)) continue;
+        if ((i == whereami) && (view_mode != vm_system))
+        {
+            continue;
+        }
         
         // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
         // a star out of its visible box would.
-        if (cels[i]->typeclass() == class_star)
+        if (cel->typeclass() == class_star)
         {
-            Star* cels_i_star = ((Star*)cels[i]);
+            Star* cels_i_star = ((Star*)cel);
 
             if (cels_i_star
                 && cels_i_star->seqno
@@ -440,91 +828,130 @@ void compute_object_draw_coordinates()
                 && !cels_i_star->tmp_vis_flag
                 && !cels_i_star->is_universally_visible())
             {
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
+                cel->drawnx = cel->drawny = -1e9;
                 continue;
             }
         }
 
-        Point rel = cels[i]->tmprel;
+        Point rel = cel->tmprel;
         double relm = rel.magnitude();
 
-        if (cels[i]->orbit
-            && relm > 1e4 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
+        if (cel->orbit
+            && relm > 1e4 * cel->orbit->semimajor_axis * cel->orbit->semimajor_axis * zoom * zoom)
         {
-            angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+            angular_radius[i] = fabs(std::atan2(cel->volumetric_mean_radius, rel.magnitude()));
             if (angular_radius[i] < 0.01*fiftyseventh)
             {
-                cels[i]->drawnx = cels[i]->drawny = -1e9;
+                cel->drawnx = cel->drawny = -1e9;
                 continue;
             }
         }
 
         rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
 
-        cel_obj_class icls = cels[i]->typeclass();
+        cel_obj_class icls = cel->typeclass();
         if (icls == class_planet || icls == class_moon)
         {
-            vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
+            vmag_cache[i] = ((Planet*)cel)->viewer_reflectance_magnitude(here);
 
-            double lit = eclipse_illumination(cels[i]);
-            if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
+            double lit = eclipse_illumination(cel);
+            if (lit < 1.0)
+            {
+                vmag_cache[i] -= log(lit) * invlogmagnbase;
+            }
         }
-        else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
-        else vmag_cache[i] = cels[i]->viewer_magnitude(here);
+        else if (icls == class_comet)
+        {
+            vmag_cache[i] = ((Comet*)cel)->viewer_comet_magnitude(here);
+        }
+        else
+        {
+            vmag_cache[i] = cel->viewer_magnitude(here);
+        }
 
         double brght;
 
         if (view_mode == vm_horizon)
         {
-            if (airy_rock) rel = refract_true_point(rel);
+            if (airy_rock)
+            {
+                rel = refract_true_point(rel);
+            }
 
             if (vmag_cache[i] < -10 /* && rel.y >= 0 */)
             {
                 brght = global_brightness * pow(magnbase, -vmag_cache[i]);
-                float theta = cels[i]->Decl_as_radians(here);
+                float theta = cel->Decl_as_radians(here);
 
                 if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
                 {
                     // Interpolated twilight values.
                     float theta_deg = theta * fiftyseven, twilight;
-                    if (theta_deg >= 6) twilight = 6.0;
-                    else if (theta_deg >= 0) twilight = (.24 + 0.96 * theta_deg);
-                    else if (theta_deg >= -6) twilight = (.0305 + 0.03491666 * (theta_deg+6));
-                    else if (theta_deg >= -12) twilight = (.0029 + 0.0046 * (theta_deg+12));
-                    else if (theta_deg >= -18) twilight = (0.00048333333333 * (theta_deg+18));
-                    else twilight = 0;
+                    if (theta_deg >= 6)
+                    {
+                        twilight = 6.0;
+                    }
+                    else if (theta_deg >= 0)
+                    {
+                        twilight = (.24 + 0.96 * theta_deg);
+                    }
+                    else if (theta_deg >= -6)
+                    {
+                        twilight = (.0305 + 0.03491666 * (theta_deg+6));
+                    }
+                    else if (theta_deg >= -12)
+                    {
+                        twilight = (.0029 + 0.0046 * (theta_deg+12));
+                    }
+                    else if (theta_deg >= -18)
+                    {
+                        twilight = (0.00048333333333 * (theta_deg+18));
+                    }
+                    else
+                    {
+                        twilight = 0;
+                    }
 
                     double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
 
                     // Under a solar eclipse.
                     const double kTotalityFloor = 1.2e-3;
-                    double obsc = eclipse_obscuration(cels[i]);
+                    double obsc = eclipse_obscuration(cel);
                     if (obsc > 0)
                     {
                         add_flux *= fmax(1.0 - obsc, kTotalityFloor);
                         if (obsc > eclipsed_fraction)
                         {
                             eclipsed_fraction = obsc;
-                            eclipsed_light = cels[i];
+                            eclipsed_light = cel;
                         }
                     }
 
-                    if (!isnan(add_flux) && !isinf(add_flux) && cels[i]->type != artificial) luminous_flux += add_flux;
+                    if (!isnan(add_flux) && !isinf(add_flux) && cel->type != artificial)
+                    {
+                        luminous_flux += add_flux;
+                    }
                 }
             }
         }
 
-        cels[i]->viewrel = rel;
+        cel->viewrel = rel;
 
-        angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+        angular_radius[i] = fabs(std::atan2(cel->volumetric_mean_radius, rel.magnitude()));
 
         Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
         float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;
-        cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = dx;
-        cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = dy;
+        cel->drawnx = cel->drawnxmin = cel->drawnxmax = dx;
+        cel->drawny = cel->drawnymin = cel->drawnymax = dy;
 
-        if (dx < 0 || dx >= dispw) continue;
-        if (dy < 0 || dy >= disph) continue;
+        if (dx < 0 || dx >= dispw)
+        {
+            continue;
+        }
+        if (dy < 0 || dy >= disph)
+        {
+            continue;
+        }
     }
 
     redo_proper_motions = false;
@@ -545,6 +972,7 @@ void set_center_objects()
     // then the end of the startup sequence calls it again. Left uncleared, every star in every
     // constellation was listed twice over after a universe file was loaded on the command line.
     constellation_index.clear();
+    visible_cels.clear();
     for (i=0; cels[i]; i++)
     {
         if (cels[i]->deleted) continue;

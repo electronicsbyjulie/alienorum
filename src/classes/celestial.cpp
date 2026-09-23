@@ -19,6 +19,7 @@ std::vector<std::vector<CelestialObject*>> first_letter_index;
 std::map<std::string,std::vector<CelestialObject*>> constellation_index;
 
 std::vector<CelestialObject*> lsyscache;
+std::vector<CelestialObject*> visible_cels;
 
 bool *celskip, *discinstead;
 double *vmag_cache, *bloomrad_cache, *angular_radius;

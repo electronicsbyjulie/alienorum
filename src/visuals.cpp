@@ -515,10 +515,12 @@ void refresh_eclipse_casters()
 #if !ALIENORUM_GPU_SPHERES
     return;                     // only the GPU impostor path shades eclipses
 #else
-    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    for (CelestialObject *c : visible_cels)
     {
-        CelestialObject *c = cels[i];
-        if (c->deleted) continue;
+        if (!c || c->deleted)
+        {
+            continue;
+        }
 
         cel_obj_class cls = c->typeclass();
         // Planets and moons only. Stars are excluded because a system's star is the light
@@ -1105,6 +1107,7 @@ void release_universe_objects()
     // compute_object_draw_coordinates(), but it is holding pointers right now -- this runs
     // mid-frame, from inside draw_objects().
     eclipse_candidates.clear();
+    visible_cels.clear();
 
     last_xplored_cen = last_neighb_cen = nullptr;
 
@@ -3436,165 +3439,212 @@ void draw_objects()
     // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
-    if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (show_orbits && show_localsys)
     {
-        if (cels[i]->deleted) continue;
-        if (!cels[i]->orbit) continue;
-        if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
-        if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
-
-        Color col = Color::color_from_magnitude_indices(vmag_cache[i] + 5, cels[i]->BV_color);
-        RGB3 rgb = Color::rgb_from_color(col, 1);
-        if (whtbkgd) rgb.invert_luminance();
-        ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
-        CelestialLocation was = cels[i]->location;
-        bool is_star = (cels[i]->typeclass() == class_star),
-            is_moon = (cels[i]->typeclass() == class_moon),
-            is_sat = (cels[i]->typeclass() == class_satellite),
-            is_comet = (cels[i]->typeclass() == class_comet);
-
-        // One period covers a closed orbit exactly once. An open one has no period to cover, so
-        // trace a human span of it instead: the loop below runs forward from now, so give it a
-        // hundred and twenty years of the comet's path rather than pretend to draw a curve that
-        // in truth runs to infinity at both ends.
-        step = cels[i]->orbit->period
-            ? (cels[i]->orbit->period / orbseg)
-            : (120 * oneyear / orbseg);
-
-        double viewer_distance = cels[i]->tmprel.magnitude();
-        double light_travel_time = viewer_distance / speed_of_light;
-
-        Cartesian2D lastcart;
-        try
+        for (CelestialObject *cel : visible_cels)
         {
-            lastcart = Cartesian2D(cels[i]->drawnx, cels[i]->drawny);
-        }
-        catch(...)
-        {
-            lastcart.x = lastcart.y = -1e9;
-        }
-        for (j=-4; j<=orbseg; j++)
-        {
-            if (is_star)
-                ((Star*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else if (is_moon)
-                ((Moon*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else if (is_sat)
-                ((Satellite*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else if (is_comet)
-                ((Comet*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else
-                ((Planet*)cels[i])->update_location(simnow + step*j - light_travel_time);
+            if (!cel || cel->deleted)
+            {
+                continue;
+            }
+            int i = cel->seqno;
+            if (!cel->orbit)
+            {
+                continue;
+            }
+            if (cel->cenobj != mycenobj && (whereami < 0 || cel->orbit->center != cels[whereami]))
+            {
+                continue;
+            }
+            if (cel->orbit->center == mycenobj && cel->mass < lmasslim)
+            {
+                continue;
+            }
 
-            CelestialLocation orbrel = cels[i]->location - here;
+            Color col = Color::color_from_magnitude_indices(vmag_cache[i] + 5, cel->BV_color);
+            RGB3 rgb = Color::rgb_from_color(col, 1);
+            if (whtbkgd)
+            {
+                rgb.invert_luminance();
+            }
+            ImU32 imcol = (i == selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
+            CelestialLocation was = cel->location;
+            bool is_star = (cel->typeclass() == class_star),
+                is_moon = (cel->typeclass() == class_moon),
+                is_sat = (cel->typeclass() == class_satellite),
+                is_comet = (cel->typeclass() == class_comet);
 
-            Point rel = rotate3D(Point(orbrel), center, viewer_plane.v, -viewer_plane.a);
+            step = cel->orbit->period
+                ? (cel->orbit->period / orbseg)
+                : (120 * oneyear / orbseg);
 
-            Cartesian2D cart;
+            double viewer_distance = cel->tmprel.magnitude();
+            double light_travel_time = viewer_distance / speed_of_light;
+
+            Cartesian2D lastcart;
             try
             {
-                cart = Cartesian2D(rel, azimuth+azimuth_correction, altitude, zoom);
-                cart.x = dispcx + cart.x * dispcx; cart.y = dispcy + cart.y * dispcx;
-
-                double dx1 = cart.x, dy1 = cart.y, dx2 = lastcart.x, dy2 = lastcart.y;
-
-                if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
-                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol, io);
+                lastcart = Cartesian2D(cel->drawnx, cel->drawny);
             }
-            catch (...)
+            catch(...)
             {
-                cart.x = cart.y = -1e9;
+                lastcart.x = lastcart.y = -1e9;
             }
+            for (j = -4; j <= orbseg; j++)
+            {
+                if (is_star)
+                {
+                    ((Star*)cel)->update_location(simnow + step*j - light_travel_time);
+                }
+                else if (is_moon)
+                {
+                    ((Moon*)cel)->update_location(simnow + step*j - light_travel_time);
+                }
+                else if (is_sat)
+                {
+                    ((Satellite*)cel)->update_location(simnow + step*j - light_travel_time);
+                }
+                else if (is_comet)
+                {
+                    ((Comet*)cel)->update_location(simnow + step*j - light_travel_time);
+                }
+                else
+                {
+                    ((Planet*)cel)->update_location(simnow + step*j - light_travel_time);
+                }
 
-            lastcart = cart;
+                CelestialLocation orbrel = cel->location - here;
+
+                Point rel = rotate3D(Point(orbrel), center, viewer_plane.v, -viewer_plane.a);
+
+                Cartesian2D cart;
+                try
+                {
+                    cart = Cartesian2D(rel, azimuth+azimuth_correction, altitude, zoom);
+                    cart.x = dispcx + cart.x * dispcx;
+                    cart.y = dispcy + cart.y * dispcx;
+
+                    double dx1 = cart.x, dy1 = cart.y, dx2 = lastcart.x, dy2 = lastcart.y;
+
+                    if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
+                    {
+                        wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol, io);
+                    }
+                }
+                catch (...)
+                {
+                    cart.x = cart.y = -1e9;
+                }
+
+                lastcart = cart;
+            }
+            cel->location = was;
         }
-        cels[i]->location = was;
     }
 
     // Faraway objects
-    for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    for (pass = 0; pass <= 1; pass++)
     {
-        if (cels[i]->deleted) continue;
-        cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
-        if ((i == whereami) && (view_mode != vm_system)) continue;
-
-        if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
-        else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
-
-        // A comet is drawn far larger than the head this test is looking at: the tail can lie
-        // across the whole screen with the nucleus itself well off the edge of it, and those are
-        // precisely the passes worth watching. angular_radius[] knows only about the nucleus and
-        // would throw the comet away here, so give it a wide berth of screens instead and let
-        // draw_comet() clip its own geometry. A comet behind the camera still fails this: the
-        // sentinel for that is -1e29, several orders past the window below.
-        if (cels[i]->typeclass() == class_comet)
+        for (CelestialObject *cel : visible_cels)
         {
-            if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw) continue;
-            if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph) continue;
-        }
-        else if (angular_radius[i]*zoom < sphere_rad_threshold)
-        {
-            if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
-            if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
-        }
-
-        // Counterintuitive that we would process *more* objects during dragging and not *less*,
-        // but since discs become transparent wireframes during drag, it only makes sense that the
-        // ground should become transparent as well.
-        bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
-        double cutoff_alt = gasball ? -25*fiftyseventh : 0;
-        if (view_mode == vm_horizon && !dragging && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
-        {
-            continue;
-        }
-
-        xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
-        appmag = vmag_cache[i] - sky_mag_shift;
-
-        // Only a Star has has_planets/has_hz_planets, and this loop walks every object there is.
-        // The two clauses below used to cast cels[i] to Star* whatever it actually was: the
-        // short-circuit reads as a guard but is not one, because when cbolbls_selected_idx IS
-        // lbltype_planets or lbltype_planethz -- exactly when the user has asked to label stars
-        // by their planets -- the member read runs against every planet, satellite, comet and
-        // galaxy in the array, at whatever offset Star::has_planets happens to fall. A non-star
-        // gets no exemption from the magnitude cut, which is what !istar says here.
-        Star *istar = (cels[i]->typeclass() == class_star) ? (Star*)cels[i] : nullptr;
-        if (appmag > mag_limit_adjusted && i
-            && (angular_radius[i] < 0.01*fiftyseventh)
-            && (cbolbls_selected_idx != lbltype_planets  || !istar || istar->has_planets < planets_lblcut)
-            && (cbolbls_selected_idx != lbltype_planethz || !istar || !istar->has_hz_planets)) continue;
-
-        bloomrad = fabs(bloomrad_cache[i]);
-        bloomrad = fmin(max_bloomrad, bloomrad);
-
-        // if (cls != class_satellite && angular_radius[i]*zoom > sphere_rad_threshold)
-        if (mycensq < light_year_sq
-            && cels[i]->tmprel.squared_magnitude() < layer_cutoff)
-        {
-            // Insertion sort by horizon distance, nearest last. discinstead[i] was being used as
-            // the "did it go in" scratch flag and then overwritten with true on every path
-            // regardless, which made the branch that read it unable to change anything. A local
-            // says what it means and leaves the array to its own purpose.
-            n = to_draw_layered.size();
-            bool inserted = false;
-            if (n)
+            if (!cel || cel->deleted)
             {
-                double trm = cels[i]->get_horizon_distance();
-                for (j=0; j<n; j++)
+                continue;
+            }
+            int i = cel->seqno;
+            cel->drawnxmin = cel->drawnxmax = cel->drawnymin = cel->drawnymax = -1e9;
+            if ((i == whereami) && (view_mode != vm_system))
+            {
+                continue;
+            }
+
+            if (!pass && fabs(bloomrad_cache[i]) > 3)
+            {
+                continue;
+            }
+            else if (pass && fabs(bloomrad_cache[i]) <= 3)
+            {
+                continue;
+            }
+
+            if (cel->typeclass() == class_comet)
+            {
+                if (cel->drawnx < -4*dispw || cel->drawnx > 5*dispw)
                 {
-                    if (to_draw_layered[j]->get_horizon_distance() < trm)
-                    {
-                        to_draw_layered.insert(to_draw_layered.begin()+j, cels[i]);
-                        inserted = true;
-                        break;
-                    }
+                    continue;
+                }
+                if (cel->drawny < -4*disph || cel->drawny > 5*disph)
+                {
+                    continue;
                 }
             }
-            if (!inserted) to_draw_layered.push_back(cels[i]);
-            discinstead[i] = true;
+            else if (angular_radius[i]*zoom < sphere_rad_threshold)
+            {
+                if (cel->drawnx < 0 || cel->drawnx >= dispw)
+                {
+                    continue;
+                }
+                if (cel->drawny < 0 || cel->drawny >= disph)
+                {
+                    continue;
+                }
+            }
+
+            bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
+            double cutoff_alt = gasball ? -25*fiftyseventh : 0;
+            if (view_mode == vm_horizon && !dragging && cel->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
+            {
+                continue;
+            }
+
+            xycoord = ImVec2(cel->drawnx, cel->drawny);
+            appmag = vmag_cache[i] - sky_mag_shift;
+
+            Star *istar = (cel->typeclass() == class_star) ? (Star*)cel : nullptr;
+            if (appmag > mag_limit_adjusted && i
+                && (angular_radius[i] < 0.01*fiftyseventh)
+                && (cbolbls_selected_idx != lbltype_planets  || !istar || istar->has_planets < planets_lblcut)
+                && (cbolbls_selected_idx != lbltype_planethz || !istar || !istar->has_hz_planets))
+            {
+                continue;
+            }
+
+            bloomrad = fabs(bloomrad_cache[i]);
+            bloomrad = fmin(max_bloomrad, bloomrad);
+
+            if (mycensq < light_year_sq
+                && cel->tmprel.squared_magnitude() < layer_cutoff)
+            {
+                n = to_draw_layered.size();
+                bool inserted = false;
+                if (n)
+                {
+                    double trm = cel->get_horizon_distance();
+                    for (j=0; j<n; j++)
+                    {
+                        if (to_draw_layered[j]->get_horizon_distance() < trm)
+                        {
+                            to_draw_layered.insert(to_draw_layered.begin()+j, cel);
+                            inserted = true;
+                            break;
+                        }
+                    }
+                }
+                if (!inserted)
+                {
+                    to_draw_layered.push_back(cel);
+                }
+                discinstead[i] = true;
+            }
+            else
+            {
+                draw_one_object(i);
+            }
+            if (!cels[1])
+            {
+                return;
+            }
         }
-        else draw_one_object(i);
-        if (!cels[1]) return;
     }
 
     if (!cels[1]) return;

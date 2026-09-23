@@ -22,8 +22,24 @@ class UniverseFixture : public ::testing::Test
     // Allocates the array on first use and blanks everything that indexes into it.
     void empty_the_universe()
     {
-        if (!cels) cels = new CelestialObject*[MAX_CELOBJS];
+        if (!cels)
+        {
+            cels = new CelestialObject*[MAX_CELOBJS];
+        }
         memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
+        if (!vmag_cache)
+        {
+            vmag_cache = new double[MAX_CELOBJS];
+        }
+        if (!bloomrad_cache)
+        {
+            bloomrad_cache = new double[MAX_CELOBJS];
+        }
+        if (!angular_radius)
+        {
+            angular_radius = new double[MAX_CELOBJS];
+        }
+        visible_cels.clear();
         ncelobjs = 0;
         nsatobjs = 0;
         first_sat = -1;
@@ -75,6 +91,25 @@ class UniverseFixture : public ::testing::Test
         p->cenobj = around;
         append_cel(p);
         return p;
+    }
+
+    Moon* make_moon(Planet* around, const char* name = "Test Moon", double sma = 1.88e9)
+    {
+        Moon* m = new Moon();
+        strcpy(m->name, name);
+        m->namelen = 0;
+        m->mass = 1.08e23;
+        m->volumetric_mean_radius = 2.41e6;
+        m->albedo = 0.22;
+        m->type = rocky;
+        m->orbit = new Orbit();
+        m->orbit->center = around;
+        m->orbit->center_name = around->name;
+        m->orbit->semimajor_axis = sma;
+        m->orbit->compute_period(m->mass);
+        m->cenobj = around->cenobj;
+        append_cel(m);
+        return m;
     }
 };
 

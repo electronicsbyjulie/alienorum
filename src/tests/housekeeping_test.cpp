@@ -117,3 +117,149 @@ TEST_F(HousekeepingTest, SkipsDeletedObjects)
 
     delete_the_universe();
 }
+
+TEST_F(HousekeepingTest, ExcludesFaintStarsByDefaultAndIncludesWhenZoomed)
+{
+    Star* sol = make_star("Sol");
+    sol->distance = 0;
+    here = sol->location;
+    mycenobj = sol;
+    whereami = 0;
+
+    Star* bright = make_star("Bright Star");
+    bright->apparent_magnitude = 5.5;
+    bright->distance = 15 * parsec;
+    bright->location.system_center = Point(0, 0, 15 * parsec);
+
+    Star* faint = make_star("Faint Star");
+    faint->apparent_magnitude = 8.5;
+    faint->distance = 50 * parsec;
+    faint->location.system_center = Point(0, 0, 50 * parsec);
+
+    zoom = 1.0;
+    global_brightness = 1.0;
+    view_mode = vm_skymap;
+
+    visible_cels.clear();
+    update_visible_cels();
+
+    bool found_bright = false;
+    bool found_faint = false;
+    for (CelestialObject* cel : visible_cels)
+    {
+        if (cel == bright)
+        {
+            found_bright = true;
+        }
+        if (cel == faint)
+        {
+            found_faint = true;
+        }
+    }
+    EXPECT_TRUE(found_bright);
+    EXPECT_FALSE(found_faint);
+
+    // Zooming in raises magnitude cutoff, allowing faint star to appear
+    zoom = 5.0;
+    update_visible_cels();
+
+    found_faint = false;
+    for (CelestialObject* cel : visible_cels)
+    {
+        if (cel == faint)
+        {
+            found_faint = true;
+        }
+    }
+    EXPECT_TRUE(found_faint);
+
+    delete_the_universe();
+}
+
+TEST_F(HousekeepingTest, ExcludesMoonsUntilOrbitSubtendsSufficientPixels)
+{
+    Star* sol = make_star("Sol");
+    sol->distance = 0;
+    here = sol->location;
+    mycenobj = sol;
+    whereami = 0;
+
+    Planet* jupiter = make_planet(sol, "Jupiter", 5.2 * AU);
+    jupiter->volumetric_mean_radius = 7.15e7;
+    jupiter->location.system_center = Point(0, 0, 5.2 * AU);
+
+    // Callisto orbit sma ~ 1.88e9 m
+    Moon* callisto = make_moon(jupiter, "Callisto", 1.88e9);
+    callisto->location.system_center = jupiter->location.system_center + Point(1.88e9, 0, 0);
+
+    dispcx = 960;
+    dispcy = 540;
+    zoom = 1.0;
+    view_mode = vm_skymap;
+
+    visible_cels.clear();
+    update_visible_cels();
+
+    bool found_callisto = false;
+    for (CelestialObject* cel : visible_cels)
+    {
+        if (cel == callisto)
+        {
+            found_callisto = true;
+        }
+    }
+    EXPECT_FALSE(found_callisto);
+
+    // Zooming in magnifies the subtended pixels of Callisto's orbit
+    zoom = 5.0;
+    update_visible_cels();
+
+    found_callisto = false;
+    for (CelestialObject* cel : visible_cels)
+    {
+        if (cel == callisto)
+        {
+            found_callisto = true;
+        }
+    }
+    EXPECT_TRUE(found_callisto);
+
+    delete_the_universe();
+}
+
+TEST_F(HousekeepingTest, GatesStellarMotionOnDistanceAndProperMotion)
+{
+    Star* sol = make_star("Sol");
+    sol->distance = 0;
+    here = sol->location;
+    mycenobj = sol;
+    whereami = 0;
+
+    Star* distant = make_star("Distant Slow Star");
+    distant->distance = 500 * light_year;
+    distant->location.system_center = Point(0, 0, 500 * light_year);
+    distant->proper_motion_RA = 0;
+    distant->proper_motion_decl = 0;
+    distant->make_universally_visible();
+
+    Star* nearby = make_star("Nearby Fast Star");
+    nearby->distance = 4.0 * light_year;
+    nearby->location.system_center = Point(0, 0, 4.0 * light_year);
+    nearby->proper_motion_RA = 1e-12;
+    nearby->proper_motion_decl = 0;
+    nearby->make_universally_visible();
+
+    redo_proper_motions = false;
+
+    // Distant star with negligible motion skips location calculation
+    EXPECT_FALSE(compute_object_location(distant));
+
+    // Nearby star within 50 ly is always computed
+    EXPECT_TRUE(compute_object_location(nearby));
+
+    // Setting redo_proper_motions (such as century step Z/Shift+Z) forces computation
+    redo_proper_motions = true;
+    EXPECT_TRUE(compute_object_location(distant));
+
+    delete_the_universe();
+}
