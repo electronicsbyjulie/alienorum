@@ -316,6 +316,76 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
     int idx_c = find_object("PDS 70 c", false);
     EXPECT_GE(idx_c, 0);
 
+    // Verify 82 Eridani system
+    int idx_82b = find_object("82 Eri b", false);
+    EXPECT_GE(idx_82b, 0);
+    if (idx_82b >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82b];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        EXPECT_NEAR(s->planets_heliocen_inclination * fiftyseven, 50.0, 0.5);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl * fiftyseven, 50.0, 0.5);
+        EXPECT_NEAR(p->orbit->period / oneday, 18.3, 0.5);
+        EXPECT_NEAR(p->mass / earth_mass, 2.81, 0.2);
+    }
+
+    int idx_82c = find_object("82 Eri c", false);
+    EXPECT_GE(idx_82c, 0);
+    if (idx_82c >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82c];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl * fiftyseven, 50.0, 0.5);
+        EXPECT_NEAR(p->orbit->period / oneday, 89.7, 1.0);
+        EXPECT_NEAR(p->mass / earth_mass, 3.29, 0.2);
+    }
+
+    int idx_82e = find_object("82 Eri e", false);
+    EXPECT_GE(idx_82e, 0);
+    if (idx_82e >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82e];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl * fiftyseven, 50.0, 0.5);
+        EXPECT_NEAR(p->orbit->period / oneday, 147.0, 1.0);
+        EXPECT_NEAR(p->mass / earth_mass, 6.23, 0.2);
+    }
+
+    int idx_82d = find_object("82 Eri d", false);
+    EXPECT_GE(idx_82d, 0);
+    if (idx_82d >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82d];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl * fiftyseven, 50.0, 0.5);
+        EXPECT_NEAR(p->orbit->period / oneday, 648.0, 5.0);
+        EXPECT_NEAR(p->mass / earth_mass, 7.60, 0.2);
+    }
+
+    EXPECT_EQ(find_object("82 Eri f", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("HD 20794 d", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("HD 20794 f", false, 9e29, 0), -1);
+
     delete_the_universe();
 }
 

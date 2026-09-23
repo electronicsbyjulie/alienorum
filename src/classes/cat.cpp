@@ -3045,68 +3045,77 @@ void CatalogReader::reconcile_exoplanet_inclinations(
     double anchor_incl = 0;
     int anchor_votes = 0;
 
-    // Check for transit anchor: planets with inclinations within [80 deg, 100 deg]
-    double transit_sum = 0;
-    int transit_count = 0;
-    for (int i = 0; i < n; i++)
+    bool is_82eri = (host_star && (host_star->HD == 20794 || !strcmp(host_star->name, "82 Eri")));
+    if (is_82eri)
     {
-        if (pincls[i] >= (80.0 * fiftyseventh) && pincls[i] <= (100.0 * fiftyseventh))
-        {
-            transit_sum += pincls[i];
-            transit_count++;
-        }
+        anchor_incl = (host_star->disk_heliocen_inclination > 0) ? host_star->disk_heliocen_inclination : (50.0 * fiftyseventh);
+        anchor_votes = n;
     }
-    if (transit_count >= 1)
+    else
     {
-        anchor_incl = transit_sum / transit_count;
-        anchor_votes = transit_count;
-    }
-
-    // If no transiting planets, check for majority cluster (planets whose planes mutually agree within 4 deg)
-    if (!anchor_incl)
-    {
+        // Check for transit anchor: planets with inclinations within [80 deg, 100 deg]
+        double transit_sum = 0;
+        int transit_count = 0;
         for (int i = 0; i < n; i++)
         {
-            if (pincls[i] <= 0)
+            if (pincls[i] >= (80.0 * fiftyseventh) && pincls[i] <= (100.0 * fiftyseventh))
             {
-                continue;
+                transit_sum += pincls[i];
+                transit_count++;
             }
-            int cluster_count = 0;
-            int direct_votes = 0;
-            double cluster_sum = 0;
-            for (int j = 0; j < n; j++)
+        }
+        if (transit_count >= 1)
+        {
+            anchor_incl = transit_sum / transit_count;
+            anchor_votes = transit_count;
+        }
+
+        // If no transiting planets, check for majority cluster (planets whose planes mutually agree within 4 deg)
+        if (!anchor_incl)
+        {
+            for (int i = 0; i < n; i++)
             {
-                if (pincls[j] <= 0)
+                if (pincls[i] <= 0)
                 {
                     continue;
                 }
-                double direct_diff = fabs(pincls[i] - pincls[j]);
-                double fold_diff = fabs((_pi - pincls[i]) - pincls[j]);
-                if (direct_diff < (4.0 * fiftyseventh))
+                int cluster_count = 0;
+                int direct_votes = 0;
+                double cluster_sum = 0;
+                for (int j = 0; j < n; j++)
                 {
-                    cluster_count++;
-                    direct_votes++;
-                    cluster_sum += pincls[j];
+                    if (pincls[j] <= 0)
+                    {
+                        continue;
+                    }
+                    double direct_diff = fabs(pincls[i] - pincls[j]);
+                    double fold_diff = fabs((_pi - pincls[i]) - pincls[j]);
+                    if (direct_diff < (4.0 * fiftyseventh))
+                    {
+                        cluster_count++;
+                        direct_votes++;
+                        cluster_sum += pincls[j];
+                    }
+                    else if (fold_diff < (4.0 * fiftyseventh))
+                    {
+                        cluster_count++;
+                        cluster_sum += (_pi - pincls[j]);
+                    }
                 }
-                else if (fold_diff < (4.0 * fiftyseventh))
+                if (cluster_count > anchor_votes || (cluster_count == anchor_votes && direct_votes > anchor_votes / 2))
                 {
-                    cluster_count++;
-                    cluster_sum += (_pi - pincls[j]);
+                    anchor_votes = cluster_count;
+                    anchor_incl = cluster_sum / cluster_count;
                 }
-            }
-            if (cluster_count > anchor_votes || (cluster_count == anchor_votes && direct_votes > anchor_votes / 2))
-            {
-                anchor_votes = cluster_count;
-                anchor_incl = cluster_sum / cluster_count;
             }
         }
-    }
 
-    // If still unanchored, check circumstellar disc
-    if (!anchor_incl && host_star && host_star->has_disk && host_star->disk_heliocen_inclination > 0)
-    {
-        anchor_incl = host_star->disk_heliocen_inclination;
-        anchor_votes = 1;
+        // If still unanchored, check circumstellar disc
+        if (!anchor_incl && host_star && host_star->has_disk && host_star->disk_heliocen_inclination > 0)
+        {
+            anchor_incl = host_star->disk_heliocen_inclination;
+            anchor_votes = 1;
+        }
     }
 
     // Fallback: median of valid inclinations
@@ -3152,9 +3161,9 @@ void CatalogReader::reconcile_exoplanet_inclinations(
             bool is_dummy = (pincls[i] < (2.0 * fiftyseventh) && anchor_tilt > (30.0 * fiftyseventh));
             bool is_outlier = (plane_delta > (15.0 * fiftyseventh));
 
-            if (is_dummy || is_outlier)
+            if (is_dummy || is_outlier || is_82eri)
             {
-                double jitter = ((double)(i % 5) - 2.0) * (0.25 * fiftyseventh);
+                double jitter = is_82eri ? 0.0 : (((double)(i % 5) - 2.0) * (0.25 * fiftyseventh));
                 double corrected_incl = anchor_incl + jitter;
                 if (corrected_incl < (0.5 * fiftyseventh))
                 {
@@ -3176,9 +3185,13 @@ void CatalogReader::reconcile_exoplanet_inclinations(
                 {
                     p->orbit->inclination = corrected_incl;
                 }
-                if (!pnodes[i] && host_star)
+                if ((!pnodes[i] || is_82eri) && host_star)
                 {
-                    pnodes[i] = host_star->planets_heliocen_node;
+                    pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
+                    if (p && p->orbit && pnodes[i])
+                    {
+                        p->orbit->ascending_node = pnodes[i];
+                    }
                 }
             }
             else if (fold_delta < direct_delta)
@@ -6170,8 +6183,18 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     if (mass_untrustworthy)
     {
         double st_incl = 0;
-        if (host_star->disk_heliocen_inclination) st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
-        else if (host_star->rot_heliocen_incl) st_incl = host_star->rot_heliocen_incl;                      // e.g. Alp Men
+        if (host_star->disk_heliocen_inclination)
+        {
+            st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
+        }
+        else if (host_star->HD == 20794 || !strcmp(host_star->name, "82 Eri"))
+        {
+            st_incl = 50.0 * fiftyseventh;
+        }
+        else if (host_star->rot_heliocen_incl)
+        {
+            st_incl = host_star->rot_heliocen_incl;                      // e.g. Alp Men
+        }
 
         if (sin(st_incl) >= 0.1)
         {
@@ -6945,16 +6968,27 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
                 else if (cinit == 'H' && pl_name.substr(0, 9) == "HD 20794 ")
                 {
-                    pl_name = std::string("82 Eri ") + pl_name.substr(pl_name.size()-1, 1);
-                    if (pl_name == "82 Eri d") pl_name = "82 Eri c";            // this will not affect exoplanet.eu's 82 Eri d because we're already filtering on the NASA nomenclature.
-                    else if (pl_name == "82 Eri f") pl_name = "82 Eri d";
+                    std::string let = extract_letter(pl_name);
+                    if (let == "d")
+                    {
+                        let = "c";
+                    }
+                    else if (let == "f")
+                    {
+                        let = "d";
+                    }
+                    pl_name = "82 Eri " + let;
                     litem["pl_name"] = pl_name;
+                    litem["hostname"] = "82 Eri";
+                    litem["hd_name"] = "HD 20794";
+                    litem["pl_orbincl"] = 50.0;
                 }
 
                 std::string hostname = litem.value("hostname", "");
                 if (cinit == '8' && pl_name.substr(0, 7) == "82 Eri ")
                 {
                     litem["hd_name"] = "HD 20794";
+                    litem["pl_orbincl"] = 50.0;
                 }
                 else if (cinit == 'H' && pl_name.substr(0, 3) == "HD ")
                 {
