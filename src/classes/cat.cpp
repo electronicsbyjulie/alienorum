@@ -6955,6 +6955,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 std::string pl_name = litem.value("pl_name", "");
                 if (pl_name.empty()) return;
                 char cinit = pl_name.c_str()[0];
+                std::string hostname = litem.value("hostname", "");
                 if (cinit == 'L' && pl_name.substr(0, 14) == "Luyten's Star ")
                 {
                     pl_name = std::string("GJ 273 ") + pl_name.substr(pl_name.size()-1, 1);
@@ -6975,24 +6976,46 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     pl_name = std::string("Proxima ") + pl_name.substr(pl_name.size()-1, 1);
                     litem["pl_name"] = pl_name;
                 }
-                else if (cinit == 'H' && pl_name.substr(0, 9) == "HD 20794 ")
+                else if (cinit == 'H')
                 {
-                    std::string let = extract_letter(pl_name);
-                    if (let == "d")
+                    if (pl_name.substr(0, 9) == "HD 20794 ")
                     {
-                        let = "c";
+                        std::string let = extract_letter(pl_name);
+                        if (let == "d")
+                        {
+                            let = "c";
+                        }
+                        else if (let == "f")
+                        {
+                            let = "d";
+                        }
+                        pl_name = "82 Eri " + let;
+                        litem["pl_name"] = pl_name;
+                        litem["hostname"] = "82 Eri";
+                        litem["hd_name"] = "HD 20794";
                     }
-                    else if (let == "f")
+                    else if (pl_name.substr(0, 3) == "HD ")
                     {
-                        let = "d";
+                        int HD = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
+                        if (HD < MAX_HD && hdcache && hdcache[HD] && hdcache[HD]->Gliese[0])
+                        {
+                            hostname = hdcache[HD]->Gliese;
+                            pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
+                            litem["pl_name"] = pl_name;
+                        }
                     }
-                    pl_name = "82 Eri " + let;
-                    litem["pl_name"] = pl_name;
-                    litem["hostname"] = "82 Eri";
-                    litem["hd_name"] = "HD 20794";
+                    else if (pl_name.substr(0, 4) == "HIP ")
+                    {
+                        int HIP = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
+                        if (HIP < MAX_HIP && hipcache && hipcache[HIP] && hipcache[HIP]->Gliese[0])
+                        {
+                            hostname = hipcache[HIP]->Gliese;
+                            pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
+                            litem["pl_name"] = pl_name;
+                        }
+                    }
                 }
 
-                std::string hostname = litem.value("hostname", "");
                 if (cinit == '8' && pl_name.substr(0, 7) == "82 Eri ")
                 {
                     litem["hd_name"] = "HD 20794";
@@ -7004,26 +7027,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     litem["pl_name"] = pl_name;
                     litem["hostname"] = "eps Eri";
                     litem["hd_name"] = "HD 22049";
-                }
-                else if (cinit == 'H' && pl_name.substr(0, 3) == "HD ")
-                {
-                    int HD = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
-                    if (HD < MAX_HD && hdcache && hdcache[HD] && hdcache[HD]->Gliese[0])
-                    {
-                        hostname = hdcache[HD]->Gliese;
-                        pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
-                        litem["pl_name"] = pl_name;
-                    }
-                }
-                else if (cinit == 'H' && pl_name.substr(0, 4) == "HIP ")
-                {
-                    int HIP = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
-                    if (HIP < MAX_HIP && hipcache && hipcache[HIP] && hipcache[HIP]->Gliese[0])
-                    {
-                        hostname = hipcache[HIP]->Gliese;
-                        pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
-                        litem["pl_name"] = pl_name;
-                    }
                 }
 
                 std::string norm = normalize_name(pl_name);
