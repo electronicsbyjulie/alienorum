@@ -4262,6 +4262,8 @@ void draw_horizon()
         rgb.b = fmin(255, is_day*rgb.b);
 
         bool is_water = uses_rocky_map(p->type)
+            && p->get_surface_pressure() >= 150
+            && p->estimate_surface_temperature() < 400
             && (rgb.b > 0.8 * rgb.r)
             && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
