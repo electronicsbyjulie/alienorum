@@ -3045,10 +3045,10 @@ void CatalogReader::reconcile_exoplanet_inclinations(
     double anchor_incl = 0;
     int anchor_votes = 0;
 
-    bool is_82eri = (host_star && (host_star->HD == 20794 || !strcmp(host_star->name, "82 Eri")));
-    if (is_82eri)
+    // Circumstellar disk defines the physical system plane
+    if (host_star && host_star->has_disk && host_star->disk_heliocen_inclination > 0)
     {
-        anchor_incl = (host_star->disk_heliocen_inclination > 0) ? host_star->disk_heliocen_inclination : (50.0 * fiftyseventh);
+        anchor_incl = host_star->disk_heliocen_inclination;
         anchor_votes = n;
     }
     else
@@ -3109,13 +3109,6 @@ void CatalogReader::reconcile_exoplanet_inclinations(
                 }
             }
         }
-
-        // If still unanchored, check circumstellar disc
-        if (!anchor_incl && host_star && host_star->has_disk && host_star->disk_heliocen_inclination > 0)
-        {
-            anchor_incl = host_star->disk_heliocen_inclination;
-            anchor_votes = 1;
-        }
     }
 
     // Fallback: median of valid inclinations
@@ -3161,10 +3154,9 @@ void CatalogReader::reconcile_exoplanet_inclinations(
             bool is_dummy = (pincls[i] < (2.0 * fiftyseventh) && anchor_tilt > (30.0 * fiftyseventh));
             bool is_outlier = (plane_delta > (15.0 * fiftyseventh));
 
-            if (is_dummy || is_outlier || is_82eri)
+            if (is_dummy || is_outlier)
             {
-                double jitter = is_82eri ? 0.0 : (((double)(i % 5) - 2.0) * (0.25 * fiftyseventh));
-                double corrected_incl = anchor_incl + jitter;
+                double corrected_incl = anchor_incl;
                 if (corrected_incl < (0.5 * fiftyseventh))
                 {
                     corrected_incl = anchor_incl;
@@ -3185,7 +3177,7 @@ void CatalogReader::reconcile_exoplanet_inclinations(
                 {
                     p->orbit->inclination = corrected_incl;
                 }
-                if ((!pnodes[i] || is_82eri) && host_star)
+                if (!pnodes[i] && host_star)
                 {
                     pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
                     if (p && p->orbit && pnodes[i])
@@ -3376,6 +3368,10 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                 if (designation.rfind("gamma Cephei", 0) == 0)
                 {
                     candidate_desigs.push_back("gam Cep " + std::string(1, designation.back()));
+                }
+                if (designation.rfind("eps Eridani", 0) == 0)
+                {
+                    candidate_desigs.push_back("eps Eri " + std::string(1, designation.back()));
                 }
                 if (s)
                 {
@@ -5725,17 +5721,34 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 {
     *was_new = false;
     std::string hostname = row.hostname;
-    if (hostname == "QZ Ser (AB)") hostname = "QZ Ser";
+    if (hostname == "QZ Ser (AB)")
+    {
+        hostname = "QZ Ser";
+    }
+    if (hostname == "eps Eridani")
+    {
+        hostname = "eps Eri";
+    }
     char cinit = hostname.c_str()[0];
 
-    if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ") hostname = "Proxima Cen";
-    else if (cinit == 'T' && hostname.substr(0, 11) == "Teegarden's") hostname = "Teegarden's Star";
+    if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ")
+    {
+        hostname = "Proxima Cen";
+    }
+    else if (cinit == 'T' && hostname.substr(0, 11) == "Teegarden's")
+    {
+        hostname = "Teegarden's Star";
+    }
 
     // 1. Resolve host star context: check if it already exists in global array
     Star* host_star = nullptr;
     if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache && hdcache[20794])
     {
         host_star = hdcache[20794];
+    }
+    if (!host_star && (hostname == "eps Eri" || hostname == "eps Eridani") && hdcache && hdcache[22049])
+    {
+        host_star = hdcache[22049];
     }
     if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache && hdcache[160691])
     {
@@ -6186,10 +6199,6 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         if (host_star->disk_heliocen_inclination)
         {
             st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
-        }
-        else if (host_star->HD == 20794 || !strcmp(host_star->name, "82 Eri"))
-        {
-            st_incl = 50.0 * fiftyseventh;
         }
         else if (host_star->rot_heliocen_incl)
         {
@@ -6981,14 +6990,20 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     litem["pl_name"] = pl_name;
                     litem["hostname"] = "82 Eri";
                     litem["hd_name"] = "HD 20794";
-                    litem["pl_orbincl"] = 50.0;
                 }
 
                 std::string hostname = litem.value("hostname", "");
                 if (cinit == '8' && pl_name.substr(0, 7) == "82 Eri ")
                 {
                     litem["hd_name"] = "HD 20794";
-                    litem["pl_orbincl"] = 50.0;
+                }
+                if ((cinit == 'e' && pl_name.substr(0, 12) == "eps Eridani ") || hostname == "eps Eridani")
+                {
+                    std::string let = extract_letter(pl_name);
+                    pl_name = "eps Eri " + let;
+                    litem["pl_name"] = pl_name;
+                    litem["hostname"] = "eps Eri";
+                    litem["hd_name"] = "HD 22049";
                 }
                 else if (cinit == 'H' && pl_name.substr(0, 3) == "HD ")
                 {
