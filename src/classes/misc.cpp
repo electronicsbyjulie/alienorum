@@ -103,8 +103,13 @@ const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+
 const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
-    have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
-    noexo = false, nosats = false, radio_silence = false, keyprobe = false, local_tmstep = false;
+    have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false, have_Tycho = false,
+    noexo = false, nosats = false, radio_silence = false, keyprobe = false, local_tmstep = false,
+    downloading_tycho = false, tycho_download_window_shown = false;
+std::atomic<uint64_t> tycho_downloaded_bytes{0};
+std::atomic<uint64_t> tycho_total_bytes{371474532};
+std::atomic<bool> tycho_download_cancel{false};
+std::string tycho_download_status_msg = "";
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
 double bv_correction = -.625;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
@@ -634,66 +639,186 @@ std::time_t file_age(const char *fname)
     return now - mt;
 }
 
-bool download_file(std::string URL, std::string save_path)
+struct StreamWriteContext
 {
-    if (radio_silence) return false;
+    std::ofstream *ofs;
+    std::atomic<uint64_t> *bytes_written;
+    std::atomic<bool> *cancel_flag;
+};
+
+static size_t stream_write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+    StreamWriteContext *ctx = static_cast<StreamWriteContext*>(userdata);
+    if (ctx && ctx->cancel_flag && ctx->cancel_flag->load())
+    {
+        return 0;
+    }
+    size_t total = size * nmemb;
+    if (ctx && ctx->ofs && ctx->ofs->is_open())
+    {
+        ctx->ofs->write(ptr, total);
+        if (ctx->bytes_written)
+        {
+            *(ctx->bytes_written) += total;
+        }
+    }
+    return total;
+}
+
+bool download_file_stream(std::string URL, std::string save_path, long timeout_seconds, std::atomic<uint64_t>* bytes_written, std::atomic<bool>* cancel_flag)
+{
+    if (radio_silence)
+    {
+        return false;
+    }
     curlpp::init();
     std::cout << "Download to " << save_path << " from " << URL << std::endl;
 
+    std::ofstream ofs(save_path.c_str(), std::ios::out | std::ios::binary);
+    if (!ofs)
+    {
+        curlpp::cleanup();
+        std::cerr << "FAILED to open " << save_path << " for writing" << std::endl << std::flush;
+        return false;
+    }
+
+    StreamWriteContext ctx;
+    ctx.ofs = &ofs;
+    ctx.bytes_written = bytes_written;
+    ctx.cancel_flag = cancel_flag;
+
     try
     {
-        std::string buffer;
         curlpp::Easy easy;
         curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
 
         if (!strcmp(URL.substr(0, 6).c_str(), "ftp://"))
         {
-            // Set target URL using the correct 2-argument signature
             easy.setOpt(CURLOPT_URL, URL.c_str());
-
-            // Credentials and configuration flags
             easy.setOpt(CURLOPT_USERNAME, "anonymous");
             easy.setOpt(CURLOPT_PASSWORD, "[email protected]");
-
-            // Crucial: Re-enable passive mode to get past firewalls
-            curl_easy_setopt(easy.getHandle(), static_cast<CURLoption>(10085), 1L);           // CURLOPT_FTP_USE_PASV
-
-            // Write directly into your string buffer using basic functional callbacks
-            easy.setOpt(CURLOPT_WRITEDATA, &buffer);
-            easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
+            curl_easy_setopt(easy.getHandle(), static_cast<CURLoption>(10085), 1L); // CURLOPT_FTP_USE_PASV
         }
         else
         {
             easy.setOpt(CURLOPT_URL, URL.c_str());
             easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
-            easy.setOpt(CURLOPT_WRITEDATA, &buffer);
-            easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
         }
 
-        easy.setOpt(CURLOPT_CONNECTTIMEOUT, 10L);
-        easy.setOpt(CURLOPT_TIMEOUT, 30L);
+        curl_easy_setopt(easy.getHandle(), CURLOPT_WRITEFUNCTION, stream_write_callback);
+        curl_easy_setopt(easy.getHandle(), CURLOPT_WRITEDATA, &ctx);
+
+        easy.setOpt(CURLOPT_CONNECTTIMEOUT, 15L);
+        if (timeout_seconds > 0)
+        {
+            easy.setOpt(CURLOPT_TIMEOUT, timeout_seconds);
+        }
+        else
+        {
+            easy.setOpt(CURLOPT_LOW_SPEED_LIMIT, 1024L);
+            easy.setOpt(CURLOPT_LOW_SPEED_TIME, 60L);
+        }
 
         easy.perform();
-
-        std::fstream fs(save_path.c_str(), std::ios::out | std::ios::binary);
-        if (!fs)
-        {
-            curlpp::cleanup();
-            std::cerr << "FAILED to write " << save_path << std::endl << std::flush;
-            return false;
-        }
-
-        fs << buffer;
-        fs.close();
+        ofs.close();
     }
     catch (const curlpp::Exception& e)
     {
+        ofs.close();
         std::cerr << "FAILED to download " << URL << ": " << e.what() << std::endl << std::flush;
+        curlpp::cleanup();
         return false;
     }
 
     curlpp::cleanup();
     return true;
+}
+
+bool download_file(std::string URL, std::string save_path)
+{
+    return download_file_stream(URL, save_path, 30L, nullptr, nullptr);
+}
+
+bool tycho_catalog_exists()
+{
+    std::string path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "tyc_main.dat";
+    std::string gzpath = path + ".gz";
+    return file_exists(path.c_str()) || file_exists(gzpath.c_str());
+}
+
+void start_tycho_download()
+{
+    if (downloading_tycho)
+    {
+        tycho_download_window_shown = true;
+        return;
+    }
+
+    if (tycho_catalog_exists())
+    {
+        tycho_download_status_msg = "Tycho catalog is already present.";
+        tycho_download_window_shown = true;
+        return;
+    }
+
+    downloading_tycho = true;
+    tycho_download_window_shown = true;
+    tycho_downloaded_bytes = 0;
+    tycho_total_bytes = 371474532;
+    tycho_download_cancel = false;
+    tycho_download_status_msg = "Connecting to CDS for Tycho catalog (~355 MB)...";
+
+    std::thread dl_thread([]()
+    {
+        std::string destdir = "catalogs" _FILESLASH "Hipparcos";
+        std::filesystem::create_directories(destdir);
+        std::string part_path = destdir + _FSSTR + "tyc_main.dat.part";
+        std::string final_path = destdir + _FSSTR + "tyc_main.dat";
+
+        tycho_download_status_msg = "Downloading Tycho catalog from CDS (~355 MB)...";
+
+        bool ok = download_file_stream("https://cdsarc.cds.unistra.fr/ftp/cats/I/239/tyc_main.dat",
+                                       part_path, 0L, &tycho_downloaded_bytes, &tycho_download_cancel);
+
+        if (!ok && !tycho_download_cancel.load())
+        {
+            tycho_downloaded_bytes = 0;
+            tycho_download_status_msg = "HTTPS failed, attempting FTP fallback...";
+            ok = download_file_stream("ftp://cdsarc.cds.unistra.fr/cats/I/239/tyc_main.dat",
+                                      part_path, 0L, &tycho_downloaded_bytes, &tycho_download_cancel);
+        }
+
+        if (tycho_download_cancel.load())
+        {
+            tycho_download_status_msg = "Download canceled.";
+            std::filesystem::remove(part_path);
+            downloading_tycho = false;
+            return;
+        }
+
+        if (ok && std::filesystem::exists(part_path))
+        {
+            std::error_code ec;
+            std::filesystem::rename(part_path, final_path, ec);
+            if (!ec)
+            {
+                tycho_download_status_msg = "Tycho catalog downloaded successfully!\nIt will be loaded alongside soles_alienorum at startup.";
+                have_Tycho = true;
+            }
+            else
+            {
+                tycho_download_status_msg = "Error finalizing file: " + ec.message();
+            }
+        }
+        else
+        {
+            tycho_download_status_msg = "Download failed. Please check network connection and try again.";
+            std::filesystem::remove(part_path);
+        }
+
+        downloading_tycho = false;
+    });
+    dl_thread.detach();
 }
 
 // Splits one line on its commas, honouring the quoting the CSV convention gives a field that

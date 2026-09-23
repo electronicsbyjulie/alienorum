@@ -400,6 +400,8 @@ void update_visible_cels()
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
 
+    bool near_home = (view_mode != vm_spaceship && iamhome >= 0 && cels[iamhome] && here.distance_to(cels[iamhome]->location) < 0.1 * light_year);
+
     std::vector<CelestialObject*> whereami_ancestors;
     if (whereami >= 0 && whereami < MAX_CELOBJS && cels[whereami])
     {
@@ -577,6 +579,13 @@ void update_visible_cels()
                 || (cbolbls_selected_idx == lbltype_planethz && s->has_hz_planets))
             {
                 visible_cels.push_back(cel);
+                continue;
+            }
+
+            if (near_home && s->apparent_magnitude > cutoff_mag && (s->variability_period <= 0 || s->minmag > cutoff_mag))
+            {
+                cel->drawnx = cel->drawnxmin = cel->drawnxmax
+                    = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
                 continue;
             }
 

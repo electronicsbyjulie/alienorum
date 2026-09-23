@@ -223,6 +223,15 @@ void show_menu()
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
             if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
+            if (!tycho_catalog_exists())
+            {
+                ImGui::Separator();
+                if (ImGui::MenuItem(downloading_tycho ? "Downloading Tycho Catalog..." : "Download Tycho Catalog...", nullptr, false, !downloading_tycho))
+                {
+                    start_tycho_download();
+                    menu_clicked = true;
+                }
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Object"))

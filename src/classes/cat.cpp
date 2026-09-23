@@ -1581,7 +1581,10 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         }
     }
 
-    if (!fp) return 0;
+    if (!fp)
+    {
+        return 0;
+    }
 
     while (fgets(buffer, 1020, fp))
     {
@@ -1603,31 +1606,57 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         read_field_onebased(buffer, 310, 315, field);
         HD = atoi(field);
 
-        if (HIP && hipcache[HIP]) continue;
-        if (HD && hdcache[HD]) continue;
-        // std::cout << buffer << std::endl;
+        if (HIP && hipcache && HIP <= MAX_HIP && hipcache[HIP])
+        {
+            continue;
+        }
+        if (HD && hdcache && HD <= MAX_HD && hdcache[HD])
+        {
+            continue;
+        }
 
         Star *s = new Star();
         std::string starname;
 
-        if (HD) starname = std::string("HD") + std::to_string(HD);
-        else if (HIP) starname = std::string("HIP") + std::to_string(HIP);
-        else starname = std::string("TYC") + TYC;
+        if (HD)
+        {
+            starname = std::string("HD") + std::to_string(HD);
+            s->HD = HD;
+            if (hdcache && HD <= MAX_HD && !hdcache[HD])
+            {
+                hdcache[HD] = s;
+            }
+        }
+        else if (HIP)
+        {
+            starname = std::string("HIP") + std::to_string(HIP);
+            s->HIP = HIP;
+            if (hipcache && HIP <= MAX_HIP && !hipcache[HIP])
+            {
+                hipcache[HIP] = s;
+            }
+        }
+        else
+        {
+            starname = std::string("TYC ") + TYC;
+        }
 
         //  42- 46  F5.2  mag     Vmag      ? Magnitude in Johnson V
         read_field_onebased(buffer, 42, 46, field);
         s->apparent_magnitude = atof(field);
 
         //  52- 63  F12.8 deg     RAdeg    *alpha, degrees (ICRS, Epoch=J1991.25)
-        read_field_onebased(buffer, 52, 63, field);
-        s->right_ascension = atof(field) * fiftyseventh;
+        char field_ra[32], field_dec[32];
+        read_field_onebased(buffer, 52, 63, field_ra);
+        read_field_onebased(buffer, 65, 76, field_dec);
 
-        //  65- 76  F12.8 deg     DEdeg    *delta, degrees (ICRS, Epoch=J1991.25)
-        read_field_onebased(buffer, 65, 76, field);
-        s->declination = atof(field) * fiftyseventh;
+        std::string str_ra = trim(field_ra);
+        std::string str_dec = trim(field_dec);
 
-        if (s->right_ascension && s->declination)
+        if (!str_ra.empty() && !str_dec.empty())
         {
+            s->right_ascension = atof(str_ra.c_str()) * fiftyseventh;
+            s->declination = atof(str_dec.c_str()) * fiftyseventh;
             double ra2000, dec2000;
             convert_to_J2000(s->right_ascension, s->declination, 1991.25, ra2000, dec2000, false);
             s->right_ascension = ra2000;
@@ -1636,8 +1665,7 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         }
         else
         {
-            std::cout << "ERROR: TYC" << TYC << " has no RA/Decl" << std::endl;
-            throw 0xbadda7a;
+            delete s;
             continue;
         }
 
@@ -1650,7 +1678,10 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
             s->distance = (s->parallax > 0) ? (parsec / atof(field) * 1000) : light_year*1e4;
             s->distance_known = true;
         }
-        else s->distance = light_year*1e4;
+        else
+        {
+            s->distance = light_year*1e4;
+        }
 
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
@@ -1658,12 +1689,18 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
         read_field_onebased(buffer, 88, 95, field);
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_RA = f;
+        if (f)
+        {
+            s->proper_motion_RA = f;
+        }
 
         //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS
         read_field_onebased(buffer, 97, 104, field);
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_decl = f;
+        if (f)
+        {
+            s->proper_motion_decl = f;
+        }
 
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
@@ -1673,12 +1710,26 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         s->mass = s->estimate_mass();
         s->volumetric_mean_radius = s->estimate_radius();
         s->temperature = s->estimate_temperature();
+
+        strncpy(s->name, starname.c_str(), name_max_len - 1);
+        s->name[name_max_len - 1] = 0;
+        s->namelen = strlen(s->name);
         s->origname = s->name;
 
-        append_cel(s);
+        if (!append_cel(s))
+        {
+            delete s;
+            break;
+        }
         num_read++;
+
+        if (num_read >= max - 2)
+        {
+            break;
+        }
     }
 
+    fclose(fp);
     return num_read;
 }
 

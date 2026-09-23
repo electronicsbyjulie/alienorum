@@ -437,6 +437,11 @@ void load_catalogs()
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "UNGC")) have_UNGC = true;
         if (!strcmp(cats[i].c_str(), "catalogs" _FILESLASH "GCVS")) have_GCVS = true;
     }
+    have_Tycho = tycho_catalog_exists();
+    if (have_Tycho)
+    {
+        cout << "Found Tycho catalog" << endl;
+    }
 
     if (load_aborted()) return;
     if (have_Gliese && !ihsc)
@@ -601,6 +606,20 @@ void load_catalogs()
             cout << "Reading SB9 catalog..." << endl << flush;
             int nSB9 = cr.read_SB9_catalog(cels, MAX_CELOBJS);
             cout << "Read " << nSB9 << " objects." << endl << flush;
+        }
+
+        if (have_Tycho)
+        {
+            if (load_aborted())
+            {
+                return;
+            }
+            mtx.lock();
+            loading_msg = std::string("Loading Tycho Catalog...");
+            mtx.unlock();
+            cout << "Reading Tycho catalog..." << endl << flush;
+            int nTYC = cr.read_Tycho_catalog(cels, MAX_CELOBJS);
+            cout << "Read " << nTYC << " objects." << endl << flush;
         }
 
         for (i=0; cels[i]; i++)

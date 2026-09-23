@@ -3417,3 +3417,68 @@ void draw_comet_window(ImGuiIO & io)
     if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
 }
+
+void draw_tycho_download_window(ImGuiIO &io)
+{
+    if (!tycho_download_window_shown)
+    {
+        return;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(480, 220), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Tycho Catalog Download", &tycho_download_window_shown))
+    {
+        ImGui::TextUnformatted("Tycho Star Catalog (CDS I/239)");
+        ImGui::Separator();
+
+        ImGui::TextWrapped("%s", tycho_download_status_msg.c_str());
+        ImGui::Spacing();
+
+        if (downloading_tycho)
+        {
+            uint64_t current = tycho_downloaded_bytes.load();
+            uint64_t total = tycho_total_bytes.load();
+            float progress = total > 0 ? (float)((double)current / (double)total) : 0.0f;
+            if (progress > 1.0f)
+            {
+                progress = 1.0f;
+            }
+
+            char overlay[64];
+            double cur_mb = (double)current / (1024.0 * 1024.0);
+            double tot_mb = (double)total / (1024.0 * 1024.0);
+            snprintf(overlay, sizeof(overlay), "%.1f / %.1f MB (%.1f%%)", cur_mb, tot_mb, progress * 100.0f);
+
+            ImGui::ProgressBar(progress, ImVec2(-1, 0), overlay);
+            ImGui::Spacing();
+
+            if (ImGui::Button("Cancel"))
+            {
+                tycho_download_cancel = true;
+            }
+        }
+        else
+        {
+            if (!tycho_catalog_exists())
+            {
+                if (ImGui::Button("Download Catalog (~355 MB)"))
+                {
+                    start_tycho_download();
+                }
+                ImGui::SameLine();
+            }
+            if (ImGui::Button("Close"))
+            {
+                tycho_download_window_shown = false;
+            }
+        }
+    }
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
+        && io.MousePos.x < (pos.x + siz.x) && io.MousePos.y < (pos.y + siz.y))
+    {
+        is_mouse_over_window = true;
+    }
+}

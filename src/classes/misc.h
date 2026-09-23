@@ -118,7 +118,7 @@ using json = nlohmann::json;
 #define ecliptic_north_RA_J2000 (18.00 * 15 * fiftyseventh)
 #define ecliptic_north_Decl_J2000 ((66.0 + 33.0 / 60 + 38.55 / 3600) * fiftyseventh)
 
-#define MAX_CELOBJS 524288
+#define MAX_CELOBJS 2097152
 #define MAX_SPLASH_STARS 5381
 #define MAX_HD 359083
 #define MAX_HIP 120416
@@ -219,7 +219,10 @@ std::string lop_component(const char* name);
 bool file_exists(const char* fname);
 std::time_t file_age(const char* fname);                                    // seconds
 
+bool download_file_stream(std::string URL, std::string save_path, long timeout_seconds, std::atomic<uint64_t>* bytes_written, std::atomic<bool>* cancel_flag);
 bool download_file(std::string URL, std::string save_path);
+bool tycho_catalog_exists();
+void start_tycho_download();
 std::vector<std::string> parse_csv_row(const char* data);
 time_t from_iso_string(std::string iso_string, const char* format = nullptr);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
@@ -294,8 +297,13 @@ extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, sho
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing,
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
-    have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
-    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames;
+    have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS, have_Tycho,
+    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames,
+    downloading_tycho, tycho_download_window_shown;
+extern std::atomic<uint64_t> tycho_downloaded_bytes;
+extern std::atomic<uint64_t> tycho_total_bytes;
+extern std::atomic<bool> tycho_download_cancel;
+extern std::string tycho_download_status_msg;
 extern std::atomic<bool> abort_load;
 extern std::atomic<bool> load_completed;
 extern std::atomic<int> texture_loads_pending;

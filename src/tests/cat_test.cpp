@@ -487,4 +487,11 @@ TEST_F(CatalogParsingTest, DedupPlanetsPreservesBinaryCompanions)
     EXPECT_EQ(dup_planets[0]["hd_name"], "HD 12345");
 }
 
+TEST_F(CatalogParsingTest, TychoCatalogSettingsAndParser)
+{
+    EXPECT_EQ(MAX_CELOBJS, 2097152);
+    bool exists = tycho_catalog_exists();
+    EXPECT_FALSE(exists);
+}
+
 

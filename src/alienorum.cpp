@@ -701,6 +701,7 @@ int main (int argc, char** argv)
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
             draw_ssc_import_window(io);
+            draw_tycho_download_window(io);
 
             if (!is_mouse_over_window && !dragging)
             {
