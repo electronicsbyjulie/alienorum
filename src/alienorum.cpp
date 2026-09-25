@@ -992,11 +992,11 @@ int main (int argc, char** argv)
             if (nameidx < 0) nameidx = whereami;
 
             std::string snapname = (nameidx >= 0)
-                ? cels[nameidx]->name
+                ? ((view_mode == vm_system) ? (std::string(mycenobj->name) + std::string(".system")) : cels[nameidx]->name)
                 : "snapshot"
                 ;
 
-            std::string subject = (biggest_cel && (bigcel_sz >= 4))
+            std::string subject = (biggest_cel && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
                 ? (std::string(biggest_cel->name) + std::string("."))
                 : std::string("")
                 ;
