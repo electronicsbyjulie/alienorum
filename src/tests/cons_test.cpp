@@ -216,7 +216,7 @@ TEST_F(ConstellationTest, TauCetiConstellations_LoadAndContainExpectedStars)
         }
     }
 
-    EXPECT_GE(tau_ceti_cons.size(), 20u);
+    EXPECT_EQ(tau_ceti_cons.size(), 88u);
 
     auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
     {
