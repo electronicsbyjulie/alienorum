@@ -2297,7 +2297,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         return 0;
     }
 
-    if (sz3)
+    if (cel->onscreen && sz3)
     {
         biggest_cel = cel;
         bigcel_sz = sz3;
@@ -2948,7 +2948,7 @@ bool draw_single_object(int i)
         if (show_labels || lbl_localsys || show_consln || show_grid)
         {
             bloomrad_cache[i] = bloomrad = draw_satellite_icon(xycoord, satcol);
-            if (bloomrad > bigcel_sz)
+            if (cels[i]->onscreen && bloomrad > bigcel_sz)
             {
                 biggest_cel = cels[i];
                 bigcel_sz = bloomrad;
@@ -2963,7 +2963,7 @@ bool draw_single_object(int i)
     else if (cls == class_comet)
     {
         coma_px = draw_comet(cels[i], appmag);
-        if (coma_px > bigcel_sz)
+        if (cels[i]->onscreen && coma_px > bigcel_sz)
         {
             biggest_cel = cels[i];
             bigcel_sz = coma_px;
@@ -2993,7 +2993,7 @@ bool draw_single_object(int i)
 
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);
-        if (bloomrad > bigcel_sz)
+        if (cels[i]->onscreen && bloomrad > bigcel_sz)
         {
             biggest_cel = cels[i];
             bigcel_sz = bloomrad;
@@ -3026,7 +3026,7 @@ bool draw_single_object(int i)
         {
             draw_flare(flare, col, vmag_cache[i], 0);
             double f3 = flare / 3;
-            if (f3 > bigcel_sz)
+            if (cels[i]->onscreen && f3 > bigcel_sz)
             {
                 biggest_cel = cels[i];
                 bigcel_sz = f3;
