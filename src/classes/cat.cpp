@@ -7424,26 +7424,56 @@ static std::string normalize_galaxy_name(const std::string &raw)
 //     cos^2(i) = ((b/a)^2 - q0^2) / (1 - q0^2)
 // q0 is a disc's thickness -- the axis ratio it still shows seen exactly edge-on. The values below
 // are fitted against the UNGC's own inclination column, which keeps the RC3 galaxies on the same
-// convention. Ellipticals have nothing to deproject (apparent flattening is intrinsic shape, not
-// orientation), so they take a flat 90 degrees.
-static double galaxy_inclination(double axis_ratio, double T, bool T_known)
+// convention.
+//
+// For spheroids and ellipticals (T < 0 or dwarf morphology "Sph"), the flattening is intrinsic
+// to a 3D ellipsoid rather than a tilted thin disc. Because the renderer draws galaxies as
+// planar 2D discs, setting i = 90 deg would collapse a 3D spheroid into a zero-thickness line on
+// screen. To reproduce the observed apparent cross section (b/a) on the sky, we want
+// cos(i) = b/a, hence i = acos(b/a).
+static double galaxy_inclination(double axis_ratio, double T, bool T_known, const char* morph_type = nullptr)
 {
-    if (T_known && T < 0) return half_pi;               // elliptical or S0: see above
+    if ((T_known && T < 0) || (morph_type && strstr(morph_type, "Sph")))
+    {
+        double r = fmin(1.0, fmax(0.0, axis_ratio));
+        return acos(r);
+    }
 
     double q0 = 0.20;                                   // the classic value, for an unknown type
     if (T_known)
     {
-        if (T <= 4.0) q0 = 0.26;                        // early spirals, thicker discs
-        else if (T <= 7.0) q0 = 0.16;                   // late spirals, the thinnest
-        else q0 = 0.42;                                 // irregulars, genuinely puffy
+        if (T <= 4.0)
+        {
+            q0 = 0.26;                        // early spirals, thicker discs
+        }
+        else if (T <= 7.0)
+        {
+            q0 = 0.16;                   // late spirals, the thinnest
+        }
+        else
+        {
+            q0 = 0.42;                                 // irregulars, genuinely puffy
+        }
     }
 
-    if (axis_ratio >= 1.0) return 0;                    // round on the sky: face-on
-    if (axis_ratio <= q0) return half_pi;               // at or past the edge-on limit
+    if (axis_ratio >= 1.0)
+    {
+        return 0;                    // round on the sky: face-on
+    }
+    if (axis_ratio <= q0)
+    {
+        return half_pi;               // at or past the edge-on limit
+    }
 
     double cos2 = (axis_ratio*axis_ratio - q0*q0) / (1.0 - q0*q0);
-    if (cos2 < 0) cos2 = 0;
-    if (cos2 > 1) cos2 = 1;
+    if (cos2 < 0)
+    {
+        cos2 = 0;
+    }
+    if (cos2 > 1)
+    {
+        cos2 = 1;
+    }
     return acos(sqrt(cos2));
 }
 
@@ -7557,7 +7587,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         g->radial_velocity = atof(field) * 1000.0;
 
         // Deprojected for now; table2 below replaces it wherever the catalog has its own.
-        g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
+        g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known, g->morph_type);
 
         // Our own galaxy is in the catalog like any other, but with no axis ratio and no position
         // angle -- neither is measurable from inside -- which would leave it with no system plane
@@ -7618,8 +7648,20 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             if (it == by_raw_name.end()) continue;
 
             read_field_onebased(buffer, 47, 48, field);
-            if (!strlen(trim(field).c_str())) continue;
+            if (!strlen(trim(field).c_str()))
+            {
+                continue;
+            }
             Galaxy *ig = it->second;
+
+            // Spheroids and ellipticals have no rotating thin disc and lack HI kinematic
+            // inclinations; UNGC table2 assigns dummy 90 values to them which would collapse
+            // their 3D shape to zero thickness. Preserve the photometric inclination derived from b/a.
+            if ((ig->T_known && ig->morphological_T < 0) || strstr(ig->morph_type, "Sph"))
+            {
+                continue;
+            }
+
             ig->inclination = atof(field) * fiftyseventh;
             ig->location.equatorial_plane =
                 ig->location.local_system_plane =
@@ -7707,7 +7749,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         {
             dup->inclination = dup->inclination
                                ? dup->inclination
-                               : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known);
+                               : galaxy_inclination(dup->axis_ratio, dup->morphological_T, dup->T_known, dup->morph_type);
 
             // The UNGC entry stands, its measured distance being the better number -- but it has
             // no position angle and often no morphology, both of which the RC3 carries and an
@@ -7822,7 +7864,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             if (r25 >= 1.0) g->axis_ratio = 1.0 / r25;
         }
 
-        g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known);
+        g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known, g->morph_type);
 
         // 186-188 position angle of the major axis, degrees
         read_field_onebased(buffer, 186, 188, field);

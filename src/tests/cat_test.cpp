@@ -487,4 +487,28 @@ TEST_F(CatalogParsingTest, DedupPlanetsPreservesBinaryCompanions)
     EXPECT_EQ(dup_planets[0]["hd_name"], "HD 12345");
 }
 
+TEST_F(CatalogParsingTest, SpheroidGalaxyPreservesPhotometricInclination)
+{
+    CatalogReader cr;
+    int n = cr.read_UNGC_catalog(cels, MAX_CELOBJS);
+    ASSERT_GT(n, 0);
+
+    Galaxy* sag = nullptr;
+    for (int i = 0; cels[i]; i++)
+    {
+        if (!strcmp(cels[i]->name, "Sag dSph"))
+        {
+            sag = (Galaxy*)cels[i];
+            break;
+        }
+    }
+
+    ASSERT_NE(sag, nullptr);
+    EXPECT_DOUBLE_EQ(sag->axis_ratio, 0.48);
+    // For a spheroid with axis ratio 0.48, inclination should be acos(0.48) ~ 1.0708 rad (~61.3 deg),
+    // NOT the edge-on 90 deg (half_pi ~ 1.5708 rad) which would give zero screen thickness.
+    EXPECT_NEAR(sag->inclination, acos(0.48), 1e-4);
+    EXPECT_LT(sag->inclination, half_pi - 0.1);
+}
+
 
