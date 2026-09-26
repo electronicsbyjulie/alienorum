@@ -4557,11 +4557,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (last == 'y') f = atof(field) * oneyear;
         else if (last == 'd') f = atof(field) * oneday;
         else f = atof(field);
-        if (f) s->orbit->period = f;
+        if (f && s->orbit) s->orbit->period = f;
 
         read_field_onebased(buffer, 89, 99, field);
         f = atof(field) * fiftyseventh;
-        if (f) s->orbit->arg_periapsis = f;
+        if (f && s->orbit) s->orbit->arg_periapsis = f;
 
         read_field_onebased(buffer, 101, 111, field);
         str = trim(field);
@@ -4572,15 +4572,15 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (nxtlast == 'A' && last == 'U') f = atof(field) * AU;
         else if (last == 's') f = atof(field) * A->distance / light_year * 0.29278287 * AU;
         else f = atof(field);
-        if (f) s->orbit->semimajor_axis = f;
+        if (f && s->orbit) s->orbit->semimajor_axis = f;
 
         read_field_onebased(buffer, 113, 123, field);
         f = atof(field);
-        if (f) s->orbit->eccentricity = f;
+        if (f && s->orbit) s->orbit->eccentricity = f;
 
         read_field_onebased(buffer, 125, 143, field);
         f = atof(field) * fiftyseventh;
-        if (f) s->orbit->mean_anomaly = f;
+        if (f && s->orbit) s->orbit->mean_anomaly = f;
 
         read_field_onebased(buffer, 145, 155, field);
         str = trim(field);
@@ -4589,7 +4589,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         {
             if (str.c_str()[0] == 'J' && str.c_str()[1] == 'D') f = atof(&field[2]);
             else f = (atof(field)-2000) * oneyear + J2000;
-            if (f) s->orbit->epoch = f;
+            if (f && s->orbit) s->orbit->epoch = f;
         }
 
         if (inclination || ascending_node)

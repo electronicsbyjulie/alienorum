@@ -462,3 +462,66 @@ TEST_F(ConstellationTest, ReloadStuff_RepeatedCalls_DoNotCrashOrLeak)
     EXPECT_FALSE(is_reloading);
 }
 
+TEST_F(ConstellationTest, Rho1CancriConstellations_LoadAndContainExpectedStars)
+{
+    read_cons_lines();
+
+    std::map<std::string, const Constellation*> rho1_cons;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Rho 1 Cancri")
+        {
+            rho1_cons[c.abbrev] = &c;
+        }
+    }
+
+    EXPECT_EQ(rho1_cons.size(), 88u);
+
+    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
+    {
+        if (!cons)
+        {
+            return false;
+        }
+        for (const auto& line : cons->lines)
+        {
+            if (line.starnamea == star || line.starnameb == star)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Verify Sun in Capricornus
+    ASSERT_TRUE(rho1_cons.count("Cap") > 0);
+    EXPECT_TRUE(has_line_with_star(rho1_cons["Cap"], "Sun"));
+
+    // Verify Pollux (Bet Gem) in Cetus
+    ASSERT_TRUE(rho1_cons.count("Cet") > 0);
+    EXPECT_TRUE(has_line_with_star(rho1_cons["Cet"], "Bet Gem"));
+
+    // Verify Castor (Alp Gem) in Taurus
+    ASSERT_TRUE(rho1_cons.count("Tau") > 0);
+    EXPECT_TRUE(has_line_with_star(rho1_cons["Tau"], "Alp Gem"));
+
+    // Verify Capella (Alp Aur) in Andromeda
+    ASSERT_TRUE(rho1_cons.count("And") > 0);
+    EXPECT_TRUE(has_line_with_star(rho1_cons["And"], "Alp Aur"));
+
+    // Verify Arcturus (Alp Boo) in Ophiuchus
+    ASSERT_TRUE(rho1_cons.count("Oph") > 0);
+    EXPECT_TRUE(has_line_with_star(rho1_cons["Oph"], "Alp Boo"));
+
+    // Verify Sirius (Alp CMa) and Procyon (Alp CMi) in Piscis Austrinus
+    ASSERT_TRUE(rho1_cons.count("PsA") > 0);
+    EXPECT_TRUE(has_line_with_star(rho1_cons["PsA"], "Alp CMa"));
+    EXPECT_TRUE(has_line_with_star(rho1_cons["PsA"], "Alp CMi"));
+
+    // Verify Rho 1 Cnc is not in Cancer
+    ASSERT_TRUE(rho1_cons.count("Cnc") > 0);
+    EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "Rho 1 Cnc"));
+    EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "Rho1Cnc"));
+    EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "55 Cnc"));
+}
+
