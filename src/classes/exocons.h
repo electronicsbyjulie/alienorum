@@ -38,6 +38,7 @@ namespace alienorum
         static void save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss);
         static double calculate_sky_coverage(const std::vector<Point>& lined_star_dirs, int num_samples = 1000);
         static bool arcs_intersect(const Point& a, const Point& b, const Point& c, const Point& d);
+        static bool point_near_arc(const Point& a, const Point& b, const Point& p, double max_dist_deg, double* dist_out = nullptr, double min_end_dist_deg = 0.8);
         static std::string get_consline_star_name(Star* s);
         static const IAUConstellationDef* find_iau_def(const std::string& abbrev);
         static void reset();
