@@ -4671,8 +4671,10 @@ void draw_cons_lines()
                 std::cerr << "WARNING: consline.dat vantage " << constellations[i].vantage_name << " does not match a star." << std::endl;
                 constellations[i].vantage.x = constellations[i].vantage.y = constellations[i].vantage.z = nanf("vantage");
             }
-
-            constellations[i].vantage = cels[sidx]->location;
+            else
+            {
+                constellations[i].vantage = cels[sidx]->location;
+            }
             constellations[i].vantage_name = "";
         }
 
@@ -4710,7 +4712,11 @@ void draw_cons_lines()
     ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.05));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
-        if (constellations[l].vantage.distance_to(here) > light_year * 10) continue;
+        double vdist = constellations[l].vantage.distance_to(here);
+        if (std::isnan(vdist) || vdist > light_year * 10)
+        {
+            continue;
+        }
         Point lconsdir;
 
         // Constellation boundaries, drawn as a dashed line: connect every other

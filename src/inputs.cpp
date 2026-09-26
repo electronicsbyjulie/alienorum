@@ -821,7 +821,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_F5();
     if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
     if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
@@ -998,6 +998,11 @@ void process_key_F4()
 
 void process_key_F5()
 {
+    bool expected = false;
+    if (!is_reloading.compare_exchange_strong(expected, true))
+    {
+        return;
+    }
     splash = true;
     std::thread t1(reload_stuff);
     t1.detach();

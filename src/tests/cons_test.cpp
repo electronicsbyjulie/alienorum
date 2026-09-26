@@ -451,3 +451,14 @@ TEST_F(ConstellationTest, AlphaMensaeConstellations_LoadAndContainExpectedStars)
     EXPECT_FALSE(has_line_with_star(men_alpha_cons["Men"], "Alp Men"));
 }
 
+TEST_F(ConstellationTest, ReloadStuff_RepeatedCalls_DoNotCrashOrLeak)
+{
+    EXPECT_NO_THROW(reload_stuff());
+    EXPECT_FALSE(splash);
+    EXPECT_FALSE(is_reloading);
+
+    EXPECT_NO_THROW(reload_stuff());
+    EXPECT_FALSE(splash);
+    EXPECT_FALSE(is_reloading);
+}
+

@@ -4236,7 +4236,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     double f;
 
     // Fix for Mirfak seen from Hamal
-    if (hdcache[12929])
+    if (hdcache && hdcache[12929])
     {
         hdcache[12929]->obliquity = half_pi;
         hdcache[12929]->equinox = _pi;
@@ -4526,10 +4526,28 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         s->orbit->heliocentric_inclination = inclination;
         s->orbit->heliocentric_node = ascending_node;
 
-        char comp = 'B';
-        if (!A->multisys) A->set_component('A', A);
-        if (A->multisys) while (A->multisys->get_member(comp)) comp++;
-        s->make_companion_of(A, comp);
+        char comp = 0;
+        if (!A->multisys)
+        {
+            A->set_component('A', A);
+        }
+        else
+        {
+            comp = A->multisys->is_member(s);
+        }
+
+        if (!comp)
+        {
+            comp = 'B';
+            while (comp <= 'Z' && A->multisys->get_member(comp))
+            {
+                comp++;
+            }
+        }
+        if (comp <= 'Z')
+        {
+            s->make_companion_of(A, comp);
+        }
 
         read_field_onebased(buffer, 49, 63, field);
         str = trim(field);

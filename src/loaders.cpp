@@ -759,7 +759,7 @@ void read_cons_lines()
             if (newline) *newline = 0;
             if (*buffer == ':')
             {
-                vantage_name = &buffer[1];
+                vantage_name = trim(&buffer[1]);
             }
             if (*buffer == '~')
             {
@@ -1063,46 +1063,83 @@ void load_stuff()
 
 void reload_stuff()
 {
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing spectral types...";
-    mtx.unlock();
-    Star::load_main_seq_dat();
-
-    CatalogReader cr;
-    constellations.clear();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing constellations...";
-    mtx.unlock();
-    read_cons_lines();
-    cr.read_cons_boundaries();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Assigning stars to constellations...";
-    mtx.unlock();
-    cache_cons_lines();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing star orbits...";
-    mtx.unlock();
-    cr.read_star_orbits_dat(cels);
-
-    int i;
-    for (i=0; cels[i]; i++)
+    struct ReloadGuard
     {
-        delete[] cels[i]->locales;
-        cels[i]->locales = nullptr;
-        cels[i]->nlocales = 0;
-    }
+        ~ReloadGuard()
+        {
+            mtx.lock();
+            splash = false;
+            mtx.unlock();
+            is_reloading = false;
+        }
+    } guard;
 
-    mtx.lock();
-    loading_msg = "Done!";
-    splash = false;
-    mtx.unlock();
+    try
+    {
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing spectral types...";
+        mtx.unlock();
+        Star::load_main_seq_dat();
+
+        cons4lbl = nullptr;
+        is_a_locale_under_cursor = nullptr;
+        selected_locale = nullptr;
+
+        CatalogReader cr;
+        constellations.clear();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing constellations...";
+        mtx.unlock();
+        read_cons_lines();
+        cr.read_cons_boundaries();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Assigning stars to constellations...";
+        mtx.unlock();
+        cache_cons_lines();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing star orbits...";
+        mtx.unlock();
+        cr.read_star_orbits_dat(cels);
+
+        int i;
+        for (i=0; cels[i]; i++)
+        {
+            delete[] cels[i]->locales;
+            cels[i]->locales = nullptr;
+            cels[i]->nlocales = 0;
+        }
+
+        mtx.lock();
+        loading_msg = "Done!";
+        mtx.unlock();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception in reload_stuff: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown exception in reload_stuff." << std::endl;
+    }
 }
 
 bool save_user_json()
