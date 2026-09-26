@@ -525,3 +525,46 @@ TEST_F(ConstellationTest, Rho1CancriConstellations_LoadAndContainExpectedStars)
     EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "55 Cnc"));
 }
 
+TEST_F(ConstellationTest, UpsilonAndromedaeConstellations_LoadAndContainExpectedStars)
+{
+    read_cons_lines();
+
+    std::map<std::string, const Constellation*> ups_cons;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Upsilon Andromedae")
+        {
+            ups_cons[c.abbrev] = &c;
+        }
+    }
+
+    EXPECT_EQ(ups_cons.size(), 88u);
+
+    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
+    {
+        if (!cons)
+        {
+            return false;
+        }
+        for (const auto& line : cons->lines)
+        {
+            if (line.starnamea == star || line.starnameb == star)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Verify Sun in Centaurus
+    ASSERT_TRUE(ups_cons.count("Cen") > 0);
+    EXPECT_TRUE(has_line_with_star(ups_cons["Cen"], "Sun"));
+
+    // Verify Upsilon Andromedae is not in Andromeda
+    ASSERT_TRUE(ups_cons.count("And") > 0);
+    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "Ups And"));
+    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "Upsilon Andromedae"));
+    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "50 And"));
+    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "50  And"));
+}
+
