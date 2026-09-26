@@ -666,3 +666,76 @@ TEST(GalaxyTest, Spheroid3DSilhouetteNeverCollapses)
         }
     }
 }
+
+// =====================================================================
+// Galaxy Disc 3D Basis and Position Angle Orientation Tests
+// =====================================================================
+
+TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
+{
+    // Direction to galaxy center on sky (e.g. LMC coordinates)
+    const double ra = 80.89 * (_pi / 180.0);
+    const double dec = -69.756 * (_pi / 180.0);
+
+    Point vhat(-sin(ra) * cos(dec), sin(dec), cos(ra) * cos(dec));
+    vhat.scale(1.0);
+
+    Point E_sky = compute_normal(center, vhat, yaxis);
+    E_sky.scale(1.0);
+    Point N_sky = compute_normal(center, E_sky, vhat);
+    N_sky.scale(1.0);
+
+    const double test_pas[] = {0.0, 22.0, 35.0, 90.0, 115.0, 136.0, 180.0, 245.0, 315.0};
+    const double test_incls[] = {0.0, 20.0, 35.0, 60.0, 77.0, 85.0};
+
+    for (double pa_deg : test_pas)
+    {
+        double pa = pa_deg * (_pi / 180.0);
+        for (double incl_deg : test_incls)
+        {
+            double incl = incl_deg * (_pi / 180.0);
+
+            Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
+            u_maj.scale(1.0);
+            Point u_perp = compute_normal(center, vhat, u_maj);
+            u_perp.scale(1.0);
+
+            Point e1 = u_maj * -1.0;
+            Point e2 = (u_perp * cos(incl) + vhat * sin(incl)) * -1.0;
+            e1.scale(1.0);
+            e2.scale(1.0);
+
+            Point pole = compute_normal(center, e1, e2);
+            pole.scale(1.0);
+
+            // e1, e2, and pole must form a strictly orthonormal right-handed basis
+            EXPECT_NEAR(e1.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(e2.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(pole.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(e1.x * e2.x + e1.y * e2.y + e1.z * e2.z, 0.0, 1e-9);
+            EXPECT_NEAR(e1.x * pole.x + e1.y * pole.y + e1.z * pole.z, 0.0, 1e-9);
+            EXPECT_NEAR(e2.x * pole.x + e2.y * pole.y + e2.z * pole.z, 0.0, 1e-9);
+
+            // Apparent position angle of e1 in the sky plane
+            double proj_N = -(e1.x * N_sky.x + e1.y * N_sky.y + e1.z * N_sky.z);
+            double proj_E = -(e1.x * E_sky.x + e1.y * E_sky.y + e1.z * E_sky.z);
+            double meas_pa = atan2(proj_E, proj_N) * (180.0 / _pi);
+            if (meas_pa < 0.0)
+            {
+                meas_pa += 360.0;
+            }
+
+            // Measured PA must match catalog PA exactly
+            double diff = fabs(meas_pa - pa_deg);
+            while (diff > 180.0)
+            {
+                diff = fabs(diff - 360.0);
+            }
+            EXPECT_NEAR(diff, 0.0, 1e-6);
+
+            // In-plane apparent minor axis projection has foreshortened factor cos(incl)
+            Point e2_proj = e2 - vhat * (e2.x * vhat.x + e2.y * vhat.y + e2.z * vhat.z);
+            EXPECT_NEAR(e2_proj.magnitude(), cos(incl), 1e-6);
+        }
+    }
+}

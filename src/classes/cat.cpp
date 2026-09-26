@@ -7615,6 +7615,11 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             // inside_galaxy_idx or position math being correct.
             g->band.load_dat_file("catalogs" _FILESLASH "Milky_Way.dat");
         }
+        if (!strcmp(g->name, "LMC") || !strcmp(g->name, "Large Magellanic Cloud"))
+        {
+            g->position_angle = 115.0 * fiftyseventh;
+            g->position_angle_known = true;
+        }
         g->location.equatorial_plane = g->location.local_system_plane
                                        = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
@@ -7751,6 +7756,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                     dup->position_angle_known = true;
                 }
             }
+            if (!strcmp(dup->name, "LMC") || !strcmp(dup->name, "Large Magellanic Cloud"))
+            {
+                dup->position_angle = 115.0 * fiftyseventh;
+                dup->position_angle_known = true;
+            }
             dup->known_poles = dup->position_angle_known;
             dup->location.equatorial_plane = dup->location.local_system_plane =
                                                  system_plane_from_incl_and_node(dup->inclination, dup->position_angle, (Point)dup->location);
@@ -7859,6 +7869,11 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         if (strlen(trim(field).c_str()))
         {
             g->position_angle = atof(field) * fiftyseventh;
+            g->position_angle_known = true;
+        }
+        if (!strcmp(g->name, "LMC") || !strcmp(g->name, "Large Magellanic Cloud"))
+        {
+            g->position_angle = 115.0 * fiftyseventh;
             g->position_angle_known = true;
         }
         g->known_poles = g->position_angle_known;

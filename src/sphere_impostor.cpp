@@ -1056,6 +1056,10 @@ namespace alienorum
         double d_center = sqrt(cx*cx + cy*cy + cz*cz);
         double pixel_pad = (lzoom * scalex > 0 && d_center > 0) ? 2.0 * d_center / (lzoom * scalex) : 0.0;
         double quad_r = r + atm_h + pixel_pad;
+        if (cz <= -quad_r)
+        {
+            return false;
+        }
 
         double zdesXmin=0, zdesXmax=0, zdesYmin=0, zdesYmax=0;
         // std::cout << cx << "," << cy << "," << cz << " @ " << quad_r << " * " << lzoom << std::endl;

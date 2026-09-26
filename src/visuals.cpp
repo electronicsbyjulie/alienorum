@@ -1009,9 +1009,15 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         << " disp=" << io.DisplaySize.x << "," << io.DisplaySize.y
         << std::endl;*/
     if (xmax > 0 && xmin < io.DisplaySize.x && ymax > 0 && ymin < io.DisplaySize.y)
+    {
         cel->onscreen = true;
+    }
+    else
+    {
+        cel->onscreen = false;
+    }
 
-    return fmax(xmax - xmin, ymax - ymin) / 2;
+    return cel->onscreen ? (fmax(xmax - xmin, ymax - ymin) / 2) : 0;
 }
 
 void draw_ring_gpu(CelestialObject* cel)
@@ -2189,30 +2195,63 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 
     bool is_spheroid = g->is_spheroidal_or_elliptical();
 
-    Rotation pl = cel->location.local_system_plane;
-    Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
-    Point e2 = rotate3D(zaxis, center, pl.v, -pl.a);
-    e1.scale(1);
-    e2.scale(1);
+    Point los = cel->tmprel;
+    double los_len = los.magnitude();
+    Point vhat_view = (los_len > 0) ? (los * (1.0 / los_len)) : Point(0, 0, 1);
+
+    // Observer sky tangent plane basis:
+    // vhat_view points from observer to galaxy center.
+    // E_sky points towards local East (increasing RA).
+    // N_sky points towards local North (increasing Declination).
+    Point E_sky = compute_normal(center, vhat_view, yaxis);
+    double e_len = E_sky.magnitude();
+    if (e_len > 1e-6)
+    {
+        E_sky = E_sky * (1.0 / e_len);
+    }
+    else
+    {
+        E_sky = Point(1, 0, 0);
+    }
+    Point N_sky = compute_normal(center, E_sky, vhat_view);
+    double n_len = N_sky.magnitude();
+    if (n_len > 1e-6)
+    {
+        N_sky = N_sky * (1.0 / n_len);
+    }
+    else
+    {
+        N_sky = Point(0, 1, 0);
+    }
+
+    double pa = g->position_angle;
+    double incl = g->inclination;
+
+    // Major axis direction on the sky from North through East
+    Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
+    u_maj.scale(1.0);
+
+    Point u_perp = compute_normal(center, vhat_view, u_maj);
+    u_perp.scale(1.0);
+
+    // In mesh UV space, u runs horizontally (0 left to 1 right), v runs vertically (0 top to 1 bottom).
+    // In astronomical images, left is East, right is West, top is North, bottom is South.
+    // e1 and e2 correspond to +u (West) and +v (South).
+    Point e1 = u_maj * -1.0;
+    Point e2 = (u_perp * cos(incl) + vhat_view * sin(incl)) * -1.0;
+    e1.scale(1.0);
+    e2.scale(1.0);
+
+    Point pole = compute_normal(center, e1, e2);
+    pole.scale(1.0);
 
     Point u1, u2;
     double a_rad = g->volumetric_mean_radius;
     double b_rad = a_rad;
     if (is_spheroid)
     {
-        Point pole = rotate3D(yaxis, center, pl.v, -pl.a);
-        pole.scale(1);
-
-        Point vhat = center - cel->tmprel;
-        double vhat_mag = vhat.magnitude();
-        if (vhat_mag > 0)
-        {
-            vhat.scale(1);
-        }
-        else
-        {
-            vhat = zaxis;
-        }
+        Point vhat = (los_len > 0) ? (center - los) : zaxis;
+        vhat.scale(1.0);
 
         double costheta = fmax(-1.0, fmin(1.0, vhat.x * pole.x + vhat.y * pole.y + vhat.z * pole.z));
         double sintheta_sq = fmax(0.0, 1.0 - costheta * costheta);
@@ -2297,7 +2336,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         return 0;
     }
 
-    if (cel->onscreen && sz3)
+    if (cel->onscreen && sz3 > bigcel_sz)
     {
         biggest_cel = cel;
         bigcel_sz = sz3;
