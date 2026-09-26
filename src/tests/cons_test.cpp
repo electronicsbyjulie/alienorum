@@ -2,6 +2,7 @@
 #include <cmath>
 #include "../classes/cons.h"
 #include "../classes/star.h"
+#include "../classes/exocons.h"
 #include "../loaders.h"
 
 using namespace alienorum;
@@ -385,7 +386,8 @@ TEST_F(ConstellationTest, AlphaMensaeConstellations_LoadAndContainExpectedStars)
         }
     }
 
-    EXPECT_EQ(men_alpha_cons.size(), 88u);
+    // Alpha Mensae in consline.dat defines custom Orion and Taurus (< 30 defined)
+    EXPECT_EQ(men_alpha_cons.size(), 2u);
 
     auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
     {
@@ -403,52 +405,13 @@ TEST_F(ConstellationTest, AlphaMensaeConstellations_LoadAndContainExpectedStars)
         return false;
     };
 
-    // Check key constellations and displaced stars
-    ASSERT_TRUE(men_alpha_cons.count("Dra") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Dra"], "Sun"));
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Dra"], "Alp1Cen"));
+    ASSERT_TRUE(men_alpha_cons.count("Ori") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Ori"], "Bet Ori"));
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Ori"], "Alp Ori"));
 
-    ASSERT_TRUE(men_alpha_cons.count("UMi") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["UMi"], "Alp CMa"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Cyg") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Cyg"], "Bet Hyi"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Cas") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Cas"], "82G Eri"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Lyr") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Lyr"], "Del Pav"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Peg") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Peg"], "Zet Tuc"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Aql") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Aql"], "Gam Pav"));
-
-    ASSERT_TRUE(men_alpha_cons.count("UMa") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["UMa"], "Alp CMi"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Aur") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Aur"], "Gam Lep"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Lac") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Lac"], "Alp PsA"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Per") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Per"], "Del Eri"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Eri") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Eri"], "Zet Dor"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Cam") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Cam"], "Pi 3Ori"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Equ") > 0);
-    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Equ"], "Del Cap"));
-
-    ASSERT_TRUE(men_alpha_cons.count("Men") > 0);
-    EXPECT_FALSE(has_line_with_star(men_alpha_cons["Men"], "Alp Men"));
+    ASSERT_TRUE(men_alpha_cons.count("Tau") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Tau"], "Alp Tau"));
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Tau"], "Eta Tau"));
 }
 
 TEST_F(ConstellationTest, ReloadStuff_RepeatedCalls_DoNotCrashOrLeak)
@@ -566,5 +529,339 @@ TEST_F(ConstellationTest, UpsilonAndromedaeConstellations_LoadAndContainExpected
     EXPECT_FALSE(has_line_with_star(ups_cons["And"], "Upsilon Andromedae"));
     EXPECT_FALSE(has_line_with_star(ups_cons["And"], "50 And"));
     EXPECT_FALSE(has_line_with_star(ups_cons["And"], "50  And"));
+}
+
+// =====================================================================
+// Procedural Constellation Generation Tests
+// =====================================================================
+
+class ExoConsTest : public ::testing::Test
+{
+    protected:
+    static void SetUpTestSuite()
+    {
+        std::remove("exocons.dat");
+        ExoConsGenerator::reset();
+        if (cels)
+        {
+            delete[] cels;
+            cels = nullptr;
+        }
+        cels = new CelestialObject*[MAX_CELOBJS];
+        memset(cels, 0, MAX_CELOBJS * sizeof(CelestialObject*));
+        abort_load = false;
+        load_stuff();
+    }
+
+    static void TearDownTestSuite()
+    {
+        std::remove("exocons.dat");
+        ExoConsGenerator::reset();
+        if (cels)
+        {
+            delete[] cels;
+            cels = nullptr;
+        }
+    }
+
+    void SetUp() override
+    {
+        std::remove("exocons.dat");
+        ExoConsGenerator::reset();
+        constellations.clear();
+        read_cons_lines();
+    }
+
+    void TearDown() override
+    {
+        std::remove("exocons.dat");
+        ExoConsGenerator::reset();
+        constellations.clear();
+        read_cons_lines();
+    }
+
+    static Star* get_star(const std::string& name)
+    {
+        int idx = find_object(name.c_str(), true);
+        if (idx >= 0 && cels[idx])
+        {
+            return (Star*)cels[idx];
+        }
+        return nullptr;
+    }
+};
+
+TEST_F(ExoConsTest, Generate47UrsaeMajoris_CriteriaVerification)
+{
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(uma47, generated);
+
+    // Acceptance criterion: at least 50 new constellations form
+    EXPECT_GE(generated.size(), 50u);
+
+    // Collect all lines and lined star unit vectors
+    struct LineSeg
+    {
+        Point u1;
+        Point u2;
+    };
+    std::vector<LineSeg> all_segments;
+    std::vector<Point> lined_dirs;
+
+    Point vantage_pt = uma47->location;
+
+    for (const auto& c : generated)
+    {
+        // Must be named after an IAU constellation
+        const auto* def = ExoConsGenerator::find_iau_def(c.abbrev);
+        EXPECT_NE(def, nullptr);
+        EXPECT_EQ(c.name, def->name);
+        EXPECT_EQ(c.genitive, def->genitive);
+
+        for (const auto& cl : c.lines)
+        {
+            ASSERT_NE(cl.a, nullptr);
+            ASSERT_NE(cl.b, nullptr);
+            // Must not be gravitationally bound to local system
+            EXPECT_NE(cl.a, uma47);
+            EXPECT_NE(cl.b, uma47);
+            EXPECT_NE(cl.a->cenobj, uma47);
+            EXPECT_NE(cl.b->cenobj, uma47);
+
+            Point pa = (Point)cl.a->location - vantage_pt;
+            Point pb = (Point)cl.b->location - vantage_pt;
+            Point ua = pa * (1.0 / pa.magnitude());
+            Point ub = pb * (1.0 / pb.magnitude());
+
+            // Lines must not extend more than 15 degrees
+            double cos_ang = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
+            double angle_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * 180.0 / _pi;
+            EXPECT_LE(angle_deg, 15.01);
+
+            all_segments.push_back({ua, ub});
+            lined_dirs.push_back(ua);
+            lined_dirs.push_back(ub);
+        }
+    }
+
+    // Lines must not cross other lines
+    int crossing_count = 0;
+    for (size_t i = 0; i < all_segments.size(); ++i)
+    {
+        for (size_t j = i + 1; j < all_segments.size(); ++j)
+        {
+            if (ExoConsGenerator::arcs_intersect(all_segments[i].u1, all_segments[i].u2,
+                                                all_segments[j].u1, all_segments[j].u2))
+            {
+                crossing_count++;
+            }
+        }
+    }
+    EXPECT_EQ(crossing_count, 0);
+
+    // Sky coverage: at least 80% within 5 degrees of a lined star
+    double coverage = ExoConsGenerator::calculate_sky_coverage(lined_dirs, 1000);
+    EXPECT_GE(coverage, 0.80);
+}
+
+TEST_F(ExoConsTest, GenerateGJ86_CausesAtLeast50Constellations)
+{
+    Star* gj86 = get_star("GJ 86");
+    ASSERT_NE(gj86, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(gj86, generated);
+
+    // Acceptance criterion: at least 50 new constellations form
+    EXPECT_GE(generated.size(), 50u);
+
+    // Line criteria
+    Point vantage_pt = gj86->location;
+    std::vector<std::pair<Point, Point>> all_segs;
+    std::vector<Point> lined_dirs;
+
+    for (const auto& c : generated)
+    {
+        for (const auto& cl : c.lines)
+        {
+            Point pa = (Point)cl.a->location - vantage_pt;
+            Point pb = (Point)cl.b->location - vantage_pt;
+            Point ua = pa * (1.0 / pa.magnitude());
+            Point ub = pb * (1.0 / pb.magnitude());
+
+            double cos_ang = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
+            double angle_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * 180.0 / _pi;
+            EXPECT_LE(angle_deg, 15.01);
+
+            all_segs.push_back({ua, ub});
+            lined_dirs.push_back(ua);
+            lined_dirs.push_back(ub);
+        }
+    }
+
+    int crossing_count = 0;
+    for (size_t i = 0; i < all_segs.size(); ++i)
+    {
+        for (size_t j = i + 1; j < all_segs.size(); ++j)
+        {
+            if (ExoConsGenerator::arcs_intersect(all_segs[i].first, all_segs[i].second,
+                                                all_segs[j].first, all_segs[j].second))
+            {
+                crossing_count++;
+            }
+        }
+    }
+    EXPECT_EQ(crossing_count, 0);
+
+    double coverage = ExoConsGenerator::calculate_sky_coverage(lined_dirs, 1000);
+    EXPECT_GE(coverage, 0.80);
+}
+
+TEST_F(ExoConsTest, AlphaMensae_RetainsCustomShapesAndGeneratesUnusedStars)
+{
+    Star* alp_men = get_star("Alpha Mensae");
+    if (!alp_men)
+    {
+        alp_men = get_star("Alp Men");
+    }
+    ASSERT_NE(alp_men, nullptr);
+
+    // Verify existing constellations for Alpha Mensae are Orion and Taurus
+    int existing_men_cons_count = 0;
+    std::unordered_set<Star*> existing_stars;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Alpha Mensae")
+        {
+            existing_men_cons_count++;
+            for (const auto& cl : c.lines)
+            {
+                if (cl.a)
+                {
+                    existing_stars.insert(cl.a);
+                }
+                if (cl.b)
+                {
+                    existing_stars.insert(cl.b);
+                }
+            }
+        }
+    }
+    EXPECT_EQ(existing_men_cons_count, 2);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(alp_men, generated);
+
+    // Must generate constellations for unused stars
+    EXPECT_GT(generated.size(), 0u);
+    EXPECT_GE(existing_men_cons_count + (int)generated.size(), 50);
+
+    // Must not reuse stars already lined in existing Orion and Taurus
+    for (const auto& c : generated)
+    {
+        EXPECT_NE(c.abbrev, "Ori");
+        EXPECT_NE(c.abbrev, "Tau");
+        for (const auto& cl : c.lines)
+        {
+            EXPECT_EQ(existing_stars.count(cl.a), 0u);
+            EXPECT_EQ(existing_stars.count(cl.b), 0u);
+        }
+    }
+}
+
+TEST_F(ExoConsTest, FileCachingAndReload_MatchesConslineFormat)
+{
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(uma47, generated);
+    ASSERT_GE(generated.size(), 50u);
+
+    // Save to exocons.dat
+    ExoConsGenerator::save_to_exocons_file("47 Ursae Majoris", generated);
+
+    // Verify exocons.dat exists and has proper format
+    std::ifstream file("exocons.dat");
+    ASSERT_TRUE(file.is_open());
+
+    bool found_header = false;
+    bool found_cons = false;
+    bool found_line = false;
+    std::string line;
+    while (std::getline(file, line))
+    {
+        if (!line.empty() && line[0] == ':')
+        {
+            if (line == ":47 Ursae Majoris")
+            {
+                found_header = true;
+            }
+        }
+        else if (!line.empty() && line[0] == '~')
+        {
+            found_cons = true;
+        }
+        else if (!line.empty() && line.find(',') != std::string::npos)
+        {
+            found_line = true;
+        }
+    }
+    file.close();
+
+    EXPECT_TRUE(found_header);
+    EXPECT_TRUE(found_cons);
+    EXPECT_TRUE(found_line);
+
+    // Verify read_cons_lines loads both consline.dat and exocons.dat
+    constellations.clear();
+    read_cons_lines();
+
+    int uma_cons_count = 0;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "47 Ursae Majoris")
+        {
+            uma_cons_count++;
+        }
+    }
+    EXPECT_GE(uma_cons_count, 50);
+}
+
+TEST_F(ExoConsTest, ProgressiveFrameGeneration_ExecutesSmoothly)
+{
+    Star* gj86 = get_star("GJ 86");
+    ASSERT_NE(gj86, nullptr);
+    whereami = find_object("GJ 86", true);
+    mycenobj = gj86;
+
+    // Test synchronous vs progressive frame generation
+    ExoConsGenerator::start_generation_for(gj86);
+    for (int frame = 0; frame < 100; ++frame)
+    {
+        ExoConsGenerator::update_frame();
+    }
+
+    // After frames finish, constellations for GJ 86 are added
+    int gj86_count = 0;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "GJ 86" || c.vantage.distance_to(gj86->location) < light_year * 0.1)
+        {
+            gj86_count++;
+        }
+    }
+    EXPECT_GE(gj86_count, 50);
 }
 

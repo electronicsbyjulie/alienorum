@@ -37,7 +37,7 @@ IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
-			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp
+			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp
 TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
@@ -220,6 +220,9 @@ $(OBJINT)/cons.o: $(CLASSES_DIR)/cons.cpp
 
 $(OBJINT)/sscimport.o: $(CLASSES_DIR)/sscimport.cpp
 	$(CPP) $(CLASSES_DIR)/sscimport.cpp $(CPPFLAGS) -c -o $(OBJINT)/sscimport.o
+
+$(OBJINT)/exocons.o: $(CLASSES_DIR)/exocons.cpp
+	$(CPP) $(CLASSES_DIR)/exocons.cpp $(CPPFLAGS) -c -o $(OBJINT)/exocons.o
 
 $(OBJINT)/planet.o: $(CLASSES_DIR)/planet.cpp
 	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJINT)/planet.o

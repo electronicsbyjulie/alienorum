@@ -742,21 +742,24 @@ void load_catalogs()
     std::cout << "Loaded data in " << elapsed << std::endl;
 }
 
-void read_cons_lines()
+static void parse_cons_lines_file(const char* filename, int& l, std::string& vantage_name)
 {
-    int l;
-    std::string vantage_name;
-    FILE* fp = fopen("consline.dat", "rb");
+    FILE* fp = fopen(filename, "rb");
     if (fp)
     {
         char buffer[65536];
-        l = -1;
         while (fgets(buffer, 65532, fp))
         {
             char* newline = strchr(buffer, '\n');
-            if (newline) *newline = 0;
+            if (newline)
+            {
+                *newline = 0;
+            }
             newline = strchr(buffer, '\r');
-            if (newline) *newline = 0;
+            if (newline)
+            {
+                *newline = 0;
+            }
             if (*buffer == ':')
             {
                 vantage_name = trim(&buffer[1]);
@@ -764,7 +767,10 @@ void read_cons_lines()
             if (*buffer == '~')
             {
                 char* name2 = strchr(buffer, ',');
-                if (!name2) continue;
+                if (!name2)
+                {
+                    continue;
+                }
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -788,17 +794,23 @@ void read_cons_lines()
                     Constellation c;
                     c.name = name2;
                     c.abbrev = &buffer[1];
-                    if (name3 && strlen(name3)) c.genitive = name3;
+                    if (name3 && strlen(name3))
+                    {
+                        c.genitive = name3;
+                    }
                     c.vantage_name = vantage_name;
                     constellations.push_back(c);
                     l++;
                 }
             }
-            else if (l>=0)
+            else if (l >= 0)
             {
-                char *name1=buffer, *name2, *name3;
+                char *name1 = buffer, *name2, *name3;
                 name2 = strchr(name1, ',');
-                if (!name2) goto _no_more_names;
+                if (!name2)
+                {
+                    goto _no_more_names;
+                }
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -831,7 +843,8 @@ void read_cons_lines()
 
                     name1 = name2;
                     name2 = name3;
-                } while (name3);
+                }
+                while (name3);
             }
 
             _no_more_names:
@@ -839,6 +852,14 @@ void read_cons_lines()
         }
         fclose(fp);
     }
+}
+
+void read_cons_lines()
+{
+    int l = (int)constellations.size() - 1;
+    std::string vantage_name;
+    parse_cons_lines_file("consline.dat", l, vantage_name);
+    parse_cons_lines_file("exocons.dat", l, vantage_name);
 }
 
 void cache_cons_lines()

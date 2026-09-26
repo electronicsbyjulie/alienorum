@@ -20,3 +20,4 @@ wget-log*
 a[h-j]*
 !*needle*
 *_legacy*
+exocons.dat
