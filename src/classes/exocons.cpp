@@ -364,33 +364,63 @@ namespace alienorum
 
         Point sys_loc = sys_star->location;
 
-        std::unordered_map<std::string, int> vantage_counts;
-        std::unordered_map<std::string, Point> vantage_locations;
+        struct VantageGroup
+        {
+            Point loc;
+            std::string name;
+            int count = 0;
+        };
+        std::vector<VantageGroup> groups;
         int own_count = 0;
 
-        for (const auto& c : constellations)
+        std::unordered_map<std::string, Point> resolved_vantages;
+        resolved_vantages["Sun"] = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+        resolved_vantages["Sol"] = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+
+        for (auto& c : constellations)
         {
             std::string vname = c.vantage_name;
+            if (!c.vantage_resolved)
+            {
+                if (vname.empty() || vname == "Sun" || vname == "Sol")
+                {
+                    c.vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+                    c.vantage_resolved = true;
+                }
+                else
+                {
+                    auto it = resolved_vantages.find(vname);
+                    if (it != resolved_vantages.end())
+                    {
+                        c.vantage = it->second;
+                        c.vantage_resolved = true;
+                    }
+                    else
+                    {
+                        int sidx = find_object(vname.c_str(), true);
+                        if (sidx >= 0 && cels && cels[sidx])
+                        {
+                            c.vantage = cels[sidx]->location;
+                        }
+                        else
+                        {
+                            c.vantage.x = c.vantage.y = c.vantage.z = nanf("vantage");
+                        }
+                        resolved_vantages[vname] = c.vantage;
+                        c.vantage_resolved = true;
+                    }
+                }
+            }
+
             Point vpt = c.vantage;
-            if (vname.empty() && std::isnan(vpt.x))
+            if (std::isnan(vpt.x))
+            {
+                continue;
+            }
+
+            if (vname.empty() && vpt.distance_to(Point(0, 0, 0)) < light_year * 0.1)
             {
                 vname = "Sun";
-                vpt = Point(0, 0, 0);
-            }
-            else if (vname.empty())
-            {
-                if (vpt.distance_to(Point(0, 0, 0)) < light_year * 0.1)
-                {
-                    vname = "Sun";
-                }
-            }
-            else
-            {
-                int sidx = find_object(vname.c_str(), true);
-                if (sidx >= 0 && cels[sidx])
-                {
-                    vpt = cels[sidx]->location;
-                }
             }
 
             bool is_same_vantage = (!c.vantage_name.empty() && c.vantage_name == vantage_name_out);
@@ -398,15 +428,28 @@ namespace alienorum
             {
                 is_same_vantage = true;
             }
-            if ((!std::isnan(vpt.x) && vpt.distance_to(sys_loc) < light_year * 0.1) || is_same_vantage)
+            if (vpt.distance_to(sys_loc) < light_year * 0.1 || is_same_vantage)
             {
                 own_count++;
             }
 
-            if (!vname.empty())
+            bool matched_group = false;
+            for (auto& g : groups)
             {
-                vantage_counts[vname]++;
-                vantage_locations[vname] = vpt;
+                if ((!vname.empty() && !g.name.empty() && g.name == vname) || g.loc.distance_to(vpt) < light_year * 0.1)
+                {
+                    g.count++;
+                    if (g.name.empty() && !vname.empty())
+                    {
+                        g.name = vname;
+                    }
+                    matched_group = true;
+                    break;
+                }
+            }
+            if (!matched_group)
+            {
+                groups.push_back({vpt, vname, 1});
             }
         }
 
@@ -415,12 +458,11 @@ namespace alienorum
             return false;
         }
 
-        for (const auto& pair : vantage_counts)
+        for (const auto& g : groups)
         {
-            if (pair.second >= 30)
+            if (g.count >= 30)
             {
-                Point vloc = vantage_locations[pair.first];
-                double dist = vloc.distance_to(sys_loc);
+                double dist = g.loc.distance_to(sys_loc);
                 if (dist < light_year * 10.0)
                 {
                     return false;
@@ -1021,6 +1063,7 @@ namespace alienorum
             c.genitive = def->genitive;
             c.vantage_name = sys_name;
             c.vantage = vantage_pt;
+            c.vantage_resolved = true;
 
             for (const auto& line_pair : pair.second)
             {
@@ -1104,6 +1147,7 @@ namespace alienorum
         {
             c.vantage = sys_star->location;
             c.vantage_name = vname;
+            c.vantage_resolved = true;
             for (auto& cl : c.lines)
             {
                 if (cl.a)
@@ -1153,6 +1197,7 @@ namespace alienorum
                     c.vantage = current_sys_star->location;
                 }
                 c.vantage_name = current_vantage_name;
+                c.vantage_resolved = true;
                 for (auto& cl : c.lines)
                 {
                     if (cl.a)

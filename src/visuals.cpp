@@ -4663,19 +4663,26 @@ void draw_cons_lines()
     n = constellations.size();
     for (i=0; i<n; i++)
     {
-        if (constellations[i].vantage_name.size())
+        if (!constellations[i].vantage_resolved)
         {
-            int sidx = find_object(constellations[i].vantage_name.c_str(), true);
-            if (sidx < 0)
+            if (constellations[i].vantage_name.size())
             {
-                std::cerr << "WARNING: consline.dat vantage " << constellations[i].vantage_name << " does not match a star." << std::endl;
-                constellations[i].vantage.x = constellations[i].vantage.y = constellations[i].vantage.z = nanf("vantage");
+                int sidx = find_object(constellations[i].vantage_name.c_str(), true);
+                if (sidx < 0)
+                {
+                    std::cerr << "WARNING: consline.dat vantage " << constellations[i].vantage_name << " does not match a star." << std::endl;
+                    constellations[i].vantage.x = constellations[i].vantage.y = constellations[i].vantage.z = nanf("vantage");
+                }
+                else
+                {
+                    constellations[i].vantage = cels[sidx]->location;
+                }
             }
             else
             {
-                constellations[i].vantage = cels[sidx]->location;
+                constellations[i].vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
             }
-            constellations[i].vantage_name = "";
+            constellations[i].vantage_resolved = true;
         }
 
         double vantdist = constellations[i].vantage.distance_to(here);

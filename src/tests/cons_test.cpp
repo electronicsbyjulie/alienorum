@@ -4,6 +4,7 @@
 #include "../classes/star.h"
 #include "../classes/exocons.h"
 #include "../loaders.h"
+#include "../visuals.h"
 
 using namespace alienorum;
 
@@ -863,5 +864,65 @@ TEST_F(ExoConsTest, ProgressiveFrameGeneration_ExecutesSmoothly)
         }
     }
     EXPECT_GE(gj86_count, 50);
+}
+
+TEST_F(ExoConsTest, NearbyVantageWithin10LightYears_SuppressesExoconsGeneration)
+{
+    Star* tau_cet = get_star("Tau Ceti");
+    if (!tau_cet)
+    {
+        tau_cet = get_star("tau Cet");
+    }
+    ASSERT_NE(tau_cet, nullptr);
+
+    Star* eps_eri = get_star("Epsilon Eridani");
+    if (!eps_eri)
+    {
+        eps_eri = get_star("eps Eri");
+    }
+    ASSERT_NE(eps_eri, nullptr);
+
+    // Verify physical distance between Tau Ceti and Epsilon Eridani is within 10 light years
+    double dist = tau_cet->location.distance_to(eps_eri->location);
+    EXPECT_LT(dist, light_year * 10.0);
+    EXPECT_GT(dist, light_year * 0.1);
+
+    // Generate constellations for Tau Ceti and save to exocons.dat
+    ExoConsGenerator::generate_all_synchronous(tau_cet);
+
+    // Verify exocons.dat has Tau Ceti constellations
+    constellations.clear();
+    read_cons_lines();
+
+    int tau_cet_count = 0;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Tau Ceti" || c.vantage_name == "tau Cet"
+            || (!std::isnan(c.vantage.x) && c.vantage.distance_to(tau_cet->location) < light_year * 0.1))
+        {
+            tau_cet_count++;
+        }
+    }
+    EXPECT_GE(tau_cet_count, 50);
+
+    // When at Epsilon Eridani, to_be_generated must return false because a nearby star (Tau Ceti)
+    // within 10 light years already has constellations generated.
+    std::string vname;
+    bool should_gen = ExoConsGenerator::to_be_generated(eps_eri, vname);
+    EXPECT_FALSE(should_gen);
+
+    // Also verify when cache_cons_lines has executed
+    cache_cons_lines();
+
+    // After caching, vantage_name must remain intact and generation must still be suppressed
+    should_gen = ExoConsGenerator::to_be_generated(eps_eri, vname);
+    EXPECT_FALSE(should_gen);
+
+    // Verify update_frame does not initiate generation for Epsilon Eridani
+    whereami = find_object("Epsilon Eridani", true);
+    mycenobj = eps_eri;
+    here = eps_eri->location;
+    ExoConsGenerator::update_frame();
+    EXPECT_FALSE(ExoConsGenerator::get_is_generating());
 }
 

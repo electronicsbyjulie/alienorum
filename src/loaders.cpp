@@ -799,6 +799,7 @@ static void parse_cons_lines_file(const char* filename, int& l, std::string& van
                         c.genitive = name3;
                     }
                     c.vantage_name = vantage_name;
+                    c.vantage_resolved = false;
                     constellations.push_back(c);
                     l++;
                 }
@@ -870,6 +871,24 @@ void cache_cons_lines()
 
     for (int i = 0; i < ncons; i++)
     {
+        if (!constellations[i].vantage_resolved)
+        {
+            if (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol")
+            {
+                constellations[i].vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+                constellations[i].vantage_resolved = true;
+            }
+            else
+            {
+                int sidx = find_object(constellations[i].vantage_name.c_str(), true);
+                if (sidx >= 0 && cels && cels[sidx])
+                {
+                    constellations[i].vantage = cels[sidx]->location;
+                    constellations[i].vantage_resolved = true;
+                }
+            }
+        }
+
         double mag_limit = (i == 34) ? 7.5 : 6.5;
 
         mtx.lock();
