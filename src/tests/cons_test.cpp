@@ -372,3 +372,82 @@ TEST_F(ConstellationTest, Eridani82Constellations_LoadAndContainExpectedStars)
     EXPECT_FALSE(has_line_with_star(eri_82_cons["Eri"], "82 Eridani"));
 }
 
+TEST_F(ConstellationTest, AlphaMensaeConstellations_LoadAndContainExpectedStars)
+{
+    read_cons_lines();
+
+    std::map<std::string, const Constellation*> men_alpha_cons;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Alpha Mensae")
+        {
+            men_alpha_cons[c.abbrev] = &c;
+        }
+    }
+
+    EXPECT_EQ(men_alpha_cons.size(), 88u);
+
+    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
+    {
+        if (!cons)
+        {
+            return false;
+        }
+        for (const auto& line : cons->lines)
+        {
+            if (line.starnamea == star || line.starnameb == star)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Check key constellations and displaced stars
+    ASSERT_TRUE(men_alpha_cons.count("Dra") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Dra"], "Sun"));
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Dra"], "Alp1Cen"));
+
+    ASSERT_TRUE(men_alpha_cons.count("UMi") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["UMi"], "Alp CMa"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Cyg") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Cyg"], "Bet Hyi"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Cas") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Cas"], "82G Eri"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Lyr") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Lyr"], "Del Pav"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Peg") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Peg"], "Zet Tuc"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Aql") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Aql"], "Gam Pav"));
+
+    ASSERT_TRUE(men_alpha_cons.count("UMa") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["UMa"], "Alp CMi"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Aur") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Aur"], "Gam Lep"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Lac") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Lac"], "Alp PsA"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Per") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Per"], "Del Eri"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Eri") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Eri"], "Zet Dor"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Cam") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Cam"], "Pi 3Ori"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Equ") > 0);
+    EXPECT_TRUE(has_line_with_star(men_alpha_cons["Equ"], "Del Cap"));
+
+    ASSERT_TRUE(men_alpha_cons.count("Men") > 0);
+    EXPECT_FALSE(has_line_with_star(men_alpha_cons["Men"], "Alp Men"));
+}
+

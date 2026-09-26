@@ -4710,6 +4710,7 @@ void draw_cons_lines()
     ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.05));
     if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
     {
+        if (constellations[l].vantage.distance_to(here) > light_year * 10) continue;
         Point lconsdir;
 
         // Constellation boundaries, drawn as a dashed line: connect every other
@@ -4717,7 +4718,7 @@ void draw_cons_lines()
         m = constellations[l].bounds.size();
         float pdx = 0, pdy = 0;
         bool pvalid = false;
-        for (i=0; i<m; i++)
+        if (m) for (i=0; i<m; i++)
         {
             Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
             cbd = to_viewer_plane(cbd);
@@ -4732,10 +4733,25 @@ void draw_cons_lines()
 
             pdx = dx; pdy = dy; pvalid = valid;
         }
+        else
+        {
+            m = constellations[l].lines.size();
+            if (m) for (i=0; i<m; i++)
+            {
+                Star *s1 = constellations[l].lines[i].a, *s2 = constellations[l].lines[i].b;
+                if (s1) { lconsdir += (Point(s1->location) - Point(here)); pvalid = true; }
+                if (s2) { lconsdir += (Point(s2->location) - Point(here)); pvalid = true; }
+            }
+            else continue;
 
+            lconsdir = to_viewer_plane(lconsdir, 1);
+        }
+
+        if (!pvalid) continue;
         if (!constellations[l].lines.size()) continue;
         Cartesian2D cart(lconsdir, azimuth+azimuth_correction, altitude, zoom);
         float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
+        // std::cout << constellations[l].vantage << ":" << constellations[l].name << " @ " << cart.x << "," << cart.y << std::endl;
 
         if (dx < 0 || dy < 0) continue;
         std::string dispname = (shortnames ? constellations[l].abbrev : constellations[l].name);
