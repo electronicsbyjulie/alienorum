@@ -2,6 +2,7 @@
 #include <cmath>
 #include "../classes/cons.h"
 #include "../classes/star.h"
+#include "../loaders.h"
 
 using namespace alienorum;
 
@@ -197,3 +198,96 @@ TEST_F(ConstellationTest, FillAlienorumIds_FormatsCorrectly)
     EXPECT_TRUE(s1->alienorumid.find("2") != std::string::npos);
     EXPECT_TRUE(s1->alienorumid.find("Ori") != std::string::npos);
 }
+
+// =====================================================================
+// Tau Ceti Constellation Vantage Tests
+// =====================================================================
+
+TEST_F(ConstellationTest, TauCetiConstellations_LoadAndContainExpectedStars)
+{
+    read_cons_lines();
+
+    std::map<std::string, const Constellation*> tau_ceti_cons;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Tau Ceti")
+        {
+            tau_ceti_cons[c.abbrev] = &c;
+        }
+    }
+
+    EXPECT_GE(tau_ceti_cons.size(), 20u);
+
+    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
+    {
+        if (!cons)
+        {
+            return false;
+        }
+        for (const auto& line : cons->lines)
+        {
+            if (line.starnamea == star || line.starnameb == star)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Check key constellations and displaced stars
+    ASSERT_TRUE(tau_ceti_cons.count("Boo") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Boo"], "Sun"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Leo") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Leo"], "Alp CMa"));
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Leo"], "Alp CMi"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Vir") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Vir"], "Alp1Cen"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Cnc") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Cnc"], "Eps Eri"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Her") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Her"], "Alp Lyr"));
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Her"], "Alp Aql"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("CMi") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["CMi"], "Omi2Eri"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Car") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Car"], "82 Eridani"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Gem") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Gem"], "Pi 3Ori"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Cep") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Cep"], "Eta Cas"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Ara") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Ara"], "Del Pav"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Aps") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Aps"], "Bet Hyi"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Lup") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Lup"], "Eps Ind"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Cap") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Cap"], "Alp PsA"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Oct") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Oct"], "Zet Tuc"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Ser") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Ser"], "Iot Ser"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Crv") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crv"], "Gam Crv"));
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crv"], "Bet Crv"));
+
+    ASSERT_TRUE(tau_ceti_cons.count("Crt") > 0);
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crt"], "Alp Crt"));
+    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crt"], "Del Crt"));
+}
+
