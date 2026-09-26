@@ -291,3 +291,84 @@ TEST_F(ConstellationTest, TauCetiConstellations_LoadAndContainExpectedStars)
     EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crt"], "Del Crt"));
 }
 
+// =====================================================================
+// 82 Eridani Constellation Vantage Tests
+// =====================================================================
+
+TEST_F(ConstellationTest, Eridani82Constellations_LoadAndContainExpectedStars)
+{
+    read_cons_lines();
+
+    std::map<std::string, const Constellation*> eri_82_cons;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "82 Eridani")
+        {
+            eri_82_cons[c.abbrev] = &c;
+        }
+    }
+
+    EXPECT_EQ(eri_82_cons.size(), 88u);
+
+    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
+    {
+        if (!cons)
+        {
+            return false;
+        }
+        for (const auto& line : cons->lines)
+        {
+            if (line.starnamea == star || line.starnameb == star)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Check key constellations and displaced stars
+    ASSERT_TRUE(eri_82_cons.count("Boo") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Boo"], "Sun"));
+
+    ASSERT_TRUE(eri_82_cons.count("CVn") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["CVn"], "Alp CMa"));
+
+    ASSERT_TRUE(eri_82_cons.count("UMa") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["UMa"], "Alp CMi"));
+
+    ASSERT_TRUE(eri_82_cons.count("CrB") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["CrB"], "Alp1Cen"));
+
+    ASSERT_TRUE(eri_82_cons.count("UMi") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["UMi"], "Eps Eri"));
+
+    ASSERT_TRUE(eri_82_cons.count("Dra") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Dra"], "Tau Cet"));
+
+    ASSERT_TRUE(eri_82_cons.count("Ara") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Ara"], "Bet Hyi"));
+
+    ASSERT_TRUE(eri_82_cons.count("Equ") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Equ"], "Alp PsA"));
+
+    ASSERT_TRUE(eri_82_cons.count("Oph") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Oph"], "Del Pav"));
+
+    ASSERT_TRUE(eri_82_cons.count("CMi") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["CMi"], "Gam Lep"));
+
+    ASSERT_TRUE(eri_82_cons.count("Aur") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Aur"], "Pi 3Ori"));
+
+    ASSERT_TRUE(eri_82_cons.count("Crv") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crv"], "Gam Crv"));
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crv"], "Bet Crv"));
+
+    ASSERT_TRUE(eri_82_cons.count("Crt") > 0);
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crt"], "Alp Crt"));
+    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crt"], "Del Crt"));
+
+    ASSERT_TRUE(eri_82_cons.count("Eri") > 0);
+    EXPECT_FALSE(has_line_with_star(eri_82_cons["Eri"], "82 Eridani"));
+}
+
