@@ -2494,10 +2494,61 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         #undef galaxy_vtx_col
     }
 
-    cel->drawnxmin = xmin; cel->drawnxmax = xmax;
-    cel->drawnymin = ymin; cel->drawnymax = ymax;
+    // The quad mesh extends out to volumetric_mean_radius (a26 / 2), which encompasses the faint outer
+    // isophotes and crop margins. The optical body where the eye actually perceives starlight occupies the
+    // inner portion (~60% for most galaxies and procedural profiles, and ~35% for the SMC whose catalog
+    // diameter includes the distant HI tidal wing). Scaling by the visual fraction places drawnxmin/max/ymin/max
+    // and the label directly adjacent to the visible galaxy.
+    double vis_fraction = 0.60;
+    if (!strcmp(cel->name, "SMC") || !strcmp(cel->name, "Small Magellanic Cloud"))
+    {
+        vis_fraction = 0.35;
+    }
+
+    double vis_xmin = 1e30, vis_xmax = -1e30, vis_ymin = 1e30, vis_ymax = -1e30;
+    for (int s = 0; s < nseg; s++)
+    {
+        if (rim[s].x < -1e4 || rim[s].y < -1e4)
+        {
+            continue;
+        }
+        double vx = mid.x + (rim[s].x - mid.x) * vis_fraction;
+        double vy = mid.y + (rim[s].y - mid.y) * vis_fraction;
+        if (vx < vis_xmin)
+        {
+            vis_xmin = vx;
+        }
+        if (vx > vis_xmax)
+        {
+            vis_xmax = vx;
+        }
+        if (vy < vis_ymin)
+        {
+            vis_ymin = vy;
+        }
+        if (vy > vis_ymax)
+        {
+            vis_ymax = vy;
+        }
+    }
+
+    if (vis_xmax > vis_xmin && vis_ymax > vis_ymin)
+    {
+        cel->drawnxmin = vis_xmin;
+        cel->drawnxmax = vis_xmax;
+        cel->drawnymin = vis_ymin;
+        cel->drawnymax = vis_ymax;
+    }
+    else
+    {
+        cel->drawnxmin = xmin;
+        cel->drawnxmax = xmax;
+        cel->drawnymin = ymin;
+        cel->drawnymax = ymax;
+    }
     cel->onscreen = true;
-    return fmax(wide, tall) * 0.5;
+    double drawn_h = (cel->drawnymax > cel->drawny) ? (cel->drawnymax - cel->drawny) : ((cel->drawnymax - cel->drawnymin) * 0.5);
+    return fmax(1.0, drawn_h);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2955,8 +3006,11 @@ bool draw_single_object(int i)
             bloomrad_cache[i] = bloomrad = r;
             discinstead[i] = false;
             if (selected == i)
-                ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2,
+            {
+                double sel_r = fmax(cels[i]->drawnxmax - cels[i]->drawnxmin, cels[i]->drawnymax - cels[i]->drawnymin) * 0.5 + 2;
+                ImGui::GetBackgroundDrawList()->AddCircle(xycoord, sel_r,
                     rgba_apply_redlight(global_style.selected_color), 0, 2);
+            }
             goto labels_step;
         }
         // Too small, too faint, or off screen: fall through to the point path below.
@@ -3219,8 +3273,13 @@ bool draw_single_object(int i)
         }
 
         ImVec2 sz = ImGui::CalcTextSize(dispname);
-        int dy = cels[i]->drawny+bloomrad+1;
-        if (cels[i]->drawny < disph && dy > disph-sz.y) dy = disph-sz.y;
+        int dy = (cls == class_galaxy && cels[i]->drawnymax > cels[i]->drawny)
+            ? (cels[i]->drawnymax + 1)
+            : (cels[i]->drawny + bloomrad + 1);
+        if (cels[i]->drawny < disph && dy > disph-sz.y)
+        {
+            dy = disph-sz.y;
+        }
         ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, dy),
             rgba_apply_redlight(Color::ensure_wcag_contrast(
                 (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),

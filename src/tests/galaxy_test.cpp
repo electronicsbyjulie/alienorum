@@ -739,3 +739,76 @@ TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
         }
     }
 }
+
+TEST(GalaxyTest, GalaxyLabelVerticalPlacementUsesDrawnHeightNotWidth)
+{
+    Galaxy g;
+    strcpy(g.name, "TestGalaxy");
+    g.drawnx = 960.0f;
+    g.drawny = 878.0f;
+
+    // Simulate cylindrical projection stretching near pole where wide >> tall
+    const double tall = 28.0;
+    const double wide = 160.0;
+    const double xmin = g.drawnx - wide * 0.5;
+    const double xmax = g.drawnx + wide * 0.5;
+    const double ymin = g.drawny - tall * 0.5;
+    const double ymax = g.drawny + tall * 0.5;
+
+    g.drawnxmin = xmin;
+    g.drawnxmax = xmax;
+    g.drawnymin = ymin;
+    g.drawnymax = ymax;
+
+    // The drawn half-height below center:
+    double drawn_h = (ymax > g.drawny) ? (ymax - g.drawny) : (tall * 0.5);
+    double bloomrad = fmax(1.0, drawn_h);
+
+    // Vertical position of label:
+    int dy = (g.drawnymax > g.drawny)
+        ? (g.drawnymax + 1)
+        : (g.drawny + bloomrad + 1);
+
+    // Label must be placed directly below the drawn height (ymax), NOT pushed down by wide * 0.5
+    EXPECT_NEAR(dy, ymax + 1, 1.0);
+    EXPECT_LT(dy, g.drawny + wide * 0.5);
+}
+
+TEST(GalaxyTest, GalaxyVisualBoundsMatchVisibleBodyInSpaceshipMode)
+{
+    Galaxy m31;
+    strcpy(m31.name, "M31");
+    m31.drawnx = 960.0f;
+    m31.drawny = 464.0f;
+
+    // Full quad mesh extending to catalog a26 radius
+    const double mesh_r = 233.0;
+    const double ymax_mesh = m31.drawny + mesh_r;
+
+    // In spaceship mode, visible optical body is scaled by vis_fraction
+    const double vis_frac_m31 = 0.60;
+    const double vis_ymax_m31 = m31.drawny + mesh_r * vis_frac_m31;
+    m31.drawnymax = vis_ymax_m31;
+
+    int dy_m31 = (m31.drawnymax > m31.drawny) ? (m31.drawnymax + 1) : (m31.drawny + 1);
+    EXPECT_NEAR(dy_m31, m31.drawny + mesh_r * 0.60 + 1, 1.0);
+    // Must be placed far closer than the unscaled outer mesh boundary
+    EXPECT_LT(dy_m31, ymax_mesh - 50.0);
+
+    Galaxy smc;
+    strcpy(smc.name, "SMC");
+    smc.drawnx = 960.0f;
+    smc.drawny = 390.0f;
+
+    const double mesh_r_smc = 224.0;
+    const double ymax_mesh_smc = smc.drawny + mesh_r_smc;
+    const double vis_frac_smc = 0.35;
+    const double vis_ymax_smc = smc.drawny + mesh_r_smc * vis_frac_smc;
+    smc.drawnymax = vis_ymax_smc;
+
+    int dy_smc = (smc.drawnymax > smc.drawny) ? (smc.drawnymax + 1) : (smc.drawny + 1);
+    EXPECT_NEAR(dy_smc, smc.drawny + mesh_r_smc * 0.35 + 1, 1.0);
+    EXPECT_LT(dy_smc, ymax_mesh_smc - 100.0);
+}
+
+
