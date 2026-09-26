@@ -302,7 +302,7 @@ namespace alienorum
         "}\n"
         "vec3 finish_color(vec3 c)\n"
         "{\n"
-        "    if (vApplySky > 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
+        "    if (vApplySky > 0.5 && vFlags.x < 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
         "    {\n"
         "        float dy = vSky.a - vScreenY;\n"
         "        if (dy >= 0.0)\n"

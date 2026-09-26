@@ -413,6 +413,9 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
     }
 
+    std::string JDdisp = std::string("JD") + std::to_string(JDnow);
+    ImGui::Text("%s", JDdisp.c_str());
+
     ImGui::Text(local_tmstep ? "Local Timestep (F10)" : "Earth Timestep (F10)");
 
     ImGui::Separator();
@@ -433,9 +436,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         numobjs = std::to_string(num_planets) + " planets";
         ImGui::Text("%s", numobjs.c_str());
     } */
-
-    std::string JDdisp = std::string("JD") + std::to_string(JDnow);
-    ImGui::Text("%s", JDdisp.c_str());
 
     float frame_rate = 1.0 / frame_dur;
     ImGui::Text("%.1f frames/s", frame_rate);

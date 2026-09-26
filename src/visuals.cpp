@@ -980,7 +980,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     // exponential falloff (its fixed 0.999/0.9995/0.9999 factors) analytically from there,
     // rather than re-deriving the underlying atmosphere-color computation here.
     in.apply_sky_blend = false;
-    if (view_mode == vm_horizon && !sky_grad.empty())
+    if (!self_luminous && view_mode == vm_horizon && !sky_grad.empty())
     {
         auto it = sky_grad.rbegin();
         in.sky_horizon_y = (double)it->first;
@@ -1615,7 +1615,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 polyb += is_night*nrgb.b;
                             }
 
-                            if (view_mode == vm_horizon)
+                            if (!self_luminous && view_mode == vm_horizon)
                             {
                                 if (sky_grad.find(dy1) != sky_grad.end())
                                 {
