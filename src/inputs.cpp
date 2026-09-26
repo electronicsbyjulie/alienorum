@@ -707,8 +707,8 @@ void process_key_cmd_char(char c)
         if (distance_lblcut < light_year*5) distance_lblcut = light_year*5;
         break;
 
-        case '`': global_gamma += 0.003; set_gamma(global_gamma); break;
-        case '~': global_gamma -= 0.003; set_gamma(global_gamma); break;
+        case '`': global_gamma += 0.01; set_gamma(global_gamma); break;
+        case '~': global_gamma -= 0.01; set_gamma(global_gamma); break;
 
         case '_':
         if (whereami >= 0)
