@@ -7425,18 +7425,15 @@ static std::string normalize_galaxy_name(const std::string &raw)
 // q0 is a disc's thickness -- the axis ratio it still shows seen exactly edge-on. The values below
 // are fitted against the UNGC's own inclination column, which keeps the RC3 galaxies on the same
 // convention.
-//
-// For spheroids and ellipticals (T < 0 or dwarf morphology "Sph"), the flattening is intrinsic
-// to a 3D ellipsoid rather than a tilted thin disc. Because the renderer draws galaxies as
-// planar 2D discs, setting i = 90 deg would collapse a 3D spheroid into a zero-thickness line on
-// screen. To reproduce the observed apparent cross section (b/a) on the sky, we want
-// cos(i) = b/a, hence i = acos(b/a).
+// For spheroids and ellipticals (T < 0 or dwarf morphology "Sph"), the flattening is
+// intrinsic 3D shape rather than a tilted thin disc. They take 90 degrees (half_pi) so their
+// polar symmetry axis lies in the plane of the sky as seen from Earth, reproducing the cataloged
+// axis ratio and position angle when projected as a 3D spheroid.
 static double galaxy_inclination(double axis_ratio, double T, bool T_known, const char* morph_type = nullptr)
 {
-    if ((T_known && T < 0) || (morph_type && strstr(morph_type, "Sph")))
+    if ((T_known && T < 0) || (morph_type && (strstr(morph_type, "Sph") || strstr(morph_type, "sph"))))
     {
-        double r = fmin(1.0, fmax(0.0, axis_ratio));
-        return acos(r);
+        return half_pi;
     }
 
     double q0 = 0.20;                                   // the classic value, for an unknown type
@@ -7653,15 +7650,6 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
                 continue;
             }
             Galaxy *ig = it->second;
-
-            // Spheroids and ellipticals have no rotating thin disc and lack HI kinematic
-            // inclinations; UNGC table2 assigns dummy 90 values to them which would collapse
-            // their 3D shape to zero thickness. Preserve the photometric inclination derived from b/a.
-            if ((ig->T_known && ig->morphological_T < 0) || strstr(ig->morph_type, "Sph"))
-            {
-                continue;
-            }
-
             ig->inclination = atof(field) * fiftyseventh;
             ig->location.equatorial_plane =
                 ig->location.local_system_plane =

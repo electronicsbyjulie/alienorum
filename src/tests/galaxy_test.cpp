@@ -595,3 +595,74 @@ TEST(GalaxyInternalMapTest, MajorGalaxiesAndCompanionsHaveValidJpegHeader)
         EXPECT_EQ(header[1], 0xD8);
     }
 }
+
+// =====================================================================
+// Spheroidal and Elliptical 3D Rendering Tests
+// =====================================================================
+
+TEST(GalaxyTest, SpheroidClassification)
+{
+    Galaxy sag;
+    sag.T_known = true;
+    sag.morphological_T = -3.0;
+    snprintf(sag.morph_type, sizeof(sag.morph_type), "Sph");
+    snprintf(sag.name, sizeof(sag.name), "Sag dSph");
+    EXPECT_TRUE(sag.is_spheroidal_or_elliptical());
+
+    Galaxy ell;
+    ell.T_known = true;
+    ell.morphological_T = -5.0;
+    snprintf(ell.morph_type, sizeof(ell.morph_type), "E0");
+    EXPECT_TRUE(ell.is_spheroidal_or_elliptical());
+
+    Galaxy compact_ell;
+    compact_ell.T_known = true;
+    compact_ell.morphological_T = -6.0;
+    EXPECT_TRUE(compact_ell.is_spheroidal_or_elliptical());
+
+    Galaxy dwarf_ell;
+    snprintf(dwarf_ell.morph_type, sizeof(dwarf_ell.morph_type), "dE3");
+    EXPECT_TRUE(dwarf_ell.is_spheroidal_or_elliptical());
+
+    Galaxy spiral;
+    spiral.T_known = true;
+    spiral.morphological_T = 3.0;
+    snprintf(spiral.morph_type, sizeof(spiral.morph_type), ".SAS3..");
+    EXPECT_FALSE(spiral.is_spheroidal_or_elliptical());
+
+    Galaxy irregular;
+    irregular.T_known = true;
+    irregular.morphological_T = 10.0;
+    snprintf(irregular.morph_type, sizeof(irregular.morph_type), "Ir");
+    EXPECT_FALSE(irregular.is_spheroidal_or_elliptical());
+}
+
+TEST(GalaxyTest, Spheroid3DSilhouetteNeverCollapses)
+{
+    const double q = 0.48; // Sag dSph intrinsic axis ratio
+    const double a = 1000.0; // semi-major radius
+
+    // Test across a full 180-degree sweep of viewing inclinations relative to the symmetry axis
+    for (int deg = 0; deg <= 180; deg += 5)
+    {
+        double theta = deg * (M_PI / 180.0);
+        double costheta = cos(theta);
+        double sintheta = sin(theta);
+        double b_app = a * sqrt(costheta * costheta + q * q * sintheta * sintheta);
+
+        // At all viewing angles, the apparent semi-minor axis must never collapse below q * a
+        EXPECT_GE(b_app, q * a - 1e-9);
+        EXPECT_LE(b_app, a + 1e-9);
+
+        // When viewed edge-on (theta = 90 deg), thickness is exactly q * a = 0.48 * a, NOT zero
+        if (deg == 90)
+        {
+            EXPECT_NEAR(b_app, q * a, 1e-6);
+        }
+        // When viewed face-on (theta = 0 or 180 deg), it appears circular
+        if (deg == 0 || deg == 180)
+        {
+            EXPECT_NEAR(b_app, a, 1e-6);
+        }
+    }
+}

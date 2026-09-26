@@ -2133,7 +2133,10 @@ double global_magshift;
 
 static double galaxy_surface_intensity(double f, double t, double T, bool barred)
 {
-    if (T < 0) return pow(fmax(0.0, 1.0 - f), 3.4);
+    if (T < 0)
+    {
+        return pow(fmax(0.0, 1.0 - f), 3.4);
+    }
 
     // Pitch angle: about 8 degrees at S0a, opening to roughly 29 by Sd. Arms are logarithmic
     // spirals, so a constant pitch means theta advances with the logarithm of the radius.
@@ -2168,12 +2171,23 @@ static double galaxy_surface_intensity(double f, double t, double T, bool barred
 static double draw_galaxy(CelestialObject* cel, double appmag)
 {
     Galaxy *g = (Galaxy*)cel;
-    if (g->angular_diameter <= 0) return 0;
-    if (inside_galaxy_idx == cel->seqno) return 0;
+    if (g->angular_diameter <= 0)
+    {
+        return 0;
+    }
+    if (inside_galaxy_idx == cel->seqno)
+    {
+        return 0;
+    }
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
-    if (!(g->volumetric_mean_radius > 0)) return 0;
+    if (!(g->volumetric_mean_radius > 0))
+    {
+        return 0;
+    }
+
+    bool is_spheroid = g->is_spheroidal_or_elliptical();
 
     Rotation pl = cel->location.local_system_plane;
     Point e1 = rotate3D(xaxis, center, pl.v, -pl.a);
@@ -2181,8 +2195,51 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     e1.scale(1);
     e2.scale(1);
 
+    Point u1, u2;
+    double a_rad = g->volumetric_mean_radius;
+    double b_rad = a_rad;
+    if (is_spheroid)
+    {
+        Point pole = rotate3D(yaxis, center, pl.v, -pl.a);
+        pole.scale(1);
+
+        Point vhat = center - cel->tmprel;
+        double vhat_mag = vhat.magnitude();
+        if (vhat_mag > 0)
+        {
+            vhat.scale(1);
+        }
+        else
+        {
+            vhat = zaxis;
+        }
+
+        double costheta = fmax(-1.0, fmin(1.0, vhat.x * pole.x + vhat.y * pole.y + vhat.z * pole.z));
+        double sintheta_sq = fmax(0.0, 1.0 - costheta * costheta);
+
+        double q = g->axis_ratio;
+        q = fmax(0.05, fmin(1.0, q > 0 ? q : 1.0));
+        b_rad = a_rad * sqrt(costheta * costheta + q * q * sintheta_sq);
+
+        u1 = compute_normal(center, pole, vhat);
+        if (u1.magnitude() < 1e-6)
+        {
+            u1 = e1 - vhat * (e1.x * vhat.x + e1.y * vhat.y + e1.z * vhat.z);
+            if (u1.magnitude() < 1e-6)
+            {
+                u1 = e2 - vhat * (e2.x * vhat.x + e2.y * vhat.y + e2.z * vhat.z);
+            }
+        }
+        u1.scale(1);
+
+        u2 = compute_normal(center, vhat, u1);
+        u2.scale(1);
+    }
+
     const int kMaxSeg = 72;
-    double est_px = g->angular_diameter * zoom * dispcx;
+    double current_dist = cel->tmprel.magnitude();
+    double current_ang_diam = (current_dist > 0) ? (2.0 * g->volumetric_mean_radius / current_dist) : g->angular_diameter;
+    double est_px = current_ang_diam * zoom * dispcx;
     int nseg = (int)fmin((double)kMaxSeg, fmax(12.0, est_px * 1.1));
     int nring = (int)fmin(18.0, fmax(4.0, est_px * 0.25));
 
@@ -2191,25 +2248,54 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     for (int s = 0; s < nseg; s++)
     {
         double t = s * (_pi * 2.0 / nseg);
-        Point p = cel->tmprel + (e1 * (g->volumetric_mean_radius * cos(t))) + (e2 * (g->volumetric_mean_radius * sin(t)));
+        Point p;
+        if (is_spheroid)
+        {
+            p = cel->tmprel + (u1 * (a_rad * cos(t))) + (u2 * (b_rad * sin(t)));
+        }
+        else
+        {
+            p = cel->tmprel + (e1 * (g->volumetric_mean_radius * cos(t))) + (e2 * (g->volumetric_mean_radius * sin(t)));
+        }
         p = to_viewer_plane(p);
-        if (airy_rock) p = refract_true_point(p);
+        if (airy_rock)
+        {
+            p = refract_true_point(p);
+        }
         Cartesian2D z = Cartesian2D(p, azimuth + azimuth_correction, altitude, zoom);
         rim[s] = ImVec2(dispcx + z.x * dispcx, dispcy + z.y * dispcx);
         if (z.x < -1e4 || z.y < -1e4)
         {
             continue;                 // behind the camera
         }
-        if (rim[s].x < xmin) xmin = rim[s].x;
-        if (rim[s].x > xmax) xmax = rim[s].x;
-        if (rim[s].y < ymin) ymin = rim[s].y;
-        if (rim[s].y > ymax) ymax = rim[s].y;
+        if (rim[s].x < xmin)
+        {
+            xmin = rim[s].x;
+        }
+        if (rim[s].x > xmax)
+        {
+            xmax = rim[s].x;
+        }
+        if (rim[s].y < ymin)
+        {
+            ymin = rim[s].y;
+        }
+        if (rim[s].y > ymax)
+        {
+            ymax = rim[s].y;
+        }
     }
 
     double wide = xmax - xmin, tall = ymax - ymin, sz3 = sqrt(wide*wide+tall*tall)/3;
     // std::cout << cel->name << " wide=" << wide << " tall=" << tall << std::endl;
-    if (wide < 1.5 && tall < 1.5) return 0;                     // smaller than a pixel: the point path has it
-    if (xmax < 0 || ymax < 0 || xmin > dispcx*2 || ymin > dispcy*2) return 0;
+    if (wide < 1.5 && tall < 1.5)
+    {
+        return 0;                     // smaller than a pixel: the point path has it
+    }
+    if (xmax < 0 || ymax < 0 || xmin > dispcx*2 || ymin > dispcy*2)
+    {
+        return 0;
+    }
 
     if (sz3)
     {
@@ -2221,7 +2307,10 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     double area = fmax(4.0, _pi * wide * tall * 0.25);
     double total = pow(magnbase, -appmag) * global_brightness * zoom * zoom * 1e+4;
     double peak = fmin(210.0, pow(total / area, global_inverse_gamma) * 255.0);
-    if (peak < 2.0) return 0;
+    if (peak < 2.0)
+    {
+        return 0;
+    }
 
     Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
     col.normalize(255);
@@ -2229,7 +2318,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 
     // Type drives the whole pattern; an unknown one is treated as a middling spiral rather than
     // as an elliptical, since that is the commoner shape and the safer-looking mistake.
-    double T = g->T_known ? g->morphological_T : 3.0;
+    double T = g->T_known ? g->morphological_T : (is_spheroid ? -3.0 : 3.0);
 
     // The RC3 spells the family in the third character of its type string: A unbarred, B barred,
     // X intermediate. The UNGC's own short forms ("Im", "Sph") have nothing there, hence the

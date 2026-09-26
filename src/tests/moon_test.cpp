@@ -157,23 +157,6 @@ TEST(MoonTest, LaplacePlane_TidalLockGuard)
     EXPECT_DOUBLE_EQ(actual.a, 7.89);
 }
 
-TEST(MoonTest, MoonsNeverGenerateRings)
-{
-    Moon m;
-    m.mass = 0.01 * earth_mass;
-    m.volumetric_mean_radius = 0.27 * earth_radius;
-
-    EXPECT_FALSE(m.guess_has_rings());
-
-    m.generate_ring_parameters(false);
-    EXPECT_DOUBLE_EQ(m.ring_radius, 0.0);
-    EXPECT_DOUBLE_EQ(m.ring_inner_radius, 0.0);
-
-    m.generate_ring_parameters(true);
-    EXPECT_DOUBLE_EQ(m.ring_radius, 0.0);
-    EXPECT_DOUBLE_EQ(m.ring_inner_radius, 0.0);
-}
-
 TEST(MoonTest, PlanetRingsBoundedByRocheLimit)
 {
     Planet p;

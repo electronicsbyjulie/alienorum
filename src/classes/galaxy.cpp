@@ -49,6 +49,28 @@ bool Galaxy::from_json(json j)
     return true;
 }
 
+bool Galaxy::is_spheroidal_or_elliptical() const
+{
+    if (T_known && morphological_T < 0)
+    {
+        return true;
+    }
+    if (morph_type[0] != '\0')
+    {
+        if (strstr(morph_type, "Sph") != nullptr || strstr(morph_type, "sph") != nullptr ||
+            strstr(morph_type, "dE") != nullptr || strstr(morph_type, "cD") != nullptr ||
+            (morph_type[0] == 'E' && (morph_type[1] == '\0' || (morph_type[1] >= '0' && morph_type[1] <= '9'))))
+        {
+            return true;
+        }
+    }
+    if (strstr(name, "dSph") != nullptr || strstr(name, "Sph") != nullptr)
+    {
+        return true;
+    }
+    return false;
+}
+
 int alienorum::GalaxyBand::load_dat_file(std::string fname)
 {
     FILE *fp = fopen(fname.c_str(), "r");

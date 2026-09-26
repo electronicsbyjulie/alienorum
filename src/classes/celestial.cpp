@@ -409,7 +409,7 @@ void Orbit::compute_center_mass(double mm)
 
 std::string CelestialObject::RA_as_hms(double seen_equinox)
 {
-    return radians_to_hms(right_ascension * fiftyseven / 15 - seen_equinox);
+    return radians_to_hms(right_ascension - seen_equinox);
 }
 
 std::string CelestialObject::Decl_as_degms()

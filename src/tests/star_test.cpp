@@ -106,7 +106,6 @@ TEST(StarTest, DegenerateRadiusCalculation)
     EXPECT_DOUBLE_EQ(Star::degenerate_radius(0.0), Star::degenerate_radius(0.6 * solar_mass));
 }
 
-// TODO: This is not passing - if you are submitting a PR and seeing this fail, your code didn't break it.
 TEST(StarTest, TemperatureFromBV)
 {
     Star sun;
