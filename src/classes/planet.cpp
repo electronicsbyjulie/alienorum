@@ -22,7 +22,10 @@ void alienorum::Planet::setup_atm_ring_props()
     if (estimate_habitability() && type != hycean) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
     else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
 
-    generate_ring_parameters();
+    if (typeclass() == class_planet)
+    {
+        generate_ring_parameters();
+    }
 }
 
 void alienorum::Planet::apply_cosmic_shoreline()
@@ -1094,6 +1097,10 @@ json Planet::to_json()
     // fields above, they are written only when they say something.
     if (asteroid_no) towrite["asteroid_no"] = asteroid_no;
     if (lock_type) towrite["lock_type"] = lock_type;
+    if (msini)
+    {
+        towrite["msini"] = msini;
+    }
 
     // A ring system's geometry used not to be written at all, on the understanding that
     // generate_ring_parameters() would invent one again on the next load. That is fine for a body
@@ -1115,6 +1122,14 @@ bool Planet::from_json(json j)
 {
     CelestialObject::from_json(j);
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
+    try
+    {
+        j.at("msini").get_to(msini);
+    }
+    catch (...)
+    {
+        ;
+    }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
     // Fetch the node into a local FIRST. Written as ensure_atmosphere()->from_json(j.at(...)),
     // C++17 sequences the postfix-expression before the argument, so ensure_atmosphere() runs and
@@ -1241,10 +1256,19 @@ void Planet::generate_ring_parameters(bool gr)
         return;
     }
 
+    // Rings consist of small, non-cohesive aggregate particles whose tidal disruption
+    // boundary is defined by the fluid Roche limit.
+    CelestialObject ring_particle;
+    ring_particle.type = waterworld;
+    double t_eq = equilibrium_temperature();
+    double particle_density = (t_eq < 200.0) ? 1.0 : 2.5;
+    ring_particle.volumetric_mean_radius = 1.0;
+    ring_particle.mass = particle_density * sphere_volume(1.0) * 1e6;
+    double roche_limit_zero = this->Roche_limit(&ring_particle);
+
     // Safety constraint: If Roche limit is somehow smaller than the planet 
     // (e.g., highly dense planet, very low density moon proxy), rings cannot form.
     double minInnerRadius = volumetric_mean_radius * 1.1; // 10% gap from the surface/atmosphere
-    double roche_limit_zero = this->Roche_limit();
     if (roche_limit_zero <= minInnerRadius)
     {
         ring_radius = 0;
@@ -1259,7 +1283,7 @@ void Planet::generate_ring_parameters(bool gr)
     // Generate Outer Radius
     // Must be larger than inner, and capped tightly by the Roche limit
     std::uniform_real_distribution<double> outerDist(ring_inner_radius * 1.15, roche_limit_zero * 0.98);
-    ring_radius = outerDist(rng) + volumetric_mean_radius;
+    ring_radius = outerDist(rng);
 
     // Generate Density/Opacity
     // Wider rings or rings around more massive planets tend to be more substantial.

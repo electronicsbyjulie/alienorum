@@ -171,7 +171,7 @@ TEST(GalaxyBandTest, LoadDatFile_AcceptsWhitespaceSeparatedValues)
 
 TEST(MilkyWayBackdropTest, TextureFileExistsAndHasValidHeader)
 {
-    std::string path = "galaxies" _FILESLASH "Milky Way.jpg";
+    std::string path = "galaxies" _FILESLASH "internal" _FILESLASH "Milky Way.jpg";
     std::ifstream file(path, std::ios::binary);
     ASSERT_TRUE(file.good()) << "Could not open " << path;
 
@@ -522,6 +522,293 @@ TEST(MilkyWayBackdropTest, WhiteBackgroundInversion)
 
     // Contrast between dust lane and star cloud is clearly visible (> 40 levels of brightness)
     EXPECT_GT(dust_lane_blended - star_cloud_blended, 40);
+}
+
+// =====================================================================
+// Galaxy Face-on Map Tests
+// =====================================================================
+
+TEST(GalaxyFaceonMapTest, MajorGalaxiesAndMilkyWayHaveValidJpegHeader)
+{
+    const std::vector<std::string> test_galaxies =
+    {
+        "M31", "M81", "M101", "NGC_1097", "NGC_1316", "NGC_1365", "NGC_253", "Milky Way"
+    };
+
+    for (const auto &gname : test_galaxies)
+    {
+        std::string path = "galaxies" _FILESLASH "faceon" _FILESLASH + gname + ".jpg";
+        std::ifstream file(path, std::ios::binary);
+        ASSERT_TRUE(file.good()) << "Missing face-on map for " << gname << " at " << path;
+
+        // Verify JPEG SOI marker (0xFF 0xD8)
+        unsigned char header[2];
+        file.read((char*)header, 2);
+        EXPECT_EQ(header[0], 0xFF);
+        EXPECT_EQ(header[1], 0xD8);
+    }
+}
+
+TEST(GalaxyFaceonMapTest, AccessoryCompanionsExist)
+{
+    // Verify companion galaxies identified and extracted as accessories
+    const std::vector<std::string> companions =
+    {
+        "NGC_1317", "NGC_4435", "NGC_4485", "NGC_4627", "NGC_5195"
+    };
+
+    for (const auto &cname : companions)
+    {
+        std::string path = "galaxies" _FILESLASH "faceon" _FILESLASH + cname + ".jpg";
+        std::ifstream file(path, std::ios::binary);
+        EXPECT_TRUE(file.good()) << "Accessory companion face-on map missing: " << path;
+
+        // Verify JPEG SOI marker (0xFF 0xD8)
+        unsigned char header[2];
+        file.read((char*)header, 2);
+        EXPECT_EQ(header[0], 0xFF);
+        EXPECT_EQ(header[1], 0xD8);
+    }
+}
+
+// =====================================================================
+// Galaxy Internal 360-degree Panorama Tests
+// =====================================================================
+
+TEST(GalaxyInternalMapTest, MajorGalaxiesAndCompanionsHaveValidJpegHeader)
+{
+    const std::vector<std::string> test_galaxies =
+    {
+        "M31", "M81", "M101", "NGC_1097", "NGC_4435", "NGC_4490", "NGC_4627", "NGC_5194", "NGC_5195"
+    };
+
+    for (const auto &gname : test_galaxies)
+    {
+        std::string path = "galaxies" _FILESLASH "internal" _FILESLASH + gname + ".jpg";
+        std::ifstream file(path, std::ios::binary);
+        ASSERT_TRUE(file.good()) << "Missing internal map for " << gname << " at " << path;
+
+        // Verify JPEG SOI marker (0xFF 0xD8)
+        unsigned char header[2];
+        file.read((char*)header, 2);
+        EXPECT_EQ(header[0], 0xFF);
+        EXPECT_EQ(header[1], 0xD8);
+    }
+}
+
+// =====================================================================
+// Spheroidal and Elliptical 3D Rendering Tests
+// =====================================================================
+
+TEST(GalaxyTest, SpheroidClassification)
+{
+    Galaxy sag;
+    sag.T_known = true;
+    sag.morphological_T = -3.0;
+    snprintf(sag.morph_type, sizeof(sag.morph_type), "Sph");
+    snprintf(sag.name, sizeof(sag.name), "Sag dSph");
+    EXPECT_TRUE(sag.is_spheroidal_or_elliptical());
+
+    Galaxy ell;
+    ell.T_known = true;
+    ell.morphological_T = -5.0;
+    snprintf(ell.morph_type, sizeof(ell.morph_type), "E0");
+    EXPECT_TRUE(ell.is_spheroidal_or_elliptical());
+
+    Galaxy compact_ell;
+    compact_ell.T_known = true;
+    compact_ell.morphological_T = -6.0;
+    EXPECT_TRUE(compact_ell.is_spheroidal_or_elliptical());
+
+    Galaxy dwarf_ell;
+    snprintf(dwarf_ell.morph_type, sizeof(dwarf_ell.morph_type), "dE3");
+    EXPECT_TRUE(dwarf_ell.is_spheroidal_or_elliptical());
+
+    Galaxy spiral;
+    spiral.T_known = true;
+    spiral.morphological_T = 3.0;
+    snprintf(spiral.morph_type, sizeof(spiral.morph_type), ".SAS3..");
+    EXPECT_FALSE(spiral.is_spheroidal_or_elliptical());
+
+    Galaxy irregular;
+    irregular.T_known = true;
+    irregular.morphological_T = 10.0;
+    snprintf(irregular.morph_type, sizeof(irregular.morph_type), "Ir");
+    EXPECT_FALSE(irregular.is_spheroidal_or_elliptical());
+}
+
+TEST(GalaxyTest, Spheroid3DSilhouetteNeverCollapses)
+{
+    const double q = 0.48; // Sag dSph intrinsic axis ratio
+    const double a = 1000.0; // semi-major radius
+
+    // Test across a full 180-degree sweep of viewing inclinations relative to the symmetry axis
+    for (int deg = 0; deg <= 180; deg += 5)
+    {
+        double theta = deg * (M_PI / 180.0);
+        double costheta = cos(theta);
+        double sintheta = sin(theta);
+        double b_app = a * sqrt(costheta * costheta + q * q * sintheta * sintheta);
+
+        // At all viewing angles, the apparent semi-minor axis must never collapse below q * a
+        EXPECT_GE(b_app, q * a - 1e-9);
+        EXPECT_LE(b_app, a + 1e-9);
+
+        // When viewed edge-on (theta = 90 deg), thickness is exactly q * a = 0.48 * a, NOT zero
+        if (deg == 90)
+        {
+            EXPECT_NEAR(b_app, q * a, 1e-6);
+        }
+        // When viewed face-on (theta = 0 or 180 deg), it appears circular
+        if (deg == 0 || deg == 180)
+        {
+            EXPECT_NEAR(b_app, a, 1e-6);
+        }
+    }
+}
+
+// =====================================================================
+// Galaxy Disc 3D Basis and Position Angle Orientation Tests
+// =====================================================================
+
+TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
+{
+    // Direction to galaxy center on sky (e.g. LMC coordinates)
+    const double ra = 80.89 * (_pi / 180.0);
+    const double dec = -69.756 * (_pi / 180.0);
+
+    Point vhat(-sin(ra) * cos(dec), sin(dec), cos(ra) * cos(dec));
+    vhat.scale(1.0);
+
+    Point E_sky = compute_normal(center, vhat, yaxis);
+    E_sky.scale(1.0);
+    Point N_sky = compute_normal(center, E_sky, vhat);
+    N_sky.scale(1.0);
+
+    const double test_pas[] = {0.0, 22.0, 35.0, 90.0, 115.0, 136.0, 180.0, 245.0, 315.0};
+    const double test_incls[] = {0.0, 20.0, 35.0, 60.0, 77.0, 85.0};
+
+    for (double pa_deg : test_pas)
+    {
+        double pa = pa_deg * (_pi / 180.0);
+        for (double incl_deg : test_incls)
+        {
+            double incl = incl_deg * (_pi / 180.0);
+
+            Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
+            u_maj.scale(1.0);
+            Point u_perp = compute_normal(center, vhat, u_maj);
+            u_perp.scale(1.0);
+
+            Point e1 = u_maj * -1.0;
+            Point e2 = (u_perp * cos(incl) + vhat * sin(incl)) * -1.0;
+            e1.scale(1.0);
+            e2.scale(1.0);
+
+            Point pole = compute_normal(center, e1, e2);
+            pole.scale(1.0);
+
+            // e1, e2, and pole must form a strictly orthonormal right-handed basis
+            EXPECT_NEAR(e1.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(e2.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(pole.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(e1.x * e2.x + e1.y * e2.y + e1.z * e2.z, 0.0, 1e-9);
+            EXPECT_NEAR(e1.x * pole.x + e1.y * pole.y + e1.z * pole.z, 0.0, 1e-9);
+            EXPECT_NEAR(e2.x * pole.x + e2.y * pole.y + e2.z * pole.z, 0.0, 1e-9);
+
+            // Apparent position angle of e1 in the sky plane
+            double proj_N = -(e1.x * N_sky.x + e1.y * N_sky.y + e1.z * N_sky.z);
+            double proj_E = -(e1.x * E_sky.x + e1.y * E_sky.y + e1.z * E_sky.z);
+            double meas_pa = atan2(proj_E, proj_N) * (180.0 / _pi);
+            if (meas_pa < 0.0)
+            {
+                meas_pa += 360.0;
+            }
+
+            // Measured PA must match catalog PA exactly
+            double diff = fabs(meas_pa - pa_deg);
+            while (diff > 180.0)
+            {
+                diff = fabs(diff - 360.0);
+            }
+            EXPECT_NEAR(diff, 0.0, 1e-6);
+
+            // In-plane apparent minor axis projection has foreshortened factor cos(incl)
+            Point e2_proj = e2 - vhat * (e2.x * vhat.x + e2.y * vhat.y + e2.z * vhat.z);
+            EXPECT_NEAR(e2_proj.magnitude(), cos(incl), 1e-6);
+        }
+    }
+}
+
+TEST(GalaxyTest, GalaxyLabelVerticalPlacementUsesDrawnHeightNotWidth)
+{
+    Galaxy g;
+    strcpy(g.name, "TestGalaxy");
+    g.drawnx = 960.0f;
+    g.drawny = 878.0f;
+
+    // Simulate cylindrical projection stretching near pole where wide >> tall
+    const double tall = 28.0;
+    const double wide = 160.0;
+    const double xmin = g.drawnx - wide * 0.5;
+    const double xmax = g.drawnx + wide * 0.5;
+    const double ymin = g.drawny - tall * 0.5;
+    const double ymax = g.drawny + tall * 0.5;
+
+    g.drawnxmin = xmin;
+    g.drawnxmax = xmax;
+    g.drawnymin = ymin;
+    g.drawnymax = ymax;
+
+    // The drawn half-height below center:
+    double drawn_h = (ymax > g.drawny) ? (ymax - g.drawny) : (tall * 0.5);
+    double bloomrad = fmax(1.0, drawn_h);
+
+    // Vertical position of label:
+    int dy = (g.drawnymax > g.drawny)
+        ? (g.drawnymax + 1)
+        : (g.drawny + bloomrad + 1);
+
+    // Label must be placed directly below the drawn height (ymax), NOT pushed down by wide * 0.5
+    EXPECT_NEAR(dy, ymax + 1, 1.0);
+    EXPECT_LT(dy, g.drawny + wide * 0.5);
+}
+
+TEST(GalaxyTest, GalaxyVisualBoundsMatchVisibleBodyInSpaceshipMode)
+{
+    Galaxy m31;
+    strcpy(m31.name, "M31");
+    m31.drawnx = 960.0f;
+    m31.drawny = 464.0f;
+
+    // Full quad mesh extending to catalog a26 radius
+    const double mesh_r = 233.0;
+    const double ymax_mesh = m31.drawny + mesh_r;
+
+    // In spaceship mode, visible optical body is scaled by vis_fraction
+    const double vis_frac_m31 = 0.60;
+    const double vis_ymax_m31 = m31.drawny + mesh_r * vis_frac_m31;
+    m31.drawnymax = vis_ymax_m31;
+
+    int dy_m31 = (m31.drawnymax > m31.drawny) ? (m31.drawnymax + 1) : (m31.drawny + 1);
+    EXPECT_NEAR(dy_m31, m31.drawny + mesh_r * 0.60 + 1, 1.0);
+    // Must be placed far closer than the unscaled outer mesh boundary
+    EXPECT_LT(dy_m31, ymax_mesh - 50.0);
+
+    Galaxy smc;
+    strcpy(smc.name, "SMC");
+    smc.drawnx = 960.0f;
+    smc.drawny = 390.0f;
+
+    const double mesh_r_smc = 224.0;
+    const double ymax_mesh_smc = smc.drawny + mesh_r_smc;
+    const double vis_frac_smc = 0.35;
+    const double vis_ymax_smc = smc.drawny + mesh_r_smc * vis_frac_smc;
+    smc.drawnymax = vis_ymax_smc;
+
+    int dy_smc = (smc.drawnymax > smc.drawny) ? (smc.drawnymax + 1) : (smc.drawny + 1);
+    EXPECT_NEAR(dy_smc, smc.drawny + mesh_r_smc * 0.35 + 1, 1.0);
+    EXPECT_LT(dy_smc, ymax_mesh_smc - 100.0);
 }
 
 

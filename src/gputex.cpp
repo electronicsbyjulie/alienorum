@@ -1,5 +1,6 @@
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <iostream>
@@ -185,14 +186,14 @@ namespace alienorum
         }
         milky_way_attempted = true;
 
-        SDL_Surface* surf = IMG_Load("galaxies/Milky Way.jpg");
+        SDL_Surface* surf = IMG_Load("galaxies/internal/Milky Way.jpg");
         if (!surf)
         {
-            surf = IMG_Load("galaxies" _FILESLASH "Milky Way.jpg");
+            surf = IMG_Load("galaxies" _FILESLASH "internal" _FILESLASH "Milky Way.jpg");
         }
         if (!surf)
         {
-            std::cerr << "Could not load galaxies/Milky Way.jpg: " << IMG_GetError() << std::endl;
+            std::cerr << "Could not load galaxies/internal/Milky Way.jpg: " << IMG_GetError() << std::endl;
             return 0;
         }
 
@@ -280,6 +281,319 @@ namespace alienorum
         return inverted ? milky_way_inv_tex : milky_way_tex;
     }
 
+    static std::string resolve_galaxy_path(const std::string &subfolder, const std::string &name, const std::string &ext)
+    {
+        std::vector<std::string> candidates;
+        candidates.push_back(name);
+
+        std::string with_under = name;
+        for (char &c : with_under)
+        {
+            if (c == ' ')
+            {
+                c = '_';
+            }
+        }
+        if (with_under != name)
+        {
+            candidates.push_back(with_under);
+        }
+
+        std::string no_spaces = "";
+        for (char c : name)
+        {
+            if (c != ' ')
+            {
+                no_spaces += c;
+            }
+        }
+        if (no_spaces != name && no_spaces != with_under)
+        {
+            candidates.push_back(no_spaces);
+        }
+
+        if (name.size() >= 2 && name[0] == 'M' && isdigit((unsigned char)name[1]))
+        {
+            candidates.push_back("M " + name.substr(1));
+            candidates.push_back("M_" + name.substr(1));
+        }
+
+        for (const auto &cand : candidates)
+        {
+            std::string path1 = "galaxies/" + subfolder + "/" + cand + ext;
+            FILE* fp1 = fopen(path1.c_str(), "rb");
+            if (fp1)
+            {
+                fclose(fp1);
+                return path1;
+            }
+
+            std::string path2 = "galaxies" _FILESLASH + subfolder + _FILESLASH + cand + ext;
+            FILE* fp2 = fopen(path2.c_str(), "rb");
+            if (fp2)
+            {
+                fclose(fp2);
+                return path2;
+            }
+        }
+        return "";
+    }
+
+    static std::unordered_map<std::string, GLuint> galaxy_faceon_cache;
+    static std::unordered_set<std::string> galaxy_faceon_missing;
+
+    GLuint gputex_galaxy_faceon(const std::string &name)
+    {
+        if (name.empty())
+        {
+            return 0;
+        }
+
+        auto it = galaxy_faceon_cache.find(name);
+        if (it != galaxy_faceon_cache.end())
+        {
+            return it->second;
+        }
+
+        if (galaxy_faceon_missing.find(name) != galaxy_faceon_missing.end())
+        {
+            return 0;
+        }
+
+        std::string path = resolve_galaxy_path("faceon", name, ".jpg");
+        if (path.empty())
+        {
+            path = resolve_galaxy_path("faceon", name, ".png");
+        }
+        if (path.empty())
+        {
+            galaxy_faceon_missing.insert(name);
+            return 0;
+        }
+
+        SDL_Surface* surf = IMG_Load(path.c_str());
+        if (!surf)
+        {
+            galaxy_faceon_missing.insert(name);
+            return 0;
+        }
+
+        SDL_Surface* rgba_surf = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_FreeSurface(surf);
+        if (!rgba_surf)
+        {
+            galaxy_faceon_missing.insert(name);
+            return 0;
+        }
+
+        int w = rgba_surf->w;
+        int h = rgba_surf->h;
+        unsigned char* data = (unsigned char*)rgba_surf->pixels;
+
+        static GLint max_tex_size = 0;
+        if (!max_tex_size)
+        {
+            glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+            if (max_tex_size <= 0)
+            {
+                max_tex_size = 4096;
+            }
+        }
+
+        std::vector<unsigned char> down;
+        unsigned char* upload_ptr = data;
+        if ((long)w > max_tex_size || (long)h > max_tex_size)
+        {
+            double scale = std::min((double)max_tex_size / w, (double)max_tex_size / h);
+            unsigned long nw = std::max(1UL, (unsigned long)(w * scale));
+            unsigned long nh = std::max(1UL, (unsigned long)(h * scale));
+
+            down.resize(nw * nh * 4);
+            for (unsigned long y = 0; y < nh; y++)
+            {
+                unsigned long sy = std::min((unsigned long)(h - 1), (unsigned long)((double)y * h / nh));
+                for (unsigned long x = 0; x < nw; x++)
+                {
+                    unsigned long sx = std::min((unsigned long)(w - 1), (unsigned long)((double)x * w / nw));
+                    for (int c = 0; c < 4; c++)
+                    {
+                        down[(y * nw + x) * 4 + c] = data[(sy * w + sx) * 4 + c];
+                    }
+                }
+            }
+            w = (int)nw;
+            h = (int)nh;
+            upload_ptr = down.data();
+        }
+
+        std::vector<unsigned char> prepared_rgba((size_t)w * h * 4);
+        for (size_t p = 0; p < (size_t)w * h; p++)
+        {
+            unsigned char r = upload_ptr[p * 4 + 0];
+            unsigned char g = upload_ptr[p * 4 + 1];
+            unsigned char b = upload_ptr[p * 4 + 2];
+            int max_val = std::max((int)r, std::max((int)g, (int)b));
+            if (max_val == 0)
+            {
+                prepared_rgba[p * 4 + 0] = 0;
+                prepared_rgba[p * 4 + 1] = 0;
+                prepared_rgba[p * 4 + 2] = 0;
+                prepared_rgba[p * 4 + 3] = 0;
+            }
+            else
+            {
+                prepared_rgba[p * 4 + 0] = (unsigned char)std::min(255, (int)(r * 255.0f / max_val));
+                prepared_rgba[p * 4 + 1] = (unsigned char)std::min(255, (int)(g * 255.0f / max_val));
+                prepared_rgba[p * 4 + 2] = (unsigned char)std::min(255, (int)(b * 255.0f / max_val));
+                prepared_rgba[p * 4 + 3] = (unsigned char)max_val;
+            }
+        }
+
+        GLuint tex = 0;
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, prepared_rgba.data());
+        gputex_generate_mipmap(GL_TEXTURE_2D);
+
+        SDL_FreeSurface(rgba_surf);
+
+        galaxy_faceon_cache[name] = tex;
+        return tex;
+    }
+
+    struct InternalTexPair
+    {
+        GLuint normal = 0;
+        GLuint inverted = 0;
+    };
+    static std::unordered_map<std::string, InternalTexPair> galaxy_internal_cache;
+    static std::unordered_set<std::string> galaxy_internal_missing;
+
+    GLuint gputex_galaxy_internal(const std::string &name, bool inverted)
+    {
+        if (name == "Milky Way")
+        {
+            return gputex_milky_way(inverted);
+        }
+
+        auto it = galaxy_internal_cache.find(name);
+        if (it != galaxy_internal_cache.end())
+        {
+            return inverted ? it->second.inverted : it->second.normal;
+        }
+
+        if (galaxy_internal_missing.find(name) != galaxy_internal_missing.end())
+        {
+            return gputex_milky_way(inverted);
+        }
+
+        std::string path = resolve_galaxy_path("internal", name, ".jpg");
+        if (path.empty())
+        {
+            galaxy_internal_missing.insert(name);
+            return gputex_milky_way(inverted);
+        }
+
+        SDL_Surface* surf = IMG_Load(path.c_str());
+        if (!surf)
+        {
+            galaxy_internal_missing.insert(name);
+            return gputex_milky_way(inverted);
+        }
+
+        SDL_Surface* rgba_surf = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_FreeSurface(surf);
+        if (!rgba_surf)
+        {
+            galaxy_internal_missing.insert(name);
+            return gputex_milky_way(inverted);
+        }
+
+        int w = rgba_surf->w;
+        int h = rgba_surf->h;
+        unsigned char* data = (unsigned char*)rgba_surf->pixels;
+
+        static GLint max_tex_size = 0;
+        if (!max_tex_size)
+        {
+            glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+            if (max_tex_size <= 0)
+            {
+                max_tex_size = 4096;
+            }
+        }
+
+        std::vector<unsigned char> down;
+        unsigned char* upload_ptr = data;
+        if ((long)w > max_tex_size || (long)h > max_tex_size)
+        {
+            double scale = std::min((double)max_tex_size / w, (double)max_tex_size / h);
+            unsigned long nw = std::max(1UL, (unsigned long)(w * scale));
+            unsigned long nh = std::max(1UL, (unsigned long)(h * scale));
+
+            down.resize(nw * nh * 4);
+            for (unsigned long y = 0; y < nh; y++)
+            {
+                unsigned long sy = std::min((unsigned long)(h - 1), (unsigned long)((double)y * h / nh));
+                for (unsigned long x = 0; x < nw; x++)
+                {
+                    unsigned long sx = std::min((unsigned long)(w - 1), (unsigned long)((double)x * w / nw));
+                    for (int c = 0; c < 4; c++)
+                    {
+                        down[(y * nw + x) * 4 + c] = data[(sy * w + sx) * 4 + c];
+                    }
+                }
+            }
+            w = (int)nw;
+            h = (int)nh;
+            upload_ptr = down.data();
+        }
+
+        InternalTexPair pair;
+        glGenTextures(1, &pair.normal);
+        glBindTexture(GL_TEXTURE_2D, pair.normal);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, upload_ptr);
+        gputex_generate_mipmap(GL_TEXTURE_2D);
+
+        // Inverted version for white background mode
+        std::vector<unsigned char> inv((size_t)w * h * 4);
+        for (size_t p = 0; p < (size_t)w * h; p++)
+        {
+            for (int c = 0; c < 3; c++)
+            {
+                int val = upload_ptr[p * 4 + c];
+                int scaled = std::min(255, (int)(val * 2.2f));
+                inv[p * 4 + c] = (unsigned char)(255 - scaled);
+            }
+            inv[p * 4 + 3] = upload_ptr[p * 4 + 3];
+        }
+
+        glGenTextures(1, &pair.inverted);
+        glBindTexture(GL_TEXTURE_2D, pair.inverted);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, inv.data());
+        gputex_generate_mipmap(GL_TEXTURE_2D);
+
+        SDL_FreeSurface(rgba_surf);
+
+        galaxy_internal_cache[name] = pair;
+        return inverted ? pair.inverted : pair.normal;
+    }
+
     void gputex_clear_cache()
     {
         for (auto &[map, entry] : gputex_cache)
@@ -309,5 +623,29 @@ namespace alienorum
             milky_way_inv_tex = 0;
         }
         milky_way_attempted = false;
+
+        for (auto &[name, tex] : galaxy_faceon_cache)
+        {
+            if (tex)
+            {
+                glDeleteTextures(1, &tex);
+            }
+        }
+        galaxy_faceon_cache.clear();
+        galaxy_faceon_missing.clear();
+
+        for (auto &[name, pair] : galaxy_internal_cache)
+        {
+            if (pair.normal)
+            {
+                glDeleteTextures(1, &pair.normal);
+            }
+            if (pair.inverted)
+            {
+                glDeleteTextures(1, &pair.inverted);
+            }
+        }
+        galaxy_internal_cache.clear();
+        galaxy_internal_missing.clear();
     }
 }

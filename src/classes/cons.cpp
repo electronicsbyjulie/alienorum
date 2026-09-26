@@ -128,7 +128,61 @@ bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std:
     return inside;
 }
 
-Constellation* identify_cons_of_star(Star* s) 
+Constellation *identify_cons_from_coords(double RA, double Decl)
+{
+    Constellation* result = nullptr;
+    double best = 1e29;
+
+    for (auto& cons : constellations) 
+    {
+        if (cons.bounds.empty()) continue;              // Safety check
+
+        // Filter by constellation distance.
+        // Calculate the RA distance between the star and the constellation center
+        double d_ra = fabs(RA - cons.RA_center);
+        if (d_ra > _pi) d_ra = 2.0 * _pi - d_ra; 
+
+        // If the center is more than 90 degrees away,
+        // it's impossible for the star to be inside it. Skip it.
+        if (d_ra > half_pi) continue;
+
+        if (might_star_be_maybe_in_constellation(RA, Decl, cons.bounds)) 
+        {
+            double d_decl = fabs(Decl - cons.decl_center);
+            double r = sqrt(d_ra*d_ra+d_decl*d_decl);
+
+            if (r < best)
+            {
+                result = &cons;
+                best = r;
+            }
+        }
+    }
+
+    if (result) return result;
+
+    // The Polar Fallback: If the star didn't fit into any closed polygon,
+    // assume it must be in the polar caps where the 2D projection breaks down.
+
+    // Positive declination = Northern Hemisphere -> Ursa Minor
+    if (Decl > 0) 
+    {
+        for (auto& cons : constellations)
+        {
+            if (cons.name == "Ursa Minor" || cons.abbrev == "UMi") return &cons;
+        }
+    }
+    // Negative declination = Southern Hemisphere -> Octans
+    else 
+    {
+        for (auto& cons : constellations)
+        {
+            if (cons.name == "Octans" || cons.abbrev == "Oct") return &cons;
+        }
+    }
+}
+
+Constellation *identify_cons_of_star(Star *s)
 {
     Constellation* result = nullptr;
     double best = 1e29;
@@ -170,14 +224,16 @@ Constellation* identify_cons_of_star(Star* s)
     // Positive declination = Northern Hemisphere -> Ursa Minor
     if (s->declination > 0) 
     {
-        for (auto& cons : constellations) {
+        for (auto& cons : constellations)
+        {
             if (cons.name == "Ursa Minor" || cons.abbrev == "UMi") return &cons;
         }
     }
     // Negative declination = Southern Hemisphere -> Octans
     else 
     {
-        for (auto& cons : constellations) {
+        for (auto& cons : constellations)
+        {
             if (cons.name == "Octans" || cons.abbrev == "Oct") return &cons;
         }
     }

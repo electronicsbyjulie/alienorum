@@ -413,6 +413,9 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
     }
 
+    std::string JDdisp = std::string("JD") + std::to_string(JDnow);
+    ImGui::Text("%s", JDdisp.c_str());
+
     ImGui::Text(local_tmstep ? "Local Timestep (F10)" : "Earth Timestep (F10)");
 
     ImGui::Separator();
@@ -433,9 +436,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         numobjs = std::to_string(num_planets) + " planets";
         ImGui::Text("%s", numobjs.c_str());
     } */
-
-    std::string JDdisp = std::string("JD") + std::to_string(JDnow);
-    ImGui::Text("%s", JDdisp.c_str());
 
     float frame_rate = 1.0 / frame_dur;
     ImGui::Text("%.1f frames/s", frame_rate);
@@ -688,6 +688,21 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             ImGui::Text("RA:       %s", cels[i]->RA_as_hms(here, myeq).c_str());
             ImGui::Text("Decl:     %s", cels[i]->Decl_as_degms(here).c_str());
+
+            if (cels[i]->known_poles)
+            {
+                Point pole = rotate3D(yaxis, center, cels[i]->location.equatorial_plane.v, cels[i]->location.equatorial_plane.a);
+                double poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2),
+                       poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
+                while (poleDecl > half_pi) poleDecl -= _pi*2;
+
+                ImGui::Text("PoleRA:   %s", radians_to_hms(poleRA).c_str());
+                ImGui::Text("PoleDecl: %s", radians_to_degms(poleDecl).c_str());
+
+                Constellation *c = identify_cons_from_coords(poleRA, poleDecl);
+                if (c) ImGui::Text("          %s", c->name.c_str());
+            }
+
             ImGui::Separator();
         }
         else if (view_mode == vm_sunclock)
@@ -764,7 +779,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         else if (cels[i]->type == galaxy)
         {
-            // TODO:
+            ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here, sat_low_orbit).c_str());
         }
         else if (cels[i]->type == artificial)
         {
@@ -2471,12 +2486,14 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Select##explored"))
     {
         selected = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         viewchanged = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Find##explored"))
     {
         selected = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         center_selected();
         viewchanged = true;
     }
@@ -2484,6 +2501,7 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Track##explored"))
     {
         trackidx = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         center_tracked();
         viewchanged = true;
     }
@@ -2561,8 +2579,13 @@ void draw_system_explorer(ImGuiIO& io)
                     m->orbit->mean_anomaly = frand(0, _pi*2);
                     if (!P)
                     {
-                        // First fictional moon of the planet. Base the SMA off the Roche limit.
-                        double A = cel->Roche_limit(m) * (1.1 + pow(frand(0,1), 4) * 20);
+                        // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
+                        double inner_bound = cel->Roche_limit(m);
+                        if (((Planet*)cel)->ring_radius > inner_bound)
+                        {
+                            inner_bound = ((Planet*)cel)->ring_radius;
+                        }
+                        double A = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
                         m->orbit->semimajor_axis = A;
                         m->orbit->compute_period(m->mass);
                     }
@@ -2617,11 +2640,6 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Add Satellite...##explored"))
     {
         process_key_cmd_char('^');
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Visualize (Ctrl+V)##explored"))
-    {
-        process_key_cmd_ctrl_char('V');
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.

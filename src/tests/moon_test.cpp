@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/moon.h"
+#include "../classes/cat.h"
+#include "../classes/misc.h"
+#include "../classes/serial.h"
+#include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -144,8 +148,6 @@ TEST(MoonTest, LaplacePlane_TidalLockGuard)
     
     moon.orbit_type = ot_Laplace;
     planet.location.equatorial_plane.a = 7.89; 
-
-    // Simulate tidal lock between planet and moon
     planet.sidereal_rotational_period = 3600.0;
     moon_orbit->period = 3600.0;
     
@@ -153,4 +155,48 @@ TEST(MoonTest, LaplacePlane_TidalLockGuard)
     
     // Should bypass mass/Laplace math and return the planet's equatorial plane
     EXPECT_DOUBLE_EQ(actual.a, 7.89);
+}
+
+TEST(MoonTest, PlanetRingsBoundedByRocheLimit)
+{
+    Planet p;
+    p.mass = 300.0 * earth_mass;
+    p.volumetric_mean_radius = 10.0 * earth_radius;
+    CelestialObject ring_particle;
+    ring_particle.type = waterworld;
+    double t_eq = p.equilibrium_temperature();
+    double particle_density = (t_eq < 200.0) ? 1.0 : 2.5;
+    ring_particle.volumetric_mean_radius = 1.0;
+    ring_particle.mass = particle_density * sphere_volume(1.0) * 1e6;
+    double roche = p.Roche_limit(&ring_particle);
+
+    for (int i = 0; i < 50; i++)
+    {
+        p.generate_ring_parameters(true);
+        EXPECT_GT(p.ring_radius, p.ring_inner_radius);
+        EXPECT_LE(p.ring_radius, roche);
+    }
+}
+
+TEST(MoonTest, FictionalMoonsOrbitOutsidePlanetRings)
+{
+    Planet host;
+    host.mass = 300.0 * earth_mass;
+    host.volumetric_mean_radius = 10.0 * earth_radius;
+    host.generate_ring_parameters(true);
+    ASSERT_GT(host.ring_radius, 0.0);
+
+    Moon m;
+    m.mass = 0.01 * earth_mass;
+    m.volumetric_mean_radius = 0.27 * earth_radius;
+
+    double inner_bound = host.Roche_limit(&m);
+    if (host.ring_radius > inner_bound)
+    {
+        inner_bound = host.ring_radius;
+    }
+    double sma = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
+
+    EXPECT_GT(sma, host.ring_radius);
+    EXPECT_GT(sma, host.Roche_limit(&m));
 }

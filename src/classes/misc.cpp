@@ -106,7 +106,7 @@ bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, h
     have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
     noexo = false, nosats = false, radio_silence = false, keyprobe = false, local_tmstep = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
-double bv_correction = -.625;
+double bv_correction = -0.6244;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
@@ -389,6 +389,56 @@ int grkno_from_abbrev(const char *abbrev)
     }
 
     return result;
+}
+
+std::string radians_to_hms(double r)
+{
+    r *= fiftyseven / 15;
+    int hours = floor(r);
+    r = (r-hours) * 60;
+    int minutes = floor(r);
+    double seconds = (r-minutes) * 60;
+
+    // The stream below rounds to a tenth, so 59.97 would be printed as "60.0". Carry it here
+    // instead, where the hours can carry too.
+    while (seconds >= 59.95) { seconds = 0; minutes++; }
+    while (minutes >= 60) { minutes -= 60; hours++; }
+    while (hours >= 24) hours -= 24;
+
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << seconds;
+    std::string sec = oss.str();
+
+    return std::string(hours<10 ? "0" : "")
+        + std::to_string(hours) + std::string(":")
+        + std::string(minutes<10 ? "0" : "")
+        + std::to_string(minutes) + std::string(":")
+        + std::string(seconds<9.95 ? "0" : "")
+        + sec;
+    return std::string();
+}
+
+std::string radians_to_degms(double r)
+{
+    int sign = (r < 0) ? -1 : 1;
+    double decl = fabs(r * fiftyseven);
+    int degrees = floor(decl);
+    decl = (decl-degrees) * 60;
+    int minutes = floor(decl);
+    double seconds = (decl-minutes) * 60;
+
+    // Rounded, and carried if the rounding fills the field: 59.7 seconds is a minute, not ":60".
+    int isec = (int)llround(seconds);
+    while (isec >= 60) { isec -= 60; minutes++; }
+    while (minutes >= 60) { minutes -= 60; degrees++; }
+
+    return std::string( sign < 0 ? "-" : "+" )
+        + std::string(degrees<10 ? "0" : "")
+        + std::to_string(degrees) + std::string(":")
+        + std::string(minutes<10 ? "0" : "")
+        + std::to_string(minutes) + std::string(":")
+        + std::string(isec<10 ? "0" : "")
+        + std::to_string(isec);
 }
 
 // TODO: Consider storing the gases in a JSON file.

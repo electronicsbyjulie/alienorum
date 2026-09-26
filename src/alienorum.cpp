@@ -720,6 +720,7 @@ int main (int argc, char** argv)
             {
                 viewer_lat = (double)(dispcy - io.MousePos.y) * sclk_scale + altitude;
                 viewer_lon = (double)(io.MousePos.x - dispcx) * sclk_scale + azimuth;
+                azimuth = (viewer_lat > 0) ? _pi : 0;
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;
@@ -990,17 +991,22 @@ int main (int argc, char** argv)
             int nameidx = trackidx;
             if (nameidx < 0) nameidx = whereami;
 
-            std::string snapname = /*(nameidx >= 0)
-                ? trim(cels[nameidx]->name)
-                :*/ "snapshot"
+            std::string snapname = (nameidx >= 0)
+                ? ((view_mode == vm_system) ? (std::string(mycenobj->name) + std::string(".system")) : cels[nameidx]->name)
+                : "snapshot"
+                ;
+
+            std::string subject = (biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
+                ? (std::string(biggest_cel->name) + std::string("."))
+                : std::string("")
                 ;
             
             if (view_mode == vm_skymap) snapname += ".skymap";
             if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             shnapsot_fname << snapdir << _FILESLASH
-                << snapname
-                << "." 
+                << subject
+                << snapname << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";
 

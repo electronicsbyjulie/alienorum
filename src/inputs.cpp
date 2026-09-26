@@ -12,6 +12,7 @@ void center_selected()
 {
     if (selected >= 0)
     {
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[selected]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
@@ -25,6 +26,7 @@ void center_tracked()
 {
     if (trackidx >= 0)
     {
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[trackidx]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
@@ -420,7 +422,10 @@ void process_key_cmd_char(char c)
         case 'd': JDnow += daystep; viewchanged = true; compute_object_draw_coordinates(); break;
         case 'D': JDnow -= daystep; viewchanged = true; compute_object_draw_coordinates(); break;
 
-        case 'e': explorer = !explorer; break;
+        case 'e':
+        explorer = !explorer;
+        if (explorer) process_key_cmd_ctrl_char('V');
+        break;
 
         case 'E':
         if (selected >= 0) editidx = selected;
@@ -530,7 +535,7 @@ void process_key_cmd_char(char c)
 
         case 'R': redlight_mode = !redlight_mode; apply_default_style(); break;
         case 's': statuswnd = !statuswnd; break;
-        case 'S': selected = -1; break;
+        case 'S': selected = -1; if (view_mode == vm_system) view_mode = vm_spaceship; break;
 
         case 't':
         if (trackidx >= 0)
@@ -545,6 +550,7 @@ void process_key_cmd_char(char c)
             trackidx = selected;
             selected = -1;
         }
+        if (view_mode == vm_system) view_mode = vm_spaceship; 
         viewchanged = true;
         break;
 
@@ -701,8 +707,8 @@ void process_key_cmd_char(char c)
         if (distance_lblcut < light_year*5) distance_lblcut = light_year*5;
         break;
 
-        case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
-        case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
+        case '`': global_gamma += 0.01; set_gamma(global_gamma); break;
+        case '~': global_gamma -= 0.01; set_gamma(global_gamma); break;
 
         case '_':
         if (whereami >= 0)
@@ -774,7 +780,7 @@ void process_key_cmd_ctrl_char(char c)
         if (!mycenobj) return;
         view_mode = vm_system;
         statuswnd = false;
-        explorer = false;
+        // explorer = false;
         lbl_localsys = true;
         break;
 
@@ -853,7 +859,7 @@ void process_key_arrowup()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, -steering_rate);
+    steer(pitch, steering_rate);
     if (trackidx<0) altitude += steering_rate;
     if (altitude > half_pi) altitude = half_pi;
     enforce_y_pan_limit();
@@ -867,7 +873,7 @@ void process_key_arrowdn()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, steering_rate);
+    steer(pitch, -steering_rate);
     if (trackidx<0) altitude -= steering_rate;
     if (altitude < -half_pi) altitude = -half_pi;
     enforce_y_pan_limit();
@@ -903,7 +909,9 @@ void process_key_delete()
     // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
     if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
     else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
-    selected = -1;
+
+    if (cels[selected]->deleted && cels[selected]->orbit && cels[selected]->orbit->center) selected = cels[selected]->orbit->center->seqno;
+    else selected = -1;
 }
 
 void process_key_home()
