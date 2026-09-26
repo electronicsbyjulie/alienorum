@@ -37,7 +37,8 @@ The Boo, 44  Boo, 39  Boo, 38  Boo, 44  Boo
 ~Cae, Caelum, Caeli
 Alp Cae, Del Cae, Bet Cae, HD32831, Alp Cae
 ~Cam, Camelopardalis, Camelopardalis
-7   Cam, Bet Cam, Alp Cam, Gam Cam, HD21291
+7   Cam, Bet Cam, Alp Cam, HD23475, HD21291
+HD20336, Gam Cam, Alp Cam, HD42818, HD49878, HD55966
 ~Cnc, Cancer, Cancri
 Iot Cnc, Rho2Cnc, Xi  Cnc, Pi 2Cnc, Kap Cnc, Alp Cnc, Del Cnc, Gam Cnc, Iot Cnc
 Gam Cnc, Chi Cnc, Psi Cnc
@@ -125,7 +126,7 @@ Del Equ, HD202951, HD201892
 HD199665, Gam Equ, HD200354
 3   Equ, Alp Equ, 4   Equ
 ~Eri, Eridanus, Eridani
-Lam Eri, Bet Eri, Ome Eri, Mu  Eri, Nu  Eri, Omi1Eri, Gam Eri, Del Eri, Eps Eri, Zet Eri, Eta Eri, Pi  Cet, Tau1Eri, Tau2Eri, Tau3Eri, Tau4Eri, Tau5Eri, Tau6Eri, Tau8Eri, Tau9Eri, Ups2Eri, 43  Eri, Ups4Eri, 138G Eri, 135G Eri, 82 Eri, The1Eri, Iot Eri, 18G Eri, Kap Eri, Phi Eri, Chi Eri, Alp Eri
+Lam Eri, Bet Eri, Ome Eri, Mu  Eri, Nu  Eri, Omi1Eri, Gam Eri, Pi  Eri, Del Eri, Eps Eri, Zet Eri, Eta Eri, Pi  Cet, Tau1Eri, Tau2Eri, Tau3Eri, Tau4Eri, Tau5Eri, Tau6Eri, Tau8Eri, Tau9Eri, Ups2Eri, 43  Eri, Ups4Eri, 138G Eri, 135G Eri, 82 Eri, The1Eri, Iot Eri, 18G Eri, Kap Eri, Phi Eri, Chi Eri, Alp Eri
 ~For, Fornax, Fornacis
 Del For, Alp For, Ome For, Nu  For, Phi For, Chi2For, Del For, Bet For, Nu  For
 ~Gru, Grus, Gruis

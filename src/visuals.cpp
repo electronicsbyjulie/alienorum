@@ -2389,7 +2389,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 // instead of being drawn as a screen-space wedge off the head.
 
 // How a comet's light is divided between the three things drawn from it. The condensation is the
-// point path's business further down draw_one_object(), so what it gets is not passed to anything
+// point path's business further down draw_single_object(), so what it gets is not passed to anything
 // here -- it is simply what these two do not take.
 static const double kComaShare = 0.45, kTailShare = 0.30;
 
@@ -2793,7 +2793,7 @@ static double draw_comet(CelestialObject *cel, double appmag)
     return draw_px;
 }
 
-bool draw_one_object(int i)
+bool draw_single_object(int i)
 {
     cels[i]->label_shown = false;
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
@@ -3085,6 +3085,10 @@ bool draw_one_object(int i)
             else if (strlen(s->Flamsteed)) dispname = squeeze_spaces(s->Flamsteed).c_str();
             else if (s->GouldNo > 0) dispname = (std::to_string(s->GouldNo) + std::string("G ") + std::string(s->Gouldcons)).c_str();
         }
+        else if (cls == class_galaxy && i == inside_galaxy_idx)
+        {
+            dispname = "Galactic Center";
+        }
 
         ImVec2 sz = ImGui::CalcTextSize(dispname);
         int dy = cels[i]->drawny+bloomrad+1;
@@ -3149,10 +3153,10 @@ void draw_galaxy_band()
     double az = azimuth + azimuth_correction;
     double alt = altitude;
 
-    float bg_mult = global_brightness * 0.1f;
+    float bg_mult = global_brightness * 0.1f * dev_dial;
     if (whtbkgd)
     {
-        bg_mult = 0.25f;
+        bg_mult *= 2.5f;
     }
 
     bg_mult = fmin(1.0, pow(bg_mult, global_inverse_gamma));
@@ -3593,7 +3597,7 @@ void draw_objects()
             if (!inserted) to_draw_layered.push_back(cels[i]);
             discinstead[i] = true;
         }
-        else draw_one_object(i);
+        else draw_single_object(i);
         if (!cels[1]) return;
     }
 
@@ -3603,7 +3607,7 @@ void draw_objects()
     n = to_draw_layered.size();
     for (j=0; j<n; j++)
     {
-        draw_one_object(to_draw_layered[j]->seqno);
+        draw_single_object(to_draw_layered[j]->seqno);
         if (!cels[1]) return;
     }
 
