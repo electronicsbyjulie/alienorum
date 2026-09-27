@@ -53,7 +53,7 @@
 #define EXOCONS_SKY_GAP_MAX_ITERATIONS            200
 
 // Constellation Geometry & Line Counts
-#define EXOCONS_MIN_LINES_PER_CONS                3
+#define EXOCONS_MIN_LINES_PER_CONS                5
 #define EXOCONS_MIN_ACTIVE_CONS_BEFORE_MERGE      55
 #define EXOCONS_MAX_EXPANSE_DEG                   35.0
 #define EXOCONS_MAX_EXPANSION_ATTEMPTS            15
