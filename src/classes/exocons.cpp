@@ -674,7 +674,7 @@ namespace alienorum
 
         for (const auto& c : candidates)
         {
-            if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > 6.5)
+            if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > 6.0)
             {
                 continue;
             }
@@ -799,7 +799,8 @@ namespace alienorum
                     }
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
-                    double score = d_deg + 0.5 * (u1.mag + u2.mag);
+                    double dm = std::abs(u1.mag - u2.mag);
+                    double score = d_deg + 0.5 * (u1.mag + u2.mag) + 1.2 * dm;
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -891,7 +892,8 @@ namespace alienorum
                 if (!check_line_valid(u1.u, u2.u, u1.s, u2.s)) continue;
 
                 double d_deg = ang_dist_deg(u1.u, u2.u);
-                double score = d_deg + 0.5 * (u1.mag + u2.mag);
+                double dm = std::abs(u1.mag - u2.mag);
+                double score = d_deg + 0.5 * (u1.mag + u2.mag) + 1.2 * dm;
                 if (score < best_score)
                 {
                     best_score = score;
@@ -905,11 +907,12 @@ namespace alienorum
                 for (size_t k = 0; k < candidates.size(); k++)
                 {
                     const auto& u2 = candidates[k];
-                    if (u2.s == u1.s || degrees[u2.s] >= max_degree || u2.mag > 6.5) continue;
+                    if (u2.s == u1.s || degrees[u2.s] >= max_degree || u2.mag > 6.0) continue;
                     if (!check_line_valid(u1.u, u2.u, u1.s, u2.s)) continue;
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
-                    double score = d_deg + 0.5 * (u1.mag + u2.mag);
+                    double dm = std::abs(u1.mag - u2.mag);
+                    double score = d_deg + 0.5 * (u1.mag + u2.mag) + 1.2 * dm;
                     if (score < best_score)
                     {
                         best_score = score;
@@ -1008,7 +1011,8 @@ namespace alienorum
                     }
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
-                    double score = d_deg + 0.8 * (u1.mag + u2.mag);
+                    double dm = std::abs(u1.mag - u2.mag);
+                    double score = d_deg + 0.8 * (u1.mag + u2.mag) + 1.2 * dm;
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -1293,9 +1297,11 @@ namespace alienorum
                                 if (check_line_valid(info_a.u, info_b.u, sa, sb))
                                 {
                                     double d_deg = ang_dist_deg(info_a.u, info_b.u);
-                                    if (d_deg < best_dist)
+                                    double dm = std::abs(info_a.mag - info_b.mag);
+                                    double score = d_deg + 1.2 * dm;
+                                    if (score < best_dist)
                                     {
-                                        best_dist = d_deg;
+                                        best_dist = score;
                                         best_match_b = (int)j;
                                         best_sa = sa;
                                         best_sb = sb;
@@ -1385,11 +1391,28 @@ namespace alienorum
                         for (size_t k = 0; k < candidates.size(); k++)
                         {
                             const auto& cand = candidates[k];
-                            if (cand.s == cs || c_stars_set.count(cand.s) || degrees[cand.s] >= 3 || cand.mag > 7.0) continue;
+                            if (cand.s == cs || c_stars_set.count(cand.s) || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
                             if (!check_line_valid(cs_info.u, cand.u, cs, cand.s)) continue;
 
+                            // Check constellation expanse constraint (keep constellation span within empirical bounds <= 35.0 deg)
+                            bool exceeds_expanse = false;
+                            for (Star* exist_s : c_stars_set)
+                            {
+                                auto it_ex = star_info_map.find(exist_s);
+                                if (it_ex != star_info_map.end())
+                                {
+                                    if (ang_dist_deg(it_ex->second.u, cand.u) > 35.0)
+                                    {
+                                        exceeds_expanse = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (exceeds_expanse) continue;
+
                             double d_deg = ang_dist_deg(cs_info.u, cand.u);
-                            double score = d_deg + 0.5 * cand.mag;
+                            double dm = std::abs(cs_info.mag - cand.mag);
+                            double score = d_deg + 0.5 * cand.mag + 1.2 * dm;
                             if (score < best_score)
                             {
                                 best_score = score;
@@ -1658,11 +1681,12 @@ namespace alienorum
                                     for (size_t k = 0; k < candidates.size(); k++)
                                     {
                                         const auto& cand = candidates[k];
-                                        if (cand.s == sn || degrees[cand.s] >= 3 || cand.mag > 7.0) continue;
+                                        if (cand.s == sn || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
                                         if (!is_segment_valid(sn, cand.s, it_sn->second.u, cand.u, all_lines.size())) continue;
 
                                         double d_deg = ang_dist_deg(it_sn->second.u, cand.u);
-                                        double sc = d_deg + 0.5 * cand.mag;
+                                        double dm = std::abs(it_sn->second.mag - cand.mag);
+                                        double sc = d_deg + 0.5 * cand.mag + 1.2 * dm;
                                         if (sc < best_sc)
                                         {
                                             best_sc = sc;
@@ -1715,11 +1739,12 @@ namespace alienorum
                                 for (size_t k = 0; k < candidates.size(); k++)
                                 {
                                     const auto& cand = candidates[k];
-                                    if (cand.s == deg1_star || cand.s == sa || cand.s == sb || degrees[cand.s] >= 3 || cand.mag > 7.0) continue;
+                                    if (cand.s == deg1_star || cand.s == sa || cand.s == sb || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
                                     if (!is_segment_valid(deg1_star, cand.s, it_ds->second.u, cand.u, i)) continue;
 
                                     double d_deg = ang_dist_deg(it_ds->second.u, cand.u);
-                                    double sc = d_deg + 0.5 * cand.mag;
+                                    double dm = std::abs(it_ds->second.mag - cand.mag);
+                                    double sc = d_deg + 0.5 * cand.mag + 1.2 * dm;
                                     if (sc < best_sc)
                                     {
                                         best_sc = sc;
@@ -1772,11 +1797,12 @@ namespace alienorum
                                     for (size_t k = 0; k < candidates.size(); k++)
                                     {
                                         const auto& cand = candidates[k];
-                                        if (cand.s == sn || degrees[cand.s] >= 3 || cand.mag > 7.0) continue;
+                                        if (cand.s == sn || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
                                         if (!is_segment_valid(sn, cand.s, it_sn->second.u, cand.u, all_lines.size())) continue;
 
                                         double d_deg = ang_dist_deg(it_sn->second.u, cand.u);
-                                        double sc = d_deg + 0.5 * cand.mag;
+                                        double dm = std::abs(it_sn->second.mag - cand.mag);
+                                        double sc = d_deg + 0.5 * cand.mag + 1.2 * dm;
                                         if (sc < best_sc)
                                         {
                                             best_sc = sc;
