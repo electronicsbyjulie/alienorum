@@ -118,6 +118,31 @@ ImU32 Color::black_to_transparent(ImU32 input)
     return (a<<24) + (b<<16) + (g<<8) + r;
 }
 
+/**
+ * Calculates the shift of magnitude B-V (yellowing) due to the diffusion of Rayleigh.
+ * 
+ * @param surface_pressure surface pressure in Pascals (Pa).
+ * @param zenith_angle_rad apparent angle of object from zenith.
+ * @return the resulting B-V magnitude shift.
+ */
+double alienorum::Color::compute_atmospheric_yellowing(double surface_pressure, double zenith_angle_rad = 0.0)
+{
+    double surface_pressure_hpa = surface_pressure / 100;
+
+    // Calculate the mass of air (approximation, valid for z < 60°)
+    double airmass = 1.0 / (std::cos(zenith_angle_rad) + 0.025);
+
+    // Constants standards of the atmosphere terrestrial
+    const double standard_pressure = 1013.25;
+    const double standard_color_excess_per_airmass = 0.14; // (kB - kV)
+
+    // The shift varies linearely with the coloumn of pressure and the mass of air
+    double bv_shift = standard_color_excess_per_airmass * (surface_pressure_hpa / standard_pressure) * airmass;
+
+    return bv_shift * 0.2;
+}
+
+
 ImU32 alienorum::Color::adjust_alpha(ImU32 input, double tgtv)
 {
     int r = input&0xff, g = (input&0xff00)>>8, b = (input&0xff0000)>>16;
