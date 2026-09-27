@@ -168,6 +168,12 @@ namespace alienorum
 
     bool ExoConsGenerator::arcs_intersect(const Point& a, const Point& b, const Point& c, const Point& d)
     {
+        if (a.distance_to(c) < 1e-6 || a.distance_to(d) < 1e-6 ||
+            b.distance_to(c) < 1e-6 || b.distance_to(d) < 1e-6)
+        {
+            return false;
+        }
+
         Point n1 = cross_product(a, b);
         Point n2 = cross_product(c, d);
         Point l = cross_product(n1, n2);
@@ -181,13 +187,18 @@ namespace alienorum
 
         auto check_cand = [&](const Point& cand) -> bool
         {
+            if (cand.distance_to(a) < 1e-6 || cand.distance_to(b) < 1e-6 ||
+                cand.distance_to(c) < 1e-6 || cand.distance_to(d) < 1e-6)
+            {
+                return false;
+            }
             Point c1 = cross_product(a, cand);
             Point c2 = cross_product(cand, b);
-            if (dot_product(c1, n1) > 1e-8 && dot_product(c2, n1) > 1e-8)
+            if (dot_product(c1, n1) > 1e-7 && dot_product(c2, n1) > 1e-7)
             {
                 Point c3 = cross_product(c, cand);
                 Point c4 = cross_product(cand, d);
-                if (dot_product(c3, n2) > 1e-8 && dot_product(c4, n2) > 1e-8)
+                if (dot_product(c3, n2) > 1e-7 && dot_product(c4, n2) > 1e-7)
                 {
                     return true;
                 }
@@ -1175,7 +1186,7 @@ namespace alienorum
             return;
         }
 
-        // Check if current system needs generation
+        // Check if current system requires generation
         Star* sys_star = (Star*)(mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami] : nullptr));
         if (sys_star && sys_star->cenobj && sys_star->cenobj->typeclass() == class_star)
         {

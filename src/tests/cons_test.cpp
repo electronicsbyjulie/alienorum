@@ -591,6 +591,79 @@ class ExoConsTest : public ::testing::Test
     }
 };
 
+TEST_F(ExoConsTest, ToBeGenerated_AcceptanceCriteria)
+{
+    // 47 Ursae Majoris: far from Sun (> 10 ly), no existing constellations -> to be generated
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
+    std::string vname_uma;
+    EXPECT_TRUE(ExoConsGenerator::to_be_generated(uma47, vname_uma));
+
+    // GJ 86: far from Sun (> 10 ly), no existing constellations -> to be generated
+    Star* gj86 = get_star("GJ 86");
+    ASSERT_NE(gj86, nullptr);
+    std::string vname_gj86;
+    EXPECT_TRUE(ExoConsGenerator::to_be_generated(gj86, vname_gj86));
+
+    // GJ 67: within 10 l.y. of Upsilon Andromedae (which has >= 30 constellations defined)
+    // Uses Upsilon Andromedae's lines without generating new constellations
+    Star* gj67 = get_star("GJ 67");
+    ASSERT_NE(gj67, nullptr);
+    Star* ups = get_star("Upsilon Andromedae");
+    if (!ups)
+    {
+        ups = get_star("Ups And");
+    }
+    ASSERT_NE(ups, nullptr);
+    EXPECT_LT(gj67->location.distance_to(ups->location), light_year * 10.0);
+    std::string vname_gj67;
+    EXPECT_FALSE(ExoConsGenerator::to_be_generated(gj67, vname_gj67));
+
+    // Alpha Centauri: within 10 l.y. of Sun (4.37 l.y.)
+    // Uses heliocentric lines and does not generate new constellations
+    Star* alp_cen = get_star("Alp1Cen");
+    if (!alp_cen)
+    {
+        alp_cen = get_star("Alpha Centauri");
+    }
+    ASSERT_NE(alp_cen, nullptr);
+    std::string vname_ac;
+    EXPECT_FALSE(ExoConsGenerator::to_be_generated(alp_cen, vname_ac));
+
+    // Barnard's Star: within 10 l.y. of Sun (5.96 l.y.)
+    // Uses heliocentric lines and does not generate new constellations
+    Star* barnard = get_star("Barnard's Star");
+    ASSERT_NE(barnard, nullptr);
+    std::string vname_bs;
+    EXPECT_FALSE(ExoConsGenerator::to_be_generated(barnard, vname_bs));
+
+    // Sirius: within 10 l.y. of Sun (8.6 l.y.)
+    // Uses heliocentric lines and does not generate new constellations
+    Star* sirius = get_star("Sirius");
+    if (!sirius)
+    {
+        sirius = get_star("Alp CMa");
+    }
+    ASSERT_NE(sirius, nullptr);
+    std::string vname_sirius;
+    EXPECT_FALSE(ExoConsGenerator::to_be_generated(sirius, vname_sirius));
+
+    // Alpha Mensae: has only 2 constellations defined in consline.dat (< 30)
+    // Retains custom shapes and generates constellations from stars not already joined
+    Star* alp_men = get_star("Alpha Mensae");
+    if (!alp_men)
+    {
+        alp_men = get_star("Alp Men");
+    }
+    ASSERT_NE(alp_men, nullptr);
+    std::string vname_men;
+    EXPECT_TRUE(ExoConsGenerator::to_be_generated(alp_men, vname_men));
+}
+
 TEST_F(ExoConsTest, Generate47UrsaeMajoris_CriteriaVerification)
 {
     Star* uma47 = get_star("47 Ursae Majoris");
