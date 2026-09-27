@@ -541,7 +541,8 @@ class ExoConsTest : public ::testing::Test
     protected:
     static void SetUpTestSuite()
     {
-        std::remove("exocons.dat");
+        // DO NOT delete exocons.dat - this is deliberately a user-modifiable cache file that the user may wish to customize for their setup.
+        if (file_exists("exocons.dat")) std::rename("exocons.dat", "exocons.tstbak.dat");
         ExoConsGenerator::reset();
         if (cels)
         {
@@ -557,6 +558,8 @@ class ExoConsTest : public ::testing::Test
     static void TearDownTestSuite()
     {
         std::remove("exocons.dat");
+        // Restore exocons.dat - this is deliberately a user-modifiable cache file that the user may wish to customize for their setup.
+        if (file_exists("exocons.tstbak.dat")) std::rename("exocons.tstbak.dat", "exocons.dat");
         ExoConsGenerator::reset();
         if (cels)
         {
@@ -567,7 +570,8 @@ class ExoConsTest : public ::testing::Test
 
     void SetUp() override
     {
-        std::remove("exocons.dat");
+        // DO NOT delete exocons.dat - this is deliberately a user-modifiable cache file that the user may wish to customize for their setup.
+        if (file_exists("exocons.dat")) std::rename("exocons.dat", "exocons.tstbak.dat");
         ExoConsGenerator::reset();
         constellations.clear();
         read_cons_lines();
@@ -576,6 +580,8 @@ class ExoConsTest : public ::testing::Test
     void TearDown() override
     {
         std::remove("exocons.dat");
+        // Restore exocons.dat - this is deliberately a user-modifiable cache file that the user may wish to customize for their setup.
+        if (file_exists("exocons.tstbak.dat")) std::rename("exocons.tstbak.dat", "exocons.dat");
         ExoConsGenerator::reset();
         constellations.clear();
         read_cons_lines();
@@ -602,13 +608,13 @@ TEST_F(ExoConsTest, ToBeGenerated_AcceptanceCriteria)
     }
     ASSERT_NE(uma47, nullptr);
     std::string vname_uma;
-    EXPECT_TRUE(ExoConsGenerator::to_be_generated(uma47, vname_uma));
+    EXPECT_TRUE(ExoConsGenerator::check_should_generate_for(uma47, vname_uma));
 
     // GJ 86: far from Sun (> 10 ly), no existing constellations -> to be generated
     Star* gj86 = get_star("GJ 86");
     ASSERT_NE(gj86, nullptr);
     std::string vname_gj86;
-    EXPECT_TRUE(ExoConsGenerator::to_be_generated(gj86, vname_gj86));
+    EXPECT_TRUE(ExoConsGenerator::check_should_generate_for(gj86, vname_gj86));
 
     // GJ 67: within 10 l.y. of Upsilon Andromedae (which has >= 30 constellations defined)
     // Uses Upsilon Andromedae's lines without generating new constellations
@@ -621,8 +627,17 @@ TEST_F(ExoConsTest, ToBeGenerated_AcceptanceCriteria)
     }
     ASSERT_NE(ups, nullptr);
     EXPECT_LT(gj67->location.distance_to(ups->location), light_year * 10.0);
+
+    std::vector<Constellation> ups_generated;
+    ExoConsGenerator::generate_constellations(ups, ups_generated);
+    EXPECT_GE(ups_generated.size(), 30u);
+    for (const auto& c : ups_generated)
+    {
+        constellations.push_back(c);
+    }
+
     std::string vname_gj67;
-    EXPECT_FALSE(ExoConsGenerator::to_be_generated(gj67, vname_gj67));
+    EXPECT_FALSE(ExoConsGenerator::check_should_generate_for(gj67, vname_gj67));
 
     // Alpha Centauri: within 10 l.y. of Sun (4.37 l.y.)
     // Uses heliocentric lines and does not generate new constellations
@@ -633,14 +648,14 @@ TEST_F(ExoConsTest, ToBeGenerated_AcceptanceCriteria)
     }
     ASSERT_NE(alp_cen, nullptr);
     std::string vname_ac;
-    EXPECT_FALSE(ExoConsGenerator::to_be_generated(alp_cen, vname_ac));
+    EXPECT_FALSE(ExoConsGenerator::check_should_generate_for(alp_cen, vname_ac));
 
     // Barnard's Star: within 10 l.y. of Sun (5.96 l.y.)
     // Uses heliocentric lines and does not generate new constellations
     Star* barnard = get_star("Barnard's Star");
     ASSERT_NE(barnard, nullptr);
     std::string vname_bs;
-    EXPECT_FALSE(ExoConsGenerator::to_be_generated(barnard, vname_bs));
+    EXPECT_FALSE(ExoConsGenerator::check_should_generate_for(barnard, vname_bs));
 
     // Sirius: within 10 l.y. of Sun (8.6 l.y.)
     // Uses heliocentric lines and does not generate new constellations
@@ -651,7 +666,7 @@ TEST_F(ExoConsTest, ToBeGenerated_AcceptanceCriteria)
     }
     ASSERT_NE(sirius, nullptr);
     std::string vname_sirius;
-    EXPECT_FALSE(ExoConsGenerator::to_be_generated(sirius, vname_sirius));
+    EXPECT_FALSE(ExoConsGenerator::check_should_generate_for(sirius, vname_sirius));
 
     // Alpha Mensae: has only 2 constellations defined in consline.dat (< 30)
     // Retains custom shapes and generates constellations from stars not already joined
@@ -662,7 +677,7 @@ TEST_F(ExoConsTest, ToBeGenerated_AcceptanceCriteria)
     }
     ASSERT_NE(alp_men, nullptr);
     std::string vname_men;
-    EXPECT_TRUE(ExoConsGenerator::to_be_generated(alp_men, vname_men));
+    EXPECT_TRUE(ExoConsGenerator::check_should_generate_for(alp_men, vname_men));
 }
 
 TEST_F(ExoConsTest, Generate47UrsaeMajoris_CriteriaVerification)
@@ -978,17 +993,17 @@ TEST_F(ExoConsTest, NearbyVantageWithin10LightYears_SuppressesExoconsGeneration)
     }
     EXPECT_GE(tau_cet_count, 50);
 
-    // When at Epsilon Eridani, to_be_generated must return false because a nearby star (Tau Ceti)
+    // When at Epsilon Eridani, check_should_generate_for must return false because a nearby star (Tau Ceti)
     // within 10 light years already has constellations generated.
     std::string vname;
-    bool should_gen = ExoConsGenerator::to_be_generated(eps_eri, vname);
+    bool should_gen = ExoConsGenerator::check_should_generate_for(eps_eri, vname);
     EXPECT_FALSE(should_gen);
 
     // Also verify when cache_cons_lines has executed
     cache_cons_lines();
 
     // After caching, vantage_name must remain intact and generation must still be suppressed
-    should_gen = ExoConsGenerator::to_be_generated(eps_eri, vname);
+    should_gen = ExoConsGenerator::check_should_generate_for(eps_eri, vname);
     EXPECT_FALSE(should_gen);
 
     // Verify update_frame does not initiate generation for Epsilon Eridani
@@ -1065,6 +1080,7 @@ TEST_F(ExoConsTest, BrightStarsJoinedAndNormalSizedConstellationsFormed)
             if (!lined_stars.count(s))
             {
                 unconnected_bright_count++;
+                printf("DEBUG unconnected: %s (mag %.2f)\n", s->name, mag);
             }
         }
     }
@@ -1161,11 +1177,156 @@ TEST_F(ExoConsTest, PasserbyLinesConnectToImpingingStars)
             if (ExoConsGenerator::point_near_arc(l.ua, l.ub, is.second, 1.5, &dist_deg, 0.8))
             {
                 near_miss_count++;
+                printf("DEBUG near miss: %s -- %s near %s (dist %.2f)\n", l.a->name, l.b->name, is.first->name, dist_deg);
             }
         }
     }
 
     EXPECT_EQ(near_miss_count, 0);
 }
+
+TEST_F(ExoConsTest, HamalConstellationsFormConnectedShapesWithoutStraySingleLines)
+{
+    Star* hamal = get_star("Hamal");
+    if (!hamal)
+    {
+        hamal = get_star("Alp Ari");
+    }
+    ASSERT_NE(hamal, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(hamal, generated);
+
+    EXPECT_GE(generated.size(), 50u);
+
+    int isolated_single_lines_count = 0;
+    const Constellation* and_cons = nullptr;
+
+    for (const auto& c : generated)
+    {
+        EXPECT_GE(c.lines.size(), 3u);
+        if (c.abbrev == "And")
+        {
+            and_cons = &c;
+        }
+
+        std::unordered_map<Star*, std::vector<Star*>> adj;
+        for (const auto& cl : c.lines)
+        {
+            adj[cl.a].push_back(cl.b);
+            adj[cl.b].push_back(cl.a);
+        }
+
+        std::unordered_set<Star*> visited;
+        for (const auto& pair : adj)
+        {
+            if (visited.count(pair.first))
+            {
+                continue;
+            }
+            int comp_stars = 0;
+            std::vector<Star*> q;
+            q.push_back(pair.first);
+            visited.insert(pair.first);
+
+            std::vector<Star*> comp_star_list;
+            while (!q.empty())
+            {
+                Star* curr = q.back();
+                q.pop_back();
+                comp_stars++;
+                comp_star_list.push_back(curr);
+
+                for (Star* nbr : adj[curr])
+                {
+                    if (!visited.count(nbr))
+                    {
+                        visited.insert(nbr);
+                        q.push_back(nbr);
+                    }
+                }
+            }
+
+            // A 2-star component with 1 line is an isolated single-line hair-trimming
+            if (comp_stars <= 2)
+            {
+                std::cout << "DEBUG isolated single line in " << c.abbrev << ": ";
+                for (Star* s : comp_star_list)
+                {
+                    std::cout << (s->name[0] ? s->name : "unnamed") << " ";
+                }
+                std::cout << std::endl;
+                isolated_single_lines_count++;
+            }
+        }
+    }
+
+    std::cout << "DEBUG all lines with Delta And:" << std::endl;
+    for (const auto& c : generated)
+    {
+        for (const auto& cl : c.lines)
+        {
+            if (strcmp(cl.a->name, "Delta Andromedae") == 0 || strcmp(cl.b->name, "Delta Andromedae") == 0)
+            {
+                std::cout << "  in " << c.abbrev << ": " << cl.a->name << " -- " << cl.b->name << std::endl;
+            }
+        }
+    }
+
+    EXPECT_EQ(isolated_single_lines_count, 0);
+
+    // Verify Mirach is part of Andromeda and in a connected component with at least 3 lines
+    Star* mirach = get_star("Mirach");
+    if (!mirach)
+    {
+        mirach = get_star("Bet And");
+    }
+    ASSERT_NE(mirach, nullptr);
+    ASSERT_NE(and_cons, nullptr);
+
+    bool mirach_in_and = false;
+    int mirach_comp_stars = 0;
+
+    std::unordered_map<Star*, std::vector<Star*>> and_adj;
+    for (const auto& cl : and_cons->lines)
+    {
+        and_adj[cl.a].push_back(cl.b);
+        and_adj[cl.b].push_back(cl.a);
+        if (cl.a == mirach || cl.b == mirach)
+        {
+            mirach_in_and = true;
+        }
+    }
+
+    EXPECT_TRUE(mirach_in_and);
+
+    if (mirach_in_and)
+    {
+        std::unordered_set<Star*> visited;
+        std::vector<Star*> q;
+        q.push_back(mirach);
+        visited.insert(mirach);
+
+        while (!q.empty())
+        {
+            Star* curr = q.back();
+            q.pop_back();
+            mirach_comp_stars++;
+
+            for (Star* nbr : and_adj[curr])
+            {
+                if (!visited.count(nbr))
+                {
+                    visited.insert(nbr);
+                    q.push_back(nbr);
+                }
+            }
+        }
+    }
+
+    // Mirach should be part of a connected shape with at least 4 stars (>= 3 lines)
+    EXPECT_GE(mirach_comp_stars, 4);
+}
+
 
 

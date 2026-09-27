@@ -86,7 +86,7 @@ namespace alienorum
     class ExoConsGenerator
     {
         public:
-        static bool to_be_generated(Star* sys_star, std::string& vantage_name_out);
+        static bool check_should_generate_for(Star* sys_star, std::string& vantage_name_out);
         static void generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss);
         static void start_generation_for(Star* sys_star);
         static void update_frame();
