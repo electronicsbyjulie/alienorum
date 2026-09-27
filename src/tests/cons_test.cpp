@@ -4,6 +4,7 @@
 #include "../classes/star.h"
 #include "../classes/exocons.h"
 #include "../loaders.h"
+#include "../visuals.h"
 
 using namespace alienorum;
 
@@ -937,4 +938,234 @@ TEST_F(ExoConsTest, ProgressiveFrameGeneration_ExecutesSmoothly)
     }
     EXPECT_GE(gj86_count, 50);
 }
+
+TEST_F(ExoConsTest, NearbyVantageWithin10LightYears_SuppressesExoconsGeneration)
+{
+    Star* tau_cet = get_star("Tau Ceti");
+    if (!tau_cet)
+    {
+        tau_cet = get_star("tau Cet");
+    }
+    ASSERT_NE(tau_cet, nullptr);
+
+    Star* eps_eri = get_star("Epsilon Eridani");
+    if (!eps_eri)
+    {
+        eps_eri = get_star("eps Eri");
+    }
+    ASSERT_NE(eps_eri, nullptr);
+
+    // Verify physical distance between Tau Ceti and Epsilon Eridani is within 10 light years
+    double dist = tau_cet->location.distance_to(eps_eri->location);
+    EXPECT_LT(dist, light_year * 10.0);
+    EXPECT_GT(dist, light_year * 0.1);
+
+    // Generate constellations for Tau Ceti and save to exocons.dat
+    ExoConsGenerator::generate_all_synchronous(tau_cet);
+
+    // Verify exocons.dat has Tau Ceti constellations
+    constellations.clear();
+    read_cons_lines();
+
+    int tau_cet_count = 0;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name == "Tau Ceti" || c.vantage_name == "tau Cet"
+            || (!std::isnan(c.vantage.x) && c.vantage.distance_to(tau_cet->location) < light_year * 0.1))
+        {
+            tau_cet_count++;
+        }
+    }
+    EXPECT_GE(tau_cet_count, 50);
+
+    // When at Epsilon Eridani, to_be_generated must return false because a nearby star (Tau Ceti)
+    // within 10 light years already has constellations generated.
+    std::string vname;
+    bool should_gen = ExoConsGenerator::to_be_generated(eps_eri, vname);
+    EXPECT_FALSE(should_gen);
+
+    // Also verify when cache_cons_lines has executed
+    cache_cons_lines();
+
+    // After caching, vantage_name must remain intact and generation must still be suppressed
+    should_gen = ExoConsGenerator::to_be_generated(eps_eri, vname);
+    EXPECT_FALSE(should_gen);
+
+    // Verify update_frame does not initiate generation for Epsilon Eridani
+    whereami = find_object("Epsilon Eridani", true);
+    mycenobj = eps_eri;
+    here = eps_eri->location;
+    ExoConsGenerator::update_frame();
+    EXPECT_FALSE(ExoConsGenerator::get_is_generating());
+}
+
+TEST_F(ExoConsTest, BrightStarsJoinedAndNormalSizedConstellationsFormed)
+{
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(uma47, generated);
+
+    // Acceptance criterion: at least 50 constellations form
+    EXPECT_GE(generated.size(), 50u);
+
+    std::unordered_set<Star*> lined_stars;
+    for (const auto& c : generated)
+    {
+        // Little clusters get connected to form normal sized constellations (at least 3 lines)
+        EXPECT_GE(c.lines.size(), 3u);
+
+        for (const auto& cl : c.lines)
+        {
+            ASSERT_NE(cl.a, nullptr);
+            ASSERT_NE(cl.b, nullptr);
+            lined_stars.insert(cl.a);
+            lined_stars.insert(cl.b);
+        }
+    }
+
+    // Verify no star brighter than magnitude 3 gets ignored for line joining
+    CelestialLocation vantage_loc = uma47->location;
+    CelestialObject* local_cenobj = uma47->cenobj ? uma47->cenobj : uma47;
+    int bright_count = 0;
+    int unconnected_bright_count = 0;
+
+    for (int i = 0; cels[i]; i++)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star)
+        {
+            continue;
+        }
+        Star* s = (Star*)cels[i];
+        if (s == uma47 || s == local_cenobj || s->cenobj == local_cenobj || s->cenobj == uma47)
+        {
+            continue;
+        }
+        if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
+        {
+            Star* primary = (Star*)s->cenobj;
+            if (primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
+            {
+                continue;
+            }
+        }
+        double mag = s->viewer_magnitude(vantage_loc);
+        if (std::isnan(mag) || std::isinf(mag))
+        {
+            continue;
+        }
+        if (mag < 3.0)
+        {
+            bright_count++;
+            if (!lined_stars.count(s))
+            {
+                unconnected_bright_count++;
+            }
+        }
+    }
+
+    EXPECT_GT(bright_count, 50);
+    EXPECT_EQ(unconnected_bright_count, 0);
+}
+
+TEST_F(ExoConsTest, PasserbyLinesConnectToImpingingStars)
+{
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(uma47, generated);
+
+    EXPECT_GE(generated.size(), 50u);
+
+    struct LineInfo
+    {
+        Star* a;
+        Star* b;
+        Point ua;
+        Point ub;
+    };
+    std::vector<LineInfo> all_lines;
+    std::unordered_set<Star*> lined_stars;
+
+    Point vantage_pt = uma47->location;
+    CelestialLocation vantage_loc = uma47->location;
+
+    for (const auto& c : generated)
+    {
+        EXPECT_GE(c.lines.size(), 3u);
+        for (const auto& cl : c.lines)
+        {
+            ASSERT_NE(cl.a, nullptr);
+            ASSERT_NE(cl.b, nullptr);
+            lined_stars.insert(cl.a);
+            lined_stars.insert(cl.b);
+
+            Point pa = (Point)cl.a->location - vantage_pt;
+            Point pb = (Point)cl.b->location - vantage_pt;
+            Point ua = pa * (1.0 / pa.magnitude());
+            Point ub = pb * (1.0 / pb.magnitude());
+            all_lines.push_back({cl.a, cl.b, ua, ub});
+        }
+    }
+
+    std::vector<std::pair<Star*, Point>> impinging_stars;
+    for (int i = 0; cels[i]; i++)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+        Star* s = (Star*)cels[i];
+        if (s == uma47 || s == uma47->cenobj || s->cenobj == uma47) continue;
+
+        if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
+        {
+            Star* primary = (Star*)s->cenobj;
+            if (primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
+            {
+                continue;
+            }
+        }
+
+        double mag = s->viewer_magnitude(vantage_loc);
+        if (std::isnan(mag) || std::isinf(mag)) continue;
+
+        bool is_joined = lined_stars.count(s) > 0;
+        bool is_bright = (mag < 4.0);
+
+        if (is_joined || is_bright)
+        {
+            Point rel = (Point)s->location - vantage_pt;
+            if (rel.magnitude() > 1e-9)
+            {
+                impinging_stars.push_back(std::make_pair(s, rel * (1.0 / rel.magnitude())));
+            }
+        }
+    }
+
+    int near_miss_count = 0;
+    for (const auto& l : all_lines)
+    {
+        for (const auto& is : impinging_stars)
+        {
+            if (is.first == l.a || is.first == l.b) continue;
+
+            double dist_deg = 0.0;
+            if (ExoConsGenerator::point_near_arc(l.ua, l.ub, is.second, 1.5, &dist_deg, 0.8))
+            {
+                near_miss_count++;
+            }
+        }
+    }
+
+    EXPECT_EQ(near_miss_count, 0);
+}
+
 

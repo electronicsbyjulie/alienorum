@@ -12,7 +12,7 @@
 
 namespace alienorum
 {
-    const IAUConstellationDef iau_constellations[88] =
+    const IAUConstellationDef iau_constellations[EXOCONS_NUM_IAU_CONSTELLATIONS] =
     {
         {"And", "Andromeda", "Andromedae"},
         {"Ant", "Antlia", "Antliae"},
@@ -156,7 +156,7 @@ namespace alienorum
 
     const IAUConstellationDef* ExoConsGenerator::find_iau_def(const std::string& abbrev)
     {
-        for (int i = 0; i < 88; i++)
+        for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
         {
             if (abbrev == iau_constellations[i].abbrev)
             {
@@ -215,6 +215,66 @@ namespace alienorum
             return true;
         }
         return false;
+    }
+
+    bool ExoConsGenerator::point_near_arc(const Point& a, const Point& b, const Point& p, double max_dist_deg, double* dist_out, double min_end_dist_deg)
+    {
+        Point ua = normalize_point(a);
+        Point ub = normalize_point(b);
+        Point up = normalize_point(p);
+
+        Point n = cross_product(ua, ub);
+        double n_mag = n.magnitude();
+        if (n_mag < 1e-12)
+        {
+            return false;
+        }
+
+        double dAB = dot_product(ua, ub);
+        double dPA = dot_product(up, ua);
+        double dPB = dot_product(up, ub);
+
+        // Check if projection of p lies strictly between a and b along the arc
+        if ((dPB - dAB * dPA <= 0.0) || (dPA - dAB * dPB <= 0.0))
+        {
+            return false;
+        }
+
+        double cross_dot = dot_product(up, n);
+        double sin_dist = std::abs(cross_dot) / n_mag;
+        double dist_rad = asin(std::min(1.0, sin_dist));
+        double dist_deg = dist_rad * 180.0 / _pi;
+
+        if (dist_deg > max_dist_deg)
+        {
+            return false;
+        }
+
+        Point n_unit = n * (1.0 / n_mag);
+        Point p_proj = up - n_unit * dot_product(up, n_unit);
+        double proj_mag = p_proj.magnitude();
+        if (proj_mag < 1e-12)
+        {
+            return false;
+        }
+        p_proj = p_proj * (1.0 / proj_mag);
+
+        double dot_proj_a = dot_product(p_proj, ua);
+        double dot_proj_b = dot_product(p_proj, ub);
+        double x_deg = acos(std::max(-1.0, std::min(1.0, dot_proj_a))) * 180.0 / _pi;
+        double y_deg = acos(std::max(-1.0, std::min(1.0, dot_proj_b))) * 180.0 / _pi;
+
+        if (x_deg < min_end_dist_deg || y_deg < min_end_dist_deg)
+        {
+            return false;
+        }
+
+        if (dist_out)
+        {
+            *dist_out = dist_deg;
+        }
+
+        return true;
     }
 
     std::string ExoConsGenerator::get_consline_star_name(Star* s)
@@ -325,7 +385,7 @@ namespace alienorum
             return 0.0;
         }
 
-        const double cos5deg = cos(5.0 * _pi / 180.0);
+        const double cos5deg = cos(EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG * _pi / 180.0);
         const double phi = _pi * (sqrt(5.0) - 1.0);
         int covered = 0;
 
@@ -375,33 +435,63 @@ namespace alienorum
 
         Point sys_loc = sys_star->location;
 
-        std::unordered_map<std::string, int> vantage_counts;
-        std::unordered_map<std::string, Point> vantage_locations;
+        struct VantageGroup
+        {
+            Point loc;
+            std::string name;
+            int count = 0;
+        };
+        std::vector<VantageGroup> groups;
         int own_count = 0;
 
-        for (const auto& c : constellations)
+        std::unordered_map<std::string, Point> resolved_vantages;
+        resolved_vantages["Sun"] = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+        resolved_vantages["Sol"] = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+
+        for (auto& c : constellations)
         {
             std::string vname = c.vantage_name;
+            if (!c.vantage_resolved)
+            {
+                if (vname.empty() || vname == "Sun" || vname == "Sol")
+                {
+                    c.vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+                    c.vantage_resolved = true;
+                }
+                else
+                {
+                    auto it = resolved_vantages.find(vname);
+                    if (it != resolved_vantages.end())
+                    {
+                        c.vantage = it->second;
+                        c.vantage_resolved = true;
+                    }
+                    else
+                    {
+                        int sidx = find_object(vname.c_str(), true);
+                        if (sidx >= 0 && cels && cels[sidx])
+                        {
+                            c.vantage = cels[sidx]->location;
+                        }
+                        else
+                        {
+                            c.vantage.x = c.vantage.y = c.vantage.z = nanf("vantage");
+                        }
+                        resolved_vantages[vname] = c.vantage;
+                        c.vantage_resolved = true;
+                    }
+                }
+            }
+
             Point vpt = c.vantage;
-            if (vname.empty() && std::isnan(vpt.x))
+            if (std::isnan(vpt.x))
+            {
+                continue;
+            }
+
+            if (vname.empty() && vpt.distance_to(Point(0, 0, 0)) < light_year * 0.1)
             {
                 vname = "Sun";
-                vpt = Point(0, 0, 0);
-            }
-            else if (vname.empty())
-            {
-                if (vpt.distance_to(Point(0, 0, 0)) < light_year * 0.1)
-                {
-                    vname = "Sun";
-                }
-            }
-            else
-            {
-                int sidx = find_object(vname.c_str(), true);
-                if (sidx >= 0 && cels[sidx])
-                {
-                    vpt = cels[sidx]->location;
-                }
             }
 
             bool is_same_vantage = (!c.vantage_name.empty() && c.vantage_name == vantage_name_out);
@@ -409,15 +499,28 @@ namespace alienorum
             {
                 is_same_vantage = true;
             }
-            if ((!std::isnan(vpt.x) && vpt.distance_to(sys_loc) < light_year * 0.1) || is_same_vantage)
+            if (vpt.distance_to(sys_loc) < light_year * EXOCONS_SAME_VANTAGE_DIST_LY || is_same_vantage)
             {
                 own_count++;
             }
 
-            if (!vname.empty())
+            bool matched_group = false;
+            for (auto& g : groups)
             {
-                vantage_counts[vname]++;
-                vantage_locations[vname] = vpt;
+                if ((!vname.empty() && !g.name.empty() && g.name == vname) || g.loc.distance_to(vpt) < light_year * 0.1)
+                {
+                    g.count++;
+                    if (g.name.empty() && !vname.empty())
+                    {
+                        g.name = vname;
+                    }
+                    matched_group = true;
+                    break;
+                }
+            }
+            if (!matched_group)
+            {
+                groups.push_back({vpt, vname, 1});
             }
         }
 
@@ -426,13 +529,12 @@ namespace alienorum
             return false;
         }
 
-        for (const auto& pair : vantage_counts)
+        for (const auto& g : groups)
         {
-            if (pair.second >= 30)
+            if (g.count >= 30)
             {
-                Point vloc = vantage_locations[pair.first];
-                double dist = vloc.distance_to(sys_loc);
-                if (dist < light_year * 10.0)
+                double dist = g.loc.distance_to(sys_loc);
+                if (dist < light_year * EXOCONS_NEARBY_SUPPRESS_DIST_LY)
                 {
                     return false;
                 }
@@ -444,6 +546,8 @@ namespace alienorum
 
     void ExoConsGenerator::generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss)
     {
+        if (!show_consln) return;           // Only generate if showing cons lines, that way the file doesn't grow huge if you star hop in realism mode.
+
         out_conss.clear();
         if (!sys_star)
         {
@@ -468,10 +572,11 @@ namespace alienorum
         std::unordered_set<Star*> existing_lined_stars;
         std::vector<std::pair<Point, Point>> existing_lines;
         std::unordered_set<std::string> existing_cons_abbrevs;
+        std::unordered_map<Star*, std::string> star_to_cons;
 
         for (const auto& c : constellations)
         {
-            bool is_match = (c.vantage.distance_to(vantage_pt) < light_year * 0.1)
+            bool is_match = (c.vantage.distance_to(vantage_pt) < light_year * EXOCONS_SAME_VANTAGE_DIST_LY)
                 || (!c.vantage_name.empty() && c.vantage_name == sys_name);
             if (is_match && c.lines.size() > 0)
             {
@@ -482,6 +587,8 @@ namespace alienorum
                     {
                         existing_lined_stars.insert(cl.a);
                         existing_lined_stars.insert(cl.b);
+                        star_to_cons[cl.a] = c.abbrev;
+                        star_to_cons[cl.b] = c.abbrev;
 
                         Point rel_a = (Point)cl.a->location - vantage_pt;
                         Point rel_b = (Point)cl.b->location - vantage_pt;
@@ -494,6 +601,7 @@ namespace alienorum
         // 2. Collect candidate stars outside the local system
         std::vector<ExoConsStarInfo> candidates;
         candidates.reserve(8192);
+        std::unordered_map<Star*, ExoConsStarInfo> star_info_map;
 
         for (int i = 0; cels[i]; i++)
         {
@@ -507,15 +615,25 @@ namespace alienorum
                 continue;
             }
 
+            // Exclude secondary companion stars if primary star is present and brighter
+            if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
+            {
+                Star* primary = (Star*)s->cenobj;
+                if (primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
+                {
+                    continue;
+                }
+            }
+
             double mag = s->viewer_magnitude(vantage_loc);
-            if (std::isnan(mag) || std::isinf(mag) || mag > 8.0)
+            if (std::isnan(mag) || std::isinf(mag) || mag > EXOCONS_CANDIDATE_MAX_MAG)
             {
                 continue;
             }
 
             Point rel = (Point)s->location - vantage_pt;
             double dist = rel.magnitude();
-            if (dist < 1e-9)
+            if (dist < EXOCONS_MIN_SEPARATION_EPSILON)
             {
                 continue;
             }
@@ -526,6 +644,7 @@ namespace alienorum
             info.u = normalize_point(rel);
             info.orig_cons = extract_star_cons_abbrev(s);
             candidates.push_back(info);
+            star_info_map[s] = info;
         }
 
         // 3. Inclusion criteria:
@@ -535,7 +654,7 @@ namespace alienorum
         // Pass 1: Mag < 4.0
         for (const auto& c : candidates)
         {
-            if (c.mag < 4.0 && !existing_lined_stars.count(c.s))
+            if (c.mag < EXOCONS_PASS1_MAX_MAG && !existing_lined_stars.count(c.s))
             {
                 included.push_back(c);
                 included_set.insert(c.s);
@@ -543,12 +662,12 @@ namespace alienorum
         }
 
         // Pass 2: Mag < 5.0 and close (<= 4.0 deg) to an already included star
-        const double cos4deg = cos(4.0 * _pi / 180.0);
+        const double cos4deg = cos(EXOCONS_PASS2_NEARBY_DEG * _pi / 180.0);
         for (int iter = 0; iter < 2; iter++)
         {
             for (const auto& c : candidates)
             {
-                if (c.mag < 5.0 && !included_set.count(c.s) && !existing_lined_stars.count(c.s))
+                if (c.mag < EXOCONS_PASS2_MAX_MAG && !included_set.count(c.s) && !existing_lined_stars.count(c.s))
                 {
                     for (const auto& inc : included)
                     {
@@ -564,12 +683,12 @@ namespace alienorum
         }
 
         // Pass 3: More than 7 degrees from a lined star and the brightest within a 2 degree radius
-        const double cos7deg = cos(7.0 * _pi / 180.0);
-        const double cos2deg = cos(2.0 * _pi / 180.0);
+        const double cos7deg = cos(EXOCONS_PASS3_MIN_DIST_DEG * _pi / 180.0);
+        const double cos2deg = cos(EXOCONS_PASS3_ISOLATION_DEG * _pi / 180.0);
 
         for (const auto& c : candidates)
         {
-            if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > 6.5)
+            if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > EXOCONS_PASS3_MAX_MAG)
             {
                 continue;
             }
@@ -603,7 +722,7 @@ namespace alienorum
                 {
                     if (other.s != c.s && dot_product(c.u, other.u) >= cos2deg)
                     {
-                        if (other.mag < c.mag - 0.01)
+                        if (other.mag < c.mag - EXOCONS_PASS3_MAG_MARGIN)
                         {
                             is_brightest = false;
                             break;
@@ -619,9 +738,43 @@ namespace alienorum
         }
 
         // 4. Line formation
-        const double cos15deg = cos(15.0 * _pi / 180.0);
+        const double cos15deg = cos(EXOCONS_MAX_LINE_LENGTH_DEG * _pi / 180.0);
         std::vector<std::pair<ExoConsStarInfo, ExoConsStarInfo>> all_lines;
         std::unordered_map<Star*, int> degrees;
+        std::vector<std::string> line_assigned_cons;
+        std::unordered_map<std::string, int> cons_line_counts;
+
+        auto register_line = [&](Star* s1, Star* s2, const std::string& c_abbr)
+        {
+            line_assigned_cons.push_back(c_abbr);
+            cons_line_counts[c_abbr]++;
+            if (star_to_cons.find(s1) == star_to_cons.end())
+            {
+                star_to_cons[s1] = c_abbr;
+            }
+            if (star_to_cons.find(s2) == star_to_cons.end())
+            {
+                star_to_cons[s2] = c_abbr;
+            }
+        };
+
+        auto can_connect_star_to_cons = [&](Star* s, const std::string& cons_abbr, bool is_expanding_small) -> bool
+        {
+            if (existing_lined_stars.count(s))
+            {
+                return false;
+            }
+            auto it = star_to_cons.find(s);
+            if (it == star_to_cons.end() || it->second.empty())
+            {
+                return true;
+            }
+            if (it->second == cons_abbr)
+            {
+                return true;
+            }
+            return is_expanding_small;
+        };
 
         std::unordered_map<std::string, std::vector<ExoConsStarInfo>> by_cons;
         for (const auto& c : included)
@@ -654,13 +807,13 @@ namespace alienorum
             for (int i = 0; i < n_stars; i++)
             {
                 const auto& u1 = c_stars[i];
-                if (degrees[u1.s] >= 3)
+                if (degrees[u1.s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
 
                 int best_match_idx = -1;
-                double best_score = 1e9;
+                double best_score = EXOCONS_INF_SCORE;
 
                 for (int j = 0; j < n_stars; j++)
                 {
@@ -669,7 +822,7 @@ namespace alienorum
                         continue;
                     }
                     const auto& u2 = c_stars[j];
-                    if (degrees[u2.s] >= 3)
+                    if (degrees[u2.s] >= EXOCONS_MAX_STAR_DEGREE)
                     {
                         continue;
                     }
@@ -694,7 +847,8 @@ namespace alienorum
                     }
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
-                    double score = d_deg + 0.5 * (u1.mag + u2.mag);
+                    double dm = std::abs(u1.mag - u2.mag);
+                    double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -735,7 +889,167 @@ namespace alienorum
                     all_lines.push_back({u1, c_stars[best_match_idx]});
                     degrees[u1.s]++;
                     degrees[c_stars[best_match_idx].s]++;
+                    register_line(u1.s, c_stars[best_match_idx].s, pair.first);
                 }
+            }
+        }
+
+        auto check_line_valid = [&](const Point& u1, const Point& u2, Star* s1, Star* s2) -> bool
+        {
+            if (s1 == s2 || dot_product(u1, u2) < cos15deg || dot_product(u1, u2) > EXOCONS_DOT_PARALLEL_MAX)
+            {
+                return false;
+            }
+            for (const auto& al : all_lines)
+            {
+                if ((al.first.s == s1 && al.second.s == s2) || (al.first.s == s2 && al.second.s == s1))
+                {
+                    return false;
+                }
+            }
+            for (const auto& el : existing_lines)
+            {
+                if (arcs_intersect(u1, u2, el.first, el.second))
+                {
+                    return false;
+                }
+            }
+            for (const auto& al : all_lines)
+            {
+                if (al.first.s == s1 || al.first.s == s2 || al.second.s == s1 || al.second.s == s2)
+                {
+                    continue;
+                }
+                if (arcs_intersect(u1, u2, al.first.u, al.second.u))
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        auto try_connect_star = [&](const ExoConsStarInfo& u1, int max_degree) -> bool
+        {
+            std::string u1_cons = "";
+            auto it_u1 = star_to_cons.find(u1.s);
+            if (it_u1 != star_to_cons.end())
+            {
+                u1_cons = it_u1->second;
+            }
+            else
+            {
+                u1_cons = u1.orig_cons;
+            }
+            if (u1_cons.empty() || existing_cons_abbrevs.count(u1_cons))
+            {
+                for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
+                {
+                    std::string cand_abbr = iau_constellations[k].abbrev;
+                    if (!existing_cons_abbrevs.count(cand_abbr))
+                    {
+                        u1_cons = cand_abbr;
+                        break;
+                    }
+                }
+            }
+            bool is_expanding = (degrees[u1.s] == 0) || (cons_line_counts[u1_cons] < EXOCONS_MIN_LINES_PER_CONS);
+
+            int best_cand_idx = -1;
+            bool from_included = true;
+            double best_score = EXOCONS_INF_SCORE;
+
+            for (size_t k = 0; k < included.size(); k++)
+            {
+                const auto& u2 = included[k];
+                if (u2.s == u1.s || degrees[u2.s] >= max_degree) continue;
+                if (!can_connect_star_to_cons(u2.s, u1_cons, is_expanding)) continue;
+                if (!check_line_valid(u1.u, u2.u, u1.s, u2.s)) continue;
+
+                double d_deg = ang_dist_deg(u1.u, u2.u);
+                double dm = std::abs(u1.mag - u2.mag);
+                double penalty = (degrees[u2.s] > 0 && star_to_cons[u2.s] != u1_cons) ? 100.0 : 0.0;
+                double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm + penalty;
+                if (score < best_score)
+                {
+                    best_score = score;
+                    best_cand_idx = (int)k;
+                    from_included = true;
+                }
+            }
+
+            if (best_cand_idx < 0)
+            {
+                for (size_t k = 0; k < candidates.size(); k++)
+                {
+                    const auto& u2 = candidates[k];
+                    if (u2.s == u1.s || degrees[u2.s] >= max_degree || u2.mag > EXOCONS_PASS3_MAX_MAG) continue;
+                    if (!can_connect_star_to_cons(u2.s, u1_cons, is_expanding)) continue;
+                    if (!check_line_valid(u1.u, u2.u, u1.s, u2.s)) continue;
+
+                    double d_deg = ang_dist_deg(u1.u, u2.u);
+                    double dm = std::abs(u1.mag - u2.mag);
+                    double penalty = (degrees[u2.s] > 0 && star_to_cons[u2.s] != u1_cons) ? 100.0 : 0.0;
+                    double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm + penalty;
+                    if (score < best_score)
+                    {
+                        best_score = score;
+                        best_cand_idx = (int)k;
+                        from_included = false;
+                    }
+                }
+            }
+
+            if (best_cand_idx >= 0)
+            {
+                ExoConsStarInfo neighbor = from_included ? included[best_cand_idx] : candidates[best_cand_idx];
+                std::string line_cons = u1_cons;
+                if (degrees[u1.s] == 0 && degrees[neighbor.s] > 0 && star_to_cons.find(neighbor.s) != star_to_cons.end())
+                {
+                    line_cons = star_to_cons[neighbor.s];
+                }
+                all_lines.push_back({u1, neighbor});
+                degrees[u1.s]++;
+                degrees[neighbor.s]++;
+                register_line(u1.s, neighbor.s, line_cons);
+                if (!included_set.count(neighbor.s))
+                {
+                    included.push_back(neighbor);
+                    included_set.insert(neighbor.s);
+                }
+                return true;
+            }
+            return false;
+        };
+
+        // Guarantee that no star brighter than magnitude 3 gets ignored for line joining
+        std::vector<ExoConsStarInfo> bright_stars;
+        for (const auto& c : candidates)
+        {
+            if (c.mag < EXOCONS_MANDATORY_JOIN_MAG && !existing_lined_stars.count(c.s))
+            {
+                bright_stars.push_back(c);
+            }
+        }
+        std::sort(bright_stars.begin(), bright_stars.end(), [](const ExoConsStarInfo& a, const ExoConsStarInfo& b)
+        {
+            return a.mag < b.mag;
+        });
+
+        for (const auto& bs : bright_stars)
+        {
+            if (degrees[bs.s] == 0)
+            {
+                if (!try_connect_star(bs, 3))
+                {
+                    if (!try_connect_star(bs, 4))
+                    {
+                        try_connect_star(bs, 5);
+                    }
+                }
+            }
+            if (degrees[bs.s] == 1)
+            {
+                try_connect_star(bs, 3);
             }
         }
 
@@ -746,31 +1060,30 @@ namespace alienorum
             {
                 continue;
             }
-            bool has_line = false;
-            for (const auto& l : all_lines)
+            if (cons_line_counts[pair.first] > 0)
             {
-                if (l.first.orig_cons == pair.first || l.second.orig_cons == pair.first)
-                {
-                    has_line = true;
-                    break;
-                }
+                continue;
             }
 
-            if (!has_line && pair.second.size() > 0)
+            if (pair.second.size() > 0)
             {
                 const auto& u1 = pair.second[0];
-                if (degrees[u1.s] >= 3)
+                if (degrees[u1.s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
 
                 int best_match_idx = -1;
-                double best_score = 1e9;
+                double best_score = EXOCONS_INF_SCORE;
 
                 for (size_t k = 0; k < included.size(); k++)
                 {
                     const auto& u2 = included[k];
-                    if (u2.s == u1.s || degrees[u2.s] >= 3)
+                    if (u2.s == u1.s || degrees[u2.s] >= EXOCONS_MAX_STAR_DEGREE)
+                    {
+                        continue;
+                    }
+                    if (!can_connect_star_to_cons(u2.s, pair.first, true))
                     {
                         continue;
                     }
@@ -780,7 +1093,9 @@ namespace alienorum
                     }
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
-                    double score = d_deg + 0.8 * (u1.mag + u2.mag);
+                    double dm = std::abs(u1.mag - u2.mag);
+                    double penalty = (degrees[u2.s] > 0 && star_to_cons[u2.s] != pair.first) ? 50.0 : 0.0;
+                    double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTER * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm + penalty;
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -821,6 +1136,7 @@ namespace alienorum
                     all_lines.push_back({u1, included[best_match_idx]});
                     degrees[u1.s]++;
                     degrees[included[best_match_idx].s]++;
+                    register_line(u1.s, included[best_match_idx].s, pair.first);
                 }
             }
         }
@@ -853,24 +1169,24 @@ namespace alienorum
         };
 
         refresh_lined_dirs();
-        double current_cov = calculate_sky_coverage(lined_dirs, 1000);
+        double current_cov = calculate_sky_coverage(lined_dirs, EXOCONS_SKY_COVERAGE_SAMPLES);
 
         const double phi = _pi * (sqrt(5.0) - 1.0);
-        int max_gap_iterations = 200;
+        int max_gap_iterations = EXOCONS_SKY_GAP_MAX_ITERATIONS;
 
-        while (current_cov < 0.80 && max_gap_iterations-- > 0)
+        while (current_cov < EXOCONS_SKY_COVERAGE_THRESHOLD && max_gap_iterations-- > 0)
         {
             Point worst_p;
             double worst_dist = -1.0;
 
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
             {
-                double y = 1.0 - ((double)i / 999.0) * 2.0;
+                double y = 1.0 - ((double)i / (double)(EXOCONS_SKY_COVERAGE_SAMPLES - 1)) * 2.0;
                 double radius = sqrt(std::max(0.0, 1.0 - y * y));
                 double theta = phi * (double)i;
                 Point p(cos(theta) * radius, y, sin(theta) * radius);
 
-                double min_d = 1e9;
+                double min_d = EXOCONS_INF_SCORE;
                 for (const auto& u : lined_dirs)
                 {
                     double d = ang_dist_deg(p, u);
@@ -886,21 +1202,21 @@ namespace alienorum
                 }
             }
 
-            if (worst_dist <= 5.0)
+            if (worst_dist <= EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG)
             {
                 break;
             }
 
             int best_cand_idx = -1;
-            double best_cand_dist = 1e9;
+            double best_cand_dist = EXOCONS_INF_SCORE;
             for (size_t i = 0; i < candidates.size(); i++)
             {
-                if (degrees[candidates[i].s] >= 3)
+                if (degrees[candidates[i].s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
                 double d = ang_dist_deg(worst_p, candidates[i].u);
-                if (d < best_cand_dist && candidates[i].mag < 6.5)
+                if (d < best_cand_dist && candidates[i].mag < EXOCONS_GAP_FILL_MAX_MAG)
                 {
                     best_cand_dist = d;
                     best_cand_idx = (int)i;
@@ -913,12 +1229,34 @@ namespace alienorum
             }
 
             const auto& cand_star = candidates[best_cand_idx];
+            std::string cand_cons = "";
+            auto it_cc = star_to_cons.find(cand_star.s);
+            if (it_cc != star_to_cons.end()) cand_cons = it_cc->second;
+            else cand_cons = cand_star.orig_cons;
+            if (cand_cons.empty() || existing_cons_abbrevs.count(cand_cons))
+            {
+                for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
+                {
+                    std::string cand_abbr = iau_constellations[k].abbrev;
+                    if (!existing_cons_abbrevs.count(cand_abbr))
+                    {
+                        cand_cons = cand_abbr;
+                        break;
+                    }
+                }
+            }
+            bool is_cand_expanding = (cons_line_counts[cand_cons] < EXOCONS_MIN_LINES_PER_CONS);
+
             int best_neighbor_idx = -1;
-            double best_n_dist = 1e9;
+            double best_n_dist = EXOCONS_INF_SCORE;
 
             for (size_t j = 0; j < candidates.size(); j++)
             {
-                if ((int)j == best_cand_idx || degrees[candidates[j].s] >= 3)
+                if ((int)j == best_cand_idx || degrees[candidates[j].s] >= EXOCONS_MAX_STAR_DEGREE)
+                {
+                    continue;
+                }
+                if (!can_connect_star_to_cons(candidates[j].s, cand_cons, is_cand_expanding))
                 {
                     continue;
                 }
@@ -967,8 +1305,9 @@ namespace alienorum
                 all_lines.push_back({cand_star, candidates[best_neighbor_idx]});
                 degrees[cand_star.s]++;
                 degrees[candidates[best_neighbor_idx].s]++;
+                register_line(cand_star.s, candidates[best_neighbor_idx].s, cand_cons);
                 refresh_lined_dirs();
-                current_cov = calculate_sky_coverage(lined_dirs, 1000);
+                current_cov = calculate_sky_coverage(lined_dirs, EXOCONS_SKY_COVERAGE_SAMPLES);
             }
             else
             {
@@ -976,20 +1315,20 @@ namespace alienorum
             }
         }
 
-        // 5. Construct final Constellation objects grouped by IAU constellations
-        std::unordered_map<std::string, std::vector<std::pair<Star*, Star*>>> lines_by_cons;
-        for (const auto& l : all_lines)
+        // Ensure constellation abbreviations are populated for all lines
+        while (line_assigned_cons.size() < all_lines.size())
         {
-            std::string c_abbrev = l.first.orig_cons;
+            size_t idx = line_assigned_cons.size();
+            std::string c_abbrev = all_lines[idx].first.orig_cons;
             if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
             {
-                c_abbrev = l.second.orig_cons;
+                c_abbrev = all_lines[idx].second.orig_cons;
             }
             if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
             {
-                for (int i = 0; i < 88; i++)
+                for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
                 {
-                    std::string cand_abbr = iau_constellations[i].abbrev;
+                    std::string cand_abbr = iau_constellations[k].abbrev;
                     if (!existing_cons_abbrevs.count(cand_abbr))
                     {
                         c_abbrev = cand_abbr;
@@ -997,16 +1336,674 @@ namespace alienorum
                     }
                 }
             }
-            lines_by_cons[c_abbrev].push_back({l.first.s, l.second.s});
+            line_assigned_cons.push_back(c_abbrev);
+        }
+
+        std::unordered_map<std::string, std::vector<size_t>> cons_to_lines;
+        for (size_t i = 0; i < all_lines.size(); i++)
+        {
+            cons_to_lines[line_assigned_cons[i]].push_back(i);
+        }
+
+        // Phase 1: Connect little clusters (< 3 lines) to nearby clusters and merge them
+        std::vector<std::string> cons_list;
+        for (const auto& pair : cons_to_lines)
+        {
+            cons_list.push_back(pair.first);
+        }
+
+        for (size_t i = 0; i < cons_list.size(); i++)
+        {
+            std::string c_a = cons_list[i];
+            if (cons_to_lines[c_a].empty() || cons_to_lines[c_a].size() >= 3)
+            {
+                continue;
+            }
+
+            int active_count = 0;
+            for (const auto& pair : cons_to_lines)
+            {
+                if (!pair.second.empty()) active_count++;
+            }
+            if (active_count <= EXOCONS_MIN_ACTIVE_CONS_BEFORE_MERGE)
+            {
+                break;
+            }
+
+            int best_match_b = -1;
+            Star* best_sa = nullptr;
+            Star* best_sb = nullptr;
+            double best_dist = EXOCONS_INF_SCORE;
+
+            for (size_t j = 0; j < cons_list.size(); j++)
+            {
+                if (i == j) continue;
+                std::string c_b = cons_list[j];
+                if (cons_to_lines[c_b].empty() || cons_to_lines[c_b].size() >= 3) continue;
+
+                for (size_t lidx_a : cons_to_lines[c_a])
+                {
+                    Star* sa_cands[2] = {all_lines[lidx_a].first.s, all_lines[lidx_a].second.s};
+                    for (Star* sa : sa_cands)
+                    {
+                        if (degrees[sa] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                        auto it_a = star_info_map.find(sa);
+                        if (it_a == star_info_map.end()) continue;
+                        const auto& info_a = it_a->second;
+
+                        for (size_t lidx_b : cons_to_lines[c_b])
+                        {
+                            Star* sb_cands[2] = {all_lines[lidx_b].first.s, all_lines[lidx_b].second.s};
+                            for (Star* sb : sb_cands)
+                            {
+                                if (degrees[sb] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                                auto it_b = star_info_map.find(sb);
+                                if (it_b == star_info_map.end()) continue;
+                                const auto& info_b = it_b->second;
+
+                                if (check_line_valid(info_a.u, info_b.u, sa, sb))
+                                {
+                                    double d_deg = ang_dist_deg(info_a.u, info_b.u);
+                                    double dm = std::abs(info_a.mag - info_b.mag);
+                                    double score = d_deg + EXOCONS_SCORE_DM_WEIGHT * dm;
+                                    if (score < best_dist)
+                                    {
+                                        best_dist = score;
+                                        best_match_b = (int)j;
+                                        best_sa = sa;
+                                        best_sb = sb;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (best_match_b >= 0)
+            {
+                std::string c_b = cons_list[best_match_b];
+                const auto& info_a = star_info_map[best_sa];
+                const auto& info_b = star_info_map[best_sb];
+                all_lines.push_back({info_a, info_b});
+                line_assigned_cons.push_back(c_a);
+                degrees[best_sa]++;
+                degrees[best_sb]++;
+                cons_to_lines[c_a].push_back(all_lines.size() - 1);
+
+                for (size_t lidx : cons_to_lines[c_b])
+                {
+                    line_assigned_cons[lidx] = c_a;
+                    cons_to_lines[c_a].push_back(lidx);
+                    star_to_cons[all_lines[lidx].first.s] = c_a;
+                    star_to_cons[all_lines[lidx].second.s] = c_a;
+                }
+                star_to_cons[best_sa] = c_a;
+                star_to_cons[best_sb] = c_a;
+                cons_line_counts[c_a] += cons_line_counts[c_b];
+                cons_line_counts[c_b] = 0;
+                cons_to_lines[c_b].clear();
+            }
+        }
+
+        // Phase 2: Expand constellations that still have < 3 lines to form normal sized constellations
+        for (const auto& c_name : cons_list)
+        {
+            if (cons_to_lines[c_name].empty()) continue;
+
+            int attempts = 0;
+            while (cons_to_lines[c_name].size() < EXOCONS_MIN_LINES_PER_CONS && attempts++ < EXOCONS_MAX_EXPANSION_ATTEMPTS)
+            {
+                std::unordered_set<Star*> c_stars_set;
+                for (size_t lidx : cons_to_lines[c_name])
+                {
+                    c_stars_set.insert(all_lines[lidx].first.s);
+                    c_stars_set.insert(all_lines[lidx].second.s);
+                }
+
+                bool added = false;
+                // First try connecting two stars in the same constellation if not already connected
+                for (Star* s1 : c_stars_set)
+                {
+                    if (degrees[s1] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                    auto it1 = star_info_map.find(s1);
+                    if (it1 == star_info_map.end()) continue;
+
+                    for (Star* s2 : c_stars_set)
+                    {
+                        if (s1 == s2 || degrees[s2] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                        auto it2 = star_info_map.find(s2);
+                        if (it2 == star_info_map.end()) continue;
+
+                        if (check_line_valid(it1->second.u, it2->second.u, s1, s2))
+                        {
+                            all_lines.push_back({it1->second, it2->second});
+                            line_assigned_cons.push_back(c_name);
+                            degrees[s1]++;
+                            degrees[s2]++;
+                            cons_to_lines[c_name].push_back(all_lines.size() - 1);
+                            added = true;
+                            break;
+                        }
+                    }
+                    if (added) break;
+                }
+
+                // If no internal connection, connect to a candidate star
+                if (!added)
+                {
+                    for (Star* cs : c_stars_set)
+                    {
+                        if (degrees[cs] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                        auto it_cs = star_info_map.find(cs);
+                        if (it_cs == star_info_map.end()) continue;
+                        const auto& cs_info = it_cs->second;
+
+                        int best_cand = -1;
+                        double best_score = EXOCONS_INF_SCORE;
+                        for (size_t k = 0; k < candidates.size(); k++)
+                        {
+                            const auto& cand = candidates[k];
+                            if (cand.s == cs || c_stars_set.count(cand.s) || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
+                            if (!can_connect_star_to_cons(cand.s, c_name, true)) continue;
+                            if (!check_line_valid(cs_info.u, cand.u, cs, cand.s)) continue;
+
+                            // Check constellation expanse constraint (keep constellation span within empirical bounds <= 35.0 deg)
+                            bool exceeds_expanse = false;
+                            for (Star* exist_s : c_stars_set)
+                            {
+                                auto it_ex = star_info_map.find(exist_s);
+                                if (it_ex != star_info_map.end())
+                                {
+                                    if (ang_dist_deg(it_ex->second.u, cand.u) > EXOCONS_MAX_EXPANSE_DEG)
+                                    {
+                                        exceeds_expanse = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (exceeds_expanse) continue;
+
+                            double d_deg = ang_dist_deg(cs_info.u, cand.u);
+                            double dm = std::abs(cs_info.mag - cand.mag);
+                            double penalty = (degrees[cand.s] > 0 && star_to_cons[cand.s] != c_name) ? 50.0 : 0.0;
+                            double score = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm + penalty;
+                            if (score < best_score)
+                            {
+                                best_score = score;
+                                best_cand = (int)k;
+                            }
+                        }
+
+                        if (best_cand >= 0)
+                        {
+                            const auto& cand_info = candidates[best_cand];
+                            all_lines.push_back({cs_info, cand_info});
+                            line_assigned_cons.push_back(c_name);
+                            degrees[cs]++;
+                            degrees[cand_info.s]++;
+                            cons_to_lines[c_name].push_back(all_lines.size() - 1);
+                            cons_line_counts[c_name]++;
+                            if (star_to_cons.find(cand_info.s) == star_to_cons.end())
+                            {
+                                star_to_cons[cand_info.s] = c_name;
+                            }
+                            if (!included_set.count(cand_info.s))
+                            {
+                                included.push_back(cand_info);
+                                included_set.insert(cand_info.s);
+                            }
+                            added = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!added) break;
+            }
+        }
+
+        // Phase 3: Final check to guarantee that no star brighter than magnitude 3 was omitted
+        for (const auto& bs : bright_stars)
+        {
+            if (degrees[bs.s] == 0)
+            {
+                if (!try_connect_star(bs, 3))
+                {
+                    if (!try_connect_star(bs, 4))
+                    {
+                        try_connect_star(bs, 5);
+                    }
+                }
+            }
+        }
+
+        // Phase 4: Passerby line rerouting through impinging stars
+        // If a line passes a degree or two from a bright star or a star that has lines,
+        // have the passerby line connect to the impinging star.
+        for (Star* es : existing_lined_stars)
+        {
+            if (star_info_map.find(es) == star_info_map.end())
+            {
+                ExoConsStarInfo einfo;
+                einfo.s = es;
+                Point rel = (Point)es->location - vantage_pt;
+                einfo.u = normalize_point(rel);
+                einfo.mag = es->viewer_magnitude(vantage_loc);
+                einfo.orig_cons = extract_star_cons_abbrev(es);
+                candidates.push_back(einfo);
+                star_info_map[es] = einfo;
+            }
+        }
+
+        while (line_assigned_cons.size() < all_lines.size())
+        {
+            size_t idx = line_assigned_cons.size();
+            std::string c_abbr = all_lines[idx].first.orig_cons;
+            if (c_abbr.empty() || existing_cons_abbrevs.count(c_abbr))
+            {
+                c_abbr = all_lines[idx].second.orig_cons;
+            }
+            line_assigned_cons.push_back(c_abbr);
+        }
+
+        const double max_impinge_dist_deg = EXOCONS_MAX_IMPINGE_DIST_DEG;
+        const double cos17deg = cos(EXOCONS_IMPINGE_NEARBY_DEG * _pi / 180.0);
+        const double cos30_5deg = cos(EXOCONS_IMPINGE_INTERSECT_CHECK_DEG * _pi / 180.0);
+
+        auto is_segment_valid = [&](Star* s1, Star* s2, const Point& u1, const Point& u2, size_t ignore_line_idx) -> bool
+        {
+            if (s1 == s2) return false;
+            double dp = dot_product(u1, u2);
+            if (dp < cos15deg || dp > EXOCONS_DOT_PARALLEL_MAX) return false;
+
+            for (const auto& el : existing_lines)
+            {
+                if (dot_product(u1, el.first) < cos30_5deg) continue;
+                if (arcs_intersect(u1, u2, el.first, el.second))
+                {
+                    return false;
+                }
+            }
+            for (size_t k = 0; k < all_lines.size(); k++)
+            {
+                if (k == ignore_line_idx) continue;
+                const auto& al = all_lines[k];
+                if (al.first.s == s1 || al.first.s == s2 || al.second.s == s1 || al.second.s == s2)
+                {
+                    continue;
+                }
+                if (dot_product(u1, al.first.u) < cos30_5deg) continue;
+                if (arcs_intersect(u1, u2, al.first.u, al.second.u))
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        struct ImpingingCand
+        {
+            int cand_idx;
+            double dist_deg;
+        };
+
+        int max_reroute_passes = 5;
+        for (int pass = 0; pass < max_reroute_passes; pass++)
+        {
+            std::vector<ExoConsStarInfo> impinging_pool;
+            for (const auto& cand : candidates)
+            {
+                if (degrees[cand.s] > 0 || existing_lined_stars.count(cand.s) || cand.mag < EXOCONS_IMPINGING_POOL_BRIGHT_MAG)
+                {
+                    impinging_pool.push_back(cand);
+                }
+            }
+
+            bool any_rerouted = false;
+            size_t num_lines_to_check = all_lines.size();
+
+            for (size_t i = 0; i < num_lines_to_check; i++)
+            {
+                Star* sa = all_lines[i].first.s;
+                Star* sb = all_lines[i].second.s;
+                const Point& ua = all_lines[i].first.u;
+                const Point& ub = all_lines[i].second.u;
+
+                std::vector<ImpingingCand> impinging;
+
+                for (size_t c_idx = 0; c_idx < impinging_pool.size(); c_idx++)
+                {
+                    const auto& cand = impinging_pool[c_idx];
+                    Star* sp = cand.s;
+                    if (sp == sa || sp == sb) continue;
+
+                    if (dot_product(ua, cand.u) < cos17deg) continue;
+
+                    double dist_deg = 0.0;
+                    if (point_near_arc(ua, ub, cand.u, max_impinge_dist_deg, &dist_deg, 0.8))
+                    {
+                        impinging.push_back({(int)c_idx, dist_deg});
+                    }
+                }
+
+                if (impinging.empty()) continue;
+
+                std::sort(impinging.begin(), impinging.end(), [](const ImpingingCand& x, const ImpingingCand& y) {
+                    return x.dist_deg < y.dist_deg;
+                });
+
+                for (const auto& imp : impinging)
+                {
+                    const auto& cand_p = impinging_pool[imp.cand_idx];
+                    Star* sp = cand_p.s;
+                    const Point& up = cand_p.u;
+
+                    bool has_ap = false;
+                    bool has_pb = false;
+                    for (size_t k = 0; k < all_lines.size(); k++)
+                    {
+                        if ((all_lines[k].first.s == sa && all_lines[k].second.s == sp) ||
+                            (all_lines[k].first.s == sp && all_lines[k].second.s == sa))
+                        {
+                            has_ap = true;
+                        }
+                        if ((all_lines[k].first.s == sp && all_lines[k].second.s == sb) ||
+                            (all_lines[k].first.s == sb && all_lines[k].second.s == sp))
+                        {
+                            has_pb = true;
+                        }
+                    }
+
+                    std::string c_abbrev_check = (i < line_assigned_cons.size()) ? line_assigned_cons[i] : all_lines[i].first.orig_cons;
+                    if (c_abbrev_check.empty() || existing_cons_abbrevs.count(c_abbrev_check))
+                    {
+                        c_abbrev_check = all_lines[i].second.orig_cons;
+                    }
+                    bool is_expanding_check = (cons_to_lines[c_abbrev_check].size() < EXOCONS_MIN_LINES_PER_CONS);
+                    bool can_reroute_to_p = can_connect_star_to_cons(sp, c_abbrev_check, is_expanding_check);
+
+                    bool ap_valid = can_reroute_to_p && (has_ap || is_segment_valid(sa, sp, ua, up, i));
+                    bool pb_valid = can_reroute_to_p && (has_pb || is_segment_valid(sp, sb, up, ub, i));
+
+                    if (ap_valid && pb_valid)
+                    {
+                        std::string c_abbrev = (i < line_assigned_cons.size()) ? line_assigned_cons[i] : all_lines[i].first.orig_cons;
+                        if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
+                        {
+                            c_abbrev = all_lines[i].second.orig_cons;
+                        }
+
+                        ExoConsStarInfo info_a = all_lines[i].first;
+                        ExoConsStarInfo info_b = all_lines[i].second;
+
+                        if (!has_ap && !has_pb)
+                        {
+                            all_lines[i] = {info_a, cand_p};
+                            line_assigned_cons[i] = c_abbrev;
+                            all_lines.push_back({cand_p, info_b});
+                            line_assigned_cons.push_back(c_abbrev);
+                            cons_to_lines[c_abbrev].push_back(all_lines.size() - 1);
+                            cons_line_counts[c_abbrev]++;
+                            if (star_to_cons.find(sp) == star_to_cons.end())
+                            {
+                                star_to_cons[sp] = c_abbrev;
+                            }
+                            degrees[sp] += 2;
+                            if (!included_set.count(sp))
+                            {
+                                included.push_back(cand_p);
+                                included_set.insert(sp);
+                            }
+                            any_rerouted = true;
+                            break;
+                        }
+                        else if (!has_ap && has_pb)
+                        {
+                            all_lines[i] = {info_a, cand_p};
+                            line_assigned_cons[i] = c_abbrev;
+                            degrees[sb]--;
+                            degrees[sp]++;
+                            if (!included_set.count(sp))
+                            {
+                                included.push_back(cand_p);
+                                included_set.insert(sp);
+                            }
+                            any_rerouted = true;
+                            break;
+                        }
+                        else if (has_ap && !has_pb)
+                        {
+                            all_lines[i] = {cand_p, info_b};
+                            line_assigned_cons[i] = c_abbrev;
+                            degrees[sa]--;
+                            degrees[sp]++;
+                            if (!included_set.count(sp))
+                            {
+                                included.push_back(cand_p);
+                                included_set.insert(sp);
+                            }
+                            any_rerouted = true;
+                            break;
+                        }
+                        else if (has_ap && has_pb)
+                        {
+                            all_lines.erase(all_lines.begin() + i);
+                            line_assigned_cons.erase(line_assigned_cons.begin() + i);
+                            degrees[sa]--;
+                            degrees[sb]--;
+                            any_rerouted = true;
+                            i--;
+                            num_lines_to_check--;
+
+                            int c_count = 0;
+                            for (const auto& ca : line_assigned_cons)
+                            {
+                                if (ca == c_abbrev) c_count++;
+                            }
+                            if (c_count < 3)
+                            {
+                                Star* star_nodes[3] = {sa, sb, sp};
+                                for (Star* sn : star_nodes)
+                                {
+                                    if (degrees[sn] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                                    auto it_sn = star_info_map.find(sn);
+                                    if (it_sn == star_info_map.end()) continue;
+
+                                    int best_k = -1;
+                                    double best_sc = EXOCONS_INF_SCORE;
+                                    for (size_t k = 0; k < candidates.size(); k++)
+                                    {
+                                        const auto& cand = candidates[k];
+                                        if (cand.s == sn || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
+                                        if (!is_segment_valid(sn, cand.s, it_sn->second.u, cand.u, all_lines.size())) continue;
+
+                                        double d_deg = ang_dist_deg(it_sn->second.u, cand.u);
+                                        double dm = std::abs(it_sn->second.mag - cand.mag);
+                                        double sc = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
+                                        if (sc < best_sc)
+                                        {
+                                            best_sc = sc;
+                                            best_k = (int)k;
+                                        }
+                                    }
+                                    if (best_k >= 0)
+                                    {
+                                        const auto& cand_info = candidates[best_k];
+                                        all_lines.push_back({it_sn->second, cand_info});
+                                        line_assigned_cons.push_back(c_abbrev);
+                                        degrees[sn]++;
+                                        degrees[cand_info.s]++;
+                                        if (!included_set.count(cand_info.s))
+                                        {
+                                            included.push_back(cand_info);
+                                            included_set.insert(cand_info.s);
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Direct rerouting through sp crosses another line.
+                        // Attempt to eliminate this passerby line (sa, sb) that passes near sp.
+                        std::string c_abbrev = (i < line_assigned_cons.size()) ? line_assigned_cons[i] : all_lines[i].first.orig_cons;
+                        if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
+                        {
+                            c_abbrev = all_lines[i].second.orig_cons;
+                        }
+
+                        bool can_remove = false;
+                        if (degrees[sa] >= 2 && degrees[sb] >= 2)
+                        {
+                            can_remove = true;
+                        }
+                        else
+                        {
+                            // One endpoint has degree 1, try to find an alternative connection for it
+                            Star* deg1_star = (degrees[sa] == 1) ? sa : sb;
+                            auto it_ds = star_info_map.find(deg1_star);
+                            if (it_ds != star_info_map.end())
+                            {
+                                int best_k = -1;
+                                double best_sc = EXOCONS_INF_SCORE;
+                                for (size_t k = 0; k < candidates.size(); k++)
+                                {
+                                    const auto& cand = candidates[k];
+                                    if (cand.s == deg1_star || cand.s == sa || cand.s == sb || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
+                                    if (!is_segment_valid(deg1_star, cand.s, it_ds->second.u, cand.u, i)) continue;
+
+                                    double d_deg = ang_dist_deg(it_ds->second.u, cand.u);
+                                    double dm = std::abs(it_ds->second.mag - cand.mag);
+                                    double sc = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
+                                    if (sc < best_sc)
+                                    {
+                                        best_sc = sc;
+                                        best_k = (int)k;
+                                    }
+                                }
+                                if (best_k >= 0)
+                                {
+                                    const auto& cand_info = candidates[best_k];
+                                    all_lines.push_back({it_ds->second, cand_info});
+                                    line_assigned_cons.push_back(c_abbrev);
+                                    degrees[deg1_star]++;
+                                    degrees[cand_info.s]++;
+                                    if (!included_set.count(cand_info.s))
+                                    {
+                                        included.push_back(cand_info);
+                                        included_set.insert(cand_info.s);
+                                    }
+                                    can_remove = true;
+                                }
+                            }
+                        }
+
+                        if (can_remove)
+                        {
+                            all_lines.erase(all_lines.begin() + i);
+                            line_assigned_cons.erase(line_assigned_cons.begin() + i);
+                            degrees[sa]--;
+                            degrees[sb]--;
+                            any_rerouted = true;
+                            i--;
+                            num_lines_to_check--;
+
+                            int c_count = 0;
+                            for (const auto& ca : line_assigned_cons)
+                            {
+                                if (ca == c_abbrev) c_count++;
+                            }
+                            if (c_count < 3)
+                            {
+                                Star* star_nodes[2] = {sa, sb};
+                                for (Star* sn : star_nodes)
+                                {
+                                    if (degrees[sn] >= EXOCONS_MAX_STAR_DEGREE) continue;
+                                    auto it_sn = star_info_map.find(sn);
+                                    if (it_sn == star_info_map.end()) continue;
+
+                                    int best_k = -1;
+                                    double best_sc = EXOCONS_INF_SCORE;
+                                    for (size_t k = 0; k < candidates.size(); k++)
+                                    {
+                                        const auto& cand = candidates[k];
+                                        if (cand.s == sn || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
+                                        if (!is_segment_valid(sn, cand.s, it_sn->second.u, cand.u, all_lines.size())) continue;
+
+                                        double d_deg = ang_dist_deg(it_sn->second.u, cand.u);
+                                        double dm = std::abs(it_sn->second.mag - cand.mag);
+                                        double sc = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
+                                        if (sc < best_sc)
+                                        {
+                                            best_sc = sc;
+                                            best_k = (int)k;
+                                        }
+                                    }
+                                    if (best_k >= 0)
+                                    {
+                                        const auto& cand_info = candidates[best_k];
+                                        all_lines.push_back({it_sn->second, cand_info});
+                                        line_assigned_cons.push_back(c_abbrev);
+                                        degrees[sn]++;
+                                        degrees[cand_info.s]++;
+                                        if (!included_set.count(cand_info.s))
+                                        {
+                                            included.push_back(cand_info);
+                                            included_set.insert(cand_info.s);
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!any_rerouted) break;
+        }
+
+
+        // 5. Construct final Constellation objects grouped by IAU constellations
+        std::unordered_map<std::string, std::vector<std::pair<Star*, Star*>>> lines_by_cons;
+        for (size_t i = 0; i < all_lines.size(); i++)
+        {
+            std::string c_abbrev = (i < line_assigned_cons.size()) ? line_assigned_cons[i] : all_lines[i].first.orig_cons;
+            if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
+            {
+                c_abbrev = all_lines[i].second.orig_cons;
+            }
+            if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
+            {
+                for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
+                {
+                    std::string cand_abbr = iau_constellations[k].abbrev;
+                    if (!existing_cons_abbrevs.count(cand_abbr))
+                    {
+                        c_abbrev = cand_abbr;
+                        break;
+                    }
+                }
+            }
+            lines_by_cons[c_abbrev].push_back({all_lines[i].first.s, all_lines[i].second.s});
         }
 
         std::unordered_set<std::string> used_abbrevs = existing_cons_abbrevs;
         for (const auto& pair : lines_by_cons)
         {
+            if (pair.second.empty())
+            {
+                continue;
+            }
             std::string actual_abbrev = pair.first;
             if (used_abbrevs.count(actual_abbrev))
             {
-                for (int i = 0; i < 88; i++)
+                for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
                 {
                     std::string cand_abbr = iau_constellations[i].abbrev;
                     if (!used_abbrevs.count(cand_abbr))
@@ -1030,6 +2027,7 @@ namespace alienorum
             c.genitive = def->genitive;
             c.vantage_name = sys_name;
             c.vantage = vantage_pt;
+            c.vantage_resolved = true;
 
             for (const auto& line_pair : pair.second)
             {
@@ -1113,6 +2111,7 @@ namespace alienorum
         {
             c.vantage = sys_star->location;
             c.vantage_name = vname;
+            c.vantage_resolved = true;
             for (auto& cl : c.lines)
             {
                 if (cl.a)
@@ -1162,6 +2161,7 @@ namespace alienorum
                     c.vantage = current_sys_star->location;
                 }
                 c.vantage_name = current_vantage_name;
+                c.vantage_resolved = true;
                 for (auto& cl : c.lines)
                 {
                     if (cl.a)
@@ -1186,7 +2186,7 @@ namespace alienorum
             return;
         }
 
-        // Check if current system requires generation
+        // Check if current system is due for generation
         Star* sys_star = (Star*)(mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami] : nullptr));
         if (sys_star && sys_star->cenobj && sys_star->cenobj->typeclass() == class_star)
         {
