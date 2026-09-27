@@ -5,10 +5,17 @@
 #include <sstream>
 #include <algorithm>
 #include <iostream>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
 #include "exocons.h"
 #include "celestial.h"
 #include "serial.h"
 #include "misc.h"
+
+struct SDL_Window;
+extern SDL_Window* window;
 
 namespace alienorum
 {
@@ -168,6 +175,16 @@ namespace alienorum
 
     bool ExoConsGenerator::arcs_intersect(const Point& a, const Point& b, const Point& c, const Point& d)
     {
+        // If neither endpoint of segment ab is within 30.5 deg of segment cd endpoints, they cannot intersect.
+        const double cos30_5deg = 0.86162916;
+        if (dot_product(a, c) < cos30_5deg &&
+            dot_product(a, d) < cos30_5deg &&
+            dot_product(b, c) < cos30_5deg &&
+            dot_product(b, d) < cos30_5deg)
+        {
+            return false;
+        }
+
         if (a.distance_to(c) < 1e-6 || a.distance_to(d) < 1e-6 ||
             b.distance_to(c) < 1e-6 || b.distance_to(d) < 1e-6)
         {
@@ -615,20 +632,20 @@ namespace alienorum
                 continue;
             }
 
-            // Exclude secondary companion stars if primary star is present and brighter
-            if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
-            {
-                Star* primary = (Star*)s->cenobj;
-                if (primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
-                {
-                    continue;
-                }
-            }
-
             double mag = s->viewer_magnitude(vantage_loc);
             if (std::isnan(mag) || std::isinf(mag) || mag > EXOCONS_CANDIDATE_MAX_MAG)
             {
                 continue;
+            }
+
+            // Exclude secondary companion stars if primary star is present and brighter
+            if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
+            {
+                Star* primary = (Star*)s->cenobj;
+                if (primary->viewer_magnitude(vantage_loc) <= mag)
+                {
+                    continue;
+                }
             }
 
             Point rel = (Point)s->location - vantage_pt;
@@ -686,6 +703,19 @@ namespace alienorum
         const double cos7deg = cos(EXOCONS_PASS3_MIN_DIST_DEG * _pi / 180.0);
         const double cos2deg = cos(EXOCONS_PASS3_ISOLATION_DEG * _pi / 180.0);
 
+        std::vector<const ExoConsStarInfo*> brighter_cands;
+        for (const auto& cand : candidates)
+        {
+            if (cand.mag <= EXOCONS_PASS3_MAX_MAG)
+            {
+                brighter_cands.push_back(&cand);
+            }
+        }
+        std::sort(brighter_cands.begin(), brighter_cands.end(), [](const ExoConsStarInfo* a, const ExoConsStarInfo* b)
+        {
+            return a->mag < b->mag;
+        });
+
         for (const auto& c : candidates)
         {
             if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > EXOCONS_PASS3_MAX_MAG)
@@ -718,15 +748,16 @@ namespace alienorum
             if (!within_7deg)
             {
                 bool is_brightest = true;
-                for (const auto& other : candidates)
+                for (const auto* other : brighter_cands)
                 {
-                    if (other.s != c.s && dot_product(c.u, other.u) >= cos2deg)
+                    if (other->mag >= c.mag - EXOCONS_PASS3_MAG_MARGIN)
                     {
-                        if (other.mag < c.mag - EXOCONS_PASS3_MAG_MARGIN)
-                        {
-                            is_brightest = false;
-                            break;
-                        }
+                        break;
+                    }
+                    if (other->s != c.s && dot_product(c.u, other->u) >= cos2deg)
+                    {
+                        is_brightest = false;
+                        break;
                     }
                 }
                 if (is_brightest)
@@ -1179,56 +1210,76 @@ namespace alienorum
         };
 
         refresh_lined_dirs();
-        double current_cov = calculate_sky_coverage(lined_dirs, EXOCONS_SKY_COVERAGE_SAMPLES);
 
         const double phi = _pi * (sqrt(5.0) - 1.0);
+        std::vector<Point> fib_pts(EXOCONS_SKY_COVERAGE_SAMPLES);
+        for (int i = 0; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
+        {
+            double y = 1.0 - ((double)i / (double)(EXOCONS_SKY_COVERAGE_SAMPLES - 1)) * 2.0;
+            double radius = sqrt(std::max(0.0, 1.0 - y * y));
+            double theta = phi * (double)i;
+            fib_pts[i] = Point(cos(theta) * radius, y, sin(theta) * radius);
+        }
+
+        const double cos_cov_target = cos(EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG * _pi / 180.0);
+        std::vector<double> max_dot(EXOCONS_SKY_COVERAGE_SAMPLES, -2.0);
+        int covered_count = 0;
+
+        for (int i = 0; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
+        {
+            for (const auto& u : lined_dirs)
+            {
+                double dp = dot_product(fib_pts[i], u);
+                if (dp > max_dot[i])
+                {
+                    max_dot[i] = dp;
+                }
+            }
+            if (max_dot[i] >= cos_cov_target)
+            {
+                covered_count++;
+            }
+        }
+
+        double current_cov = (double)covered_count / (double)EXOCONS_SKY_COVERAGE_SAMPLES;
         int max_gap_iterations = EXOCONS_SKY_GAP_MAX_ITERATIONS;
 
         while (current_cov < EXOCONS_SKY_COVERAGE_THRESHOLD && max_gap_iterations-- > 0)
         {
-            Point worst_p;
-            double worst_dist = -1.0;
-
-            for (int i = 0; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
+            int worst_idx = 0;
+            double min_dot = max_dot[0];
+            for (int i = 1; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
             {
-                double y = 1.0 - ((double)i / (double)(EXOCONS_SKY_COVERAGE_SAMPLES - 1)) * 2.0;
-                double radius = sqrt(std::max(0.0, 1.0 - y * y));
-                double theta = phi * (double)i;
-                Point p(cos(theta) * radius, y, sin(theta) * radius);
-
-                double min_d = EXOCONS_INF_SCORE;
-                for (const auto& u : lined_dirs)
+                if (max_dot[i] < min_dot)
                 {
-                    double d = ang_dist_deg(p, u);
-                    if (d < min_d)
-                    {
-                        min_d = d;
-                    }
-                }
-                if (min_d > worst_dist)
-                {
-                    worst_dist = min_d;
-                    worst_p = p;
+                    min_dot = max_dot[i];
+                    worst_idx = i;
                 }
             }
 
-            if (worst_dist <= EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG)
+            if (min_dot >= cos_cov_target)
             {
                 break;
             }
 
+            Point worst_p = fib_pts[worst_idx];
+
             int best_cand_idx = -1;
-            double best_cand_dist = EXOCONS_INF_SCORE;
+            double best_cand_dot = -2.0;
             for (size_t i = 0; i < candidates.size(); i++)
             {
                 if (degrees[candidates[i].s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
-                double d = ang_dist_deg(worst_p, candidates[i].u);
-                if (d < best_cand_dist && candidates[i].mag < EXOCONS_GAP_FILL_MAX_MAG)
+                if (candidates[i].mag >= EXOCONS_GAP_FILL_MAX_MAG)
                 {
-                    best_cand_dist = d;
+                    continue;
+                }
+                double dp = dot_product(worst_p, candidates[i].u);
+                if (dp > best_cand_dot)
+                {
+                    best_cand_dot = dp;
                     best_cand_idx = (int)i;
                 }
             }
@@ -1241,8 +1292,14 @@ namespace alienorum
             const auto& cand_star = candidates[best_cand_idx];
             std::string cand_cons = "";
             auto it_cc = star_to_cons.find(cand_star.s);
-            if (it_cc != star_to_cons.end()) cand_cons = it_cc->second;
-            else cand_cons = cand_star.orig_cons;
+            if (it_cc != star_to_cons.end())
+            {
+                cand_cons = it_cc->second;
+            }
+            else
+            {
+                cand_cons = cand_star.orig_cons;
+            }
             if (cand_cons.empty() || existing_cons_abbrevs.count(cand_cons))
             {
                 for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
@@ -1258,7 +1315,7 @@ namespace alienorum
             bool is_cand_expanding = (cons_line_counts[cand_cons] < EXOCONS_MIN_LINES_PER_CONS);
 
             int best_neighbor_idx = -1;
-            double best_n_dist = EXOCONS_INF_SCORE;
+            double best_n_dot = -2.0;
 
             for (size_t j = 0; j < candidates.size(); j++)
             {
@@ -1270,12 +1327,12 @@ namespace alienorum
                 {
                     continue;
                 }
-                if (dot_product(cand_star.u, candidates[j].u) < cos15deg)
+                double dp = dot_product(cand_star.u, candidates[j].u);
+                if (dp < cos15deg)
                 {
                     continue;
                 }
-                double d = ang_dist_deg(cand_star.u, candidates[j].u);
-                if (d < best_n_dist)
+                if (dp > best_n_dot)
                 {
                     bool crosses = false;
                     for (const auto& el : existing_lines)
@@ -1304,7 +1361,7 @@ namespace alienorum
 
                     if (!crosses)
                     {
-                        best_n_dist = d;
+                        best_n_dot = dp;
                         best_neighbor_idx = (int)j;
                     }
                 }
@@ -1316,8 +1373,24 @@ namespace alienorum
                 degrees[cand_star.s]++;
                 degrees[candidates[best_neighbor_idx].s]++;
                 register_line(cand_star.s, candidates[best_neighbor_idx].s, cand_cons);
-                refresh_lined_dirs();
-                current_cov = calculate_sky_coverage(lined_dirs, EXOCONS_SKY_COVERAGE_SAMPLES);
+
+                const Point new_pts[2] = {cand_star.u, candidates[best_neighbor_idx].u};
+                for (int np = 0; np < 2; np++)
+                {
+                    for (int i = 0; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
+                    {
+                        double dp = dot_product(fib_pts[i], new_pts[np]);
+                        if (dp > max_dot[i])
+                        {
+                            if (max_dot[i] < cos_cov_target && dp >= cos_cov_target)
+                            {
+                                covered_count++;
+                            }
+                            max_dot[i] = dp;
+                        }
+                    }
+                }
+                current_cov = (double)covered_count / (double)EXOCONS_SKY_COVERAGE_SAMPLES;
             }
             else
             {
@@ -2813,6 +2886,13 @@ namespace alienorum
         completed_vantages.insert(vname);
     }
 
+    static std::thread worker_thread;
+    static std::atomic<bool> is_thread_running(false);
+    static std::atomic<bool> thread_conss_ready(false);
+    static std::mutex thread_mutex;
+    static std::condition_variable thread_cv;
+    static std::vector<Constellation> thread_pending;
+
     void ExoConsGenerator::start_generation_for(Star* sys_star)
     {
         std::string vname;
@@ -2821,18 +2901,65 @@ namespace alienorum
             return;
         }
 
+        if (is_thread_running.load())
+        {
+            return;
+        }
+
         current_sys_star = sys_star;
         current_vantage_name = vname;
         pending_conss.clear();
-        generate_constellations(sys_star, pending_conss);
-        generated_conss = pending_conss;
+        generated_conss.clear();
         is_generating = true;
+        is_thread_running = true;
+        thread_conss_ready = false;
+
+        if (worker_thread.joinable())
+        {
+            worker_thread.join();
+        }
+
+        worker_thread = std::thread([sys_star, vname]()
+        {
+            std::vector<Constellation> results;
+            generate_constellations(sys_star, results);
+            {
+                std::lock_guard<std::mutex> lock(thread_mutex);
+                thread_pending = std::move(results);
+            }
+            thread_conss_ready = true;
+            is_thread_running = false;
+            thread_cv.notify_all();
+        });
     }
 
     void ExoConsGenerator::update_frame()
     {
+        if (thread_conss_ready.load())
+        {
+            thread_conss_ready = false;
+            {
+                std::lock_guard<std::mutex> lock(thread_mutex);
+                pending_conss = std::move(thread_pending);
+                generated_conss = pending_conss;
+            }
+        }
+
         if (is_generating)
         {
+            if (pending_conss.empty() && is_thread_running.load())
+            {
+                if (!::window)
+                {
+                    std::unique_lock<std::mutex> lock(thread_mutex);
+                    thread_cv.wait_for(lock, std::chrono::milliseconds(50), []()
+                    {
+                        return thread_conss_ready.load() || !is_thread_running.load();
+                    });
+                }
+                return;
+            }
+
             int batch_size = 3;
             while (batch_size-- > 0 && !pending_conss.empty())
             {
@@ -2859,7 +2986,7 @@ namespace alienorum
                 constellations.push_back(c);
             }
 
-            if (pending_conss.empty())
+            if (pending_conss.empty() && !is_thread_running.load())
             {
                 is_generating = false;
                 save_to_exocons_file(current_vantage_name, generated_conss);
@@ -2885,6 +3012,12 @@ namespace alienorum
 
     void ExoConsGenerator::reset()
     {
+        if (worker_thread.joinable())
+        {
+            worker_thread.join();
+        }
+        is_thread_running = false;
+        thread_conss_ready = false;
         pending_conss.clear();
         generated_conss.clear();
         current_sys_star = nullptr;
