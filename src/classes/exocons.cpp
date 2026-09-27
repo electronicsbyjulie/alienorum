@@ -12,7 +12,7 @@
 
 namespace alienorum
 {
-    const IAUConstellationDef iau_constellations[88] =
+    const IAUConstellationDef iau_constellations[EXOCONS_NUM_IAU_CONSTELLATIONS] =
     {
         {"And", "Andromeda", "Andromedae"},
         {"Ant", "Antlia", "Antliae"},
@@ -156,7 +156,7 @@ namespace alienorum
 
     const IAUConstellationDef* ExoConsGenerator::find_iau_def(const std::string& abbrev)
     {
-        for (int i = 0; i < 88; i++)
+        for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
         {
             if (abbrev == iau_constellations[i].abbrev)
             {
@@ -374,7 +374,7 @@ namespace alienorum
             return 0.0;
         }
 
-        const double cos5deg = cos(5.0 * _pi / 180.0);
+        const double cos5deg = cos(EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG * _pi / 180.0);
         const double phi = _pi * (sqrt(5.0) - 1.0);
         int covered = 0;
 
@@ -488,7 +488,7 @@ namespace alienorum
             {
                 is_same_vantage = true;
             }
-            if (vpt.distance_to(sys_loc) < light_year * 0.1 || is_same_vantage)
+            if (vpt.distance_to(sys_loc) < light_year * EXOCONS_SAME_VANTAGE_DIST_LY || is_same_vantage)
             {
                 own_count++;
             }
@@ -523,7 +523,7 @@ namespace alienorum
             if (g.count >= 30)
             {
                 double dist = g.loc.distance_to(sys_loc);
-                if (dist < light_year * 10.0)
+                if (dist < light_year * EXOCONS_NEARBY_SUPPRESS_DIST_LY)
                 {
                     return false;
                 }
@@ -564,7 +564,7 @@ namespace alienorum
 
         for (const auto& c : constellations)
         {
-            bool is_match = (c.vantage.distance_to(vantage_pt) < light_year * 0.1)
+            bool is_match = (c.vantage.distance_to(vantage_pt) < light_year * EXOCONS_SAME_VANTAGE_DIST_LY)
                 || (!c.vantage_name.empty() && c.vantage_name == sys_name);
             if (is_match && c.lines.size() > 0)
             {
@@ -612,14 +612,14 @@ namespace alienorum
             }
 
             double mag = s->viewer_magnitude(vantage_loc);
-            if (std::isnan(mag) || std::isinf(mag) || mag > 8.0)
+            if (std::isnan(mag) || std::isinf(mag) || mag > EXOCONS_CANDIDATE_MAX_MAG)
             {
                 continue;
             }
 
             Point rel = (Point)s->location - vantage_pt;
             double dist = rel.magnitude();
-            if (dist < 1e-9)
+            if (dist < EXOCONS_MIN_SEPARATION_EPSILON)
             {
                 continue;
             }
@@ -640,7 +640,7 @@ namespace alienorum
         // Pass 1: Mag < 4.0
         for (const auto& c : candidates)
         {
-            if (c.mag < 4.0 && !existing_lined_stars.count(c.s))
+            if (c.mag < EXOCONS_PASS1_MAX_MAG && !existing_lined_stars.count(c.s))
             {
                 included.push_back(c);
                 included_set.insert(c.s);
@@ -648,12 +648,12 @@ namespace alienorum
         }
 
         // Pass 2: Mag < 5.0 and close (<= 4.0 deg) to an already included star
-        const double cos4deg = cos(4.0 * _pi / 180.0);
+        const double cos4deg = cos(EXOCONS_PASS2_NEARBY_DEG * _pi / 180.0);
         for (int iter = 0; iter < 2; iter++)
         {
             for (const auto& c : candidates)
             {
-                if (c.mag < 5.0 && !included_set.count(c.s) && !existing_lined_stars.count(c.s))
+                if (c.mag < EXOCONS_PASS2_MAX_MAG && !included_set.count(c.s) && !existing_lined_stars.count(c.s))
                 {
                     for (const auto& inc : included)
                     {
@@ -669,12 +669,12 @@ namespace alienorum
         }
 
         // Pass 3: More than 7 degrees from a lined star and the brightest within a 2 degree radius
-        const double cos7deg = cos(7.0 * _pi / 180.0);
-        const double cos2deg = cos(2.0 * _pi / 180.0);
+        const double cos7deg = cos(EXOCONS_PASS3_MIN_DIST_DEG * _pi / 180.0);
+        const double cos2deg = cos(EXOCONS_PASS3_ISOLATION_DEG * _pi / 180.0);
 
         for (const auto& c : candidates)
         {
-            if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > 6.0)
+            if (included_set.count(c.s) || existing_lined_stars.count(c.s) || c.mag > EXOCONS_PASS3_MAX_MAG)
             {
                 continue;
             }
@@ -708,7 +708,7 @@ namespace alienorum
                 {
                     if (other.s != c.s && dot_product(c.u, other.u) >= cos2deg)
                     {
-                        if (other.mag < c.mag - 0.01)
+                        if (other.mag < c.mag - EXOCONS_PASS3_MAG_MARGIN)
                         {
                             is_brightest = false;
                             break;
@@ -724,7 +724,7 @@ namespace alienorum
         }
 
         // 4. Line formation
-        const double cos15deg = cos(15.0 * _pi / 180.0);
+        const double cos15deg = cos(EXOCONS_MAX_LINE_LENGTH_DEG * _pi / 180.0);
         std::vector<std::pair<ExoConsStarInfo, ExoConsStarInfo>> all_lines;
         std::unordered_map<Star*, int> degrees;
 
@@ -759,13 +759,13 @@ namespace alienorum
             for (int i = 0; i < n_stars; i++)
             {
                 const auto& u1 = c_stars[i];
-                if (degrees[u1.s] >= 3)
+                if (degrees[u1.s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
 
                 int best_match_idx = -1;
-                double best_score = 1e9;
+                double best_score = EXOCONS_INF_SCORE;
 
                 for (int j = 0; j < n_stars; j++)
                 {
@@ -774,7 +774,7 @@ namespace alienorum
                         continue;
                     }
                     const auto& u2 = c_stars[j];
-                    if (degrees[u2.s] >= 3)
+                    if (degrees[u2.s] >= EXOCONS_MAX_STAR_DEGREE)
                     {
                         continue;
                     }
@@ -800,7 +800,7 @@ namespace alienorum
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
                     double dm = std::abs(u1.mag - u2.mag);
-                    double score = d_deg + 0.5 * (u1.mag + u2.mag) + 1.2 * dm;
+                    double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -847,7 +847,7 @@ namespace alienorum
 
         auto check_line_valid = [&](const Point& u1, const Point& u2, Star* s1, Star* s2) -> bool
         {
-            if (s1 == s2 || dot_product(u1, u2) < cos15deg || dot_product(u1, u2) > 0.99999)
+            if (s1 == s2 || dot_product(u1, u2) < cos15deg || dot_product(u1, u2) > EXOCONS_DOT_PARALLEL_MAX)
             {
                 return false;
             }
@@ -883,7 +883,7 @@ namespace alienorum
         {
             int best_cand_idx = -1;
             bool from_included = true;
-            double best_score = 1e9;
+            double best_score = EXOCONS_INF_SCORE;
 
             for (size_t k = 0; k < included.size(); k++)
             {
@@ -893,7 +893,7 @@ namespace alienorum
 
                 double d_deg = ang_dist_deg(u1.u, u2.u);
                 double dm = std::abs(u1.mag - u2.mag);
-                double score = d_deg + 0.5 * (u1.mag + u2.mag) + 1.2 * dm;
+                double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
                 if (score < best_score)
                 {
                     best_score = score;
@@ -907,12 +907,12 @@ namespace alienorum
                 for (size_t k = 0; k < candidates.size(); k++)
                 {
                     const auto& u2 = candidates[k];
-                    if (u2.s == u1.s || degrees[u2.s] >= max_degree || u2.mag > 6.0) continue;
+                    if (u2.s == u1.s || degrees[u2.s] >= max_degree || u2.mag > EXOCONS_PASS3_MAX_MAG) continue;
                     if (!check_line_valid(u1.u, u2.u, u1.s, u2.s)) continue;
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
                     double dm = std::abs(u1.mag - u2.mag);
-                    double score = d_deg + 0.5 * (u1.mag + u2.mag) + 1.2 * dm;
+                    double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
                     if (score < best_score)
                     {
                         best_score = score;
@@ -942,7 +942,7 @@ namespace alienorum
         std::vector<ExoConsStarInfo> bright_stars;
         for (const auto& c : candidates)
         {
-            if (c.mag < 3.0 && !existing_lined_stars.count(c.s))
+            if (c.mag < EXOCONS_MANDATORY_JOIN_MAG && !existing_lined_stars.count(c.s))
             {
                 bright_stars.push_back(c);
             }
@@ -990,18 +990,18 @@ namespace alienorum
             if (!has_line && pair.second.size() > 0)
             {
                 const auto& u1 = pair.second[0];
-                if (degrees[u1.s] >= 3)
+                if (degrees[u1.s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
 
                 int best_match_idx = -1;
-                double best_score = 1e9;
+                double best_score = EXOCONS_INF_SCORE;
 
                 for (size_t k = 0; k < included.size(); k++)
                 {
                     const auto& u2 = included[k];
-                    if (u2.s == u1.s || degrees[u2.s] >= 3)
+                    if (u2.s == u1.s || degrees[u2.s] >= EXOCONS_MAX_STAR_DEGREE)
                     {
                         continue;
                     }
@@ -1012,7 +1012,7 @@ namespace alienorum
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
                     double dm = std::abs(u1.mag - u2.mag);
-                    double score = d_deg + 0.8 * (u1.mag + u2.mag) + 1.2 * dm;
+                    double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTER * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -1085,24 +1085,24 @@ namespace alienorum
         };
 
         refresh_lined_dirs();
-        double current_cov = calculate_sky_coverage(lined_dirs, 1000);
+        double current_cov = calculate_sky_coverage(lined_dirs, EXOCONS_SKY_COVERAGE_SAMPLES);
 
         const double phi = _pi * (sqrt(5.0) - 1.0);
-        int max_gap_iterations = 200;
+        int max_gap_iterations = EXOCONS_SKY_GAP_MAX_ITERATIONS;
 
-        while (current_cov < 0.80 && max_gap_iterations-- > 0)
+        while (current_cov < EXOCONS_SKY_COVERAGE_THRESHOLD && max_gap_iterations-- > 0)
         {
             Point worst_p;
             double worst_dist = -1.0;
 
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < EXOCONS_SKY_COVERAGE_SAMPLES; i++)
             {
-                double y = 1.0 - ((double)i / 999.0) * 2.0;
+                double y = 1.0 - ((double)i / (double)(EXOCONS_SKY_COVERAGE_SAMPLES - 1)) * 2.0;
                 double radius = sqrt(std::max(0.0, 1.0 - y * y));
                 double theta = phi * (double)i;
                 Point p(cos(theta) * radius, y, sin(theta) * radius);
 
-                double min_d = 1e9;
+                double min_d = EXOCONS_INF_SCORE;
                 for (const auto& u : lined_dirs)
                 {
                     double d = ang_dist_deg(p, u);
@@ -1118,21 +1118,21 @@ namespace alienorum
                 }
             }
 
-            if (worst_dist <= 5.0)
+            if (worst_dist <= EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG)
             {
                 break;
             }
 
             int best_cand_idx = -1;
-            double best_cand_dist = 1e9;
+            double best_cand_dist = EXOCONS_INF_SCORE;
             for (size_t i = 0; i < candidates.size(); i++)
             {
-                if (degrees[candidates[i].s] >= 3)
+                if (degrees[candidates[i].s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
                 double d = ang_dist_deg(worst_p, candidates[i].u);
-                if (d < best_cand_dist && candidates[i].mag < 6.5)
+                if (d < best_cand_dist && candidates[i].mag < EXOCONS_GAP_FILL_MAX_MAG)
                 {
                     best_cand_dist = d;
                     best_cand_idx = (int)i;
@@ -1146,11 +1146,11 @@ namespace alienorum
 
             const auto& cand_star = candidates[best_cand_idx];
             int best_neighbor_idx = -1;
-            double best_n_dist = 1e9;
+            double best_n_dist = EXOCONS_INF_SCORE;
 
             for (size_t j = 0; j < candidates.size(); j++)
             {
-                if ((int)j == best_cand_idx || degrees[candidates[j].s] >= 3)
+                if ((int)j == best_cand_idx || degrees[candidates[j].s] >= EXOCONS_MAX_STAR_DEGREE)
                 {
                     continue;
                 }
@@ -1200,7 +1200,7 @@ namespace alienorum
                 degrees[cand_star.s]++;
                 degrees[candidates[best_neighbor_idx].s]++;
                 refresh_lined_dirs();
-                current_cov = calculate_sky_coverage(lined_dirs, 1000);
+                current_cov = calculate_sky_coverage(lined_dirs, EXOCONS_SKY_COVERAGE_SAMPLES);
             }
             else
             {
@@ -1219,7 +1219,7 @@ namespace alienorum
             }
             if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
             {
-                for (int k = 0; k < 88; k++)
+                for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
                 {
                     std::string cand_abbr = iau_constellations[k].abbrev;
                     if (!existing_cons_abbrevs.count(cand_abbr))
@@ -1258,7 +1258,7 @@ namespace alienorum
             {
                 if (!pair.second.empty()) active_count++;
             }
-            if (active_count <= 55)
+            if (active_count <= EXOCONS_MIN_ACTIVE_CONS_BEFORE_MERGE)
             {
                 break;
             }
@@ -1266,7 +1266,7 @@ namespace alienorum
             int best_match_b = -1;
             Star* best_sa = nullptr;
             Star* best_sb = nullptr;
-            double best_dist = 1e9;
+            double best_dist = EXOCONS_INF_SCORE;
 
             for (size_t j = 0; j < cons_list.size(); j++)
             {
@@ -1279,7 +1279,7 @@ namespace alienorum
                     Star* sa_cands[2] = {all_lines[lidx_a].first.s, all_lines[lidx_a].second.s};
                     for (Star* sa : sa_cands)
                     {
-                        if (degrees[sa] >= 3) continue;
+                        if (degrees[sa] >= EXOCONS_MAX_STAR_DEGREE) continue;
                         auto it_a = star_info_map.find(sa);
                         if (it_a == star_info_map.end()) continue;
                         const auto& info_a = it_a->second;
@@ -1289,7 +1289,7 @@ namespace alienorum
                             Star* sb_cands[2] = {all_lines[lidx_b].first.s, all_lines[lidx_b].second.s};
                             for (Star* sb : sb_cands)
                             {
-                                if (degrees[sb] >= 3) continue;
+                                if (degrees[sb] >= EXOCONS_MAX_STAR_DEGREE) continue;
                                 auto it_b = star_info_map.find(sb);
                                 if (it_b == star_info_map.end()) continue;
                                 const auto& info_b = it_b->second;
@@ -1298,7 +1298,7 @@ namespace alienorum
                                 {
                                     double d_deg = ang_dist_deg(info_a.u, info_b.u);
                                     double dm = std::abs(info_a.mag - info_b.mag);
-                                    double score = d_deg + 1.2 * dm;
+                                    double score = d_deg + EXOCONS_SCORE_DM_WEIGHT * dm;
                                     if (score < best_dist)
                                     {
                                         best_dist = score;
@@ -1339,7 +1339,7 @@ namespace alienorum
             if (cons_to_lines[c_name].empty()) continue;
 
             int attempts = 0;
-            while (cons_to_lines[c_name].size() < 3 && attempts++ < 15)
+            while (cons_to_lines[c_name].size() < EXOCONS_MIN_LINES_PER_CONS && attempts++ < EXOCONS_MAX_EXPANSION_ATTEMPTS)
             {
                 std::unordered_set<Star*> c_stars_set;
                 for (size_t lidx : cons_to_lines[c_name])
@@ -1352,13 +1352,13 @@ namespace alienorum
                 // First try connecting two stars in the same constellation if not already connected
                 for (Star* s1 : c_stars_set)
                 {
-                    if (degrees[s1] >= 3) continue;
+                    if (degrees[s1] >= EXOCONS_MAX_STAR_DEGREE) continue;
                     auto it1 = star_info_map.find(s1);
                     if (it1 == star_info_map.end()) continue;
 
                     for (Star* s2 : c_stars_set)
                     {
-                        if (s1 == s2 || degrees[s2] >= 3) continue;
+                        if (s1 == s2 || degrees[s2] >= EXOCONS_MAX_STAR_DEGREE) continue;
                         auto it2 = star_info_map.find(s2);
                         if (it2 == star_info_map.end()) continue;
 
@@ -1381,17 +1381,17 @@ namespace alienorum
                 {
                     for (Star* cs : c_stars_set)
                     {
-                        if (degrees[cs] >= 3) continue;
+                        if (degrees[cs] >= EXOCONS_MAX_STAR_DEGREE) continue;
                         auto it_cs = star_info_map.find(cs);
                         if (it_cs == star_info_map.end()) continue;
                         const auto& cs_info = it_cs->second;
 
                         int best_cand = -1;
-                        double best_score = 1e9;
+                        double best_score = EXOCONS_INF_SCORE;
                         for (size_t k = 0; k < candidates.size(); k++)
                         {
                             const auto& cand = candidates[k];
-                            if (cand.s == cs || c_stars_set.count(cand.s) || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
+                            if (cand.s == cs || c_stars_set.count(cand.s) || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
                             if (!check_line_valid(cs_info.u, cand.u, cs, cand.s)) continue;
 
                             // Check constellation expanse constraint (keep constellation span within empirical bounds <= 35.0 deg)
@@ -1401,7 +1401,7 @@ namespace alienorum
                                 auto it_ex = star_info_map.find(exist_s);
                                 if (it_ex != star_info_map.end())
                                 {
-                                    if (ang_dist_deg(it_ex->second.u, cand.u) > 35.0)
+                                    if (ang_dist_deg(it_ex->second.u, cand.u) > EXOCONS_MAX_EXPANSE_DEG)
                                     {
                                         exceeds_expanse = true;
                                         break;
@@ -1412,7 +1412,7 @@ namespace alienorum
 
                             double d_deg = ang_dist_deg(cs_info.u, cand.u);
                             double dm = std::abs(cs_info.mag - cand.mag);
-                            double score = d_deg + 0.5 * cand.mag + 1.2 * dm;
+                            double score = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
                             if (score < best_score)
                             {
                                 best_score = score;
@@ -1487,15 +1487,15 @@ namespace alienorum
             line_assigned_cons.push_back(c_abbr);
         }
 
-        const double max_impinge_dist_deg = 2.0;
-        const double cos17deg = cos(17.0 * _pi / 180.0);
-        const double cos30_5deg = cos(30.5 * _pi / 180.0);
+        const double max_impinge_dist_deg = EXOCONS_MAX_IMPINGE_DIST_DEG;
+        const double cos17deg = cos(EXOCONS_IMPINGE_NEARBY_DEG * _pi / 180.0);
+        const double cos30_5deg = cos(EXOCONS_IMPINGE_INTERSECT_CHECK_DEG * _pi / 180.0);
 
         auto is_segment_valid = [&](Star* s1, Star* s2, const Point& u1, const Point& u2, size_t ignore_line_idx) -> bool
         {
             if (s1 == s2) return false;
             double dp = dot_product(u1, u2);
-            if (dp < cos15deg || dp > 0.99999) return false;
+            if (dp < cos15deg || dp > EXOCONS_DOT_PARALLEL_MAX) return false;
 
             for (const auto& el : existing_lines)
             {
@@ -1534,7 +1534,7 @@ namespace alienorum
             std::vector<ExoConsStarInfo> impinging_pool;
             for (const auto& cand : candidates)
             {
-                if (degrees[cand.s] > 0 || existing_lined_stars.count(cand.s) || cand.mag < 4.0)
+                if (degrees[cand.s] > 0 || existing_lined_stars.count(cand.s) || cand.mag < EXOCONS_IMPINGING_POOL_BRIGHT_MAG)
                 {
                     impinging_pool.push_back(cand);
                 }
@@ -1672,21 +1672,21 @@ namespace alienorum
                                 Star* star_nodes[3] = {sa, sb, sp};
                                 for (Star* sn : star_nodes)
                                 {
-                                    if (degrees[sn] >= 3) continue;
+                                    if (degrees[sn] >= EXOCONS_MAX_STAR_DEGREE) continue;
                                     auto it_sn = star_info_map.find(sn);
                                     if (it_sn == star_info_map.end()) continue;
 
                                     int best_k = -1;
-                                    double best_sc = 1e9;
+                                    double best_sc = EXOCONS_INF_SCORE;
                                     for (size_t k = 0; k < candidates.size(); k++)
                                     {
                                         const auto& cand = candidates[k];
-                                        if (cand.s == sn || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
+                                        if (cand.s == sn || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
                                         if (!is_segment_valid(sn, cand.s, it_sn->second.u, cand.u, all_lines.size())) continue;
 
                                         double d_deg = ang_dist_deg(it_sn->second.u, cand.u);
                                         double dm = std::abs(it_sn->second.mag - cand.mag);
-                                        double sc = d_deg + 0.5 * cand.mag + 1.2 * dm;
+                                        double sc = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
                                         if (sc < best_sc)
                                         {
                                             best_sc = sc;
@@ -1735,16 +1735,16 @@ namespace alienorum
                             if (it_ds != star_info_map.end())
                             {
                                 int best_k = -1;
-                                double best_sc = 1e9;
+                                double best_sc = EXOCONS_INF_SCORE;
                                 for (size_t k = 0; k < candidates.size(); k++)
                                 {
                                     const auto& cand = candidates[k];
-                                    if (cand.s == deg1_star || cand.s == sa || cand.s == sb || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
+                                    if (cand.s == deg1_star || cand.s == sa || cand.s == sb || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
                                     if (!is_segment_valid(deg1_star, cand.s, it_ds->second.u, cand.u, i)) continue;
 
                                     double d_deg = ang_dist_deg(it_ds->second.u, cand.u);
                                     double dm = std::abs(it_ds->second.mag - cand.mag);
-                                    double sc = d_deg + 0.5 * cand.mag + 1.2 * dm;
+                                    double sc = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
                                     if (sc < best_sc)
                                     {
                                         best_sc = sc;
@@ -1788,21 +1788,21 @@ namespace alienorum
                                 Star* star_nodes[2] = {sa, sb};
                                 for (Star* sn : star_nodes)
                                 {
-                                    if (degrees[sn] >= 3) continue;
+                                    if (degrees[sn] >= EXOCONS_MAX_STAR_DEGREE) continue;
                                     auto it_sn = star_info_map.find(sn);
                                     if (it_sn == star_info_map.end()) continue;
 
                                     int best_k = -1;
-                                    double best_sc = 1e9;
+                                    double best_sc = EXOCONS_INF_SCORE;
                                     for (size_t k = 0; k < candidates.size(); k++)
                                     {
                                         const auto& cand = candidates[k];
-                                        if (cand.s == sn || degrees[cand.s] >= 3 || cand.mag > 6.0) continue;
+                                        if (cand.s == sn || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE || cand.mag > EXOCONS_EXPANSION_MAX_MAG) continue;
                                         if (!is_segment_valid(sn, cand.s, it_sn->second.u, cand.u, all_lines.size())) continue;
 
                                         double d_deg = ang_dist_deg(it_sn->second.u, cand.u);
                                         double dm = std::abs(it_sn->second.mag - cand.mag);
-                                        double sc = d_deg + 0.5 * cand.mag + 1.2 * dm;
+                                        double sc = d_deg + EXOCONS_SCORE_CAND_MAG_WEIGHT * cand.mag + EXOCONS_SCORE_DM_WEIGHT * dm;
                                         if (sc < best_sc)
                                         {
                                             best_sc = sc;
@@ -1846,7 +1846,7 @@ namespace alienorum
             }
             if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
             {
-                for (int k = 0; k < 88; k++)
+                for (int k = 0; k < EXOCONS_NUM_IAU_CONSTELLATIONS; k++)
                 {
                     std::string cand_abbr = iau_constellations[k].abbrev;
                     if (!existing_cons_abbrevs.count(cand_abbr))
@@ -1869,7 +1869,7 @@ namespace alienorum
             std::string actual_abbrev = pair.first;
             if (used_abbrevs.count(actual_abbrev))
             {
-                for (int i = 0; i < 88; i++)
+                for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
                 {
                     std::string cand_abbr = iau_constellations[i].abbrev;
                     if (!used_abbrevs.count(cand_abbr))
