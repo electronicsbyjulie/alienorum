@@ -45,6 +45,7 @@ namespace alienorum
         static RGB3 disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
 
         static ImU32 black_to_transparent(ImU32 input);
+        static double compute_atmospheric_yellowing(double surface_pressure, double zenith_angle_rad);
         static ImU32 adjust_alpha(ImU32 input, double target_visibility);
 
         // Re-balances a themed overlay color (alpha-blended over a solid black or white

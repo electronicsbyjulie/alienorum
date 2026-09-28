@@ -88,6 +88,7 @@ using json = nlohmann::json;
 #define B_band 4.4e-7
 #define V_band 5.5e-7
 #define R_band 5.9e-7
+#define planet_bv_correction (-0.20)
 
 // https://en.wikipedia.org/wiki/Galactic_plane
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
