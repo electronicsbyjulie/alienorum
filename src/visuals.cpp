@@ -4610,7 +4610,7 @@ void draw_horizon()
         double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g + _lum_b_comp*rgb.b;
         ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 144) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
         const int hz_nodes_sixteenth = hznodes / 16;
-        if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*64])
+        if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*hz_nodes_sixteenth])
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
             if (hzbrt >= 144) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
