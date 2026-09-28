@@ -899,7 +899,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     if (atm_pressure && view_mode == vm_horizon)
     {
         double zenith_rad = find_3D_angle(cel->viewrel, yaxis, center);
-        atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad);
+        atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad) * 3;
     }
 
     Color daylight = Color::color_from_magnitude_indices(0, lightcen->BV_color + atm_yellowing);
