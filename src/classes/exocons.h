@@ -15,7 +15,7 @@
 // Catalog and Array Dimensions
 #define EXOCONS_NUM_IAU_CONSTELLATIONS            88
 #define EXOCONS_DEFAULT_MAG                       99.0
-#define EXOCONS_DEFAULT_MIN_END_DIST_DEG          0.8
+#define EXOCONS_DEFAULT_MIN_END_DIST_DEG          0.2
 #define EXOCONS_DEFAULT_SKY_SAMPLES               1000
 #define EXOCONS_SKY_COVERAGE_SAMPLES              1000
 #define EXOCONS_MIN_SEPARATION_EPSILON            1e-9

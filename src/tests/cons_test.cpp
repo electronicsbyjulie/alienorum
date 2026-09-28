@@ -1328,5 +1328,139 @@ TEST_F(ExoConsTest, HamalConstellationsFormConnectedShapesWithoutStraySingleLine
     EXPECT_GE(mirach_comp_stars, 4);
 }
 
+TEST_F(ExoConsTest, TauCetiNearLinesAndReassignment)
+{
+    Star* tau_cet = get_star("Tau Ceti");
+    if (!tau_cet)
+    {
+        tau_cet = get_star("tau Cet");
+    }
+    ASSERT_NE(tau_cet, nullptr);
+
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(tau_cet, generated);
+
+    EXPECT_GE(generated.size(), 50u);
+
+    Star* alp_aql = get_star("Alp Aql");
+    if (!alp_aql)
+    {
+        alp_aql = get_star("Altair");
+    }
+    Star* alp1_her = get_star("Alp1Her");
+    if (!alp1_her)
+    {
+        alp1_her = get_star("Ras Algethi");
+    }
+    Star* her_95 = get_star("95 Her");
+    Star* nu_oph = get_star("Nu Oph");
+    Star* zet_sct = get_star("Zet Sct");
+    Star* mu_oph = get_star("Mu Oph");
+
+    bool has_altair_alp1her = false;
+    bool has_altair_95her = false;
+    bool has_nuoph_zetsct = false;
+    bool has_nuoph_muoph = false;
+
+    for (const auto& c : generated)
+    {
+        for (const auto& cl : c.lines)
+        {
+            if (alp_aql && alp1_her)
+            {
+                if ((cl.a == alp_aql && cl.b == alp1_her) || (cl.a == alp1_her && cl.b == alp_aql))
+                {
+                    has_altair_alp1her = true;
+                }
+            }
+            if (alp_aql && her_95)
+            {
+                if ((cl.a == alp_aql && cl.b == her_95) || (cl.a == her_95 && cl.b == alp_aql))
+                {
+                    has_altair_95her = true;
+                }
+            }
+            if (nu_oph && zet_sct)
+            {
+                if ((cl.a == nu_oph && cl.b == zet_sct) || (cl.a == zet_sct && cl.b == nu_oph))
+                {
+                    has_nuoph_zetsct = true;
+                }
+            }
+            if (nu_oph && mu_oph)
+            {
+                if ((cl.a == nu_oph && cl.b == mu_oph) || (cl.a == mu_oph && cl.b == nu_oph))
+                {
+                    has_nuoph_muoph = true;
+                }
+            }
+        }
+    }
+
+    // Phase B: Long diagonal lines to Altair are divorced and eliminated
+    EXPECT_FALSE(has_altair_alp1her);
+    EXPECT_FALSE(has_altair_95her);
+
+    // Phase C: Spurious cross-constellation horizontal bridge line Nu Oph - Zet Sct is removed
+    EXPECT_FALSE(has_nuoph_zetsct);
+
+    // Nu Oph connects to natural neighbor Mu Oph
+    if (nu_oph && mu_oph)
+    {
+        EXPECT_TRUE(has_nuoph_muoph);
+    }
+}
+
+TEST_F(ExoConsTest, NearestVantageSelectionAlpCen)
+{
+    Star* alp_cen = get_star("Alp1Cen");
+    if (!alp_cen)
+    {
+        alp_cen = get_star("Alpha Centauri");
+    }
+    ASSERT_NE(alp_cen, nullptr);
+
+    std::string vname;
+    bool should_gen = ExoConsGenerator::check_should_generate_for(alp_cen, vname);
+    EXPECT_FALSE(should_gen);
+
+    // Distance to Sol must be within 10 light years
+    Star* sun = (Star*)cels[0];
+    ASSERT_NE(sun, nullptr);
+    double dist_to_sun = alp_cen->location.distance_to(sun->location);
+    EXPECT_LT(dist_to_sun, light_year * 10.0);
+
+    // Distance to other defined exocons vantage (e.g. Tau Ceti) must be > 10 light years
+    Star* tau_cet = get_star("Tau Ceti");
+    if (!tau_cet)
+    {
+        tau_cet = get_star("tau Cet");
+    }
+    if (tau_cet)
+    {
+        double dist_to_tau = alp_cen->location.distance_to(tau_cet->location);
+        EXPECT_GT(dist_to_tau, light_year * 10.0);
+    }
+}
+
+TEST_F(ExoConsTest, GenerateConstellationsDurationBenchmark)
+{
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(uma47, generated);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+    EXPECT_GE(generated.size(), 50u);
+    EXPECT_LT(elapsed_ms, 5000);
+}
+
 
 

@@ -4702,7 +4702,7 @@ void draw_cons_lines()
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     n = constellations.size();
-    for (i=0; i<n; i++)
+    for (i = 0; i < n; i++)
     {
         if (!constellations[i].vantage_resolved)
         {
@@ -4725,47 +4725,179 @@ void draw_cons_lines()
             }
             constellations[i].vantage_resolved = true;
         }
+    }
 
-        double vantdist = constellations[i].vantage.distance_to(here);
-        m = constellations[i].lines.size();
-        for (l=0; l<m; l++)
+    // Determine the single active vantage
+    CelestialObject* cur_obj = mycenobj ? mycenobj : (whereami >= 0 && cels ? cels[whereami] : nullptr);
+    Star* sys_star = nullptr;
+    if (cur_obj)
+    {
+        if (cur_obj->typeclass() == class_star)
         {
-            if (!constellations[i].lines[l].a || !constellations[i].lines[l].b) continue;
-            if (constellations[i].lines[l].a == mycenobj) continue;
-            if (constellations[i].lines[l].b == mycenobj) continue;
-            if (constellations[i].lines[l].a->deleted) continue;
-            if (constellations[i].lines[l].b->deleted) continue;
+            sys_star = (Star*)cur_obj;
+        }
+        else if (cur_obj->cenobj && cur_obj->cenobj->typeclass() == class_star)
+        {
+            sys_star = (Star*)cur_obj->cenobj;
+        }
+    }
+
+    std::string sys_name = sys_star ? sys_star->name : "";
+    Point sys_loc = sys_star ? (Point)sys_star->location : here;
+
+    Point active_vantage_pt;
+    std::string active_vantage_name = "";
+    bool active_vantage_found = false;
+
+    if (sys_star)
+    {
+        for (i = 0; i < n; i++)
+        {
+            if (std::isnan(constellations[i].vantage.x))
+            {
+                continue;
+            }
+            if (constellations[i].lines.empty() && constellations[i].bounds.empty())
+            {
+                continue;
+            }
+
+            bool matches_name = (!sys_name.empty() && !constellations[i].vantage_name.empty() && constellations[i].vantage_name == sys_name);
+            bool is_sun = (sys_star == (cels ? cels[0] : nullptr) || sys_name == "Sun" || sys_name == "Sol");
+            bool matches_sun = is_sun && (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol");
+            bool matches_dist = constellations[i].vantage.distance_to(sys_loc) < light_year * 0.1;
+
+            if (matches_name || matches_sun || matches_dist)
+            {
+                active_vantage_found = true;
+                active_vantage_pt = constellations[i].vantage;
+                active_vantage_name = constellations[i].vantage_name;
+                break;
+            }
+        }
+    }
+
+    if (!active_vantage_found)
+    {
+        double min_dist = 1e30;
+        int best_idx = -1;
+        for (i = 0; i < n; i++)
+        {
+            if (std::isnan(constellations[i].vantage.x))
+            {
+                continue;
+            }
+            if (constellations[i].lines.empty() && constellations[i].bounds.empty())
+            {
+                continue;
+            }
+            double d = constellations[i].vantage.distance_to(here);
+            if (d < min_dist)
+            {
+                min_dist = d;
+                best_idx = i;
+            }
+        }
+
+        if (best_idx >= 0 && min_dist <= light_year * 10.0)
+        {
+            active_vantage_found = true;
+            active_vantage_pt = constellations[best_idx].vantage;
+            active_vantage_name = constellations[best_idx].vantage_name;
+        }
+    }
+
+    if (!active_vantage_found)
+    {
+        return;
+    }
+
+    auto belongs_to_active_vantage = [&](const Constellation& c) -> bool
+    {
+        if (std::isnan(c.vantage.x))
+        {
+            return false;
+        }
+        if (!active_vantage_name.empty() && !c.vantage_name.empty())
+        {
+            if (c.vantage_name == active_vantage_name)
+            {
+                return true;
+            }
+        }
+        bool active_is_sun = (active_vantage_name.empty() || active_vantage_name == "Sun" || active_vantage_name == "Sol");
+        bool c_is_sun = (c.vantage_name.empty() || c.vantage_name == "Sun" || c.vantage_name == "Sol");
+        if (active_is_sun && c_is_sun)
+        {
+            return true;
+        }
+        return c.vantage.distance_to(active_vantage_pt) < light_year * 0.1;
+    };
+
+    for (i = 0; i < n; i++)
+    {
+        if (!belongs_to_active_vantage(constellations[i]))
+        {
+            continue;
+        }
+
+        m = constellations[i].lines.size();
+        for (l = 0; l < m; l++)
+        {
+            if (!constellations[i].lines[l].a || !constellations[i].lines[l].b)
+            {
+                continue;
+            }
+            if (constellations[i].lines[l].a == mycenobj)
+            {
+                continue;
+            }
+            if (constellations[i].lines[l].b == mycenobj)
+            {
+                continue;
+            }
+            if (constellations[i].lines[l].a->deleted)
+            {
+                continue;
+            }
+            if (constellations[i].lines[l].b->deleted)
+            {
+                continue;
+            }
 
             int dx1, dx2, dy1, dy2;
 
             dx1 = constellations[i].lines[l].a->drawnx;
             dy1 = constellations[i].lines[l].a->drawny;
-            if (dx1 < -1e3) continue;
-            if (dy1 < -1e3) continue;
+            if (dx1 < -1e3 || dy1 < -1e3)
+            {
+                continue;
+            }
 
             dx2 = constellations[i].lines[l].b->drawnx;
             dy2 = constellations[i].lines[l].b->drawny;
-            if (dx2 < -1e3) continue;
-            if (dy2 < -1e3) continue;
+            if (dx2 < -1e3 || dy2 < -1e3)
+            {
+                continue;
+            }
 
-            if (vantdist < light_year*10)
-                wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2),
-                    rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.21)),
-                    1, io);
+            wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2),
+                rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.21)),
+                1, io);
         }
     }
 
     // Constellation labels
     n = constellations.size();
-    ImU32 cbcol = rgba_apply_redlight(Color::adjust_alpha(global_style.consline_color, 0.05));
-    if (show_labels || (show_consln && !draw_actual_conslines)) for (l=0; l<n; l++)
+    if (show_labels || (show_consln && !draw_actual_conslines))
     {
-        double vdist = constellations[l].vantage.distance_to(here);
-        if (std::isnan(vdist) || vdist > light_year * 10)
+        for (l = 0; l < n; l++)
         {
-            continue;
-        }
-        Point lconsdir;
+            if (!belongs_to_active_vantage(constellations[l]))
+            {
+                continue;
+            }
+            Point lconsdir;
 
         // Constellation boundaries, drawn as a dashed line: connect every other
         // pair of adjacent perimeter points, leaving the pairs in between as gaps.
@@ -4819,6 +4951,7 @@ void draw_cons_lines()
                 dispname.c_str() );
         }
     }
+}
 
     if (show_axes)
     {
