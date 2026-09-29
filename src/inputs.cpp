@@ -757,16 +757,53 @@ void process_key_cmd_char(char c)
 
 void process_key_cmd_ctrl_char(char c)
 {
-    // Ctrl+letter combinations to avoid, since they are claimed by the terminal, the OS,
-    // or common tools the app may be run alongside:
-    //   Ctrl+C - SIGINT (terminal interrupt)
-    //   Ctrl+D - EOF / terminal exit
-    //   Ctrl+Z - SIGTSTP (terminal suspend)
-    //   Ctrl+\ - SIGQUIT (terminal quit)
-    //   Ctrl+Q / Ctrl+S - terminal XON/XOFF flow control
-    //   Ctrl+A / Ctrl+B - tmux/screen prefix keys
-    //   Ctrl+V - system paste
-    //   Ctrl+W - window close (most OSes)
+    if (c == '3')
+    {
+        int i, j, l, m, n;
+        Point myloc = here;
+        double myRA = std::fmod(find_angle(myloc.z, -myloc.x), _pi*2),
+                myDecl = find_angle(sqrt(myloc.x*myloc.x+myloc.z*myloc.z), myloc.y);
+        while (myDecl > half_pi) myDecl -= _pi*2;
+
+        Constellation *cons = identify_cons_from_coords(myRA, myDecl);
+        n = themes.size();
+        if (cons)
+        {
+            for (i=0; i<n; i++)
+            {
+                if (!strcmp(themes[i].c_str(), cons->name.c_str()))
+                {
+                    themes_selected_idx = i;
+                    global_style.load(themes[i]);
+                    apply_default_style();
+                    return;
+                }
+            }
+        }
+
+        m = constellations.size();
+        double best = 1e29;
+        for (i=0; i<m; i++)
+        {
+            l = -1;
+            for (j=0; j<n; j++) if (!strcmp(themes[j].c_str(), constellations[i].name.c_str())) { l=j; break; }
+            if (l<0) continue;
+
+            Point consloc = Point::from_ra_dec(constellations[i].RA_center, constellations[i].decl_center, 1e29);
+            double theta = find_3D_angle(myloc, consloc, center);
+
+            if (theta < best)
+            {
+                best = theta;
+                themes_selected_idx = l;
+                global_style.load(themes[l]);
+            }
+        }
+        apply_default_style();
+    
+        return;
+    }
+
     switch (c)
     {
         case 'E': vplane_mode = vplane_ecliptic; break;
@@ -834,6 +871,10 @@ void process_keyboard_commands(ImGuiIO& io)
         for (i = 0; i < 26; i++)
         {
             if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char('A' + i);
+        }
+        for (i = 0; i < 10; i++)
+        {
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_0 + i))) process_key_cmd_ctrl_char('0' + i);
         }
     }
 }

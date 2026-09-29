@@ -1112,7 +1112,7 @@ bool save_user_json()
         j["Latitude"] = viewer_lat * fiftyseven;
         j["Longitude"] = viewer_lon * fiftyseven;
         j["Timezone"] = (int)(viewer_home_tz / 60);
-        j["Theme"] = viewer_theme;
+        j["Theme"] = themes[themes_selected_idx];
         j["Gamma"] = global_gamma;
 
         std::fstream fso("user.json", std::ios::out);

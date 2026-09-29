@@ -596,7 +596,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                 viewer_theme = themes[n];
                 global_style.load(themes[n]);
                 apply_default_style();
-                save_user_json();
             }
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
@@ -2888,6 +2887,16 @@ void draw_loc_window(ImGuiIO & io)
         viewer_lon = sellon;
         viewer_tz = seltz;
         viewer_locale = selloc;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Set Home"))
+    {
+        viewer_lat = viewer_home_lat = sellat;
+        viewer_lon = viewer_home_lon = sellon;
+        viewer_tz  = viewer_home_tz  = seltz;
+        viewer_locale = selloc;
+        save_user_json();
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
