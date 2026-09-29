@@ -3037,6 +3037,7 @@ namespace alienorum
 
     void ExoConsGenerator::save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss)
     {
+        return;
         std::vector<std::string> existing_lines;
         std::ifstream infile("exocons.dat");
         if (infile.is_open())
@@ -3095,6 +3096,8 @@ namespace alienorum
         {
             return;
         }
+
+        constellations.resize(num_reg_cons);
 
         std::vector<Constellation> generated;
         generate_constellations(sys_star, generated);

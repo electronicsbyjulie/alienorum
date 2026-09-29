@@ -801,6 +801,7 @@ static void parse_cons_lines_file(const char* filename, int& l, std::string& van
                     c.vantage_name = vantage_name;
                     c.vantage_resolved = false;
                     constellations.push_back(c);
+                    num_reg_cons++;
                     l++;
                 }
             }
@@ -1131,6 +1132,7 @@ void reload_stuff()
 
         CatalogReader cr;
         constellations.clear();
+        num_reg_cons = 0;
 
         if (abort_load)
         {

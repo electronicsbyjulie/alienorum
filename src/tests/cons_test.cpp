@@ -19,6 +19,7 @@ class ConstellationTest : public ::testing::Test
     {
         // Clear global constellations before each test
         constellations.clear();
+        num_reg_cons = 0;
         
         // Setup a safe, small cels array for fill_alienorum_ids to iterate over
         // Assuming cels is a global CelestialObject** null-terminated array
@@ -41,6 +42,7 @@ class ConstellationTest : public ::testing::Test
         cels = nullptr;
         
         constellations.clear();
+        num_reg_cons = 0;
     }
 };
 
@@ -574,6 +576,7 @@ class ExoConsTest : public ::testing::Test
         if (file_exists("exocons.dat")) std::rename("exocons.dat", "exocons.tstbak.dat");
         ExoConsGenerator::reset();
         constellations.clear();
+        num_reg_cons = 0;
         read_cons_lines();
     }
 
@@ -584,6 +587,7 @@ class ExoConsTest : public ::testing::Test
         if (file_exists("exocons.tstbak.dat")) std::rename("exocons.tstbak.dat", "exocons.dat");
         ExoConsGenerator::reset();
         constellations.clear();
+        num_reg_cons = 0;
         read_cons_lines();
     }
 
@@ -915,6 +919,7 @@ TEST_F(ExoConsTest, FileCachingAndReload_MatchesConslineFormat)
 
     // Verify read_cons_lines loads both consline.dat and exocons.dat
     constellations.clear();
+    num_reg_cons = 0;
     read_cons_lines();
 
     int uma_cons_count = 0;
@@ -980,6 +985,7 @@ TEST_F(ExoConsTest, NearbyVantageWithin10LightYears_SuppressesExoconsGeneration)
 
     // Verify exocons.dat has Tau Ceti constellations
     constellations.clear();
+    num_reg_cons = 0;
     read_cons_lines();
 
     int tau_cet_count = 0;

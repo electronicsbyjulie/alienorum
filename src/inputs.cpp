@@ -781,7 +781,7 @@ void process_key_cmd_ctrl_char(char c)
             }
         }
 
-        m = constellations.size();
+        m = fmin(88, constellations.size());
         double best = 1e29;
         for (i=0; i<m; i++)
         {
