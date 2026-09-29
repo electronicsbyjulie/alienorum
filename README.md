@@ -112,7 +112,7 @@ The default mode. Simulates a view from space as if looking out from inside a sp
 
 Planetfall mode allows seeing the sky and horizon from the surface of any planet, moon, or asteroid. This mode can be accessed by selecting it from the dropdown in the status window, pressing `_` (underscore), or "crashing" into an object during spaceflight. (Crashing into a star will not have the same effect.)
 
-While in planetfall mode, there are controls to edit the current latitude and longitude. These will be saved to your `user.json` file if you change the theme in the themes dropdown. Next to the latitude button is an `...` button that produces a list of locales if any locales are known for your current location. On Earth this includes cities and a handful of observatories.
+While in planetfall mode, there are controls to edit the current latitude and longitude. These will be saved to your `user.json` file, along with your current theme selection, if you press Shift+U. Next to the latitude button is an `...` button that produces a list of locales if any locales are known for your current location. On Earth this includes cities and a handful of observatories. Clicking `Set Home` will set your home latitude and longitude to the selection and update `user.json`. You may also set these by editing `user.json` in a text editor.
 
 You can also navigate the surface by holding down `End` (to go forward) or `Home` (to go backward) at a brisk walking speed. If you desire to go faster, simultaneously holding down `Shift` increases your speed tenfold and `Ctrl` one hundredfold. Both `Shift` keys and both `Ctrl` keys may be combined to produce
 a total of one million times the default walking speed.
