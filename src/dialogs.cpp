@@ -692,10 +692,18 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                        poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
                 while (poleDecl > half_pi) poleDecl -= _pi*2;
 
+                // Pole has to be in ICRF coordinates to identify constellation.
+                Constellation *c = identify_cons_from_coords(poleRA, poleDecl);
+
+                // Convert it to local coordinates for RA/decl display.
+                pole = to_viewer_plane(pole, -1);
+                poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2);
+                poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
+                while (poleDecl > half_pi) poleDecl -= _pi*2;
+
                 ImGui::Text("PoleRA:   %s", radians_to_hms(poleRA).c_str());
                 ImGui::Text("PoleDecl: %s", radians_to_degms(poleDecl).c_str());
 
-                Constellation *c = identify_cons_from_coords(poleRA, poleDecl);
                 if (c) ImGui::Text("          %s", c->name.c_str());
             }
 
