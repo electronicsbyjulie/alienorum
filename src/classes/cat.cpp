@@ -4803,6 +4803,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             if (p->orbit && p->orbit->center && createnew)
             {
                 p->known_poles = p->obliquity && p->equinox;
+                if (!strcmp(p->name, "Earth")) p->known_poles = true;
                 p->location = p->orbit->center->location;           // Copy the system center and local plane. The local position will auto-fill later.
                 p->location.equatorial_plane.a = p->obliquity;
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
