@@ -601,7 +601,7 @@ void process_key_cmd_char(char c)
         case '0': neighborhood = !neighborhood; break;
 
         case '1':
-        show_consln = show_grid = show_labels = label_galaxies = true;
+        show_consln = show_grid = show_labels = label_favestars = label_galaxies = true;
         show_localsys = lbl_localsys = statuswnd = objinfwnd = (view_mode != vm_skymap);
         if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut = (view_mode == vm_skymap) ? 2.1 : 2.5;
         break;
@@ -671,7 +671,7 @@ void process_key_cmd_char(char c)
         case ';': cometwnd = !cometwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
-        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = label_galaxies = false; break;
+        case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = false; break;
         case '%':
         zoom = 1;
         global_brightness = 1;
