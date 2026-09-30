@@ -81,6 +81,7 @@ add_library(CLASSES STATIC
 	src/classes/shore.cpp
 	src/classes/sscimport.cpp
 	src/classes/star.cpp
+	src/classes/exocons.cpp
 )
 
 target_include_directories(CLASSES PUBLIC src/classes src/include

@@ -781,7 +781,7 @@ void process_key_cmd_ctrl_char(char c)
             }
         }
 
-        m = constellations.size();
+        m = fmin(num_reg_cons, constellations.size());
         double best = 1e29;
         for (i=0; i<m; i++)
         {
@@ -875,15 +875,15 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
-    if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
-    if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
-    if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
+    if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
+    if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) process_key_F6();
     if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
-    if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
+    if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
 
     if (io.KeyCtrl)
     {
@@ -1058,6 +1058,11 @@ void process_key_F4()
 
 void process_key_F5()
 {
+    bool expected = false;
+    if (!is_reloading.compare_exchange_strong(expected, true))
+    {
+        return;
+    }
     splash = true;
     std::thread t1(reload_stuff);
     t1.detach();

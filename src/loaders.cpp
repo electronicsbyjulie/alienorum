@@ -742,24 +742,35 @@ void load_catalogs()
     std::cout << "Loaded data in " << elapsed << std::endl;
 }
 
-void read_cons_lines()
+static void parse_cons_lines_file(const char* filename, int& l, std::string& vantage_name)
 {
-    int l;
-    FILE* fp = fopen("consline.dat", "rb");
+    FILE* fp = fopen(filename, "rb");
     if (fp)
     {
         char buffer[65536];
-        l = -1;
         while (fgets(buffer, 65532, fp))
         {
             char* newline = strchr(buffer, '\n');
-            if (newline) *newline = 0;
+            if (newline)
+            {
+                *newline = 0;
+            }
             newline = strchr(buffer, '\r');
-            if (newline) *newline = 0;
+            if (newline)
+            {
+                *newline = 0;
+            }
+            if (*buffer == ':')
+            {
+                vantage_name = trim(&buffer[1]);
+            }
             if (*buffer == '~')
             {
                 char* name2 = strchr(buffer, ',');
-                if (!name2) continue;
+                if (!name2)
+                {
+                    continue;
+                }
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -783,16 +794,25 @@ void read_cons_lines()
                     Constellation c;
                     c.name = name2;
                     c.abbrev = &buffer[1];
-                    if (name3 && strlen(name3)) c.genitive = name3;
+                    if (name3 && strlen(name3))
+                    {
+                        c.genitive = name3;
+                    }
+                    c.vantage_name = vantage_name;
+                    c.vantage_resolved = false;
                     constellations.push_back(c);
+                    num_reg_cons++;
                     l++;
                 }
             }
-            else if (l>=0)
+            else if (l >= 0)
             {
-                char *name1=buffer, *name2, *name3;
+                char *name1 = buffer, *name2, *name3;
                 name2 = strchr(name1, ',');
-                if (!name2) goto _no_more_names;
+                if (!name2)
+                {
+                    goto _no_more_names;
+                }
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -825,7 +845,8 @@ void read_cons_lines()
 
                     name1 = name2;
                     name2 = name3;
-                } while (name3);
+                }
+                while (name3);
             }
 
             _no_more_names:
@@ -833,6 +854,14 @@ void read_cons_lines()
         }
         fclose(fp);
     }
+}
+
+void read_cons_lines()
+{
+    int l = (int)constellations.size() - 1;
+    std::string vantage_name;
+    parse_cons_lines_file("consline.dat", l, vantage_name);
+    parse_cons_lines_file("exocons.dat", l, vantage_name);
 }
 
 void cache_cons_lines()
@@ -843,6 +872,24 @@ void cache_cons_lines()
 
     for (int i = 0; i < ncons; i++)
     {
+        if (!constellations[i].vantage_resolved)
+        {
+            if (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol")
+            {
+                constellations[i].vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+                constellations[i].vantage_resolved = true;
+            }
+            else
+            {
+                int sidx = find_object(constellations[i].vantage_name.c_str(), true);
+                if (sidx >= 0 && cels && cels[sidx])
+                {
+                    constellations[i].vantage = cels[sidx]->location;
+                    constellations[i].vantage_resolved = true;
+                }
+            }
+        }
+
         double mag_limit = (i == 34) ? 7.5 : 6.5;
 
         mtx.lock();
@@ -1070,46 +1117,84 @@ void load_stuff()
 
 void reload_stuff()
 {
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing spectral types...";
-    mtx.unlock();
-    Star::load_main_seq_dat();
-
-    CatalogReader cr;
-    constellations.clear();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing constellations...";
-    mtx.unlock();
-    read_cons_lines();
-    cr.read_cons_boundaries();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Assigning stars to constellations...";
-    mtx.unlock();
-    cache_cons_lines();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing star orbits...";
-    mtx.unlock();
-    cr.read_star_orbits_dat(cels);
-
-    int i;
-    for (i=0; cels[i]; i++)
+    struct ReloadGuard
     {
-        delete[] cels[i]->locales;
-        cels[i]->locales = nullptr;
-        cels[i]->nlocales = 0;
-    }
+        ~ReloadGuard()
+        {
+            mtx.lock();
+            splash = false;
+            mtx.unlock();
+            is_reloading = false;
+        }
+    } guard;
 
-    mtx.lock();
-    loading_msg = "Done!";
-    splash = false;
-    mtx.unlock();
+    try
+    {
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing spectral types...";
+        mtx.unlock();
+        Star::load_main_seq_dat();
+
+        cons4lbl = nullptr;
+        is_a_locale_under_cursor = nullptr;
+        selected_locale = nullptr;
+
+        CatalogReader cr;
+        constellations.clear();
+        num_reg_cons = 0;
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing constellations...";
+        mtx.unlock();
+        read_cons_lines();
+        cr.read_cons_boundaries();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Assigning stars to constellations...";
+        mtx.unlock();
+        cache_cons_lines();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing star orbits...";
+        mtx.unlock();
+        cr.read_star_orbits_dat(cels);
+
+        int i;
+        for (i=0; cels[i]; i++)
+        {
+            delete[] cels[i]->locales;
+            cels[i]->locales = nullptr;
+            cels[i]->nlocales = 0;
+        }
+
+        mtx.lock();
+        loading_msg = "Done!";
+        mtx.unlock();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception in reload_stuff: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown exception in reload_stuff." << std::endl;
+    }
 }
 
 bool save_user_json()
