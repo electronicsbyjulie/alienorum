@@ -3269,6 +3269,13 @@ void draw_favestars_window(ImGuiIO & io)
 {
     if (!cels[1]) return;
     ImGui::Begin("Favorite Stars", &show_favestars, 0);
+
+    if (!favestars.size())
+    {
+        ImGui::Text("You don't have any favorite stars yet.");
+        ImGui::Text("Select a star and press Ctrl+D, and it will appear in the list.");
+    }
+
     int n;
     static unsigned int item_selected_idx = -1;
     int item_highlighted_idx = -1;
