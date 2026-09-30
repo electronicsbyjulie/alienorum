@@ -3227,6 +3227,7 @@ bool draw_single_object(int i)
 
     labels_step:
     Star *s = (cels[i]->type == star) ? (Star*)cels[i] : nullptr;
+    bool add_label = false;
     if ( (show_labels && s && !cels[i]->orbit &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
@@ -3248,6 +3249,12 @@ bool draw_single_object(int i)
             )
         || (cels[i]->type == galaxy && label_galaxies && vmag_cache[i] < (mag_limit_adjusted))
         || i == selected)
+        add_label = true;
+
+    if (!add_label && label_favestars && s)
+        if (std::find(favestars.begin(), favestars.end(), s) != favestars.end()) add_label = true;
+
+    if (add_label)
     {
         const char *dispname = cels[i]->name;
         int l = strlen(dispname);

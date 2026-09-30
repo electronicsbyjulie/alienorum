@@ -819,9 +819,10 @@ void process_key_cmd_ctrl_char(char c)
             {
                 favestars.erase(found);
             }
+            save_user_json();
         }
         break;
-        case 'D': show_favestars = !show_favestars; break;
+        case 'D': label_favestars = !label_favestars; break;
 
         case 'e': vplane_mode = vplane_ecliptic; break;
         case 'g': vplane_mode = vplane_galactic; break;
@@ -1072,6 +1073,7 @@ void process_key_F6()
 
 void process_key_F7()
 {
+    show_favestars = !show_favestars;
 }
 
 void process_key_F8()
