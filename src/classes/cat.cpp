@@ -4235,13 +4235,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     int num_read = 0;
     double f;
 
-    // Fix for Mirfak seen from Hamal
-    if (hdcache && hdcache[12929])
-    {
-        hdcache[12929]->obliquity = half_pi;
-        hdcache[12929]->equinox = _pi;
-    }
-
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
