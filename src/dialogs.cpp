@@ -3272,8 +3272,8 @@ void draw_favestars_window(ImGuiIO & io)
 
     if (!favestars.size())
     {
-        ImGui::Text("You don't have any favorite stars yet.");
-        ImGui::Text("Select a star and press Ctrl+D, and it will appear in the list.");
+        ImGui::Text("You don't have any favorite stars yet. To favorite a star, select it and");
+        ImGui::Text("press Ctrl+D, and it will appear in this list now and in future sessions.");
     }
 
     int n;
