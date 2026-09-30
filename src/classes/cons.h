@@ -24,7 +24,9 @@ namespace alienorum
     class Constellation
     {
         public:
-        std::string name, genitive, abbrev;
+        Point vantage;
+        std::string name, vantage_name, genitive, abbrev;
+        bool vantage_resolved = false;
         std::vector<ConsLine> lines;
         std::vector<ConsBoundary> bounds;
         std::map<int, Star*> Bayer_stars;               // 0 = alpha, 1 = beta, etc.
@@ -39,6 +41,7 @@ namespace alienorum
 
 using namespace alienorum;
 
+extern int num_reg_cons;
 extern std::vector<Constellation> constellations;
 Constellation* identify_cons_from_coords(double RA, double Decl);
 Constellation* identify_cons_of_star(Star* s);

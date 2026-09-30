@@ -9,6 +9,7 @@
 #include "imgui/backends/imgui_impl_sdl2.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
 #include <algorithm> 
+#include <atomic>
 #include <thread>
 #include <chrono>
 #include <stdio.h>
@@ -44,6 +45,7 @@ extern double txtyscale, txtycompact, edit_sma, edit_incl, edit_eccn, edit_argpe
 extern bool is_click, is_dbl_click;
 extern double frame_dur, best_frame_dur, scrollhold;
 extern bool splash, menu, magnitude_test, redo_proper_motions, fdlg_shown;
+extern std::atomic<bool> is_reloading;
 extern bool take_snapshot;
 extern CelestialObject npdummy;
 extern char xplorfor[name_max_len];
