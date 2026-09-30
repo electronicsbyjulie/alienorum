@@ -11,6 +11,8 @@ using namespace alienorum;
 double msq_mass[70], msq_rad[70], msq_lum[70], msq_temp[70], msq_BV[70];
 Star **hdcache = nullptr, **hipcache = nullptr;
 std::map<std::string, Star*> dmcache;
+std::vector<Star*> favestars;
+bool show_favestars = false;
 
 // Canonical key for a Durchmusterung designation, e.g. survey="BD", declination=-2, sequential=5958
 // -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().

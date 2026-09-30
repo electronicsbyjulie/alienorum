@@ -974,6 +974,7 @@ void load_stuff()
     mtx.unlock();
     Star::load_main_seq_dat();
 
+    std::vector<std::string> lfaves;
     fstream fs("user.json", std::ios::in);
     if (fs)
     {
@@ -988,6 +989,12 @@ void load_stuff()
         try { j.at( (std::string("Theme") + std::to_string(wkday)).c_str() ).get_to(viewer_theme); } catch(...) { ; }
         try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
+
+        try
+        {
+            j.at("FaveStars").get_to(lfaves);
+        } catch(...) { ; }
+
         fs.close();
     }
     else
@@ -1020,6 +1027,12 @@ void load_stuff()
     if (load_aborted() || !cels[0])
     {
         return;
+    }
+
+    for (const std::string& favename : lfaves)
+    {
+        int i = find_object(favename.c_str(), true);
+        if (i >= 0 && cels[i]->typeclass() == class_star) favestars.push_back((Star*)cels[i]);
     }
 
     mtx.lock();
@@ -1114,6 +1127,10 @@ bool save_user_json()
         j["Timezone"] = (int)(viewer_home_tz / 60);
         j["Theme"] = themes[themes_selected_idx];
         j["Gamma"] = global_gamma;
+
+        std::vector<std::string> favenames;
+        for (const Star *s : favestars) favenames.push_back(s->name);
+        j["FaveStars"] = favenames;
 
         std::fstream fso("user.json", std::ios::out);
         fso << j.dump(4);

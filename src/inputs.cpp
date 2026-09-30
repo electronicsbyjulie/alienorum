@@ -245,7 +245,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); menu_clicked = true; }
-            if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('O'); menu_clicked = true; }
+            if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('o'); menu_clicked = true; }
             if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Spaceflight/Speed Up", "+")) { process_key_cmd_char('+'); menu_clicked = true; }
@@ -302,10 +302,10 @@ void show_menu()
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
-                if (ImGui::MenuItem("Local", "Ctrl+L", vplane_mode == vplane_local)) { process_key_cmd_ctrl_char('L'); menu_clicked = true; }
-                if (ImGui::MenuItem("ICRF", "Ctrl+I", vplane_mode == vplane_ICRF)) { process_key_cmd_ctrl_char('I'); menu_clicked = true; }
-                if (ImGui::MenuItem("Ecliptic", "Ctrl+E", vplane_mode == vplane_ecliptic)) { process_key_cmd_ctrl_char('E'); menu_clicked = true; }
-                if (ImGui::MenuItem("Galactic", "Ctrl+G", vplane_mode == vplane_galactic)) { process_key_cmd_ctrl_char('G'); menu_clicked = true; }
+                if (ImGui::MenuItem("Local", "Ctrl+L", vplane_mode == vplane_local)) { process_key_cmd_ctrl_char('l'); menu_clicked = true; }
+                if (ImGui::MenuItem("ICRF", "Ctrl+I", vplane_mode == vplane_ICRF)) { process_key_cmd_ctrl_char('i'); menu_clicked = true; }
+                if (ImGui::MenuItem("Ecliptic", "Ctrl+E", vplane_mode == vplane_ecliptic)) { process_key_cmd_ctrl_char('e'); menu_clicked = true; }
+                if (ImGui::MenuItem("Galactic", "Ctrl+G", vplane_mode == vplane_galactic)) { process_key_cmd_ctrl_char('g'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J", satview_upsidedown)) { process_key_cmd_char('J'); menu_clicked = true; }
@@ -351,7 +351,7 @@ void show_menu()
 
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('S'); menu_clicked = true; }
+            if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('s'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
@@ -362,7 +362,7 @@ void show_menu()
             ImGui::Separator();
             if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); menu_clicked = true; }
             if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); menu_clicked = true; }
-            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain)) { process_key_cmd_ctrl_char('T'); menu_clicked = true; }
+            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain)) { process_key_cmd_ctrl_char('t'); menu_clicked = true; }
             if (ImGui::MenuItem("Hide Mouse Cursor", ",")) { process_key_cmd_char(','); menu_clicked = true; }
             ImGui::EndMenu();
         }
@@ -424,7 +424,7 @@ void process_key_cmd_char(char c)
 
         case 'e':
         explorer = !explorer;
-        if (explorer) process_key_cmd_ctrl_char('V');
+        if (explorer) process_key_cmd_ctrl_char('v');
         break;
 
         case 'E':
@@ -806,14 +806,37 @@ void process_key_cmd_ctrl_char(char c)
 
     switch (c)
     {
-        case 'E': vplane_mode = vplane_ecliptic; break;
-        case 'G': vplane_mode = vplane_galactic; break;
-        case 'I': vplane_mode = vplane_ICRF; break;
-        case 'L': vplane_mode = vplane_local; break;
-        case 'S': shortnames = !shortnames; viewchanged = true; break;
-        case 'T': show_terrain = !show_terrain; viewchanged = true; break;
+        case 'd':
+        if (selected < 0) selected = trackidx;
+        if (selected >= 0 && cels[selected]->typeclass() == class_star)
+        {
+            auto found = std::find(favestars.begin(), favestars.end(), cels[selected]);
+            if (found == favestars.end())
+            {
+                favestars.push_back((Star*)cels[selected]);
+            }
+            else
+            {
+                favestars.erase(found);
+            }
+        }
+        break;
+        case 'D': show_favestars = !show_favestars; break;
+
+        case 'e': vplane_mode = vplane_ecliptic; break;
+        case 'g': vplane_mode = vplane_galactic; break;
+        case 'i': vplane_mode = vplane_ICRF; break;
+        case 'l': vplane_mode = vplane_local; break;
+
+        case 'o':
+        local_tmstep = true;
+        process_key_cmd_char('o');
+        break;
+
+        case 's': shortnames = !shortnames; viewchanged = true; break;
+        case 't': show_terrain = !show_terrain; viewchanged = true; break;
     
-        case 'V':
+        case 'v':
         if (!mycenobj) return;
         view_mode = vm_system;
         statuswnd = false;
@@ -821,12 +844,7 @@ void process_key_cmd_ctrl_char(char c)
         lbl_localsys = true;
         break;
 
-        case 'W': done = true; break;
-
-        case 'O':
-        local_tmstep = true;
-        process_key_cmd_char('o');
-        break;
+        case 'w': done = true; break;
 
         default:
         ;
@@ -870,7 +888,7 @@ void process_keyboard_commands(ImGuiIO& io)
     {
         for (i = 0; i < 26; i++)
         {
-            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char('A' + i);
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char((io.KeyShift ? 'A' : 'a') + i);
         }
         for (i = 0; i < 10; i++)
         {

@@ -173,6 +173,8 @@ extern alienorum::Star **hdcache, **hipcache;
 
 // Cross-catalog Durchmusterung (BD/CD/CP) lookup, keyed by bonn_survey_key().
 extern std::map<std::string, alienorum::Star*> dmcache;
+extern std::vector<Star*> favestars;
+extern bool show_favestars;
 std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential);
 
 #endif

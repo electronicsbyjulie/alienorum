@@ -3262,31 +3262,69 @@ void draw_sat_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
-#if 0
-// Use this template to add new windows to the application.
-
-// Replace wndbool with a new boolean you create in misc.h and misc.cpp. It will control whether the window is displayed.
-
-void draw_app_window_template(ImGuiIO& io)
+void draw_favestars_window(ImGuiIO & io)
 {
     if (!cels[1]) return;
-    ImGui::Begin("Window Name", &wnd, 0);                       // Replace wnd with a new dedicated bool.
+    ImGui::Begin("Favorite Stars", &show_favestars, 0);
+    int n;
+    static unsigned int item_selected_idx = -1;
+    int item_highlighted_idx = -1;
+    if (ImGui::BeginListBox("##favestarlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        n = 0;
+        for (const Star *s : favestars)
+        {
+            bool is_selected = (item_selected_idx == n);
 
-    ImGui::Text("%s", "Text Field");                            // Example text label.
+            ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(s->name, is_selected, flags))
+                item_selected_idx = n;
+
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+
+            n++;
+        }
+
+        ImGui::EndListBox();
+    }
+
+    if (item_selected_idx >= favestars.size()) item_selected_idx = 0;
+    if (ImGui::Button("Select##neighbors"))
+    {
+        selected = favestars[item_selected_idx]->seqno;
+        viewchanged = true;
+    }
     ImGui::SameLine();
-    ImGui::InputText("##textdata", text_data, 256, 0);          // Replace the ## string with a unique id and text_data with a char array.
-
-    // Add the main body of the window here.
+    if (ImGui::Button("Find##neighbors"))
+    {
+        selected = favestars[item_selected_idx]->seqno;
+        center_selected();
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Go##neighbors"))
+    {
+        if (item_selected_idx >= 0)
+        {
+            whereami = favestars[item_selected_idx]->seqno;
+            viewer_locale = "";
+            set_viewer_location_and_plane();
+            selected = trackidx = -1;
+            global_brightness = default_brightness;
+            zoom = 1;
+            viewchanged = true;
+        }
+    }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
-    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImVec2 cpos = ImGui::GetWindowPos(), csiz = ImGui::GetWindowSize();
     ImGui::End();
 
     // Code to ensure mouse interacts with window and not viewport.
-    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+    if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
 }
-#endif
 
 void draw_comet_window(ImGuiIO & io)
 {
@@ -3434,3 +3472,30 @@ void draw_comet_window(ImGuiIO & io)
     if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
 }
+
+
+#if 0
+// Use this template to add new windows to the application.
+
+// Replace wndbool with a new boolean you create in misc.h and misc.cpp. It will control whether the window is displayed.
+
+void draw_app_window_template(ImGuiIO& io)
+{
+    if (!cels[1]) return;
+    ImGui::Begin("Window Name", &wnd, 0);                       // Replace wnd with a new dedicated bool.
+
+    ImGui::Text("%s", "Text Field");                            // Example text label.
+    ImGui::SameLine();
+    ImGui::InputText("##textdata", text_data, 256, 0);          // Replace the ## string with a unique id and text_data with a char array.
+
+    // Add the main body of the window here.
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+#endif

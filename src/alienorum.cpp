@@ -700,6 +700,7 @@ int main (int argc, char** argv)
             if (satwnd) draw_sat_window(io);
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
+            if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
 
             if (!is_mouse_over_window && !dragging)
