@@ -4,6 +4,7 @@
 #include "loaders.h"
 #include "sphere_impostor.h"
 #include "gputex.h"
+#include "classes/exocons.h"
 
 using namespace alienorum;
 
@@ -4736,20 +4737,17 @@ void draw_cons_lines()
 
     // Determine the single active vantage
     CelestialObject* cur_obj = mycenobj ? mycenobj : (whereami >= 0 && cels ? cels[whereami] : nullptr);
-    Star* sys_star = nullptr;
-    if (cur_obj)
+    Star* sys_star = ExoConsGenerator::resolve_system_star(cur_obj);
+
+    std::string sys_name = "";
+    if (sys_star)
     {
-        if (cur_obj->typeclass() == class_star)
+        sys_name = sys_star->name;
+        if (sys_name.empty())
         {
-            sys_star = (Star*)cur_obj;
-        }
-        else if (cur_obj->cenobj && cur_obj->cenobj->typeclass() == class_star)
-        {
-            sys_star = (Star*)cur_obj->cenobj;
+            sys_name = ExoConsGenerator::get_consline_star_name(sys_star);
         }
     }
-
-    std::string sys_name = sys_star ? sys_star->name : "";
     Point sys_loc = sys_star ? (Point)sys_star->location : here;
 
     Point active_vantage_pt;
@@ -4769,7 +4767,23 @@ void draw_cons_lines()
                 continue;
             }
 
-            bool matches_name = (!sys_name.empty() && !constellations[i].vantage_name.empty() && constellations[i].vantage_name == sys_name);
+            bool matches_name = false;
+            if (!constellations[i].vantage_name.empty())
+            {
+                const std::string& vn = constellations[i].vantage_name;
+                if (!sys_name.empty() && vn == sys_name)
+                {
+                    matches_name = true;
+                }
+                else if (sys_star->name[0] && vn == sys_star->name)
+                {
+                    matches_name = true;
+                }
+                else if (vn == ExoConsGenerator::get_consline_star_name(sys_star))
+                {
+                    matches_name = true;
+                }
+            }
             bool is_sun = (sys_star == (cels ? cels[0] : nullptr) || sys_name == "Sun" || sys_name == "Sol");
             bool matches_sun = is_sun && (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol");
             bool matches_dist = constellations[i].vantage.distance_to(sys_loc) < light_year * 0.1;
@@ -4855,11 +4869,11 @@ void draw_cons_lines()
             {
                 continue;
             }
-            if (constellations[i].lines[l].a == mycenobj)
+            if (constellations[i].lines[l].a == sys_star || constellations[i].lines[l].a == mycenobj)
             {
                 continue;
             }
-            if (constellations[i].lines[l].b == mycenobj)
+            if (constellations[i].lines[l].b == sys_star || constellations[i].lines[l].b == mycenobj)
             {
                 continue;
             }

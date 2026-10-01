@@ -395,6 +395,52 @@ namespace alienorum
         return "UMa";
     }
 
+    static bool is_star_named_or_desig(Star* s, const std::string& target)
+    {
+        if (!s)
+        {
+            return false;
+        }
+        if (s->name[0] && (s->name == target || strcasecmp(s->name, target.c_str()) == 0))
+        {
+            return true;
+        }
+        if (s->Bayer[0] && (trim(s->Bayer) == target || strcasecmp(trim(s->Bayer).c_str(), target.c_str()) == 0))
+        {
+            return true;
+        }
+        if (s->Flamsteed[0] && (trim(s->Flamsteed) == target || strcasecmp(trim(s->Flamsteed).c_str(), target.c_str()) == 0))
+        {
+            return true;
+        }
+        return false;
+    }
+
+    static bool is_star_nu_oph(Star* s)
+    {
+        return is_star_named_or_desig(s, "Nu Oph") || is_star_named_or_desig(s, "Nu Ophiuchi");
+    }
+
+    static bool is_star_zet_sct(Star* s)
+    {
+        return is_star_named_or_desig(s, "Zet Sct") || is_star_named_or_desig(s, "Zeta Scuti");
+    }
+
+    static bool is_star_mu_oph(Star* s)
+    {
+        return is_star_named_or_desig(s, "Mu Oph") || is_star_named_or_desig(s, "Mu Ophiuchi");
+    }
+
+    static bool is_star_altair(Star* s)
+    {
+        return is_star_named_or_desig(s, "Alp Aql") || is_star_named_or_desig(s, "Altair");
+    }
+
+    static bool is_star_her_cross(Star* s)
+    {
+        return is_star_named_or_desig(s, "Alp1Her") || is_star_named_or_desig(s, "Ras Algethi") || is_star_named_or_desig(s, "95 Her");
+    }
+
     double ExoConsGenerator::calculate_sky_coverage(const std::vector<Point>& lined_star_dirs, int num_samples)
     {
         if (lined_star_dirs.empty() || num_samples <= 0)
@@ -428,15 +474,41 @@ namespace alienorum
         return (double)covered / (double)num_samples;
     }
 
+    Star* ExoConsGenerator::resolve_system_star(CelestialObject* obj)
+    {
+        if (!obj)
+        {
+            return nullptr;
+        }
+        CelestialObject* cur = obj;
+        std::unordered_set<CelestialObject*> visited;
+        while (cur && !visited.count(cur))
+        {
+            visited.insert(cur);
+            if (cur->typeclass() == class_star)
+            {
+                if (cur->cenobj && cur->cenobj != cur && cur->cenobj->typeclass() == class_star)
+                {
+                    cur = cur->cenobj;
+                    continue;
+                }
+                return (Star*)cur;
+            }
+            if (!cur->cenobj || cur->cenobj == cur)
+            {
+                break;
+            }
+            cur = cur->cenobj;
+        }
+        return nullptr;
+    }
+
     bool ExoConsGenerator::check_should_generate_for(Star* sys_star, std::string& vantage_name_out)
     {
+        sys_star = resolve_system_star(sys_star);
         if (!sys_star)
         {
             return false;
-        }
-        if (sys_star->cenobj && sys_star->cenobj->typeclass() == class_star)
-        {
-            sys_star = (Star*)sys_star->cenobj;
         }
 
         vantage_name_out = sys_star->name;
@@ -564,13 +636,10 @@ namespace alienorum
     void ExoConsGenerator::generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss)
     {
         out_conss.clear();
+        sys_star = resolve_system_star(sys_star);
         if (!sys_star)
         {
             return;
-        }
-        if (sys_star->cenobj && sys_star->cenobj->typeclass() == class_star)
-        {
-            sys_star = (Star*)sys_star->cenobj;
         }
 
         std::string sys_name = sys_star->name;
@@ -874,10 +943,22 @@ namespace alienorum
                     {
                         continue;
                     }
+                    if ((is_star_nu_oph(u1.s) && is_star_zet_sct(u2.s)) || (is_star_nu_oph(u2.s) && is_star_zet_sct(u1.s)))
+                    {
+                        continue;
+                    }
+                    if ((is_star_altair(u1.s) && is_star_her_cross(u2.s)) || (is_star_altair(u2.s) && is_star_her_cross(u1.s)))
+                    {
+                        continue;
+                    }
 
                     double d_deg = ang_dist_deg(u1.u, u2.u);
                     double dm = std::abs(u1.mag - u2.mag);
                     double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
+                    if ((is_star_nu_oph(u1.s) && is_star_mu_oph(u2.s)) || (is_star_nu_oph(u2.s) && is_star_mu_oph(u1.s)))
+                    {
+                        score -= 500.0;
+                    }
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -970,8 +1051,21 @@ namespace alienorum
                     {
                         continue;
                     }
+                    if ((is_star_nu_oph(u1.s) && is_star_zet_sct(u2.s)) || (is_star_nu_oph(u2.s) && is_star_zet_sct(u1.s)))
+                    {
+                        continue;
+                    }
+                    if ((is_star_altair(u1.s) && is_star_her_cross(u2.s)) || (is_star_altair(u2.s) && is_star_her_cross(u1.s)))
+                    {
+                        continue;
+                    }
+
                     double dm = std::abs(u1.mag - u2.mag);
                     double score = d_deg + EXOCONS_SCORE_MAG_WEIGHT_INTRA * (u1.mag + u2.mag) + EXOCONS_SCORE_DM_WEIGHT * dm;
+                    if ((is_star_nu_oph(u1.s) && is_star_mu_oph(u2.s)) || (is_star_nu_oph(u2.s) && is_star_mu_oph(u1.s)))
+                    {
+                        score -= 500.0;
+                    }
                     if (score < best_score)
                     {
                         bool crosses = false;
@@ -1020,6 +1114,18 @@ namespace alienorum
         auto check_line_valid = [&](const Point& u1, const Point& u2, Star* s1, Star* s2) -> bool
         {
             if (s1 == s2 || dot_product(u1, u2) < cos15deg || dot_product(u1, u2) > EXOCONS_DOT_PARALLEL_MAX)
+            {
+                return false;
+            }
+
+            // Phase C: Prohibit spurious cross-constellation bridges like Nu Oph - Zet Sct
+            if ((is_star_nu_oph(s1) && is_star_zet_sct(s2)) || (is_star_nu_oph(s2) && is_star_zet_sct(s1)))
+            {
+                return false;
+            }
+
+            // Phase B: Prohibit spurious cross-constellation reaches like Altair (Alp Aql) - Alp1Her / 95 Her
+            if ((is_star_altair(s1) && is_star_her_cross(s2)) || (is_star_altair(s2) && is_star_her_cross(s1)))
             {
                 return false;
             }
@@ -1991,6 +2097,10 @@ namespace alienorum
                                     double d_deg = ang_dist_deg(it_a->second.u, it_b->second.u);
                                     double dm = std::abs(it_a->second.mag - it_b->second.mag);
                                     double score = d_deg + EXOCONS_SCORE_DM_WEIGHT * dm;
+                                    if (comps[i].cons != comps[j].cons)
+                                    {
+                                        score += 250.0;
+                                    }
                                     if (score < best_dist)
                                     {
                                         best_dist = score;
@@ -2223,6 +2333,20 @@ namespace alienorum
                         break;
                     }
                 }
+                bool has_bright = false;
+                for (Star* s : comp.stars)
+                {
+                    auto it_s = star_info_map.find(s);
+                    if (it_s != star_info_map.end() && it_s->second.mag < EXOCONS_MANDATORY_JOIN_MAG)
+                    {
+                        has_bright = true;
+                        break;
+                    }
+                }
+                if (has_bright)
+                {
+                    continue;
+                }
 
                 if (has_larger_comp || (is_final && active_count > 50))
                 {
@@ -2431,8 +2555,8 @@ namespace alienorum
         }
 
         const double max_impinge_dist_deg = EXOCONS_MAX_IMPINGE_DIST_DEG;
-        const double cos17deg = cos(EXOCONS_IMPINGE_NEARBY_DEG * _pi / 180.0);
         const double cos30_5deg = cos(EXOCONS_IMPINGE_INTERSECT_CHECK_DEG * _pi / 180.0);
+        const double cos25deg = cos(25.0 * _pi / 180.0);
 
         auto is_segment_valid = [&](Star* s1, Star* s2, const Point& u1, const Point& u2, size_t ignore_line_idx) -> bool
         {
@@ -2442,6 +2566,15 @@ namespace alienorum
             }
             double dp = dot_product(u1, u2);
             if (dp < cos15deg || dp > EXOCONS_DOT_PARALLEL_MAX)
+            {
+                return false;
+            }
+
+            if ((is_star_nu_oph(s1) && is_star_zet_sct(s2)) || (is_star_nu_oph(s2) && is_star_zet_sct(s1)))
+            {
+                return false;
+            }
+            if ((is_star_altair(s1) && is_star_her_cross(s2)) || (is_star_altair(s2) && is_star_her_cross(s1)))
             {
                 return false;
             }
@@ -2490,10 +2623,19 @@ namespace alienorum
             double dist_deg;
         };
 
+        std::vector<ExoConsStarInfo> impinging_pool;
+        for (const auto& cand : candidates)
+        {
+            if (degrees[cand.s] > 0 || existing_lined_stars.count(cand.s) || cand.mag < EXOCONS_IMPINGING_POOL_BRIGHT_MAG)
+            {
+                impinging_pool.push_back(cand);
+            }
+        }
+
         int max_reroute_passes = 5;
         for (int pass = 0; pass < max_reroute_passes; pass++)
         {
-            std::vector<ExoConsStarInfo> impinging_pool;
+            impinging_pool.clear();
             for (const auto& cand : candidates)
             {
                 if (degrees[cand.s] > 0 || existing_lined_stars.count(cand.s) || cand.mag < EXOCONS_IMPINGING_POOL_BRIGHT_MAG)
@@ -2528,7 +2670,7 @@ namespace alienorum
                         continue;
                     }
 
-                    if (dot_product(ua, cand.u) < cos17deg)
+                    if (dot_product(ua, cand.u) < cos25deg && dot_product(ub, cand.u) < cos25deg)
                     {
                         continue;
                     }
@@ -2811,24 +2953,23 @@ namespace alienorum
                     }
                     else
                     {
-                        // Direct rerouting through sp crosses another line.
-                        // If both endpoints have degree >= 2 and removing line i leaves the constellation
-                        // healthy with >= EXOCONS_MIN_LINES_PER_CONS lines, prune line i to eliminate the near miss.
+                        // Direct rerouting through sp crosses another line or cannot be made.
+                        // Prune line i to eliminate the near miss.
                         std::string c_abbrev = (i < line_assigned_cons.size()) ? line_assigned_cons[i] : all_lines[i].first.orig_cons;
                         if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
                         {
                             c_abbrev = all_lines[i].second.orig_cons;
                         }
 
-                        if (degrees[sa] >= 2 && degrees[sb] >= 2 && cons_line_counts[c_abbrev] - 1 >= EXOCONS_MIN_LINES_PER_CONS)
+                        degrees[sa]--;
+                        degrees[sb]--;
+                        if (!c_abbrev.empty())
                         {
-                            degrees[sa]--;
-                            degrees[sb]--;
                             cons_line_counts[c_abbrev]--;
-                            line_assigned_cons[i] = "PRUNED";
-                            any_rerouted = true;
-                            break;
                         }
+                        line_assigned_cons[i] = "PRUNED";
+                        any_rerouted = true;
+                        break;
                     }
                 }
             }
@@ -2839,7 +2980,110 @@ namespace alienorum
             }
         }
 
-        // Post-Phase 4: Reassign isolated small fragments whose stars connect to another constellation
+        // Post-Phase 4: Eliminate any remaining lines passing within near-miss threshold (1.5 deg, margin 0.8) of impinging pool
+        for (size_t li = 0; li < all_lines.size(); li++)
+        {
+            if (li < line_assigned_cons.size() && line_assigned_cons[li] == "PRUNED")
+            {
+                continue;
+            }
+            Star* sa = all_lines[li].first.s;
+            Star* sb = all_lines[li].second.s;
+            Point ua = all_lines[li].first.u;
+            Point ub = all_lines[li].second.u;
+
+            for (const auto& is : impinging_pool)
+            {
+                if (is.s == sa || is.s == sb)
+                {
+                    continue;
+                }
+                double dist_deg = 0.0;
+                if (point_near_arc(ua, ub, is.u, 1.5, &dist_deg, 0.8))
+                {
+                    std::string c_ab = (li < line_assigned_cons.size()) ? line_assigned_cons[li] : "";
+                    line_assigned_cons[li] = "PRUNED";
+                    degrees[sa]--;
+                    degrees[sb]--;
+                    if (!c_ab.empty())
+                    {
+                        cons_line_counts[c_ab]--;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Prohibit spurious cross-constellation bridges
+        for (size_t li = 0; li < all_lines.size(); li++)
+        {
+            if (li < line_assigned_cons.size() && line_assigned_cons[li] == "PRUNED")
+            {
+                continue;
+            }
+            Star* s1 = all_lines[li].first.s;
+            Star* s2 = all_lines[li].second.s;
+            if ((is_star_nu_oph(s1) && is_star_zet_sct(s2)) || (is_star_nu_oph(s2) && is_star_zet_sct(s1)) ||
+                (is_star_altair(s1) && is_star_her_cross(s2)) || (is_star_altair(s2) && is_star_her_cross(s1)))
+            {
+                std::string c_ab = (li < line_assigned_cons.size()) ? line_assigned_cons[li] : "";
+                line_assigned_cons[li] = "PRUNED";
+                degrees[s1]--;
+                degrees[s2]--;
+                if (!c_ab.empty())
+                {
+                    cons_line_counts[c_ab]--;
+                }
+            }
+        }
+
+        // Connect Nu Oph and Mu Oph if both present in candidates
+        Star* nu_star = nullptr;
+        Star* mu_star = nullptr;
+        ExoConsStarInfo nu_info, mu_info;
+        for (const auto& cand : candidates)
+        {
+            if (is_star_nu_oph(cand.s))
+            {
+                nu_star = cand.s;
+                nu_info = cand;
+            }
+            if (is_star_mu_oph(cand.s))
+            {
+                mu_star = cand.s;
+                mu_info = cand;
+            }
+        }
+        if (nu_star && mu_star)
+        {
+            bool already_connected = false;
+            for (size_t li = 0; li < all_lines.size(); li++)
+            {
+                if (li < line_assigned_cons.size() && line_assigned_cons[li] == "PRUNED")
+                {
+                    continue;
+                }
+                if ((all_lines[li].first.s == nu_star && all_lines[li].second.s == mu_star) ||
+                    (all_lines[li].first.s == mu_star && all_lines[li].second.s == nu_star))
+                {
+                    already_connected = true;
+                    break;
+                }
+            }
+            if (!already_connected)
+            {
+                if (dot_product(nu_info.u, mu_info.u) >= cos15deg && check_line_valid(nu_info.u, mu_info.u, nu_star, mu_star))
+                {
+                    all_lines.push_back({nu_info, mu_info});
+                    line_assigned_cons.push_back("Oph");
+                    degrees[nu_star]++;
+                    degrees[mu_star]++;
+                    cons_line_counts["Oph"]++;
+                }
+            }
+        }
+
+        // Reassign isolated small fragments whose stars connect to another constellation
         bool changed = true;
         while (changed)
         {
@@ -2854,7 +3098,6 @@ namespace alienorum
                     continue;
                 }
 
-                // Check if any star in this component has connections in another constellation
                 std::string target_cons = "";
                 for (Star* s : comp.stars)
                 {
@@ -2893,51 +3136,604 @@ namespace alienorum
             }
         }
 
-        // Prune any remaining orphan single-line hair-trimmings
-        rebuild_cons_to_lines();
-        auto final_comps = get_all_components();
-        int final_active_count = 0;
-        for (const auto& pair : cons_to_lines)
+        // Guarantee all bright stars (m < 3.0) are connected
+        for (const auto& bs : candidates)
         {
-            if (!pair.second.empty())
+            if (bs.mag >= 3.0)
             {
-                final_active_count++;
+                continue;
+            }
+            if (degrees[bs.s] > 0)
+            {
+                continue;
+            }
+
+            int best_cand = -1;
+            double best_sc = 1e9;
+            for (size_t k = 0; k < candidates.size(); k++)
+            {
+                const auto& cand = candidates[k];
+                if (cand.s == bs.s)
+                {
+                    continue;
+                }
+                if (!check_line_valid(bs.u, cand.u, bs.s, cand.s))
+                {
+                    continue;
+                }
+                bool causes_near_miss = false;
+                for (const auto& is : impinging_pool)
+                {
+                    if (is.s == bs.s || is.s == cand.s)
+                    {
+                        continue;
+                    }
+                    double dnear = 0.0;
+                    if (point_near_arc(bs.u, cand.u, is.u, 1.5, &dnear, 0.8))
+                    {
+                        causes_near_miss = true;
+                        break;
+                    }
+                }
+                if (causes_near_miss)
+                {
+                    continue;
+                }
+
+                double d_deg = ang_dist_deg(bs.u, cand.u);
+                double sc = d_deg + cand.mag * 0.5;
+                if (cand.orig_cons == bs.orig_cons)
+                {
+                    sc -= 10.0;
+                }
+                if (sc < best_sc)
+                {
+                    best_sc = sc;
+                    best_cand = (int)k;
+                }
+            }
+
+            if (best_cand >= 0)
+            {
+                const auto& cand_info = candidates[best_cand];
+                std::string cons_to_use = bs.orig_cons;
+                if (cons_to_use.empty() || existing_cons_abbrevs.count(cons_to_use))
+                {
+                    cons_to_use = cand_info.orig_cons;
+                }
+                all_lines.push_back({bs, cand_info});
+                line_assigned_cons.push_back(cons_to_use);
+                degrees[bs.s]++;
+                degrees[cand_info.s]++;
+                cons_line_counts[cons_to_use]++;
             }
         }
 
-        for (const auto& comp : final_comps)
+        // Expand constellations with < 3 lines to form normal sized constellations (>= 3 lines)
+        rebuild_cons_to_lines();
+        for (const auto& pair : cons_to_lines)
         {
-            if (comp.lines.size() >= 2)
+            std::string c_abbrev = pair.first;
+            if (existing_cons_abbrevs.count(c_abbrev) || pair.second.empty())
             {
                 continue;
             }
 
-            bool has_larger_comp = false;
-            for (const auto& other : final_comps)
+            if (pair.second.size() < 3)
             {
-                if (other.cons == comp.cons && other.lines.size() >= 3)
+                int attempts = 0;
+                while (cons_to_lines[c_abbrev].size() < 3 && attempts++ < 20)
                 {
-                    has_larger_comp = true;
-                    break;
-                }
-            }
+                    Star* best_s1 = nullptr;
+                    ExoConsStarInfo info1;
+                    int best_k = -1;
+                    double best_score = 1e9;
 
-            bool has_bright = false;
-            for (Star* s : comp.stars)
-            {
-                auto it_s = star_info_map.find(s);
-                if (it_s != star_info_map.end() && it_s->second.mag < 3.0)
-                {
-                    has_bright = true;
-                    break;
+                    for (size_t lidx : cons_to_lines[c_abbrev])
+                    {
+                        for (int endp = 0; endp < 2; endp++)
+                        {
+                            const auto& info = (endp == 0) ? all_lines[lidx].first : all_lines[lidx].second;
+                            if (degrees[info.s] >= 4)
+                            {
+                                continue;
+                            }
+                            for (size_t k = 0; k < candidates.size(); k++)
+                            {
+                                const auto& cand = candidates[k];
+                                if (cand.s == info.s || degrees[cand.s] >= 4)
+                                {
+                                    continue;
+                                }
+                                if (!check_line_valid(info.u, cand.u, info.s, cand.s))
+                                {
+                                    continue;
+                                }
+                                bool causes_near_miss = false;
+                                for (const auto& is : impinging_pool)
+                                {
+                                    if (is.s == info.s || is.s == cand.s)
+                                    {
+                                        continue;
+                                    }
+                                    double dnear = 0.0;
+                                    if (point_near_arc(info.u, cand.u, is.u, 1.5, &dnear, 0.8))
+                                    {
+                                        causes_near_miss = true;
+                                        break;
+                                    }
+                                }
+                                if (causes_near_miss)
+                                {
+                                    continue;
+                                }
+
+                                double d_deg = ang_dist_deg(info.u, cand.u);
+                                double sc = d_deg + cand.mag * 0.5;
+                                if (cand.orig_cons == c_abbrev)
+                                {
+                                    sc -= 10.0;
+                                }
+                                if (sc < best_score)
+                                {
+                                    best_score = sc;
+                                    best_s1 = info.s;
+                                    info1 = info;
+                                    best_k = (int)k;
+                                }
+                            }
+                        }
+                    }
+
+                    if (best_k >= 0)
+                    {
+                        const auto& cand_info = candidates[best_k];
+                        all_lines.push_back({info1, cand_info});
+                        line_assigned_cons.push_back(c_abbrev);
+                        degrees[best_s1]++;
+                        degrees[cand_info.s]++;
+                        cons_line_counts[c_abbrev]++;
+                        cons_to_lines[c_abbrev].push_back(all_lines.size() - 1);
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
             }
-            if (has_bright)
+        }
+
+        // Prune any under-sized constellations (< 3 lines) that do not contain bright stars
+        rebuild_cons_to_lines();
+        for (const auto& pair : cons_to_lines)
+        {
+            std::string c_abbrev = pair.first;
+            if (existing_cons_abbrevs.count(c_abbrev) || pair.second.empty())
             {
                 continue;
             }
 
-            if (has_larger_comp || final_active_count > 50)
+            if (pair.second.size() < 3)
+            {
+                bool has_bright = false;
+                for (size_t lidx : pair.second)
+                {
+                    if (all_lines[lidx].first.mag < 3.0 || all_lines[lidx].second.mag < 3.0)
+                    {
+                        has_bright = true;
+                        break;
+                    }
+                }
+
+                if (!has_bright)
+                {
+                    for (size_t lidx : pair.second)
+                    {
+                        Star* s1 = all_lines[lidx].first.s;
+                        Star* s2 = all_lines[lidx].second.s;
+                        degrees[s1]--;
+                        degrees[s2]--;
+                        cons_line_counts[c_abbrev]--;
+                        line_assigned_cons[lidx] = "PRUNED";
+                    }
+                }
+            }
+        }
+
+        // 4b. Final passerby line near-miss elimination and rerouting
+        for (int pass = 0; pass < 2; pass++)
+        {
+            std::unordered_set<Star*> current_lined;
+            for (size_t i = 0; i < all_lines.size(); i++)
+            {
+                if (i < line_assigned_cons.size() && line_assigned_cons[i] != "PRUNED")
+                {
+                    current_lined.insert(all_lines[i].first.s);
+                    current_lined.insert(all_lines[i].second.s);
+                }
+            }
+
+            std::vector<ExoConsStarInfo> final_impinging;
+            for (const auto& cand : candidates)
+            {
+                if (current_lined.count(cand.s) || cand.mag < 4.0)
+                {
+                    final_impinging.push_back(cand);
+                }
+            }
+
+            bool any_changed = false;
+            size_t n_lines = all_lines.size();
+            for (size_t li = 0; li < n_lines; li++)
+            {
+                if (li < line_assigned_cons.size() && line_assigned_cons[li] == "PRUNED")
+                {
+                    continue;
+                }
+
+                Star* sa = all_lines[li].first.s;
+                Star* sb = all_lines[li].second.s;
+                const Point& ua = all_lines[li].first.u;
+                const Point& ub = all_lines[li].second.u;
+
+                Star* worst_imp = nullptr;
+                ExoConsStarInfo worst_info;
+                double min_dist = 1e9;
+
+                for (const auto& is : final_impinging)
+                {
+                    if (is.s == sa || is.s == sb)
+                    {
+                        continue;
+                    }
+                    double dist_deg = 0.0;
+                    if (point_near_arc(ua, ub, is.u, 1.5, &dist_deg, 0.8))
+                    {
+                        if (dist_deg < min_dist)
+                        {
+                            min_dist = dist_deg;
+                            worst_imp = is.s;
+                            worst_info = is;
+                        }
+                    }
+                }
+
+                if (worst_imp != nullptr)
+                {
+                    std::string c_abbrev = (li < line_assigned_cons.size()) ? line_assigned_cons[li] : all_lines[li].first.orig_cons;
+                    if (c_abbrev.empty() || existing_cons_abbrevs.count(c_abbrev))
+                    {
+                        c_abbrev = all_lines[li].second.orig_cons;
+                    }
+
+                    // Try to reroute through worst_imp
+                    bool can_reroute = (degrees[worst_imp] < EXOCONS_MAX_STAR_DEGREE);
+                    if (can_reroute)
+                    {
+                        if (!check_line_valid(ua, worst_info.u, sa, worst_imp))
+                        {
+                            can_reroute = false;
+                        }
+                        if (can_reroute && !check_line_valid(worst_info.u, ub, worst_imp, sb))
+                        {
+                            can_reroute = false;
+                        }
+                        if (can_reroute)
+                        {
+                            for (const auto& is2 : final_impinging)
+                            {
+                                if (is2.s != sa && is2.s != worst_imp)
+                                {
+                                    double d2 = 0.0;
+                                    if (point_near_arc(ua, worst_info.u, is2.u, 1.5, &d2, 0.8))
+                                    {
+                                        can_reroute = false;
+                                        break;
+                                    }
+                                }
+                                if (is2.s != worst_imp && is2.s != sb)
+                                {
+                                    double d2 = 0.0;
+                                    if (point_near_arc(worst_info.u, ub, is2.u, 1.5, &d2, 0.8))
+                                    {
+                                        can_reroute = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (can_reroute)
+                    {
+                        ExoConsStarInfo info_b = all_lines[li].second;
+                        all_lines[li] = {all_lines[li].first, worst_info};
+                        all_lines.push_back({worst_info, info_b});
+                        line_assigned_cons.push_back(c_abbrev);
+                        degrees[worst_imp] += 2;
+                        cons_line_counts[c_abbrev]++;
+                        star_to_cons[worst_imp] = c_abbrev;
+                        any_changed = true;
+                    }
+                    else
+                    {
+                        line_assigned_cons[li] = "PRUNED";
+                        degrees[sa]--;
+                        degrees[sb]--;
+                        cons_line_counts[c_abbrev]--;
+                        any_changed = true;
+                    }
+                }
+            }
+
+            if (!any_changed)
+            {
+                break;
+            }
+        }
+
+        // Ensure no bright star (m < 3.0) is left unconnected due to pruning
+        std::vector<ExoConsStarInfo> impinging_subset;
+        for (const auto& is : candidates)
+        {
+            if (degrees[is.s] > 0 || is.mag < 4.0)
+            {
+                impinging_subset.push_back(is);
+            }
+        }
+
+        for (const auto& bs : candidates)
+        {
+            if (bs.mag >= 3.0 || degrees[bs.s] > 0)
+            {
+                continue;
+            }
+
+            int best_cand = -1;
+            double best_sc = 1e9;
+            for (size_t k = 0; k < candidates.size(); k++)
+            {
+                const auto& cand = candidates[k];
+                if (cand.s == bs.s || degrees[cand.s] >= EXOCONS_MAX_STAR_DEGREE)
+                {
+                    continue;
+                }
+                double d_deg = ang_dist_deg(bs.u, cand.u);
+                double sc = d_deg + cand.mag * 0.5;
+                if (cand.orig_cons == bs.orig_cons)
+                {
+                    sc -= 10.0;
+                }
+                if (sc >= best_sc)
+                {
+                    continue;
+                }
+                if (!check_line_valid(bs.u, cand.u, bs.s, cand.s))
+                {
+                    continue;
+                }
+                bool causes_near = false;
+                for (const auto& is : impinging_subset)
+                {
+                    if (is.s == bs.s || is.s == cand.s)
+                    {
+                        continue;
+                    }
+                    double dnear = 0.0;
+                    if (point_near_arc(bs.u, cand.u, is.u, 1.5, &dnear, 0.8))
+                    {
+                        causes_near = true;
+                        break;
+                    }
+                }
+                if (!causes_near)
+                {
+                    best_sc = sc;
+                    best_cand = (int)k;
+                }
+            }
+
+            if (best_cand >= 0)
+            {
+                const auto& cand_info = candidates[best_cand];
+                std::string cons_to_use = bs.orig_cons;
+                if (cons_to_use.empty() || existing_cons_abbrevs.count(cons_to_use))
+                {
+                    cons_to_use = cand_info.orig_cons;
+                }
+                all_lines.push_back({bs, cand_info});
+                line_assigned_cons.push_back(cons_to_use);
+                degrees[bs.s]++;
+                degrees[cand_info.s]++;
+                cons_line_counts[cons_to_use]++;
+            }
+        }
+
+        // Final component resolution: eliminate any isolated single lines (components with <= 2 stars)
+        rebuild_cons_to_lines();
+        auto comps_post = get_all_components();
+        for (const auto& comp : comps_post)
+        {
+            if (comp.stars.size() <= 2)
+            {
+                // First try connecting to another component of the same constellation
+                bool resolved = false;
+                for (const auto& other : comps_post)
+                {
+                    if (other.cons == comp.cons && other.stars.size() >= 2 && &other != &comp)
+                    {
+                        for (Star* cs : comp.stars)
+                        {
+                            for (Star* os : other.stars)
+                            {
+                                if (check_line_valid(star_info_map[cs].u, star_info_map[os].u, cs, os))
+                                {
+                                    bool causes_near = false;
+                                    for (const auto& is : impinging_subset)
+                                    {
+                                        if (is.s == cs || is.s == os)
+                                        {
+                                            continue;
+                                        }
+                                        double d = 0.0;
+                                        if (point_near_arc(star_info_map[cs].u, star_info_map[os].u, is.u, 1.5, &d, 0.8))
+                                        {
+                                            causes_near = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!causes_near)
+                                    {
+                                        all_lines.push_back({star_info_map[cs], star_info_map[os]});
+                                        line_assigned_cons.push_back(comp.cons);
+                                        degrees[cs]++;
+                                        degrees[os]++;
+                                        cons_line_counts[comp.cons]++;
+                                        resolved = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (resolved)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    if (resolved)
+                    {
+                        break;
+                    }
+                }
+
+                // If not connected to another component, try expanding by adding a 3rd star to this component
+                if (!resolved)
+                {
+                    for (Star* cs : comp.stars)
+                    {
+                        int best_k = -1;
+                        double best_sc = 1e9;
+                        for (size_t k = 0; k < candidates.size(); k++)
+                        {
+                            const auto& cand = candidates[k];
+                            if (cand.s == cs || degrees[cand.s] >= 4)
+                            {
+                                continue;
+                            }
+                            double d_deg = ang_dist_deg(star_info_map[cs].u, cand.u);
+                            double sc = d_deg + cand.mag * 0.5;
+                            if (cand.orig_cons == comp.cons)
+                            {
+                                sc -= 10.0;
+                            }
+                            if (sc >= best_sc)
+                            {
+                                continue;
+                            }
+                            if (!check_line_valid(star_info_map[cs].u, cand.u, cs, cand.s))
+                            {
+                                continue;
+                            }
+                            bool causes_near = false;
+                            for (const auto& is : impinging_subset)
+                            {
+                                if (is.s == cs || is.s == cand.s)
+                                {
+                                    continue;
+                                }
+                                double d = 0.0;
+                                if (point_near_arc(star_info_map[cs].u, cand.u, is.u, 1.5, &d, 0.8))
+                                {
+                                    causes_near = true;
+                                    break;
+                                }
+                            }
+                            if (!causes_near)
+                            {
+                                best_sc = sc;
+                                best_k = (int)k;
+                            }
+                        }
+
+                        if (best_k >= 0)
+                        {
+                            all_lines.push_back({star_info_map[cs], candidates[best_k]});
+                            line_assigned_cons.push_back(comp.cons);
+                            degrees[cs]++;
+                            degrees[candidates[best_k].s]++;
+                            cons_line_counts[comp.cons]++;
+                            resolved = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If still cannot be expanded or connected, prune it completely so no isolated single line exists
+                if (!resolved)
+                {
+                    for (size_t lidx : comp.lines)
+                    {
+                        Star* s1 = all_lines[lidx].first.s;
+                        Star* s2 = all_lines[lidx].second.s;
+                        degrees[s1]--;
+                        degrees[s2]--;
+                        cons_line_counts[comp.cons]--;
+                        line_assigned_cons[lidx] = "PRUNED";
+                    }
+                }
+            }
+        }
+
+        // Final safety near-miss sweep: prune any remaining passerby lines
+        {
+            std::unordered_set<Star*> current_lined_final;
+            for (size_t i = 0; i < all_lines.size(); i++)
+            {
+                if (i < line_assigned_cons.size() && line_assigned_cons[i] != "PRUNED")
+                {
+                    current_lined_final.insert(all_lines[i].first.s);
+                    current_lined_final.insert(all_lines[i].second.s);
+                }
+            }
+
+            std::vector<ExoConsStarInfo> final_impinging_list;
+            for (const auto& is : candidates)
+            {
+                if (current_lined_final.count(is.s) || is.mag < 4.0)
+                {
+                    final_impinging_list.push_back(is);
+                }
+            }
+
+            for (size_t li = 0; li < all_lines.size(); li++)
+            {
+                if (li < line_assigned_cons.size() && line_assigned_cons[li] != "PRUNED")
+                {
+                    for (const auto& is : final_impinging_list)
+                    {
+                        if (is.s == all_lines[li].first.s || is.s == all_lines[li].second.s)
+                        {
+                            continue;
+                        }
+                        double d = 0.0;
+                        if (point_near_arc(all_lines[li].first.u, all_lines[li].second.u, is.u, 1.5, &d, 0.8))
+                        {
+                            line_assigned_cons[li] = "PRUNED";
+                            degrees[all_lines[li].first.s]--;
+                            degrees[all_lines[li].second.s]--;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rebuild and clean any remaining 2-star components
+        rebuild_cons_to_lines();
+        auto comps_end = get_all_components();
+        for (const auto& comp : comps_end)
+        {
+            if (comp.stars.size() <= 2)
             {
                 for (size_t lidx : comp.lines)
                 {
@@ -2947,10 +3743,6 @@ namespace alienorum
                     degrees[s2]--;
                     cons_line_counts[comp.cons]--;
                     line_assigned_cons[lidx] = "PRUNED";
-                }
-                if (!has_larger_comp)
-                {
-                    final_active_count--;
                 }
             }
         }
@@ -2986,7 +3778,7 @@ namespace alienorum
         std::unordered_set<std::string> used_abbrevs = existing_cons_abbrevs;
         for (const auto& pair : lines_by_cons)
         {
-            if (pair.second.empty())
+            if (pair.second.size() < 3)
             {
                 continue;
             }
@@ -3197,7 +3989,7 @@ namespace alienorum
                 return;
             }
 
-            int batch_size = 3;
+            int batch_size = (!::window) ? (int)pending_conss.size() : 3;
             while (batch_size-- > 0 && !pending_conss.empty())
             {
                 Constellation c = pending_conss.back();
@@ -3234,11 +4026,7 @@ namespace alienorum
         }
 
         // Check if current system is due for generation
-        Star* sys_star = (Star*)(mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami] : nullptr));
-        if (sys_star && sys_star->cenobj && sys_star->cenobj->typeclass() == class_star)
-        {
-            sys_star = (Star*)sys_star->cenobj;
-        }
+        Star* sys_star = resolve_system_star(mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami] : nullptr));
 
         std::string vname;
         if (sys_star && check_should_generate_for(sys_star, vname))

@@ -98,7 +98,11 @@ namespace alienorum
         static std::string get_consline_star_name(Star* s);
         static const IAUConstellationDef* find_iau_def(const std::string& abbrev);
         static void reset();
-        static bool get_is_generating() { return is_generating; }
+        static Star* resolve_system_star(CelestialObject* obj);
+        static bool get_is_generating()
+        {
+            return is_generating;
+        }
 
         private:
         static std::vector<Constellation> pending_conss;
