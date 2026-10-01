@@ -630,8 +630,19 @@ int main (int argc, char** argv)
         else
         {
             mouse_over_menu = menu && (io.MousePos.y < menu_ht);
-            if (menu) show_menu();
-            if (menu_clicked || splash) goto _render;                       // Prevent click-selecting object behind menu and prevent crash if user reloads constellations.
+            if (menu)
+            {
+                show_menu();
+            }
+            static bool just_clicked_menu = false;
+            if (menu_clicked)
+            {
+                just_clicked_menu = true;
+            }
+            if (menu_clicked || splash)
+            {
+                goto _render;                       // Prevent click-selecting object behind menu and prevent crash if user reloads constellations.
+            }
 
             dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
@@ -705,17 +716,28 @@ int main (int argc, char** argv)
             if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
 
-            if (!is_mouse_over_window && !dragging)
+            if (just_clicked_menu)
+            {
+                is_click = false;
+                just_clicked_menu = false;
+            }
+            else if (!is_mouse_over_window && !mouse_over_menu && !io.WantCaptureMouse && !dragging)
             {
                 is_click = io.MouseReleased[0];
                 // if (is_click) std::cout << "CLICK! Last click = " << (simnow - last_click) << " seconds ago." << std::endl;
-                if (is_click && (simnow - last_click) < (frame_dur*2 + 0.2) && distance(last_click_pos, io.MousePos) < 3) is_dbl_click = true;
+                if (is_click && (simnow - last_click) < (frame_dur*2 + 0.2) && distance(last_click_pos, io.MousePos) < 3)
+                {
+                    is_dbl_click = true;
+                }
                 if (is_click)
                 {
                     last_click = simnow;
                     last_click_pos = io.MousePos;
                 }
-                if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
+                if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2))
+                {
+                    draw_mouse_cursor(io);
+                }
                 identify_object_under_cursor(io);
             }
 
@@ -769,7 +791,7 @@ int main (int argc, char** argv)
             }
 
             // Scroll wheel to zoom
-            if (!is_mouse_over_window)
+            if (!is_mouse_over_window && !mouse_over_menu && !io.WantCaptureMouse)
             {
                 if (io.MouseWheel > 0)
                 {

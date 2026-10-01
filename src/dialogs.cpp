@@ -3330,6 +3330,7 @@ void draw_favestars_window(ImGuiIO & io)
     if (ImGui::Button("Remove##favestarlist"))
     {
         favestars.erase(favestars.begin() + item_selected_idx);
+        save_user_json();
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.

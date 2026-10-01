@@ -232,6 +232,13 @@ void show_menu()
             if (ImGui::MenuItem("Track Selected", "T")) { process_key_cmd_char('t'); menu_clicked = true; }
             if (ImGui::MenuItem("Clear Selection", "Shift+S")) { process_key_cmd_char('S'); menu_clicked = true; }
             if (ImGui::MenuItem("Clear Tracking", "Shift+T")) { process_key_cmd_char('T'); menu_clicked = true; }
+            int sel = (selected >= 0) ? selected : trackidx;
+            bool star_selected = (sel >= 0 && cels[sel] && cels[sel]->typeclass() == class_star);
+            if (ImGui::MenuItem("Add to Favorite Stars", "Ctrl+D", false, star_selected))
+            {
+                process_key_cmd_ctrl_char('d');
+                menu_clicked = true;
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
@@ -320,6 +327,11 @@ void show_menu()
             if (ImGui::MenuItem("Status Panel", "S", statuswnd)) { process_key_cmd_char('s'); menu_clicked = true; }
             if (ImGui::MenuItem("System Explorer", "E", explorer)) { process_key_cmd_char('e'); menu_clicked = true; }
             if (ImGui::MenuItem("Stellar Neighborhood", "0", neighborhood)) { process_key_cmd_char('0'); menu_clicked = true; }
+            if (ImGui::MenuItem("Favorite Stars", "F7", show_favestars))
+            {
+                process_key_F7();
+                menu_clicked = true;
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Constellations", "C", show_consln)) { process_key_cmd_char('c'); menu_clicked = true; }
             if (ImGui::MenuItem("RA/Dec Grid", "G", show_grid)) { process_key_cmd_char('g'); menu_clicked = true; }
@@ -352,6 +364,11 @@ void show_menu()
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('s'); menu_clicked = true; }
+            if (ImGui::MenuItem("Favorite Star Labels", "Ctrl+Shift+D", label_favestars))
+            {
+                process_key_cmd_ctrl_char('D');
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
