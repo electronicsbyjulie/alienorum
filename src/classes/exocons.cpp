@@ -563,8 +563,6 @@ namespace alienorum
 
     void ExoConsGenerator::generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss)
     {
-        if (!show_consln) return;           // Only generate if showing cons lines, that way the file doesn't grow huge if you star hop in realism mode.
-
         out_conss.clear();
         if (!sys_star)
         {
