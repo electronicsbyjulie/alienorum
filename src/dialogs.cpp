@@ -3300,20 +3300,20 @@ void draw_favestars_window(ImGuiIO & io)
     }
 
     if (item_selected_idx >= favestars.size()) item_selected_idx = 0;
-    if (ImGui::Button("Select##neighbors"))
+    if (ImGui::Button("Select##favestarlist"))
     {
         selected = favestars[item_selected_idx]->seqno;
         viewchanged = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Find##neighbors"))
+    if (ImGui::Button("Find##favestarlist"))
     {
         selected = favestars[item_selected_idx]->seqno;
         center_selected();
         viewchanged = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Go##neighbors"))
+    if (ImGui::Button("Go##favestarlist"))
     {
         if (item_selected_idx >= 0)
         {
@@ -3325,6 +3325,11 @@ void draw_favestars_window(ImGuiIO & io)
             zoom = 1;
             viewchanged = true;
         }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Remove##favestarlist"))
+    {
+        favestars.erase(favestars.begin() + item_selected_idx);
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
