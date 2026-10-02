@@ -45,6 +45,16 @@ TEST_F(SoundTest, SoundFilesExistAndValidHeader)
     f_set.read(header_set, 12);
     EXPECT_EQ(std::string(header_set, 4), "RIFF");
     EXPECT_EQ(std::string(header_set + 8, 4), "WAVE");
+
+    SDL_AudioSpec set_spec;
+    Uint8* set_buf = nullptr;
+    Uint32 set_len = 0;
+    ASSERT_NE(SDL_LoadWAV("assets/sounds/set.wav", &set_spec, &set_buf, &set_len), nullptr);
+    int bytes_per_sample = SDL_AUDIO_BITSIZE(set_spec.format) / 8;
+    double set_duration = (double)set_len / (set_spec.freq * set_spec.channels * bytes_per_sample);
+    EXPECT_GE(set_duration, 3.0);
+    EXPECT_LE(set_duration, 4.0);
+    SDL_FreeWAV(set_buf);
 }
 
 TEST_F(SoundTest, DefaultPathsAndOverrides)
