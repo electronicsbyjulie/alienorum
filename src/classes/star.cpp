@@ -750,20 +750,30 @@ bool Star::is_main_sequence() const
         return false;
     }
 
+    const char* lsptyp = spectral_type;
+
+    while (*lsptyp <= ' ')
+    {
+        lsptyp++;
+        if (!*lsptyp) return false;
+    }
+
     // Check for 'd' prefix (e.g. "dM3", "dK5", "dG2")
-    if (spectral_type[0] == 'd' && spectral_type[1] >= 'A' && spectral_type[1] <= 'M')
+    if (lsptyp[0] == 'd' && lsptyp[1] >= 'A' && lsptyp[1] <= 'M')
     {
         return true;
     }
 
+    if (!strchr("OBAFGKM", lsptyp[0])) return false;
+
     // Look for luminosity class 'V'
-    for (int i = 0; spectral_type[i]; i++)
+    for (int i = 0; lsptyp[i]; i++)
     {
-        if (spectral_type[i] == 'V')
+        if (lsptyp[i] == 'V')
         {
             // Avoid "IV" (subgiant) or "VI" (subdwarf)
-            bool prev_I = (i > 0 && spectral_type[i - 1] == 'I');
-            bool next_I = (spectral_type[i + 1] == 'I');
+            bool prev_I = (i > 0 && lsptyp[i - 1] == 'I');
+            bool next_I = (lsptyp[i + 1] == 'I');
             if (!prev_I && !next_I)
             {
                 return true;
