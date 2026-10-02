@@ -142,23 +142,22 @@ namespace alienorum
             freqs = { 1046.50, 783.99, 659.25, 523.25 };
         }
 
-        double duration = ascending ? 0.6 : 3.5;
+        double duration = 3.5;
         int sample_rate = device_spec.freq;
         int num_samples = (int)(sample_rate * duration);
         std::vector<int16_t> samples(num_samples * 2);
 
-        double note_dur = ascending ? (duration / freqs.size()) : 0.2;
         for (int i = 0; i < num_samples; i++)
         {
             double t = (double)i / sample_rate;
             double sample_val = 0.0;
             for (size_t idx = 0; idx < freqs.size(); idx++)
             {
-                double note_start = idx * (ascending ? (note_dur * 0.5) : 0.1);
+                double note_start = idx * 0.1;
                 if (t >= note_start)
                 {
                     double t_note = t - note_start;
-                    double decay = ascending ? 4.0 : (idx < 2 ? 1.6 : 1.1);
+                    double decay = (idx < 2 ? 1.6 : 1.1);
                     double env = std::exp(-decay * t_note);
                     double tone = std::sin(2.0 * M_PI * freqs[idx] * t_note)
                                   + 0.25 * std::sin(4.0 * M_PI * freqs[idx] * t_note);
@@ -166,7 +165,7 @@ namespace alienorum
                 }
             }
 
-            if (!ascending && t > duration - 0.25)
+            if (t > duration - 0.25)
             {
                 double fade = (duration - t) / 0.25;
                 sample_val *= fade;

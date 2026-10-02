@@ -38,6 +38,16 @@ TEST_F(SoundTest, SoundFilesExistAndValidHeader)
     EXPECT_EQ(std::string(header_rise, 4), "RIFF");
     EXPECT_EQ(std::string(header_rise + 8, 4), "WAVE");
 
+    SDL_AudioSpec rise_spec;
+    Uint8* rise_buf = nullptr;
+    Uint32 rise_len = 0;
+    ASSERT_NE(SDL_LoadWAV("assets/sounds/rise.wav", &rise_spec, &rise_buf, &rise_len), nullptr);
+    int rise_bytes_per_sample = SDL_AUDIO_BITSIZE(rise_spec.format) / 8;
+    double rise_duration = (double)rise_len / (rise_spec.freq * rise_spec.channels * rise_bytes_per_sample);
+    EXPECT_GE(rise_duration, 3.0);
+    EXPECT_LE(rise_duration, 4.0);
+    SDL_FreeWAV(rise_buf);
+
     // Test set.wav
     std::ifstream f_set("assets/sounds/set.wav", std::ios::binary);
     ASSERT_TRUE(f_set.is_open());
