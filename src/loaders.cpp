@@ -1079,7 +1079,11 @@ void load_stuff()
     for (const std::string& favename : lfaves)
     {
         int i = find_object(favename.c_str(), true);
-        if (i >= 0 && cels[i]->typeclass() == class_star) favestars.push_back((Star*)cels[i]);
+        if (i >= 0 && cels[i]->typeclass() == class_star)
+        {
+            favestars.push_back((Star*)cels[i]);
+            ((Star*)cels[i])->is_faved = true;
+        }
     }
 
     mtx.lock();

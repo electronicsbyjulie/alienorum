@@ -3253,7 +3253,7 @@ bool draw_single_object(int i)
         add_label = true;
 
     if (!add_label && label_favestars && s)
-        if (std::find(favestars.begin(), favestars.end(), s) != favestars.end()) add_label = true;
+        if (s->is_faved) add_label = true;
 
     if (add_label)
     {
@@ -3756,48 +3756,49 @@ void draw_objects()
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
 
-        // A comet is drawn far larger than the head this test is looking at: the tail can lie
-        // across the whole screen with the nucleus itself well off the edge of it, and those are
-        // precisely the passes worth watching. angular_radius[] knows only about the nucleus and
-        // would throw the comet away here, so give it a wide berth of screens instead and let
-        // draw_comet() clip its own geometry. A comet behind the camera still fails this: the
-        // sentinel for that is -1e29, several orders past the window below.
-        if (cels[i]->typeclass() == class_comet)
+        if (i != selected)
         {
-            if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw) continue;
-            if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph) continue;
-        }
-        else if (angular_radius[i]*zoom < sphere_rad_threshold)
-        {
-            if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
-            if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
-        }
+            // A comet is drawn far larger than the head this test is looking at: the tail can lie
+            // across the whole screen with the nucleus itself well off the edge of it, and those are
+            // precisely the passes worth watching. angular_radius[] knows only about the nucleus and
+            // would throw the comet away here, so give it a wide berth of screens instead and let
+            // draw_comet() clip its own geometry. A comet behind the camera still fails this: the
+            // sentinel for that is -1e29, several orders past the window below.
+            if (cels[i]->typeclass() == class_comet)
+            {
+                if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw) continue;
+                if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph) continue;
+            }
+            else if (angular_radius[i]*zoom < sphere_rad_threshold)
+            {
+                if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
+                if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
+            }
 
-        // Counterintuitive that we would process *more* objects during dragging and not *less*,
-        // but since discs become transparent wireframes during drag, it only makes sense that the
-        // ground should become transparent as well.
-        bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
-        double cutoff_alt = gasball ? -25*fiftyseventh : 0;
-        if (view_mode == vm_horizon && !dragging && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
-        {
-            continue;
+            // Counterintuitive that we would process *more* objects during dragging and not *less*,
+            // but since discs become transparent wireframes during drag, it only makes sense that the
+            // ground should become transparent as well.
+            bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
+            double cutoff_alt = gasball ? -25*fiftyseventh : 0;
+            if (view_mode == vm_horizon && !dragging && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
+            {
+                continue;
+            }
+
+            xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
+            appmag = vmag_cache[i] - sky_mag_shift;
+
+            Star *istar = (cels[i]->typeclass() == class_star) ? (Star*)cels[i] : nullptr;
+            if (istar)
+            {
+                if (appmag > mag_limit_adjusted && i
+                    && (!istar->is_universally_visible())
+                    && (angular_radius[i] < 0.01*fiftyseventh)
+                    && (cbolbls_selected_idx != lbltype_planets  || istar->has_planets < planets_lblcut)
+                    && (cbolbls_selected_idx != lbltype_planethz || !istar->has_hz_planets))
+                    continue;
+            }
         }
-
-        xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
-        appmag = vmag_cache[i] - sky_mag_shift;
-
-        // Only a Star has has_planets/has_hz_planets, and this loop walks every object there is.
-        // The two clauses below used to cast cels[i] to Star* whatever it actually was: the
-        // short-circuit reads as a guard but is not one, because when cbolbls_selected_idx IS
-        // lbltype_planets or lbltype_planethz -- exactly when the user has asked to label stars
-        // by their planets -- the member read runs against every planet, satellite, comet and
-        // galaxy in the array, at whatever offset Star::has_planets happens to fall. A non-star
-        // gets no exemption from the magnitude cut, which is what !istar says here.
-        Star *istar = (cels[i]->typeclass() == class_star) ? (Star*)cels[i] : nullptr;
-        if (appmag > mag_limit_adjusted && i
-            && (angular_radius[i] < 0.01*fiftyseventh)
-            && (cbolbls_selected_idx != lbltype_planets  || !istar || istar->has_planets < planets_lblcut)
-            && (cbolbls_selected_idx != lbltype_planethz || !istar || !istar->has_hz_planets)) continue;
 
         bloomrad = fabs(bloomrad_cache[i]);
         bloomrad = fmin(max_bloomrad, bloomrad);
@@ -4737,7 +4738,18 @@ void draw_cons_lines()
 
     // Determine the single active vantage
     CelestialObject* cur_obj = mycenobj ? mycenobj : (whereami >= 0 && cels ? cels[whereami] : nullptr);
-    Star* sys_star = ExoConsGenerator::resolve_system_star(cur_obj);
+    Star* sys_star = nullptr;
+    if (cur_obj)
+    {
+        if (cur_obj->cenobj && cur_obj->cenobj->typeclass() == class_star)
+        {
+            sys_star = (Star*)cur_obj->cenobj;
+        }
+        else if (cur_obj->typeclass() == class_star)
+        {
+            sys_star = (Star*)cur_obj;
+        }
+    }
 
     std::string sys_name = "";
     if (sys_star)

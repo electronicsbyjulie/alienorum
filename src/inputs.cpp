@@ -831,10 +831,12 @@ void process_key_cmd_ctrl_char(char c)
             if (found == favestars.end())
             {
                 favestars.push_back((Star*)cels[selected]);
+                ((Star*)cels[selected])->is_faved = true;
             }
             else
             {
                 favestars.erase(found);
+                ((Star*)cels[selected])->is_faved = false;
             }
             save_user_json();
         }

@@ -554,6 +554,7 @@ class ExoConsTest : public ::testing::Test
         cels = new CelestialObject*[MAX_CELOBJS];
         memset(cels, 0, MAX_CELOBJS * sizeof(CelestialObject*));
         abort_load = false;
+        noexo = true;
         load_stuff();
     }
 
@@ -1267,17 +1268,6 @@ TEST_F(ExoConsTest, HamalConstellationsFormConnectedShapesWithoutStraySingleLine
         }
     }
 
-    std::cout << "DEBUG all lines with Delta And:" << std::endl;
-    for (const auto& c : generated)
-    {
-        for (const auto& cl : c.lines)
-        {
-            if (strcmp(cl.a->name, "Delta Andromedae") == 0 || strcmp(cl.b->name, "Delta Andromedae") == 0)
-            {
-                std::cout << "  in " << c.abbrev << ": " << cl.a->name << " -- " << cl.b->name << std::endl;
-            }
-        }
-    }
 
     EXPECT_EQ(isolated_single_lines_count, 0);
 
@@ -1402,6 +1392,7 @@ TEST_F(ExoConsTest, TauCetiNearLinesAndReassignment)
             }
         }
     }
+
 
     // Phase B: Long diagonal lines to Altair are divorced and eliminated
     EXPECT_FALSE(has_altair_alp1her);

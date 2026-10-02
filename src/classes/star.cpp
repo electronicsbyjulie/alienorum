@@ -299,13 +299,14 @@ bool Star::is_sunlike()
 
 bool Star::is_in_visible_box(Point seen_from)
 {
+    if (is_faved) return true;
     if (visible_area_set && frand(0,1) > 0.03) return _is_in_visible_range;
     return is_really_truly_in_visible_box(seen_from);
 }
 
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
-    if (_is_always_visible) return true;
+    if (_is_always_visible || is_faved) return true;
     double effmag = variability_period ? minmag : apparent_magnitude;
     double cutoff_dist = (pow(100.0, 0.2*(normal_best_mag_limit-effmag)) * distance) * global_brightness;
     visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + (Point)location;

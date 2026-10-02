@@ -193,6 +193,7 @@ bool compute_object_location(CelestialObject* cel)
         // second form is what made the identical test in draw_objects() a genuine bad cast.
         if ((star_in_box = (i
             ? (((Star*)cel)->is_in_visible_box(Point(here))
+                || ((Star*)cel)->is_faved
                 || (cbolbls_selected_idx == lbltype_planets && (((Star*)cel)->has_planets >= planets_lblcut) )
                 || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cel)->has_hz_planets) )
                 )
@@ -200,7 +201,7 @@ bool compute_object_location(CelestialObject* cel)
         if (i > 0)
         {
             ((Star*)cel)->tmp_vis_flag = star_in_box;
-            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj)
+            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj && !((Star*)cel)->is_faved)
             {
                 if (!star_in_box && !((Star*)cel)->is_universally_visible()
                     && (cbolbls_selected_idx != lbltype_planets  || (((Star*)cel)->has_planets < planets_lblcut) )

@@ -67,6 +67,7 @@ namespace alienorum
         double planets_heliocen_inclination = 0, planets_heliocen_node = 0;
         double rot_heliocen_incl = 0, rot_heliocen_node = 0;
         double m_bol = 0;
+        bool is_faved = false;
 
         Star();
         ~Star();
@@ -78,7 +79,7 @@ namespace alienorum
         bool is_in_visible_box(Point seen_from);
         bool is_really_truly_in_visible_box(Point seen_from);
         void make_universally_visible();
-        inline bool is_universally_visible() { return _is_always_visible; }
+        inline bool is_universally_visible() { return _is_always_visible || is_faved; }
 
         double estimate_temperature();              // Based on BV color
         double estimate_luminosity(double tempK);   // Based on radius and supplied temperature. Returns output scaled to absolute magnitude zero.
