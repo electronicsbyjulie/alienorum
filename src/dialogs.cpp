@@ -2528,6 +2528,22 @@ void draw_system_explorer(ImGuiIO& io)
         }
     }
     ImGui::SameLine();
+    if (ImGui::Button("Alert on Rise##explored"))
+    {
+        if (celidx_sel_in_sysxplor >= 0)
+        {
+            cels[celidx_sel_in_sysxplor]->alert_rise = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Set##explored"))
+    {
+        if (celidx_sel_in_sysxplor >= 0)
+        {
+            cels[celidx_sel_in_sysxplor]->alert_set = true;
+        }
+    }
+    ImGui::SameLine();
     if (ImGui::Button("Edit##explored"))
     {
         if (celidx_sel_in_sysxplor >= 0)
@@ -2804,6 +2820,22 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             global_brightness = default_brightness;
             zoom = 1;
             viewchanged = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Rise##neighbors"))
+    {
+        if (neighb_celids[item_selected_idx] >= 0)
+        {
+            cels[neighb_celids[item_selected_idx]]->alert_rise = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Set##neighbors"))
+    {
+        if (neighb_celids[item_selected_idx] >= 0)
+        {
+            cels[neighb_celids[item_selected_idx]]->alert_set = true;
         }
     }
 
@@ -3324,6 +3356,22 @@ void draw_favestars_window(ImGuiIO & io)
             global_brightness = default_brightness;
             zoom = 1;
             viewchanged = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Rise##favestarlist"))
+    {
+        if (item_selected_idx >= 0)
+        {
+            favestars[item_selected_idx]->alert_rise = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Set##favestarlist"))
+    {
+        if (item_selected_idx >= 0)
+        {
+            favestars[item_selected_idx]->alert_set = true;
         }
     }
     ImGui::SameLine();
