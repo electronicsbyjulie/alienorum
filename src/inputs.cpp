@@ -240,6 +240,35 @@ void show_menu()
                 menu_clicked = true;
             }
             ImGui::Separator();
+            bool has_object = (sel >= 0 && cels[sel]);
+            bool rise_alert_active = (has_object && cels[sel]->alert_rise);
+            bool set_alert_active = (has_object && cels[sel]->alert_set);
+            if (ImGui::MenuItem("Alert on Rise", "Ctrl+R", rise_alert_active, has_object))
+            {
+                process_key_cmd_ctrl_char('r');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Alert on Set", "Ctrl+Shift+R", set_alert_active, has_object))
+            {
+                process_key_cmd_ctrl_char('R');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Play Rise/Set Sounds", nullptr, &play_rise_set_sound))
+            {
+                save_user_json();
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Select Rise Sound...", nullptr))
+            {
+                process_select_rise_sound();
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Select Set Sound...", nullptr))
+            {
+                process_select_set_sound();
+                menu_clicked = true;
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
@@ -767,6 +796,28 @@ void process_key_cmd_char(char c)
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
         case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
+        case '[':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_rise = !cels[sel]->alert_rise;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
+        case ']':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_set = !cels[sel]->alert_set;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
         default:
         ;
     }
@@ -852,6 +903,28 @@ void process_key_cmd_ctrl_char(char c)
         local_tmstep = true;
         process_key_cmd_char('o');
         break;
+
+        case 'r':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_rise = !cels[sel]->alert_rise;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
+        case 'R':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_set = !cels[sel]->alert_set;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
 
         case 's': shortnames = !shortnames; viewchanged = true; break;
         case 't': show_terrain = !show_terrain; viewchanged = true; break;
@@ -1102,10 +1175,38 @@ void process_key_F7()
 
 void process_key_F8()
 {
+    int sel = (selected >= 0) ? selected : trackidx;
+    if (sel >= 0 && cels[sel])
+    {
+        cels[sel]->alert_rise = !cels[sel]->alert_rise;
+        cels[sel]->has_prev_horizon_alt = false;
+    }
 }
 
 void process_key_F9()
 {
+    int sel = (selected >= 0) ? selected : trackidx;
+    if (sel >= 0 && cels[sel])
+    {
+        cels[sel]->alert_set = !cels[sel]->alert_set;
+        cels[sel]->has_prev_horizon_alt = false;
+    }
+}
+
+void process_select_rise_sound()
+{
+    IGFD::FileDialogConfig config;
+    config.path = ".";
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseRiseSoundDlgKey", "Choose Rise Sound (.wav)", ".wav", config);
+    fdlg_shown = true;
+}
+
+void process_select_set_sound()
+{
+    IGFD::FileDialogConfig config;
+    config.path = ".";
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseSetSoundDlgKey", "Choose Set Sound (.wav)", ".wav", config);
+    fdlg_shown = true;
 }
 
 void process_key_F10()

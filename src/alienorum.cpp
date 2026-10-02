@@ -19,6 +19,7 @@
 #include "sphere_impostor.h"
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
+#include "classes/sound.h"
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 
 using namespace alienorum;
@@ -340,7 +341,7 @@ int main (int argc, char** argv)
 #ifdef _WIN32
     ::SetProcessDPIAware();
 #endif
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0)
     {
         printf("Error: %s\n", SDL_GetError());
         return 1;
@@ -667,11 +668,13 @@ int main (int argc, char** argv)
             {
                 find_horizon();
                 draw_sky_gradient();
+                SoundManager::get_instance().check_rise_set_alerts();
             }
             else
             {
                 sky_grad.clear();
                 sky_mag_shift = 0;
+                SoundManager::get_instance().reset_horizon_tracking();
             }
 
             if (view_mode == vm_sunclock) draw_sunclock();
@@ -956,6 +959,30 @@ int main (int argc, char** argv)
                 fdlg_shown = false;
             }
 
+            if (ImGuiFileDialog::Instance()->Display("ChooseRiseSoundDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
+            {
+                if (ImGuiFileDialog::Instance()->IsOk())
+                {
+                    rise_sound_path = ImGuiFileDialog::Instance()->GetFilePathName();
+                    save_user_json();
+                }
+
+                ImGuiFileDialog::Instance()->Close();
+                fdlg_shown = false;
+            }
+
+            if (ImGuiFileDialog::Instance()->Display("ChooseSetSoundDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
+            {
+                if (ImGuiFileDialog::Instance()->IsOk())
+                {
+                    set_sound_path = ImGuiFileDialog::Instance()->GetFilePathName();
+                    save_user_json();
+                }
+
+                ImGuiFileDialog::Instance()->Close();
+                fdlg_shown = false;
+            }
+
             was_mouse_down = is_mouse_down;
         }
         if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
@@ -1138,6 +1165,7 @@ int main (int argc, char** argv)
 
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
+    SoundManager::get_instance().close_audio();
     SDL_Quit();
     return 0;
 }

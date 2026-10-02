@@ -23,3 +23,6 @@ bool take_snapshot = false;
 CelestialObject npdummy;
 char xplorfor[name_max_len];
 CelestialObject *last_xplored_cen = nullptr, *last_neighb_cen = nullptr;
+bool play_rise_set_sound = true;
+std::string rise_sound_path = "assets/sounds/rise.wav";
+std::string set_sound_path = "assets/sounds/set.wav";

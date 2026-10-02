@@ -50,5 +50,8 @@ extern bool take_snapshot;
 extern CelestialObject npdummy;
 extern char xplorfor[name_max_len];
 extern CelestialObject *last_xplored_cen, *last_neighb_cen;
+extern bool play_rise_set_sound;
+extern std::string rise_sound_path;
+extern std::string set_sound_path;
 
 #endif

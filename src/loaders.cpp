@@ -1040,7 +1040,52 @@ void load_stuff()
         try
         {
             j.at("FaveStars").get_to(lfaves);
-        } catch(...) { ; }
+        }
+        catch (...)
+        {
+            ;
+        }
+
+        try
+        {
+            j.at("PlayRiseSetSounds").get_to(play_rise_set_sound);
+        }
+        catch (...)
+        {
+            ;
+        }
+
+        try
+        {
+            j.at("RiseSound").get_to(rise_sound_path);
+        }
+        catch (...)
+        {
+            try
+            {
+                j.at("RiseSoundPath").get_to(rise_sound_path);
+            }
+            catch (...)
+            {
+                ;
+            }
+        }
+
+        try
+        {
+            j.at("SetSound").get_to(set_sound_path);
+        }
+        catch (...)
+        {
+            try
+            {
+                j.at("SetSoundPath").get_to(set_sound_path);
+            }
+            catch (...)
+            {
+                ;
+            }
+        }
 
         fs.close();
     }
@@ -1220,6 +1265,16 @@ bool save_user_json()
         std::vector<std::string> favenames;
         for (const Star *s : favestars) favenames.push_back(s->name);
         j["FaveStars"] = favenames;
+
+        j["PlayRiseSetSounds"] = play_rise_set_sound;
+        if (!rise_sound_path.empty())
+        {
+            j["RiseSound"] = rise_sound_path;
+        }
+        if (!set_sound_path.empty())
+        {
+            j["SetSound"] = set_sound_path;
+        }
 
         std::fstream fso("user.json", std::ios::out);
         fso << j.dump(4);
