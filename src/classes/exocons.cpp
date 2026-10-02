@@ -794,6 +794,7 @@ namespace alienorum
 
         // 4. Line formation
         const double cos15deg = cos(EXOCONS_MAX_LINE_LENGTH_DEG * _pi / 180.0);
+        const double cos30_5deg = cos(30.5 * _pi / 180.0);
         std::vector<std::pair<ExoConsStarInfo, ExoConsStarInfo>> all_lines;
         std::unordered_map<Star*, int> degrees;
         std::vector<std::string> line_assigned_cons;
@@ -909,6 +910,10 @@ namespace alienorum
                         bool crosses = false;
                         for (const auto& el : existing_lines)
                         {
+                            if (dot_product(u1.u, el.first) < cos30_5deg)
+                            {
+                                continue;
+                            }
                             if (arcs_intersect(u1.u, u2.u, el.first, el.second))
                             {
                                 crosses = true;
@@ -920,6 +925,10 @@ namespace alienorum
                             for (const auto& al : all_lines)
                             {
                                 if (al.first.s == u1.s || al.first.s == u2.s || al.second.s == u1.s || al.second.s == u2.s)
+                                {
+                                    continue;
+                                }
+                                if (dot_product(u1.u, al.first.u) < cos30_5deg)
                                 {
                                     continue;
                                 }
@@ -1004,6 +1013,10 @@ namespace alienorum
                         bool crosses = false;
                         for (const auto& el : existing_lines)
                         {
+                            if (dot_product(u1.u, el.first) < cos30_5deg)
+                            {
+                                continue;
+                            }
                             if (arcs_intersect(u1.u, u2.u, el.first, el.second))
                             {
                                 crosses = true;
@@ -1015,6 +1028,10 @@ namespace alienorum
                             for (const auto& al : all_lines)
                             {
                                 if (al.first.s == u1.s || al.first.s == u2.s || al.second.s == u1.s || al.second.s == u2.s)
+                                {
+                                    continue;
+                                }
+                                if (dot_product(u1.u, al.first.u) < cos30_5deg)
                                 {
                                     continue;
                                 }
@@ -1064,6 +1081,10 @@ namespace alienorum
             }
             for (const auto& el : existing_lines)
             {
+                if (dot_product(u1, el.first) < cos30_5deg)
+                {
+                    continue;
+                }
                 if (arcs_intersect(u1, u2, el.first, el.second))
                 {
                     return false;
@@ -1077,6 +1098,10 @@ namespace alienorum
                 }
                 const auto& al = all_lines[i];
                 if (al.first.s == s1 || al.first.s == s2 || al.second.s == s1 || al.second.s == s2)
+                {
+                    continue;
+                }
+                if (dot_product(u1, al.first.u) < cos30_5deg)
                 {
                     continue;
                 }
@@ -2476,7 +2501,6 @@ namespace alienorum
         }
 
         const double max_impinge_dist_deg = EXOCONS_MAX_IMPINGE_DIST_DEG;
-        const double cos30_5deg = cos(EXOCONS_IMPINGE_INTERSECT_CHECK_DEG * _pi / 180.0);
 
         auto is_segment_valid = [&](Star* s1, Star* s2, const Point& u1, const Point& u2, size_t ignore_line_idx) -> bool
         {
@@ -3887,6 +3911,7 @@ namespace alienorum
 
     void ExoConsGenerator::save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss)
     {
+        return;
         std::vector<std::string> existing_lines;
         std::ifstream infile("exocons.dat");
         if (infile.is_open())
