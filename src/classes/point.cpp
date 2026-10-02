@@ -95,9 +95,11 @@ Cartesian2D::Cartesian2D(Point pt, double az, double alt, double m)
     if (view_mode == vm_skymap)
     {
         double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi - myeq + az, _pi*2);
-        if (ra < 0) ra += _pi*2;
-        double decl = std::fmod(find_angle(sqrt(pt.x*pt.x+pt.z*pt.z), pt.y) - alt, _pi*2);
-        if (decl > _pi/2) decl -= _pi*2;
+        if (ra < 0)
+        {
+            ra += _pi*2;
+        }
+        double decl = atan2(pt.y, sqrt(pt.x*pt.x + pt.z*pt.z)) - alt;
         x = (1.0 - ra/_pi) * zoom;
         y = -decl/_pi * zoom;
     }
@@ -485,28 +487,29 @@ void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, ImGuiIO& io)
 void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness, ImGuiIO& io)
 {
     int dcx = (int)io.DisplaySize.x / 2;
-    if ((view_mode == vm_skymap || view_mode == vm_sunclock)
-        && fabs(term1.x - term2.x) > zoom*dcx
-        && ((term1.x < dcx && term2.x > dcx)
-            ||
-            (term1.x > dcx && term2.x < dcx)
-           )
-        )
+    double wrap_w = 2.0 * dcx * zoom;
+    if ((view_mode == vm_skymap || view_mode == vm_sunclock) && wrap_w > 0)
     {
-        ImVec2 term3=term2, term4=term1;
-
-        if (term3.x > dcx) term3.x -= dcx*2;
-        else term3.x += dcx*2;
-        if (term4.x > dcx) term4.x -= dcx*2;
-        else term4.x += dcx*2;
-
-        ImGui::GetBackgroundDrawList()->AddLine(term1, term3, rgba_apply_redlight(color), thickness);
-        ImGui::GetBackgroundDrawList()->AddLine(term2, term4, rgba_apply_redlight(color), thickness);
+        double dx = term2.x - term1.x;
+        if (dx > wrap_w * 0.5)
+        {
+            ImVec2 term2_wrapped(term2.x - wrap_w, term2.y);
+            ImVec2 term1_wrapped(term1.x + wrap_w, term1.y);
+            ImGui::GetBackgroundDrawList()->AddLine(term1, term2_wrapped, rgba_apply_redlight(color), thickness);
+            ImGui::GetBackgroundDrawList()->AddLine(term1_wrapped, term2, rgba_apply_redlight(color), thickness);
+            return;
+        }
+        else if (dx < -wrap_w * 0.5)
+        {
+            ImVec2 term2_wrapped(term2.x + wrap_w, term2.y);
+            ImVec2 term1_wrapped(term1.x - wrap_w, term1.y);
+            ImGui::GetBackgroundDrawList()->AddLine(term1, term2_wrapped, rgba_apply_redlight(color), thickness);
+            ImGui::GetBackgroundDrawList()->AddLine(term1_wrapped, term2, rgba_apply_redlight(color), thickness);
+            return;
+        }
     }
-    else
-    {
-        ImGui::GetBackgroundDrawList()->AddLine(term1, term2, rgba_apply_redlight(color), thickness);
-    }
+
+    ImGui::GetBackgroundDrawList()->AddLine(term1, term2, rgba_apply_redlight(color), thickness);
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)

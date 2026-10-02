@@ -3511,25 +3511,26 @@ void draw_galaxy_band()
                 if (wrapped)
                 {
                     float wrap_w = (float)(2.0 * dispcx * zoom);
+                    float mid_x = (min_x + max_x) * 0.5f;
 
-                    // Piece 1: shifted to right for points left of center
+                    // Piece 1: shifted to right for points on low side
                     ImVec2 p00_1 = v00.pos;
-                    if (p00_1.x < dispcx)
+                    if (p00_1.x < mid_x)
                     {
                         p00_1.x += wrap_w;
                     }
                     ImVec2 p10_1 = v10.pos;
-                    if (p10_1.x < dispcx)
+                    if (p10_1.x < mid_x)
                     {
                         p10_1.x += wrap_w;
                     }
                     ImVec2 p11_1 = v11.pos;
-                    if (p11_1.x < dispcx)
+                    if (p11_1.x < mid_x)
                     {
                         p11_1.x += wrap_w;
                     }
                     ImVec2 p01_1 = v01.pos;
-                    if (p01_1.x < dispcx)
+                    if (p01_1.x < mid_x)
                     {
                         p01_1.x += wrap_w;
                     }
@@ -3547,24 +3548,24 @@ void draw_galaxy_band()
                     list->PrimWriteVtx(p11_1, v11.uv, v11.col);
                     list->PrimWriteVtx(p01_1, v01.uv, v01.col);
 
-                    // Piece 2: shifted to left for points right of center
+                    // Piece 2: shifted to left for points on high side
                     ImVec2 p00_2 = v00.pos;
-                    if (p00_2.x > dispcx)
+                    if (p00_2.x > mid_x)
                     {
                         p00_2.x -= wrap_w;
                     }
                     ImVec2 p10_2 = v10.pos;
-                    if (p10_2.x > dispcx)
+                    if (p10_2.x > mid_x)
                     {
                         p10_2.x -= wrap_w;
                     }
                     ImVec2 p11_2 = v11.pos;
-                    if (p11_2.x > dispcx)
+                    if (p11_2.x > mid_x)
                     {
                         p11_2.x -= wrap_w;
                     }
                     ImVec2 p01_2 = v01.pos;
-                    if (p01_2.x > dispcx)
+                    if (p01_2.x > mid_x)
                     {
                         p01_2.x -= wrap_w;
                     }
@@ -4902,14 +4903,14 @@ void draw_cons_lines()
 
             dx1 = constellations[i].lines[l].a->drawnx;
             dy1 = constellations[i].lines[l].a->drawny;
-            if (dx1 < -1e3 || dy1 < -1e3)
+            if (dx1 < -1e8 || dy1 < -1e8)
             {
                 continue;
             }
 
             dx2 = constellations[i].lines[l].b->drawnx;
             dy2 = constellations[i].lines[l].b->drawny;
-            if (dx2 < -1e3 || dy2 < -1e3)
+            if (dx2 < -1e8 || dy2 < -1e8)
             {
                 continue;
             }

@@ -325,11 +325,7 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
             {
                 ra += _pi * 2;
             }
-            double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
-            if (decl > _pi / 2)
-            {
-                decl -= _pi * 2;
-            }
+            double decl = atan2(pt.y, sqrt(pt.x * pt.x + pt.z * pt.z));
 
             double cart_x = (1.0 - ra / _pi) * zoom;
             double cart_y = -decl / _pi * zoom;
@@ -365,11 +361,7 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
                 {
                     ra += _pi * 2;
                 }
-                double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
-                if (decl > _pi / 2)
-                {
-                    decl -= _pi * 2;
-                }
+                double decl = atan2(pt.y, sqrt(pt.x * pt.x + pt.z * pt.z));
 
                 double cart_x = (1.0 - ra / _pi) * zoom;
                 double cart_y = -decl / _pi * zoom;
@@ -403,24 +395,26 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
 
                 if (new_wrapped)
                 {
-                    // Verify Piece 1: shifted to right for points left of center
+                    float mid_x = (min_x + max_x) * 0.5f;
+
+                    // Verify Piece 1: shifted to right for points on low side
                     ImVec2 p00_1 = p00;
-                    if (p00_1.x < dispcx)
+                    if (p00_1.x < mid_x)
                     {
                         p00_1.x += wrap_w;
                     }
                     ImVec2 p10_1 = p10;
-                    if (p10_1.x < dispcx)
+                    if (p10_1.x < mid_x)
                     {
                         p10_1.x += wrap_w;
                     }
                     ImVec2 p11_1 = p11;
-                    if (p11_1.x < dispcx)
+                    if (p11_1.x < mid_x)
                     {
                         p11_1.x += wrap_w;
                     }
                     ImVec2 p01_1 = p01;
-                    if (p01_1.x < dispcx)
+                    if (p01_1.x < mid_x)
                     {
                         p01_1.x += wrap_w;
                     }
@@ -432,24 +426,24 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
                         total_streaks_with_new++;
                     }
 
-                    // Verify Piece 2: shifted to left for points right of center
+                    // Verify Piece 2: shifted to left for points on high side
                     ImVec2 p00_2 = p00;
-                    if (p00_2.x > dispcx)
+                    if (p00_2.x > mid_x)
                     {
                         p00_2.x -= wrap_w;
                     }
                     ImVec2 p10_2 = p10;
-                    if (p10_2.x > dispcx)
+                    if (p10_2.x > mid_x)
                     {
                         p10_2.x -= wrap_w;
                     }
                     ImVec2 p11_2 = p11;
-                    if (p11_2.x > dispcx)
+                    if (p11_2.x > mid_x)
                     {
                         p11_2.x -= wrap_w;
                     }
                     ImVec2 p01_2 = p01;
-                    if (p01_2.x > dispcx)
+                    if (p01_2.x > mid_x)
                     {
                         p01_2.x -= wrap_w;
                     }
@@ -469,6 +463,155 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
     EXPECT_GT(total_missed_by_old, 0);
     // Zero streaks occur with new logic
     EXPECT_EQ(total_streaks_with_new, 0);
+}
+
+TEST(MilkyWayBackdropTest, SkymapZoomedSeamWrappingZeroStreaks)
+{
+    Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
+    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    const int N_lon = 240;
+    const int N_lat = 24;
+    const float dispcx = 960.0f;
+
+    struct TestVertex
+    {
+        ImVec2 pos;
+    };
+
+    std::vector<TestVertex> grid((N_lon + 1) * (N_lat + 1));
+
+    // Verify across multiple zoom levels and azimuth/altitude tilts
+    for (float zoom : {1.5f, 2.0f, 2.5f})
+    {
+        float wrap_w = 2.0f * dispcx * zoom;
+        float wrap_thresh = (float)(1.5 * dispcx * zoom);
+
+        for (int step = 0; step < 8; step++)
+        {
+            double az_test = step * (_pi / 4.0);
+            double alt_test = ((step % 3) - 1) * (5.0 * _pi / 180.0);
+
+            for (int j = 0; j <= N_lat; j++)
+            {
+                float v = (float)j / (float)N_lat;
+                double lat = (0.5 - (double)v) * (_pi / 3.0);
+
+                for (int i = 0; i <= N_lon; i++)
+                {
+                    float u = (float)i / (float)N_lon;
+                    double lon = ((double)u - 0.5) * (2.0 * _pi);
+
+                    Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
+                    pt = rotate3D(pt, center, yaxis, gyaw);
+                    pt = rotate3D(pt, center, pl.v, -pl.a);
+
+                    double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi + az_test, _pi * 2);
+                    if (ra < 0)
+                    {
+                        ra += _pi * 2;
+                    }
+                    double decl = atan2(pt.y, sqrt(pt.x * pt.x + pt.z * pt.z)) - alt_test;
+
+                    double cart_x = (1.0 - ra / _pi) * zoom;
+                    double cart_y = -decl / _pi * zoom;
+
+                    grid[j * (N_lon + 1) + i].pos = ImVec2((float)(dispcx + dispcx * cart_x), (float)(dispcx + dispcx * cart_y));
+                }
+            }
+
+            int streak_count = 0;
+            float max_quad_h = 0;
+
+            for (int j = 0; j < N_lat; j++)
+            {
+                for (int i = 0; i < N_lon; i++)
+                {
+                    const ImVec2& p00 = grid[j * (N_lon + 1) + i].pos;
+                    const ImVec2& p10 = grid[j * (N_lon + 1) + (i + 1)].pos;
+                    const ImVec2& p11 = grid[(j + 1) * (N_lon + 1) + (i + 1)].pos;
+                    const ImVec2& p01 = grid[(j + 1) * (N_lon + 1) + i].pos;
+
+                    float min_x = std::min({p00.x, p10.x, p11.x, p01.x});
+                    float max_x = std::max({p00.x, p10.x, p11.x, p01.x});
+
+                    float quad_h = std::max({p00.y, p10.y, p11.y, p01.y}) - std::min({p00.y, p10.y, p11.y, p01.y});
+                    if (quad_h > max_quad_h)
+                    {
+                        max_quad_h = quad_h;
+                    }
+
+                    bool new_wrapped = (max_x - min_x) > wrap_thresh;
+                    if (new_wrapped)
+                    {
+                        float mid_x = (min_x + max_x) * 0.5f;
+
+                        ImVec2 p00_1 = p00;
+                        if (p00_1.x < mid_x)
+                        {
+                            p00_1.x += wrap_w;
+                        }
+                        ImVec2 p10_1 = p10;
+                        if (p10_1.x < mid_x)
+                        {
+                            p10_1.x += wrap_w;
+                        }
+                        ImVec2 p11_1 = p11;
+                        if (p11_1.x < mid_x)
+                        {
+                            p11_1.x += wrap_w;
+                        }
+                        ImVec2 p01_1 = p01;
+                        if (p01_1.x < mid_x)
+                        {
+                            p01_1.x += wrap_w;
+                        }
+
+                        float span_1 = std::max({p00_1.x, p10_1.x, p11_1.x, p01_1.x}) -
+                                       std::min({p00_1.x, p10_1.x, p11_1.x, p01_1.x});
+                        if (span_1 > wrap_thresh)
+                        {
+                            streak_count++;
+                        }
+
+                        ImVec2 p00_2 = p00;
+                        if (p00_2.x > mid_x)
+                        {
+                            p00_2.x -= wrap_w;
+                        }
+                        ImVec2 p10_2 = p10;
+                        if (p10_2.x > mid_x)
+                        {
+                            p10_2.x -= wrap_w;
+                        }
+                        ImVec2 p11_2 = p11;
+                        if (p11_2.x > mid_x)
+                        {
+                            p11_2.x -= wrap_w;
+                        }
+                        ImVec2 p01_2 = p01;
+                        if (p01_2.x > mid_x)
+                        {
+                            p01_2.x -= wrap_w;
+                        }
+
+                        float span_2 = std::max({p00_2.x, p10_2.x, p11_2.x, p01_2.x}) -
+                                       std::min({p00_2.x, p10_2.x, p11_2.x, p01_2.x});
+                        if (span_2 > wrap_thresh)
+                        {
+                            streak_count++;
+                        }
+                    }
+                }
+            }
+
+            EXPECT_EQ(streak_count, 0);
+            // Verify quad height never jumps/wraps by 2*pi across the screen
+            EXPECT_LT(max_quad_h, 100.0f);
+        }
+    }
 }
 
 TEST(MilkyWayBackdropTest, WhiteBackgroundInversion)
