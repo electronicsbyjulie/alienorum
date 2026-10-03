@@ -5136,7 +5136,7 @@ void draw_cloudy_sky()
         return;
     }
     CelestialObject *cel = cels[whereami];
-    if (!cel || !cel->cloud_map)
+    if (!cel || !cel->cloud_map || !cel->cloud_map->is_complete())
     {
         return;
     }

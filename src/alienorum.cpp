@@ -694,12 +694,12 @@ int main (int argc, char** argv)
                 draw_cloudy_sky();
                 draw_horizon();
 
-                if ((show_clouds) && (whereami != iamhome))
+                if ((show_clouds) && ((whereami != iamhome || view_mode == vm_system)))
                 {
                     CelestialObject *c = cels[iamhome];
                     if (c)
                     {
-                        if (c->onscreen && c->cloud_map)
+                        if (c->onscreen && c->cloud_map && c->cloud_map->is_complete())
                         {
                             earth_clouds_shown = true;
                         }

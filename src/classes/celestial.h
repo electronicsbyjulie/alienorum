@@ -230,8 +230,18 @@ namespace alienorum
         bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool save_to_png(std::string filename, bool as_bump = false);
         void correct_colors(double rtot, double gtot, double btot);
-        inline bool has_bump_data() { return bump_data && image_height; }
-        inline bool has_rgb_data() { return red_data && green_data && blue_data && image_height; }
+        inline bool has_bump_data() const
+        {
+            return bump_data && image_height;
+        }
+        inline bool has_rgb_data() const
+        {
+            return red_data && green_data && blue_data && image_height;
+        }
+        inline bool is_complete() const
+        {
+            return has_rgb_data() && gen > 0;
+        }
         void resample_bump_data(unsigned int new_resolution);
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 

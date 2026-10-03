@@ -649,9 +649,14 @@ std::time_t file_age(const char *fname)
 
 bool download_file(std::string URL, std::string save_path)
 {
-    if (radio_silence) return false;
+    if (radio_silence)
+    {
+        return false;
+    }
     curlpp::init();
     std::cout << "Download to " << save_path << " from " << URL << std::endl;
+
+    std::string temp_path = save_path + ".tmp";
 
     try
     {
@@ -659,7 +664,8 @@ bool download_file(std::string URL, std::string save_path)
         curlpp::Easy easy;
         curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
 
-        if (!strcmp(URL.substr(0, 6).c_str(), "ftp://"))
+        bool is_ftp = (strncmp(URL.c_str(), "ftp://", 6) == 0);
+        if (is_ftp)
         {
             // Set target URL using the correct 2-argument signature
             easy.setOpt(CURLOPT_URL, URL.c_str());
@@ -688,19 +694,56 @@ bool download_file(std::string URL, std::string save_path)
 
         easy.perform();
 
-        std::fstream fs(save_path.c_str(), std::ios::out | std::ios::binary);
-        if (!fs)
+        if (!is_ftp)
+        {
+            long response_code = 0;
+            curl_easy_getinfo(easy.getHandle(), CURLINFO_RESPONSE_CODE, &response_code);
+            if (response_code < 200 || response_code >= 300)
+            {
+                curlpp::cleanup();
+                std::cerr << "FAILED to download " << URL << ": HTTP response code " << response_code << std::endl << std::flush;
+                return false;
+            }
+        }
+
+        if (buffer.empty())
         {
             curlpp::cleanup();
-            std::cerr << "FAILED to write " << save_path << std::endl << std::flush;
+            std::cerr << "FAILED to download " << URL << ": empty response" << std::endl << std::flush;
             return false;
         }
 
-        fs << buffer;
+        std::ofstream fs(temp_path.c_str(), std::ios::out | std::ios::binary);
+        if (!fs)
+        {
+            curlpp::cleanup();
+            std::cerr << "FAILED to write " << temp_path << std::endl << std::flush;
+            return false;
+        }
+
+        fs.write(buffer.data(), buffer.size());
         fs.close();
+        if (fs.fail())
+        {
+            std::remove(temp_path.c_str());
+            curlpp::cleanup();
+            std::cerr << "FAILED to complete writing " << temp_path << std::endl << std::flush;
+            return false;
+        }
+
+        std::remove(save_path.c_str());
+        if (std::rename(temp_path.c_str(), save_path.c_str()) != 0)
+        {
+            std::remove(temp_path.c_str());
+            curlpp::cleanup();
+            std::cerr << "FAILED to rename " << temp_path << " to " << save_path << std::endl << std::flush;
+            return false;
+        }
     }
     catch (const curlpp::Exception& e)
     {
+        std::remove(temp_path.c_str());
+        curlpp::cleanup();
         std::cerr << "FAILED to download " << URL << ": " << e.what() << std::endl << std::flush;
         return false;
     }
@@ -712,7 +755,9 @@ bool download_file(std::string URL, std::string save_path)
 bool check_and_download_clouds(const std::string& URL, const std::string& save_path)
 {
     if (radio_silence || URL.empty())
+    {
         return false;
+    }
 
     const int kMinRefreshSeconds = 3 * 3600; // 3 hours
     size_t dot_pos = save_path.rfind('.');
@@ -727,23 +772,35 @@ bool check_and_download_clouds(const std::string& URL, const std::string& save_p
     {
         std::ifstream ifs(timestamp_file);
         if (ifs)
+        {
             ifs >> last_time;
+        }
     }
     else if (file_exists(save_path.c_str()))
     {
         std::time_t age = file_age(save_path.c_str());
         if (age >= 0)
+        {
             last_time = now - age;
+        }
     }
 
     if (file_exists(save_path.c_str()) && (now - last_time < kMinRefreshSeconds) && (now >= last_time))
+    {
         return false;
+    }
 
-    std::ofstream ofs(timestamp_file);
-    if (ofs)
-        ofs << now << std::endl;
+    bool success = download_file(URL, save_path);
+    if (success)
+    {
+        std::ofstream ofs(timestamp_file);
+        if (ofs)
+        {
+            ofs << now << std::endl;
+        }
+    }
 
-    return download_file(URL, save_path);
+    return success;
 }
 
 bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)

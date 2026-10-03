@@ -333,6 +333,16 @@ TEST(CelestialObjectTest, MergedMapFallbackAndSelection)
 
     cel.surf_map = nullptr;
     EXPECT_EQ(cel.get_day_map(), nullptr);
+
+    // Incomplete cloud map fallback: uses surf_map when cloud_map is not complete
+    Map surf;
+    Map incomplete_clouds;
+    cel.surf_map = &surf;
+    cel.cloud_map = &incomplete_clouds;
+    cel.transparent_clouds = true;
+    EXPECT_FALSE(incomplete_clouds.is_complete());
+    EXPECT_EQ(cel.get_day_map(), &surf);
+    EXPECT_EQ(cel.get_night_map(), nullptr);
 }
 
 // =====================================================================

@@ -72,19 +72,29 @@ CelestialObject::~CelestialObject()
 
 Map* CelestialObject::get_day_map()
 {
-    if (show_clouds && transparent_clouds && surf_map && cloud_map)
+    if (show_clouds && transparent_clouds && surf_map)
     {
-        if (!merged_day_map || merged_day_cloud_gen != cloud_map->gen || merged_day_surf_gen != surf_map->gen)
+        if (cloud_map && cloud_map->is_complete())
         {
-            if (!merged_day_map)
+            if (!merged_day_map || merged_day_cloud_gen != cloud_map->gen || merged_day_surf_gen != surf_map->gen)
             {
-                merged_day_map = new Map(this);
+                if (!merged_day_map)
+                {
+                    merged_day_map = new Map(this);
+                }
+                if (!merged_day_map->create_merged_day(surf_map, cloud_map))
+                {
+                    return surf_map;
+                }
+                merged_day_cloud_gen = cloud_map->gen;
+                merged_day_surf_gen = surf_map->gen;
             }
-            merged_day_map->create_merged_day(surf_map, cloud_map);
-            merged_day_cloud_gen = cloud_map->gen;
-            merged_day_surf_gen = surf_map->gen;
+            return merged_day_map;
         }
-        return merged_day_map;
+        else
+        {
+            return surf_map;
+        }
     }
 
     if (!show_clouds)
@@ -92,12 +102,17 @@ Map* CelestialObject::get_day_map()
         return surf_map ? surf_map : cloud_map;
     }
 
+    if (transparent_clouds && surf_map && (!cloud_map || !cloud_map->is_complete()))
+    {
+        return surf_map;
+    }
+
     return cloud_map ? cloud_map : surf_map;
 }
 
 Map* CelestialObject::get_night_map()
 {
-    if (show_clouds && transparent_clouds && cloud_map && (night_map || uses_rocky_map(type)))
+    if (show_clouds && transparent_clouds && cloud_map && cloud_map->is_complete() && (night_map || uses_rocky_map(type)))
     {
         if (!merged_night_map || merged_night_cloud_gen != cloud_map->gen || (night_map && merged_night_map_gen != night_map->gen))
         {
@@ -105,7 +120,10 @@ Map* CelestialObject::get_night_map()
             {
                 merged_night_map = new Map(this);
             }
-            merged_night_map->create_merged_night(night_map, cloud_map);
+            if (!merged_night_map->create_merged_night(night_map, cloud_map))
+            {
+                return night_map;
+            }
             merged_night_cloud_gen = cloud_map->gen;
             merged_night_map_gen = night_map ? night_map->gen : 0;
         }
@@ -1664,7 +1682,7 @@ void Map::export_bump(float *out) const
 
 void Map::overlay_cloud_map(Map *clouds)
 {
-    if (!clouds || !clouds->has_rgb_data() || !has_rgb_data())
+    if (!clouds || !clouds->is_complete() || !has_rgb_data())
     {
         return;
     }
@@ -1711,7 +1729,7 @@ void Map::overlay_cloud_map(Map *clouds)
 
 void Map::obscure_with_clouds(Map *clouds)
 {
-    if (!clouds || !clouds->has_rgb_data() || !has_rgb_data())
+    if (!clouds || !clouds->is_complete() || !has_rgb_data())
     {
         return;
     }
@@ -1777,7 +1795,7 @@ Map::~Map()
 
 bool Map::create_merged_day(Map *surf, Map *clouds)
 {
-    if (!surf || !surf->has_rgb_data())
+    if (!surf || !surf->has_rgb_data() || !clouds || !clouds->is_complete())
     {
         return false;
     }
@@ -1813,8 +1831,6 @@ bool Map::create_merged_day(Map *surf, Map *clouds)
     inv_lat_scale = 1.0 / lat_scale;
     inv_lon_scale = 1.0 / lon_scale;
 
-    bool has_clouds = (clouds && clouds->has_rgb_data());
-
     for (unsigned long y = 0; y < image_height; y++)
     {
         double lat = half_pi - (y + 0.5) * inv_lat_scale;
@@ -1825,18 +1841,15 @@ bool Map::create_merged_day(Map *surf, Map *clouds)
             unsigned char sg = surf->green_data[idx];
             unsigned char sb = surf->blue_data[idx];
 
-            if (has_clouds)
+            double lon = (x + 0.5) * inv_lon_scale - _pi;
+            RGB3 c_rgb = clouds->color_at(lat, lon);
+            double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
+            if (alpha > 0.0)
             {
-                double lon = (x + 0.5) * inv_lon_scale - _pi;
-                RGB3 c_rgb = clouds->color_at(lat, lon);
-                double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
-                if (alpha > 0.0)
-                {
-                    double inv_a = 1.0 - alpha;
-                    sr = (unsigned char)std::clamp((int)(sr * inv_a + c_rgb.r), 0, 255);
-                    sg = (unsigned char)std::clamp((int)(sg * inv_a + c_rgb.g), 0, 255);
-                    sb = (unsigned char)std::clamp((int)(sb * inv_a + c_rgb.b), 0, 255);
-                }
+                double inv_a = 1.0 - alpha;
+                sr = (unsigned char)std::clamp((int)(sr * inv_a + c_rgb.r), 0, 255);
+                sg = (unsigned char)std::clamp((int)(sg * inv_a + c_rgb.g), 0, 255);
+                sb = (unsigned char)std::clamp((int)(sb * inv_a + c_rgb.b), 0, 255);
             }
 
             red_data[idx] = sr;
@@ -1851,20 +1864,21 @@ bool Map::create_merged_day(Map *surf, Map *clouds)
 
 bool Map::create_merged_night(Map *night, Map *clouds)
 {
+    if (!clouds || !clouds->is_complete())
+    {
+        return false;
+    }
+
     unsigned long w = 0, h = 0;
     if (night && night->has_rgb_data())
     {
         w = night->get_width();
         h = night->get_height();
     }
-    else if (clouds && clouds->has_rgb_data())
+    else
     {
         w = clouds->get_width();
         h = clouds->get_height();
-    }
-    else
-    {
-        return false;
     }
 
     unsigned long toalloc = w * h;
@@ -1897,7 +1911,6 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     inv_lon_scale = 1.0 / lon_scale;
 
     bool has_night = (night && night->has_rgb_data());
-    bool has_clouds = (clouds && clouds->has_rgb_data());
 
     // Dark blue night equivalent for clouds over night side
     const double kNightCloudR = 12.0;
@@ -1914,18 +1927,15 @@ bool Map::create_merged_night(Map *night, Map *clouds)
             double ng = has_night ? night->green_data[idx] : 0.0;
             double nb = has_night ? night->blue_data[idx] : 0.0;
 
-            if (has_clouds)
+            double lon = (x + 0.5) * inv_lon_scale - _pi;
+            RGB3 c_rgb = clouds->color_at(lat, lon);
+            double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
+            if (alpha > 0.0)
             {
-                double lon = (x + 0.5) * inv_lon_scale - _pi;
-                RGB3 c_rgb = clouds->color_at(lat, lon);
-                double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
-                if (alpha > 0.0)
-                {
-                    double inv_a = 1.0 - alpha;
-                    nr = nr * inv_a + kNightCloudR * alpha;
-                    ng = ng * inv_a + kNightCloudG * alpha;
-                    nb = nb * inv_a + kNightCloudB * alpha;
-                }
+                double inv_a = 1.0 - alpha;
+                nr = nr * inv_a + kNightCloudR * alpha;
+                ng = ng * inv_a + kNightCloudG * alpha;
+                nb = nb * inv_a + kNightCloudB * alpha;
             }
 
             red_data[idx] = (unsigned char)std::clamp((int)nr, 0, 255);
@@ -1941,7 +1951,7 @@ bool Map::create_merged_night(Map *night, Map *clouds)
 RGB3 Map::color_at(double lat, double lon)
 {
     RGB3 result;
-    if (generating_fic_texture)
+    if (generating_fic_texture && (!has_rgb_data() || !allocated))
     {
         result.r = result.g = result.b = 255;
     }
@@ -1953,7 +1963,10 @@ RGB3 Map::color_at(double lat, double lon)
             result.r = result.g = result.b = 255;
             return result;
         }
-        if (idx >= allocated) idx = allocated - 1;
+        if (idx >= allocated)
+        {
+            idx = allocated - 1;
+        }
         result.r = red_data   ? red_data[idx]   : 255;
         result.g = green_data ? green_data[idx] : 255;
         result.b = blue_data  ? blue_data[idx]  : 255;

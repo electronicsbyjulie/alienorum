@@ -60,19 +60,33 @@ void load_textures(CelestialObject* cel)
             if (file_exists(cloud_png.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_png(cloud_png))
+                if (map->load_from_png(cloud_png) && map->is_complete())
                 {
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
+                    std::remove(cloud_png.c_str());
+                    std::string ts = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.timestamp";
+                    std::remove(ts.c_str());
                 }
             }
             else if (file_exists(cloud_jpg.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_jpeg(cloud_jpg))
+                if (map->load_from_jpeg(cloud_jpg) && map->is_complete())
                 {
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
+                    std::remove(cloud_jpg.c_str());
+                    std::string ts = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.timestamp";
+                    std::remove(ts.c_str());
                 }
             }
         }
@@ -81,19 +95,33 @@ void load_textures(CelestialObject* cel)
             if (file_exists(cloud_jpg.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_jpeg(cloud_jpg))
+                if (map->load_from_jpeg(cloud_jpg) && map->is_complete())
                 {
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
+                    std::remove(cloud_jpg.c_str());
+                    std::string ts = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.timestamp";
+                    std::remove(ts.c_str());
                 }
             }
             else if (file_exists(cloud_png.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_png(cloud_png))
+                if (map->load_from_png(cloud_png) && map->is_complete())
                 {
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
+                    std::remove(cloud_png.c_str());
+                    std::string ts = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.timestamp";
+                    std::remove(ts.c_str());
                 }
             }
         }

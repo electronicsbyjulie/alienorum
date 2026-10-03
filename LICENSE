@@ -45,6 +45,9 @@ https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_8k_earth_daymap
 The Earth bump map is (C) 2023 Avsa, used pursuant to CC-BY-SA 4.0.
 https://commons.wikimedia.org/wiki/File:World_elevation_map.png
 
+Earth cloud maps contain modified EUMETSAT data and are auto-downloaded from Matt Eason's
+website. See https://github.com/matteason/live-cloud-maps
+
 The Moon surface and bump maps are courtesy NASA's Scientific Visualization Studio,
 https://svs.gsfc.nasa.gov/4720, and are believed to be in the Public Domain.
 
