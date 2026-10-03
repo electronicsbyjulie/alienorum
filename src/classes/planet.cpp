@@ -1226,15 +1226,15 @@ bool Planet::guess_has_rings()
         // Deep freeze (like Saturn/Uranus)
         probability += 0.25;
     }
-    else if (t_eq > 800.0)
+    else if (t_eq > 600.0)
     {
         // Too hot, dust is dragged and ice is gone
-        probability -= 0.60;
+        return false;
     }
     else if (t_eq > 300.0)
     {
         // Warm, mostly sparse rock/dust if any
-        probability -= 0.20;
+        probability -= 0.60;
     }
 
     // Clamp the final probability between 1% and 95%
