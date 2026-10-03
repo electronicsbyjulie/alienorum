@@ -709,50 +709,46 @@ bool download_file(std::string URL, std::string save_path)
     return true;
 }
 
-bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)
+bool check_and_download_clouds(const std::string& URL, const std::string& save_path)
 {
-    if (radio_silence)
-    {
+    if (radio_silence || URL.empty())
         return false;
-    }
 
     const int kMinRefreshSeconds = 3 * 3600; // 3 hours
-    std::string timestamp_file = "maps/Earth_clouds.timestamp";
+    size_t dot_pos = save_path.rfind('.');
+    std::string timestamp_file = (dot_pos != std::string::npos) ? (save_path.substr(0, dot_pos) + ".timestamp") : (save_path + ".timestamp");
     std::time_t now = std::time(nullptr);
     std::time_t last_time = 0;
 
-    static std::mutex earth_cloud_mutex;
-    std::lock_guard<std::mutex> lock(earth_cloud_mutex);
+    static std::mutex cloud_mutex;
+    std::lock_guard<std::mutex> lock(cloud_mutex);
 
     if (file_exists(timestamp_file.c_str()))
     {
         std::ifstream ifs(timestamp_file);
         if (ifs)
-        {
             ifs >> last_time;
-        }
     }
     else if (file_exists(save_path.c_str()))
     {
         std::time_t age = file_age(save_path.c_str());
         if (age >= 0)
-        {
             last_time = now - age;
-        }
     }
 
     if (file_exists(save_path.c_str()) && (now - last_time < kMinRefreshSeconds) && (now >= last_time))
-    {
         return false;
-    }
 
     std::ofstream ofs(timestamp_file);
     if (ofs)
-    {
         ofs << now << std::endl;
-    }
 
     return download_file(URL, save_path);
+}
+
+bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)
+{
+    return check_and_download_clouds(URL, save_path);
 }
 
 // Splits one line on its commas, honouring the quoting the CSV convention gives a field that

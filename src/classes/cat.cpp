@@ -4806,9 +4806,10 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                         if (!strcasecmp(mapurl.substr(mapurl.size()-4).c_str(), ".png"))
                             destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".png");
                         else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
-                        if (!strcmp(p->name, "Earth") && !strcmp(mapkeys[j], "CloudMap"))
+                        if (!strcmp(mapkeys[j], "CloudMap"))
                         {
-                            check_and_download_earth_clouds(mapurl, destfname);
+                            p->cloud_map_url = mapurl;
+                            check_and_download_clouds(mapurl, destfname);
                         }
                         else if (!file_exists(destfname.c_str()))
                         {

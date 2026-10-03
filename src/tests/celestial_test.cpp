@@ -268,9 +268,47 @@ TEST(CelestialHelperTest, EarthCloudsRateLimiting)
         ofs << std::time(nullptr) << std::endl;
         ofs.close();
 
-        bool attempted = check_and_download_earth_clouds();
+        std::string cloud_url;
+        std::ifstream ifs("catalogs/planets.json");
+        if (ifs.is_open())
+        {
+            json j;
+            ifs >> j;
+            for (const auto& item : j)
+            {
+                if (item.value("BODYNAME", "") == "Earth" && item.contains("CloudMap"))
+                {
+                    cloud_url = item["CloudMap"].get<std::string>();
+                    break;
+                }
+            }
+        }
+        if (cloud_url.empty())
+            cloud_url = "https://clouds.matteason.co.uk/images/1024x512/clouds.jpg";
+
+        bool attempted = check_and_download_earth_clouds(cloud_url, test_file);
         EXPECT_FALSE(attempted);
     }
+}
+
+TEST(CelestialHelperTest, CloudsRateLimitingGeneralization)
+{
+    std::string test_ts = "maps/Mars_clouds.timestamp";
+    std::string test_file = "maps/Mars_clouds.png";
+
+    std::ofstream ofs_file(test_file);
+    ofs_file << "dummy" << std::endl;
+    ofs_file.close();
+
+    std::ofstream ofs_ts(test_ts);
+    ofs_ts << std::time(nullptr) << std::endl;
+    ofs_ts.close();
+
+    bool attempted = check_and_download_clouds("http://example.com/mars_clouds.png", test_file);
+    EXPECT_FALSE(attempted);
+
+    std::remove(test_file.c_str());
+    std::remove(test_ts.c_str());
 }
 
 TEST(CelestialObjectTest, MergedMapFallbackAndSelection)

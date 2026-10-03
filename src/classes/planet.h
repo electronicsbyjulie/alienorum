@@ -44,6 +44,7 @@ namespace alienorum
         double ring_mean_opacity = 0;
         int asteroid_no = 0;                                // Zero if major planet or moon.
         bool lock_type = false;
+        std::string cloud_map_url;
 
         void setup_atm_ring_props();
         void apply_cosmic_shoreline();

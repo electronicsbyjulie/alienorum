@@ -40,28 +40,57 @@ void load_textures(CelestialObject* cel)
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.
     {
-        if (!strcmp(cel->name, "Earth"))
+        std::string cloud_jpg = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.jpg";
+        std::string cloud_png = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.png";
+        bool prefer_png = false;
+
+        cel_obj_class ccls = cel->typeclass();
+        if (ccls == class_planet || ccls == class_moon)
         {
-            check_and_download_earth_clouds();
+            Planet *p = (Planet*)cel;
+            if (p->cloud_map_url.size())
+            {
+                prefer_png = (p->cloud_map_url.size() >= 4 && !strcasecmp(p->cloud_map_url.substr(p->cloud_map_url.size() - 4).c_str(), ".png"));
+                check_and_download_clouds(p->cloud_map_url, prefer_png ? cloud_png : cloud_jpg);
+            }
         }
 
-        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.jpg";
-        if (file_exists(filename.c_str()))
+        if (prefer_png)
         {
-            Map *map = new Map(cel);
-            if (map->load_from_jpeg(filename))
+            if (file_exists(cloud_png.c_str()))
             {
-                cel->cloud_map = map;
-                cel->has_real_maps = true;
+                Map *map = new Map(cel);
+                if (map->load_from_png(cloud_png))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
+            }
+            else if (file_exists(cloud_jpg.c_str()))
+            {
+                Map *map = new Map(cel);
+                if (map->load_from_jpeg(cloud_jpg))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
         else
         {
-            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.png";
-            if (file_exists(filename.c_str()))
+            if (file_exists(cloud_jpg.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_png(filename))
+                if (map->load_from_jpeg(cloud_jpg))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
+            }
+            else if (file_exists(cloud_png.c_str()))
+            {
+                Map *map = new Map(cel);
+                if (map->load_from_png(cloud_png))
                 {
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
