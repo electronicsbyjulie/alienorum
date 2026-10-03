@@ -4442,7 +4442,13 @@ void draw_sunclock()
     CelestialObject *planet = cel->orbit ? cel->orbit->center : nullptr;
     if (planet && planet != sun)
     {
+        // NOTICE: If you reenable clouds on the little tiny planet icon,
+        // then you must modify alienorum.cpp to set earth_clouds_shown = true
+        // when in sun clock mode of a moon of cels[iamhome].
+        bool ltmpsc = show_clouds;
+        show_clouds = false;
         sc_draw_object(planet, cel);
+        show_clouds = ltmpsc;
     }
 }
 

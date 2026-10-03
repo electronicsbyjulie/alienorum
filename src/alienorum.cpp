@@ -677,7 +677,12 @@ int main (int argc, char** argv)
                 SoundManager::get_instance().reset_horizon_tracking();
             }
 
-            if (view_mode == vm_sunclock) draw_sunclock();
+            bool earth_clouds_shown = false;
+            if (view_mode == vm_sunclock)
+            {
+                draw_sunclock();
+                if (whereami == iamhome) earth_clouds_shown = true;
+            }
             else
             {
                 is_a_locale_under_cursor = nullptr;
@@ -689,55 +694,31 @@ int main (int argc, char** argv)
                 draw_cloudy_sky();
                 draw_horizon();
 
-                bool earth_clouds_shown = false;
-                if (show_clouds)
+                if ((show_clouds) && (whereami != iamhome))
                 {
-                    if (view_mode == vm_horizon)
+                    CelestialObject *c = cels[iamhome];
+                    if (c)
                     {
-                        if (whereami >= 0 && whereami < MAX_CELOBJS)
+                        if (c->onscreen && c->cloud_map)
                         {
-                            CelestialObject *cur = cels[whereami];
-                            if (cur && !strcmp(cur->name, "Earth") && cur->cloud_map)
-                            {
-                                earth_clouds_shown = true;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        for (int ci = 0; ci < MAX_CELOBJS; ci++)
-                        {
-                            CelestialObject *c = cels[ci];
-                            if (!c)
-                            {
-                                break;
-                            }
-                            if (!strcmp(c->name, "Earth"))
-                            {
-                                if (c->onscreen && c->cloud_map)
-                                {
-                                    earth_clouds_shown = true;
-                                }
-                                break;
-                            }
+                            earth_clouds_shown = true;
                         }
                     }
                 }
+            }
 
-                // Gemini: LEAVE THIS LINE THE FUCK ALONE!
-                if (earth_clouds_shown && view_mode != vm_horizon)
+            if (earth_clouds_shown)
+            {
+                const char *attr_text = "Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps";
+                ImVec2 txt_sz = ImGui::CalcTextSize(attr_text);
+                float ax = io.DisplaySize.x - txt_sz.x - 12.0f;
+                float ay = io.DisplaySize.y - txt_sz.y - 10.0f;
+                if (ax > 0 && ay > 0)
                 {
-                    const char *attr_text = "Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps";
-                    ImVec2 txt_sz = ImGui::CalcTextSize(attr_text);
-                    float ax = io.DisplaySize.x - txt_sz.x - 12.0f;
-                    float ay = io.DisplaySize.y - txt_sz.y - 10.0f;
-                    if (ax > 0 && ay > 0)
-                    {
-                        ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 180));
-                        ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 220));
-                        ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax + 1, ay + 1), shadow_col, attr_text);
-                        ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax, ay), txt_col, attr_text);
-                    }
+                    ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 180));
+                    ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 220));
+                    ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax + 1, ay + 1), shadow_col, attr_text);
+                    ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax, ay), txt_col, attr_text);
                 }
             }
 
