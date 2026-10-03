@@ -3,6 +3,7 @@
 #include <math.h>
 #include <nlohmann/json.hpp>
 #include "../classes/point.h"
+#include "../classes/misc.h"
 
 using namespace alienorum;
 
@@ -387,4 +388,32 @@ TEST(GeometryJsonTest, CelestialLocationRoundTrip)
     EXPECT_DOUBLE_EQ(restored.local_position.z, 9);
     EXPECT_DOUBLE_EQ(restored.orbital_plane.a, 0.5);
     EXPECT_DOUBLE_EQ(restored.distance_to(original), 0);
+}
+
+TEST(PointTest, Cartesian2DSkymapDeclinationContinuousAcrossPoles)
+{
+    ViewMode prev_vm = view_mode;
+    double prev_zoom = zoom;
+    view_mode = vm_skymap;
+    zoom = 2.0;
+
+    // Test with non-zero altitude pan (e.g. alt = -5.0 degrees)
+    double alt = -5.0 * (M_PI / 180.0);
+
+    // Two points near the north celestial pole (decl = +88 deg and +89.5 deg)
+    Point pt1 = Point::from_ra_dec(0.0, 88.0 * (M_PI / 180.0), 1.0, 0);
+    Point pt2 = Point::from_ra_dec(0.0, 89.5 * (M_PI / 180.0), 1.0, 0);
+
+    Cartesian2D c1(pt1, 0.0, alt, zoom);
+    Cartesian2D c2(pt2, 0.0, alt, zoom);
+
+    // Declination difference is 1.5 degrees, which in y should be a small smooth difference:
+    // delta_y should be approx (1.5 / 180.0) * zoom
+    EXPECT_NEAR(c1.y - c2.y, (1.5 / 180.0) * zoom, 1e-4);
+
+    // Ensure c2.y did not jump/wrap by 2*pi
+    EXPECT_LT(fabs(c2.y - c1.y), 0.1);
+
+    view_mode = prev_vm;
+    zoom = prev_zoom;
 }

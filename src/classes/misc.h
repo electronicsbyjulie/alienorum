@@ -88,6 +88,7 @@ using json = nlohmann::json;
 #define B_band 4.4e-7
 #define V_band 5.5e-7
 #define R_band 5.9e-7
+#define planet_bv_correction (-0.20)
 
 // https://en.wikipedia.org/wiki/Galactic_plane
 #define galactic_north_RA_J2000 ((12.0 + 51.0 / 60 + 26.282 / 3600) * 15 * fiftyseventh)
@@ -220,6 +221,8 @@ bool file_exists(const char* fname);
 std::time_t file_age(const char* fname);                                    // seconds
 
 bool download_file(std::string URL, std::string save_path);
+bool check_and_download_clouds(const std::string& URL, const std::string& save_path);
+bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path);
 std::vector<std::string> parse_csv_row(const char* data);
 time_t from_iso_string(std::string iso_string, const char* format = nullptr);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
@@ -292,7 +295,7 @@ extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, v
     neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz, viewer_home_tz, viewer_gamma, dev_dial, dev_dial_step;
 extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing,
-    generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain,
+    generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain, show_clouds,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames;

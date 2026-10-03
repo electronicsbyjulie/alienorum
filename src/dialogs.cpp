@@ -413,6 +413,9 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
     }
 
+    std::string JDdisp = std::string("JD") + std::to_string(JDnow);
+    ImGui::Text("%s", JDdisp.c_str());
+
     ImGui::Text(local_tmstep ? "Local Timestep (F10)" : "Earth Timestep (F10)");
 
     ImGui::Separator();
@@ -433,9 +436,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         numobjs = std::to_string(num_planets) + " planets";
         ImGui::Text("%s", numobjs.c_str());
     } */
-
-    std::string JDdisp = std::string("JD") + std::to_string(JDnow);
-    ImGui::Text("%s", JDdisp.c_str());
 
     float frame_rate = 1.0 / frame_dur;
     ImGui::Text("%.1f frames/s", frame_rate);
@@ -474,27 +474,30 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         }
 
         ImGuiComboFlags cbovp_flags = 0;
-        const char* combo_vp_value = vptext[vplane_mode];
-        ImGui::Text("%s", "View Plane:");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(123);
-        if (ImGui::BeginCombo("##cbovp", combo_vp_value, cbovp_flags))
+        if (view_mode == vm_spaceship || view_mode == vm_skymap)
         {
-            for (int n = 0; n < NUM_VPLANES; n++)
+            const char* combo_vp_value = vptext[vplane_mode];
+            ImGui::Text("%s", "View Plane:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(123);
+            if (ImGui::BeginCombo("##cbovp", combo_vp_value, cbovp_flags))
             {
-                const bool is_selected = (n == vplane_mode);
-                if (ImGui::Selectable(vptext[n], is_selected))
+                for (int n = 0; n < NUM_VPLANES; n++)
                 {
-                    vplane_mode = (ViewerPlaneMode)n;
-                    set_viewer_location_and_plane();
-                    viewchanged = true;
-                }
+                    const bool is_selected = (n == vplane_mode);
+                    if (ImGui::Selectable(vptext[n], is_selected))
+                    {
+                        vplane_mode = (ViewerPlaneMode)n;
+                        set_viewer_location_and_plane();
+                        viewchanged = true;
+                    }
 
-                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                if (n == vplane_mode)
-                    ImGui::SetItemDefaultFocus();
+                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                    if (n == vplane_mode)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
         }
 
         if (view_mode == vm_horizon)
@@ -596,7 +599,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                 viewer_theme = themes[n];
                 global_style.load(themes[n]);
                 apply_default_style();
-                save_user_json();
             }
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
@@ -650,6 +652,10 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
 
         objname = cels[i]->name;
         ImGui::Text("%s", objname.c_str());
+        if (!strcmp(cels[i]->name, "Earth") && cels[i]->cloud_map)
+        {
+            ImGui::TextWrapped("Clouds: Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps");
+        }
         ImGui::Separator();
 
         if (cels[i]->type == star)
@@ -693,10 +699,18 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                        poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
                 while (poleDecl > half_pi) poleDecl -= _pi*2;
 
+                // Pole has to be in ICRF coordinates to identify constellation.
+                Constellation *c = identify_cons_from_coords(poleRA, poleDecl);
+
+                // Convert it to local coordinates for RA/decl display.
+                pole = to_viewer_plane(pole, -1);
+                poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2);
+                poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
+                while (poleDecl > half_pi) poleDecl -= _pi*2;
+
                 ImGui::Text("PoleRA:   %s", radians_to_hms(poleRA).c_str());
                 ImGui::Text("PoleDecl: %s", radians_to_degms(poleDecl).c_str());
 
-                Constellation *c = identify_cons_from_coords(poleRA, poleDecl);
                 if (c) ImGui::Text("          %s", c->name.c_str());
             }
 
@@ -2483,12 +2497,14 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Select##explored"))
     {
         selected = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         viewchanged = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Find##explored"))
     {
         selected = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         center_selected();
         viewchanged = true;
     }
@@ -2496,6 +2512,7 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Track##explored"))
     {
         trackidx = celidx_sel_in_sysxplor;
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         center_tracked();
         viewchanged = true;
     }
@@ -2512,6 +2529,22 @@ void draw_system_explorer(ImGuiIO& io)
             global_brightness = default_brightness;
             zoom = 1;
             viewchanged = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Rise##explored"))
+    {
+        if (celidx_sel_in_sysxplor >= 0)
+        {
+            cels[celidx_sel_in_sysxplor]->alert_rise = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Set##explored"))
+    {
+        if (celidx_sel_in_sysxplor >= 0)
+        {
+            cels[celidx_sel_in_sysxplor]->alert_set = true;
         }
     }
     ImGui::SameLine();
@@ -2634,11 +2667,6 @@ void draw_system_explorer(ImGuiIO& io)
     if (ImGui::Button("Add Satellite...##explored"))
     {
         process_key_cmd_char('^');
-    }
-    ImGui::SameLine();
-    if (0 && ImGui::Button("Visualize (Ctrl+V)##explored"))
-    {
-        process_key_cmd_ctrl_char('V');
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
@@ -2798,6 +2826,22 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             viewchanged = true;
         }
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Rise##neighbors"))
+    {
+        if (neighb_celids[item_selected_idx] >= 0)
+        {
+            cels[neighb_celids[item_selected_idx]]->alert_rise = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Set##neighbors"))
+    {
+        if (neighb_celids[item_selected_idx] >= 0)
+        {
+            cels[neighb_celids[item_selected_idx]]->alert_set = true;
+        }
+    }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
@@ -2890,6 +2934,16 @@ void draw_loc_window(ImGuiIO & io)
         viewer_lon = sellon;
         viewer_tz = seltz;
         viewer_locale = selloc;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Set Home"))
+    {
+        viewer_lat = viewer_home_lat = sellat;
+        viewer_lon = viewer_home_lon = sellon;
+        viewer_tz  = viewer_home_tz  = seltz;
+        viewer_locale = selloc;
+        save_user_json();
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
@@ -3247,31 +3301,98 @@ void draw_sat_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
-#if 0
-// Use this template to add new windows to the application.
-
-// Replace wndbool with a new boolean you create in misc.h and misc.cpp. It will control whether the window is displayed.
-
-void draw_app_window_template(ImGuiIO& io)
+void draw_favestars_window(ImGuiIO & io)
 {
     if (!cels[1]) return;
-    ImGui::Begin("Window Name", &wnd, 0);                       // Replace wnd with a new dedicated bool.
+    ImGui::Begin("Favorite Stars", &show_favestars, 0);
 
-    ImGui::Text("%s", "Text Field");                            // Example text label.
+    if (!favestars.size())
+    {
+        ImGui::Text("You don't have any favorite stars yet. To favorite a star, select it and");
+        ImGui::Text("press Ctrl+D, and it will appear in this list now and in future sessions.");
+    }
+
+    int n;
+    static unsigned int item_selected_idx = -1;
+    int item_highlighted_idx = -1;
+    if (ImGui::BeginListBox("##favestarlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))
+    {
+        n = 0;
+        for (const Star *s : favestars)
+        {
+            bool is_selected = (item_selected_idx == n);
+
+            ImGuiSelectableFlags flags = ((int64_t)item_highlighted_idx == (int64_t)n) ? ImGuiSelectableFlags_Highlight : 0;
+            if (ImGui::Selectable(s->name, is_selected, flags))
+                item_selected_idx = n;
+
+            if (is_selected)
+                ImGui::SetItemDefaultFocus();
+
+            n++;
+        }
+
+        ImGui::EndListBox();
+    }
+
+    if (item_selected_idx >= favestars.size()) item_selected_idx = 0;
+    if (ImGui::Button("Select##favestarlist"))
+    {
+        selected = favestars[item_selected_idx]->seqno;
+        viewchanged = true;
+    }
     ImGui::SameLine();
-    ImGui::InputText("##textdata", text_data, 256, 0);          // Replace the ## string with a unique id and text_data with a char array.
-
-    // Add the main body of the window here.
+    if (ImGui::Button("Find##favestarlist"))
+    {
+        selected = favestars[item_selected_idx]->seqno;
+        center_selected();
+        viewchanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Go##favestarlist"))
+    {
+        if (item_selected_idx >= 0)
+        {
+            whereami = favestars[item_selected_idx]->seqno;
+            viewer_locale = "";
+            set_viewer_location_and_plane();
+            selected = trackidx = -1;
+            global_brightness = default_brightness;
+            zoom = 1;
+            viewchanged = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Rise##favestarlist"))
+    {
+        if (item_selected_idx >= 0)
+        {
+            favestars[item_selected_idx]->alert_rise = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Alert on Set##favestarlist"))
+    {
+        if (item_selected_idx >= 0)
+        {
+            favestars[item_selected_idx]->alert_set = true;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Remove##favestarlist"))
+    {
+        favestars.erase(favestars.begin() + item_selected_idx);
+        save_user_json();
+    }
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
-    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImVec2 cpos = ImGui::GetWindowPos(), csiz = ImGui::GetWindowSize();
     ImGui::End();
 
     // Code to ensure mouse interacts with window and not viewport.
-    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+    if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
 }
-#endif
 
 void draw_comet_window(ImGuiIO & io)
 {
@@ -3419,3 +3540,30 @@ void draw_comet_window(ImGuiIO & io)
     if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
 }
+
+
+#if 0
+// Use this template to add new windows to the application.
+
+// Replace wndbool with a new boolean you create in misc.h and misc.cpp. It will control whether the window is displayed.
+
+void draw_app_window_template(ImGuiIO& io)
+{
+    if (!cels[1]) return;
+    ImGui::Begin("Window Name", &wnd, 0);                       // Replace wnd with a new dedicated bool.
+
+    ImGui::Text("%s", "Text Field");                            // Example text label.
+    ImGui::SameLine();
+    ImGui::InputText("##textdata", text_data, 256, 0);          // Replace the ## string with a unique id and text_data with a char array.
+
+    // Add the main body of the window here.
+
+    ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+    ImGui::End();
+
+    // Code to ensure mouse interacts with window and not viewport.
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        is_mouse_over_window = true;
+}
+#endif

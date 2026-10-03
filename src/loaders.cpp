@@ -40,23 +40,57 @@ void load_textures(CelestialObject* cel)
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.
     {
-        filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.jpg";
-        if (file_exists(filename.c_str()))
+        std::string cloud_jpg = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.jpg";
+        std::string cloud_png = (std::string)"maps" + _FSSTR + (std::string)cel->name + "_clouds.png";
+        bool prefer_png = false;
+
+        cel_obj_class ccls = cel->typeclass();
+        if (ccls == class_planet || ccls == class_moon)
         {
-            Map *map = new Map(cel);
-            if (map->load_from_jpeg(filename))
+            Planet *p = (Planet*)cel;
+            if (p->cloud_map_url.size())
             {
-                cel->cloud_map = map;
-                cel->has_real_maps = true;
+                prefer_png = (p->cloud_map_url.size() >= 4 && !strcasecmp(p->cloud_map_url.substr(p->cloud_map_url.size() - 4).c_str(), ".png"));
+                check_and_download_clouds(p->cloud_map_url, prefer_png ? cloud_png : cloud_jpg);
+            }
+        }
+
+        if (prefer_png)
+        {
+            if (file_exists(cloud_png.c_str()))
+            {
+                Map *map = new Map(cel);
+                if (map->load_from_png(cloud_png))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
+            }
+            else if (file_exists(cloud_jpg.c_str()))
+            {
+                Map *map = new Map(cel);
+                if (map->load_from_jpeg(cloud_jpg))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
             }
         }
         else
         {
-            filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.png";
-            if (file_exists(filename.c_str()))
+            if (file_exists(cloud_jpg.c_str()))
             {
                 Map *map = new Map(cel);
-                if (map->load_from_png(filename))
+                if (map->load_from_jpeg(cloud_jpg))
+                {
+                    cel->cloud_map = map;
+                    cel->has_real_maps = true;
+                }
+            }
+            else if (file_exists(cloud_png.c_str()))
+            {
+                Map *map = new Map(cel);
+                if (map->load_from_png(cloud_png))
                 {
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
@@ -742,24 +776,35 @@ void load_catalogs()
     std::cout << "Loaded data in " << elapsed << std::endl;
 }
 
-void read_cons_lines()
+static void parse_cons_lines_file(const char* filename, int& l, std::string& vantage_name)
 {
-    int l;
-    FILE* fp = fopen("consline.dat", "rb");
+    FILE* fp = fopen(filename, "rb");
     if (fp)
     {
         char buffer[65536];
-        l = -1;
         while (fgets(buffer, 65532, fp))
         {
             char* newline = strchr(buffer, '\n');
-            if (newline) *newline = 0;
+            if (newline)
+            {
+                *newline = 0;
+            }
             newline = strchr(buffer, '\r');
-            if (newline) *newline = 0;
+            if (newline)
+            {
+                *newline = 0;
+            }
+            if (*buffer == ':')
+            {
+                vantage_name = trim(&buffer[1]);
+            }
             if (*buffer == '~')
             {
                 char* name2 = strchr(buffer, ',');
-                if (!name2) continue;
+                if (!name2)
+                {
+                    continue;
+                }
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -783,16 +828,25 @@ void read_cons_lines()
                     Constellation c;
                     c.name = name2;
                     c.abbrev = &buffer[1];
-                    if (name3 && strlen(name3)) c.genitive = name3;
+                    if (name3 && strlen(name3))
+                    {
+                        c.genitive = name3;
+                    }
+                    c.vantage_name = vantage_name;
+                    c.vantage_resolved = false;
                     constellations.push_back(c);
+                    num_reg_cons++;
                     l++;
                 }
             }
-            else if (l>=0)
+            else if (l >= 0)
             {
-                char *name1=buffer, *name2, *name3;
+                char *name1 = buffer, *name2, *name3;
                 name2 = strchr(name1, ',');
-                if (!name2) goto _no_more_names;
+                if (!name2)
+                {
+                    goto _no_more_names;
+                }
                 *name2 = 0;
                 name2++;
                 while (*name2 == ' ')
@@ -825,7 +879,8 @@ void read_cons_lines()
 
                     name1 = name2;
                     name2 = name3;
-                } while (name3);
+                }
+                while (name3);
             }
 
             _no_more_names:
@@ -833,6 +888,14 @@ void read_cons_lines()
         }
         fclose(fp);
     }
+}
+
+void read_cons_lines()
+{
+    int l = (int)constellations.size() - 1;
+    std::string vantage_name;
+    parse_cons_lines_file("consline.dat", l, vantage_name);
+    parse_cons_lines_file("exocons.dat", l, vantage_name);
 }
 
 void cache_cons_lines()
@@ -843,6 +906,24 @@ void cache_cons_lines()
 
     for (int i = 0; i < ncons; i++)
     {
+        if (!constellations[i].vantage_resolved)
+        {
+            if (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol")
+            {
+                constellations[i].vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+                constellations[i].vantage_resolved = true;
+            }
+            else
+            {
+                int sidx = find_object(constellations[i].vantage_name.c_str(), true);
+                if (sidx >= 0 && cels && cels[sidx])
+                {
+                    constellations[i].vantage = cels[sidx]->location;
+                    constellations[i].vantage_resolved = true;
+                }
+            }
+        }
+
         double mag_limit = (i == 34) ? 7.5 : 6.5;
 
         mtx.lock();
@@ -974,6 +1055,7 @@ void load_stuff()
     mtx.unlock();
     Star::load_main_seq_dat();
 
+    std::vector<std::string> lfaves;
     fstream fs("user.json", std::ios::in);
     if (fs)
     {
@@ -988,6 +1070,57 @@ void load_stuff()
         try { j.at( (std::string("Theme") + std::to_string(wkday)).c_str() ).get_to(viewer_theme); } catch(...) { ; }
         try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
+
+        try
+        {
+            j.at("FaveStars").get_to(lfaves);
+        }
+        catch (...)
+        {
+            ;
+        }
+
+        try
+        {
+            j.at("PlayRiseSetSounds").get_to(play_rise_set_sound);
+        }
+        catch (...)
+        {
+            ;
+        }
+
+        try
+        {
+            j.at("RiseSound").get_to(rise_sound_path);
+        }
+        catch (...)
+        {
+            try
+            {
+                j.at("RiseSoundPath").get_to(rise_sound_path);
+            }
+            catch (...)
+            {
+                ;
+            }
+        }
+
+        try
+        {
+            j.at("SetSound").get_to(set_sound_path);
+        }
+        catch (...)
+        {
+            try
+            {
+                j.at("SetSoundPath").get_to(set_sound_path);
+            }
+            catch (...)
+            {
+                ;
+            }
+        }
+
         fs.close();
     }
     else
@@ -1020,6 +1153,16 @@ void load_stuff()
     if (load_aborted() || !cels[0])
     {
         return;
+    }
+
+    for (const std::string& favename : lfaves)
+    {
+        int i = find_object(favename.c_str(), true);
+        if (i >= 0 && cels[i]->typeclass() == class_star)
+        {
+            favestars.push_back((Star*)cels[i]);
+            ((Star*)cels[i])->is_faved = true;
+        }
     }
 
     mtx.lock();
@@ -1057,46 +1200,84 @@ void load_stuff()
 
 void reload_stuff()
 {
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing spectral types...";
-    mtx.unlock();
-    Star::load_main_seq_dat();
-
-    CatalogReader cr;
-    constellations.clear();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing constellations...";
-    mtx.unlock();
-    read_cons_lines();
-    cr.read_cons_boundaries();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Assigning stars to constellations...";
-    mtx.unlock();
-    cache_cons_lines();
-
-    if (abort_load) return;
-    mtx.lock();
-    loading_msg = "Refreshing star orbits...";
-    mtx.unlock();
-    cr.read_star_orbits_dat(cels);
-
-    int i;
-    for (i=0; cels[i]; i++)
+    struct ReloadGuard
     {
-        delete[] cels[i]->locales;
-        cels[i]->locales = nullptr;
-        cels[i]->nlocales = 0;
-    }
+        ~ReloadGuard()
+        {
+            mtx.lock();
+            splash = false;
+            mtx.unlock();
+            is_reloading = false;
+        }
+    } guard;
 
-    mtx.lock();
-    loading_msg = "Done!";
-    splash = false;
-    mtx.unlock();
+    try
+    {
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing spectral types...";
+        mtx.unlock();
+        Star::load_main_seq_dat();
+
+        cons4lbl = nullptr;
+        is_a_locale_under_cursor = nullptr;
+        selected_locale = nullptr;
+
+        CatalogReader cr;
+        constellations.clear();
+        num_reg_cons = 0;
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing constellations...";
+        mtx.unlock();
+        read_cons_lines();
+        cr.read_cons_boundaries();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Assigning stars to constellations...";
+        mtx.unlock();
+        cache_cons_lines();
+
+        if (abort_load)
+        {
+            return;
+        }
+        mtx.lock();
+        loading_msg = "Refreshing star orbits...";
+        mtx.unlock();
+        cr.read_star_orbits_dat(cels);
+
+        int i;
+        for (i=0; cels[i]; i++)
+        {
+            delete[] cels[i]->locales;
+            cels[i]->locales = nullptr;
+            cels[i]->nlocales = 0;
+        }
+
+        mtx.lock();
+        loading_msg = "Done!";
+        mtx.unlock();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception in reload_stuff: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown exception in reload_stuff." << std::endl;
+    }
 }
 
 bool save_user_json()
@@ -1112,8 +1293,22 @@ bool save_user_json()
         j["Latitude"] = viewer_lat * fiftyseven;
         j["Longitude"] = viewer_lon * fiftyseven;
         j["Timezone"] = (int)(viewer_home_tz / 60);
-        j["Theme"] = viewer_theme;
+        j["Theme"] = themes[themes_selected_idx];
         j["Gamma"] = global_gamma;
+
+        std::vector<std::string> favenames;
+        for (const Star *s : favestars) favenames.push_back(s->name);
+        j["FaveStars"] = favenames;
+
+        j["PlayRiseSetSounds"] = play_rise_set_sound;
+        if (!rise_sound_path.empty())
+        {
+            j["RiseSound"] = rise_sound_path;
+        }
+        if (!set_sound_path.empty())
+        {
+            j["SetSound"] = set_sound_path;
+        }
 
         std::fstream fso("user.json", std::ios::out);
         fso << j.dump(4);

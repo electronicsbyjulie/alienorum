@@ -18,6 +18,8 @@
 #include "visuals.h"
 #include "sphere_impostor.h"
 #include "classes/sscimport.h"
+#include "classes/exocons.h"
+#include "classes/sound.h"
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 
 using namespace alienorum;
@@ -339,7 +341,7 @@ int main (int argc, char** argv)
 #ifdef _WIN32
     ::SetProcessDPIAware();
 #endif
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0)
     {
         printf("Error: %s\n", SDL_GetError());
         return 1;
@@ -629,8 +631,19 @@ int main (int argc, char** argv)
         else
         {
             mouse_over_menu = menu && (io.MousePos.y < menu_ht);
-            if (menu) show_menu();
-            if (menu_clicked || splash) goto _render;                       // Prevent click-selecting object behind menu and prevent crash if user reloads constellations.
+            if (menu)
+            {
+                show_menu();
+            }
+            static bool just_clicked_menu = false;
+            if (menu_clicked)
+            {
+                just_clicked_menu = true;
+            }
+            if (menu_clicked || splash)
+            {
+                goto _render;                       // Prevent click-selecting object behind menu and prevent crash if user reloads constellations.
+            }
 
             dispcx = (int)io.DisplaySize.x / 2;
             dispcy = (int)io.DisplaySize.y / 2;
@@ -650,15 +663,18 @@ int main (int argc, char** argv)
 
             set_viewer_location_and_plane();
             compute_object_draw_coordinates();
+            ExoConsGenerator::update_frame();
             if (view_mode == vm_horizon)
             {
                 find_horizon();
                 draw_sky_gradient();
+                SoundManager::get_instance().check_rise_set_alerts();
             }
             else
             {
                 sky_grad.clear();
                 sky_mag_shift = 0;
+                SoundManager::get_instance().reset_horizon_tracking();
             }
 
             if (view_mode == vm_sunclock) draw_sunclock();
@@ -672,6 +688,57 @@ int main (int argc, char** argv)
                 draw_objects();
                 draw_cloudy_sky();
                 draw_horizon();
+
+                bool earth_clouds_shown = false;
+                if (show_clouds)
+                {
+                    if (view_mode == vm_horizon)
+                    {
+                        if (whereami >= 0 && whereami < MAX_CELOBJS)
+                        {
+                            CelestialObject *cur = cels[whereami];
+                            if (cur && !strcmp(cur->name, "Earth") && cur->cloud_map)
+                            {
+                                earth_clouds_shown = true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (int ci = 0; ci < MAX_CELOBJS; ci++)
+                        {
+                            CelestialObject *c = cels[ci];
+                            if (!c)
+                            {
+                                break;
+                            }
+                            if (!strcmp(c->name, "Earth"))
+                            {
+                                if (c->onscreen && c->cloud_map)
+                                {
+                                    earth_clouds_shown = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Gemini: LEAVE THIS LINE THE FUCK ALONE!
+                if (earth_clouds_shown && view_mode != vm_horizon)
+                {
+                    const char *attr_text = "Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps";
+                    ImVec2 txt_sz = ImGui::CalcTextSize(attr_text);
+                    float ax = io.DisplaySize.x - txt_sz.x - 12.0f;
+                    float ay = io.DisplaySize.y - txt_sz.y - 10.0f;
+                    if (ax > 0 && ay > 0)
+                    {
+                        ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 180));
+                        ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 220));
+                        ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax + 1, ay + 1), shadow_col, attr_text);
+                        ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax, ay), txt_col, attr_text);
+                    }
+                }
             }
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
@@ -700,19 +767,31 @@ int main (int argc, char** argv)
             if (satwnd) draw_sat_window(io);
             if (neighborhood) draw_stellar_neighborhood(io);
             if (locwnd) draw_loc_window(io);
+            if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
 
-            if (!is_mouse_over_window && !dragging)
+            if (just_clicked_menu)
+            {
+                is_click = false;
+                just_clicked_menu = false;
+            }
+            else if (!is_mouse_over_window && !mouse_over_menu && !io.WantCaptureMouse && !dragging)
             {
                 is_click = io.MouseReleased[0];
                 // if (is_click) std::cout << "CLICK! Last click = " << (simnow - last_click) << " seconds ago." << std::endl;
-                if (is_click && (simnow - last_click) < (frame_dur*2 + 0.2) && distance(last_click_pos, io.MousePos) < 3) is_dbl_click = true;
+                if (is_click && (simnow - last_click) < (frame_dur*2 + 0.2) && distance(last_click_pos, io.MousePos) < 3)
+                {
+                    is_dbl_click = true;
+                }
                 if (is_click)
                 {
                     last_click = simnow;
                     last_click_pos = io.MousePos;
                 }
-                if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2)) draw_mouse_cursor(io);
+                if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseDown(1) && !ImGui::IsMouseDown(2))
+                {
+                    draw_mouse_cursor(io);
+                }
                 identify_object_under_cursor(io);
             }
 
@@ -766,7 +845,7 @@ int main (int argc, char** argv)
             }
 
             // Scroll wheel to zoom
-            if (!is_mouse_over_window)
+            if (!is_mouse_over_window && !mouse_over_menu && !io.WantCaptureMouse)
             {
                 if (io.MouseWheel > 0)
                 {
@@ -931,6 +1010,30 @@ int main (int argc, char** argv)
                 fdlg_shown = false;
             }
 
+            if (ImGuiFileDialog::Instance()->Display("ChooseRiseSoundDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
+            {
+                if (ImGuiFileDialog::Instance()->IsOk())
+                {
+                    rise_sound_path = ImGuiFileDialog::Instance()->GetFilePathName();
+                    save_user_json();
+                }
+
+                ImGuiFileDialog::Instance()->Close();
+                fdlg_shown = false;
+            }
+
+            if (ImGuiFileDialog::Instance()->Display("ChooseSetSoundDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
+            {
+                if (ImGuiFileDialog::Instance()->IsOk())
+                {
+                    set_sound_path = ImGuiFileDialog::Instance()->GetFilePathName();
+                    save_user_json();
+                }
+
+                ImGuiFileDialog::Instance()->Close();
+                fdlg_shown = false;
+            }
+
             was_mouse_down = is_mouse_down;
         }
         if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
@@ -992,16 +1095,21 @@ int main (int argc, char** argv)
             if (nameidx < 0) nameidx = whereami;
 
             std::string snapname = (nameidx >= 0)
-                ? cels[nameidx]->name
+                ? ((view_mode == vm_system) ? (std::string(mycenobj->name) + std::string(".system")) : cels[nameidx]->name)
                 : "snapshot"
+                ;
+
+            std::string subject = (biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
+                ? (std::string(biggest_cel->name) + std::string("."))
+                : std::string("")
                 ;
             
             if (view_mode == vm_skymap) snapname += ".skymap";
             if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             shnapsot_fname << snapdir << _FILESLASH
-                << snapname
-                << "." 
+                << subject
+                << snapname << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";
 
@@ -1108,6 +1216,7 @@ int main (int argc, char** argv)
 
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
+    SoundManager::get_instance().close_audio();
     SDL_Quit();
     return 0;
 }

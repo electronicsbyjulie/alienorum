@@ -296,7 +296,17 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
 {
     CatalogReader cr;
     radio_silence = true;
+
+    Star* star_82eri = make_star("82 Eri");
+    star_82eri->HD = 20794;
+    hdcache[20794] = star_82eri;
+
+    Star* star_epseri = make_star("eps Eri");
+    star_epseri->HD = 22049;
+    hdcache[22049] = star_epseri;
+
     cr.load_exoplanets_from_tap(true);
+    cr.read_star_orbits_dat(cels);
     unsigned int nexo = cr.load_exoplanets_from_tap();
     EXPECT_GT(nexo, 5000u);
 
@@ -316,6 +326,91 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
     int idx_c = find_object("PDS 70 c", false);
     EXPECT_GE(idx_c, 0);
 
+    // Verify AEgir (eps Eri b) was matched from exoname.dat
+    int idx_aegir = find_object("AEgir", false);
+    EXPECT_GE(idx_aegir, 0);
+    if (idx_aegir >= 0)
+    {
+        Planet* pa = (Planet*)cels[idx_aegir];
+        ASSERT_NE(pa, nullptr);
+        EXPECT_STREQ(pa->name, "AEgir");
+    }
+
+    // Verify 82 Eridani system
+    int idx_82b = find_object("82 Eri b", false);
+    EXPECT_GE(idx_82b, 0);
+    if (idx_82b >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82b];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        EXPECT_TRUE(s->has_disk);
+        EXPECT_NEAR(s->planets_heliocen_inclination, s->disk_heliocen_inclination, 0.01);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl, s->disk_heliocen_inclination, 0.02);
+        EXPECT_NEAR(p->orbit->period / oneday, 18.3, 0.5);
+        EXPECT_NEAR(p->mass / earth_mass, 2.81, 0.2);
+    }
+
+    int idx_82c = find_object("82 Eri c", false);
+    EXPECT_GE(idx_82c, 0);
+    if (idx_82c >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82c];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        EXPECT_TRUE(s->has_disk);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl, s->disk_heliocen_inclination, 0.02);
+        EXPECT_NEAR(p->orbit->period / oneday, 89.7, 1.0);
+        EXPECT_NEAR(p->mass / earth_mass, 3.29, 0.2);
+    }
+
+    int idx_82e = find_object("82 Eri e", false);
+    EXPECT_GE(idx_82e, 0);
+    if (idx_82e >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82e];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        EXPECT_TRUE(s->has_disk);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl, s->disk_heliocen_inclination, 0.02);
+        EXPECT_NEAR(p->orbit->period / oneday, 147.0, 1.0);
+        EXPECT_NEAR(p->mass / earth_mass, 6.23, 0.2);
+    }
+
+    int idx_82d = find_object("82 Eri d", false);
+    EXPECT_GE(idx_82d, 0);
+    if (idx_82d >= 0)
+    {
+        Planet* p = (Planet*)cels[idx_82d];
+        ASSERT_NE(p->orbit, nullptr);
+        Star* s = (Star*)p->cenobj;
+        ASSERT_NE(s, nullptr);
+        EXPECT_TRUE(s->has_disk);
+        p->update_location(simnow);
+        double czincl = 0, cznode = 0;
+        incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
+        EXPECT_NEAR(czincl, s->disk_heliocen_inclination, 0.02);
+        EXPECT_NEAR(p->orbit->period / oneday, 648.0, 5.0);
+        EXPECT_NEAR(p->mass / earth_mass, 7.60, 0.2);
+    }
+
+    EXPECT_EQ(find_object("82 Eri f", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("HD 20794 d", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("HD 20794 f", false, 9e29, 0), -1);
+    hdcache[20794] = nullptr;
+    hdcache[22049] = nullptr;
     delete_the_universe();
 }
 
@@ -390,6 +485,29 @@ TEST_F(CatalogParsingTest, DedupPlanetsPreservesBinaryCompanions)
     EXPECT_EQ(dup_planets.size(), 1u);
     EXPECT_EQ(dup_planets[0]["pl_name"], "Alpha Cet b");
     EXPECT_EQ(dup_planets[0]["hd_name"], "HD 12345");
+}
+
+TEST_F(CatalogParsingTest, SpheroidGalaxyHasCatalogInclinationAndSpheroidType)
+{
+    CatalogReader cr;
+    int n = cr.read_UNGC_catalog(cels, MAX_CELOBJS);
+    ASSERT_GT(n, 0);
+
+    Galaxy* sag = nullptr;
+    for (int i = 0; cels[i]; i++)
+    {
+        if (!strcmp(cels[i]->name, "Sag dSph"))
+        {
+            sag = (Galaxy*)cels[i];
+            break;
+        }
+    }
+
+    ASSERT_NE(sag, nullptr);
+    EXPECT_DOUBLE_EQ(sag->axis_ratio, 0.48);
+    EXPECT_NEAR(sag->inclination, half_pi, 1e-4);
+    EXPECT_DOUBLE_EQ(sag->morphological_T, -3.0);
+    EXPECT_TRUE(sag->is_spheroidal_or_elliptical());
 }
 
 

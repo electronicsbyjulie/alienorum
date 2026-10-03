@@ -11,6 +11,8 @@ using namespace alienorum;
 double msq_mass[70], msq_rad[70], msq_lum[70], msq_temp[70], msq_BV[70];
 Star **hdcache = nullptr, **hipcache = nullptr;
 std::map<std::string, Star*> dmcache;
+std::vector<Star*> favestars;
+bool show_favestars = false, label_favestars = true;
 
 // Canonical key for a Durchmusterung designation, e.g. survey="BD", declination=-2, sequential=5958
 // -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().
@@ -297,13 +299,14 @@ bool Star::is_sunlike()
 
 bool Star::is_in_visible_box(Point seen_from)
 {
+    if (is_faved) return true;
     if (visible_area_set && frand(0,1) > 0.03) return _is_in_visible_range;
     return is_really_truly_in_visible_box(seen_from);
 }
 
 bool Star::is_really_truly_in_visible_box(Point seen_from)
 {
-    if (_is_always_visible) return true;
+    if (_is_always_visible || is_faved) return true;
     double effmag = variability_period ? minmag : apparent_magnitude;
     double cutoff_dist = (pow(100.0, 0.2*(normal_best_mag_limit-effmag)) * distance) * global_brightness;
     visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + (Point)location;
@@ -747,20 +750,30 @@ bool Star::is_main_sequence() const
         return false;
     }
 
+    const char* lsptyp = spectral_type;
+
+    while (*lsptyp <= ' ')
+    {
+        lsptyp++;
+        if (!*lsptyp) return false;
+    }
+
     // Check for 'd' prefix (e.g. "dM3", "dK5", "dG2")
-    if (spectral_type[0] == 'd' && spectral_type[1] >= 'A' && spectral_type[1] <= 'M')
+    if (lsptyp[0] == 'd' && lsptyp[1] >= 'A' && lsptyp[1] <= 'M')
     {
         return true;
     }
 
+    if (!strchr("OBAFGKM", lsptyp[0])) return false;
+
     // Look for luminosity class 'V'
-    for (int i = 0; spectral_type[i]; i++)
+    for (int i = 0; lsptyp[i]; i++)
     {
-        if (spectral_type[i] == 'V')
+        if (lsptyp[i] == 'V')
         {
             // Avoid "IV" (subgiant) or "VI" (subdwarf)
-            bool prev_I = (i > 0 && spectral_type[i - 1] == 'I');
-            bool next_I = (spectral_type[i + 1] == 'I');
+            bool prev_I = (i > 0 && lsptyp[i - 1] == 'I');
+            bool next_I = (lsptyp[i + 1] == 'I');
             if (!prev_I && !next_I)
             {
                 return true;

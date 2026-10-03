@@ -244,6 +244,11 @@ namespace alienorum
         void generate_stellar_map(CelestialObject *cel);
         void generate_ring_map(CelestialObject *cel, int resolution, double rel_inner_radius, double mean_opacity, Map* transparency_map);
         void mark_for_map_regen(CelestialObject *cel, bool discard_bump = false);
+        void overlay_cloud_map(Map *clouds);
+        void obscure_with_clouds(Map *clouds);
+        bool create_merged_day(Map *surf, Map *clouds);
+        bool create_merged_night(Map *night, Map *clouds);
+        virtual ~Map();
 
         // For the GPU texture cache (gputex.h): size of the equirectangular grid, and a bulk
         // RGBA8 export into a caller-allocated width*height*4 buffer, so the channel arrays
@@ -329,6 +334,10 @@ namespace alienorum
 
         Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,
             *ring_map = nullptr, *ringx_map = nullptr;
+        Map *merged_day_map = nullptr, *merged_night_map = nullptr;
+        unsigned int merged_day_cloud_gen = 0, merged_day_surf_gen = 0;
+        unsigned int merged_night_cloud_gen = 0, merged_night_map_gen = 0;
+        bool transparent_clouds = false;
         bool has_real_maps = false;
         Locale *locales = nullptr;
         int nlocales = 0;
@@ -337,9 +346,15 @@ namespace alienorum
         unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
         bool onscreen = false;
         bool label_shown = false;
+        bool alert_rise = false;
+        bool alert_set = false;
+        double prev_horizon_alt = -999.0;
+        bool has_prev_horizon_alt = false;
 
         CelestialObject();
-        virtual ~CelestialObject() = default;
+        virtual ~CelestialObject();
+        Map* get_day_map();
+        Map* get_night_map();
         CelestialLocation location;
         bool lock_equatorial_plane = false, lock_system_plane = false;
         Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
@@ -397,8 +412,9 @@ Point to_viewer_plane(Point pt, int sign = 1);
 
 extern bool *celskip, *discinstead;
 extern double *vmag_cache, *bloomrad_cache, *angular_radius;
+extern CelestialObject *biggest_cel;
 extern CelestialLocation here;
-extern double azimuth_correction;
+extern double azimuth_correction, bigcel_sz;
 extern Locale *is_a_locale_under_cursor, *selected_locale;
 
 extern std::vector<CelestialObject*> lsyscache;

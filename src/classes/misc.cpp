@@ -7,6 +7,7 @@
 #include <math.h>
 #include <cmath>
 #include <fstream>
+#include <mutex>
 #include <ctime>
 #include <curl/curl.h>
 #include <archive.h>
@@ -81,6 +82,7 @@ bool neighborhood = false;
 bool locwnd = false;
 bool show_taucalc = false;
 bool show_terrain = true;
+bool show_clouds = true;
 bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;
@@ -106,7 +108,7 @@ bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, h
     have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
     noexo = false, nosats = false, radio_silence = false, keyprobe = false, local_tmstep = false;
 int cbolbls_selected_idx = lbltype_brightest, cboceltyp_selected_idx = 0, celidx_sel_in_sysxplor = 0, first_sat = -1;
-double bv_correction = -.625;
+double bv_correction = -0.6244;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
@@ -626,12 +628,23 @@ bool file_exists(const char *fname)
 
 std::time_t file_age(const char *fname)
 {
-    std::filesystem::file_time_type ft = std::filesystem::last_write_time(fname);
-    auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-        ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-    std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
-    std::time_t now = std::time(nullptr);
-    return now - mt;
+    if (!file_exists(fname))
+    {
+        return -1;
+    }
+    try
+    {
+        std::filesystem::file_time_type ft = std::filesystem::last_write_time(fname);
+        auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+            ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+        std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
+        std::time_t now = std::time(nullptr);
+        return now - mt;
+    }
+    catch (...)
+    {
+        return -1;
+    }
 }
 
 bool download_file(std::string URL, std::string save_path)
@@ -694,6 +707,48 @@ bool download_file(std::string URL, std::string save_path)
 
     curlpp::cleanup();
     return true;
+}
+
+bool check_and_download_clouds(const std::string& URL, const std::string& save_path)
+{
+    if (radio_silence || URL.empty())
+        return false;
+
+    const int kMinRefreshSeconds = 3 * 3600; // 3 hours
+    size_t dot_pos = save_path.rfind('.');
+    std::string timestamp_file = (dot_pos != std::string::npos) ? (save_path.substr(0, dot_pos) + ".timestamp") : (save_path + ".timestamp");
+    std::time_t now = std::time(nullptr);
+    std::time_t last_time = 0;
+
+    static std::mutex cloud_mutex;
+    std::lock_guard<std::mutex> lock(cloud_mutex);
+
+    if (file_exists(timestamp_file.c_str()))
+    {
+        std::ifstream ifs(timestamp_file);
+        if (ifs)
+            ifs >> last_time;
+    }
+    else if (file_exists(save_path.c_str()))
+    {
+        std::time_t age = file_age(save_path.c_str());
+        if (age >= 0)
+            last_time = now - age;
+    }
+
+    if (file_exists(save_path.c_str()) && (now - last_time < kMinRefreshSeconds) && (now >= last_time))
+        return false;
+
+    std::ofstream ofs(timestamp_file);
+    if (ofs)
+        ofs << now << std::endl;
+
+    return download_file(URL, save_path);
+}
+
+bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)
+{
+    return check_and_download_clouds(URL, save_path);
 }
 
 // Splits one line on its commas, honouring the quoting the CSV convention gives a field that

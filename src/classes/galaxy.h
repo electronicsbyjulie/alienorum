@@ -46,6 +46,7 @@ namespace alienorum
         Galaxy();
         json to_json();
         bool from_json(json j);
+        bool is_spheroidal_or_elliptical() const;
     };
 }
 

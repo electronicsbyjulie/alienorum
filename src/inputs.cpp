@@ -12,6 +12,7 @@ void center_selected()
 {
     if (selected >= 0)
     {
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[selected]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
@@ -25,6 +26,7 @@ void center_tracked()
 {
     if (trackidx >= 0)
     {
+        if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[trackidx]->RA_as_radians(here,
             (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
             * ((view_mode == vm_sunclock) ? 1 : -1);
@@ -230,6 +232,42 @@ void show_menu()
             if (ImGui::MenuItem("Track Selected", "T")) { process_key_cmd_char('t'); menu_clicked = true; }
             if (ImGui::MenuItem("Clear Selection", "Shift+S")) { process_key_cmd_char('S'); menu_clicked = true; }
             if (ImGui::MenuItem("Clear Tracking", "Shift+T")) { process_key_cmd_char('T'); menu_clicked = true; }
+            int sel = (selected >= 0) ? selected : trackidx;
+            bool star_selected = (sel >= 0 && cels[sel] && cels[sel]->typeclass() == class_star);
+            if (ImGui::MenuItem("Add to Favorite Stars", "Ctrl+D", false, star_selected))
+            {
+                process_key_cmd_ctrl_char('d');
+                menu_clicked = true;
+            }
+            ImGui::Separator();
+            bool has_object = (sel >= 0 && cels[sel]);
+            bool rise_alert_active = (has_object && cels[sel]->alert_rise);
+            bool set_alert_active = (has_object && cels[sel]->alert_set);
+            if (ImGui::MenuItem("Alert on Rise", "Ctrl+R", rise_alert_active, has_object))
+            {
+                process_key_cmd_ctrl_char('r');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Alert on Set", "Ctrl+Shift+R", set_alert_active, has_object))
+            {
+                process_key_cmd_ctrl_char('R');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Play Rise/Set Sounds", nullptr, &play_rise_set_sound))
+            {
+                save_user_json();
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Select Rise Sound...", nullptr))
+            {
+                process_select_rise_sound();
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Select Set Sound...", nullptr))
+            {
+                process_select_set_sound();
+                menu_clicked = true;
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
@@ -243,7 +281,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); menu_clicked = true; }
-            if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('O'); menu_clicked = true; }
+            if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('o'); menu_clicked = true; }
             if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem("Spaceflight/Speed Up", "+")) { process_key_cmd_char('+'); menu_clicked = true; }
@@ -300,10 +338,10 @@ void show_menu()
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
-                if (ImGui::MenuItem("Local", "Ctrl+L", vplane_mode == vplane_local)) { process_key_cmd_ctrl_char('L'); menu_clicked = true; }
-                if (ImGui::MenuItem("ICRF", "Ctrl+I", vplane_mode == vplane_ICRF)) { process_key_cmd_ctrl_char('I'); menu_clicked = true; }
-                if (ImGui::MenuItem("Ecliptic", "Ctrl+E", vplane_mode == vplane_ecliptic)) { process_key_cmd_ctrl_char('E'); menu_clicked = true; }
-                if (ImGui::MenuItem("Galactic", "Ctrl+G", vplane_mode == vplane_galactic)) { process_key_cmd_ctrl_char('G'); menu_clicked = true; }
+                if (ImGui::MenuItem("Local", "Ctrl+L", vplane_mode == vplane_local)) { process_key_cmd_ctrl_char('l'); menu_clicked = true; }
+                if (ImGui::MenuItem("ICRF", "Ctrl+I", vplane_mode == vplane_ICRF)) { process_key_cmd_ctrl_char('i'); menu_clicked = true; }
+                if (ImGui::MenuItem("Ecliptic", "Ctrl+E", vplane_mode == vplane_ecliptic)) { process_key_cmd_ctrl_char('e'); menu_clicked = true; }
+                if (ImGui::MenuItem("Galactic", "Ctrl+G", vplane_mode == vplane_galactic)) { process_key_cmd_ctrl_char('g'); menu_clicked = true; }
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J", satview_upsidedown)) { process_key_cmd_char('J'); menu_clicked = true; }
@@ -318,6 +356,11 @@ void show_menu()
             if (ImGui::MenuItem("Status Panel", "S", statuswnd)) { process_key_cmd_char('s'); menu_clicked = true; }
             if (ImGui::MenuItem("System Explorer", "E", explorer)) { process_key_cmd_char('e'); menu_clicked = true; }
             if (ImGui::MenuItem("Stellar Neighborhood", "0", neighborhood)) { process_key_cmd_char('0'); menu_clicked = true; }
+            if (ImGui::MenuItem("Favorite Stars", "F7", show_favestars))
+            {
+                process_key_F7();
+                menu_clicked = true;
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Constellations", "C", show_consln)) { process_key_cmd_char('c'); menu_clicked = true; }
             if (ImGui::MenuItem("RA/Dec Grid", "G", show_grid)) { process_key_cmd_char('g'); menu_clicked = true; }
@@ -349,7 +392,12 @@ void show_menu()
 
                 ImGui::EndMenu();
             }
-            if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('S'); menu_clicked = true; }
+            if (ImGui::MenuItem("Short Labels", "Ctrl+S", shortnames)) { process_key_cmd_ctrl_char('s'); menu_clicked = true; }
+            if (ImGui::MenuItem("Favorite Star Labels", "Ctrl+Shift+D", label_favestars))
+            {
+                process_key_cmd_ctrl_char('D');
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
@@ -360,7 +408,16 @@ void show_menu()
             ImGui::Separator();
             if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); menu_clicked = true; }
             if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); menu_clicked = true; }
-            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain)) { process_key_cmd_ctrl_char('T'); menu_clicked = true; }
+            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain))
+            {
+                process_key_cmd_ctrl_char('t');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Clouds", "Ctrl+C", show_clouds))
+            {
+                process_key_cmd_ctrl_char('c');
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Hide Mouse Cursor", ",")) { process_key_cmd_char(','); menu_clicked = true; }
             ImGui::EndMenu();
         }
@@ -422,7 +479,7 @@ void process_key_cmd_char(char c)
 
         case 'e':
         explorer = !explorer;
-        if (explorer) process_key_cmd_ctrl_char('V');
+        if (explorer) process_key_cmd_ctrl_char('v');
         break;
 
         case 'E':
@@ -533,7 +590,7 @@ void process_key_cmd_char(char c)
 
         case 'R': redlight_mode = !redlight_mode; apply_default_style(); break;
         case 's': statuswnd = !statuswnd; break;
-        case 'S': selected = -1; break;
+        case 'S': selected = -1; if (view_mode == vm_system) view_mode = vm_spaceship; break;
 
         case 't':
         if (trackidx >= 0)
@@ -548,6 +605,7 @@ void process_key_cmd_char(char c)
             trackidx = selected;
             selected = -1;
         }
+        if (view_mode == vm_system) view_mode = vm_spaceship; 
         viewchanged = true;
         break;
 
@@ -598,7 +656,7 @@ void process_key_cmd_char(char c)
         case '0': neighborhood = !neighborhood; break;
 
         case '1':
-        show_consln = show_grid = show_labels = label_galaxies = true;
+        show_consln = show_grid = show_labels = label_favestars = label_galaxies = true;
         show_localsys = lbl_localsys = statuswnd = objinfwnd = (view_mode != vm_skymap);
         if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut = (view_mode == vm_skymap) ? 2.1 : 2.5;
         break;
@@ -668,7 +726,7 @@ void process_key_cmd_char(char c)
         case ';': cometwnd = !cometwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
-        case '!': show_consln = show_grid = show_labels = lbl_localsys = show_orbits = label_galaxies = false; break;
+        case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = false; break;
         case '%':
         zoom = 1;
         global_brightness = 1;
@@ -704,8 +762,8 @@ void process_key_cmd_char(char c)
         if (distance_lblcut < light_year*5) distance_lblcut = light_year*5;
         break;
 
-        case '`': global_gamma += 0.2; set_gamma(global_gamma); break;
-        case '~': global_gamma -= 0.2; set_gamma(global_gamma); break;
+        case '`': global_gamma += 0.01; set_gamma(global_gamma); break;
+        case '~': global_gamma -= 0.01; set_gamma(global_gamma); break;
 
         case '_':
         if (whereami >= 0)
@@ -747,6 +805,28 @@ void process_key_cmd_char(char c)
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
         case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
 
+        case '[':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_rise = !cels[sel]->alert_rise;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
+        case ']':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_set = !cels[sel]->alert_set;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
         default:
         ;
     }
@@ -754,26 +834,118 @@ void process_key_cmd_char(char c)
 
 void process_key_cmd_ctrl_char(char c)
 {
-    // Ctrl+letter combinations to avoid, since they are claimed by the terminal, the OS,
-    // or common tools the app may be run alongside:
-    //   Ctrl+C - SIGINT (terminal interrupt)
-    //   Ctrl+D - EOF / terminal exit
-    //   Ctrl+Z - SIGTSTP (terminal suspend)
-    //   Ctrl+\ - SIGQUIT (terminal quit)
-    //   Ctrl+Q / Ctrl+S - terminal XON/XOFF flow control
-    //   Ctrl+A / Ctrl+B - tmux/screen prefix keys
-    //   Ctrl+V - system paste
-    //   Ctrl+W - window close (most OSes)
+    if (c == '3')
+    {
+        int i, j, l, m, n;
+        Point myloc = here;
+        double myRA = std::fmod(find_angle(myloc.z, -myloc.x), _pi*2),
+                myDecl = find_angle(sqrt(myloc.x*myloc.x+myloc.z*myloc.z), myloc.y);
+        while (myDecl > half_pi) myDecl -= _pi*2;
+
+        Constellation *cons = identify_cons_from_coords(myRA, myDecl);
+        n = themes.size();
+        if (cons)
+        {
+            for (i=0; i<n; i++)
+            {
+                if (!strcmp(themes[i].c_str(), cons->name.c_str()))
+                {
+                    themes_selected_idx = i;
+                    global_style.load(themes[i]);
+                    apply_default_style();
+                    return;
+                }
+            }
+        }
+
+        m = fmin(num_reg_cons, constellations.size());
+        double best = 1e29;
+        for (i=0; i<m; i++)
+        {
+            l = -1;
+            for (j=0; j<n; j++) if (!strcmp(themes[j].c_str(), constellations[i].name.c_str())) { l=j; break; }
+            if (l<0) continue;
+
+            Point consloc = Point::from_ra_dec(constellations[i].RA_center, constellations[i].decl_center, 1e29);
+            double theta = find_3D_angle(myloc, consloc, center);
+
+            if (theta < best)
+            {
+                best = theta;
+                themes_selected_idx = l;
+                global_style.load(themes[l]);
+            }
+        }
+        apply_default_style();
+    
+        return;
+    }
+
     switch (c)
     {
-        case 'E': vplane_mode = vplane_ecliptic; break;
-        case 'G': vplane_mode = vplane_galactic; break;
-        case 'I': vplane_mode = vplane_ICRF; break;
-        case 'L': vplane_mode = vplane_local; break;
-        case 'S': shortnames = !shortnames; viewchanged = true; break;
-        case 'T': show_terrain = !show_terrain; viewchanged = true; break;
+        case 'c':
+        {
+            show_clouds = !show_clouds;
+            viewchanged = true;
+            break;
+        }
+
+        case 'd':
+        if (selected < 0) selected = trackidx;
+        if (selected >= 0 && cels[selected]->typeclass() == class_star)
+        {
+            auto found = std::find(favestars.begin(), favestars.end(), cels[selected]);
+            if (found == favestars.end())
+            {
+                favestars.push_back((Star*)cels[selected]);
+                ((Star*)cels[selected])->is_faved = true;
+            }
+            else
+            {
+                favestars.erase(found);
+                ((Star*)cels[selected])->is_faved = false;
+            }
+            save_user_json();
+        }
+        break;
+        case 'D': label_favestars = !label_favestars; break;
+
+        case 'e': vplane_mode = vplane_ecliptic; break;
+        case 'g': vplane_mode = vplane_galactic; break;
+        case 'i': vplane_mode = vplane_ICRF; break;
+        case 'l': vplane_mode = vplane_local; break;
+
+        case 'o':
+        local_tmstep = true;
+        process_key_cmd_char('o');
+        break;
+
+        case 'r':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_rise = !cels[sel]->alert_rise;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
+        case 'R':
+        {
+            int sel = (selected >= 0) ? selected : trackidx;
+            if (sel >= 0 && cels[sel])
+            {
+                cels[sel]->alert_set = !cels[sel]->alert_set;
+                cels[sel]->has_prev_horizon_alt = false;
+            }
+            break;
+        }
+
+        case 's': shortnames = !shortnames; viewchanged = true; break;
+        case 't': show_terrain = !show_terrain; viewchanged = true; break;
     
-        case 'V':
+        case 'v':
         if (!mycenobj) return;
         view_mode = vm_system;
         statuswnd = false;
@@ -781,12 +953,7 @@ void process_key_cmd_ctrl_char(char c)
         lbl_localsys = true;
         break;
 
-        case 'W': done = true; break;
-
-        case 'O':
-        local_tmstep = true;
-        process_key_cmd_char('o');
-        break;
+        case 'w': done = true; break;
 
         default:
         ;
@@ -816,21 +983,25 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
-    if (ImGui::IsKeyPressed(ImGuiKey_F3)) process_key_F3();
-    if (ImGui::IsKeyPressed(ImGuiKey_F4)) process_key_F4();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5)) process_key_F5();
-    if (ImGui::IsKeyPressed(ImGuiKey_F6)) process_key_F6();
+    if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
+    if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) process_key_F6();
     if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
-    if (ImGui::IsKeyPressed(ImGuiKey_F12)) process_key_F12();
+    if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
 
     if (io.KeyCtrl)
     {
         for (i = 0; i < 26; i++)
         {
-            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char('A' + i);
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_A + i))) process_key_cmd_ctrl_char((io.KeyShift ? 'A' : 'a') + i);
+        }
+        for (i = 0; i < 10; i++)
+        {
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_0 + i))) process_key_cmd_ctrl_char('0' + i);
         }
     }
 }
@@ -856,7 +1027,7 @@ void process_key_arrowup()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, -steering_rate);
+    steer(pitch, steering_rate);
     if (trackidx<0) altitude += steering_rate;
     if (altitude > half_pi) altitude = half_pi;
     enforce_y_pan_limit();
@@ -870,7 +1041,7 @@ void process_key_arrowdn()
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
     Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, steering_rate);
+    steer(pitch, -steering_rate);
     if (trackidx<0) altitude -= steering_rate;
     if (altitude < -half_pi) altitude = -half_pi;
     enforce_y_pan_limit();
@@ -906,7 +1077,9 @@ void process_key_delete()
     // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
     if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
     else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
-    selected = -1;
+
+    if (cels[selected]->deleted && cels[selected]->orbit && cels[selected]->orbit->center) selected = cels[selected]->orbit->center->seqno;
+    else selected = -1;
 }
 
 void process_key_home()
@@ -993,6 +1166,11 @@ void process_key_F4()
 
 void process_key_F5()
 {
+    bool expected = false;
+    if (!is_reloading.compare_exchange_strong(expected, true))
+    {
+        return;
+    }
     splash = true;
     std::thread t1(reload_stuff);
     t1.detach();
@@ -1008,14 +1186,43 @@ void process_key_F6()
 
 void process_key_F7()
 {
+    show_favestars = !show_favestars;
 }
 
 void process_key_F8()
 {
+    int sel = (selected >= 0) ? selected : trackidx;
+    if (sel >= 0 && cels[sel])
+    {
+        cels[sel]->alert_rise = !cels[sel]->alert_rise;
+        cels[sel]->has_prev_horizon_alt = false;
+    }
 }
 
 void process_key_F9()
 {
+    int sel = (selected >= 0) ? selected : trackidx;
+    if (sel >= 0 && cels[sel])
+    {
+        cels[sel]->alert_set = !cels[sel]->alert_set;
+        cels[sel]->has_prev_horizon_alt = false;
+    }
+}
+
+void process_select_rise_sound()
+{
+    IGFD::FileDialogConfig config;
+    config.path = ".";
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseRiseSoundDlgKey", "Choose Rise Sound (.wav)", ".wav", config);
+    fdlg_shown = true;
+}
+
+void process_select_set_sound()
+{
+    IGFD::FileDialogConfig config;
+    config.path = ".";
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseSetSoundDlgKey", "Choose Set Sound (.wav)", ".wav", config);
+    fdlg_shown = true;
 }
 
 void process_key_F10()

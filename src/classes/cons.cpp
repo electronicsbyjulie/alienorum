@@ -2,6 +2,7 @@
 #include <vector>
 #include "cons.h"
 
+int num_reg_cons = 0;
 std::vector<Constellation> constellations;
 Constellation *cons4lbl = nullptr;
 

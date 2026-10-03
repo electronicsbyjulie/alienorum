@@ -32,5 +32,7 @@ void process_key_F11();
 void process_key_F12();
 void do_find();
 int lookfor_cb(ImGuiInputTextCallbackData* data);
+void process_select_rise_sound();
+void process_select_set_sound();
 
 #endif

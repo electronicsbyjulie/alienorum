@@ -325,11 +325,7 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
             {
                 ra += _pi * 2;
             }
-            double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
-            if (decl > _pi / 2)
-            {
-                decl -= _pi * 2;
-            }
+            double decl = atan2(pt.y, sqrt(pt.x * pt.x + pt.z * pt.z));
 
             double cart_x = (1.0 - ra / _pi) * zoom;
             double cart_y = -decl / _pi * zoom;
@@ -365,11 +361,7 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
                 {
                     ra += _pi * 2;
                 }
-                double decl = std::fmod(find_angle(sqrt(pt.x * pt.x + pt.z * pt.z), pt.y), _pi * 2);
-                if (decl > _pi / 2)
-                {
-                    decl -= _pi * 2;
-                }
+                double decl = atan2(pt.y, sqrt(pt.x * pt.x + pt.z * pt.z));
 
                 double cart_x = (1.0 - ra / _pi) * zoom;
                 double cart_y = -decl / _pi * zoom;
@@ -403,24 +395,26 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
 
                 if (new_wrapped)
                 {
-                    // Verify Piece 1: shifted to right for points left of center
+                    float mid_x = (min_x + max_x) * 0.5f;
+
+                    // Verify Piece 1: shifted to right for points on low side
                     ImVec2 p00_1 = p00;
-                    if (p00_1.x < dispcx)
+                    if (p00_1.x < mid_x)
                     {
                         p00_1.x += wrap_w;
                     }
                     ImVec2 p10_1 = p10;
-                    if (p10_1.x < dispcx)
+                    if (p10_1.x < mid_x)
                     {
                         p10_1.x += wrap_w;
                     }
                     ImVec2 p11_1 = p11;
-                    if (p11_1.x < dispcx)
+                    if (p11_1.x < mid_x)
                     {
                         p11_1.x += wrap_w;
                     }
                     ImVec2 p01_1 = p01;
-                    if (p01_1.x < dispcx)
+                    if (p01_1.x < mid_x)
                     {
                         p01_1.x += wrap_w;
                     }
@@ -432,24 +426,24 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
                         total_streaks_with_new++;
                     }
 
-                    // Verify Piece 2: shifted to left for points right of center
+                    // Verify Piece 2: shifted to left for points on high side
                     ImVec2 p00_2 = p00;
-                    if (p00_2.x > dispcx)
+                    if (p00_2.x > mid_x)
                     {
                         p00_2.x -= wrap_w;
                     }
                     ImVec2 p10_2 = p10;
-                    if (p10_2.x > dispcx)
+                    if (p10_2.x > mid_x)
                     {
                         p10_2.x -= wrap_w;
                     }
                     ImVec2 p11_2 = p11;
-                    if (p11_2.x > dispcx)
+                    if (p11_2.x > mid_x)
                     {
                         p11_2.x -= wrap_w;
                     }
                     ImVec2 p01_2 = p01;
-                    if (p01_2.x > dispcx)
+                    if (p01_2.x > mid_x)
                     {
                         p01_2.x -= wrap_w;
                     }
@@ -469,6 +463,155 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
     EXPECT_GT(total_missed_by_old, 0);
     // Zero streaks occur with new logic
     EXPECT_EQ(total_streaks_with_new, 0);
+}
+
+TEST(MilkyWayBackdropTest, SkymapZoomedSeamWrappingZeroStreaks)
+{
+    Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
+    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
+    double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
+
+    const int N_lon = 240;
+    const int N_lat = 24;
+    const float dispcx = 960.0f;
+
+    struct TestVertex
+    {
+        ImVec2 pos;
+    };
+
+    std::vector<TestVertex> grid((N_lon + 1) * (N_lat + 1));
+
+    // Verify across multiple zoom levels and azimuth/altitude tilts
+    for (float zoom : {1.5f, 2.0f, 2.5f})
+    {
+        float wrap_w = 2.0f * dispcx * zoom;
+        float wrap_thresh = (float)(1.5 * dispcx * zoom);
+
+        for (int step = 0; step < 8; step++)
+        {
+            double az_test = step * (_pi / 4.0);
+            double alt_test = ((step % 3) - 1) * (5.0 * _pi / 180.0);
+
+            for (int j = 0; j <= N_lat; j++)
+            {
+                float v = (float)j / (float)N_lat;
+                double lat = (0.5 - (double)v) * (_pi / 3.0);
+
+                for (int i = 0; i <= N_lon; i++)
+                {
+                    float u = (float)i / (float)N_lon;
+                    double lon = ((double)u - 0.5) * (2.0 * _pi);
+
+                    Point pt = Point::from_ra_dec(lon, lat, 1.0, 0);
+                    pt = rotate3D(pt, center, yaxis, gyaw);
+                    pt = rotate3D(pt, center, pl.v, -pl.a);
+
+                    double ra = std::fmod(find_angle(pt.z, -pt.x) + _pi + az_test, _pi * 2);
+                    if (ra < 0)
+                    {
+                        ra += _pi * 2;
+                    }
+                    double decl = atan2(pt.y, sqrt(pt.x * pt.x + pt.z * pt.z)) - alt_test;
+
+                    double cart_x = (1.0 - ra / _pi) * zoom;
+                    double cart_y = -decl / _pi * zoom;
+
+                    grid[j * (N_lon + 1) + i].pos = ImVec2((float)(dispcx + dispcx * cart_x), (float)(dispcx + dispcx * cart_y));
+                }
+            }
+
+            int streak_count = 0;
+            float max_quad_h = 0;
+
+            for (int j = 0; j < N_lat; j++)
+            {
+                for (int i = 0; i < N_lon; i++)
+                {
+                    const ImVec2& p00 = grid[j * (N_lon + 1) + i].pos;
+                    const ImVec2& p10 = grid[j * (N_lon + 1) + (i + 1)].pos;
+                    const ImVec2& p11 = grid[(j + 1) * (N_lon + 1) + (i + 1)].pos;
+                    const ImVec2& p01 = grid[(j + 1) * (N_lon + 1) + i].pos;
+
+                    float min_x = std::min({p00.x, p10.x, p11.x, p01.x});
+                    float max_x = std::max({p00.x, p10.x, p11.x, p01.x});
+
+                    float quad_h = std::max({p00.y, p10.y, p11.y, p01.y}) - std::min({p00.y, p10.y, p11.y, p01.y});
+                    if (quad_h > max_quad_h)
+                    {
+                        max_quad_h = quad_h;
+                    }
+
+                    bool new_wrapped = (max_x - min_x) > wrap_thresh;
+                    if (new_wrapped)
+                    {
+                        float mid_x = (min_x + max_x) * 0.5f;
+
+                        ImVec2 p00_1 = p00;
+                        if (p00_1.x < mid_x)
+                        {
+                            p00_1.x += wrap_w;
+                        }
+                        ImVec2 p10_1 = p10;
+                        if (p10_1.x < mid_x)
+                        {
+                            p10_1.x += wrap_w;
+                        }
+                        ImVec2 p11_1 = p11;
+                        if (p11_1.x < mid_x)
+                        {
+                            p11_1.x += wrap_w;
+                        }
+                        ImVec2 p01_1 = p01;
+                        if (p01_1.x < mid_x)
+                        {
+                            p01_1.x += wrap_w;
+                        }
+
+                        float span_1 = std::max({p00_1.x, p10_1.x, p11_1.x, p01_1.x}) -
+                                       std::min({p00_1.x, p10_1.x, p11_1.x, p01_1.x});
+                        if (span_1 > wrap_thresh)
+                        {
+                            streak_count++;
+                        }
+
+                        ImVec2 p00_2 = p00;
+                        if (p00_2.x > mid_x)
+                        {
+                            p00_2.x -= wrap_w;
+                        }
+                        ImVec2 p10_2 = p10;
+                        if (p10_2.x > mid_x)
+                        {
+                            p10_2.x -= wrap_w;
+                        }
+                        ImVec2 p11_2 = p11;
+                        if (p11_2.x > mid_x)
+                        {
+                            p11_2.x -= wrap_w;
+                        }
+                        ImVec2 p01_2 = p01;
+                        if (p01_2.x > mid_x)
+                        {
+                            p01_2.x -= wrap_w;
+                        }
+
+                        float span_2 = std::max({p00_2.x, p10_2.x, p11_2.x, p01_2.x}) -
+                                       std::min({p00_2.x, p10_2.x, p11_2.x, p01_2.x});
+                        if (span_2 > wrap_thresh)
+                        {
+                            streak_count++;
+                        }
+                    }
+                }
+            }
+
+            EXPECT_EQ(streak_count, 0);
+            // Verify quad height never jumps/wraps by 2*pi across the screen
+            EXPECT_LT(max_quad_h, 100.0f);
+        }
+    }
 }
 
 TEST(MilkyWayBackdropTest, WhiteBackgroundInversion)
@@ -595,3 +738,220 @@ TEST(GalaxyInternalMapTest, MajorGalaxiesAndCompanionsHaveValidJpegHeader)
         EXPECT_EQ(header[1], 0xD8);
     }
 }
+
+// =====================================================================
+// Spheroidal and Elliptical 3D Rendering Tests
+// =====================================================================
+
+TEST(GalaxyTest, SpheroidClassification)
+{
+    Galaxy sag;
+    sag.T_known = true;
+    sag.morphological_T = -3.0;
+    snprintf(sag.morph_type, sizeof(sag.morph_type), "Sph");
+    snprintf(sag.name, sizeof(sag.name), "Sag dSph");
+    EXPECT_TRUE(sag.is_spheroidal_or_elliptical());
+
+    Galaxy ell;
+    ell.T_known = true;
+    ell.morphological_T = -5.0;
+    snprintf(ell.morph_type, sizeof(ell.morph_type), "E0");
+    EXPECT_TRUE(ell.is_spheroidal_or_elliptical());
+
+    Galaxy compact_ell;
+    compact_ell.T_known = true;
+    compact_ell.morphological_T = -6.0;
+    EXPECT_TRUE(compact_ell.is_spheroidal_or_elliptical());
+
+    Galaxy dwarf_ell;
+    snprintf(dwarf_ell.morph_type, sizeof(dwarf_ell.morph_type), "dE3");
+    EXPECT_TRUE(dwarf_ell.is_spheroidal_or_elliptical());
+
+    Galaxy spiral;
+    spiral.T_known = true;
+    spiral.morphological_T = 3.0;
+    snprintf(spiral.morph_type, sizeof(spiral.morph_type), ".SAS3..");
+    EXPECT_FALSE(spiral.is_spheroidal_or_elliptical());
+
+    Galaxy irregular;
+    irregular.T_known = true;
+    irregular.morphological_T = 10.0;
+    snprintf(irregular.morph_type, sizeof(irregular.morph_type), "Ir");
+    EXPECT_FALSE(irregular.is_spheroidal_or_elliptical());
+}
+
+TEST(GalaxyTest, Spheroid3DSilhouetteNeverCollapses)
+{
+    const double q = 0.48; // Sag dSph intrinsic axis ratio
+    const double a = 1000.0; // semi-major radius
+
+    // Test across a full 180-degree sweep of viewing inclinations relative to the symmetry axis
+    for (int deg = 0; deg <= 180; deg += 5)
+    {
+        double theta = deg * (M_PI / 180.0);
+        double costheta = cos(theta);
+        double sintheta = sin(theta);
+        double b_app = a * sqrt(costheta * costheta + q * q * sintheta * sintheta);
+
+        // At all viewing angles, the apparent semi-minor axis must never collapse below q * a
+        EXPECT_GE(b_app, q * a - 1e-9);
+        EXPECT_LE(b_app, a + 1e-9);
+
+        // When viewed edge-on (theta = 90 deg), thickness is exactly q * a = 0.48 * a, NOT zero
+        if (deg == 90)
+        {
+            EXPECT_NEAR(b_app, q * a, 1e-6);
+        }
+        // When viewed face-on (theta = 0 or 180 deg), it appears circular
+        if (deg == 0 || deg == 180)
+        {
+            EXPECT_NEAR(b_app, a, 1e-6);
+        }
+    }
+}
+
+// =====================================================================
+// Galaxy Disc 3D Basis and Position Angle Orientation Tests
+// =====================================================================
+
+TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
+{
+    // Direction to galaxy center on sky (e.g. LMC coordinates)
+    const double ra = 80.89 * (_pi / 180.0);
+    const double dec = -69.756 * (_pi / 180.0);
+
+    Point vhat(-sin(ra) * cos(dec), sin(dec), cos(ra) * cos(dec));
+    vhat.scale(1.0);
+
+    Point E_sky = compute_normal(center, vhat, yaxis);
+    E_sky.scale(1.0);
+    Point N_sky = compute_normal(center, E_sky, vhat);
+    N_sky.scale(1.0);
+
+    const double test_pas[] = {0.0, 22.0, 35.0, 90.0, 115.0, 136.0, 180.0, 245.0, 315.0};
+    const double test_incls[] = {0.0, 20.0, 35.0, 60.0, 77.0, 85.0};
+
+    for (double pa_deg : test_pas)
+    {
+        double pa = pa_deg * (_pi / 180.0);
+        for (double incl_deg : test_incls)
+        {
+            double incl = incl_deg * (_pi / 180.0);
+
+            Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
+            u_maj.scale(1.0);
+            Point u_perp = compute_normal(center, vhat, u_maj);
+            u_perp.scale(1.0);
+
+            Point e1 = u_maj * -1.0;
+            Point e2 = (u_perp * cos(incl) + vhat * sin(incl)) * -1.0;
+            e1.scale(1.0);
+            e2.scale(1.0);
+
+            Point pole = compute_normal(center, e1, e2);
+            pole.scale(1.0);
+
+            // e1, e2, and pole must form a strictly orthonormal right-handed basis
+            EXPECT_NEAR(e1.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(e2.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(pole.magnitude(), 1.0, 1e-9);
+            EXPECT_NEAR(e1.x * e2.x + e1.y * e2.y + e1.z * e2.z, 0.0, 1e-9);
+            EXPECT_NEAR(e1.x * pole.x + e1.y * pole.y + e1.z * pole.z, 0.0, 1e-9);
+            EXPECT_NEAR(e2.x * pole.x + e2.y * pole.y + e2.z * pole.z, 0.0, 1e-9);
+
+            // Apparent position angle of e1 in the sky plane
+            double proj_N = -(e1.x * N_sky.x + e1.y * N_sky.y + e1.z * N_sky.z);
+            double proj_E = -(e1.x * E_sky.x + e1.y * E_sky.y + e1.z * E_sky.z);
+            double meas_pa = atan2(proj_E, proj_N) * (180.0 / _pi);
+            if (meas_pa < 0.0)
+            {
+                meas_pa += 360.0;
+            }
+
+            // Measured PA must match catalog PA exactly
+            double diff = fabs(meas_pa - pa_deg);
+            while (diff > 180.0)
+            {
+                diff = fabs(diff - 360.0);
+            }
+            EXPECT_NEAR(diff, 0.0, 1e-6);
+
+            // In-plane apparent minor axis projection has foreshortened factor cos(incl)
+            Point e2_proj = e2 - vhat * (e2.x * vhat.x + e2.y * vhat.y + e2.z * vhat.z);
+            EXPECT_NEAR(e2_proj.magnitude(), cos(incl), 1e-6);
+        }
+    }
+}
+
+TEST(GalaxyTest, GalaxyLabelVerticalPlacementUsesDrawnHeightNotWidth)
+{
+    Galaxy g;
+    strcpy(g.name, "TestGalaxy");
+    g.drawnx = 960.0f;
+    g.drawny = 878.0f;
+
+    // Simulate cylindrical projection stretching near pole where wide >> tall
+    const double tall = 28.0;
+    const double wide = 160.0;
+    const double xmin = g.drawnx - wide * 0.5;
+    const double xmax = g.drawnx + wide * 0.5;
+    const double ymin = g.drawny - tall * 0.5;
+    const double ymax = g.drawny + tall * 0.5;
+
+    g.drawnxmin = xmin;
+    g.drawnxmax = xmax;
+    g.drawnymin = ymin;
+    g.drawnymax = ymax;
+
+    // The drawn half-height below center:
+    double drawn_h = (ymax > g.drawny) ? (ymax - g.drawny) : (tall * 0.5);
+    double bloomrad = fmax(1.0, drawn_h);
+
+    // Vertical position of label:
+    int dy = (g.drawnymax > g.drawny)
+        ? (g.drawnymax + 1)
+        : (g.drawny + bloomrad + 1);
+
+    // Label must be placed directly below the drawn height (ymax), NOT pushed down by wide * 0.5
+    EXPECT_NEAR(dy, ymax + 1, 1.0);
+    EXPECT_LT(dy, g.drawny + wide * 0.5);
+}
+
+TEST(GalaxyTest, GalaxyVisualBoundsMatchVisibleBodyInSpaceshipMode)
+{
+    Galaxy m31;
+    strcpy(m31.name, "M31");
+    m31.drawnx = 960.0f;
+    m31.drawny = 464.0f;
+
+    // Full quad mesh extending to catalog a26 radius
+    const double mesh_r = 233.0;
+    const double ymax_mesh = m31.drawny + mesh_r;
+
+    // In spaceship mode, visible optical body is scaled by vis_fraction
+    const double vis_frac_m31 = 0.60;
+    const double vis_ymax_m31 = m31.drawny + mesh_r * vis_frac_m31;
+    m31.drawnymax = vis_ymax_m31;
+
+    int dy_m31 = (m31.drawnymax > m31.drawny) ? (m31.drawnymax + 1) : (m31.drawny + 1);
+    EXPECT_NEAR(dy_m31, m31.drawny + mesh_r * 0.60 + 1, 1.0);
+    // Must be placed far closer than the unscaled outer mesh boundary
+    EXPECT_LT(dy_m31, ymax_mesh - 50.0);
+
+    Galaxy smc;
+    strcpy(smc.name, "SMC");
+    smc.drawnx = 960.0f;
+    smc.drawny = 390.0f;
+
+    const double mesh_r_smc = 224.0;
+    const double ymax_mesh_smc = smc.drawny + mesh_r_smc;
+    const double vis_frac_smc = 0.35;
+    const double vis_ymax_smc = smc.drawny + mesh_r_smc * vis_frac_smc;
+    smc.drawnymax = vis_ymax_smc;
+
+    int dy_smc = (smc.drawnymax > smc.drawny) ? (smc.drawnymax + 1) : (smc.drawny + 1);
+    EXPECT_NEAR(dy_smc, smc.drawny + mesh_r_smc * 0.35 + 1, 1.0);
+    EXPECT_LT(dy_smc, ymax_mesh_smc - 100.0);
+}
+
+

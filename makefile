@@ -37,13 +37,13 @@ IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
-			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp
+			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp
 TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
 			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp 
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp 
 
 BIN = bin
 OBJ = obj
@@ -221,6 +221,9 @@ $(OBJINT)/cons.o: $(CLASSES_DIR)/cons.cpp
 $(OBJINT)/sscimport.o: $(CLASSES_DIR)/sscimport.cpp
 	$(CPP) $(CLASSES_DIR)/sscimport.cpp $(CPPFLAGS) -c -o $(OBJINT)/sscimport.o
 
+$(OBJINT)/exocons.o: $(CLASSES_DIR)/exocons.cpp
+	$(CPP) $(CLASSES_DIR)/exocons.cpp $(CPPFLAGS) -c -o $(OBJINT)/exocons.o
+
 $(OBJINT)/planet.o: $(CLASSES_DIR)/planet.cpp
 	$(CPP) $(CLASSES_DIR)/planet.cpp $(CPPFLAGS) -c -o $(OBJINT)/planet.o
 
@@ -238,6 +241,9 @@ $(OBJINT)/cat.o: $(CLASSES_DIR)/cat.cpp
 
 $(OBJINT)/serial.o: $(CLASSES_DIR)/serial.cpp
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJINT)/serial.o
+
+$(OBJINT)/sound.o: $(CLASSES_DIR)/sound.cpp
+	$(CPP) $(CLASSES_DIR)/sound.cpp $(CPPFLAGS) -c -o $(OBJINT)/sound.o
 
 $(OBJINT)/globals.o: src/globals.cpp
 	$(CPP) src/globals.cpp $(CPPFLAGS) -c -o $(OBJINT)/globals.o
@@ -309,6 +315,9 @@ $(BIN)/cat_test: $(OBJS) $(TESTS_DIR)/cat_test.cpp $(TESTS_DIR)/universe_fixture
 
 $(BIN)/housekeeping_test: $(OBJS) $(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/universe_fixture.h src/housekeeping.h src/housekeeping.cpp
 	$(CPP) $(TESTS_DIR)/housekeeping_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/housekeeping_test
+
+$(BIN)/sound_test: $(OBJS) $(TESTS_DIR)/sound_test.cpp $(CLASSES_DIR)/sound.h $(CLASSES_DIR)/sound.cpp
+	$(CPP) $(TESTS_DIR)/sound_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/sound_test
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp
