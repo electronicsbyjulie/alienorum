@@ -1029,7 +1029,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     return cel->onscreen ? (fmax(xmax - xmin, ymax - ymin) / 2) : 0;
 }
 
-void draw_ring_gpu(CelestialObject* cel)
+void draw_ring_gpu(CelestialObject* cel, double arad)
 {
     Planet *pl = (Planet*)cel;
     Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
@@ -1042,6 +1042,15 @@ void draw_ring_gpu(CelestialObject* cel)
         : camera_space;
     double R = cel->get_equatorial_radius();
 
+    if (view_mode == vm_system)
+    {
+        camera_space = display_space = Point(0, 0, R * 10);
+        if (arad <= 0.0 && cel->drawnxmax > cel->drawnxmin)
+        {
+            arad = (cel->drawnxmax - cel->drawnxmin) * 0.5;
+        }
+    }
+
     Point normal = ring_plane_normal(cel);
 
     CelestialObject *lightcen = cel->get_light_center();
@@ -1049,12 +1058,22 @@ void draw_ring_gpu(CelestialObject* cel)
     Point light_dir(0, 0, 1);
     if (!self_luminous)
     {
-        Point light_camera_space = rotate3D(
-            rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
-            center, xaxis, altitude);
-        light_dir = light_camera_space - camera_space;
-        double mag = light_dir.magnitude();
-        if (mag > 0) light_dir = light_dir * (1.0 / mag);
+        if (view_mode == vm_system)
+        {
+            light_dir = Point(0, 0, -1);
+        }
+        else
+        {
+            Point light_camera_space = rotate3D(
+                rotate3D(to_viewer_plane(lightcen->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
+                center, xaxis, altitude);
+            light_dir = light_camera_space - camera_space;
+            double mag = light_dir.magnitude();
+            if (mag > 0)
+            {
+                light_dir = light_dir * (1.0 / mag);
+            }
+        }
     }
 
     RingImpostorInput in;
@@ -1067,10 +1086,14 @@ void draw_ring_gpu(CelestialObject* cel)
     in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.self_luminous = self_luminous;
-    in.amt_lit = pl->amt_lit;
+    in.amt_lit = (view_mode == vm_system) ? 1.0 : pl->amt_lit;
     in.redlight_mode = redlight_mode;
 
-    queue_ring_impostor(in, zoom, dispcx, dispcy, dispcx);
+    queue_ring_impostor(in,
+        (view_mode == vm_system) ? (arad * 10.0 / dispcx) : zoom,
+        (view_mode == vm_system) ? cel->drawnx : dispcx,
+        (view_mode == vm_system) ? cel->drawny : dispcy,
+        dispcx);
 }
 
 // ---- Releasing the universe --------------------------------------------------------------
@@ -1283,7 +1306,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     // looking at the disc's narrow bbox again) fails again -> flips back off -> repeat. The
     // ring has its own independent visibility test in queue_ring_impostor(); it doesn't have
     // to borrow the disc's.
-    use_gpu_ring = (!dragging && view_mode != vm_skymap);
+    use_gpu_ring = (/* !dragging && */ view_mode != vm_skymap);
 #endif
     // lastm carries the previous iteration's m across the mesh loop, and the gap-filling quad
     // below reads it before anything has written it: the block that assigns it is gated on
@@ -1703,7 +1726,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         // unconditionally, same as the disc does, since use_gpu_ring is false there too).
         if (use_gpu_ring)
         {
-            draw_ring_gpu(cel);
+            draw_ring_gpu(cel, arad);
         }
         else
 #endif
@@ -3877,9 +3900,10 @@ void draw_system_view()
             if (!p->orbit || p->orbit->center != s) continue;
             p->drawny = s->drawny;
             double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*20;
-            p->drawnx = cursor + pdrad;
+            double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
+            p->drawnx = cursor + pdradr;
             // std::cout << p->name << " cursor=" << cursor << " + pdrad=" << pdrad << " + pdrad=" << pdrad;           // deliberately twice
-            cursor = p->drawnx + pdrad + padding;
+            cursor = p->drawnx + pdradr + padding;
             // std::cout << " + padding=" << padding << " = " << cursor << std::endl;
         }
 
@@ -3923,15 +3947,18 @@ void draw_system_view()
             if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
             double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
-            p->drawnx = cursor + pdrad;
+            double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
+            p->drawnx = cursor + pdradr;
             draw_sphere(p, pdrad);
-            if (p->seqno == selected || (selected > 0 && cels[selected] && cels[selected]->orbit && cels[selected]->orbit->center == p)) selrad = pdrad;
-            if (p->ring_radius) draw_ring_gpu(p);
+            if (p->seqno == selected || (selected > 0 && cels[selected] && cels[selected]->orbit && cels[selected]->orbit->center == p))
+            {
+                selrad = pdrad;
+            }
             if (selected == p->seqno)
             {
                 ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(p->drawnx, p->drawny), pdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
             }
-            cursor = p->drawnx + pdrad + padding * curscale;
+            cursor = p->drawnx + pdradr + padding * curscale;
             // std::cout << "Draw " << p->name << " at " << p->drawnx << "," << p->drawny << std::endl;
 
             if (lbl_localsys)

@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
 #include "../classes/cat.h"
+#include "../visuals.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -1103,5 +1104,35 @@ TEST(ExoplanetInclinationTest, PreservesHotJupiterExemption)
 
     // The hot jupiter b must preserve its distinct orbital inclination
     EXPECT_NEAR(pincls[0] * fiftyseven, 89.5, 0.1);
+}
+
+TEST(PlanetTest, SystemViewRingsQueueCorrectly)
+{
+    ImGuiContext* ctx = ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(1920, 1080);
+    dispcx = 960;
+    dispcy = 540;
+
+    Planet p;
+    strcpy(p.name, "Saturn");
+    p.volumetric_mean_radius = 58232000;
+    p.ring_radius = 1.3678e8;
+    p.drawnx = 500;
+    p.drawny = 540;
+    p.drawnxmin = 450;
+    p.drawnxmax = 550;
+
+    ViewMode old_mode = view_mode;
+    view_mode = vm_system;
+
+    // Must execute cleanly without crash or infinite recursion
+    draw_ring_gpu(&p, 50.0);
+
+    // Also test fallback when arad is not passed explicitly
+    draw_ring_gpu(&p);
+
+    view_mode = old_mode;
+    ImGui::DestroyContext(ctx);
 }
 
