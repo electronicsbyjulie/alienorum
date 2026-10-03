@@ -1201,6 +1201,9 @@ bool Planet::guess_has_rings()
 {
     double probability = 0.0;
 
+    // Anything tidally locked or in a resonance probably wouldn't have a ring.
+    if (orbit && orbit->period && sidereal_rotational_period > (orbit->period/4.4)) return false;
+
     // 1. Mass factor: Jovians have a much higher capture/retention rate
     if (mass > giant_mass_cutoff)
     {
