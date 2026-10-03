@@ -715,8 +715,8 @@ int main (int argc, char** argv)
                 float ay = io.DisplaySize.y - txt_sz.y - 10.0f;
                 if (ax > 0 && ay > 0)
                 {
-                    ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 180));
-                    ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 220));
+                    ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 71));
+                    ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 81));
                     ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax + 1, ay + 1), shadow_col, attr_text);
                     ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax, ay), txt_col, attr_text);
                 }
