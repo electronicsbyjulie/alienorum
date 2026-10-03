@@ -1,9 +1,11 @@
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/celestial.h"
 #include "../classes/planet.h"
+#include "../classes/cat.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -133,6 +135,7 @@ TEST(CelestialObjectTest, DefaultInitialization)
     EXPECT_EQ(cel.cloud_map, nullptr);
     EXPECT_EQ(cel.orbit, nullptr);
     EXPECT_EQ(cel.cenobj, nullptr);
+    EXPECT_FALSE(cel.transparent_clouds);
 }
 
 TEST(CelestialObjectTest, TidalLockingEvaluation)
@@ -183,6 +186,7 @@ TEST(CelestialObjectTest, JsonSerializationRoundTrip)
     original.temperature = 5778;
     original.type = gas_giant;
     original.user_added = true;
+    original.transparent_clouds = true;
 
     json j = original.to_json();
 
@@ -193,6 +197,7 @@ TEST(CelestialObjectTest, JsonSerializationRoundTrip)
     EXPECT_DOUBLE_EQ(restored.mass, 1.989e33);
     EXPECT_EQ(restored.type, gas_giant);
     EXPECT_TRUE(restored.user_added);
+    EXPECT_TRUE(restored.transparent_clouds);
 
     EXPECT_DOUBLE_EQ(restored.temperature, 5778);
 
@@ -209,6 +214,80 @@ TEST(CelestialObjectTest, JsonSerializationRoundTrip)
     from_older_file.temperature = 1234;             // whatever it happened to be holding
     EXPECT_TRUE(from_older_file.from_json(jnt));
     EXPECT_DOUBLE_EQ(from_older_file.temperature, 1234);
+}
+
+TEST(CelestialObjectTest, TransparentCloudsCatalogParsing)
+{
+    std::ifstream ifs("catalogs/planets.json");
+    ASSERT_TRUE(ifs.is_open());
+    json j;
+    ifs >> j;
+
+    bool found_earth = false;
+    bool found_mars = false;
+    bool found_venus = false;
+
+    for (const auto& item : j)
+    {
+        if (item.contains("BODYNAME"))
+        {
+            std::string name = item["BODYNAME"];
+            if (name == "Earth")
+            {
+                found_earth = true;
+                EXPECT_TRUE(item.contains("TransparentClouds"));
+                EXPECT_TRUE(item["TransparentClouds"].get<bool>());
+            }
+            else if (name == "Mars")
+            {
+                found_mars = true;
+                EXPECT_TRUE(item.contains("TransparentClouds"));
+                EXPECT_TRUE(item["TransparentClouds"].get<bool>());
+            }
+            else if (name == "Venus")
+            {
+                found_venus = true;
+                EXPECT_FALSE(item.contains("TransparentClouds") && item["TransparentClouds"].get<bool>());
+            }
+        }
+    }
+
+    EXPECT_TRUE(found_earth);
+    EXPECT_TRUE(found_mars);
+    EXPECT_TRUE(found_venus);
+}
+
+TEST(CelestialHelperTest, EarthCloudsRateLimiting)
+{
+    std::string test_ts = "maps/Earth_clouds.timestamp";
+    std::string test_file = "maps/Earth_clouds.jpg";
+
+    if (file_exists(test_file.c_str()))
+    {
+        std::ofstream ofs(test_ts);
+        ofs << std::time(nullptr) << std::endl;
+        ofs.close();
+
+        bool attempted = check_and_download_earth_clouds();
+        EXPECT_FALSE(attempted);
+    }
+}
+
+TEST(CelestialObjectTest, MergedMapFallbackAndSelection)
+{
+    CelestialObject cel;
+    cel.type = rocky;
+    cel.transparent_clouds = false;
+
+    cel.surf_map = (Map*)0x1234;
+    cel.cloud_map = (Map*)0x5678;
+    EXPECT_EQ(cel.get_day_map(), (Map*)0x5678);
+
+    cel.cloud_map = nullptr;
+    EXPECT_EQ(cel.get_day_map(), (Map*)0x1234);
+
+    cel.surf_map = nullptr;
+    EXPECT_EQ(cel.get_day_map(), nullptr);
 }
 
 // =====================================================================

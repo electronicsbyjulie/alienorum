@@ -40,6 +40,11 @@ void load_textures(CelestialObject* cel)
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.
     {
+        if (!strcmp(cel->name, "Earth"))
+        {
+            check_and_download_earth_clouds();
+        }
+
         filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_clouds.jpg";
         if (file_exists(filename.c_str()))
         {

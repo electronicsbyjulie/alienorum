@@ -7,6 +7,7 @@
 #include <math.h>
 #include <cmath>
 #include <fstream>
+#include <mutex>
 #include <ctime>
 #include <curl/curl.h>
 #include <archive.h>
@@ -626,12 +627,23 @@ bool file_exists(const char *fname)
 
 std::time_t file_age(const char *fname)
 {
-    std::filesystem::file_time_type ft = std::filesystem::last_write_time(fname);
-    auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-        ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-    std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
-    std::time_t now = std::time(nullptr);
-    return now - mt;
+    if (!file_exists(fname))
+    {
+        return -1;
+    }
+    try
+    {
+        std::filesystem::file_time_type ft = std::filesystem::last_write_time(fname);
+        auto system_tp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+            ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+        std::time_t mt = std::chrono::system_clock::to_time_t(system_tp);
+        std::time_t now = std::time(nullptr);
+        return now - mt;
+    }
+    catch (...)
+    {
+        return -1;
+    }
 }
 
 bool download_file(std::string URL, std::string save_path)
@@ -694,6 +706,52 @@ bool download_file(std::string URL, std::string save_path)
 
     curlpp::cleanup();
     return true;
+}
+
+bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)
+{
+    if (radio_silence)
+    {
+        return false;
+    }
+
+    const int kMinRefreshSeconds = 3 * 3600; // 3 hours
+    std::string timestamp_file = "maps/Earth_clouds.timestamp";
+    std::time_t now = std::time(nullptr);
+    std::time_t last_time = 0;
+
+    static std::mutex earth_cloud_mutex;
+    std::lock_guard<std::mutex> lock(earth_cloud_mutex);
+
+    if (file_exists(timestamp_file.c_str()))
+    {
+        std::ifstream ifs(timestamp_file);
+        if (ifs)
+        {
+            ifs >> last_time;
+        }
+    }
+    else if (file_exists(save_path.c_str()))
+    {
+        std::time_t age = file_age(save_path.c_str());
+        if (age >= 0)
+        {
+            last_time = now - age;
+        }
+    }
+
+    if (file_exists(save_path.c_str()) && (now - last_time < kMinRefreshSeconds) && (now >= last_time))
+    {
+        return false;
+    }
+
+    std::ofstream ofs(timestamp_file);
+    if (ofs)
+    {
+        ofs << now << std::endl;
+    }
+
+    return download_file(URL, save_path);
 }
 
 // Splits one line on its commas, honouring the quoting the CSV convention gives a field that

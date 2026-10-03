@@ -221,6 +221,7 @@ bool file_exists(const char* fname);
 std::time_t file_age(const char* fname);                                    // seconds
 
 bool download_file(std::string URL, std::string save_path);
+bool check_and_download_earth_clouds(const std::string& URL = "https://clouds.matteason.co.uk/images/1024x512/clouds.jpg", const std::string& save_path = "maps/Earth_clouds.jpg");
 std::vector<std::string> parse_csv_row(const char* data);
 time_t from_iso_string(std::string iso_string, const char* format = nullptr);
 double fBm(double x, double y, double z, int octaves, double lacunarity, double gain);
