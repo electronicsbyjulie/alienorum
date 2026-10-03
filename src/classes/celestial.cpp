@@ -72,7 +72,7 @@ CelestialObject::~CelestialObject()
 
 Map* CelestialObject::get_day_map()
 {
-    if (transparent_clouds && surf_map && cloud_map)
+    if (show_clouds && transparent_clouds && surf_map && cloud_map)
     {
         if (!merged_day_map || merged_day_cloud_gen != cloud_map->gen || merged_day_surf_gen != surf_map->gen)
         {
@@ -86,12 +86,18 @@ Map* CelestialObject::get_day_map()
         }
         return merged_day_map;
     }
+
+    if (!show_clouds)
+    {
+        return surf_map ? surf_map : cloud_map;
+    }
+
     return cloud_map ? cloud_map : surf_map;
 }
 
 Map* CelestialObject::get_night_map()
 {
-    if (transparent_clouds && cloud_map && (night_map || uses_rocky_map(type)))
+    if (show_clouds && transparent_clouds && cloud_map && (night_map || uses_rocky_map(type)))
     {
         if (!merged_night_map || merged_night_cloud_gen != cloud_map->gen || (night_map && merged_night_map_gen != night_map->gen))
         {

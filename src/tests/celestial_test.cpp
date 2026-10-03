@@ -275,6 +275,8 @@ TEST(CelestialHelperTest, EarthCloudsRateLimiting)
 
 TEST(CelestialObjectTest, MergedMapFallbackAndSelection)
 {
+    EXPECT_TRUE(show_clouds);
+
     CelestialObject cel;
     cel.type = rocky;
     cel.transparent_clouds = false;
@@ -283,6 +285,11 @@ TEST(CelestialObjectTest, MergedMapFallbackAndSelection)
     cel.cloud_map = (Map*)0x5678;
     EXPECT_EQ(cel.get_day_map(), (Map*)0x5678);
 
+    // When clouds are hidden, surface map is preferred over cloud map
+    show_clouds = false;
+    EXPECT_EQ(cel.get_day_map(), (Map*)0x1234);
+
+    show_clouds = true;
     cel.cloud_map = nullptr;
     EXPECT_EQ(cel.get_day_map(), (Map*)0x1234);
 

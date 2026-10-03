@@ -690,33 +690,36 @@ int main (int argc, char** argv)
                 draw_horizon();
 
                 bool earth_clouds_shown = false;
-                if (view_mode == vm_horizon)
+                if (show_clouds)
                 {
-                    if (whereami >= 0 && whereami < MAX_CELOBJS)
+                    if (view_mode == vm_horizon)
                     {
-                        CelestialObject *cur = cels[whereami];
-                        if (cur && !strcmp(cur->name, "Earth") && cur->cloud_map)
+                        if (whereami >= 0 && whereami < MAX_CELOBJS)
                         {
-                            earth_clouds_shown = true;
-                        }
-                    }
-                }
-                else
-                {
-                    for (int ci = 0; ci < MAX_CELOBJS; ci++)
-                    {
-                        CelestialObject *c = cels[ci];
-                        if (!c)
-                        {
-                            break;
-                        }
-                        if (!strcmp(c->name, "Earth"))
-                        {
-                            if (c->onscreen && c->cloud_map)
+                            CelestialObject *cur = cels[whereami];
+                            if (cur && !strcmp(cur->name, "Earth") && cur->cloud_map)
                             {
                                 earth_clouds_shown = true;
                             }
-                            break;
+                        }
+                    }
+                    else
+                    {
+                        for (int ci = 0; ci < MAX_CELOBJS; ci++)
+                        {
+                            CelestialObject *c = cels[ci];
+                            if (!c)
+                            {
+                                break;
+                            }
+                            if (!strcmp(c->name, "Earth"))
+                            {
+                                if (c->onscreen && c->cloud_map)
+                                {
+                                    earth_clouds_shown = true;
+                                }
+                                break;
+                            }
                         }
                     }
                 }

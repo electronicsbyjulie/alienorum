@@ -5088,6 +5088,10 @@ void draw_mouse_cursor(ImGuiIO& io)
 std::vector<Cloud> skyclouds;
 void draw_cloudy_sky()
 {
+    if (!show_clouds)
+    {
+        return;
+    }
     if (view_mode != vm_horizon)
     {
         return;
