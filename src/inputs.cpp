@@ -408,7 +408,16 @@ void show_menu()
             ImGui::Separator();
             if (ImGui::MenuItem("Realism Mode (no annotations)", "!")) { process_key_cmd_char('!'); menu_clicked = true; }
             if (ImGui::MenuItem("Default Annotations", "1")) { process_key_cmd_char('1'); menu_clicked = true; }
-            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain)) { process_key_cmd_ctrl_char('t'); menu_clicked = true; }
+            if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain))
+            {
+                process_key_cmd_ctrl_char('t');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Clouds", "Ctrl+C", show_clouds))
+            {
+                process_key_cmd_ctrl_char('c');
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Hide Mouse Cursor", ",")) { process_key_cmd_char(','); menu_clicked = true; }
             ImGui::EndMenu();
         }
@@ -874,6 +883,13 @@ void process_key_cmd_ctrl_char(char c)
 
     switch (c)
     {
+        case 'c':
+        {
+            show_clouds = !show_clouds;
+            viewchanged = true;
+            break;
+        }
+
         case 'd':
         if (selected < 0) selected = trackidx;
         if (selected >= 0 && cels[selected]->typeclass() == class_star)

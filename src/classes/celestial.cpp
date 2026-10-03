@@ -56,6 +56,64 @@ CelestialObject::CelestialObject()
     memset(name, 0, 32*sizeof(char));
 }
 
+CelestialObject::~CelestialObject()
+{
+    if (merged_day_map)
+    {
+        delete merged_day_map;
+        merged_day_map = nullptr;
+    }
+    if (merged_night_map)
+    {
+        delete merged_night_map;
+        merged_night_map = nullptr;
+    }
+}
+
+Map* CelestialObject::get_day_map()
+{
+    if (show_clouds && transparent_clouds && surf_map && cloud_map)
+    {
+        if (!merged_day_map || merged_day_cloud_gen != cloud_map->gen || merged_day_surf_gen != surf_map->gen)
+        {
+            if (!merged_day_map)
+            {
+                merged_day_map = new Map(this);
+            }
+            merged_day_map->create_merged_day(surf_map, cloud_map);
+            merged_day_cloud_gen = cloud_map->gen;
+            merged_day_surf_gen = surf_map->gen;
+        }
+        return merged_day_map;
+    }
+
+    if (!show_clouds)
+    {
+        return surf_map ? surf_map : cloud_map;
+    }
+
+    return cloud_map ? cloud_map : surf_map;
+}
+
+Map* CelestialObject::get_night_map()
+{
+    if (show_clouds && transparent_clouds && cloud_map && (night_map || uses_rocky_map(type)))
+    {
+        if (!merged_night_map || merged_night_cloud_gen != cloud_map->gen || (night_map && merged_night_map_gen != night_map->gen))
+        {
+            if (!merged_night_map)
+            {
+                merged_night_map = new Map(this);
+            }
+            merged_night_map->create_merged_night(night_map, cloud_map);
+            merged_night_cloud_gen = cloud_map->gen;
+            merged_night_map_gen = night_map ? night_map->gen : 0;
+        }
+        return merged_night_map;
+    }
+    return night_map;
+}
+
 double alienorum::CelestialObject::get_horizon_angle()
 {
     double d = tmprel.magnitude();
@@ -627,6 +685,7 @@ json CelestialObject::to_json()
     // "nobody has established a temperature for this body, work one out". Saving a zero would
     // say the same thing, but saving nothing keeps it out of the files of bodies that have none.
     if (temperature) towrite["temperature"] = temperature;
+    towrite["transparent_clouds"] = transparent_clouds;
     towrite["type"] = type;
     towrite["typeclass"] = typeclass();
     towrite["UB_color"] = UB_color;
@@ -689,6 +748,8 @@ bool CelestialObject::from_json(json j)
     // one out, which is the point of saving it -- a body whose temperature was measured, edited by
     // hand, or arrived at through a chain this session will not repeat comes back with it intact.
     try { j.at("temperature").get_to(temperature); } catch (...) { ; }
+    try { j.at("transparent_clouds").get_to(transparent_clouds); } catch (...) { ; }
+    try { j.at("TransparentClouds").get_to(transparent_clouds); } catch (...) { ; }
     try { j.at("type").get_to(type); } catch (...) { ; }
     try { j.at("UB_color").get_to(UB_color); } catch (...) { ; }
     try { j.at("user_added").get_to(user_added); } catch (...) { ; }
@@ -1599,6 +1660,282 @@ void Map::export_bump(float *out) const
     unsigned long n = image_width * image_height;
     for (unsigned long i = 0; i < n; i++)
         out[i] = bump_data ? (float)bump_data[i] : 0.0f;
+}
+
+void Map::overlay_cloud_map(Map *clouds)
+{
+    if (!clouds || !clouds->has_rgb_data() || !has_rgb_data())
+    {
+        return;
+    }
+
+    if (!inv_lat_scale && lat_scale)
+    {
+        inv_lat_scale = 1.0 / lat_scale;
+    }
+    if (!inv_lon_scale && lon_scale)
+    {
+        inv_lon_scale = 1.0 / lon_scale;
+    }
+    if (!lat_scale && image_height)
+    {
+        lat_scale = (double)image_height / _pi;
+        inv_lat_scale = 1.0 / lat_scale;
+    }
+    if (!lon_scale && image_width)
+    {
+        lon_scale = (double)image_width / (_pi * 2);
+        inv_lon_scale = 1.0 / lon_scale;
+    }
+
+    for (unsigned long y = 0; y < image_height; y++)
+    {
+        double lat = half_pi - (y + 0.5) * inv_lat_scale;
+        for (unsigned long x = 0; x < image_width; x++)
+        {
+            double lon = (x + 0.5) * inv_lon_scale - _pi;
+            RGB3 c_rgb = clouds->color_at(lat, lon);
+            double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
+            if (alpha > 0.0)
+            {
+                unsigned long idx = y * image_width + x;
+                double inv_a = 1.0 - alpha;
+                red_data[idx] = (unsigned char)std::clamp((int)(red_data[idx] * inv_a + c_rgb.r), 0, 255);
+                green_data[idx] = (unsigned char)std::clamp((int)(green_data[idx] * inv_a + c_rgb.g), 0, 255);
+                blue_data[idx] = (unsigned char)std::clamp((int)(blue_data[idx] * inv_a + c_rgb.b), 0, 255);
+            }
+        }
+    }
+    touch_gen();
+}
+
+void Map::obscure_with_clouds(Map *clouds)
+{
+    if (!clouds || !clouds->has_rgb_data() || !has_rgb_data())
+    {
+        return;
+    }
+
+    if (!inv_lat_scale && lat_scale)
+    {
+        inv_lat_scale = 1.0 / lat_scale;
+    }
+    if (!inv_lon_scale && lon_scale)
+    {
+        inv_lon_scale = 1.0 / lon_scale;
+    }
+    if (!lat_scale && image_height)
+    {
+        lat_scale = (double)image_height / _pi;
+        inv_lat_scale = 1.0 / lat_scale;
+    }
+    if (!lon_scale && image_width)
+    {
+        lon_scale = (double)image_width / (_pi * 2);
+        inv_lon_scale = 1.0 / lon_scale;
+    }
+
+    for (unsigned long y = 0; y < image_height; y++)
+    {
+        double lat = half_pi - (y + 0.5) * inv_lat_scale;
+        for (unsigned long x = 0; x < image_width; x++)
+        {
+            double lon = (x + 0.5) * inv_lon_scale - _pi;
+            RGB3 c_rgb = clouds->color_at(lat, lon);
+            double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
+            if (alpha > 0.0)
+            {
+                unsigned long idx = y * image_width + x;
+                double inv_a = 1.0 - alpha;
+                red_data[idx]   = (unsigned char)std::clamp((int)(red_data[idx] * inv_a), 0, 255);
+                green_data[idx] = (unsigned char)std::clamp((int)(green_data[idx] * inv_a), 0, 255);
+                blue_data[idx]  = (unsigned char)std::clamp((int)(blue_data[idx] * inv_a), 0, 255);
+            }
+        }
+    }
+    touch_gen();
+}
+
+Map::~Map()
+{
+    if (red_data)
+    {
+        delete[] red_data;
+        red_data = nullptr;
+    }
+    if (green_data)
+    {
+        delete[] green_data;
+        green_data = nullptr;
+    }
+    if (blue_data)
+    {
+        delete[] blue_data;
+        blue_data = nullptr;
+    }
+}
+
+bool Map::create_merged_day(Map *surf, Map *clouds)
+{
+    if (!surf || !surf->has_rgb_data())
+    {
+        return false;
+    }
+
+    unsigned long w = surf->get_width();
+    unsigned long h = surf->get_height();
+    unsigned long toalloc = w * h;
+
+    if (allocated != toalloc || !red_data || !green_data || !blue_data)
+    {
+        if (red_data)
+        {
+            delete[] red_data;
+        }
+        if (green_data)
+        {
+            delete[] green_data;
+        }
+        if (blue_data)
+        {
+            delete[] blue_data;
+        }
+        red_data = new unsigned char[toalloc];
+        green_data = new unsigned char[toalloc];
+        blue_data = new unsigned char[toalloc];
+        allocated = toalloc;
+    }
+
+    image_width = w;
+    image_height = h;
+    lat_scale = (double)image_height / _pi;
+    lon_scale = (double)image_width / (_pi * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+
+    bool has_clouds = (clouds && clouds->has_rgb_data());
+
+    for (unsigned long y = 0; y < image_height; y++)
+    {
+        double lat = half_pi - (y + 0.5) * inv_lat_scale;
+        for (unsigned long x = 0; x < image_width; x++)
+        {
+            unsigned long idx = y * image_width + x;
+            unsigned char sr = surf->red_data[idx];
+            unsigned char sg = surf->green_data[idx];
+            unsigned char sb = surf->blue_data[idx];
+
+            if (has_clouds)
+            {
+                double lon = (x + 0.5) * inv_lon_scale - _pi;
+                RGB3 c_rgb = clouds->color_at(lat, lon);
+                double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
+                if (alpha > 0.0)
+                {
+                    double inv_a = 1.0 - alpha;
+                    sr = (unsigned char)std::clamp((int)(sr * inv_a + c_rgb.r), 0, 255);
+                    sg = (unsigned char)std::clamp((int)(sg * inv_a + c_rgb.g), 0, 255);
+                    sb = (unsigned char)std::clamp((int)(sb * inv_a + c_rgb.b), 0, 255);
+                }
+            }
+
+            red_data[idx] = sr;
+            green_data[idx] = sg;
+            blue_data[idx] = sb;
+        }
+    }
+
+    touch_gen();
+    return true;
+}
+
+bool Map::create_merged_night(Map *night, Map *clouds)
+{
+    unsigned long w = 0, h = 0;
+    if (night && night->has_rgb_data())
+    {
+        w = night->get_width();
+        h = night->get_height();
+    }
+    else if (clouds && clouds->has_rgb_data())
+    {
+        w = clouds->get_width();
+        h = clouds->get_height();
+    }
+    else
+    {
+        return false;
+    }
+
+    unsigned long toalloc = w * h;
+
+    if (allocated != toalloc || !red_data || !green_data || !blue_data)
+    {
+        if (red_data)
+        {
+            delete[] red_data;
+        }
+        if (green_data)
+        {
+            delete[] green_data;
+        }
+        if (blue_data)
+        {
+            delete[] blue_data;
+        }
+        red_data = new unsigned char[toalloc];
+        green_data = new unsigned char[toalloc];
+        blue_data = new unsigned char[toalloc];
+        allocated = toalloc;
+    }
+
+    image_width = w;
+    image_height = h;
+    lat_scale = (double)image_height / _pi;
+    lon_scale = (double)image_width / (_pi * 2);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+
+    bool has_night = (night && night->has_rgb_data());
+    bool has_clouds = (clouds && clouds->has_rgb_data());
+
+    // Dark blue night equivalent for clouds over night side
+    const double kNightCloudR = 12.0;
+    const double kNightCloudG = 18.0;
+    const double kNightCloudB = 36.0;
+
+    for (unsigned long y = 0; y < image_height; y++)
+    {
+        double lat = half_pi - (y + 0.5) * inv_lat_scale;
+        for (unsigned long x = 0; x < image_width; x++)
+        {
+            unsigned long idx = y * image_width + x;
+            double nr = has_night ? night->red_data[idx] : 0.0;
+            double ng = has_night ? night->green_data[idx] : 0.0;
+            double nb = has_night ? night->blue_data[idx] : 0.0;
+
+            if (has_clouds)
+            {
+                double lon = (x + 0.5) * inv_lon_scale - _pi;
+                RGB3 c_rgb = clouds->color_at(lat, lon);
+                double alpha = fmin(1.0, fmax(0.0, c_rgb.luminance() / 255.0));
+                if (alpha > 0.0)
+                {
+                    double inv_a = 1.0 - alpha;
+                    nr = nr * inv_a + kNightCloudR * alpha;
+                    ng = ng * inv_a + kNightCloudG * alpha;
+                    nb = nb * inv_a + kNightCloudB * alpha;
+                }
+            }
+
+            red_data[idx] = (unsigned char)std::clamp((int)nr, 0, 255);
+            green_data[idx] = (unsigned char)std::clamp((int)ng, 0, 255);
+            blue_data[idx] = (unsigned char)std::clamp((int)nb, 0, 255);
+        }
+    }
+
+    touch_gen();
+    return true;
 }
 
 RGB3 Map::color_at(double lat, double lon)

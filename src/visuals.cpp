@@ -831,7 +831,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     // Gas giants (Jupiter etc.) get their texture into cloud_map, never surf_map -- rocky
     // bodies (Earth, Moon, Io) use surf_map. Matches the CPU path's own priority.
-    Map *day_map = cel->cloud_map ? cel->cloud_map : cel->surf_map;
+    Map *day_map = cel->get_day_map();
 
     // Bump mapping (see sphere_impostor.cpp's fragment shader for the actual perturbation) --
     // matches the CPU path's own gate for whether bump data is worth reading at all
@@ -920,8 +920,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.basisX[0] = basisX.x; in.basisX[1] = basisX.y; in.basisX[2] = basisX.z;
     in.basisY[0] = basisY.x; in.basisY[1] = basisY.y; in.basisY[2] = basisY.z;
     in.day_map_texture = gputex_for(day_map);
-    in.night_map_texture = gputex_for(cel->night_map);
-    in.bump_map_texture = bump_eligible ? gputex_bump_for(day_map) : 0;
+    Map *night_map = cel->get_night_map();
+    in.night_map_texture = gputex_for(night_map);
+    in.bump_map_texture = bump_eligible ? gputex_bump_for(cel->surf_map ? cel->surf_map : day_map) : 0;
     in.bump_strength = (bump_eligible && in.bump_map_texture && bump_scale > 0) ? (kBumpStrength / bump_scale) : 0.0;
     in.fallback_color = solid_color;
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
@@ -929,7 +930,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
-    in.night_illum = cel->night_map ? 0.0 : starlight;
+    in.night_illum = night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
     // The band of lit air on this world's own limb. Its height is the world's own pressure
     // scale height (so a hydrogen giant's is puffy and Mars's is thin), and its colors come from
@@ -1441,10 +1442,8 @@ int draw_sphere(CelestialObject* cel, double arad)
         }
     }
 
-    Map *map = nullptr, *nmap = nullptr;
-    if (cel->cloud_map) map = cel->cloud_map;
-    else if (cel->surf_map) map = cel->surf_map;
-    if (cel->night_map) nmap = cel->night_map;
+    Map *map = cel->get_day_map();
+    Map *nmap = cel->get_night_map();
     double night_illum = nmap ? 0 : starlight;
     RGB3 rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
     Point cursor, land;
@@ -1462,7 +1461,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     auto sphere_began = std::chrono::high_resolution_clock::now();
     double step = wireframe
             ? (fiftyseventh*15)
-            : ( (worth_using_map && (cel->surf_map || cel->cloud_map))
+            : ( (worth_using_map && map)
                 ? fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2)
                 : fiftyseventh * 3
               ),
@@ -4130,6 +4129,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         int x, y;
         RGB3 rgb;
         double theta, phi;
+        Map *day_map = obj->get_day_map();
         for (y = -ico_sz; y <= ico_sz; y++)
         {
             theta = half_pi * pow(fabs(y) / (ico_sz+1), 1) * sgn(y);
@@ -4138,9 +4138,14 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
             for (x = -xsz; x <= xsz; x++)
             {
                 phi = half_pi / xsz * x;
-                if (obj->cloud_map) rgb = obj->cloud_map->color_at(theta, phi);
-                else if (obj->surf_map) rgb = obj->surf_map->color_at(theta, phi);
-                else rgb = RGB3(objcol.red, objcol.green, objcol.blue);
+                if (day_map)
+                {
+                    rgb = day_map->color_at(theta, phi);
+                }
+                else
+                {
+                    rgb = RGB3(objcol.red, objcol.green, objcol.blue);
+                }
 
                 dx = objdxy.x + x;
                 dy = objdxy.y - y;
@@ -4258,8 +4263,8 @@ void draw_sunclock()
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
     sclk_scale = half_pi / size / zoom;
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
-    Map *map = cel->surf_map ? cel->surf_map : (cel->cloud_map ? cel->cloud_map : nullptr);
-    Map *nmap = cel->night_map ? cel->night_map : nullptr;
+    Map *map = cel->get_day_map();
+    Map *nmap = cel->get_night_map();
     Point land;
     bool dwh = false;
 
@@ -5110,34 +5115,62 @@ void draw_mouse_cursor(ImGuiIO& io)
 std::vector<Cloud> skyclouds;
 void draw_cloudy_sky()
 {
-    if (view_mode != vm_horizon) return;
-
-    // A seed was derived here from the viewer's latitude and longitude, assigned twice and never
-    // read, around a commented-out std::srand that the mutex pair existed to protect. Nothing in
-    // this function is random any more, so all of it is gone. The seeding belongs back here if
-    // the sky ever grows the individual clouds sketched out at the bottom of the function.
+    if (!show_clouds)
+    {
+        return;
+    }
+    if (view_mode != vm_horizon)
+    {
+        return;
+    }
 
     // See find_horizon(): horizon mode does not imply a world underfoot.
-    if (whereami < 0) return;
+    if (whereami < 0)
+    {
+        return;
+    }
     CelestialObject *cel = cels[whereami];
-    if (!cel || !cel->cloud_map) return;
-    if (uses_gaseous_map(cel->type)) return;
+    if (!cel || !cel->cloud_map)
+    {
+        return;
+    }
+    if (uses_gaseous_map(cel->type))
+    {
+        return;
+    }
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
     RGB3 rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
-    double cloudiness = sqrt(fmin(1,rgb.luminance()/192));
-    double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
+    double haziness = std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);
+    if (haziness <= 0.001)
+    {
+        return;
+    }
+
+    double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
 
     // If overcast sky, adjust for relative instellation.
-    if (p && p->cloud_map) is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
+    if (p && p->cloud_map)
+    {
+        is_day /= fmin(1.0, fmax(0.01, sqrt(p->mean_instellation())));
+    }
+    is_day = std::clamp(is_day, 0.0, 1.0);
 
-    rgb.r = fmin(255, is_day*rgb.r);
-    rgb.g = fmin(255, is_day*rgb.g);
-    rgb.b = fmin(255, is_day*rgb.b);
+    // Turn day skies gray; night skies dark overcast obscuring stars and objects.
+    // Cloud pixel value sets the haziness level ranging from none to full.
+    const double kOvercastGrayFactor = 160.0 / 255.0;
+    int cr = std::clamp((int)(rgb.r * is_day * kOvercastGrayFactor), 0, 255);
+    int cg = std::clamp((int)(rgb.g * is_day * kOvercastGrayFactor), 0, 255);
+    int cb = std::clamp((int)(rgb.b * is_day * kOvercastGrayFactor), 0, 255);
+    int ca = std::clamp((int)(255.0 * haziness), 0, 255);
 
-    ImU32 imc = IM_COL32(rgb.r, rgb.g, rgb.b, (dragging ? 128 : 255)*cloudiness);
-    if (hz_y > 0 && (hz_y < dispcy*28 || altitude > 1)) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx*2, hz_y), imc);
+    ImU32 imc = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+    float sky_bottom = fmax(0.0f, fmin((float)hz_y, (float)(dispcy * 2)));
+    if (sky_bottom > 0)
+    {
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, sky_bottom), imc);
+    }
 
     #if 0
     if (!skyclouds.size())

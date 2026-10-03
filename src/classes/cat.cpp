@@ -4774,6 +4774,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             
             try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
             try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
+            try { pl.at("TransparentClouds").get_to(p->transparent_clouds); } catch (...) { ; }
+            try { pl.at("transparent_clouds").get_to(p->transparent_clouds); } catch (...) { ; }
             // try { pl.at("").get_to(p->); } catch (...) { ; }
 
             if (m)
@@ -4804,8 +4806,15 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                         if (!strcasecmp(mapurl.substr(mapurl.size()-4).c_str(), ".png"))
                             destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".png");
                         else destfname = destdir + std::string(p->name) + std::string(mapsuffs[j]) + std::string(".jpg");
-                        if (!file_exists(destfname.c_str()))
+                        if (!strcmp(mapkeys[j], "CloudMap"))
+                        {
+                            p->cloud_map_url = mapurl;
+                            check_and_download_clouds(mapurl, destfname);
+                        }
+                        else if (!file_exists(destfname.c_str()))
+                        {
                             download_file(mapurl, destfname);
+                        }
                     }
                 }
                 catch (...) { ; }

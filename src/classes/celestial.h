@@ -244,6 +244,11 @@ namespace alienorum
         void generate_stellar_map(CelestialObject *cel);
         void generate_ring_map(CelestialObject *cel, int resolution, double rel_inner_radius, double mean_opacity, Map* transparency_map);
         void mark_for_map_regen(CelestialObject *cel, bool discard_bump = false);
+        void overlay_cloud_map(Map *clouds);
+        void obscure_with_clouds(Map *clouds);
+        bool create_merged_day(Map *surf, Map *clouds);
+        bool create_merged_night(Map *night, Map *clouds);
+        virtual ~Map();
 
         // For the GPU texture cache (gputex.h): size of the equirectangular grid, and a bulk
         // RGBA8 export into a caller-allocated width*height*4 buffer, so the channel arrays
@@ -329,6 +334,10 @@ namespace alienorum
 
         Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,
             *ring_map = nullptr, *ringx_map = nullptr;
+        Map *merged_day_map = nullptr, *merged_night_map = nullptr;
+        unsigned int merged_day_cloud_gen = 0, merged_day_surf_gen = 0;
+        unsigned int merged_night_cloud_gen = 0, merged_night_map_gen = 0;
+        bool transparent_clouds = false;
         bool has_real_maps = false;
         Locale *locales = nullptr;
         int nlocales = 0;
@@ -343,7 +352,9 @@ namespace alienorum
         bool has_prev_horizon_alt = false;
 
         CelestialObject();
-        virtual ~CelestialObject() = default;
+        virtual ~CelestialObject();
+        Map* get_day_map();
+        Map* get_night_map();
         CelestialLocation location;
         bool lock_equatorial_plane = false, lock_system_plane = false;
         Orbit* orbit = nullptr;                     // Most stars won't have an orbit, unless we get into stellar orbital mechanics.
