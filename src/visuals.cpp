@@ -4428,8 +4428,10 @@ void draw_sunclock()
         sc_draw_object(host, cel);
     }
 
+    // Sublunar point
     if (cel->type != star) for (i=cel->seqno+1; cels[i]; i++)
     {
+        if (cels[i]->deleted) continue;
         if (!cels[i]->orbit) continue;
         if (cels[i]->type == star) continue;
         if (cels[i]->type == artificial) continue;
