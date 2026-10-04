@@ -143,9 +143,15 @@ if(WIN32)
 		install(DIRECTORY package/release-assets/ DESTINATION assets)
 	endif()
 
+	# NOTE FOR FUTURE SESSIONS / DEVELOPERS:
+	# Any time new runtime files (catalogs, data files, fonts, images, etc.) are added to the
+	# repository that are NOT auto-generated or auto-downloaded by the application at runtime,
+	# they MUST also be added to the CMake/vcpkg installation rules here so they are bundled
+	# in the release installer.
 	install(FILES
 		catalogs/star_orbits.dat
 		catalogs/planets.json
+		catalogs/asteroids.json
 		catalogs/soles_alienorum.dat
 		catalogs/mainseq.dat
 		catalogs/urls.dat
