@@ -675,7 +675,7 @@ TEST(GalaxyFaceonMapTest, MajorGalaxiesAndMilkyWayHaveValidJpegHeader)
 {
     const std::vector<std::string> test_galaxies =
     {
-        "M31", "M81", "M101", "NGC_1097", "NGC_1316", "NGC_1365", "NGC_253", "Milky Way"
+        "M31", "M81", "M101", "NGC_1097", "NGC_1316", "NGC_1365", "NGC_253", "Milky Way", "IC_49"
     };
 
     for (const auto &gname : test_galaxies)

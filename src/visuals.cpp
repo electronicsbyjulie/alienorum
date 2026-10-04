@@ -1284,7 +1284,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     cel->drawnxmin = cel->drawnxmax = cel->drawnx;
     cel->drawnymin = cel->drawnymax = cel->drawny;
     if (sphresolution < 0.001/sphere_quality) sphresolution = 0.001/sphere_quality;
-    bool wireframe = (view_mode != vm_system) && (dragging || !cel->onscreen || d < cel->volumetric_mean_radius);
+    bool wireframe = (view_mode != vm_system) && (dragging || d < cel->volumetric_mean_radius);
     if (whereami<0 || cels[whereami]->type != artificial) cel->onscreen = false;
 
     bool use_gpu_disc = false, use_gpu_ring = false;
@@ -3683,7 +3683,7 @@ void draw_objects()
     if (whereami >= 0 && trackidx == whereami) trackidx = -1;
 
     double mycensq = mycenobj->tmprel.squared_magnitude();
-    double layer_cutoff = mycensq * 1.1 * zoom * zoom;
+    double layer_cutoff = mycensq * 1.1;
     mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
 
     Point viewer_pole = to_viewer_plane(yaxis);
@@ -3795,10 +3795,16 @@ void draw_objects()
                 if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw) continue;
                 if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph) continue;
             }
-            else if (angular_radius[i]*zoom < sphere_rad_threshold)
+            else
             {
-                if (cels[i]->drawnx < 0 || cels[i]->drawnx >= dispw) continue;
-                if (cels[i]->drawny < 0 || cels[i]->drawny >= disph) continue;
+                double r_bound = (angular_radius[i]*zoom < sphere_rad_threshold)
+                    ? 0.0
+                    : fmax(max_bloomrad, angular_radius[i] * zoom * dispcx * 2.5);
+                if (cels[i]->drawnx < -r_bound || cels[i]->drawnx >= dispw + r_bound
+                    || cels[i]->drawny < -r_bound || cels[i]->drawny >= disph + r_bound)
+                {
+                    continue;
+                }
             }
 
             // Counterintuitive that we would process *more* objects during dragging and not *less*,
