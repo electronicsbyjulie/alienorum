@@ -3158,7 +3158,7 @@ bool draw_single_object(int i)
         Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + ((cls == class_star) ? 0 : planet_bv_correction) + atm_yellowing);
 
         // Adjust for mesopic and scotopic color perception, e.g. dim red stars tend to look grayish.
-        float effmag = vmag_cache[i] + global_magshift;
+        float effmag = vmag_cache[i] + global_magshift + atm_yellowing;
         if (effmag > 2)
         {
             double effect = fmin(1, (effmag - 2) / 8), effect1 = 1.0 - effect;
