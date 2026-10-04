@@ -562,6 +562,16 @@ void load_catalogs()
             extract_archive(ihscgz.c_str());
         }
     }
+
+    std::string aid_fn = "catalogs" _FILESLASH "alienorum_ids.dat";
+    if (!file_exists(aid_fn.c_str()))
+    {
+        std::string aid_gz = aid_fn + std::string(".gz");
+        if (file_exists(aid_gz.c_str()))
+        {
+            extract_archive(aid_gz.c_str());
+        }
+    }
     if (file_exists(ihcfn.c_str()))
     {
         mtx.lock();

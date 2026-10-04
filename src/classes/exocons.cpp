@@ -1179,6 +1179,10 @@ namespace alienorum
                 {
                     continue;
                 }
+                if (is_spurious_cross_cons_bridge(u1.s, u2.s))
+                {
+                    continue;
+                }
 
                 double d_deg = ang_dist_deg(u1.u, u2.u);
                 double dm = std::abs(u1.mag - u2.mag);
@@ -1227,6 +1231,10 @@ namespace alienorum
                         continue;
                     }
                     if (!check_line_valid(u1.u, u2.u, u1.s, u2.s))
+                    {
+                        continue;
+                    }
+                    if (is_spurious_cross_cons_bridge(u1.s, u2.s))
                     {
                         continue;
                     }
@@ -3842,6 +3850,8 @@ namespace alienorum
 
             int best_cand_idx = -1;
             double best_score = 1e9;
+            int best_fallback_idx = -1;
+            double best_fallback_score = 1e9;
 
             for (size_t k = 0; k < candidates.size(); k++)
             {
@@ -3850,25 +3860,34 @@ namespace alienorum
                 {
                     continue;
                 }
+
+                double penalty = 0.0;
                 if (is_spurious_cross_cons_bridge(bs.s, cand.s))
                 {
-                    continue;
+                    penalty += 50.0;
                 }
                 double d_deg = ang_dist_deg(bs.u, cand.u);
                 if (d_deg > 30.0)
                 {
                     continue;
                 }
-                double sc = d_deg + cand.mag * 0.5;
+                double sc = d_deg + cand.mag * 0.5 + penalty;
                 if (cand.orig_cons == bs.orig_cons)
                 {
                     sc -= 10.0;
                 }
-                if (sc >= best_score)
+                if (!check_line_valid(bs.u, cand.u, bs.s, cand.s))
                 {
                     continue;
                 }
-                if (!check_line_valid(bs.u, cand.u, bs.s, cand.s))
+
+                if (sc < best_fallback_score)
+                {
+                    best_fallback_score = sc;
+                    best_fallback_idx = (int)k;
+                }
+
+                if (sc >= best_score)
                 {
                     continue;
                 }
@@ -3893,6 +3912,11 @@ namespace alienorum
                     best_score = sc;
                     best_cand_idx = (int)k;
                 }
+            }
+
+            if (best_cand_idx < 0)
+            {
+                best_cand_idx = best_fallback_idx;
             }
 
             if (best_cand_idx >= 0)
