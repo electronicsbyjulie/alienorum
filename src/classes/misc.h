@@ -154,6 +154,8 @@ const std::time_t J2000_TIME_T = 946684800;
 #define starlight 0.03
 #define sphere_rad_threshold (0.2 * fiftyseventh)
 #define gossamer_rings 0.08
+#define sphere_impostor_origin_shift_zoom 10000.0
+#define sphere_impostor_origin_shift_dist_ratio 1000.0
 #define zero_isnt_really_zero 9e-298
 
 #define default_rise_sound_path (std::string("assets") + _FILESLASH + std::string("sounds") + _FILESLASH + std::string("rise.wav"))

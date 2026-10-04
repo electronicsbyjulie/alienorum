@@ -4,6 +4,7 @@
 #include <deque>
 #include <iostream>
 #include "sphere_impostor.h"
+#include "classes/misc.h"
 // Declarations only (does not define IMGL3W_IMPL), so this resolves against the same
 // function-pointer table imgui_impl_opengl3.cpp (which does define IMGL3W_IMPL) fills in via
 // ImGui_ImplOpenGL3_Init() at startup -- no separate loader init necessary here. See that
@@ -108,6 +109,8 @@ namespace alienorum
         // measured from), packed together since they're always used as a unit.
         float skyr, skyg, skyb, sky_y;
         float apply_sky;   // 0 or 1
+        float origin_shift[4][3];
+        float origin_shift_active;   // 0 or 1
     };
 
     // Payload pools, one entry per impostor queued this frame, handed out by the queue_*
@@ -121,10 +124,10 @@ namespace alienorum
     static GLuint s_program = 0;
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
     static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aScreenYLoc = -1, s_aCenterLoc = -1, s_aRadiiLoc = -1;
-    static GLint s_aBasisXLoc = -1, s_aBasisYLoc = -1, s_aHasTexLoc = -1, s_aColorLoc = -1;
+    static GLint s_aBasisXLoc = -1, s_aBasisYLoc = -1, s_aColorLoc = -1;
     static GLint s_aLightDirLoc = -1, s_aTintLoc = -1, s_aFlagsLoc = -1;
-    static GLint s_aSkyLoc = -1, s_aApplySkyLoc = -1;
-    static GLint s_aHasBumpTexLoc = -1, s_aBumpLimbLoc = -1;
+    static GLint s_aSkyLoc = -1, s_aTexFlagsLoc = -1, s_aBumpLimbLoc = -1;
+    static GLint s_aOriginShiftLoc = -1;
     static GLint s_uCastersLoc = -1, s_uRingLoc = -1, s_uSphRingXMapLoc = -1;
     static GLint s_uCasterAtmLoc = -1, s_uAtmLoc = -1;
 
@@ -142,26 +145,17 @@ namespace alienorum
         "in vec3 aRadii;\n"
         "in vec3 aBasisX;\n"
         "in vec3 aBasisY;\n"
-        "in float aHasTex;\n"
         "in vec4 aColor;\n"
         "in vec3 aLightDir;\n"
         "in vec3 aTint;\n"
         "in vec4 aFlags;\n"
         "in vec4 aSky;\n"
-        "in float aApplySky;\n"
-        "in float aHasBumpTex;\n"
+        "in vec4 aTexFlags;\n"   // x=has_tex, y=apply_sky, z=has_bump_tex, w=origin_shift_active
         // x = bump strength; y, z = the quadratic limb-darkening coefficients (a, b), used only
         // when self_luminous; w = the light source's angular radius in radians, used only for
-        // the eclipse test (0 = no eclipse on this object this frame). Four unrelated scalars
-        // share one attribute on purpose: OpenGL guarantees only GL_MAX_VERTEX_ATTRIBS >= 16,
-        // this machine reports exactly 16 (Mesa, Intel HD 2000), and the list above already uses
-        // all 16. Declaring a 17th made the program fail to link, which silently killed every
-        // disc in the app -- stars and planets alike, since they all come through this one
-        // shader. Any future per-object scalar has to ride along in an existing attribute's
-        // spare components the same way (widening one from vec3 to vec4, as the w component here
-        // did, costs no extra attribute slot at all: a slot is a whole vec4 either way). The
-        // name predates the third and fourth passengers.
+        // the eclipse test (0 = no eclipse on this object this frame).
         "in vec4 aBumpLimb;\n"
+        "in vec3 aOriginShift;\n"
         "out vec2 vRayXY;\n"
         "out float vScreenY;\n"
         "out vec3 vCenter;\n"
@@ -177,6 +171,8 @@ namespace alienorum
         "out float vApplySky;\n"
         "out float vHasBumpTex;\n"
         "out vec4 vBumpLimb;\n"
+        "out vec3 vOriginShift;\n"
+        "out float vOriginShiftFlag;\n"
         "void main()\n"
         "{\n"
         "    vRayXY = aRayXY;\n"
@@ -185,15 +181,17 @@ namespace alienorum
         "    vRadii = aRadii;\n"
         "    vBasisX = aBasisX;\n"
         "    vBasisY = aBasisY;\n"
-        "    vHasTex = aHasTex;\n"
+        "    vHasTex = aTexFlags.x;\n"
+        "    vApplySky = aTexFlags.y;\n"
+        "    vHasBumpTex = aTexFlags.z;\n"
+        "    vOriginShiftFlag = aTexFlags.w;\n"
         "    vColor = aColor;\n"
         "    vLightDir = aLightDir;\n"
         "    vTint = aTint;\n"
         "    vFlags = aFlags;\n"
         "    vSky = aSky;\n"
-        "    vApplySky = aApplySky;\n"
-        "    vHasBumpTex = aHasBumpTex;\n"
         "    vBumpLimb = aBumpLimb;\n"
+        "    vOriginShift = aOriginShift;\n"
         "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
         "}\n";
 
@@ -228,6 +226,8 @@ namespace alienorum
         "in float vApplySky;\n"
         "in float vHasBumpTex;\n"
         "in vec4 vBumpLimb;\n"
+        "in vec3 vOriginShift;\n"
+        "in float vOriginShiftFlag;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
@@ -413,7 +413,7 @@ namespace alienorum
         "    vec3 dirLocal = dir.x*vBasisX + dir.y*vBasisY + dir.z*basisZ;\n"
         "    vec3 centerLocal = vCenter.x*vBasisX + vCenter.y*vBasisY + vCenter.z*basisZ;\n"
         "    vec3 Dloc = dirLocal / vRadii;\n"
-        "    vec3 Cloc = centerLocal / vRadii;\n"
+        "    vec3 Cloc = (vOriginShiftFlag > 0.5) ? -vOriginShift : (centerLocal / vRadii);\n"
         "    float DlocLen = length(Dloc);\n"
         "    vec3 DlocN = Dloc / DlocLen;\n"
         "\n"
@@ -435,7 +435,7 @@ namespace alienorum
         "    float delta = max(fwidth(b), 1e-6);\n"
         "    float solidCoverage = clamp((1.0 - b) / delta + 0.5, 0.0, 1.0);\n"
         "    bool solid = (solidCoverage > 0.0);\n"
-        "    bool inAir = (atmRel > 0.0 && b < atmR && tca > 0.0 && vFlags.x < 0.5);\n"
+        "    bool inAir = (atmRel > 0.0 && b < atmR && (vOriginShiftFlag > 0.5 || tca > 0.0) && vFlags.x < 0.5);\n"
         "    if (!solid && !inAir) discard;\n"
         "\n"
         // What color the air comes out is decided by which side of it we are standing on, not by
@@ -507,7 +507,7 @@ namespace alienorum
         "    float d2Clamped = min(d2, 1.0);\n"
         "    float thc = sqrt(max(0.0, 1.0 - d2Clamped));\n"
         "    float t = (tca - thc) / DlocLen;\n"
-        "    if (t < 0.0) discard;\n"
+        "    if (t < 0.0 && vOriginShiftFlag < 0.5) discard;\n"
         "    vec3 hit = dir * t;\n"
         "\n"
         "    // Local-frame point on the *unit* sphere -- by construction this already *is* the\n"
@@ -515,7 +515,9 @@ namespace alienorum
         "    // transform (unlike the old plain-sphere code, which had to recover local\n"
         "    // coordinates from a camera-space normal that was also its position). Re-\n"
         "    // normalized to absorb float error, same spirit as the old normalize(hit-vCenter).\n"
-        "    vec3 hitLocal = normalize(t * Dloc - Cloc);\n"
+        "    vec3 hitLocal = (vOriginShiftFlag > 0.5)\n"
+        "        ? normalize((tca - thc) * DlocN - Cloc)\n"
+        "        : normalize(t * Dloc - Cloc);\n"
         "\n"
         "    // Shading normal: the *gradient* of the ellipsoid's implicit surface\n"
         "    // x^2/a^2+y^2/b^2+z^2/c^2=1, which is (x/a^2,y/b^2,z/c^2) in local coordinates --\n"
@@ -611,7 +613,7 @@ namespace alienorum
         "        }\n"
         "    }\n"
         "\n"
-        "    float costerm = (vFlags.x > 0.5) ? dot(n, normalize(-hit)) : dot(n, vLightDir);\n"
+        "    float costerm = (vFlags.x > 0.5) ? dot(n, -normalize(dir)) : dot(n, vLightDir);\n"
         "    float mu = max(costerm, 0.0);\n"
         "\n"
         // Eclipses. Each caster hides some fraction of the light source's disc as seen from
@@ -754,10 +756,10 @@ namespace alienorum
     }
 
     // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) radii(3) basisX(3) basisY(3)
-    // hasTex(1) color(4) lightDir(3) tint(3) flags(4) sky(4) applySky(1) hasBumpTex(1)
-    // bumpLimb(4) = 42. The eclipse casters are *not* here -- they ride in a mat4 uniform
-    // instead (see SphereImpostorParams::casters).
-    static const int kFloatsPerVertex = 42;
+    // color(4) lightDir(3) tint(3) flags(4) sky(4) texFlags(4) bumpLimb(4) originShift(3) = 46.
+    // The eclipse casters are *not* here -- they ride in a mat4 uniform instead (see
+    // SphereImpostorParams::casters).
+    static const int kFloatsPerVertex = 46;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
 
     static void ensure_gl_objects()
@@ -782,22 +784,21 @@ namespace alienorum
         glDeleteShader(vs);
         glDeleteShader(fs);
 
-        s_aPosLoc      = glGetAttribLocation(s_program, "aPos");
-        s_aRayXYLoc    = glGetAttribLocation(s_program, "aRayXY");
-        s_aScreenYLoc  = glGetAttribLocation(s_program, "aScreenY");
-        s_aCenterLoc   = glGetAttribLocation(s_program, "aCenter");
-        s_aRadiiLoc    = glGetAttribLocation(s_program, "aRadii");
-        s_aBasisXLoc   = glGetAttribLocation(s_program, "aBasisX");
-        s_aBasisYLoc   = glGetAttribLocation(s_program, "aBasisY");
-        s_aHasTexLoc   = glGetAttribLocation(s_program, "aHasTex");
-        s_aColorLoc    = glGetAttribLocation(s_program, "aColor");
-        s_aLightDirLoc = glGetAttribLocation(s_program, "aLightDir");
-        s_aTintLoc     = glGetAttribLocation(s_program, "aTint");
-        s_aFlagsLoc    = glGetAttribLocation(s_program, "aFlags");
-        s_aSkyLoc      = glGetAttribLocation(s_program, "aSky");
-        s_aApplySkyLoc = glGetAttribLocation(s_program, "aApplySky");
-        s_aHasBumpTexLoc     = glGetAttribLocation(s_program, "aHasBumpTex");
-        s_aBumpLimbLoc       = glGetAttribLocation(s_program, "aBumpLimb");
+        s_aPosLoc          = glGetAttribLocation(s_program, "aPos");
+        s_aRayXYLoc        = glGetAttribLocation(s_program, "aRayXY");
+        s_aScreenYLoc      = glGetAttribLocation(s_program, "aScreenY");
+        s_aCenterLoc       = glGetAttribLocation(s_program, "aCenter");
+        s_aRadiiLoc        = glGetAttribLocation(s_program, "aRadii");
+        s_aBasisXLoc       = glGetAttribLocation(s_program, "aBasisX");
+        s_aBasisYLoc       = glGetAttribLocation(s_program, "aBasisY");
+        s_aColorLoc        = glGetAttribLocation(s_program, "aColor");
+        s_aLightDirLoc     = glGetAttribLocation(s_program, "aLightDir");
+        s_aTintLoc         = glGetAttribLocation(s_program, "aTint");
+        s_aFlagsLoc        = glGetAttribLocation(s_program, "aFlags");
+        s_aSkyLoc          = glGetAttribLocation(s_program, "aSky");
+        s_aTexFlagsLoc     = glGetAttribLocation(s_program, "aTexFlags");
+        s_aBumpLimbLoc     = glGetAttribLocation(s_program, "aBumpLimb");
+        s_aOriginShiftLoc  = glGetAttribLocation(s_program, "aOriginShift");
         s_uCastersLoc  = glGetUniformLocation(s_program, "uCasters");
         s_uRingLoc     = glGetUniformLocation(s_program, "uRing");
         s_uCasterAtmLoc = glGetUniformLocation(s_program, "uCasterAtm");
@@ -840,24 +841,22 @@ namespace alienorum
         glVertexAttribPointer(s_aBasisXLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 11));
         glEnableVertexAttribArray(s_aBasisYLoc);
         glVertexAttribPointer(s_aBasisYLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 14));
-        glEnableVertexAttribArray(s_aHasTexLoc);
-        glVertexAttribPointer(s_aHasTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 17));
         glEnableVertexAttribArray(s_aColorLoc);
-        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 18));
+        glVertexAttribPointer(s_aColorLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 17));
         glEnableVertexAttribArray(s_aLightDirLoc);
-        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 22));
+        glVertexAttribPointer(s_aLightDirLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 21));
         glEnableVertexAttribArray(s_aTintLoc);
-        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 25));
+        glVertexAttribPointer(s_aTintLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 24));
         glEnableVertexAttribArray(s_aFlagsLoc);
-        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 28));
+        glVertexAttribPointer(s_aFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 27));
         glEnableVertexAttribArray(s_aSkyLoc);
-        glVertexAttribPointer(s_aSkyLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 32));
-        glEnableVertexAttribArray(s_aApplySkyLoc);
-        glVertexAttribPointer(s_aApplySkyLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 36));
-        glEnableVertexAttribArray(s_aHasBumpTexLoc);
-        glVertexAttribPointer(s_aHasBumpTexLoc, 1, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 37));
+        glVertexAttribPointer(s_aSkyLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 31));
+        glEnableVertexAttribArray(s_aTexFlagsLoc);
+        glVertexAttribPointer(s_aTexFlagsLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 35));
         glEnableVertexAttribArray(s_aBumpLimbLoc);
-        glVertexAttribPointer(s_aBumpLimbLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 38));
+        glVertexAttribPointer(s_aBumpLimbLoc, 4, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 39));
+        glEnableVertexAttribArray(s_aOriginShiftLoc);
+        glVertexAttribPointer(s_aOriginShiftLoc, 3, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 43));
 
         // GL_STATIC_DRAW isn't in this stripped loader's symbol set (see the comment at the
         // top of this file); GL_STREAM_DRAW is a harmless usage-hint mismatch for data that
@@ -906,31 +905,35 @@ namespace alienorum
             v[14] = p->byx;
             v[15] = p->byy;
             v[16] = p->byz;
-            v[17] = p->has_tex;
-            v[18] = p->r;
-            v[19] = p->g;
-            v[20] = p->b;
-            v[21] = p->a;
-            v[22] = p->lightx;
-            v[23] = p->lighty;
-            v[24] = p->lightz;
-            v[25] = p->tintr;
-            v[26] = p->tintg;
-            v[27] = p->tintb;
-            v[28] = p->flagx;
-            v[29] = p->flagy;
-            v[30] = p->flagz;
-            v[31] = p->flagw;
-            v[32] = p->skyr;
-            v[33] = p->skyg;
-            v[34] = p->skyb;
-            v[35] = p->sky_y;
+            v[17] = p->r;
+            v[18] = p->g;
+            v[19] = p->b;
+            v[20] = p->a;
+            v[21] = p->lightx;
+            v[22] = p->lighty;
+            v[23] = p->lightz;
+            v[24] = p->tintr;
+            v[25] = p->tintg;
+            v[26] = p->tintb;
+            v[27] = p->flagx;
+            v[28] = p->flagy;
+            v[29] = p->flagz;
+            v[30] = p->flagw;
+            v[31] = p->skyr;
+            v[32] = p->skyg;
+            v[33] = p->skyb;
+            v[34] = p->sky_y;
+            v[35] = p->has_tex;
             v[36] = p->apply_sky;
             v[37] = p->has_bump_tex;
-            v[38] = p->bump_strength;
-            v[39] = p->limba;
-            v[40] = p->limbb;
-            v[41] = p->light_ang;
+            v[38] = p->origin_shift_active;
+            v[39] = p->bump_strength;
+            v[40] = p->limba;
+            v[41] = p->limbb;
+            v[42] = p->light_ang;
+            v[43] = p->origin_shift[i][0];
+            v[44] = p->origin_shift[i][1];
+            v[45] = p->origin_shift[i][2];
         }
 
         glUseProgram(s_program);
@@ -1106,6 +1109,10 @@ namespace alienorum
         p->ndc_y0 = (float)(1.0 - (ymax / H) * 2.0);
         p->ndc_y1 = (float)(1.0 - (ymin / H) * 2.0);
 
+        double d = sqrt(cx*cx + cy*cy + cz*cz);
+        bool use_origin_shift = (cz > 0.0) && (lzoom >= sphere_impostor_origin_shift_zoom || (d / in.r) >= sphere_impostor_origin_shift_dist_ratio);
+        p->origin_shift_active = use_origin_shift ? 1.0f : 0.0f;
+
         // Corner order matches render_sphere_impostor(): (x0,y0) (x1,y0) (x1,y1) (x0,y1), i.e.
         // (xmin,ymax) (xmax,ymax) (xmax,ymin) (xmin,ymin) in screen pixel terms once the Y flip
         // above is accounted for -- each corner's ray direction is just its own zdes/lzoom.
@@ -1117,11 +1124,32 @@ namespace alienorum
             p->rayxy[i][0] = (float)(cornerZdesX[i] / lzoom);
             p->rayxy[i][1] = (float)(cornerZdesY[i] / lzoom);
             p->screeny[i] = (float)cornerScreenY[i];
+
+            if (use_origin_shift)
+            {
+                // Ray direction at corner i is dir = (cornerZdesX[i]/lzoom, -cornerZdesY[i]/lzoom, 1.0).
+                // At plane Z = cz, the ray's offset from the center (cx, cy, cz) is:
+                // deltaX = cz * (cornerZdesX[i] / lzoom) - cx
+                // deltaY = cz * (-cornerZdesY[i] / lzoom) - cy
+                double deltaX = cz * (cornerZdesX[i] / lzoom) - cx;
+                double deltaY = cz * (-cornerZdesY[i] / lzoom) - cy;
+
+                double locX = (deltaX * in.basisX[0] + deltaY * in.basisY[0]) / in.axis_x;
+                double locY = (deltaX * in.basisX[1] + deltaY * in.basisY[1]) / in.axis_y;
+                double locZ = (deltaX * in.basisX[2] + deltaY * in.basisY[2]) / in.axis_z;
+
+                p->origin_shift[i][0] = (float)locX;
+                p->origin_shift[i][1] = (float)locY;
+                p->origin_shift[i][2] = (float)locZ;
+            }
+            else
+            {
+                p->origin_shift[i][0] = 0.0f;
+                p->origin_shift[i][1] = 0.0f;
+                p->origin_shift[i][2] = 0.0f;
+            }
         }
 
-        // Scaled by 1/d (distance to center), not 1/r -- see the comment on
-        // SphereImpostorParams::ccx for why (float32 precision at real astronomical distances).
-        double d = sqrt(cx*cx + cy*cy + cz*cz);
         p->ccx = (float)(cx / d);
         p->ccy = (float)(cy / d);
         p->ccz = (float)(cz / d);
