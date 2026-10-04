@@ -3353,12 +3353,16 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
         rgb.r = 250;
         rgb.g = 250 - 0.5*red;
         rgb.b = 240 - red;
-        xrgb.r = xrgb.g = xrgb.b = 255 - (255.0 * mo
-            * sigmoid((double)(x-inx) * 0.05)       // inner bound
-            * pow(1.0-fx, 0.1)                      // taper outer bound
-            * pow(cel->cel_frand(0.4,0.6), oe)      // detail
-            );
-        
+        double sigma = sigmoid((double)(x-inx) * 0.05);
+        xrgb.r = xrgb.g = xrgb.b = (sigma >= 0.05)
+            ? (255 - (255.0 * mo
+                * sigma                                 // inner bound
+                * pow(1.0-fx, 0.1)                      // taper outer bound
+                * pow(cel->cel_frand(0.4,0.6), oe)      // detail
+              ))
+            : 255;
+        // std::cout << cel->name << " ring generate " << x << "/" << image_width << " σ=" << sigma << " xrgb=" << (int)(xrgb.g) << std::endl;
+
         // wandering drunkard on color
         red += dred;
         dred += cel->cel_frand(-redstep,redstep);
