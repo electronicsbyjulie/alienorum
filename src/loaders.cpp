@@ -1293,11 +1293,20 @@ void load_stuff()
     loading_msg = "Auditing main sequence stars...";
     mtx.unlock();
     Star::audit_and_correct_main_sequence_stars(cels);
+
+    std::string ihcfn = cr.get_condensed_starcat_name();
+    if (!file_exists(ihcfn.c_str()))
+    {
+        mtx.lock();
+        loading_msg = "Applying Gaia astrometry & distances...";
+        mtx.unlock();
+        cr.apply_gaia_astrometry(cels);
+    }
+
     mtx.lock();
     loading_msg = "Assigning constellations...";
     mtx.unlock();
     cache_cons_lines();
-    std::string ihcfn = cr.get_condensed_starcat_name();
     if (!file_exists(ihcfn.c_str()))
     {
         ConsBins cb = fill_alienorum_ids();

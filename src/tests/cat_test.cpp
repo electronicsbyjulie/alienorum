@@ -571,5 +571,41 @@ TEST_F(CatalogParsingTest, BackgroundAstorbLoaderLoadsAndLinks)
     EXPECT_TRUE(found_ceres);
 }
 
+TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass)
+{
+    CatalogReader cr;
+    CelestialObject* test_cels[3] = { nullptr, nullptr, nullptr };
+
+    Star* s1 = new Star();
+    s1->HIP = 1;
+    strcpy(s1->name, "HIP 1");
+    s1->apparent_magnitude = 9.0;
+    strcpy(s1->spectral_type, "F5V");
+    s1->distance = 100.0 * parsec;
+    test_cels[0] = s1;
+
+    Star* s2 = new Star();
+    s2->HIP = 8;
+    strcpy(s2->name, "HIP 8");
+    s2->apparent_magnitude = 4.0;
+    strcpy(s2->spectral_type, "G2V");
+    s2->distance = 10.0 * parsec;
+    test_cels[1] = s2;
+
+    int updated = cr.apply_gaia_astrometry(test_cels);
+    EXPECT_EQ(updated, 2);
+
+    double expected_dist_pc = 1000.0 / 5.4151;
+    EXPECT_NEAR(s1->distance / parsec, expected_dist_pc, 0.5);
+    EXPECT_TRUE(s1->distance_known);
+    EXPECT_GT(s1->absolute_magnitude, 0.0);
+
+    // s2 (HIP 8) is at ~657 pc, M_V = -5.09 -> promoted to Supergiant Class I
+    EXPECT_STREQ(s2->spectral_type, "G2I");
+
+    delete s1;
+    delete s2;
+}
+
 
 

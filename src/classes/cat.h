@@ -78,6 +78,9 @@ namespace alienorum
         int read_star_orbits_dat(CelestialObject** cels);
         int read_local_planets(CelestialObject** cels, int max, CelestialObject* must_orbit = nullptr, CelestialObject* mustnt_orbit = nullptr);
 
+        // Gaia Astrometry
+        int apply_gaia_astrometry(CelestialObject** cels);
+
         // Condensed star catalog
         std::string get_condensed_starcat_name();
         int write_condensed_star_cat(ConsBins cb);

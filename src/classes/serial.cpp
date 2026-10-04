@@ -183,7 +183,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         if (cels[i]->deleted) continue;
         if (os && (cels[i]->typeclass() != class_star)) continue;
         Star* s = (Star*)cels[i];
-        if (!strcmp(cels[i]->name, search_term))
+        if (!strcmp(cels[i]->name, search_term)
+            || (cels[i]->typeclass() == class_star && s->alienorumid.size() && !strcmp(s->alienorumid.c_str(), search_term)))
         {
             result = i;
             break;
