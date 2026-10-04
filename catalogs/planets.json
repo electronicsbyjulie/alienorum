@@ -275,6 +275,14 @@
         "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pluto-map-sept-16-2015.jpg/3840px-Pluto-map-sept-16-2015.jpg"
     },
     {
+        "BODYNAME": "Haumea",
+        "RingRadius": 2287
+    },
+    {
+        "BODYNAME": "Quaoar",
+        "RingRadius": 4057
+    },
+    {
         "BODYNAME": "Ceres",
         "SurfaceTemperature": 167,
         "Mass": 9.38648e+20,

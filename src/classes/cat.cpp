@@ -4768,7 +4768,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             }
             
             try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
-            try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; } catch (...) { ; }
+            try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; p->ring_status_known = true; } catch (...) { ; }
             try { pl.at("TransparentClouds").get_to(p->transparent_clouds); } catch (...) { ; }
             try { pl.at("transparent_clouds").get_to(p->transparent_clouds); } catch (...) { ; }
             // try { pl.at("").get_to(p->); } catch (...) { ; }

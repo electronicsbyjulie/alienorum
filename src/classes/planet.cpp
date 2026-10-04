@@ -1199,6 +1199,13 @@ Point refract_true_point(Point pt, double alt_rad)
 // Evaluates the probability of a ring system existing based on mass and temperature.
 bool Planet::guess_has_rings()
 {
+    if (ring_status_known) return ring_radius > 0;
+    if (get_light_center() == cels[0])                  // No rings on solar system objects unless explicitly indicated.
+    {
+        ring_status_known = true;
+        return ring_radius > 0;
+    }
+
     double probability = 0.0;
 
     // Anything tidally locked or in a resonance probably wouldn't have a ring.

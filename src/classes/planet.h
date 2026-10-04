@@ -42,6 +42,7 @@ namespace alienorum
         double ring_radius = 0;
         double ring_inner_radius = 0;
         double ring_mean_opacity = 0;
+        bool ring_status_known = false;
         int asteroid_no = 0;                                // Zero if major planet or moon.
         bool lock_type = false;
         std::string cloud_map_url;
