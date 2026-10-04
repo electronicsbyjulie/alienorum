@@ -3039,7 +3039,7 @@ bool draw_single_object(int i)
             double zenith_rad = find_3D_angle(cels[i]->viewrel, yaxis, center);
             atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad);
         }
-        else atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, 0);
+        else atm_yellowing = 0; // Color::compute_atmospheric_yellowing(atm_pressure, 0);
     }
 
     /*double f_bloom = (bloomrad>1.5*max_bloomrad) ? 1.0+sqrt(bloomrad-1.5*max_bloomrad)*13 : 0;
