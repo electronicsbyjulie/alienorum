@@ -9,6 +9,7 @@ vcpkg
 vcpkg_installed
 package/release-maps
 package/release-assets
+package/release-galaxies
 package/*.exe
 *.json
 !vcpkg.json

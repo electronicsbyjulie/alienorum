@@ -39,6 +39,15 @@ git ls-files assets/ | while read -r f; do
     cp "$f" "package/release-assets/${f#assets/}"
 done
 
+# Same idea for galaxies/: ship what's git-tracked under galaxies/ (face-on and internal
+# maps for galaxy rendering), omitting uncommitted scans and raw images.
+rm -rf package/release-galaxies
+mkdir -p package/release-galaxies
+git ls-files galaxies/ | while read -r f; do
+    mkdir -p "package/release-galaxies/$(dirname "${f#galaxies/}")"
+    cp "$f" "package/release-galaxies/${f#galaxies/}"
+done
+
 cmake -B build-win \
     -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain-mingw64.cmake" \

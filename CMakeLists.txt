@@ -178,6 +178,13 @@ if(WIN32)
 		install(DIRECTORY package/release-maps/ DESTINATION maps)
 	endif()
 
+	if(EXISTS "${CMAKE_SOURCE_DIR}/package/release-galaxies")
+		install(DIRECTORY package/release-galaxies/ DESTINATION galaxies)
+	elseif(EXISTS "${CMAKE_SOURCE_DIR}/galaxies/faceon" AND EXISTS "${CMAKE_SOURCE_DIR}/galaxies/internal")
+		install(DIRECTORY galaxies/faceon/ DESTINATION galaxies/faceon)
+		install(DIRECTORY galaxies/internal/ DESTINATION galaxies/internal)
+	endif()
+
 	set(CPACK_GENERATOR "NSIS")
 	set(CPACK_PACKAGE_NAME "Alienorum")
 	set(CPACK_PACKAGE_VENDOR "Electronics by Julie")
