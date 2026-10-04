@@ -69,6 +69,7 @@ add_library(CLASSES STATIC
 	src/classes/color.cpp
 	src/classes/comet.cpp
 	src/classes/cons.cpp
+	src/classes/exocons.cpp
 	src/classes/galaxy.cpp
 	src/classes/misc.cpp
 	src/classes/moon.cpp
@@ -79,18 +80,19 @@ add_library(CLASSES STATIC
 	src/classes/satellite.cpp
 	src/classes/serial.cpp
 	src/classes/shore.cpp
+	src/classes/sound.cpp
 	src/classes/sscimport.cpp
 	src/classes/star.cpp
-	src/classes/exocons.cpp
 )
 
-target_include_directories(CLASSES PUBLIC src/classes src/include
+target_include_directories(CLASSES PUBLIC src/classes src/include src/include/imgui src/include/imgui/backends
     ${CURL_INCLUDE_DIRS}
     ${CURLPP_INCLUDE_DIRS})
 
 target_link_libraries(CLASSES JPEG::JPEG PNG::PNG LibArchive::LibArchive
     ${CURL_LIBRARIES}
-    cURLpp)
+    cURLpp
+    $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 
 add_executable(alienorum
 	src/dialogs.cpp

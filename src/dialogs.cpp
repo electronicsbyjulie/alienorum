@@ -652,7 +652,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
 
         objname = cels[i]->name;
         ImGui::Text("%s", objname.c_str());
-        if (!strcmp(cels[i]->name, "Earth") && cels[i]->cloud_map)
+        if (!strcmp(cels[i]->name, "Earth") && cels[i]->cloud_map && cels[i]->cloud_map->is_complete())
         {
             ImGui::TextWrapped("Clouds: Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps");
         }

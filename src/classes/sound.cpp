@@ -1,11 +1,14 @@
 #include "sound.h"
 #include "celestial.h"
 #include "misc.h"
-#include "../globals.h"
 #include <cmath>
 #include <iostream>
 #include <vector>
 #include <cstring>
+
+extern bool play_rise_set_sound;
+extern std::string rise_sound_path;
+extern std::string set_sound_path;
 
 namespace alienorum
 {
@@ -159,8 +162,8 @@ namespace alienorum
                     double t_note = t - note_start;
                     double decay = (idx < 2 ? 1.6 : 1.1);
                     double env = std::exp(-decay * t_note);
-                    double tone = std::sin(2.0 * M_PI * freqs[idx] * t_note)
-                                  + 0.25 * std::sin(4.0 * M_PI * freqs[idx] * t_note);
+                    double tone = std::sin(2.0 * _pi * freqs[idx] * t_note)
+                                  + 0.25 * std::sin(4.0 * _pi * freqs[idx] * t_note);
                     sample_val += tone * env;
                 }
             }
