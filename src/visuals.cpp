@@ -1378,67 +1378,70 @@ int draw_sphere(CelestialObject* cel, double arad)
     bool worth_using_map = (bloomrad_cache[cel->seqno] > 5);                // Only if the disc will be big enouh to see any details.
 
     int i360, latmin = 1e9, latmax = -1e9, lonmin = 1e9, lonmax = -1e9, nstep = wireframe ? 10 : 5;
-    for (i=0; i<=360; i+=nstep)
+    if (dragging || !use_gpu_disc)
     {
-        i360 = (i>=180 && lonmin<=0 && lonmax<180) ? (i - 360) : i;           // Catch if visible longitudes wrap around zero.
-        prev_valid = false;
-        for (j=-90; j<=90; j+=nstep)
+        for (i=0; i<=360; i+=nstep)
         {
-            Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
-
-            if (dwh)
+            i360 = (i>=180 && lonmin<=0 && lonmax<180) ? (i - 360) : i;           // Catch if visible longitudes wrap around zero.
+            prev_valid = false;
+            for (j=-90; j<=90; j+=nstep)
             {
-                cursor.x *= ((Moon*)cel)->width * .5;
-                cursor.y *= ((Moon*)cel)->height * .5;
-                cursor.z *= ((Moon*)cel)->depth * .5;
-            }
-            else cursor.y *= obl;
-            cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
+                Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
 
-            cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-            cursor += cel->tmprel;
-            vtheta = fabs(fmod(find_3D_angle(cursor, center, cel->tmprel), _pi*2));
-            cursor = to_viewer_plane(cursor);
-            if (cursor.magnitude() > z_cutoff)
-            {
-                prev_valid = false;
-                continue;
-            }
-            if (airy_rock) cursor = refract_true_point(cursor);
-            zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
-            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
-            {
-                prev_valid = false;
-                continue;
-            }
-
-            if (vtheta < horizon_angle)
-            {
-                if (i >= 180) i360 = i;
-
-                if (i360 < lonmin) lonmin = i360;
-                if (i360 > lonmax) lonmax = i360;
-
-                if (j < latmin) latmin = j;
-                if (j > latmax) latmax = j;
-            }
-
-            if (wireframe && (j > -80))
-            {
-                int dx1 = dispcx + zdes.x * dispcx,
-                    dy1 = dispcy + zdes.y * dispcx,
-                    dx2 = dispcx + prev.x * dispcx,
-                    dy2 = dispcy + prev.y * dispcx;
-
-                if (prev_valid)
+                if (dwh)
                 {
-                    wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1, io);
-                    if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                    cursor.x *= ((Moon*)cel)->width * .5;
+                    cursor.y *= ((Moon*)cel)->height * .5;
+                    cursor.z *= ((Moon*)cel)->depth * .5;
                 }
-            }
+                else cursor.y *= obl;
+                cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
 
-            prev = zdes;
-            prev_valid = true;
+                cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                cursor += cel->tmprel;
+                vtheta = fabs(fmod(find_3D_angle(cursor, center, cel->tmprel), _pi*2));
+                cursor = to_viewer_plane(cursor);
+                if (cursor.magnitude() > z_cutoff)
+                {
+                    prev_valid = false;
+                    continue;
+                }
+                if (airy_rock) cursor = refract_true_point(cursor);
+                zdes = Cartesian2D(cursor, azimuth+azimuth_correction, altitude, zoom);
+                if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+                {
+                    prev_valid = false;
+                    continue;
+                }
+
+                if (vtheta < horizon_angle)
+                {
+                    if (i >= 180) i360 = i;
+
+                    if (i360 < lonmin) lonmin = i360;
+                    if (i360 > lonmax) lonmax = i360;
+
+                    if (j < latmin) latmin = j;
+                    if (j > latmax) latmax = j;
+                }
+
+                if (wireframe && (j > -80))
+                {
+                    int dx1 = dispcx + zdes.x * dispcx,
+                        dy1 = dispcy + zdes.y * dispcx,
+                        dx2 = dispcx + prev.x * dispcx,
+                        dy2 = dispcy + prev.y * dispcx;
+
+                    if (prev_valid)
+                    {
+                        wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), i?gc:gm, 1, io);
+                        if (zdes.x > -1 && zdes.x < 1 && zdes.y > -1 && zdes.y < 1) cel->onscreen = true;
+                    }
+                }
+
+                prev = zdes;
+                prev_valid = true;
+            }
         }
     }
 

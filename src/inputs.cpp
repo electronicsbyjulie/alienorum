@@ -204,8 +204,11 @@ void pan_with_crosshairs(ImGuiIO& io)
 
 void thread_check_sats()
 {
-    std::thread tsat(SatSource::check_satcat_and_latest);
-    tsat.detach();
+    if (check_sats_thread.joinable())
+    {
+        check_sats_thread.join();
+    }
+    check_sats_thread = std::thread(SatSource::check_satcat_and_latest);
 }
 
 void show_menu()
@@ -722,7 +725,15 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         break;
 
-        case '.': astwnd = !astwnd; break;
+        case '.':
+        {
+            astwnd = !astwnd;
+            if (astwnd && !astorb_loaded.load() && !astorb_loading.load())
+            {
+                start_astorb_background_load();
+            }
+            break;
+        }
         case ';': cometwnd = !cometwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
@@ -1171,9 +1182,12 @@ void process_key_F5()
     {
         return;
     }
+    if (reload_thread.joinable())
+    {
+        reload_thread.join();
+    }
     splash = true;
-    std::thread t1(reload_stuff);
-    t1.detach();
+    reload_thread = std::thread(reload_stuff);
 }
 
 void process_key_F6()

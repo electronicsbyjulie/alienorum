@@ -707,21 +707,6 @@ int main (int argc, char** argv)
                 }
             }
 
-            if (earth_clouds_shown)
-            {
-                const char *attr_text = "Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps";
-                ImVec2 txt_sz = ImGui::CalcTextSize(attr_text);
-                float ax = io.DisplaySize.x - txt_sz.x - 12.0f;
-                float ay = io.DisplaySize.y - txt_sz.y - 10.0f;
-                if (ax > 0 && ay > 0)
-                {
-                    ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 71));
-                    ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 81));
-                    ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax + 1, ay + 1), shadow_col, attr_text);
-                    ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax, ay), txt_col, attr_text);
-                }
-            }
-
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
 
@@ -784,6 +769,21 @@ int main (int argc, char** argv)
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;
+            }
+
+            if (earth_clouds_shown)
+            {
+                const char *attr_text = "Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps";
+                ImVec2 txt_sz = ImGui::CalcTextSize(attr_text);
+                float ax = io.DisplaySize.x - txt_sz.x - 12.0f;
+                float ay = io.DisplaySize.y - txt_sz.y - 10.0f;
+                if (ax > 0 && ay > 0)
+                {
+                    ImU32 shadow_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 71));
+                    ImU32 txt_col = rgba_apply_redlight(IM_COL32(200, 200, 200, 81));
+                    ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax + 1, ay + 1), shadow_col, attr_text);
+                    ImGui::GetBackgroundDrawList()->AddText(ImVec2(ax, ay), txt_col, attr_text);
+                }
             }
 
             // Positioning updates
@@ -1160,13 +1160,43 @@ int main (int argc, char** argv)
 
     abort_load = true;
     SDL_HideWindow(window);
-    if (t1.joinable()) t1.join();
+    if (t1.joinable())
+    {
+        t1.join();
+    }
+    if (reload_thread.joinable())
+    {
+        reload_thread.join();
+    }
+    if (save_tex_thread.joinable())
+    {
+        save_tex_thread.join();
+    }
+    if (batch_sat_thread.joinable())
+    {
+        batch_sat_thread.join();
+    }
+    if (check_sats_thread.joinable())
+    {
+        check_sats_thread.join();
+    }
+    astorb_cancel.store(true);
+    if (astorb_thread.joinable())
+    {
+        astorb_thread.join();
+    }
+    alienorum::ExoConsGenerator::reset();
 
-    if (load_completed && cels[1]) save_universe();
+    if (load_completed && cels[1])
+    {
+        save_universe();
+    }
 
-    int wait_limit = 100;
+    int wait_limit = 500;
     while (texture_loads_pending > 0 && --wait_limit > 0)
+    {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     for (i=0; cels[i]; i++)
     {

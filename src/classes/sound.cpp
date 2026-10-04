@@ -203,7 +203,7 @@ namespace alienorum
 
         if (!play_sound_file(rise_sound_path))
         {
-            if (rise_sound_path != "assets/sounds/rise.wav" && play_sound_file("assets/sounds/rise.wav"))
+            if (rise_sound_path != (default_rise_sound_path) && play_sound_file(default_rise_sound_path))
             {
                 return;
             }
@@ -225,7 +225,7 @@ namespace alienorum
 
         if (!play_sound_file(set_sound_path))
         {
-            if (set_sound_path != "assets/sounds/set.wav" && play_sound_file("assets/sounds/set.wav"))
+            if (set_sound_path != (default_set_sound_path) && play_sound_file(default_set_sound_path))
             {
                 return;
             }

@@ -53,5 +53,16 @@ extern CelestialObject *last_xplored_cen, *last_neighb_cen;
 extern bool play_rise_set_sound;
 extern std::string rise_sound_path;
 extern std::string set_sound_path;
+extern std::thread reload_thread;
+extern std::thread save_tex_thread;
+extern std::thread batch_sat_thread;
+extern std::thread check_sats_thread;
+extern std::thread astorb_thread;
+extern std::atomic<bool> astorb_loading;
+extern std::atomic<bool> astorb_loaded;
+extern std::atomic<bool> astorb_load_failed;
+extern std::atomic<bool> astorb_cancel;
+extern std::atomic<float> astorb_load_progress;
+extern std::atomic<size_t> astorb_rows_loaded;
 
 #endif

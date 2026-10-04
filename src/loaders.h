@@ -25,6 +25,8 @@ void add_batch_satellites(std::vector<std::string> listlines);
 void load_stuff();
 void reload_stuff();
 bool save_user_json();
+void start_astorb_background_load();
+void link_astorb_with_cels();
 
 extern int sats_added, sat_errors;
 extern std::atomic<bool> batch_sats_running;

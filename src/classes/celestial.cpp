@@ -68,6 +68,28 @@ CelestialObject::~CelestialObject()
         delete merged_night_map;
         merged_night_map = nullptr;
     }
+
+    Map *maps[5] = { surf_map, cloud_map, night_map, ring_map, ringx_map };
+    for (int m = 0; m < 5; m++)
+    {
+        if (!maps[m])
+        {
+            continue;
+        }
+        for (int n = m + 1; n < 5; n++)
+        {
+            if (maps[n] == maps[m])
+            {
+                maps[n] = nullptr;
+            }
+        }
+        delete maps[m];
+    }
+    surf_map = nullptr;
+    cloud_map = nullptr;
+    night_map = nullptr;
+    ring_map = nullptr;
+    ringx_map = nullptr;
 }
 
 Map* CelestialObject::get_day_map()
@@ -1790,6 +1812,11 @@ Map::~Map()
     {
         delete[] blue_data;
         blue_data = nullptr;
+    }
+    if (bump_data)
+    {
+        delete[] bump_data;
+        bump_data = nullptr;
     }
 }
 

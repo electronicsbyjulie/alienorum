@@ -82,9 +82,9 @@ namespace alienorum
         std::string get_condensed_starcat_name();
         int write_condensed_star_cat(ConsBins cb);
         int read_condensed_star_cat();
+        static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
 
     protected:
-        static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
         void apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids);
         bool worth_searching(std::string star_name);
         void write_condensed_star_cat_line(FILE *fp, Star *s);

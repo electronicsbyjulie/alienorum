@@ -62,6 +62,10 @@ void load_textures(CelestialObject* cel)
                 Map *map = new Map(cel);
                 if (map->load_from_png(cloud_png) && map->is_complete())
                 {
+                    if (cel->cloud_map && cel->cloud_map != map)
+                    {
+                        delete cel->cloud_map;
+                    }
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
                 }
@@ -78,6 +82,10 @@ void load_textures(CelestialObject* cel)
                 Map *map = new Map(cel);
                 if (map->load_from_jpeg(cloud_jpg) && map->is_complete())
                 {
+                    if (cel->cloud_map && cel->cloud_map != map)
+                    {
+                        delete cel->cloud_map;
+                    }
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
                 }
@@ -97,6 +105,10 @@ void load_textures(CelestialObject* cel)
                 Map *map = new Map(cel);
                 if (map->load_from_jpeg(cloud_jpg) && map->is_complete())
                 {
+                    if (cel->cloud_map && cel->cloud_map != map)
+                    {
+                        delete cel->cloud_map;
+                    }
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
                 }
@@ -113,6 +125,10 @@ void load_textures(CelestialObject* cel)
                 Map *map = new Map(cel);
                 if (map->load_from_png(cloud_png) && map->is_complete())
                 {
+                    if (cel->cloud_map && cel->cloud_map != map)
+                    {
+                        delete cel->cloud_map;
+                    }
                     cel->cloud_map = map;
                     cel->has_real_maps = true;
                 }
@@ -132,8 +148,16 @@ void load_textures(CelestialObject* cel)
             Map *map = new Map(cel);
             if (map->load_from_jpeg(filename))
             {
+                if (cel->surf_map && cel->surf_map != map)
+                {
+                    delete cel->surf_map;
+                }
                 cel->surf_map = map;
                 cel->has_real_maps = true;
+            }
+            else
+            {
+                delete map;
             }
         }
         else
@@ -144,8 +168,16 @@ void load_textures(CelestialObject* cel)
                 Map *map = new Map(cel);
                 if (map->load_from_png(filename))
                 {
+                    if (cel->surf_map && cel->surf_map != map)
+                    {
+                        delete cel->surf_map;
+                    }
                     cel->surf_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
                 }
             }
         }
@@ -180,8 +212,16 @@ void load_textures(CelestialObject* cel)
             Map *map = new Map();
             if (map->load_from_jpeg(filename))
             {
+                if (cel->night_map && cel->night_map != map)
+                {
+                    delete cel->night_map;
+                }
                 cel->night_map = map;
                 cel->has_real_maps = true;
+            }
+            else
+            {
+                delete map;
             }
         }
         else
@@ -192,8 +232,16 @@ void load_textures(CelestialObject* cel)
                 Map *map = new Map();
                 if (map->load_from_png(filename))
                 {
+                    if (cel->night_map && cel->night_map != map)
+                    {
+                        delete cel->night_map;
+                    }
                     cel->night_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
                 }
             }
         }
@@ -206,12 +254,23 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.jpg";
             if (file_exists(filename.c_str()))
             {
-                if (!p->ring_radius) p->generate_ring_parameters(true);
+                if (!p->ring_radius)
+                {
+                    p->generate_ring_parameters(true);
+                }
                 Map *map = new Map();
                 if (map->load_from_jpeg(filename))
                 {
+                    if (cel->ring_map && cel->ring_map != map)
+                    {
+                        delete cel->ring_map;
+                    }
                     cel->ring_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
                 }
             }
             else
@@ -219,12 +278,23 @@ void load_textures(CelestialObject* cel)
                 filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ring.png";
                 if (file_exists(filename.c_str()))
                 {
-                    if (!p->ring_radius) p->generate_ring_parameters(true);
+                    if (!p->ring_radius)
+                    {
+                        p->generate_ring_parameters(true);
+                    }
                     Map *map = new Map();
                     if (map->load_from_png(filename))
                     {
+                        if (cel->ring_map && cel->ring_map != map)
+                        {
+                            delete cel->ring_map;
+                        }
                         cel->ring_map = map;
                         cel->has_real_maps = true;
+                    }
+                    else
+                    {
+                        delete map;
                     }
                 }
             }
@@ -232,12 +302,23 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.jpg";
             if (file_exists(filename.c_str()))
             {
-                if (!p->ring_radius) p->generate_ring_parameters(true);
+                if (!p->ring_radius)
+                {
+                    p->generate_ring_parameters(true);
+                }
                 Map *map = new Map();
                 if (map->load_from_jpeg(filename))
                 {
+                    if (cel->ringx_map && cel->ringx_map != map)
+                    {
+                        delete cel->ringx_map;
+                    }
                     cel->ringx_map = map;
                     cel->has_real_maps = true;
+                }
+                else
+                {
+                    delete map;
                 }
             }
             else
@@ -245,12 +326,23 @@ void load_textures(CelestialObject* cel)
                 filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_ringx.png";
                 if (file_exists(filename.c_str()))
                 {
-                    if (!p->ring_radius) p->generate_ring_parameters(true);
+                    if (!p->ring_radius)
+                    {
+                        p->generate_ring_parameters(true);
+                    }
                     Map *map = new Map();
                     if (map->load_from_png(filename))
                     {
+                        if (cel->ringx_map && cel->ringx_map != map)
+                        {
+                            delete cel->ringx_map;
+                        }
                         cel->ringx_map = map;
                         cel->has_real_maps = true;
+                    }
+                    else
+                    {
+                        delete map;
                     }
                 }
             }
@@ -422,6 +514,7 @@ bool load_universe(std::string universe_fname)          // default is on the dec
             if (resave_json) save_universe();           // We deliberately write back to universe.json, not to the loaded file. This is by design.
             set_center_objects();
             refresh_star_visibilities();
+            link_astorb_with_cels();
 
             return true;
         }
@@ -541,6 +634,9 @@ void load_catalogs()
             cout << "Reading astorb catalog..." << endl << flush;
             nastorb = cr.read_astorb_catalog(cels, MAX_CELOBJS);
             cout << "Read " << nastorb << " objects." << endl << flush;
+            astorb_loaded.store(true);
+            astorb_rows_loaded.store(astorb.size());
+            astorb_load_progress.store(1.0f);
         }
 
         json asts;
@@ -1297,6 +1393,7 @@ void reload_stuff()
         mtx.lock();
         loading_msg = "Done!";
         mtx.unlock();
+        link_astorb_with_cels();
     }
     catch (const std::exception& e)
     {
@@ -1347,5 +1444,216 @@ bool save_user_json()
     catch (...)
     {
         return false;
+    }
+}
+
+namespace
+{
+    void load_astorb_worker(std::unordered_map<int, Planet*> by_number, std::unordered_map<std::string, Planet*> by_name)
+    {
+        std::string path = "catalogs" _FILESLASH "astorb" _FILESLASH "astorb.dat";
+        FILE* fp = fopen(path.c_str(), "rb");
+
+        if (!fp)
+        {
+            std::string gzpath = path + ".gz";
+            if (file_exists(gzpath.c_str()))
+            {
+                extract_archive(gzpath.c_str());
+                fp = fopen(path.c_str(), "rb");
+            }
+        }
+
+        if (!fp)
+        {
+            astorb_load_failed.store(true);
+            astorb_loading.store(false);
+            return;
+        }
+
+        fseek(fp, 0, SEEK_END);
+        long long total_bytes = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (total_bytes <= 0)
+        {
+            total_bytes = 1;
+        }
+
+        std::vector<AstorbRow> temp_astorb;
+        temp_astorb.reserve(1100000);
+
+        char buffer[1024];
+        char field[32];
+        size_t count = 0;
+
+        while (fgets(buffer, sizeof(buffer), fp))
+        {
+            if (astorb_cancel.load())
+            {
+                fclose(fp);
+                astorb_loading.store(false);
+                return;
+            }
+
+            AstorbRow row;
+            row.cel = nullptr;
+
+            //   8- 25  A18   ---     Name      Name or preliminary designation.
+            CatalogReader::read_field_onebased(buffer, 8, 25, field);
+            row.name = trim(field);
+
+            //   1-  6  I6    ---     Planet    [1,]?+ Asteroid number (blank if unnumbered)
+            CatalogReader::read_field_onebased(buffer, 1, 6, field);
+            row.number = atoi(field);
+            if (row.number == 5747)
+            {
+                row.name = "Williamina";
+            }
+
+            //  60- 64  F5.1  km      Diam      ? IRAS diameter (see E.F.Tedesco, pp.1151-1161; catalog <II/190>)
+            CatalogReader::read_field_onebased(buffer, 60, 64, field);
+            row.diam = atof(field);
+
+            // 148-157  F10.6 deg     i         Inclination (3)
+            CatalogReader::read_field_onebased(buffer, 148, 157, field);
+            row.incl = atof(field);
+
+            // 169-181  F13.8 AU      a         ? Semimajor axis (3)
+            CatalogReader::read_field_onebased(buffer, 169, 181, field);
+            row.sma = atof(field);
+
+            if (row.number > 0)
+            {
+                auto it = by_number.find(row.number);
+                if (it != by_number.end())
+                {
+                    row.cel = it->second;
+                }
+            }
+            if (!row.cel && !row.name.empty())
+            {
+                auto it = by_name.find(row.name);
+                if (it != by_name.end())
+                {
+                    row.cel = it->second;
+                }
+            }
+
+            temp_astorb.push_back(std::move(row));
+            count++;
+
+            if ((count & 8191) == 0)
+            {
+                astorb_rows_loaded.store(count);
+                long long pos = ftell(fp);
+                float prog = (float)pos / (float)total_bytes;
+                if (prog > 1.0f)
+                {
+                    prog = 1.0f;
+                }
+                astorb_load_progress.store(prog);
+            }
+        }
+
+        fclose(fp);
+
+        if (astorb_cancel.load())
+        {
+            astorb_loading.store(false);
+            return;
+        }
+
+        astorb_rows_loaded.store(temp_astorb.size());
+        astorb_load_progress.store(1.0f);
+        astorb = std::move(temp_astorb);
+        astorb_loaded.store(true);
+        astorb_loading.store(false);
+    }
+}
+
+void start_astorb_background_load()
+{
+    if (astorb_loaded.load() || astorb_loading.load())
+    {
+        return;
+    }
+
+    if (astorb_thread.joinable())
+    {
+        astorb_thread.join();
+    }
+
+    astorb_cancel.store(false);
+    astorb_load_failed.store(false);
+    astorb_load_progress.store(0.0f);
+    astorb_rows_loaded.store(0);
+    astorb_loading.store(true);
+
+    std::unordered_map<int, Planet*> by_number;
+    std::unordered_map<std::string, Planet*> by_name;
+    for (int i = 0; cels[i]; ++i)
+    {
+        if (cels[i]->typeclass() == class_planet)
+        {
+            Planet* p = static_cast<Planet*>(cels[i]);
+            if (p->asteroid_no > 0)
+            {
+                by_number[p->asteroid_no] = p;
+            }
+            if (p->name[0] != '\0')
+            {
+                by_name[p->name] = p;
+            }
+        }
+    }
+
+    astorb_thread = std::thread(load_astorb_worker, std::move(by_number), std::move(by_name));
+}
+
+void link_astorb_with_cels()
+{
+    if (!astorb_loaded.load() || astorb.empty())
+    {
+        return;
+    }
+
+    std::unordered_map<int, Planet*> by_number;
+    std::unordered_map<std::string, Planet*> by_name;
+    for (int i = 0; cels[i]; ++i)
+    {
+        if (cels[i]->typeclass() == class_planet)
+        {
+            Planet* p = static_cast<Planet*>(cels[i]);
+            if (p->asteroid_no > 0)
+            {
+                by_number[p->asteroid_no] = p;
+            }
+            if (p->name[0] != '\0')
+            {
+                by_name[p->name] = p;
+            }
+        }
+    }
+
+    for (AstorbRow& row : astorb)
+    {
+        row.cel = nullptr;
+        if (row.number > 0)
+        {
+            auto it = by_number.find(row.number);
+            if (it != by_number.end())
+            {
+                row.cel = it->second;
+                continue;
+            }
+        }
+        if (!row.name.empty())
+        {
+            auto it = by_name.find(row.name);
+            if (it != by_name.end())
+            {
+                row.cel = it->second;
+            }
+        }
     }
 }

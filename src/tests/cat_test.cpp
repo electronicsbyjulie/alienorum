@@ -1,6 +1,8 @@
 #include <cstring>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
+#include "../loaders.h"
+#include "../globals.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -509,5 +511,65 @@ TEST_F(CatalogParsingTest, SpheroidGalaxyHasCatalogInclinationAndSpheroidType)
     EXPECT_DOUBLE_EQ(sag->morphological_T, -3.0);
     EXPECT_TRUE(sag->is_spheroidal_or_elliptical());
 }
+
+TEST_F(CatalogParsingTest, BackgroundAstorbLoaderLoadsAndLinks)
+{
+    start_astorb_background_load();
+    EXPECT_TRUE(astorb_loading.load() || astorb_loaded.load());
+
+    auto start_time = std::chrono::steady_clock::now();
+    while (astorb_loading.load())
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time).count();
+        if (elapsed > 10)
+        {
+            break;
+        }
+    }
+
+    if (astorb_thread.joinable())
+    {
+        astorb_thread.join();
+    }
+
+    EXPECT_TRUE(astorb_loaded.load());
+    EXPECT_FALSE(astorb_loading.load());
+    EXPECT_GT(astorb.size(), 1000000u);
+    EXPECT_FLOAT_EQ(astorb_load_progress.load(), 1.0f);
+
+    bool found_ceres = false;
+    for (size_t i = 0; i < std::min((size_t)10, astorb.size()); i++)
+    {
+        if (astorb[i].number == 1)
+        {
+            EXPECT_EQ(astorb[i].name, "Ceres");
+            EXPECT_GT(astorb[i].sma, 2.5f);
+            found_ceres = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_ceres);
+
+    Planet* p = new Planet();
+    p->asteroid_no = 1;
+    strcpy(p->name, "Ceres");
+    append_cel(p);
+
+    link_astorb_with_cels();
+
+    found_ceres = false;
+    for (size_t i = 0; i < std::min((size_t)10, astorb.size()); i++)
+    {
+        if (astorb[i].number == 1)
+        {
+            EXPECT_EQ(astorb[i].cel, p);
+            found_ceres = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_ceres);
+}
+
 
 

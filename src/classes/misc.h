@@ -156,6 +156,9 @@ const std::time_t J2000_TIME_T = 946684800;
 #define gossamer_rings 0.08
 #define zero_isnt_really_zero 9e-298
 
+#define default_rise_sound_path (std::string("assets") + _FILESLASH + std::string("sounds") + _FILESLASH + std::string("rise.wav"))
+#define default_set_sound_path (std::string("assets") + _FILESLASH + std::string("sounds") + _FILESLASH + std::string("set.wav"))
+
 // For sun clock
 #define ico_sz 13
 #define circ_sz 7

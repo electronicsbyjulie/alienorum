@@ -2187,12 +2187,19 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Save"))
             {
-                std::thread save_tex(save_textures, cel);
-                save_tex.detach();
+                if (save_tex_thread.joinable())
+                {
+                    save_tex_thread.join();
+                }
+                save_tex_thread = std::thread(save_textures, cel);
             }
             ImGui::SameLine();
             if (!generating_fic_texture && cel->has_real_maps && ImGui::Button("Reload"))
             {
+                if (save_tex_thread.joinable())
+                {
+                    save_tex_thread.join();
+                }
                 if (cel->surf_map)
                 {
                     delete cel->surf_map;
@@ -2957,9 +2964,67 @@ void draw_loc_window(ImGuiIO & io)
 
 void draw_ast_window(ImGuiIO & io)
 {
-    if (!cels[1]) return;
+    if (!cels[1])
+    {
+        return;
+    }
     static std::vector<std::string> astlistlines;
+    static bool was_loading = false;
     ImGui::Begin("Add Asteroids", &astwnd, 0);
+
+    if (!astorb_loaded.load())
+    {
+        was_loading = true;
+        if (!astorb_loading.load() && !astorb_load_failed.load())
+        {
+            start_astorb_background_load();
+        }
+
+        if (astorb_load_failed.load())
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "Failed to load astorb catalog (catalogs/astorb/astorb.dat).");
+            if (ImGui::Button("Retry##asteroid_load"))
+            {
+                start_astorb_background_load();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Close##asteroid_load"))
+            {
+                astwnd = false;
+            }
+        }
+        else
+        {
+            ImGui::Text("Loading asteroid catalog (astorb.dat)... Please wait.");
+            float progress = astorb_load_progress.load();
+            size_t rows = astorb_rows_loaded.load();
+            char overlay[64];
+            snprintf(overlay, sizeof(overlay), "%.1f%% (%zu loaded)", progress * 100.0f, rows);
+            ImGui::ProgressBar(progress, ImVec2(623, 0), overlay);
+            if (ImGui::Button("Cancel##asteroid_load"))
+            {
+                astorb_cancel.store(true);
+                astwnd = false;
+            }
+        }
+
+        ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
+        ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
+        ImGui::End();
+
+        // Code to ensure mouse interacts with window and not viewport.
+        if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
+        {
+            is_mouse_over_window = true;
+        }
+        return;
+    }
+
+    if (was_loading)
+    {
+        astlistlines.clear();
+        was_loading = false;
+    }
 
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
@@ -3254,8 +3319,11 @@ void draw_sat_window(ImGuiIO& io)
             batch_sats_running = true;
             awaiting_batch = true;
 
-            std::thread tsat(add_batch_satellites, listlines);
-            tsat.detach();
+            if (batch_sat_thread.joinable())
+            {
+                batch_sat_thread.join();
+            }
+            batch_sat_thread = std::thread(add_batch_satellites, listlines);
         }
 
         if (awaiting_batch && !batch_sats_running)

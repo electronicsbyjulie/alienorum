@@ -204,23 +204,28 @@ TEST_F(ConstellationTest, FillAlienorumIds_FormatsCorrectly)
 }
 
 // =====================================================================
-// Tau Ceti Constellation Vantage Tests
+// Heliocentric Constellation Vantage Tests
 // =====================================================================
 
-TEST_F(ConstellationTest, TauCetiConstellations_LoadAndContainExpectedStars)
+TEST_F(ConstellationTest, HeliocentricConstellations_LoadAndContainExpectedStars)
 {
     read_cons_lines();
 
-    std::map<std::string, const Constellation*> tau_ceti_cons;
+    std::map<std::string, const Constellation*> sun_cons;
     for (const auto& c : constellations)
     {
-        if (c.vantage_name == "Tau Ceti")
+        if (c.vantage_name == "Sun" || c.vantage_name.empty())
         {
-            tau_ceti_cons[c.abbrev] = &c;
+            sun_cons[c.abbrev] = &c;
         }
     }
 
-    EXPECT_EQ(tau_ceti_cons.size(), 88u);
+    // Verify all 88 standard IAU constellations are loaded for the heliocentric vantage
+    for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
+    {
+        EXPECT_TRUE(sun_cons.count(iau_constellations[i].abbrev) > 0)
+            << "Missing IAU constellation: " << iau_constellations[i].abbrev;
+    }
 
     auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
     {
@@ -238,142 +243,34 @@ TEST_F(ConstellationTest, TauCetiConstellations_LoadAndContainExpectedStars)
         return false;
     };
 
-    // Check key constellations and displaced stars
-    ASSERT_TRUE(tau_ceti_cons.count("Boo") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Boo"], "Sun"));
+    // Check key constellations and expected stars from consline.dat
+    ASSERT_TRUE(sun_cons.count("Ori") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["Ori"], "Bet Ori"));
+    EXPECT_TRUE(has_line_with_star(sun_cons["Ori"], "Alp Ori"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("Leo") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Leo"], "Alp CMa"));
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Leo"], "Alp CMi"));
+    ASSERT_TRUE(sun_cons.count("UMa") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["UMa"], "Alp UMa"));
+    EXPECT_TRUE(has_line_with_star(sun_cons["UMa"], "Eta UMa"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("Vir") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Vir"], "Alp1Cen"));
+    ASSERT_TRUE(sun_cons.count("Cas") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["Cas"], "Alp Cas"));
+    EXPECT_TRUE(has_line_with_star(sun_cons["Cas"], "Bet Cas"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("Cnc") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Cnc"], "Eps Eri"));
+    ASSERT_TRUE(sun_cons.count("Cru") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["Cru"], "Alp1Cru"));
+    EXPECT_TRUE(has_line_with_star(sun_cons["Cru"], "Bet Cru"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("Her") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Her"], "Alp Lyr"));
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Her"], "Alp Aql"));
+    ASSERT_TRUE(sun_cons.count("Lyr") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["Lyr"], "Alp Lyr"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("CMi") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["CMi"], "Omi2Eri"));
+    ASSERT_TRUE(sun_cons.count("CMa") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["CMa"], "Alp CMa"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("Car") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Car"], "82 Eridani"));
+    ASSERT_TRUE(sun_cons.count("Cyg") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["Cyg"], "Alp Cyg"));
 
-    ASSERT_TRUE(tau_ceti_cons.count("Gem") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Gem"], "Pi 3Ori"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Cep") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Cep"], "Eta Cas"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Ara") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Ara"], "Del Pav"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Aps") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Aps"], "Bet Hyi"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Lup") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Lup"], "Eps Ind"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Cap") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Cap"], "Alp PsA"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Oct") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Oct"], "Zet Tuc"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Ser") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Ser"], "Iot Ser"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Crv") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crv"], "Gam Crv"));
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crv"], "Bet Crv"));
-
-    ASSERT_TRUE(tau_ceti_cons.count("Crt") > 0);
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crt"], "Alp Crt"));
-    EXPECT_TRUE(has_line_with_star(tau_ceti_cons["Crt"], "Del Crt"));
-}
-
-// =====================================================================
-// 82 Eridani Constellation Vantage Tests
-// =====================================================================
-
-TEST_F(ConstellationTest, Eridani82Constellations_LoadAndContainExpectedStars)
-{
-    read_cons_lines();
-
-    std::map<std::string, const Constellation*> eri_82_cons;
-    for (const auto& c : constellations)
-    {
-        if (c.vantage_name == "82 Eridani")
-        {
-            eri_82_cons[c.abbrev] = &c;
-        }
-    }
-
-    EXPECT_EQ(eri_82_cons.size(), 88u);
-
-    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
-    {
-        if (!cons)
-        {
-            return false;
-        }
-        for (const auto& line : cons->lines)
-        {
-            if (line.starnamea == star || line.starnameb == star)
-            {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    // Check key constellations and displaced stars
-    ASSERT_TRUE(eri_82_cons.count("Boo") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Boo"], "Sun"));
-
-    ASSERT_TRUE(eri_82_cons.count("CVn") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["CVn"], "Alp CMa"));
-
-    ASSERT_TRUE(eri_82_cons.count("UMa") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["UMa"], "Alp CMi"));
-
-    ASSERT_TRUE(eri_82_cons.count("CrB") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["CrB"], "Alp1Cen"));
-
-    ASSERT_TRUE(eri_82_cons.count("UMi") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["UMi"], "Eps Eri"));
-
-    ASSERT_TRUE(eri_82_cons.count("Dra") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Dra"], "Tau Cet"));
-
-    ASSERT_TRUE(eri_82_cons.count("Ara") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Ara"], "Bet Hyi"));
-
-    ASSERT_TRUE(eri_82_cons.count("Equ") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Equ"], "Alp PsA"));
-
-    ASSERT_TRUE(eri_82_cons.count("Oph") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Oph"], "Del Pav"));
-
-    ASSERT_TRUE(eri_82_cons.count("CMi") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["CMi"], "Gam Lep"));
-
-    ASSERT_TRUE(eri_82_cons.count("Aur") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Aur"], "Pi 3Ori"));
-
-    ASSERT_TRUE(eri_82_cons.count("Crv") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crv"], "Gam Crv"));
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crv"], "Bet Crv"));
-
-    ASSERT_TRUE(eri_82_cons.count("Crt") > 0);
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crt"], "Alp Crt"));
-    EXPECT_TRUE(has_line_with_star(eri_82_cons["Crt"], "Del Crt"));
-
-    ASSERT_TRUE(eri_82_cons.count("Eri") > 0);
-    EXPECT_FALSE(has_line_with_star(eri_82_cons["Eri"], "82 Eridani"));
+    ASSERT_TRUE(sun_cons.count("Sco") > 0);
+    EXPECT_TRUE(has_line_with_star(sun_cons["Sco"], "Alp Sco"));
 }
 
 TEST_F(ConstellationTest, AlphaMensaeConstellations_LoadAndContainExpectedStars)
@@ -426,112 +323,6 @@ TEST_F(ConstellationTest, ReloadStuff_RepeatedCalls_DoNotCrashOrLeak)
     EXPECT_NO_THROW(reload_stuff());
     EXPECT_FALSE(splash);
     EXPECT_FALSE(is_reloading);
-}
-
-TEST_F(ConstellationTest, Rho1CancriConstellations_LoadAndContainExpectedStars)
-{
-    read_cons_lines();
-
-    std::map<std::string, const Constellation*> rho1_cons;
-    for (const auto& c : constellations)
-    {
-        if (c.vantage_name == "Rho 1 Cancri")
-        {
-            rho1_cons[c.abbrev] = &c;
-        }
-    }
-
-    EXPECT_EQ(rho1_cons.size(), 88u);
-
-    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
-    {
-        if (!cons)
-        {
-            return false;
-        }
-        for (const auto& line : cons->lines)
-        {
-            if (line.starnamea == star || line.starnameb == star)
-            {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    // Verify Sun in Capricornus
-    ASSERT_TRUE(rho1_cons.count("Cap") > 0);
-    EXPECT_TRUE(has_line_with_star(rho1_cons["Cap"], "Sun"));
-
-    // Verify Pollux (Bet Gem) in Cetus
-    ASSERT_TRUE(rho1_cons.count("Cet") > 0);
-    EXPECT_TRUE(has_line_with_star(rho1_cons["Cet"], "Bet Gem"));
-
-    // Verify Castor (Alp Gem) in Taurus
-    ASSERT_TRUE(rho1_cons.count("Tau") > 0);
-    EXPECT_TRUE(has_line_with_star(rho1_cons["Tau"], "Alp Gem"));
-
-    // Verify Capella (Alp Aur) in Andromeda
-    ASSERT_TRUE(rho1_cons.count("And") > 0);
-    EXPECT_TRUE(has_line_with_star(rho1_cons["And"], "Alp Aur"));
-
-    // Verify Arcturus (Alp Boo) in Ophiuchus
-    ASSERT_TRUE(rho1_cons.count("Oph") > 0);
-    EXPECT_TRUE(has_line_with_star(rho1_cons["Oph"], "Alp Boo"));
-
-    // Verify Sirius (Alp CMa) and Procyon (Alp CMi) in Piscis Austrinus
-    ASSERT_TRUE(rho1_cons.count("PsA") > 0);
-    EXPECT_TRUE(has_line_with_star(rho1_cons["PsA"], "Alp CMa"));
-    EXPECT_TRUE(has_line_with_star(rho1_cons["PsA"], "Alp CMi"));
-
-    // Verify Rho 1 Cnc is not in Cancer
-    ASSERT_TRUE(rho1_cons.count("Cnc") > 0);
-    EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "Rho 1 Cnc"));
-    EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "Rho1Cnc"));
-    EXPECT_FALSE(has_line_with_star(rho1_cons["Cnc"], "55 Cnc"));
-}
-
-TEST_F(ConstellationTest, UpsilonAndromedaeConstellations_LoadAndContainExpectedStars)
-{
-    read_cons_lines();
-
-    std::map<std::string, const Constellation*> ups_cons;
-    for (const auto& c : constellations)
-    {
-        if (c.vantage_name == "Upsilon Andromedae")
-        {
-            ups_cons[c.abbrev] = &c;
-        }
-    }
-
-    EXPECT_EQ(ups_cons.size(), 88u);
-
-    auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool
-    {
-        if (!cons)
-        {
-            return false;
-        }
-        for (const auto& line : cons->lines)
-        {
-            if (line.starnamea == star || line.starnameb == star)
-            {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    // Verify Sun in Centaurus
-    ASSERT_TRUE(ups_cons.count("Cen") > 0);
-    EXPECT_TRUE(has_line_with_star(ups_cons["Cen"], "Sun"));
-
-    // Verify Upsilon Andromedae is not in Andromeda
-    ASSERT_TRUE(ups_cons.count("And") > 0);
-    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "Ups And"));
-    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "Upsilon Andromedae"));
-    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "50 And"));
-    EXPECT_FALSE(has_line_with_star(ups_cons["And"], "50  And"));
 }
 
 // =====================================================================

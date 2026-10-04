@@ -343,6 +343,8 @@ TEST(CelestialObjectTest, MergedMapFallbackAndSelection)
     EXPECT_FALSE(incomplete_clouds.is_complete());
     EXPECT_EQ(cel.get_day_map(), &surf);
     EXPECT_EQ(cel.get_night_map(), nullptr);
+    cel.surf_map = nullptr;
+    cel.cloud_map = nullptr;
 }
 
 // =====================================================================

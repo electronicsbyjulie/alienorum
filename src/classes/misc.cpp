@@ -967,6 +967,8 @@ bool extract_archive(const char* filename)
     flags |= ARCHIVE_EXTRACT_PERM;
     flags |= ARCHIVE_EXTRACT_ACL;
     flags |= ARCHIVE_EXTRACT_FFLAGS;
+    flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
+    flags |= ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS;
 
     a = archive_read_new();
     // Enable support for all common compression formats (including gzip) and archives (including tar)
@@ -978,11 +980,34 @@ bool extract_archive(const char* filename)
     archive_write_disk_set_options(ext, flags);
     archive_write_disk_set_standard_lookup(ext);
 
+    auto cleanup = [&]()
+    {
+        if (a)
+        {
+            archive_read_close(a);
+            archive_read_free(a);
+            a = nullptr;
+        }
+        if (ext)
+        {
+            archive_write_close(ext);
+            archive_write_free(ext);
+            ext = nullptr;
+        }
+    };
+
     // Open the .tar.gz or .gz file
     if ((r = archive_read_open_filename(a, filename, 10240)))
     {
         std::cerr << "Failed to open " << filename << " for reading: " << archive_error_string(a) << std::endl;
+        cleanup();
         return false;
+    }
+
+    std::filesystem::path source_dir = std::filesystem::path(filename).parent_path();
+    if (source_dir.empty())
+    {
+        source_dir = ".";
     }
 
     // Iterate through every file in the archive
@@ -990,14 +1015,46 @@ bool extract_archive(const char* filename)
     {
         r = archive_read_next_header(a, &entry);
         if (r == ARCHIVE_EOF)
+        {
             break; // Finished reading
+        }
         if (r < ARCHIVE_OK)
+        {
             std::cerr << archive_error_string(a) << std::endl;
+        }
         if (r < ARCHIVE_WARN)
+        {
+            cleanup();
             return false; // Fatal error
+        }
 
-        std::filesystem::path source_dir = std::filesystem::path(filename).parent_path();
-        std::filesystem::path entry_path(archive_entry_pathname(entry));
+        const char* raw_entry_path = archive_entry_pathname(entry);
+        if (!raw_entry_path || !raw_entry_path[0])
+        {
+            continue;
+        }
+
+        std::filesystem::path entry_path(raw_entry_path);
+        if (entry_path.is_absolute())
+        {
+            entry_path = entry_path.relative_path();
+        }
+
+        bool has_dotdot = false;
+        for (const auto& part : entry_path)
+        {
+            if (part == "..")
+            {
+                has_dotdot = true;
+                break;
+            }
+        }
+        if (has_dotdot)
+        {
+            std::cerr << "Skipping unsafe archive entry with '..': " << raw_entry_path << std::endl;
+            continue;
+        }
+
         std::filesystem::path target_path = source_dir / entry_path;
         
         // Update the entry with our new absolute/relative path
@@ -1006,7 +1063,9 @@ bool extract_archive(const char* filename)
         // Extract the current file to disk
         r = archive_write_header(ext, entry);
         if (r < ARCHIVE_OK)
+        {
             std::cerr << archive_error_string(ext) << std::endl;
+        }
         else
         {
             // Read data from the archive and write it to disk
@@ -1018,7 +1077,9 @@ bool extract_archive(const char* filename)
             {
                 r = archive_read_data_block(a, &buff, &size, &offset);
                 if (r == ARCHIVE_EOF)
+                {
                     break;
+                }
                 if (r < ARCHIVE_OK)
                 {
                     std::cerr << archive_error_string(a) << std::endl;
@@ -1036,11 +1097,6 @@ bool extract_archive(const char* filename)
         std::cout << "Wrote " << target_path << std::endl;
     }
 
-    // Clean up
-    archive_read_close(a);
-    archive_read_free(a);
-    archive_write_close(ext);
-    archive_write_free(ext);
-    
+    cleanup();
     return true;
 }
