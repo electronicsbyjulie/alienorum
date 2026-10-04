@@ -2267,7 +2267,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     }
 
     double pa = g->position_angle;
-    double incl = g->inclination;
+    double incl = g->inclination + _pi;
 
     // Major axis direction on the sky from North through East
     Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
