@@ -371,7 +371,8 @@ XZ Tau                  XZ Tau B                155y                        000.
 HD198846                Y Cyg B                 2.99633210d                 086.474     312.514     1.998e+10   .14508      0                   JD2446308.66407                                 17.73       5.816       37700       33521
 HD129247                HD129246                125.04y         176.63      125.88      062.08      41.84AU     .980450     0                   2023.9548                                       2.15        2.4                      8750
 HD150680                Zet Her B               34.45y          050         131         111         1.33s       .46         0                   1967.7                                          0.98        0.915       0.62         5300
-
+HD34029                 GJ 194 B                104.02128d      040.522     137.156     342.6       0.74272AU   .00089      0                   JD2448147.6                                     2.4828      8.83        72.7         5730
+GJ 195                  GJ 195 B                300y            288         052         088         40AU        .75         0                   2220                                            0.53
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
