@@ -149,7 +149,25 @@ To ensure that all assigned sequential ranks represent true sky-wide ranks rathe
   * **Replacing Redundant `C` Column with `B-V`:** The single-letter color code (`b, c, w, y, o, r`) in the earlier lookup draft is redundant because the color character is already encoded directly within the Alienorum ID (e.g., `6c And 17`). The catalog replaces this column with the numerical $B-V$ color index (formatted e.g. `+0.65`). When $B-V$ is not directly provided by the input astrometric catalog, it is estimated from the star's effective temperature or spectral classification.
   * **Distance in Light Years (`Dist_ly`):** Each star record will include its physical distance in light years derived from Gaia/Hipparcos parallax measurements.
   * **Transition from Cross-Reference to Full Catalog:** With celestial coordinates, comprehensive identifier cross-identifications (Gaia DR3, TYC, HIP, HD, Gliese, Bayer/Flamsteed, Gould), apparent magnitude $V$, $B-V$ color index, and distance in light years, these files constitute an independent, complete celestial catalog in their own right, rather than merely an identifier lookup table. Consequently, the collection and its directory will be redesignated from `cross_ref` to an independent catalog title such as `catalogs/catalogus_alienorum/` (or `catalogs/alienorum_catalog/`).
-* **Storage Structure:** The catalog is partitioned into 88 unversioned constellation files (e.g. `And.dat`, `Ori.dat`, `Vul.dat`, `Ser.dat`).
+* **Hierarchical Storage Architecture (`intmag + constellation`):**
+  Rather than writing single massive text files per constellation (which would reach an immense 2.2 GB on average and up to 10–14 GB in Sagittarius), the catalog is structured hierarchically by constellation and integer magnitude:
+  ```
+  catalogs/catalogus_alienorum/
+    ├── And/
+    │     ├── -01.dat     (Brightest stars)
+    │     ├── 00.dat
+    │     ├── ...
+    │     ├── 09.dat      (Completeness ceiling for soles_alienorum)
+    │     ├── 10.dat
+    │     ├── ...
+    │     └── 19.dat
+    ├── Ori/
+    └── Sgr/
+  ```
+  * **Lookup Efficiency:** Enables immediate $O(1)$ file resolution from any Alienorum ID. Because the ID begins with the integer magnitude and constellation (e.g. `6c And 17` $\rightarrow$ `And/06.dat`), lookup tools open only the specific tier containing the star, bypassing the rest of the sky.
+  * **Selective Ingestion:** Operations focusing on bright stars (such as generating $V < 10.0$ or $V < 12.0$ star sets) only touch files through magnitude 9 or 11, leaving the multi-gigabyte magnitude 15–19 files unopened on disk.
+  * **Clean Filesystem Structure:** Exactly 88 constellation subdirectories, each containing approximately 15 to 22 files. This avoids putting tens of thousands of flat files into a single directory, which would degrade filesystem performance.
+  * **Dense Milky Way Handling ($m \ge 17$):** In dense galactic plane regions (e.g. Sagittarius, Cygnus, Centaurus), where magnitude 18 or 19 alone can hold tens of millions of stars, individual tiers can optionally utilize a hybrid split by color (e.g. `18_y.dat`, `18_o.dat`) or individual gzip compression (`<m>.dat.gz`) to keep every file well under 200–300 MB.
 * **Offline Execution Model:** These master constellation catalog files are **not** loaded or parsed by the Alienorum application during normal runtime execution, avoiding the memory overhead of hundreds of thousands of celestial objects. At a future date, the Alienorum application or offline pipeline tooling may use this catalog to regenerate `soles_alienorum.dat`.
 
 ### 5.5. Future Extension to Magnitude < 20 Using Gaia Data & Storage Estimates
