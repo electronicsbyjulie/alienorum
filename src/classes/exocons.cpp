@@ -4100,6 +4100,7 @@ namespace alienorum
 
     void ExoConsGenerator::save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss)
     {
+        return;             // Do not fill up my hard drive with regenerated noise.
         std::vector<std::string> existing_lines;
         std::ifstream infile("exocons.dat");
         if (infile.is_open())

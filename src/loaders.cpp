@@ -1289,11 +1289,6 @@ void load_stuff()
         }
     }
 
-    mtx.lock();
-    loading_msg = "Auditing main sequence stars...";
-    mtx.unlock();
-    Star::audit_and_correct_main_sequence_stars(cels);
-
     std::string ihcfn = cr.get_condensed_starcat_name();
     if (!file_exists(ihcfn.c_str()))
     {
@@ -1302,6 +1297,11 @@ void load_stuff()
         mtx.unlock();
         cr.apply_gaia_astrometry(cels);
     }
+
+    mtx.lock();
+    loading_msg = "Auditing main sequence stars...";
+    mtx.unlock();
+    Star::audit_and_correct_main_sequence_stars(cels);
 
     mtx.lock();
     loading_msg = "Assigning constellations...";
