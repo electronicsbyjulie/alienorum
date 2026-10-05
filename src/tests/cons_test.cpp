@@ -15,6 +15,32 @@ using namespace alienorum;
 class ConstellationTest : public ::testing::Test
 {
     protected:
+    static void SetUpTestSuite()
+    {
+        if (file_exists("exocons.dat"))
+        {
+            if (!file_exists("exocons.tstbak.dat"))
+            {
+                std::rename("exocons.dat", "exocons.tstbak.dat");
+            }
+            else
+            {
+                std::remove("exocons.dat");
+            }
+        }
+    }
+
+    static void TearDownTestSuite()
+    {
+        if (file_exists("exocons.tstbak.dat"))
+        {
+            if (!file_exists("exocons.dat"))
+            {
+                std::rename("exocons.tstbak.dat", "exocons.dat");
+            }
+        }
+    }
+
     void SetUp() override
     {
         // Clear global constellations before each test
