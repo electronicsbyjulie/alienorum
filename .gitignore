@@ -22,3 +22,5 @@ a[h-j]*
 !*needle*
 *_legacy*
 exocons.dat
+catalogs/cross_ref/
+tools/generate_crossref

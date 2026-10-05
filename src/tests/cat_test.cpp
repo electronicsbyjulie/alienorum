@@ -607,5 +607,44 @@ TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass
     delete s2;
 }
 
+TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
+{
+    CatalogReader cr;
+    int num_loaded = cr.read_condensed_star_cat();
+    EXPECT_GT(num_loaded, 100000);
+
+    int blank_count = 0;
+    int populated_count = 0;
+
+    for (int i = 1; cels[i]; i++)
+    {
+        if (cels[i]->type == star)
+        {
+            Star *s = (Star*)cels[i];
+            if (s->alienorumid.empty())
+            {
+                blank_count++;
+                if (!s->orbit && s->apparent_magnitude > 0.0)
+                {
+                    EXPECT_GE(s->apparent_magnitude, 10.0 - 0.001);
+                }
+            }
+            else
+            {
+                populated_count++;
+                if (!s->orbit)
+                {
+                    EXPECT_LT(s->apparent_magnitude, 10.0 + 0.001);
+                }
+            }
+        }
+    }
+
+    EXPECT_GT(blank_count, 15000);
+    EXPECT_GT(populated_count, 100000);
+
+    delete_the_universe();
+}
+
 
 

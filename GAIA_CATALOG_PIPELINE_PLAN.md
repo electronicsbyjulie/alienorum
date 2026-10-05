@@ -128,37 +128,51 @@ Perform an offline, all-sky scan pulling from:
 5. **Bayer, Flamsteed, and Gould** catalogs
 
 ### 5.3. Binning & Deterministic Sorting Algorithm
-For every star across the entire sky:
-1. Determine constellation using Delporte/IAU boundaries via [`identify_cons_of_star()`](src/classes/cons.cpp).
+For every star across the entire sky up to the completeness ceiling:
+1. Determine constellation using Delporte/IAU boundaries via standard boundary polygon point-in-polygon evaluation.
 2. Compute integer magnitude bin $m = \lfloor |V| \rfloor \times \operatorname{sgn}(V)$.
 3. Compute temperature and assign color code $cc \in \{b, c, w, y, o, r\}$.
-4. Group stars into `bins[constellation][m][cc]`.
+4. Group primary stars into `bins[constellation][m][cc]`.
 5. Deterministically sort each bin:
    * Primary key: Apparent magnitude $V$ (ascending: brightest first).
    * Secondary tie-breaker: Right Ascension J2000 (ascending).
 6. Assign permanent sequential index $1, 2, 3, \ldots, N$.
+7. Link companion components to their primary host's Alienorum ID with the component letter appended (e.g. `6c And 17 B`). If a host star falls past the ceiling and lacks an Alienorum ID, the companion also receives a blank ID.
 
-### 5.4. Master Cross-Reference File (`catalogs/alienorum_ids.dat`)
-Export a fixed-width, indexed binary or condensed text table containing:
-* `Alienorum ID` (e.g. `8w Ori 142`) — **Finalized, no "T"**
-* `Gaia DR3 Source ID`
-* `TYC` (Tycho-2 identifier)
-* `HIP` (Hipparcos identifier)
-* `HD` (Henry Draper number)
-* `Gliese / GJ` designation
-* `Bayer / Flamsteed` name
-* `Gould` designation
+### 5.4. Completeness Ceiling & Multi-File Offline Cross-Reference (`catalogs/cross_ref/`)
+To ensure that all assigned sequential ranks represent true sky-wide ranks rather than artifacts of a sparse selection, a hard completeness ceiling is enforced:
+* **Initial Ceiling:** $V < 10.0$.
+* The dimmest stars to carry an Alienorum ID start with integer magnitude `9` (apparent visual magnitudes up to 9.99999).
+* All stars past the completeness ceiling ($V \ge 10.0$) in [`catalogs/soles_alienorum.dat`](catalogs/soles_alienorum.dat) have their Alienorum ID **omitted** (columns 1–14 left blank as spaces). The runtime application safely accommodates blank Alienorum IDs during parsing, indexing, and rendering.
+* **Storage Structure:** The cross-reference is generated as 88 unversioned constellation files in an unversioned directory:
+  ```
+  catalogs/cross_ref/<cons>.dat   (e.g., And.dat, Ori.dat, Vul.dat, Ser.dat)
+  ```
+* **Offline Execution Model:** The master cross-reference files are **not** loaded or parsed by the Alienorum application during normal runtime execution, avoiding the memory overhead of hundreds of thousands of celestial objects. At a future date, the Alienorum application or offline pipeline tooling may use the cross-reference to regenerate `soles_alienorum.dat`.
 
-Alienorum will use this file as the definitive identifier registry.
+### 5.5. Future Extension to Magnitude < 20 Using Gaia Data & Storage Estimates
+At a later date, the cross-reference will be extended down to magnitude $< 20$ using all available Gaia DR3/DR4 catalog sources.
+
+#### Hard Drive Storage Estimation for Magnitude < 20:
+* **Star Population:** Gaia DR3 contains approximately $1.5 \times 10^9$ (1.5 billion) sources down to magnitude $G < 20$ across all 88 constellations.
+* **Record Width:** Each fixed-width row in the cross-reference table occupies approximately 120 bytes (including Alienorum ID, Gaia DR3 Source ID, TYC, HIP, HD, Gliese, Bayer/Flamsteed, Gould, magnitude, and color).
+* **Raw Uncompressed Storage:**
+  $$1.5 \times 10^9 \text{ records} \times 120 \text{ bytes/record} \approx 1.8 \times 10^{11} \text{ bytes} \approx 180 \text{ GB}$$
+* **Compressed Gzip Storage (`.dat.gz`):**
+  Due to the tabular regularity of repeated field separators, constellation abbreviations, and sequential numbers, gzip achieves a typical compression factor between $4.5\times$ and $5.0\times$:
+  $$\frac{180 \text{ GB}}{4.7} \approx 38 \text{ GB} \quad (36\text{--}40 \text{ GB})$$
+* **Per-Constellation Allocation:**
+  * Average raw size per constellation: $\approx 2.05 \text{ GB}$ (compressed: $\approx 430 \text{ MB}$).
+  * High-density Milky Way plane constellations (e.g., Sagittarius, Cygnus, Centaurus, Scorpius) will require significantly more disk capacity (up to 8–12 GB raw each), whereas high galactic latitude constellations (e.g., Coma Berenices, Canes Venatici) will occupy much less.
+* **Disk Verification:** Local storage must maintain at least **180 GB** of free drive space for raw uncompressed cross-reference generation, or approximately **40 GB** if compressed on the fly per constellation.
 
 ---
 
 ## 6. Versioning, Packaging & Quality Assurance
 
-### 6.1. Mandatory Packaging Sync (Rule Compliance)
-In accordance with repository guidelines in [`AGENTS.md`](AGENTS.md):
-* Add the new finalized lookup catalog (`catalogs/alienorum_ids.dat` or equivalent) to the CMake installation rules in [`CMakeLists.txt`](CMakeLists.txt).
-* Verify inclusion in packaging scripts under [`package/build_windows_installer.sh`](package/build_windows_installer.sh) to ensure inclusion in `Alienorum-2.0.0-win64.exe`.
+### 6.1. Runtime Packaging
+* The core star catalog [`catalogs/soles_alienorum.dat`](catalogs/soles_alienorum.dat) (with true Alienorum IDs for $V < 10.0$ and blank IDs for $V \ge 10.0$) is bundled and compressed into `catalogs/soles_alienorum.dat.gz`.
+* The unversioned offline cross-reference directory `catalogs/cross_ref/` is excluded from runtime installer packaging in [`CMakeLists.txt`](CMakeLists.txt).
 
 ### 6.2. App Version Bump to 2.0.0
 Once `soles_alienorum.dat` and `star_orbits.dat` are updated and the definitive ID lookup catalog is generated:
@@ -176,6 +190,7 @@ Once `soles_alienorum.dat` and `star_orbits.dat` are updated and the definitive 
 * Execute test suite: `bin/star_test`, `bin/cat_test`, `bin/cons_test`, `bin/celestial_test`.
 * Verify that no `"T"` provisional designations remain in `soles_alienorum.dat`.
 * Validate that visual constellation lines and star labels display correctly from Earth and exoplanetary vantage points.
+* Verify that blank Alienorum IDs in `soles_alienorum.dat` parse and load without assertion failures or dictionary collisions.
 
 ---
 
@@ -186,17 +201,19 @@ Once `soles_alienorum.dat` and `star_orbits.dat` are updated and the definitive 
 | **Phase 1** | Ingestion of Gaia DR3 parallax & cross-match datasets (with Tycho fallback for bright stars). | `src/classes/cat.cpp`, `src/classes/cat.h` | Completed |
 | **Phase 2** | Implement pipeline stage: update distances, absolute magnitudes, and spectral Roman numerals. | `src/loaders.cpp`, `src/classes/star.cpp` | Completed |
 | **Phase 3** | Recalibrate companion semi-major axes in `star_orbits.dat`. | `catalogs/star_orbits.dat`, `src/classes/cat.cpp` | Completed |
-| **Phase 4** | Build one-time scan utility to generate definitive Alienorum ID lookup catalog. | `catalogs/alienorum_ids.dat`, `src/classes/cons.cpp` | Completed |
+| **Phase 4** | Build all-sky scan utility to assign true sequential Alienorum IDs up to completeness ceiling ($V < 10.0$) and generate multi-file cross-reference. | `catalogs/cross_ref/*.dat`, `catalogs/soles_alienorum.dat.gz` | Completed |
 | **Phase 5** | Packaging sync in CMake, test suite verification, and bump version to `2.0.0`. | `CMakeLists.txt`, `vcpkg.json` | Completed |
+| **Phase 6** | Future extension of all-sky cross-reference to magnitude $< 20$ using Gaia DR3/DR4. | `catalogs/cross_ref/*.dat` ($\approx 180\text{ GB}$) | Planned |
 
 ---
 
 ## 8. Execution Summary
 
-All five phases of the Gaia Catalog Pipeline and Alienorum ID Finalization Plan have been implemented, verified, and integrated:
+All primary phases of the Gaia Catalog Pipeline and Alienorum ID Finalization Plan have been implemented, verified, and integrated:
 1. **Gaia DR3 Astrometry Ingestion:** Integrated Brandt (2021) Hipparcos-Gaia Catalog of Accelerations (EDR3/DR3 cross-calibrated astrometry) via `CatalogReader::apply_gaia_astrometry()`. 115,291 star distances updated with milliarcsecond precision Gaia parallaxes.
 2. **Spectral Class & Absolute Magnitude Auditing:** Recomputed $M_V = V - 5(\log_{10} d_{\text{pc}} - 1)$. 8,485 stars whose photometric luminosity was inconsistent with dwarf classification were audited to subgiants (`IV`), giants (`III`), bright giants (`II`), or supergiants (`I` / `Ib` / `Ia`).
 3. **Semi-Major Axis Calibration:** Verified physical SMA scaling in `star_orbits.dat` and `cat.cpp` ensuring distance updates propagate to companion orbital separations.
-4. **Definitive Alienorum ID Catalog:** Generated `catalogs/alienorum_ids.dat` containing 131,542 cross-matched stars linking Alienorum ID, Gaia DR3 Source ID, TYC, HIP, HD, Gliese, Bayer/Flamsteed, Gould, Vmag, and Color. Permanently removed provisional `"T"` prefix for stars of magnitude 8+.
-5. **Packaging & Version Bump:** Registered `catalogs/alienorum_ids.dat` in `CMakeLists.txt` for the Windows release installer and bumped project version to `2.0.0` in `vcpkg.json`. Auto-extraction of `.gz` archives enabled in `src/loaders.cpp`. All 15 unit test suites passed.
+4. **All-Sky Completeness Ceiling & Cross-Reference:** Implemented a full all-sky census up to completeness ceiling $V < 10.0$ using 360,272 Tycho-1 and saturated Hipparcos stars deduplicated against `soles_alienorum.dat`. Assigned true sky sequential ranks and linked companion components. Generated 88 unversioned constellation cross-reference files in `catalogs/cross_ref/`.
+5. **Alienorum ID Catalog Update:** Updated `catalogs/soles_alienorum.dat` and `soles_alienorum.dat.gz` with finalized true Alienorum IDs for stars $V < 10.0$ (112,505 stars) and omitted IDs for stars past the ceiling $V \ge 10.0$ (19,037 stars).
+6. **Packaging & Version Bump:** Removed offline lookup files from installer packaging in `CMakeLists.txt`. Maintained project version at `2.0.0` in `vcpkg.json`. Validated all test suites with blank Alienorum IDs.
 

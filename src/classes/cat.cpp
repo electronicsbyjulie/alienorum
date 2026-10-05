@@ -5734,7 +5734,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (cels[i]->type == star)
         {
             Star *s = (Star*)cels[i];
-            id_to_star.emplace(s->alienorumid, s);
+            if (!s->alienorumid.empty())
+            {
+                id_to_star.emplace(s->alienorumid, s);
+            }
             if (s->orbit && !s->orbit->center_name.empty())
             {
                 orbiting_stars.push_back(s);
