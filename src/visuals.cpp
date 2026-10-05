@@ -5030,7 +5030,7 @@ void draw_cons_lines()
         if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
-                rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 4.5, -1, true)),
+                rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 2.9, 3.5, true)),
                 dispname.c_str() );
         }
     }
