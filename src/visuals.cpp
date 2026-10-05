@@ -3782,7 +3782,7 @@ void draw_objects()
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
 
-        if (i != selected)
+        if (i && i != selected)             // always include Sun and selection
         {
             // A comet is drawn far larger than the head this test is looking at: the tail can lie
             // across the whole screen with the nucleus itself well off the edge of it, and those are
