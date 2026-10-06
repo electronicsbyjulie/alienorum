@@ -317,6 +317,7 @@ int main (int argc, char** argv)
         {
             keyprobe = true;
         }
+        else if (!strcmp(argv[l], "\x44\x61\x6c\x69")) dittrsa = true;
         else if (!strcmp(argv[l], "magtest")) magnitude_test = true;
         else if (!strcmp(argv[l], "sizeof"))
         {
