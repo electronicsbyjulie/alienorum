@@ -50,6 +50,7 @@ double spin = 0;
 double global_gamma = default_gamma, viewer_gamma = global_gamma;
 double zoom = 1, vm, vmfr;
 double viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz = 0, viewer_home_tz;
+double viewer_eye_height = 1.7526; // meters, default 5'9" (175.26 cm)
 double neighb_rthresh = 25 * light_year;
 bool save_viewer_latlon = true;
 bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true, show_orbits = false, show_sats = true, show_axes = false, draw_actual_conslines;

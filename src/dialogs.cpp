@@ -551,11 +551,28 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                     set_viewer_location_and_plane();
                     viewchanged = true;
                 }
+
+                /*
+                // Leave this commented in case we want it later.
+                double eye_cm_edit = viewer_eye_height * 100.0;
+                ImGui::Text("%s", "Eye:");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(123);
+                if (ImGui::InputDouble("##eye_ht", &eye_cm_edit, 1.0, 10.0, "%.1f cm"))
+                {
+                    if (eye_cm_edit > 0.0)
+                    {
+                        viewer_eye_height = eye_cm_edit * 0.01;
+                        save_user_json();
+                        viewchanged = true;
+                    }
+                }*/
             }
             else
             {
                 ImGui::Text("%s %s%.6f", "Lat: ", (viewer_lat >= 0) ? "+" : "", viewer_lat*fiftyseven );
                 ImGui::Text("%s %s%.6f", "Lon:", (viewer_lon >= 0) ? "+" : "", viewer_lon*fiftyseven );
+                ImGui::Text("Eye: %.1f cm", viewer_eye_height * 100.0);
             }
         }
     }

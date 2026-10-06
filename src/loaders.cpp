@@ -1194,6 +1194,30 @@ void load_stuff()
         try { j.at( (std::string("Theme") + std::to_string(wkday)).c_str() ).get_to(viewer_theme); } catch(...) { ; }
         try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
+        try
+        {
+            double eye_cm = 175.26;
+            if (j.contains("EyeHeight"))
+            {
+                j.at("EyeHeight").get_to(eye_cm);
+            }
+            else if (j.contains("StandingHeight"))
+            {
+                j.at("StandingHeight").get_to(eye_cm);
+            }
+            else if (j.contains("ViewerHeight"))
+            {
+                j.at("ViewerHeight").get_to(eye_cm);
+            }
+            if (eye_cm > 0.0)
+            {
+                viewer_eye_height = eye_cm * 0.01;
+            }
+        }
+        catch (...)
+        {
+            ;
+        }
 
         try
         {
@@ -1429,6 +1453,7 @@ bool save_user_json()
         j["Timezone"] = (int)(viewer_home_tz / 60);
         j["Theme"] = themes[themes_selected_idx];
         j["Gamma"] = global_gamma;
+        j["EyeHeight"] = viewer_eye_height * 100.0;
 
         std::vector<std::string> favenames;
         for (const Star *s : favestars) favenames.push_back(s->name);

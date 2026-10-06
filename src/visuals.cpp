@@ -4487,7 +4487,16 @@ void find_horizon()
             horizon_lift_rad = p->atmospheric_horizon_lift();
         }
 
-        Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
+        double R = cel->get_equatorial_radius();
+        if (R <= 0)
+        {
+            R = cel->volumetric_mean_radius;
+        }
+        double h_eye = fmax(0.01, viewer_eye_height);
+        double horizon_dip_rad = (R > 0) ? acos(R / (R + h_eye)) : 0.0;
+        double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
+
+        Point pthz = rotate3D(zaxis, center, xaxis, -net_horizon_angle);
         // std::cout << "pthz=" << pthz << std::endl;
 
         double theta = 0, step = _pi*2/hznodes;
@@ -4547,11 +4556,12 @@ void draw_horizon()
         rgb.g = fmin(255, is_day*rgb.g);
         rgb.b = fmin(255, is_day*rgb.b);
 
-        bool is_water = uses_rocky_map(p->type)
-            && p->get_surface_pressure() >= 150
-            && p->estimate_surface_temperature() < 400
-            && (rgb.b > 0.8 * rgb.r)
-            && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
+        bool is_water = (p && (p->type == waterworld || p->type == hycean))
+            || (uses_rocky_map(p->type)
+                && p->get_surface_pressure() >= 150
+                && p->estimate_surface_temperature() < 400
+                && (rgb.b > 0.8 * rgb.r)
+                && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
         if (p && p->type == lavaworld && p->night_map)
         {
@@ -4565,37 +4575,100 @@ void draw_horizon()
         double hzheight[hznodes];
         if (show_terrain && !gaseous && !is_water)
         {
-            // The raw noise shape only depends on where the viewer is standing, not on which way
-            // they're looking or how far they've zoomed -- so it's cached and only regenerated
-            // when viewer_lat/viewer_lon/whereami actually change, instead of every frame.
+            // The raw noise shape and distant bump relief depend only on where the viewer is standing,
+            // so they are cached and regenerated when viewer_lat/viewer_lon/whereami/eye_height changes.
             static double cached_raw_noise[hznodes];
+            static double cached_bump_relief[hznodes];
             static double cached_raw_min = 0;
             static double cached_lat = 1e293, cached_lon = 1e293;
             static int cached_whereami = -2;
+            static double cached_eye_height = -1.0;
 
-            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon)
+            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon || cached_eye_height != viewer_eye_height)
             {
-                // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
-                pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
+                pn.reseed(0xb0ad * 15 * viewer_lat + 0x1cea * 60 * viewer_lon);
                 cached_raw_min = 9999;
                 for (j = 0; j < hznodes; j++)
                 {
                     double theta = _pi * 2 * j / hznodes;
                     double scale = 0.19;
                     double nx = scale * sin(theta), ny = scale * cos(theta);
-                    cached_raw_noise[j] = fBm(nx, ny, 0, 29, 1.29, 0.8559);             // The octaves must stay a high number like this or the terrain won't look realistic.
-                    if (cached_raw_noise[j] < cached_raw_min) cached_raw_min = cached_raw_noise[j];
+                    cached_raw_noise[j] = fBm(nx, ny, 0, 29, 1.29, 0.8559);
+                    if (cached_raw_noise[j] < cached_raw_min)
+                    {
+                        cached_raw_min = cached_raw_noise[j];
+                    }
                 }
+
+                bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
+                double R_planet = cel->get_equatorial_radius();
+                if (R_planet <= 0)
+                {
+                    R_planet = cel->volumetric_mean_radius;
+                }
+                if (R_planet <= 0)
+                {
+                    R_planet = earth_radius;
+                }
+                double h_eye = fmax(0.01, viewer_eye_height);
+                double geom_dist = sqrt(2.0 * R_planet * h_eye);
+                double E0 = has_bump ? cel->surf_map->elevation_at(viewer_lat, viewer_lon) : 0.0;
+                double hz_dip = acos(R_planet / (R_planet + h_eye));
+
+                for (j = 0; j < hznodes; j++)
+                {
+                    cached_bump_relief[j] = 0.0;
+                    if (has_bump)
+                    {
+                        double theta = _pi * 2 * j / hznodes;
+                        double max_alpha = -hz_dip;
+                        double max_dist = fmin(250000.0, R_planet * 0.1);
+                        for (int s_step = 1; s_step <= 8; s_step++)
+                        {
+                            double frac = (double)s_step / 8.0;
+                            double s = geom_dist + (max_dist - geom_dist) * (frac * frac);
+                            double delta_sigma = s / R_planet;
+                            double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(theta);
+                            sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
+                            double phi = asin(sin_phi);
+                            double d_lon = atan2(sin(theta) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
+                            double lam = viewer_lon + d_lon;
+                            double Es = cel->surf_map->elevation_at(phi, lam);
+                            double h_apparent = (Es - E0) - (s * s) / (2.0 * R_planet);
+                            double alpha = (h_apparent - h_eye) / s;
+                            if (alpha > max_alpha)
+                            {
+                                max_alpha = alpha;
+                            }
+                        }
+                        if (max_alpha > -hz_dip)
+                        {
+                            cached_bump_relief[j] = (max_alpha + hz_dip);
+                        }
+                    }
+                }
+
                 cached_lat = viewer_lat;
                 cached_lon = viewer_lon;
                 cached_whereami = whereami;
+                cached_eye_height = viewer_eye_height;
             }
 
-            double terrain_height = dispcx * 0.1 * zoom;
+            double terrain_height = dispcx * 0.08 * zoom;
             for (j = 0; j < hznodes; j++)
-                hzheight[j] = hz_dy[j] - terrain_height * (cached_raw_noise[j] - cached_raw_min) * 3;
+            {
+                double bump_px = cached_bump_relief[j] * dispcx * zoom;
+                double proc_px = terrain_height * (cached_raw_noise[j] - cached_raw_min) * 2.5;
+                hzheight[j] = hz_dy[j] - (bump_px + proc_px);
+            }
         }
-        else for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j];
+        else
+        {
+            for (j = 0; j < hznodes; j++)
+            {
+                hzheight[j] = hz_dy[j];
+            }
+        }
 
         double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
@@ -4644,26 +4717,543 @@ void draw_horizon()
 
             hz_fy = hz_y;
         }
-        else for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+        else
         {
-            j1 = j%hznodes;
-            if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
+            for (j = 0; j <= hznodes; j++)
             {
-                if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
-                hz_y = hzheight[j1];
-                hz_y1 = hz_fy;
+                if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+                {
+                    j1 = j%hznodes;
+                    if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
+                    {
+                        if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0))
+                        {
+                            goto _skip_hz_element;
+                        }
+                        hz_y = hzheight[j1];
+                        hz_y1 = hz_fy;
 
-                points[0] = ImVec2(hz_fx, hz_y1);
-                points[1] = ImVec2(hz_dx[j1]+1, hz_y);
-                points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
-                points[3] = ImVec2(hz_fx, dispcy*2);
+                        points[0] = ImVec2(hz_fx, hz_y1);
+                        points[1] = ImVec2(hz_dx[j1]+1, hz_y);
+                        points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
+                        points[3] = ImVec2(hz_fx, dispcy*2);
 
-                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
+                    }
+
+                    _skip_hz_element:
+                    hz_fx = hz_dx[j1];
+                    hz_fy = hzheight[j1];
+                }
+            }
+        }
+
+        // Measure visible horizon line screen bounds
+        double min_hz_y = 1e9;
+        for (j = 0; j < hznodes; j++)
+        {
+            if (draw_marker[j] && hzheight[j] > -1e4 && hzheight[j] < 1e5)
+            {
+                if (hzheight[j] < min_hz_y)
+                {
+                    min_hz_y = hzheight[j];
+                }
+            }
+        }
+        if (min_hz_y > dispcy * 2)
+        {
+            min_hz_y = dispcy;
+        }
+
+        if (is_water && !faded)
+        {
+            // Water wavelet simulation and shoreline detection
+            double wave_t = ImGui::GetTime();
+            CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
+            double sun_elev = sun_obj ? sun_obj->Decl_as_radians(here) : 0.0;
+            double sun_screen_x = -1e9;
+            bool sun_in_front = false;
+            if (sun_obj)
+            {
+                Point sun_pt = to_viewer_plane(sun_obj->tmprel);
+                Cartesian2D sun_cart(sun_pt, azimuth + azimuth_correction, altitude, zoom);
+                sun_screen_x = sun_cart.x * dispcx + dispcx;
+                sun_in_front = (sun_cart.x > -1.5 && sun_cart.x < 1.5 && sun_elev > -0.1);
             }
 
-            _skip_hz_element:
-            hz_fx = hz_dx[j1];
-            hz_fy = hzheight[j1];
+            double R_planet = cel->get_equatorial_radius();
+            if (R_planet <= 0)
+            {
+                R_planet = cel->volumetric_mean_radius;
+            }
+            if (R_planet <= 0)
+            {
+                R_planet = earth_radius;
+            }
+
+            double D_shore = -1.0;
+            if (p && p->surf_map)
+            {
+                double test_dists[5] = { 400.0, 1000.0, 2200.0, 4500.0, 9000.0 };
+                for (int td = 0; td < 5; td++)
+                {
+                    double s = test_dists[td];
+                    double delta_sigma = s / R_planet;
+                    double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(azimuth);
+                    sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
+                    double phi = asin(sin_phi);
+                    double d_lon = atan2(sin(azimuth) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
+                    double lam = viewer_lon + d_lon;
+                    RGB3 sc = p->surf_map->color_at(phi, lam);
+                    bool sc_is_water = (sc.b > 0.8 * sc.r) && (fmax(sc.b, sc.g) > 1.333 * sc.r);
+                    if (!sc_is_water)
+                    {
+                        D_shore = s;
+                        break;
+                    }
+                }
+            }
+
+            int num_wave_bands = 45;
+            double y_top = fmax(0.0, min_hz_y);
+            double y_bot = dispcy * 2;
+            double h_eye = fmax(0.01, viewer_eye_height);
+
+            for (int wb = 0; wb < num_wave_bands; wb++)
+            {
+                double t_band = (double)wb / (double)num_wave_bands;
+                double y_curr = y_top + (y_bot - y_top) * (t_band * t_band);
+                double y_next = y_top + (y_bot - y_top) * (pow((double)(wb + 1) / num_wave_bands, 2.0));
+
+                double dep_ang = fmax(0.003, (y_curr - min_hz_y) / (dispcx * zoom));
+                double dist_m = h_eye / tan(dep_ang);
+
+                double wavelength = fmax(12.0, fmin(160.0, (16.0 / dist_m) * dispcx * zoom));
+                double amp = fmax(0.6, fmin(5.0, (0.04 / dist_m) * dispcx * zoom));
+                double speed = 2.4;
+
+                double x_step = fmax(4.0, wavelength * 0.1);
+                int steps = (int)(dispcx * 2 / x_step) + 1;
+
+                ImVec2 w_pts[4];
+                for (int xs = 0; xs < steps; xs++)
+                {
+                    double x0 = xs * x_step;
+                    double x1 = fmin(dispcx * 2, (xs + 1) * x_step);
+                    if (x1 <= x0)
+                    {
+                        continue;
+                    }
+
+                    double wave_disp0 = amp * (sin(2.0 * _pi * x0 / wavelength - speed * wave_t) + 0.35 * sin(4.5 * _pi * x0 / wavelength + 1.2 * speed * wave_t));
+                    double wave_disp1 = amp * (sin(2.0 * _pi * x1 / wavelength - speed * wave_t) + 0.35 * sin(4.5 * _pi * x1 / wavelength + 1.2 * speed * wave_t));
+
+                    w_pts[0] = ImVec2(x0, y_curr + wave_disp0);
+                    w_pts[1] = ImVec2(x1, y_curr + wave_disp1);
+                    w_pts[2] = ImVec2(x1, y_next);
+                    w_pts[3] = ImVec2(x0, y_next);
+
+                    double crest_fac = fmax(0.0, (wave_disp0 + wave_disp1) / (2.0 * amp));
+                    int wr = fmin(255.0, rgb.r * 0.4 + crest_fac * 50.0);
+                    int wg = fmin(255.0, rgb.g * 0.55 + crest_fac * 70.0);
+                    int wb_col = fmin(255.0, rgb.b * 0.85 + crest_fac * 90.0);
+                    int wa = fmin(230.0, 70.0 + crest_fac * 130.0);
+
+                    if (sun_in_front && sun_elev > 0.0)
+                    {
+                        double dx_sun = fabs(x0 - sun_screen_x);
+                        double glint_width = dispcx * 0.12 * (1.0 + dist_m * 0.03);
+                        if (dx_sun < glint_width * 2.0)
+                        {
+                            double g_factor = exp(-pow(dx_sun / glint_width, 2.0));
+                            double sparkle = 0.5 + 0.5 * sin(15.0 * x0 / wavelength - 6.0 * wave_t);
+                            if (sparkle > 0.6 && crest_fac > 0.3)
+                            {
+                                wr = fmin(255.0, wr + g_factor * 180.0 * sparkle);
+                                wg = fmin(255.0, wg + g_factor * 160.0 * sparkle);
+                                wb_col = fmin(255.0, wb_col + g_factor * 120.0 * sparkle);
+                                wa = fmin(255.0, wa + g_factor * 100.0);
+                            }
+                        }
+                    }
+
+                    ImU32 wcol = rgba_apply_redlight(IM_COL32(wr, wg, wb_col, wa));
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(w_pts, 4, wcol);
+                }
+            }
+
+            if (D_shore > 0.0)
+            {
+                double dep_ang_shore = atan(h_eye / D_shore);
+                double y_shore = min_hz_y + dep_ang_shore * dispcx * zoom;
+                if (y_shore >= 0 && y_shore < dispcy * 2)
+                {
+                    double surf_pulse = sin(2.2 * wave_t);
+                    double swash_amp = fmax(2.0, fmin(14.0, (0.6 / D_shore) * dispcx * zoom));
+                    double y_foam = y_shore + surf_pulse * swash_amp;
+
+                    int foam_alpha = (int)(140.0 + 80.0 * (0.5 + 0.5 * surf_pulse));
+                    ImU32 foam_col = rgba_apply_redlight(IM_COL32(235, 245, 255, foam_alpha));
+
+                    double foam_x_step = 12.0;
+                    int f_steps = (int)(dispcx * 2 / foam_x_step) + 1;
+                    ImVec2 f_pts[4];
+                    for (int fs = 0; fs < f_steps; fs++)
+                    {
+                        double fx0 = fs * foam_x_step;
+                        double fx1 = fmin(dispcx * 2, (fs + 1) * foam_x_step);
+                        double w_wobble0 = 2.0 * sin(fx0 * 0.05 + wave_t * 3.0);
+                        double w_wobble1 = 2.0 * sin(fx1 * 0.05 + wave_t * 3.0);
+
+                        f_pts[0] = ImVec2(fx0, y_foam + w_wobble0 - 2.0);
+                        f_pts[1] = ImVec2(fx1, y_foam + w_wobble1 - 2.0);
+                        f_pts[2] = ImVec2(fx1, y_foam + w_wobble1 + 3.0);
+                        f_pts[3] = ImVec2(fx0, y_foam + w_wobble0 + 3.0);
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(f_pts, 4, foam_col);
+                    }
+                }
+            }
+        }
+        else if (!is_water && !gaseous && !faded)
+        {
+            double P_surf = p ? p->get_surface_pressure() : 0.0;
+            double T_surf = p ? p->estimate_surface_temperature() : 0.0;
+
+            bool is_icy = (cel->type == icy)
+                || (p && !uses_gaseous_map(p->type) && T_surf < 180.0 && rgb.r > 160 && rgb.g > 160 && rgb.b > 160);
+            bool is_venus = !is_icy && p && uses_rocky_map(p->type)
+                && (P_surf >= 5.0 * oneatm && T_surf >= 450.0);
+            bool is_mars = !is_icy && !is_venus && p && uses_rocky_map(p->type)
+                && (P_surf > 10.0 && P_surf < 0.4 * oneatm && rgb.r > 1.15 * rgb.b && rgb.r > 1.05 * rgb.g);
+            bool is_moon = !is_icy && !is_venus && !is_mars && p && uses_rocky_map(p->type)
+                && (P_surf <= 50.0);
+
+            CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
+            double sun_elev = sun_obj ? sun_obj->Decl_as_radians(here) : 0.0;
+            double sun_screen_x = dispcx;
+            if (sun_obj)
+            {
+                Point sun_pt = to_viewer_plane(sun_obj->tmprel);
+                Cartesian2D sun_cart(sun_pt, azimuth + azimuth_correction, altitude, zoom);
+                sun_screen_x = sun_cart.x * dispcx + dispcx;
+            }
+
+            double h_eye = fmax(0.01, viewer_eye_height);
+            double y_top = fmax(0.0, min_hz_y);
+            double y_bot = dispcy * 2;
+
+            int num_ground_bands = 28;
+            for (int gb = 0; gb < num_ground_bands; gb++)
+            {
+                double t_band = (double)gb / (double)num_ground_bands;
+                double y_curr = y_top + (y_bot - y_top) * (t_band * t_band);
+                double y_next = y_top + (y_bot - y_top) * (pow((double)(gb + 1) / num_ground_bands, 2.0));
+                double band_ht = fmax(1.0, y_next - y_curr);
+
+                double dep_ang = fmax(0.003, (y_curr - min_hz_y) / (dispcx * zoom));
+                double dist_m = h_eye / tan(dep_ang);
+
+                double haze = fmin(0.65, dist_m / 1500.0);
+                if (is_moon)
+                {
+                    haze = 0.0;
+                }
+
+                int gr = fmin(255.0, rgb.r * (1.0 - haze * 0.4) + (is_mars ? 40.0 : (is_venus ? 50.0 : 20.0)) * haze);
+                int gg = fmin(255.0, rgb.g * (1.0 - haze * 0.4) + (is_mars ? 25.0 : (is_venus ? 45.0 : 20.0)) * haze);
+                int gb_col = fmin(255.0, rgb.b * (1.0 - haze * 0.4) + (is_mars ? 10.0 : (is_venus ? 15.0 : 20.0)) * haze);
+
+                if (is_mars && dist_m < 80.0)
+                {
+                    double ripple_lambda = fmax(15.0, (10.0 / dist_m) * dispcx * zoom);
+                    double x_step = fmax(6.0, ripple_lambda * 0.15);
+                    int r_steps = (int)(dispcx * 2 / x_step) + 1;
+                    ImVec2 rip_pts[4];
+                    for (int rs = 0; rs < r_steps; rs++)
+                    {
+                        double rx0 = rs * x_step;
+                        double rx1 = fmin(dispcx * 2, (rs + 1) * x_step);
+                        double r_val = sin(2.0 * _pi * rx0 / ripple_lambda);
+                        if (r_val > 0.4)
+                        {
+                            int rip_r = fmin(255, gr + 22);
+                            int rip_g = fmin(255, gg + 12);
+                            int rip_b = fmax(0, gb_col - 5);
+                            ImU32 rip_col = rgba_apply_redlight(IM_COL32(rip_r, rip_g, rip_b, (int)(75 * r_val)));
+                            rip_pts[0] = ImVec2(rx0, y_curr);
+                            rip_pts[1] = ImVec2(rx1, y_curr);
+                            rip_pts[2] = ImVec2(rx1, y_next);
+                            rip_pts[3] = ImVec2(rx0, y_next);
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(rip_pts, 4, rip_col);
+                        }
+                    }
+                }
+                else if (is_venus && dist_m < 60.0)
+                {
+                    double slab_w = fmax(25.0, (14.0 / dist_m) * dispcx * zoom);
+                    int s_count = (int)(dispcx * 2 / slab_w) + 1;
+                    for (int sc = 0; sc < s_count; sc++)
+                    {
+                        double sx = sc * slab_w + fmod(gb * 37.0, slab_w);
+                        if (sx >= 0 && sx <= dispcx * 2)
+                        {
+                            ImU32 fissure_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.35, rgb.g * 0.32, rgb.b * 0.2, 140));
+                            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(sx, y_curr), ImVec2(sx + 3.0, y_next), fissure_col, 1.5f);
+                        }
+                    }
+                }
+                else if (is_moon && dist_m < 40.0)
+                {
+                    double speck_step = fmax(12.0, (6.0 / dist_m) * dispcx * zoom);
+                    int sp_count = (int)(dispcx * 2 / speck_step);
+                    for (int sp = 0; sp < sp_count; sp++)
+                    {
+                        double spx = sp * speck_step + fmod(gb * 53.0 + sp * 17.0, speck_step);
+                        if (spx >= 0 && spx <= dispcx * 2)
+                        {
+                            ImU32 sp_col = rgba_apply_redlight(((sp + gb) % 2 == 0) ? IM_COL32(200, 200, 205, 90) : IM_COL32(30, 30, 35, 90));
+                            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(spx, y_curr + band_ht * 0.5), 1.0f + 1.5f / (float)dist_m, sp_col);
+                        }
+                    }
+                }
+                else if (is_icy && dist_m < 60.0)
+                {
+                    double frost_w = fmax(20.0, (12.0 / dist_m) * dispcx * zoom);
+                    int fr_count = (int)(dispcx * 2 / frost_w);
+                    for (int fc = 0; fc < fr_count; fc++)
+                    {
+                        double fx = fc * frost_w + fmod(gb * 29.0, frost_w);
+                        if (fx >= 0 && fx <= dispcx * 2 && (fc % 3 == 0))
+                        {
+                            ImU32 frost_col = rgba_apply_redlight(IM_COL32(250, 255, 255, 110));
+                            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(fx, y_curr), ImVec2(fx + frost_w * 0.4, y_curr + 1.0), frost_col, 1.2f);
+                        }
+                    }
+                }
+            }
+
+            struct RockInstance
+            {
+                double dist;
+                double screen_x;
+                double screen_y;
+                double width;
+                double height;
+                double size;
+                uint32_t seed_val;
+            };
+
+            const int kMaxRocks = 96;
+            RockInstance rocks[kMaxRocks];
+            int num_rocks = 0;
+
+            uint32_t base_seed = (uint32_t)(whereami * 2654435761u
+                ^ (uint32_t)fabs(viewer_lat * 12345.0)
+                ^ ((uint32_t)fabs(viewer_lon * 54321.0) << 12));
+
+            for (int ri = 0; ri < kMaxRocks; ri++)
+            {
+                uint32_t rhash = base_seed + (uint32_t)ri * 2246822519u;
+                rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
+                rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
+                rhash = (rhash >> 16) ^ rhash;
+
+                double u1 = (double)(rhash & 0xFFFF) / 65535.0;
+                double u2 = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
+
+                double dist_m = 1.4 + 46.6 * (u1 * u1);
+                double fov_half = 0.85 / fmax(0.2, zoom);
+                double theta_rel = (u2 - 0.5) * 2.0 * fov_half;
+
+                double sx = dispcx + tan(theta_rel) * dispcx * zoom;
+                if (sx < -60.0 || sx > dispcx * 2 + 60.0)
+                {
+                    continue;
+                }
+
+                double dep_ang = atan(h_eye / dist_m);
+                double sy = min_hz_y + dep_ang * dispcx * zoom;
+                if (sy > dispcy * 2 + 40.0 || sy < min_hz_y)
+                {
+                    continue;
+                }
+
+                uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
+                double u3 = (double)(sz_hash & 0xFFFF) / 65535.0;
+                double rock_size = 0.06 + 0.79 * (u3 * u3 * u3);
+
+                double rw = (rock_size / dist_m) * dispcx * zoom;
+                double rh = rw * (is_venus ? 0.32 : (is_icy ? 0.75 : 0.65));
+                if (rw < 1.5)
+                {
+                    continue;
+                }
+
+                rocks[num_rocks].dist = dist_m;
+                rocks[num_rocks].screen_x = sx;
+                rocks[num_rocks].screen_y = sy;
+                rocks[num_rocks].width = rw;
+                rocks[num_rocks].height = rh;
+                rocks[num_rocks].size = rock_size;
+                rocks[num_rocks].seed_val = rhash;
+                num_rocks++;
+            }
+
+            std::sort(rocks, rocks + num_rocks, [](const RockInstance& a, const RockInstance& b)
+            {
+                return a.dist > b.dist;
+            });
+
+            bool has_directional_sun = (sun_elev > -0.08);
+            double shad_len_mult = fmin(4.0, 1.0 / fmax(0.12, tan(fmax(0.06, sun_elev))));
+
+            for (int ri = 0; ri < num_rocks; ri++)
+            {
+                const RockInstance& rk = rocks[ri];
+                double rx = rk.screen_x;
+                double ry = rk.screen_y;
+                double rw = rk.width;
+                double rh = rk.height;
+
+                if (has_directional_sun && rw >= 3.0)
+                {
+                    double slen = fmin(rw * 3.5, rh * shad_len_mult);
+                    double s_dx = (rx - sun_screen_x) * 0.25;
+                    s_dx = fmax(-slen * 1.5, fmin(slen * 1.5, s_dx));
+
+                    ImVec2 shad_pts[4];
+                    shad_pts[0] = ImVec2(rx - rw * 0.45, ry);
+                    shad_pts[1] = ImVec2(rx + rw * 0.45, ry);
+                    shad_pts[2] = ImVec2(rx + rw * 0.35 + s_dx, ry + slen * 0.6);
+                    shad_pts[3] = ImVec2(rx - rw * 0.35 + s_dx, ry + slen * 0.6);
+
+                    ImU32 shad_col;
+                    if (is_moon)
+                    {
+                        shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, 230));
+                    }
+                    else if (is_mars)
+                    {
+                        shad_col = rgba_apply_redlight(IM_COL32(40, 16, 10, 165));
+                    }
+                    else if (is_venus)
+                    {
+                        shad_col = rgba_apply_redlight(IM_COL32(25, 20, 10, 120));
+                    }
+                    else if (is_icy)
+                    {
+                        shad_col = rgba_apply_redlight(IM_COL32(20, 28, 48, 175));
+                    }
+                    else
+                    {
+                        shad_col = rgba_apply_redlight(IM_COL32(15, 15, 18, 180));
+                    }
+
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(shad_pts, 4, shad_col);
+                }
+
+                if (rw < 4.0)
+                {
+                    ImU32 peb_col;
+                    if (is_moon)
+                    {
+                        peb_col = rgba_apply_redlight(IM_COL32(150, 150, 155, 240));
+                    }
+                    else if (is_mars)
+                    {
+                        peb_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.6, rgb.g * 0.5, rgb.b * 0.4, 240));
+                    }
+                    else if (is_venus)
+                    {
+                        peb_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.5, rgb.g * 0.5, rgb.b * 0.35, 240));
+                    }
+                    else if (is_icy)
+                    {
+                        peb_col = rgba_apply_redlight(IM_COL32(230, 240, 250, 240));
+                    }
+                    else
+                    {
+                        peb_col = rgba_apply_redlight(IM_COL32(100, 100, 100, 240));
+                    }
+
+                    ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(rx, ry - rh * 0.5), rw * 0.5f, peb_col);
+                    continue;
+                }
+
+                if (is_venus)
+                {
+                    ImVec2 slab_pts[5];
+                    slab_pts[0] = ImVec2(rx - rw * 0.5, ry);
+                    slab_pts[1] = ImVec2(rx - rw * 0.4, ry - rh);
+                    slab_pts[2] = ImVec2(rx + rw * 0.4, ry - rh * 0.9);
+                    slab_pts[3] = ImVec2(rx + rw * 0.5, ry);
+                    slab_pts[4] = ImVec2(rx, ry + rh * 0.2);
+
+                    ImU32 slab_body = rgba_apply_redlight(IM_COL32(rgb.r * 0.75, rgb.g * 0.72, rgb.b * 0.55, 255));
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(slab_pts, 5, slab_body);
+
+                    ImU32 slab_edge = rgba_apply_redlight(IM_COL32(rgb.r * 0.4, rgb.g * 0.38, rgb.b * 0.25, 255));
+                    ImGui::GetBackgroundDrawList()->AddLine(slab_pts[0], slab_pts[1], slab_edge, 1.2f);
+                    ImGui::GetBackgroundDrawList()->AddLine(slab_pts[1], slab_pts[2], slab_edge, 1.2f);
+                    ImGui::GetBackgroundDrawList()->AddLine(slab_pts[2], slab_pts[3], slab_edge, 1.2f);
+                }
+                else
+                {
+                    bool sun_from_left = (sun_screen_x < rx);
+
+                    ImVec2 base_l(rx - rw * 0.5, ry);
+                    ImVec2 base_r(rx + rw * 0.5, ry);
+                    ImVec2 peak(rx + (sun_from_left ? rw * 0.1 : -rw * 0.1), ry - rh);
+                    ImVec2 mid_l(rx - rw * 0.35, ry - rh * 0.65);
+                    ImVec2 mid_r(rx + rw * 0.35, ry - rh * 0.6);
+
+                    ImVec2 lit_tri[3];
+                    lit_tri[0] = sun_from_left ? base_l : base_r;
+                    lit_tri[1] = sun_from_left ? mid_l : mid_r;
+                    lit_tri[2] = peak;
+
+                    ImVec2 shad_tri[3];
+                    shad_tri[0] = sun_from_left ? base_r : base_l;
+                    shad_tri[1] = sun_from_left ? mid_r : mid_l;
+                    shad_tri[2] = peak;
+
+                    ImVec2 cent_pts[4];
+                    cent_pts[0] = mid_l;
+                    cent_pts[1] = peak;
+                    cent_pts[2] = mid_r;
+                    cent_pts[3] = ImVec2(rx, ry);
+
+                    ImU32 lit_col, shad_body_col, top_col;
+                    if (is_moon)
+                    {
+                        lit_col = rgba_apply_redlight(IM_COL32(185, 185, 190, 255));
+                        shad_body_col = rgba_apply_redlight(IM_COL32(40, 40, 45, 255));
+                        top_col = rgba_apply_redlight(IM_COL32(140, 140, 145, 255));
+                    }
+                    else if (is_mars)
+                    {
+                        lit_col = rgba_apply_redlight(IM_COL32(fmin(255, rgb.r * 1.3), fmin(255, rgb.g * 1.05), fmin(255, rgb.b * 0.9), 255));
+                        shad_body_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.45, rgb.g * 0.38, rgb.b * 0.32, 255));
+                        top_col = rgba_apply_redlight(IM_COL32(fmin(255, rgb.r * 1.15), fmin(255, rgb.g * 0.85), fmin(255, rgb.b * 0.65), 255));
+                    }
+                    else if (is_icy)
+                    {
+                        lit_col = rgba_apply_redlight(IM_COL32(245, 250, 255, 255));
+                        shad_body_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.55, rgb.g * 0.68, rgb.b * 0.88, 255));
+                        top_col = rgba_apply_redlight(IM_COL32(220, 235, 250, 255));
+                    }
+                    else
+                    {
+                        lit_col = rgba_apply_redlight(IM_COL32(fmin(255, rgb.r * 1.2), fmin(255, rgb.g * 1.2), fmin(255, rgb.b * 1.2), 255));
+                        shad_body_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.5, rgb.g * 0.5, rgb.b * 0.5, 255));
+                        top_col = rgba_apply_redlight(IM_COL32(rgb.r * 0.8, rgb.g * 0.8, rgb.b * 0.8, 255));
+                    }
+
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(cent_pts, 4, top_col);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_tri[0], shad_tri[1], shad_tri[2], shad_body_col);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(lit_tri[0], lit_tri[1], lit_tri[2], lit_col);
+                }
+            }
         }
 
         double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g + _lum_b_comp*rgb.b;

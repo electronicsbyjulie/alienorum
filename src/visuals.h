@@ -11,6 +11,17 @@
 #define panel_width 6
 #define panel_tilt 2
 
+// Terrain rock field tuning parameters
+#define ROCK_COUNT              96      // Number of rocks in the field
+#define ROCK_MIN_DIST           1.2     // Minimum rock distance from viewer (meters)
+#define ROCK_MAX_DIST           45.0    // Maximum rock distance from viewer (meters)
+#define ROCK_MIN_SIZE           0.06    // Minimum rock width (meters)
+#define ROCK_MAX_SIZE           0.85    // Maximum boulder width (meters)
+#define ROCK_ASPECT_VENUS       0.28    // Height/width aspect ratio for Venusian slabs
+#define ROCK_ASPECT_DEFAULT     0.62    // Height/width aspect ratio for standard rocks
+#define ROCK_ASPECT_ICY         0.72    // Height/width aspect ratio for icy blocks
+#define ROCK_SHADOW_MAX_MULT    3.5     // Maximum shadow length multiplier relative to height
+
 void draw_ra_dec_lines();
 
 int draw_sphere(CelestialObject *cel, double arad);
