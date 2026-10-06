@@ -808,6 +808,35 @@ bool CelestialObject::from_json(json j)
     return true;
 }
 
+void alienorum::CelestialObject::mark_all_maps_for_regen()
+{
+    looked_for_maps = false;
+    ignore_map_files = true;
+    merged_day_cloud_gen = merged_day_surf_gen = merged_night_cloud_gen = merged_night_map_gen = 0;
+    if (surf_map)
+    {
+        surf_map->mark_for_map_regen(this);
+    }
+    if (cloud_map)
+    {
+        cloud_map->mark_for_map_regen(this);
+    }
+    if (night_map)
+    {
+        night_map->mark_for_map_regen(this);
+    }
+    if (merged_day_map)
+    {
+        delete merged_day_map;
+        merged_day_map = nullptr;
+    }
+    if (merged_night_map)
+    {
+        delete merged_night_map;
+        merged_night_map = nullptr;
+    }
+}
+
 bool alienorum::CelestialObject::operator<(const CelestialObject &other) const          // Return true if this < other.
 {
     // Is same cenobj? If not, return cenobj comparison.

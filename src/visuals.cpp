@@ -4523,6 +4523,17 @@ void find_horizon()
     }
 }
 
+struct GlintSource
+{
+    double screen_x;
+    double elev;
+    double low_factor;
+    double intensity;
+    double r;
+    double g;
+    double b;
+};
+
 void draw_horizon()
 {
     // Horizon
@@ -4808,16 +4819,122 @@ void draw_horizon()
         if (is_water && !faded)
         {
             double wave_t = ImGui::GetTime();
+            std::vector<GlintSource> glint_sources;
             CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
-            double sun_elev = sun_obj ? sun_obj->Decl_as_radians(here) : 0.0;
-            double sun_screen_x = -1e9;
-            bool sun_in_front = false;
             if (sun_obj)
             {
-                Point sun_pt = to_viewer_plane(sun_obj->tmprel);
-                Cartesian2D sun_cart(sun_pt, azimuth + azimuth_correction, altitude, zoom);
-                sun_screen_x = sun_cart.x * dispcx + dispcx;
-                sun_in_front = (sun_cart.x > -1.5 && sun_cart.x < 1.5 && sun_elev > -0.05);
+                double sun_elev = sun_obj->Decl_as_radians(here);
+                if (sun_elev > 0.0)
+                {
+                    Point sun_pt = to_viewer_plane(sun_obj->tmprel);
+                    Cartesian2D sun_cart(sun_pt, azimuth + azimuth_correction, altitude, zoom);
+                    if (sun_cart.x > -1.5 && sun_cart.x < 1.5)
+                    {
+                        double low_factor = 0.0;
+                        if (sun_elev < WAVE_GLINT_LOW_SUN_ELEV)
+                        {
+                            low_factor = (WAVE_GLINT_LOW_SUN_ELEV - sun_elev) / WAVE_GLINT_LOW_SUN_ELEV * 2.0;
+                        }
+                        double warm_r = 180.0 + 50.0 * low_factor;
+                        double warm_g = 160.0 - 10.0 * low_factor;
+                        double warm_b = 120.0 - 50.0 * low_factor;
+                        glint_sources.push_back({
+                            sun_cart.x * dispcx + dispcx,
+                            sun_elev,
+                            low_factor,
+                            1.0,
+                            warm_r,
+                            warm_g,
+                            warm_b
+                        });
+                    }
+                }
+            }
+
+            for (int ci = 0; cels[ci] && ci < MAX_CELOBJS; ci++)
+            {
+                if (cels[ci]->deleted || ci == whereami || cels[ci] == sun_obj)
+                {
+                    continue;
+                }
+
+                double vmag = vmag_cache[ci];
+                if (vmag > -1.5)
+                {
+                    continue;
+                }
+
+                double elev = cels[ci]->Decl_as_radians(here);
+                if (elev <= 0.0)
+                {
+                    continue;
+                }
+
+                Point obj_pt = to_viewer_plane(cels[ci]->tmprel);
+                Cartesian2D obj_cart(obj_pt, azimuth + azimuth_correction, altitude, zoom);
+                if (obj_cart.x <= -1.5 || obj_cart.x >= 1.5)
+                {
+                    continue;
+                }
+
+                double mag_term = (-vmag - 1.5) / 13.0;
+                double intensity = fmin(1.0, sqrt(fmax(0.0, mag_term)));
+                if (is_day > 0.0 && vmag > -18.0)
+                {
+                    intensity *= fmax(0.0, 1.0 - is_day * 1.5);
+                }
+                if (intensity < 0.01)
+                {
+                    continue;
+                }
+
+                double low_factor = 0.0;
+                if (elev < WAVE_GLINT_LOW_SUN_ELEV)
+                {
+                    low_factor = (WAVE_GLINT_LOW_SUN_ELEV - elev) / WAVE_GLINT_LOW_SUN_ELEV * 2.0;
+                }
+
+                cel_obj_class obj_cls = cels[ci]->typeclass();
+                Color objcol = Color::color_from_magnitude_indices(0, cels[ci]->BV_color + ((obj_cls == class_star) ? 0 : planet_bv_correction));
+                double max_comp = fmax(objcol.red, fmax(objcol.green, objcol.blue));
+                double br = (max_comp > 0.0) ? (objcol.red / max_comp) : 1.0;
+                double bg = (max_comp > 0.0) ? (objcol.green / max_comp) : 1.0;
+                double bb = (max_comp > 0.0) ? (objcol.blue / max_comp) : 1.0;
+
+                double warm_r = fmin(255.0, br * 180.0 + 50.0 * low_factor);
+                double warm_g = fmax(0.0, bg * 160.0 - 10.0 * low_factor);
+                double warm_b = fmax(0.0, bb * 120.0 - 50.0 * low_factor);
+
+                glint_sources.push_back({
+                    obj_cart.x * dispcx + dispcx,
+                    elev,
+                    low_factor,
+                    intensity,
+                    warm_r,
+                    warm_g,
+                    warm_b
+                });
+            }
+
+            if (glint_sources.size() > 1)
+            {
+                std::stable_sort(glint_sources.begin(), glint_sources.end(), [](const GlintSource &a, const GlintSource &b)
+                {
+                    return a.intensity > b.intensity;
+                });
+                if (glint_sources.size() > 16)
+                {
+                    glint_sources.resize(16);
+                }
+            }
+
+            double max_low_factor = 0.0;
+            for (const auto &gsrc : glint_sources)
+            {
+                if (gsrc.low_factor * gsrc.intensity > max_low_factor)
+                {
+                    max_low_factor = gsrc.low_factor * gsrc.intensity;
+                }
             }
 
             double R_planet = cel->get_equatorial_radius();
@@ -4954,14 +5071,8 @@ void draw_horizon()
 
                     ImVec2 cur_pt(wx, wy);
 
-                    // When the sun is low on the horizon, expand glint reflections along the solar path
-                    double low_sun_factor = 0.0;
-                    if (sun_in_front && sun_elev > 0.0 && sun_elev < WAVE_GLINT_LOW_SUN_ELEV)
-                    {
-                        low_sun_factor = (WAVE_GLINT_LOW_SUN_ELEV - sun_elev) / WAVE_GLINT_LOW_SUN_ELEV * 2;
-                    }
-
-                    double min_crest = 0.25 - 0.20 * low_sun_factor;
+                    // When light sources are low on the horizon, expand glint reflections
+                    double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
                     if (has_prev && wave_val > min_crest)
                     {
                         double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
@@ -4970,32 +5081,31 @@ void draw_horizon()
                         int cb = fmin(255.0, rgb.b * 0.95 + 75.0 * crest_fac);
                         int ca = (int)(90.0 + 130.0 * crest_fac);
 
-                        if (sun_in_front && sun_elev > 0.0)
+                        if (!glint_sources.empty())
                         {
-                            double dx_sun = fabs(wx - sun_screen_x);
-                            double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
-                            double glint_w = base_w * (1.0 + 1.2 * low_sun_factor);
-                            if (dx_sun < glint_w * 2.5)
+                            double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
+                            double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
+                            double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
+
+                            for (const auto &gsrc : glint_sources)
                             {
-                                double g_factor = exp(-pow(dx_sun / glint_w, 2.0));
-                                double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
-                                double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
-                                double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
-
-                                double sparkle_thresh = 0.50 - 0.25 * low_sun_factor;
-                                if (sparkle > sparkle_thresh)
+                                double dx_src = fabs(wx - gsrc.screen_x);
+                                double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
+                                double glint_w = base_w * (1.0 + 1.2 * gsrc.low_factor);
+                                if (dx_src < glint_w * 2.5)
                                 {
-                                    double low_boost = 1.0 + 0.8 * low_sun_factor;
-                                    double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
-                                    // Warm sunset color for sun low on horizon
-                                    double warm_r = 180.0 + 50.0 * low_sun_factor;
-                                    double warm_g = 160.0 - 10.0 * low_sun_factor;
-                                    double warm_b = 120.0 - 50.0 * low_sun_factor;
+                                    double g_factor = exp(-pow(dx_src / glint_w, 2.0));
+                                    double sparkle_thresh = 0.50 - 0.25 * gsrc.low_factor;
+                                    if (sparkle > sparkle_thresh)
+                                    {
+                                        double low_boost = 1.0 + 0.8 * gsrc.low_factor;
+                                        double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
 
-                                    cr = fmin(255.0, cr + g_factor * warm_r * sp_int * low_boost);
-                                    cg = fmin(255.0, cg + g_factor * warm_g * sp_int * low_boost);
-                                    cb = fmin(255.0, cb + g_factor * warm_b * sp_int * low_boost);
-                                    ca = fmin(255.0, ca + g_factor * 130.0 * low_boost);
+                                        cr = fmin(255.0, cr + g_factor * gsrc.r * sp_int * low_boost * gsrc.intensity);
+                                        cg = fmin(255.0, cg + g_factor * gsrc.g * sp_int * low_boost * gsrc.intensity);
+                                        cb = fmin(255.0, cb + g_factor * gsrc.b * sp_int * low_boost * gsrc.intensity);
+                                        ca = fmin(255.0, ca + g_factor * 130.0 * low_boost * gsrc.intensity);
+                                    }
                                 }
                             }
                         }

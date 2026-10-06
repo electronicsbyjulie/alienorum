@@ -2238,40 +2238,14 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Update"))
             {
-                cel->looked_for_maps = false;
-                cel->ignore_map_files = true;
-                if (cel->surf_map)
-                {
-                    cel->surf_map->mark_for_map_regen(cel);
-                }
-                if (cel->cloud_map)
-                {
-                    cel->cloud_map->mark_for_map_regen(cel);
-                }
-                if (cel->night_map)
-                {
-                    cel->night_map->mark_for_map_regen(cel);
-                }
+                cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
                 cel->rnd_seed = rand();
                 if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
-                cel->looked_for_maps = false;
-                cel->ignore_map_files = true;
-                if (cel->surf_map)
-                {
-                    cel->surf_map->mark_for_map_regen(cel, true);
-                }
-                if (cel->cloud_map)
-                {
-                    cel->cloud_map->mark_for_map_regen(cel, true);
-                }
-                if (cel->night_map)
-                {
-                    cel->night_map->mark_for_map_regen(cel, true);
-                }
+                cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Reseed"))

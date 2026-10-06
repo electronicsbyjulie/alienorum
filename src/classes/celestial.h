@@ -399,6 +399,7 @@ namespace alienorum
         double Roche_limit(CelestialObject *orbiter = nullptr);
         json to_json();
         bool from_json(json j);
+        void mark_all_maps_for_regen();
 
         bool operator<(const CelestialObject& other) const;
 
