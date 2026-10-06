@@ -12,20 +12,20 @@
 #define panel_tilt 2
 
 // Terrain rock field tuning parameters
-#define ROCK_COUNT              96      // Number of rocks in the field
+#define ROCK_COUNT              296     // Number of rocks in the field
 #define ROCK_MIN_DIST           1.2     // Minimum rock distance from viewer (meters)
 #define ROCK_MAX_DIST           45.0    // Maximum rock distance from viewer (meters)
 #define ROCK_MIN_SIZE           0.06    // Minimum rock width (meters)
-#define ROCK_MAX_SIZE           0.85    // Maximum boulder width (meters)
+#define ROCK_MAX_SIZE           1.85    // Maximum boulder width (meters)
 #define ROCK_PEBBLE_THRESH      3.5     // Screen pixel threshold below which rocks are drawn as pebbles
 #define ROCK_ASPECT_VENUS       0.28    // Height/width aspect ratio for Venusian slabs
 #define ROCK_ASPECT_DEFAULT     0.62    // Height/width aspect ratio for standard rocks
 #define ROCK_ASPECT_ICY         0.72    // Height/width aspect ratio for icy blocks
-#define ROCK_SHADOW_MAX_MULT    3.5     // Maximum shadow length multiplier relative to height
-#define ROCK_SHADOW_ALPHA_MOON  220     // Base shadow alpha for airless/Moon worlds
-#define ROCK_SHADOW_ALPHA_MARS  140     // Base shadow alpha for thin-atmosphere/Mars worlds
-#define ROCK_SHADOW_ALPHA_VENUS 50      // Base shadow alpha for dense-atmosphere/Venus worlds
-#define ROCK_SHADOW_ALPHA_DEF   150     // Base shadow alpha for default worlds
+#define ROCK_SHADOW_MAX_MULT    10.3    // Maximum shadow length multiplier relative to height
+#define ROCK_SHADOW_ALPHA_MOON  250     // Base shadow alpha for airless/Moon worlds
+#define ROCK_SHADOW_ALPHA_MARS  224     // Base shadow alpha for thin-atmosphere/Mars worlds
+#define ROCK_SHADOW_ALPHA_VENUS  96     // Base shadow alpha for dense-atmosphere/Venus worlds
+#define ROCK_SHADOW_ALPHA_DEF   208     // Base shadow alpha for default worlds
 
 // Water wave tuning parameters
 #define WAVE_STEPS_PER_ROW      96      // Horizontal resolution of wave render (steps per row)
@@ -33,6 +33,11 @@
 #define WAVE_NEAR_DIST          1.0     // Nearest wave distance (meters)
 #define WAVE_PERSPECTIVE_EXP    1.5     // Perspective distribution exponent (near-to-horizon row spacing)
 #define WAVE_PERSPECTIVE_OFFSET 0.2
+
+// Water sun glint / glistening tuning parameters
+#define WAVE_GLINT_LOW_SUN_ELEV 0.35    // Elevation angle (radians, ~20 deg) below which sunset glint path activates
+#define WAVE_GLINT_PATH_WIDTH   0.14    // Angular half-width fraction of sunset glint column
+#define WAVE_GLINT_CREST_THRESH 0.05    // Wave crest threshold for glint reflections when sun is low
 
 void draw_ra_dec_lines();
 

@@ -4951,9 +4951,17 @@ void draw_horizon()
 
                     ImVec2 cur_pt(wx, wy);
 
-                    if (has_prev && wave_val > 0.25)
+                    // When the sun is low on the horizon, expand glint reflections along the solar path
+                    double low_sun_factor = 0.0;
+                    if (sun_in_front && sun_elev > 0.0 && sun_elev < WAVE_GLINT_LOW_SUN_ELEV)
                     {
-                        double crest_fac = (wave_val - 0.25) / 0.75;
+                        low_sun_factor = (WAVE_GLINT_LOW_SUN_ELEV - sun_elev) / WAVE_GLINT_LOW_SUN_ELEV;
+                    }
+
+                    double min_crest = 0.25 - 0.20 * low_sun_factor;
+                    if (has_prev && wave_val > min_crest)
+                    {
+                        double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
                         int cr = fmin(255.0, rgb.r * 0.5 + 40.0 * crest_fac);
                         int cg = fmin(255.0, rgb.g * 0.7 + 60.0 * crest_fac);
                         int cb = fmin(255.0, rgb.b * 0.95 + 75.0 * crest_fac);
@@ -4962,17 +4970,29 @@ void draw_horizon()
                         if (sun_in_front && sun_elev > 0.0)
                         {
                             double dx_sun = fabs(wx - sun_screen_x);
-                            double glint_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
-                            if (dx_sun < glint_w * 2.0)
+                            double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
+                            double glint_w = base_w * (1.0 + 1.2 * low_sun_factor);
+                            if (dx_sun < glint_w * 2.5)
                             {
                                 double g_factor = exp(-pow(dx_sun / glint_w, 2.0));
-                                double sparkle = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
-                                if (sparkle > 0.5)
+                                double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
+                                double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
+                                double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
+
+                                double sparkle_thresh = 0.50 - 0.25 * low_sun_factor;
+                                if (sparkle > sparkle_thresh)
                                 {
-                                    cr = fmin(255.0, cr + g_factor * 180.0 * sparkle);
-                                    cg = fmin(255.0, cg + g_factor * 160.0 * sparkle);
-                                    cb = fmin(255.0, cb + g_factor * 120.0 * sparkle);
-                                    ca = fmin(255.0, ca + g_factor * 110.0);
+                                    double low_boost = 1.0 + 0.8 * low_sun_factor;
+                                    double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
+                                    // Warm sunset color for sun low on horizon
+                                    double warm_r = 180.0 + 50.0 * low_sun_factor;
+                                    double warm_g = 160.0 - 10.0 * low_sun_factor;
+                                    double warm_b = 120.0 - 50.0 * low_sun_factor;
+
+                                    cr = fmin(255.0, cr + g_factor * warm_r * sp_int * low_boost);
+                                    cg = fmin(255.0, cg + g_factor * warm_g * sp_int * low_boost);
+                                    cb = fmin(255.0, cb + g_factor * warm_b * sp_int * low_boost);
+                                    ca = fmin(255.0, ca + g_factor * 130.0 * low_boost);
                                 }
                             }
                         }
@@ -4983,7 +5003,7 @@ void draw_horizon()
                     }
 
                     prev_pt = cur_pt;
-                    has_prev = (wave_val > 0.20);
+                    has_prev = (wave_val > min_crest * 0.8);
                 }
             }
 
