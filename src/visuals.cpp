@@ -5264,11 +5264,14 @@ void draw_horizon()
                 double theta;
                 double screen_x;
                 double screen_y;
+                double crown_x;
+                double crown_y;
                 double width;
                 double height;
                 double size;
                 double lift_px;
                 uint32_t seed_val;
+                bool base_valid;
             };
 
             RockInstance rocks[ROCK_COUNT];
@@ -5318,6 +5321,17 @@ void draw_horizon()
                     continue;
                 }
 
+                uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
+                double u_sz = (double)(sz_hash & 0xFFFF) / 65535.0;
+                double rock_size = ROCK_MIN_SIZE + (ROCK_MAX_SIZE - ROCK_MIN_SIZE) * (u_sz * u_sz * u_sz);
+
+                double rw = (rock_size / dist_m) * dispcx * zoom;
+                double rh = rw * rock_aspect;
+                if (rw < 1.5)
+                {
+                    continue;
+                }
+
                 double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
                 if (s_horizon > 0.0)
                 {
@@ -5331,21 +5345,74 @@ void draw_horizon()
                 pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
 
                 Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
-                if (cart.x < -1e10)
+
+                double crown_sx = 0.0;
+                double crown_sy = 0.0;
+                bool crown_valid = false;
+                if (is_vegetation)
+                {
+                    double canopy_h_m = rock_size * PLANT_TRUNK_HEIGHT;
+                    double delta_crown = atan((h_eye - canopy_h_m) / dist_m) + (dist_m / (2.0 * R_planet));
+                    if (s_horizon > 0.0)
+                    {
+                        delta_crown -= (dist_m / s_horizon) * horizon_lift_rad;
+                    }
+                    if (dittrsa)
+                    {
+                        delta_crown = -delta_crown;
+                    }
+                    Point pt_crown = rotate3D(zaxis, center, xaxis, delta_crown);
+                    pt_crown = rotate3D(pt_crown, center, yaxis, theta_world);
+
+                    Cartesian2D cart_crown(pt_crown, azimuth, altitude, zoom);
+                    if (cart_crown.x > -1e10)
+                    {
+                        crown_sx = cart_crown.x * dispcx + dispcx;
+                        crown_sy = cart_crown.y * dispcx + dispcy;
+                        crown_valid = true;
+                    }
+                }
+
+                bool base_valid = (cart.x > -1e10);
+                if (!base_valid && !crown_valid)
                 {
                     continue;
                 }
 
-                double sx = cart.x * dispcx + dispcx;
-                double sy = cart.y * dispcx + dispcy;
+                double sx = 0.0;
+                double sy = 0.0;
+                if (base_valid)
+                {
+                    sx = cart.x * dispcx + dispcx;
+                    sy = cart.y * dispcx + dispcy;
+                }
+                else
+                {
+                    sx = crown_sx;
+                    sy = dispcy * 2.0 + 200.0;
+                }
 
-                if (sx < -80.0 || sx > dispcx * 2 + 80.0 || sy > dispcy * 2 + 80.0 || sy < -80.0)
+                if (!crown_valid)
+                {
+                    crown_sx = sx;
+                    crown_sy = sy - rh;
+                }
+
+                double crown_rx = is_vegetation ? (rw * PLANT_CROWN_SIZE) : (rw * 0.5);
+                double crown_ry = is_vegetation ? (crown_rx * PLANT_CROWN_OBLATENESS) : rh;
+
+                double min_x = fmin(sx, crown_sx) - crown_rx;
+                double max_x = fmax(sx, crown_sx) + crown_rx;
+                double min_y = crown_sy - crown_ry;
+                double max_y = sy;
+
+                if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
                 {
                     continue;
                 }
 
                 double rock_lift_px = 0.0;
-                if (!dittrsa)
+                if (!dittrsa && base_valid)
                 {
                     int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
                     double ground_span = sy - min_hz_y_at_x[ix_lookup];
@@ -5354,34 +5421,27 @@ void draw_horizon()
                         double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
                         rock_lift_px = ground_span * slope_factor;
                         sy -= rock_lift_px;
+                        crown_sy -= rock_lift_px;
                     }
 
-                    if (sy < min_hz_y_at_x[ix_lookup])
+                    if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
                     {
                         continue;
                     }
-                }
-
-                uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
-                double u_sz = (double)(sz_hash & 0xFFFF) / 65535.0;
-                double rock_size = ROCK_MIN_SIZE + (ROCK_MAX_SIZE - ROCK_MIN_SIZE) * (u_sz * u_sz * u_sz);
-
-                double rw = (rock_size / dist_m) * dispcx * zoom;
-                double rh = rw * rock_aspect;
-                if (rw < 1.5)
-                {
-                    continue;
                 }
 
                 rocks[num_rocks].dist = dist_m;
                 rocks[num_rocks].theta = theta_world;
                 rocks[num_rocks].screen_x = sx;
                 rocks[num_rocks].screen_y = sy;
+                rocks[num_rocks].crown_x = crown_sx;
+                rocks[num_rocks].crown_y = crown_sy;
                 rocks[num_rocks].width = rw;
                 rocks[num_rocks].height = rh;
                 rocks[num_rocks].size = rock_size;
                 rocks[num_rocks].lift_px = rock_lift_px;
                 rocks[num_rocks].seed_val = rhash;
+                rocks[num_rocks].base_valid = base_valid;
                 num_rocks++;
             }
 
@@ -5402,7 +5462,7 @@ void draw_horizon()
                 double rw = rk.width;
                 double rh = rk.height;
 
-                if (has_sun_shadow && rw >= 3.0)
+                if (has_sun_shadow && rw >= 3.0 && rk.base_valid)
                 {
                     double actual_rock_h = rk.size * rock_aspect;
                     double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
@@ -5466,7 +5526,9 @@ void draw_horizon()
                         pb = fmin(255.0, (base_map_rgb.b * 0.6) * amb_light);
                     }
                     ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
-                    ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(rx, ry - rh * 0.5), rw * 0.5f, peb_col);
+                    double px = is_vegetation ? rk.crown_x : rx;
+                    double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
+                    ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
                     continue;
                 }
 
@@ -5482,11 +5544,25 @@ void draw_horizon()
                     double u_tint = (double)(rk.seed_val & 0xFF) / 255.0;
                     double tint_factor = 0.88 + 0.24 * u_tint;
 
-                    double trunk_h = rw * PLANT_TRUNK_HEIGHT;
                     double trunk_w = fmax(1.0, rw * PLANT_TRUNK_WIDTH);
                     double crown_rx = fmax(1.2, rw * PLANT_CROWN_SIZE);
                     double crown_ry = fmax(1.0, crown_rx * PLANT_CROWN_OBLATENESS);
 
+                    double cx = rk.crown_x;
+                    double cy = rk.crown_y;
+                    double bx = rk.screen_x;
+                    double by = rk.screen_y;
+
+                    // If the trunk base is below the viewport, clip its bottom vertices along trunk axis
+                    double clip_bottom = dispcy * 2.0 + 40.0;
+                    if (by > clip_bottom && by > cy)
+                    {
+                        double t = (clip_bottom - cy) / (by - cy);
+                        bx = cx + (bx - cx) * t;
+                        by = clip_bottom;
+                    }
+
+                    // Brown-gray stalk/trunk with directional lighting
                     double trunk_light = amb_light * 0.70 + sun_light * 1.15 * fmax(0.15, (0.60 + 0.40 * sun_cos));
                     int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
                     int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
@@ -5494,12 +5570,13 @@ void draw_horizon()
                     ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
 
                     ImVec2 trunk_pts[4];
-                    trunk_pts[0] = ImVec2(rx - trunk_w * 0.50, ry);
-                    trunk_pts[1] = ImVec2(rx - trunk_w * 0.38, ry - trunk_h);
-                    trunk_pts[2] = ImVec2(rx + trunk_w * 0.38, ry - trunk_h);
-                    trunk_pts[3] = ImVec2(rx + trunk_w * 0.50, ry);
+                    trunk_pts[0] = ImVec2(bx - trunk_w * 0.50, by);
+                    trunk_pts[1] = ImVec2(cx - trunk_w * 0.38, cy);
+                    trunk_pts[2] = ImVec2(cx + trunk_w * 0.38, cy);
+                    trunk_pts[3] = ImVec2(bx + trunk_w * 0.50, by);
                     ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
 
+                    // Oblate spheroid crown in vegetation color at the top of the stalk
                     double crown_light = amb_light * 0.65 + sun_light * 1.30 * fmax(0.15, (0.55 + 0.45 * sun_cos));
                     int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
                     int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
@@ -5507,7 +5584,7 @@ void draw_horizon()
                     ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
 
                     ImGui::GetBackgroundDrawList()->AddEllipseFilled(
-                        ImVec2(rx, ry - trunk_h),
+                        ImVec2(cx, cy),
                         ImVec2((float)crown_rx, (float)crown_ry),
                         crown_col);
                 }
