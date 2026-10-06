@@ -352,6 +352,12 @@ void load_textures(CelestialObject* cel)
     cel->looked_for_maps = true;
     cel->ignore_map_files = false;          // one-time use.
 
+    if (cel->type != lavaworld && !cel->has_real_maps && cel->night_map && cel->typeclass() != class_star)
+    {
+        delete cel->night_map;
+        cel->night_map = nullptr;
+    }
+
     if (uses_gaseous_map(cel->type) && !cel->cloud_map)
     {
         cel->cloud_map = new Map(cel);

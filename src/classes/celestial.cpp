@@ -823,7 +823,15 @@ void alienorum::CelestialObject::mark_all_maps_for_regen()
     }
     if (night_map)
     {
-        night_map->mark_for_map_regen(this);
+        if (type != lavaworld && !has_real_maps && typeclass() != class_star)
+        {
+            delete night_map;
+            night_map = nullptr;
+        }
+        else
+        {
+            night_map->mark_for_map_regen(this);
+        }
     }
     if (merged_day_map)
     {
@@ -3432,10 +3440,18 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
     if (lblue ) delete[] lblue;
     resample_bump_data(cel->fictitious_map_height);
     generate_rocky_map(cel);
-    if (cel->type == lavaworld && !cel->night_map)
+    if (cel->type == lavaworld)
     {
-        cel->night_map = new Map(cel);
+        if (!cel->night_map)
+        {
+            cel->night_map = new Map(cel);
+        }
         cel->night_map->generate_lava_map(cel);
+    }
+    else if (cel->night_map && !cel->has_real_maps && cel->typeclass() != class_star)
+    {
+        delete cel->night_map;
+        cel->night_map = nullptr;
     }
 }
 
@@ -3453,7 +3469,7 @@ void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
         delete[] old_bump;
     }
 
-    if (bump_data && uses_rocky_map(cel->type))
+    if (this == cel->surf_map && bump_data && uses_rocky_map(cel->type))
     {
         mcel = cel;
         std::thread tregen(_resample_bump_regen_rocky, this, cel);
