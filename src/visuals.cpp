@@ -4507,17 +4507,15 @@ void find_horizon()
         {
             draw_marker[j] = false;
             Point pt = rotate3D(pthz, center, yaxis, theta);
-            Point pt0 = rotate3D(zaxis, center, yaxis, theta);
 
             Cartesian2D horizon = Cartesian2D(pt, azimuth, altitude, zoom);
-            Cartesian2D horizon0 = Cartesian2D(pt0, azimuth, altitude, zoom);
             hz_dx[j] = horizon.x * dispcx + dispcx;
             hz_dy[j] = horizon.y * dispcx + dispcy;
             if (hz_dx[j] < -1e4) draw_marker[j] = false;
             // else if (hz_dy[j] < 0) hz_dy[j] = 0;
             else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
             // if (draw_marker[j]) std::cout << "pt=" << pt << std::endl;
-            if (draw_marker[j] && hz_y > dispcy*2) hz_y = horizon0.y * dispcx + dispcy;
+            if (draw_marker[j] && hz_y > dispcy*2) hz_y = hz_dy[j];
             theta += step;
         }
     }
@@ -5131,7 +5129,7 @@ void draw_horizon()
                 pt_shore = rotate3D(pt_shore, center, yaxis, azimuth);
                 Cartesian2D cart_shore(pt_shore, azimuth, altitude, zoom);
 
-                if (cart_shore.x > -1e10)
+                /*if (cart_shore.x > -1e10)
                 {
                     double y_shore = cart_shore.y * dispcx + dispcy;
                     if (y_shore >= 0 && y_shore < dispcy * 2)
@@ -5157,7 +5155,7 @@ void draw_horizon()
                                 foam_col, 2.5f);
                         }
                     }
-                }
+                }*/
             }
         }
         else if (!is_water && !gaseous && !faded)
