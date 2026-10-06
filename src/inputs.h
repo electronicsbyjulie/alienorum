@@ -23,6 +23,7 @@ void process_key_F2();
 void process_key_F3();
 void process_key_F4();
 void process_key_F5();
+void process_save_vantage_exocons();
 void process_key_F6();
 void process_key_F7();
 void process_key_F8();

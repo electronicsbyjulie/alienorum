@@ -4100,7 +4100,6 @@ namespace alienorum
 
     void ExoConsGenerator::save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss)
     {
-        return;             // Do not fill up my hard drive with regenerated noise.
         std::vector<std::string> existing_lines;
         std::ifstream infile("exocons.dat");
         if (infile.is_open())
@@ -4291,7 +4290,6 @@ namespace alienorum
             if (pending_conss.empty() && !is_thread_running.load())
             {
                 is_generating = false;
-                save_to_exocons_file(current_vantage_name, generated_conss);
                 completed_vantages.insert(current_vantage_name);
                 generated_conss.clear();
             }
@@ -4318,6 +4316,68 @@ namespace alienorum
         {
             start_generation_for(sys_star);
         }
+    }
+
+    bool ExoConsGenerator::save_current_vantage()
+    {
+        CelestialObject* cur_obj = mycenobj ? mycenobj : (whereami >= 0 && cels ? cels[whereami] : nullptr);
+        Star* sys_star = nullptr;
+        if (cur_obj)
+        {
+            if (cur_obj->cenobj && cur_obj->cenobj->typeclass() == class_star)
+            {
+                sys_star = (Star*)cur_obj->cenobj;
+            }
+            else if (cur_obj->typeclass() == class_star)
+            {
+                sys_star = (Star*)cur_obj;
+            }
+        }
+
+        if (!sys_star)
+        {
+            return false;
+        }
+
+        std::string vname = sys_star->name;
+        if (vname.empty())
+        {
+            vname = get_consline_star_name(sys_star);
+        }
+        if (vname.empty())
+        {
+            return false;
+        }
+
+        std::vector<Constellation> conss_to_save;
+        Point sys_loc = sys_star->location;
+        for (const auto& c : constellations)
+        {
+            if (c.vantage_name == vname || (c.vantage_resolved && c.vantage.distance_to(sys_loc) < light_year * EXOCONS_SAME_VANTAGE_DIST_LY))
+            {
+                conss_to_save.push_back(c);
+            }
+        }
+
+        if (conss_to_save.empty())
+        {
+            generate_all_synchronous(sys_star);
+            for (const auto& c : constellations)
+            {
+                if (c.vantage_name == vname || (c.vantage_resolved && c.vantage.distance_to(sys_loc) < light_year * EXOCONS_SAME_VANTAGE_DIST_LY))
+                {
+                    conss_to_save.push_back(c);
+                }
+            }
+        }
+
+        if (conss_to_save.empty())
+        {
+            return false;
+        }
+
+        save_to_exocons_file(vname, conss_to_save);
+        return true;
     }
 
     void ExoConsGenerator::reset()

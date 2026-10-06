@@ -5,6 +5,7 @@
 #include "housekeeping.h"
 #include "inputs.h"
 #include "classes/sscimport.h"
+#include "classes/exocons.h"
 
 using namespace alienorum;
 
@@ -226,7 +227,16 @@ void show_menu()
             if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
-            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
+            if (ImGui::MenuItem("Reload Constellations", "F5"))
+            {
+                process_key_F5();
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Save Vantage Constellations", "Shift+F5"))
+            {
+                process_save_vantage_exocons();
+                menu_clicked = true;
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Object"))
@@ -997,7 +1007,17 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
+    {
+        if (io.KeyShift || ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift))
+        {
+            process_save_vantage_exocons();
+        }
+        else
+        {
+            process_key_F5();
+        }
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) process_key_F6();
     if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
@@ -1189,6 +1209,11 @@ void process_key_F5()
     }
     splash = true;
     reload_thread = std::thread(reload_stuff);
+}
+
+void process_save_vantage_exocons()
+{
+    ExoConsGenerator::save_current_vantage();
 }
 
 void process_key_F6()
