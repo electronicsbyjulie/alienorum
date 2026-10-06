@@ -696,7 +696,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     double pressure = pl->get_surface_pressure();
     if (pressure <= 0) return;
 
-    // For gas giants, ice giants, and overcast worlds, most of that atmosphere is below the
+    // For gas giants and ice giants, most of that atmosphere is below the
     // opaque part, below the cloud tops.
     if (uses_gaseous_map(pl->type))
         pressure = fmin(5*oneatm, pressure/100);
@@ -5087,6 +5087,19 @@ void draw_horizon()
                 R_planet = earth_radius;
             }
 
+            double horizon_lift_rad = 0;
+            if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
+            {
+                p = (Planet*)cel;
+                horizon_lift_rad = p->atmospheric_horizon_lift();
+            }
+
+            double s_horizon = sqrt(2.0 * R_planet * h_eye);
+            if (horizon_lift_rad > 0.0)
+            {
+                s_horizon += R_planet * sin(horizon_lift_rad);
+            }
+
             double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
             double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
 
@@ -5125,6 +5138,10 @@ void draw_horizon()
                 double theta_world = u_az * _pi * 2.0;
 
                 double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
+                if (s_horizon > 0.0)
+                {
+                    delta -= (dist_m / s_horizon) * horizon_lift_rad;
+                }
                 if (dittrsa)
                 {
                     delta = -delta;
@@ -5209,6 +5226,10 @@ void draw_horizon()
                     double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
                     double th_tip = atan2(u_tip, v_tip);
                     double delta_tip = atan(h_eye / dist_tip) + (dist_tip / (2.0 * R_planet));
+                    if (s_horizon > 0.0)
+                    {
+                        delta_tip -= (dist_tip / s_horizon) * horizon_lift_rad;
+                    }
 
                     Point pt_tip = rotate3D(zaxis, center, xaxis, delta_tip);
                     pt_tip = rotate3D(pt_tip, center, yaxis, th_tip);
@@ -5429,12 +5450,20 @@ void draw_sky_gradient()
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
                     a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
+            if (p->overcast) a = 1;
 
             double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
             if (mycenobj)
             {
                 double atm_high_unused[3], atm_low[3], atm_umbra_unused[3];
-                atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
+                if (p->overcast && p->cloud_map)
+                {
+                    RGB3 dammit_bots = p->cloud_map->color_at(viewer_lat, viewer_lon);     // why didn't the LLMs use the Color class for this? IT'S EXACTLY WHAT IT'S FKN FOR!
+                    atm_low[0] = dammit_bots.r;
+                    atm_low[1] = dammit_bots.g;
+                    atm_low[2] = dammit_bots.b;
+                }
+                else atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
 
                 double sun_elev = sin(mycenobj->Decl_as_radians(here));
                 double redden_t = fmin(1.0, fmax(0.0, (0.35 - sun_elev) / (0.35 - 0.02)));
@@ -5883,6 +5912,7 @@ void draw_cloudy_sky()
     {
         return;
     }
+    if (p->overcast) haziness = 1;
 
     double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
 
