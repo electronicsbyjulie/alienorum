@@ -5270,106 +5270,131 @@ void draw_horizon()
                     double sun_cos = cos(d_az);
                     double sun_sin = sin(d_az);
 
-                    bool sun_from_left = (sun_sin < 0.0);
-
-                    // Illumination factor for front face (facing camera):
-                    // When sun is behind camera (sun_cos > 0), front face is lit.
-                    // When sun is in front of camera (sun_cos < 0), front face is in shadow.
-                    double front_illum = fmax(0.0, -sun_cos);
-
-                    // Illumination factor for side faces:
-                    double side_mag = fabs(sun_sin);
-
-                    ImVec2 base_l(rx - rw * 0.5, ry);
-                    ImVec2 base_r(rx + rw * 0.5, ry);
-                    ImVec2 peak(rx + (sun_from_left ? rw * 0.08 : -rw * 0.08), ry - rh);
-                    ImVec2 mid_l(rx - rw * 0.38, ry - rh * 0.55);
-                    ImVec2 mid_r(rx + rw * 0.38, ry - rh * 0.50);
-
                     double br, bg, bb;
-                    double tr, tg, tb;
 
                     if (is_mars)
                     {
                         br = base_map_rgb.r * 0.50;
                         bg = base_map_rgb.g * 0.45;
                         bb = base_map_rgb.b * 0.42;
-
-                        tr = fmin(255.0, base_map_rgb.r * (amb_light + sun_light * 1.1));
-                        tg = fmin(255.0, base_map_rgb.g * (amb_light + sun_light * 0.9));
-                        tb = fmin(255.0, base_map_rgb.b * (amb_light + sun_light * 0.7));
                     }
                     else if (is_moon)
                     {
                         br = 85.0; bg = 85.0; bb = 90.0;
-
-                        tr = fmin(255.0, br * (amb_light + sun_light * 1.4));
-                        tg = fmin(255.0, bg * (amb_light + sun_light * 1.4));
-                        tb = fmin(255.0, bb * (amb_light + sun_light * 1.4));
                     }
                     else if (is_icy)
                     {
                         br = 170.0; bg = 195.0; bb = 220.0;
-
-                        tr = fmin(255.0, 235.0 * (amb_light + sun_light));
-                        tg = fmin(255.0, 245.0 * (amb_light + sun_light));
-                        tb = fmin(255.0, 255.0 * (amb_light + sun_light));
                     }
                     else
                     {
                         br = base_map_rgb.r * 0.6;
                         bg = base_map_rgb.g * 0.6;
                         bb = base_map_rgb.b * 0.6;
-
-                        tr = fmin(255.0, br * (amb_light + sun_light * 1.1));
-                        tg = fmin(255.0, bg * (amb_light + sun_light * 1.1));
-                        tb = fmin(255.0, bb * (amb_light + sun_light * 1.1));
                     }
 
                     double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
                     double amb_mult = is_moon ? 0.35 : 0.55;
 
-                    // Front face color (facing camera):
-                    double front_light = amb_light * amb_mult + sun_light * sun_mult * front_illum;
-                    int f_r = fmin(255.0, br * front_light);
-                    int f_g = fmin(255.0, bg * front_light);
-                    int f_b = fmin(255.0, bb * front_light);
-                    ImU32 front_col = rgba_apply_redlight(IM_COL32(f_r, f_g, f_b, 255));
-
-                    // Sun-facing side facet color:
-                    double side_lit_light = amb_light * amb_mult + sun_light * sun_mult * fmax(front_illum * 0.5, side_mag);
-                    int sl_r = fmin(255.0, br * side_lit_light);
-                    int sl_g = fmin(255.0, bg * side_lit_light);
-                    int sl_b = fmin(255.0, bb * side_lit_light);
-                    ImU32 side_lit_col = rgba_apply_redlight(IM_COL32(sl_r, sl_g, sl_b, 255));
-
-                    // Shadow side facet color:
-                    double side_shad_light = amb_light * amb_mult * 0.7;
-                    int ss_r = fmin(255.0, br * side_shad_light);
-                    int ss_g = fmin(255.0, bg * side_shad_light);
-                    int ss_b = fmin(255.0, bb * side_shad_light);
-                    ImU32 side_shad_col = rgba_apply_redlight(IM_COL32(ss_r, ss_g, ss_b, 255));
-
-                    // Top facet color:
-                    ImU32 top_col = rgba_apply_redlight(IM_COL32((int)tr, (int)tg, (int)tb, 255));
-
-                    // Draw front center face
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, peak, base_r, front_col);
-
-                    // Draw side faces with directional lighting
-                    if (sun_from_left)
+                    // Derive pseudo-random vertex offsets deterministically from rock seed
+                    uint32_t sh = rk.seed_val;
+                    auto next_rnd = [&sh]() -> double
                     {
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, peak, side_lit_col);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_r, peak, mid_r, side_shad_col);
-                    }
-                    else
-                    {
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, peak, side_shad_col);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_r, peak, mid_r, side_lit_col);
-                    }
+                        sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
+                        sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
+                        sh = (sh >> 16) ^ sh;
+                        return (double)(sh & 0xFFFF) / 65535.0;
+                    };
 
-                    // Top cap facet
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_l, peak, mid_r, top_col);
+                    double jagg = ROCK_JAGGEDNESS;
+
+                    // Randomized silhouette vertices
+                    // Base width variation
+                    double w_l = 0.50 + jagg * (next_rnd() - 0.5);
+                    double w_r = 0.50 + jagg * (next_rnd() - 0.5);
+
+                    // Peak location
+                    double peak_shift_x = (next_rnd() - 0.5) * 0.35 * rw;
+                    double peak_shift_y = (next_rnd() - 0.5) * 0.20 * rh;
+                    ImVec2 peak(rx + peak_shift_x, ry - rh + peak_shift_y);
+
+                    // Intermediate perimeter vertices (left and right flanks)
+                    double ml_x = rx - rw * (0.35 + jagg * (next_rnd() - 0.5));
+                    double ml_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
+                    ImVec2 mid_l(ml_x, ml_y);
+
+                    double mr_x = rx + rw * (0.35 + jagg * (next_rnd() - 0.5));
+                    double mr_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
+                    ImVec2 mid_r(mr_x, mr_y);
+
+                    double tl_x = rx - rw * (0.18 + jagg * (next_rnd() - 0.5));
+                    double tl_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
+                    ImVec2 top_l(tl_x, tl_y);
+
+                    double tr_x = rx + rw * (0.18 + jagg * (next_rnd() - 0.5));
+                    double tr_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
+                    ImVec2 top_r(tr_x, tr_y);
+
+                    ImVec2 base_l(rx - rw * w_l, ry);
+                    ImVec2 base_r(rx + rw * w_r, ry);
+
+                    // Central interior vertex that creates 3D relief and facet normals
+                    double hub_shift_x = (next_rnd() - 0.5) * 0.15 * rw;
+                    double hub_shift_y = (next_rnd() - 0.5) * 0.12 * rh;
+                    ImVec2 hub(rx + hub_shift_x, ry - rh * 0.40 + hub_shift_y);
+
+                    // Directional lighting colors per facet:
+                    // Helper to compute facet shade based on facet surface normal direction
+                    auto get_facet_col = [&](double norm_x, double norm_z, double norm_y = 0.3) -> ImU32
+                    {
+                        // norm_x: -1 (left), +1 (right)
+                        // norm_z: +1 (facing viewer/camera), -1 (facing away)
+                        // norm_y: slope upward
+                        // Sun vector in camera space:
+                        // sun_x = -sun_sin
+                        // sun_z = -sun_cos
+                        // sun_y = sin(sun_elev)
+                        double sun_cam_x = -sun_sin;
+                        double sun_cam_z = -sun_cos;
+                        double sun_cam_y = sin(fmax(0.0, sun_elev));
+
+                        double dot_sun = norm_x * sun_cam_x + norm_z * sun_cam_z + norm_y * sun_cam_y;
+                        double light_fac = amb_light * amb_mult + sun_light * sun_mult * fmax(0.0, dot_sun);
+
+                        int cr = fmin(255.0, br * light_fac);
+                        int cg = fmin(255.0, bg * light_fac);
+                        int cb = fmin(255.0, bb * light_fac);
+                        return rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                    };
+
+                    // Render facets around hub
+                    // Facet 1: Lower-left flank
+                    ImU32 col_ll = get_facet_col(-0.7, 0.4, 0.2);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, hub, col_ll);
+
+                    // Facet 2: Upper-left flank
+                    ImU32 col_ul = get_facet_col(-0.5, 0.3, 0.6);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_l, top_l, hub, col_ul);
+
+                    // Facet 3: Left peak facet
+                    ImU32 col_lp = get_facet_col(-0.3, 0.4, 0.8);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_l, peak, hub, col_lp);
+
+                    // Facet 4: Right peak facet
+                    ImU32 col_rp = get_facet_col(0.3, 0.4, 0.8);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(peak, top_r, hub, col_rp);
+
+                    // Facet 5: Upper-right flank
+                    ImU32 col_ur = get_facet_col(0.5, 0.3, 0.6);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_r, mid_r, hub, col_ur);
+
+                    // Facet 6: Lower-right flank
+                    ImU32 col_lr = get_facet_col(0.7, 0.4, 0.2);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_r, base_r, hub, col_lr);
+
+                    // Facet 7: Center base / front face
+                    ImU32 col_front = get_facet_col(0.0, 0.8, 0.2);
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, hub, base_r, col_front);
                 }
             }
         }

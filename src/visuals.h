@@ -12,7 +12,7 @@
 #define panel_tilt 2
 
 // Terrain rock field tuning parameters
-#define ROCK_COUNT              296     // Number of rocks in the field
+#define ROCK_COUNT              192     // Number of rocks in the field
 #define ROCK_MIN_DIST           1.2     // Minimum rock distance from viewer (meters)
 #define ROCK_MAX_DIST           45.0    // Maximum rock distance from viewer (meters)
 #define ROCK_MIN_SIZE           0.06    // Minimum rock width (meters)
@@ -21,6 +21,8 @@
 #define ROCK_ASPECT_VENUS       0.28    // Height/width aspect ratio for Venusian slabs
 #define ROCK_ASPECT_DEFAULT     0.62    // Height/width aspect ratio for standard rocks
 #define ROCK_ASPECT_ICY         0.72    // Height/width aspect ratio for icy blocks
+#define ROCK_FACET_COUNT        6       // Number of silhouette facets for high-poly rocks
+#define ROCK_JAGGEDNESS         0.25    // Maximum random displacement fraction for rock vertices
 #define ROCK_SHADOW_MAX_MULT    10.3    // Maximum shadow length multiplier relative to height
 #define ROCK_SHADOW_ALPHA_MOON  250     // Base shadow alpha for airless/Moon worlds
 #define ROCK_SHADOW_ALPHA_MARS  224     // Base shadow alpha for thin-atmosphere/Mars worlds

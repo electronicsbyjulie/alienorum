@@ -771,6 +771,7 @@ int main (int argc, char** argv)
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;
+                zoom = 1;
             }
 
             if (earth_clouds_shown)
