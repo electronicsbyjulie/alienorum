@@ -5354,7 +5354,7 @@ void draw_horizon()
                         // sun_x = -sun_sin
                         // sun_z = -sun_cos
                         // sun_y = sin(sun_elev)
-                        double sun_cam_x = -sun_sin;
+                        double sun_cam_x =  sun_sin;
                         double sun_cam_z = -sun_cos;
                         double sun_cam_y = sin(fmax(0.0, sun_elev));
 
