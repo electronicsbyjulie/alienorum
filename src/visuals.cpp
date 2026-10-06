@@ -4955,7 +4955,7 @@ void draw_horizon()
                     double low_sun_factor = 0.0;
                     if (sun_in_front && sun_elev > 0.0 && sun_elev < WAVE_GLINT_LOW_SUN_ELEV)
                     {
-                        low_sun_factor = (WAVE_GLINT_LOW_SUN_ELEV - sun_elev) / WAVE_GLINT_LOW_SUN_ELEV;
+                        low_sun_factor = (WAVE_GLINT_LOW_SUN_ELEV - sun_elev) / WAVE_GLINT_LOW_SUN_ELEV * 2;
                     }
 
                     double min_crest = 0.25 - 0.20 * low_sun_factor;
@@ -5265,7 +5265,20 @@ void draw_horizon()
                 }
                 else
                 {
-                    bool sun_from_left = (sin(sun_az_world - rk.theta) < 0.0);
+                    // Solar direction relative to camera azimuth
+                    double d_az = sun_az_world - azimuth;
+                    double sun_cos = cos(d_az);
+                    double sun_sin = sin(d_az);
+
+                    bool sun_from_left = (sun_sin < 0.0);
+
+                    // Illumination factor for front face (facing camera):
+                    // When sun is behind camera (sun_cos > 0), front face is lit.
+                    // When sun is in front of camera (sun_cos < 0), front face is in shadow.
+                    double front_illum = fmax(0.0, sun_cos);
+
+                    // Illumination factor for side faces:
+                    double side_mag = fabs(sun_sin);
 
                     ImVec2 base_l(rx - rw * 0.5, ry);
                     ImVec2 base_r(rx + rw * 0.5, ry);
@@ -5274,9 +5287,7 @@ void draw_horizon()
                     ImVec2 mid_r(rx + rw * 0.38, ry - rh * 0.50);
 
                     double br, bg, bb;
-                    double lr, lg, lb;
                     double tr, tg, tb;
-                    double sr, sg, sb;
 
                     if (is_mars)
                     {
@@ -5284,47 +5295,25 @@ void draw_horizon()
                         bg = base_map_rgb.g * 0.45;
                         bb = base_map_rgb.b * 0.42;
 
-                        lr = fmin(255.0, br * (amb_light + sun_light * 1.5));
-                        lg = fmin(255.0, bg * (amb_light + sun_light * 1.3));
-                        lb = fmin(255.0, bb * (amb_light + sun_light * 1.1));
-
                         tr = fmin(255.0, base_map_rgb.r * (amb_light + sun_light * 1.1));
                         tg = fmin(255.0, base_map_rgb.g * (amb_light + sun_light * 0.9));
                         tb = fmin(255.0, base_map_rgb.b * (amb_light + sun_light * 0.7));
-
-                        sr = br * amb_light * 0.6;
-                        sg = bg * amb_light * 0.6;
-                        sb = bb * amb_light * 0.6;
                     }
                     else if (is_moon)
                     {
                         br = 85.0; bg = 85.0; bb = 90.0;
-                        lr = fmin(255.0, br * (amb_light + sun_light * 2.0));
-                        lg = fmin(255.0, bg * (amb_light + sun_light * 2.0));
-                        lb = fmin(255.0, bb * (amb_light + sun_light * 2.0));
 
                         tr = fmin(255.0, br * (amb_light + sun_light * 1.4));
                         tg = fmin(255.0, bg * (amb_light + sun_light * 1.4));
                         tb = fmin(255.0, bb * (amb_light + sun_light * 1.4));
-
-                        sr = br * amb_light * 0.35;
-                        sg = bg * amb_light * 0.35;
-                        sb = bb * amb_light * 0.35;
                     }
                     else if (is_icy)
                     {
                         br = 170.0; bg = 195.0; bb = 220.0;
-                        lr = fmin(255.0, br * (amb_light + sun_light * 1.6));
-                        lg = fmin(255.0, bg * (amb_light + sun_light * 1.6));
-                        lb = fmin(255.0, bb * (amb_light + sun_light * 1.6));
 
                         tr = fmin(255.0, 235.0 * (amb_light + sun_light));
                         tg = fmin(255.0, 245.0 * (amb_light + sun_light));
                         tb = fmin(255.0, 255.0 * (amb_light + sun_light));
-
-                        sr = br * amb_light * 0.6;
-                        sg = bg * amb_light * 0.6;
-                        sb = bb * amb_light * 0.6;
                     }
                     else
                     {
@@ -5332,36 +5321,54 @@ void draw_horizon()
                         bg = base_map_rgb.g * 0.6;
                         bb = base_map_rgb.b * 0.6;
 
-                        lr = fmin(255.0, br * (amb_light + sun_light * 1.4));
-                        lg = fmin(255.0, bg * (amb_light + sun_light * 1.4));
-                        lb = fmin(255.0, bb * (amb_light + sun_light * 1.4));
-
                         tr = fmin(255.0, br * (amb_light + sun_light * 1.1));
                         tg = fmin(255.0, bg * (amb_light + sun_light * 1.1));
                         tb = fmin(255.0, bb * (amb_light + sun_light * 1.1));
-
-                        sr = br * amb_light * 0.5;
-                        sg = bg * amb_light * 0.5;
-                        sb = bb * amb_light * 0.5;
                     }
 
-                    ImU32 shad_body_col = rgba_apply_redlight(IM_COL32(sr, sg, sb, 255));
-                    ImU32 lit_col       = rgba_apply_redlight(IM_COL32(lr, lg, lb, 255));
-                    ImU32 top_col       = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
+                    double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
+                    double amb_mult = is_moon ? 0.35 : 0.55;
 
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, peak, shad_body_col);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, peak, base_r, shad_body_col);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_r, peak, mid_r, shad_body_col);
+                    // Front face color (facing camera):
+                    double front_light = amb_light * amb_mult + sun_light * sun_mult * front_illum;
+                    int f_r = fmin(255.0, br * front_light);
+                    int f_g = fmin(255.0, bg * front_light);
+                    int f_b = fmin(255.0, bb * front_light);
+                    ImU32 front_col = rgba_apply_redlight(IM_COL32(f_r, f_g, f_b, 255));
 
+                    // Sun-facing side facet color:
+                    double side_lit_light = amb_light * amb_mult + sun_light * sun_mult * fmax(front_illum * 0.5, side_mag);
+                    int sl_r = fmin(255.0, br * side_lit_light);
+                    int sl_g = fmin(255.0, bg * side_lit_light);
+                    int sl_b = fmin(255.0, bb * side_lit_light);
+                    ImU32 side_lit_col = rgba_apply_redlight(IM_COL32(sl_r, sl_g, sl_b, 255));
+
+                    // Shadow side facet color:
+                    double side_shad_light = amb_light * amb_mult * 0.7;
+                    int ss_r = fmin(255.0, br * side_shad_light);
+                    int ss_g = fmin(255.0, bg * side_shad_light);
+                    int ss_b = fmin(255.0, bb * side_shad_light);
+                    ImU32 side_shad_col = rgba_apply_redlight(IM_COL32(ss_r, ss_g, ss_b, 255));
+
+                    // Top facet color:
+                    ImU32 top_col = rgba_apply_redlight(IM_COL32((int)tr, (int)tg, (int)tb, 255));
+
+                    // Draw front center face
+                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, peak, base_r, front_col);
+
+                    // Draw side faces with directional lighting
                     if (sun_from_left)
                     {
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, peak, lit_col);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, peak, side_lit_col);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_r, peak, mid_r, side_shad_col);
                     }
                     else
                     {
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_r, peak, mid_r, lit_col);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, peak, side_shad_col);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_r, peak, mid_r, side_lit_col);
                     }
 
+                    // Top cap facet
                     ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_l, peak, mid_r, top_col);
                 }
             }
