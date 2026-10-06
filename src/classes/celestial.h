@@ -326,6 +326,7 @@ namespace alienorum
         int cel_rand();
         double cel_frand(double min, double max);
         double stellar_day();                       // solar day if from any of the Sun's planets
+        bool overcast = false;                      // e.g. Venus and Titan that never see clear sky.
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;

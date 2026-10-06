@@ -4272,8 +4272,11 @@ void draw_sunclock()
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
     sclk_scale = half_pi / size / zoom;
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
+    bool was_show_clouds = show_clouds;
+    if (cel->overcast) show_clouds = false;             // show feature-rich surface of Titan or Venus, not a damn bland cloud layer.
     Map *map = cel->get_day_map();
     Map *nmap = cel->get_night_map();
+    show_clouds = was_show_clouds;
     Point land;
     bool dwh = false;
 
@@ -5272,26 +5275,9 @@ void draw_horizon()
 
                     double br, bg, bb;
 
-                    if (is_mars)
-                    {
-                        br = base_map_rgb.r * 0.50;
-                        bg = base_map_rgb.g * 0.45;
-                        bb = base_map_rgb.b * 0.42;
-                    }
-                    else if (is_moon)
-                    {
-                        br = 85.0; bg = 85.0; bb = 90.0;
-                    }
-                    else if (is_icy)
-                    {
-                        br = 170.0; bg = 195.0; bb = 220.0;
-                    }
-                    else
-                    {
-                        br = base_map_rgb.r * 0.6;
-                        bg = base_map_rgb.g * 0.6;
-                        bb = base_map_rgb.b * 0.6;
-                    }
+                    br = base_map_rgb.r * 0.6;
+                    bg = base_map_rgb.g * 0.6;
+                    bb = base_map_rgb.b * 0.6;
 
                     double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
                     double amb_mult = is_moon ? 0.35 : 0.55;
