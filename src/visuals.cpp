@@ -5222,6 +5222,7 @@ void draw_horizon()
                 double width;
                 double height;
                 double size;
+                double lift_px;
                 uint32_t seed_val;
             };
 
@@ -5244,8 +5245,30 @@ void draw_horizon()
                 double u_dist = (double)(rhash & 0xFFFF) / 65535.0;
                 double u_az = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
 
-                double dist_m = ROCK_MIN_DIST + (ROCK_MAX_DIST - ROCK_MIN_DIST) * u_dist;
                 double theta_world = u_az * _pi * 2.0;
+
+                // Organic distance variation with azimuth to break up circular symmetry
+                double az_var = 0.35 * sin(2.0 * theta_world + 1.23)
+                              + 0.25 * cos(3.0 * theta_world + 2.45)
+                              + 0.15 * sin(5.0 * theta_world + 0.67);
+                double local_max_dist = ROCK_MAX_DIST * (1.25 + az_var);
+
+                // Distance distribution with natural density spread
+                double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.4);
+                double dist_ratio = dist_m / local_max_dist;
+                if (dist_ratio >= 1.0)
+                {
+                    continue;
+                }
+
+                // Smooth density falloff so rocks naturally thin out towards the horizon
+                double fade_prob = 1.0 - pow(dist_ratio, 2.5);
+                uint32_t fade_hash = (rhash * 1103515245u + 12345u);
+                double u_fade = (double)(fade_hash & 0xFFFF) / 65535.0;
+                if (u_fade > fade_prob)
+                {
+                    continue;
+                }
 
                 double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
                 if (s_horizon > 0.0)
@@ -5273,9 +5296,18 @@ void draw_horizon()
                     continue;
                 }
 
+                double rock_lift_px = 0.0;
                 if (!dittrsa)
                 {
                     int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
+                    double ground_span = sy - min_hz_y_at_x[ix_lookup];
+                    if (ground_span > 0.0)
+                    {
+                        double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
+                        rock_lift_px = ground_span * slope_factor;
+                        sy -= rock_lift_px;
+                    }
+
                     if (sy < min_hz_y_at_x[ix_lookup])
                     {
                         continue;
@@ -5300,6 +5332,7 @@ void draw_horizon()
                 rocks[num_rocks].width = rw;
                 rocks[num_rocks].height = rh;
                 rocks[num_rocks].size = rock_size;
+                rocks[num_rocks].lift_px = rock_lift_px;
                 rocks[num_rocks].seed_val = rhash;
                 num_rocks++;
             }
@@ -5348,7 +5381,7 @@ void draw_horizon()
                     if (cart_tip.x > -1e10)
                     {
                         double tip_x = cart_tip.x * dispcx + dispcx;
-                        double tip_y = cart_tip.y * dispcx + dispcy;
+                        double tip_y = cart_tip.y * dispcx + dispcy - rk.lift_px * (dist_tip / rk.dist);
 
                         ImVec2 shad_pts[3];
                         shad_pts[0] = ImVec2(rx - rw * 0.45, ry);
