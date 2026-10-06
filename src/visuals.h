@@ -12,9 +12,9 @@
 #define panel_tilt 2
 
 // Terrain rock field tuning parameters
-#define ROCK_COUNT              192     // Number of rocks in the field
+#define ROCK_COUNT              512     // Number of rocks in the field
 #define ROCK_MIN_DIST           1.2     // Minimum rock distance from viewer (meters)
-#define ROCK_MAX_DIST           45.0    // Maximum rock distance from viewer (meters)
+#define ROCK_MAX_DIST           100     // Maximum rock distance from viewer (meters)
 #define ROCK_MIN_SIZE           0.06    // Minimum rock width (meters)
 #define ROCK_MAX_SIZE           1.85    // Maximum boulder width (meters)
 #define ROCK_PEBBLE_THRESH      3.5     // Screen pixel threshold below which rocks are drawn as pebbles

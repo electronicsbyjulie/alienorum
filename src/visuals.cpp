@@ -5134,7 +5134,7 @@ void draw_horizon()
                 double u_dist = (double)(rhash & 0xFFFF) / 65535.0;
                 double u_az = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
 
-                double dist_m = ROCK_MIN_DIST + (ROCK_MAX_DIST - ROCK_MIN_DIST) * (u_dist * u_dist);
+                double dist_m = ROCK_MIN_DIST + (ROCK_MAX_DIST - ROCK_MIN_DIST) * u_dist;
                 double theta_world = u_az * _pi * 2.0;
 
                 double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
