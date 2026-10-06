@@ -2679,7 +2679,7 @@ void draw_system_explorer(ImGuiIO& io)
 bool onlysun = false, onlyplt = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
-float neighbly = 25, lneighbly = 0;
+int neighbly = 25, lneighbly = 0, minpl = 1;
 void draw_stellar_neighborhood(ImGuiIO &io)
 {
     if (!cels[1]) return;
@@ -2687,12 +2687,18 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
     ImGui::Checkbox("Only Sunlike##", &onlysun);
     ImGui::SameLine();
-    ImGui::Checkbox("Must Have Planets##", &onlyplt);
+    ImGui::Checkbox("Must have at least##neighb_must_have_planets", &onlyplt);
+    ImGui::SameLine();
+    if (minpl < 1) minpl = 1;
+    ImGui::SetNextItemWidth(53);
+    ImGui::InputInt("##neighb_minpl", &minpl, 1);
+    ImGui::SameLine();
+    ImGui::Text("planets");
     ImGui::SameLine();
     ImGui::Text("Cutoff:");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(67);
-    ImGui::InputFloat("##neighborhood_ly_cutoff", &neighbly);
+    ImGui::InputInt("##neighborhood_ly_cutoff", &neighbly, 5);
     ImGui::SameLine();
     ImGui::Text("l.y.");
 
@@ -2753,7 +2759,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             i = neighb_celids[j];
             Star *s = (Star*)cels[i];
             if (onlysun && !s->is_sunlike()) continue;
-            if (onlyplt && !s->has_planets) continue;
+            if (onlyplt && (s->has_planets < minpl)) continue;
 
             stringstream line;
             line << cels[i]->name;
