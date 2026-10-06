@@ -30,9 +30,9 @@
 #define ROCK_SHADOW_ALPHA_DEF   208     // Base shadow alpha for default worlds
 
 // Sedentary vegetation lifeform tuning parameters
-#define PLANT_TRUNK_HEIGHT      2.2     // Stalk / trunk height multiplier relative to base scale
-#define PLANT_TRUNK_WIDTH       0.28    // Trunk width multiplier relative to base scale
-#define PLANT_CROWN_SIZE        0.85    // Crown horizontal radius multiplier relative to base scale
+#define PLANT_TRUNK_HEIGHT      22.2    // Stalk / trunk height multiplier relative to base scale
+#define PLANT_TRUNK_WIDTH       0.44    // Trunk width multiplier relative to base scale
+#define PLANT_CROWN_SIZE        2.85    // Crown horizontal radius multiplier relative to base scale
 #define PLANT_CROWN_OBLATENESS  0.55    // Crown oblateness ratio (vertical radius / horizontal radius)
 #define PLANT_TRUNK_COLOR_R     115     // Trunk base red component (brown-gray)
 #define PLANT_TRUNK_COLOR_G     100     // Trunk base green component (brown-gray)

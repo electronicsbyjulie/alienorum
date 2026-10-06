@@ -4615,14 +4615,8 @@ void draw_horizon()
 
         if (p && uses_rocky_map(p->type) && water_favorable && (p->vegetation_r || p->vegetation_g))
         {
-            /* double pvegrg = p->vegetation_r / fmax(1, p->vegetation_g),
-                   pveggb = p->vegetation_g / fmax(1, p->vegetation_b);
-            double rgbrg = rgb.r / fmax(1, rgb.g),
-                   rgbgb = rgb.g / fmax(1, rgb.b);
-            
-            if ((fabs(pvegrg - rgbrg) + fabs(pveggb - rgbgb)) < is_veg_threshold)
-                is_vegetation = true; */
-            
+            // TODO: Also check saturation.
+                        
             if (fabs(Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b)
                 - fabs(Color::hue_from_rgb(rgb.r, rgb.g, rgb.b))) < is_veg_threshold)
                 is_vegetation = true;
