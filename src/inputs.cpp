@@ -531,7 +531,7 @@ void process_key_cmd_char(char c)
             selected = trackidx = -1;
             global_brightness = default_brightness;
             viewer_locale = "";
-            zoom = 1;
+            zoom = global_brightness = 1;
         }
         else if (selected_locale)
         {
@@ -741,7 +741,7 @@ void process_key_cmd_char(char c)
         case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = false; break;
         case '%':
         zoom = 1;
-        global_brightness = 1;
+        global_brightness = default_brightness;
         viewchanged = true;
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         break;
