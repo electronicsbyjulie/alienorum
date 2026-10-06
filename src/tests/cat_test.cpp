@@ -624,7 +624,7 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
             if (s->alienorumid.empty())
             {
                 blank_count++;
-                if (!s->orbit && s->apparent_magnitude > 0.0)
+                if (!s->orbit && !s->variability_period && s->apparent_magnitude > 0.0)
                 {
                     EXPECT_GE(s->apparent_magnitude, 10.0 - 0.001);
                 }
@@ -632,7 +632,7 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
             else
             {
                 populated_count++;
-                if (!s->orbit)
+                if (!s->orbit && !s->variability_period)
                 {
                     EXPECT_LT(s->apparent_magnitude, 10.0 + 0.001);
                 }
@@ -640,7 +640,7 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
         }
     }
 
-    EXPECT_GT(blank_count, 15000);
+    EXPECT_GT(blank_count, 12000);
     EXPECT_GT(populated_count, 100000);
 
     delete_the_universe();

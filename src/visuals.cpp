@@ -4893,7 +4893,7 @@ void draw_horizon()
             int num_wave_rows = WAVE_NUM_ROWS;
             for (int wr_i = 1; wr_i <= num_wave_rows; wr_i++)
             {
-                double u = (num_wave_rows > 1) ? ((double)(wr_i - 1) / (double)(num_wave_rows - 1)) : 1.0;
+                double u = (num_wave_rows > 1) ? ((double)(wr_i - 1) / (double)(num_wave_rows - 1) + WAVE_PERSPECTIVE_OFFSET) : 1.0;
                 double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
                 double delta = delta_far + (delta_near - delta_far) * blend;
                 double dist_m = WAVE_NEAR_DIST + (s_max - WAVE_NEAR_DIST) * (u * u);

@@ -90,6 +90,7 @@ void identify_object_under_cursor(ImGuiIO& io)
 
     if (is_an_obj_under_cursor < 0)
     {
+        double threshold = 3 / zoom;
         if (view_mode == vm_sunclock)
         {
             double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
@@ -102,7 +103,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             {
                 dlat = fabs(cel->locales[i].lat - mlat);
                 dlon = fabs(cel->locales[i].lon - mlon);
-                if (dlon < 3 && dlat < 3)
+                if (dlon < threshold && dlat < threshold)
                 {
                     r = sqrt(dlat*dlat + dlon*dlon);
                     if (r < br)

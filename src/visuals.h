@@ -30,8 +30,9 @@
 // Water wave tuning parameters
 #define WAVE_STEPS_PER_ROW      96      // Horizontal resolution of wave render (steps per row)
 #define WAVE_NUM_ROWS           44      // Number of wave depth rows
-#define WAVE_NEAR_DIST          1.5     // Nearest wave distance (meters)
+#define WAVE_NEAR_DIST          1.0     // Nearest wave distance (meters)
 #define WAVE_PERSPECTIVE_EXP    1.5     // Perspective distribution exponent (near-to-horizon row spacing)
+#define WAVE_PERSPECTIVE_OFFSET 0.2
 
 void draw_ra_dec_lines();
 
