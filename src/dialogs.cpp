@@ -2690,14 +2690,14 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     ImGui::Checkbox("Must have at least##neighb_must_have_planets", &onlyplt);
     ImGui::SameLine();
     if (minpl < 1) minpl = 1;
-    ImGui::SetNextItemWidth(53);
+    ImGui::SetNextItemWidth(81);
     ImGui::InputInt("##neighb_minpl", &minpl, 1);
     ImGui::SameLine();
     ImGui::Text("planets");
     ImGui::SameLine();
     ImGui::Text("Cutoff:");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(67);
+    ImGui::SetNextItemWidth(81);
     ImGui::InputInt("##neighborhood_ly_cutoff", &neighbly, 5);
     ImGui::SameLine();
     ImGui::Text("l.y.");
