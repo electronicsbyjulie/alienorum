@@ -700,7 +700,8 @@ int main (int argc, char** argv)
                     CelestialObject *c = cels[iamhome];
                     if (c)
                     {
-                        if (c->onscreen && c->cloud_map && c->cloud_map->is_complete())
+                        if (c->onscreen && fabs(c->drawnxmax - c->drawnxmin) > 3
+                            && c->cloud_map && c->cloud_map->is_complete())
                         {
                             earth_clouds_shown = true;
                         }

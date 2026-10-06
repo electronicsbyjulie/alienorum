@@ -262,6 +262,7 @@ struct StarRecord
     int soles_index = -1;
     bool is_soles = false;
     char component = 0;
+    int host_idx = -1;
 };
 
 int main()
