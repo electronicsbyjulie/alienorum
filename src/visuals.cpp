@@ -5275,7 +5275,7 @@ void draw_horizon()
                     // Illumination factor for front face (facing camera):
                     // When sun is behind camera (sun_cos > 0), front face is lit.
                     // When sun is in front of camera (sun_cos < 0), front face is in shadow.
-                    double front_illum = fmax(0.0, sun_cos);
+                    double front_illum = fmax(0.0, -sun_cos);
 
                     // Illumination factor for side faces:
                     double side_mag = fabs(sun_sin);
