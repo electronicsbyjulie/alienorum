@@ -76,6 +76,47 @@ RGB3 Color::rgb_from_color(Color c, double mult)
     return result;
 }
 
+double alienorum::Color::hue_from_rgb(double r, double g, double b)
+{
+    // 1. Normalize RGB values to the range [0.0, 1.0]
+    r = r / 255.0f;
+    g = g / 255.0f;
+    b = b / 255.0f;
+
+    // 2. Find the minimum and maximum values
+    double cmax = std::max({r, g, b});
+    double cmin = std::min({r, g, b});
+    double diff = cmax - cmin;
+
+    double hue = 0.0f;
+
+    // 3. If cmax and cmin are equal, the color is a shade of gray (monochrome)
+    if (diff == 0.0f)
+    {
+        return 0.0f; 
+    }
+
+    // 4. Calculate Hue based on which channel is the maximum
+    if (cmax == r)
+    {
+        hue = 60.0f * std::fmod(((g - b) / diff), 6.0f);
+    } else if (cmax == g)
+    {
+        hue = 60.0f * (((b - r) / diff) + 2.0f);
+    } else if (cmax == b)
+    {
+        hue = 60.0f * (((r - g) / diff) + 4.0f);
+    }
+
+    // 5. Handle negative values to ensure a range of [0, 360)
+    if (hue < 0.0f)
+    {
+        hue += 360.0f;
+    }
+
+    return hue * fiftyseventh;
+}
+
 ImU32 Color::black_to_transparent(ImU32 input)
 {
     int a = input >> 24;

@@ -619,7 +619,13 @@ void load_catalogs()
     cout << "Reading local planets..." << endl << flush;
     npl += cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
     num_planets += npl;
-    for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
+    for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth"))
+    {
+        whereami = iamhome = i;
+        ((Planet*)cels[i])->vegetation_r = 49;              // TODO: Add this vegetation color to planets.json or load it from the texture, don't hard code it.
+        ((Planet*)cels[i])->vegetation_g = 65;
+        ((Planet*)cels[i])->vegetation_b = 28;
+    }
     cout << "Read " << npl << " objects." << endl << flush;
 
     std::string astjson = std::string("catalogs") + _FILESLASH + std::string("asteroids.json");

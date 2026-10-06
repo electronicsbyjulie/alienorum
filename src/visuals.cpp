@@ -23,7 +23,7 @@ void draw_ra_dec_lines()
     int i, j;
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color, 0.1));
-    ImU32 gcb = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color_brighter, 0.1));
+    ImU32 gcb = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color_brighter, 0.15));
     ImU32 ec = rgba_apply_redlight(Color::adjust_alpha(global_style.ecliptic_color, 0.25));
     double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
@@ -3896,6 +3896,8 @@ void draw_system_view()
         // dry run - find planetary system scaling
         double sdrad = dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20;
         double cursor = s->drawnx + sdrad + padding;
+        std::vector<int> plcenx, plxrad;
+        int first_hz_planet = 99999, last_hz_planet = -1;
 
         for (j=num_stars; j<n; j++)
         {
@@ -3910,6 +3912,24 @@ void draw_system_view()
             double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*20;
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
             p->drawnx = cursor + pdradr;
+            plcenx.push_back(p->drawnx);
+            plxrad.push_back(pdradr);
+            int plidx = plcenx.size()-1;
+
+            if (p->is_in_con_HZ())
+            {
+                if (first_hz_planet > plidx)
+                {
+                    first_hz_planet = plidx;
+                    // std::cout << "First HZ planet: " << p->name << " x=" << p->drawnx << std::endl;
+                }
+                if (last_hz_planet < plidx)
+                {
+                    last_hz_planet = plidx;
+                    // std::cout << "Last HZ planet: " << p->name << " x=" << p->drawnx << p->name << std::endl;
+                }
+            }
+
             // std::cout << p->name << " cursor=" << cursor << " + pdrad=" << pdrad << " + pdrad=" << pdrad;           // deliberately twice
             cursor = p->drawnx + pdradr + padding;
             // std::cout << " + padding=" << padding << " = " << cursor << std::endl;
@@ -3918,6 +3938,19 @@ void draw_system_view()
         // compute scaling
         // std::cout << "cursor=" << cursor << ", width=" << (dispcx*2) << std::endl << std::endl;
         double curscale = fmin(1, dispcx*2.0 / cursor);         // do not expand system if already fits
+
+        // Show habitable zone at-a-glance (BROKEN).
+        if (0 && first_hz_planet <= last_hz_planet)
+        {
+            int x1 = plcenx[first_hz_planet] - plxrad[first_hz_planet];
+            int x2 = plcenx[last_hz_planet] + plxrad[last_hz_planet] + padding;
+
+            int y1 = s->drawny - sdrad * 0.7;
+            int y2 = s->drawny + sdrad * 0.7;
+
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(x1*curscale,y1), ImVec2(x2*curscale,y2),
+                rgba_apply_redlight(IM_COL32(0, 255, 192, 32)));
+        }
 
         // actual draw with scaling applied
         sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
@@ -4568,12 +4601,32 @@ void draw_horizon()
         rgb.g = fmin(255, is_day*rgb.g);
         rgb.b = fmin(255, is_day*rgb.b);
 
+        bool water_favorable = p->get_surface_pressure() >= 150
+            && p->estimate_surface_temperature() < 400;
+
         bool is_water = (p && (p->type == waterworld || p->type == hycean))
             || (uses_rocky_map(p->type)
-                && p->get_surface_pressure() >= 150
-                && p->estimate_surface_temperature() < 400
+                && water_favorable
                 && (rgb.b > 0.8 * rgb.r)
                 && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
+
+        bool is_vegetation = false;
+        const float is_veg_threshold = 0.5 * dev_dial;
+
+        if (p && uses_rocky_map(p->type) && water_favorable && (p->vegetation_r || p->vegetation_g))
+        {
+            /* double pvegrg = p->vegetation_r / fmax(1, p->vegetation_g),
+                   pveggb = p->vegetation_g / fmax(1, p->vegetation_b);
+            double rgbrg = rgb.r / fmax(1, rgb.g),
+                   rgbgb = rgb.g / fmax(1, rgb.b);
+            
+            if ((fabs(pvegrg - rgbrg) + fabs(pveggb - rgbgb)) < is_veg_threshold)
+                is_vegetation = true; */
+            
+            if (fabs(Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                - fabs(Color::hue_from_rgb(rgb.r, rgb.g, rgb.b))) < is_veg_threshold)
+                is_vegetation = true;
+        }
 
         if (p && p->type == lavaworld && p->night_map)
         {
@@ -5231,8 +5284,11 @@ void draw_horizon()
                 ^ (uint32_t)fabs(viewer_lat * 12345.0)
                 ^ ((uint32_t)fabs(viewer_lon * 54321.0) << 12));
 
-            double rock_aspect = is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT);
+            double rock_aspect = is_vegetation
+                ? (PLANT_TRUNK_HEIGHT + PLANT_CROWN_SIZE * PLANT_CROWN_OBLATENESS)
+                : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT));
 
+            // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
             for (int ri = 0; ri < ROCK_COUNT; ri++)
             {
                 uint32_t rhash = base_seed + (uint32_t)ri * 2246822519u;
@@ -5394,7 +5450,16 @@ void draw_horizon()
                 if (rw < ROCK_PEBBLE_THRESH)
                 {
                     int pr, pg, pb;
-                    if (is_mars)
+                    if (is_vegetation)
+                    {
+                        RGB3 vcol = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
+                            ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                            : RGB3(40, 140, 50);
+                        pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
+                        pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
+                        pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
+                    }
+                    else if (is_mars)
                     {
                         pr = fmin(255.0, (base_map_rgb.r * 0.55) * amb_light);
                         pg = fmin(255.0, (base_map_rgb.g * 0.55) * amb_light);
@@ -5411,7 +5476,48 @@ void draw_horizon()
                     continue;
                 }
 
-                if (is_venus)
+                if (is_vegetation)
+                {
+                    double d_az = sun_az_world - azimuth;
+                    double sun_cos = cos(d_az);
+
+                    RGB3 veg_base = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
+                        ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                        : RGB3(40, 140, 50);
+
+                    double u_tint = (double)(rk.seed_val & 0xFF) / 255.0;
+                    double tint_factor = 0.88 + 0.24 * u_tint;
+
+                    double trunk_h = rw * PLANT_TRUNK_HEIGHT;
+                    double trunk_w = fmax(1.0, rw * PLANT_TRUNK_WIDTH);
+                    double crown_rx = fmax(1.2, rw * PLANT_CROWN_SIZE);
+                    double crown_ry = fmax(1.0, crown_rx * PLANT_CROWN_OBLATENESS);
+
+                    double trunk_light = amb_light * 0.70 + sun_light * 1.15 * fmax(0.15, (0.60 + 0.40 * sun_cos));
+                    int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
+                    int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
+                    int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
+                    ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
+
+                    ImVec2 trunk_pts[4];
+                    trunk_pts[0] = ImVec2(rx - trunk_w * 0.50, ry);
+                    trunk_pts[1] = ImVec2(rx - trunk_w * 0.38, ry - trunk_h);
+                    trunk_pts[2] = ImVec2(rx + trunk_w * 0.38, ry - trunk_h);
+                    trunk_pts[3] = ImVec2(rx + trunk_w * 0.50, ry);
+                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
+
+                    double crown_light = amb_light * 0.65 + sun_light * 1.30 * fmax(0.15, (0.55 + 0.45 * sun_cos));
+                    int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
+                    int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
+                    int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
+                    ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+
+                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                        ImVec2(rx, ry - trunk_h),
+                        ImVec2((float)crown_rx, (float)crown_ry),
+                        crown_col);
+                }
+                else if (is_venus)
                 {
                     ImVec2 slab_pts[4];
                     slab_pts[0] = ImVec2(rx - rw * 0.50, ry);

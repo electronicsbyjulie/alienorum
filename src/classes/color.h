@@ -43,6 +43,7 @@ namespace alienorum
 
         static RGB3 rgb_from_color(Color c, double multiplier = 1);
         static RGB3 disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
+        static double hue_from_rgb(double r, double g, double b);
 
         static ImU32 black_to_transparent(ImU32 input);
         static double compute_atmospheric_yellowing(double surface_pressure, double zenith_angle_rad);

@@ -29,6 +29,15 @@
 #define ROCK_SHADOW_ALPHA_VENUS  96     // Base shadow alpha for dense-atmosphere/Venus worlds
 #define ROCK_SHADOW_ALPHA_DEF   208     // Base shadow alpha for default worlds
 
+// Sedentary vegetation lifeform tuning parameters
+#define PLANT_TRUNK_HEIGHT      2.2     // Stalk / trunk height multiplier relative to base scale
+#define PLANT_TRUNK_WIDTH       0.28    // Trunk width multiplier relative to base scale
+#define PLANT_CROWN_SIZE        0.85    // Crown horizontal radius multiplier relative to base scale
+#define PLANT_CROWN_OBLATENESS  0.55    // Crown oblateness ratio (vertical radius / horizontal radius)
+#define PLANT_TRUNK_COLOR_R     115     // Trunk base red component (brown-gray)
+#define PLANT_TRUNK_COLOR_G     100     // Trunk base green component (brown-gray)
+#define PLANT_TRUNK_COLOR_B     85      // Trunk base blue component (brown-gray)
+
 // Water wave tuning parameters
 #define WAVE_STEPS_PER_ROW      96      // Horizontal resolution of wave render (steps per row)
 #define WAVE_NUM_ROWS           81      // Number of wave depth rows

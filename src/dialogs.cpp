@@ -2079,15 +2079,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (vegetation_r < 0) vegetation_r = 0;
-                    if (vegetation_r > 255) vegetation_r = 255;
+                    if (p->vegetation_r < 0) p->vegetation_r = 0;
+                    if (p->vegetation_r > 255) p->vegetation_r = 255;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation R:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputInt("##edtvegr", &vegetation_r);
+                        ImGui::InputInt("##edtvegr", &p->vegetation_r);
                     }
 
                     ImGui::Text("%s", "Sulfur dioxide %");
@@ -2099,15 +2099,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (vegetation_g < 0) vegetation_g = 0;
-                    if (vegetation_g > 255) vegetation_g = 255;
+                    if (p->vegetation_g < 0) p->vegetation_g = 0;
+                    if (p->vegetation_g > 255) p->vegetation_g = 255;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation G:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputInt("##edtvegg", &vegetation_g);
+                        ImGui::InputInt("##edtvegg", &p->vegetation_g);
                     }
 
                     ImGui::Text("%s", "Hydrogen sulfide %");
@@ -2119,15 +2119,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (vegetation_b < 0) vegetation_b = 0;
-                    if (vegetation_b > 255) vegetation_b = 255;
+                    if (p->vegetation_b < 0) p->vegetation_b = 0;
+                    if (p->vegetation_b > 255) p->vegetation_b = 255;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation B:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputInt("##edtvegb", &vegetation_b);
+                        ImGui::InputInt("##edtvegb", &p->vegetation_b);
                     }
 
                     ImGui::Text("%s", "Carbon monoxide %");
@@ -2244,7 +2244,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
                 cel->rnd_seed = rand();
-                if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
+                if (randomize_txgen) ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;     // force regenerate
                 cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
@@ -2569,7 +2569,7 @@ void draw_system_explorer(ImGuiIO& io)
             if (ImGui::Button("Gen. Fic. Moons##explored"))
             {
                 cel->rnd_seed = 0;          // force rerandomization.
-                vegetation_r = vegetation_g = vegetation_b = 0;
+                ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;
                 double A = sqrt(cel->orbit->period / oneday) / 4;
                 double B = sqrt(cel->mass / earth_mass);
                 double C = sqrt(A*B);
@@ -2676,7 +2676,7 @@ void draw_system_explorer(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
-bool onlysun = false, onlyplt = false;
+bool onlysun = false, onlyplt = false, onlyknp = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
 int neighbly = 25, lneighbly = 0, minpl = 1;
@@ -2687,13 +2687,18 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
     ImGui::Checkbox("Only Sunlike##", &onlysun);
     ImGui::SameLine();
-    ImGui::Checkbox("Must have at least##neighb_must_have_planets", &onlyplt);
-    ImGui::SameLine();
+    ImGui::Checkbox(onlyplt ? "Must have at least##neighb_must_have_planets" : "Must have planets##neighb_must_have_planets", &onlyplt);
     if (minpl < 1) minpl = 1;
-    ImGui::SetNextItemWidth(81);
-    ImGui::InputInt("##neighb_minpl", &minpl, 1);
+    if (onlyplt)
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputInt("##neighb_minpl", &minpl, 1);
+        ImGui::SameLine();
+        ImGui::Text("planet%s", (minpl==1) ? "" : "s");
+    }
     ImGui::SameLine();
-    ImGui::Text("planets");
+    ImGui::Checkbox("Known Poles##", &onlyknp);
     ImGui::SameLine();
     ImGui::Text("Cutoff:");
     ImGui::SameLine();
@@ -2708,8 +2713,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     double r, m;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    ImGui::Text("%s", " Name                                Mag.        Sp. Type        Planets     Distance");
-    if (ImGui::BeginListBox("##neighblist", ImVec2(768, 16 * ImGui::GetTextLineHeightWithSpacing())))
+    ImGui::Text("%s", " Name                                Mag.   Sp. Type        Pl./HZ   Distance");
+    if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
         if (last_neighb_cen != mycenobj || fabs(lneighbly - neighbly) > 1e-29)
@@ -2760,6 +2765,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             Star *s = (Star*)cels[i];
             if (onlysun && !s->is_sunlike()) continue;
             if (onlyplt && (s->has_planets < minpl)) continue;
+            if (onlyknp && !s->known_poles) continue;
 
             stringstream line;
             line << cels[i]->name;
@@ -2774,15 +2780,21 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             }
             else line << "-";
             l = line.str().size();
-            if (l < 48) line << std::string(48-l, ' ');
+            if (l < 43) line << std::string(43-l, ' ');
 
             line << s->spectral_type;
             l = line.str().size();
-            if (l < 64) line << std::string(64-l, ' ');
+            if (l < 59) line << std::string(59-l, ' ');
 
-            if (s->has_planets) line << s->has_planets;
+            if (s->has_planets)
+            {
+                line << s->has_planets;
+                line << "/";
+                if (s->has_hz_planets) line << s->has_hz_planets;
+                else line << "-";
+            }
             l = line.str().size();
-            if (l < 76) line << std::string(76-l, ' ');
+            if (l < 68) line << std::string(68-l, ' ');
 
             if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
             else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";

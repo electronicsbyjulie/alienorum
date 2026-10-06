@@ -2184,12 +2184,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
-        if (has_water && life_possible && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
+        if (has_water && life_possible && randomize_txgen && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             RGB3 veg_color = generate_vegetation_color(&cel->rng);
-            vegetation_r = veg_color.r;
-            vegetation_g = veg_color.g;
-            vegetation_b = veg_color.b;
+            p->vegetation_r = veg_color.r;
+            p->vegetation_g = veg_color.g;
+            p->vegetation_b = veg_color.b;
         }
         if (has_water) inv_h2o_level = 1.0 / has_water;
 
@@ -2405,12 +2405,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 150 * bmult * r_weight);
                     }
                     else if (life_possible && T_local >= veg_min_temp
-                        && (vegetation_r || vegetation_g || vegetation_b)
+                        && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
                         && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
                     {   // Forests
-                        red_data[idx] = fmin(255, vegetation_r * r_weight);
-                        green_data[idx] = fmin(255, vegetation_g * r_weight);
-                        blue_data[idx] = fmin(255, vegetation_b * r_weight);
+                        red_data[idx] = fmin(255, p->vegetation_r * r_weight);
+                        green_data[idx] = fmin(255, p->vegetation_g * r_weight);
+                        blue_data[idx] = fmin(255, p->vegetation_b * r_weight);
                     }
                     else if (T_local > water_freezing)
                     {   // Mountains
