@@ -5262,542 +5262,533 @@ void draw_horizon()
             double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
             double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
 
-            struct RockInstance
+            if (show_terrain)
             {
-                double dist;
-                double theta;
-                double screen_x;
-                double screen_y;
-                double crown_x;
-                double crown_y;
-                double crown_rx;
-                double crown_ry;
-                double trunk_w_top;
-                double trunk_w_base;
-                double width;
-                double height;
-                double size;
-                double lift_px;
-                uint32_t seed_val;
-                bool base_valid;
-            };
+                RockInstance rocks[ROCK_COUNT];
+                int num_rocks = 0;
 
-            RockInstance rocks[ROCK_COUNT];
-            int num_rocks = 0;
+                uint32_t base_seed = (uint32_t)(whereami * 2654435761u
+                    ^ (uint32_t)fabs(viewer_lat * 12345.0)
+                    ^ ((uint32_t)fabs(viewer_lon * 54321.0) << 12));
+                
+                double grav = p ? p->estimate_surface_gravity() : 1;
+                double presh = p ? (log(p->get_surface_pressure()*inv_oneatm)+1) : 1;
 
-            uint32_t base_seed = (uint32_t)(whereami * 2654435761u
-                ^ (uint32_t)fabs(viewer_lat * 12345.0)
-                ^ ((uint32_t)fabs(viewer_lon * 54321.0) << 12));
+                double plant_trunk_height = PLANT_TRUNK_HEIGHT / grav;
+                double plant_trunk_width = PLANT_TRUNK_WIDTH * grav;
+                double plant_crown_size = PLANT_CROWN_SIZE / presh;
+                double plant_crown_oblateness = PLANT_CROWN_OBLATENESS * presh;
 
-            double rock_aspect = is_vegetation
-                ? (PLANT_TRUNK_HEIGHT + PLANT_CROWN_SIZE * PLANT_CROWN_OBLATENESS)
-                : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT));
+                double rock_aspect = is_vegetation
+                    ? (plant_trunk_height + plant_crown_size * plant_crown_oblateness)
+                    : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT));
 
-            // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
-            for (int ri = 0; ri < ROCK_COUNT; ri++)
-            {
-                uint32_t rhash = base_seed + (uint32_t)ri * 2246822519u;
-                rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
-                rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
-                rhash = (rhash >> 16) ^ rhash;
-
-                double u_dist = (double)(rhash & 0xFFFF) / 65535.0;
-                double u_az = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
-
-                double theta_world = u_az * _pi * 2.0;
-
-                // Organic distance variation with azimuth to break up circular symmetry
-                double az_var = 0.35 * sin(2.0 * theta_world + 1.23)
-                              + 0.25 * cos(3.0 * theta_world + 2.45)
-                              + 0.15 * sin(5.0 * theta_world + 0.67);
-                double local_max_dist = ROCK_MAX_DIST * (1.25 + az_var);
-
-                // Distance distribution with natural density spread
-                double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.4);
-                double dist_ratio = dist_m / local_max_dist;
-                if (dist_ratio >= 1.0)
+                // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
+                for (int ri = 0; ri < ROCK_COUNT; ri++)
                 {
-                    continue;
-                }
+                    uint32_t rhash = base_seed + (uint32_t)ri * 2246822519u;
+                    rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
+                    rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
+                    rhash = (rhash >> 16) ^ rhash;
 
-                // Smooth density falloff so rocks naturally thin out towards the horizon
-                double fade_prob = 1.0 - pow(dist_ratio, 2.5);
-                uint32_t fade_hash = (rhash * 1103515245u + 12345u);
-                double u_fade = (double)(fade_hash & 0xFFFF) / 65535.0;
-                if (u_fade > fade_prob)
-                {
-                    continue;
-                }
+                    double u_dist = (double)(rhash & 0xFFFF) / 65535.0;
+                    double u_az = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
 
-                uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
-                double u_sz = (double)(sz_hash & 0xFFFF) / 65535.0;
-                double rock_size = ROCK_MIN_SIZE + (ROCK_MAX_SIZE - ROCK_MIN_SIZE) * (u_sz * u_sz * u_sz);
+                    double theta_world = u_az * _pi * 2.0;
 
-                double rw = (rock_size / dist_m) * dispcx * zoom;
-                double rh = rw * rock_aspect;
-                if (rw < 1.5)
-                {
-                    continue;
-                }
+                    // Organic distance variation with azimuth to break up circular symmetry
+                    double az_var = 0.35 * sin(2.0 * theta_world + 1.23)
+                                + 0.25 * cos(3.0 * theta_world + 2.45)
+                                + 0.15 * sin(5.0 * theta_world + 0.67);
+                    double local_max_dist = ROCK_MAX_DIST * (1.25 + az_var);
 
-                double sx = 0.0;
-                double sy = 0.0;
-                double crown_sx = 0.0;
-                double crown_sy = 0.0;
-                double crown_rx = 0.0;
-                double crown_ry = 0.0;
-                double trunk_w_top = 0.0;
-                double trunk_w_base = 0.0;
-                bool base_valid = false;
-                double sort_dist = dist_m;
-
-                if (is_vegetation)
-                {
-                    double canopy_h_m = rock_size * PLANT_TRUNK_HEIGHT;
-                    double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
-                    double y_base_world = -h_eye - curv_drop;
-                    double y_crown_world = canopy_h_m - h_eye - curv_drop;
-
-                    if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
-                    {
-                        double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
-                        y_base_world += lift;
-                        y_crown_world += lift;
-                    }
-
-                    double d_az_obj = theta_world - azimuth;
-                    double sin_daz = sin(d_az_obj);
-                    double cos_daz = cos(d_az_obj);
-
-                    double x_cam = dist_m * sin_daz;
-                    double z_horiz = dist_m * cos_daz;
-
-                    double cos_alt = cos(altitude);
-                    double sin_alt = sin(altitude);
-
-                    double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
-                    double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
-
-                    if (z_crown_cam < 0.2)
+                    // Distance distribution with natural density spread
+                    double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.4);
+                    double dist_ratio = dist_m / local_max_dist;
+                    if (dist_ratio >= 1.0)
                     {
                         continue;
                     }
 
-                    crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
-                    crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
-
-                    crown_rx = (rock_size * PLANT_CROWN_SIZE / z_crown_cam) * dispcx * zoom;
-                    crown_rx = fmax(1.2, crown_rx);
-                    crown_ry = fmax(1.0, crown_rx * PLANT_CROWN_OBLATENESS);
-
-                    trunk_w_top = (rock_size * PLANT_TRUNK_WIDTH / z_crown_cam) * dispcx * zoom;
-                    trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
-
-                    double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
-                    double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
-
-                    if (z_base_cam >= 0.2)
-                    {
-                        base_valid = true;
-                        sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
-                        sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
-                        trunk_w_base = (rock_size * PLANT_TRUNK_WIDTH / z_base_cam) * dispcx * zoom;
-                    }
-                    else
-                    {
-                        base_valid = false;
-                        double t = (0.2 - z_base_cam) / (z_crown_cam - z_base_cam);
-                        double y_clip = y_base_cam + t * (y_crown_cam - y_base_cam);
-                        sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
-                        sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
-                        trunk_w_base = (rock_size * PLANT_TRUNK_WIDTH / 0.2) * dispcx * zoom;
-                    }
-                    trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
-
-                    sort_dist = z_crown_cam;
-                }
-                else
-                {
-                    double d_az_obj = theta_world - azimuth;
-                    if (cos(d_az_obj) <= 0.1)
+                    // Smooth density falloff so rocks naturally thin out towards the horizon
+                    double fade_prob = 1.0 - pow(dist_ratio, 2.5);
+                    uint32_t fade_hash = (rhash * 1103515245u + 12345u);
+                    double u_fade = (double)(fade_hash & 0xFFFF) / 65535.0;
+                    if (u_fade > fade_prob)
                     {
                         continue;
                     }
 
-                    double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
-                    if (s_horizon > 0.0)
-                    {
-                        delta -= (dist_m / s_horizon) * horizon_lift_rad;
-                    }
-                    if (dittrsa)
-                    {
-                        delta = -delta;
-                    }
-                    Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
-                    pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
+                    uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
+                    double u_sz = (double)(sz_hash & 0xFFFF) / 65535.0;
+                    double rock_size = ROCK_MIN_SIZE + (ROCK_MAX_SIZE - ROCK_MIN_SIZE) * (u_sz * u_sz * u_sz);
 
-                    Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
-                    if (cart.x <= -1e10)
+                    double rw = (rock_size / dist_m) * dispcx * zoom;
+                    double rh = rw * rock_aspect;
+                    if (rw < 1.5)
                     {
                         continue;
                     }
 
-                    base_valid = true;
-                    sx = cart.x * dispcx + dispcx;
-                    sy = cart.y * dispcx + dispcy;
-                    crown_sx = sx;
-                    crown_sy = sy - rh;
-                    crown_rx = rw * 0.5;
-                    crown_ry = rh;
-                    sort_dist = dist_m;
-                }
+                    double sx = 0.0;
+                    double sy = 0.0;
+                    double crown_sx = 0.0;
+                    double crown_sy = 0.0;
+                    double crown_rx = 0.0;
+                    double crown_ry = 0.0;
+                    double trunk_w_top = 0.0;
+                    double trunk_w_base = 0.0;
+                    bool base_valid = false;
+                    double sort_dist = dist_m;
 
-                double min_x = fmin(sx, crown_sx) - crown_rx;
-                double max_x = fmax(sx, crown_sx) + crown_rx;
-                double min_y = crown_sy - crown_ry;
-                double max_y = fmax(sy, crown_sy + crown_ry);
-
-                if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
-                {
-                    continue;
-                }
-
-                double rock_lift_px = 0.0;
-                if (!dittrsa && base_valid && !is_vegetation)
-                {
-                    int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
-                    double ground_span = sy - min_hz_y_at_x[ix_lookup];
-                    if (ground_span > 0.0)
-                    {
-                        double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
-                        rock_lift_px = ground_span * slope_factor;
-                        sy -= rock_lift_px;
-                        crown_sy -= rock_lift_px;
-                    }
-
-                    if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
-                    {
-                        continue;
-                    }
-                }
-
-                rocks[num_rocks].dist = sort_dist;
-                rocks[num_rocks].theta = theta_world;
-                rocks[num_rocks].screen_x = sx;
-                rocks[num_rocks].screen_y = sy;
-                rocks[num_rocks].crown_x = crown_sx;
-                rocks[num_rocks].crown_y = crown_sy;
-                rocks[num_rocks].crown_rx = crown_rx;
-                rocks[num_rocks].crown_ry = crown_ry;
-                rocks[num_rocks].trunk_w_top = trunk_w_top;
-                rocks[num_rocks].trunk_w_base = trunk_w_base;
-                rocks[num_rocks].width = rw;
-                rocks[num_rocks].height = rh;
-                rocks[num_rocks].size = rock_size;
-                rocks[num_rocks].lift_px = rock_lift_px;
-                rocks[num_rocks].seed_val = rhash;
-                rocks[num_rocks].base_valid = base_valid;
-                num_rocks++;
-            }
-
-            std::sort(rocks, rocks + num_rocks, [](const RockInstance& a, const RockInstance& b)
-            {
-                return a.dist > b.dist;
-            });
-
-            int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : ROCK_SHADOW_ALPHA_DEF));
-            int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
-            bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
-
-            for (int ri = 0; ri < num_rocks; ri++)
-            {
-                const RockInstance& rk = rocks[ri];
-                double rx = rk.screen_x;
-                double ry = rk.screen_y;
-                double rw = rk.width;
-                double rh = rk.height;
-
-                if (has_sun_shadow && rw >= 3.0 && rk.base_valid)
-                {
-                    double actual_rock_h = rk.size * rock_aspect;
-                    double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
-                    L_shadow = fmin(rk.dist * 1.5, fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow));
-
-                    double u_rock = rk.dist * sin(rk.theta);
-                    double v_rock = rk.dist * cos(rk.theta);
-
-                    double u_tip = u_rock - L_shadow * sin(sun_az_world);
-                    double v_tip = v_rock - L_shadow * cos(sun_az_world);
-
-                    double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
-                    double th_tip = atan2(u_tip, v_tip);
-                    double delta_tip = atan(h_eye / dist_tip) + (dist_tip / (2.0 * R_planet));
-                    if (s_horizon > 0.0)
-                    {
-                        delta_tip -= (dist_tip / s_horizon) * horizon_lift_rad;
-                    }
-
-                    Point pt_tip = rotate3D(zaxis, center, xaxis, delta_tip);
-                    pt_tip = rotate3D(pt_tip, center, yaxis, th_tip);
-                    Cartesian2D cart_tip(pt_tip, azimuth, altitude, zoom);
-
-                    if (cart_tip.x > -1e10)
-                    {
-                        double tip_x = cart_tip.x * dispcx + dispcx;
-                        double tip_y = cart_tip.y * dispcx + dispcy - rk.lift_px * (dist_tip / rk.dist);
-
-                        ImVec2 shad_pts[3];
-                        shad_pts[0] = ImVec2(rx - rw * 0.45, ry);
-                        shad_pts[1] = ImVec2(rx + rw * 0.45, ry);
-                        shad_pts[2] = ImVec2(tip_x, tip_y);
-
-                        ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, shadow_alpha));
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
-                    }
-                }
-
-                if (rw < ROCK_PEBBLE_THRESH)
-                {
-                    int pr, pg, pb;
                     if (is_vegetation)
                     {
-                        RGB3 vcol = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
-                            ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
-                            : RGB3(40, 140, 50);
-                        pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
-                        pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
-                        pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
-                    }
-                    else if (is_mars)
-                    {
-                        pr = fmin(255.0, (base_map_rgb.r * 0.55) * amb_light);
-                        pg = fmin(255.0, (base_map_rgb.g * 0.55) * amb_light);
-                        pb = fmin(255.0, (base_map_rgb.b * 0.55) * amb_light);
+                        double canopy_h_m = rock_size * plant_trunk_height;
+                        double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
+                        double y_base_world = -h_eye - curv_drop;
+                        double y_crown_world = canopy_h_m - h_eye - curv_drop;
+
+                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                        {
+                            double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
+                            y_base_world += lift;
+                            y_crown_world += lift;
+                        }
+
+                        double d_az_obj = theta_world - azimuth;
+                        double sin_daz = sin(d_az_obj);
+                        double cos_daz = cos(d_az_obj);
+
+                        double x_cam = dist_m * sin_daz;
+                        double z_horiz = dist_m * cos_daz;
+
+                        double cos_alt = cos(altitude);
+                        double sin_alt = sin(altitude);
+
+                        double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
+                        double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
+
+                        if (z_crown_cam < 0.2)
+                        {
+                            continue;
+                        }
+
+                        crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
+                        crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
+
+                        crown_rx = (rock_size * plant_crown_size / z_crown_cam) * dispcx * zoom;
+                        crown_rx = fmax(1.2, crown_rx);
+                        crown_ry = fmax(1.0, crown_rx * plant_crown_oblateness);
+
+                        trunk_w_top = (rock_size * plant_trunk_width / z_crown_cam) * dispcx * zoom;
+                        trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+
+                        double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
+                        double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
+
+                        if (z_base_cam >= 0.2)
+                        {
+                            base_valid = true;
+                            sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
+                            sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
+                            trunk_w_base = (rock_size * plant_trunk_width / z_base_cam) * dispcx * zoom;
+                        }
+                        else
+                        {
+                            base_valid = false;
+                            double t = (0.2 - z_base_cam) / (z_crown_cam - z_base_cam);
+                            double y_clip = y_base_cam + t * (y_crown_cam - y_base_cam);
+                            sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
+                            sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                            trunk_w_base = (rock_size * plant_trunk_width / 0.2) * dispcx * zoom;
+                        }
+                        trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
+
+                        sort_dist = z_crown_cam;
                     }
                     else
                     {
-                        pr = fmin(255.0, (base_map_rgb.r * 0.6) * amb_light);
-                        pg = fmin(255.0, (base_map_rgb.g * 0.6) * amb_light);
-                        pb = fmin(255.0, (base_map_rgb.b * 0.6) * amb_light);
-                    }
-                    ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
-                    double px = is_vegetation ? rk.crown_x : rx;
-                    double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
-                    ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
-                    continue;
-                }
+                        double d_az_obj = theta_world - azimuth;
+                        if (cos(d_az_obj) <= 0.1)
+                        {
+                            continue;
+                        }
 
-                if (is_vegetation)
-                {
-                    double d_az = sun_az_world - azimuth;
-                    double sun_cos = cos(d_az + _pi);
+                        double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
+                        if (s_horizon > 0.0)
+                        {
+                            delta -= (dist_m / s_horizon) * horizon_lift_rad;
+                        }
+                        if (dittrsa)
+                        {
+                            delta = -delta;
+                        }
+                        Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
+                        pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
 
-                    RGB3 veg_base = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
-                        ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
-                        : RGB3(40, 140, 50);
+                        Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
+                        if (cart.x <= -1e10)
+                        {
+                            continue;
+                        }
 
-                    double u_tint = (double)(rk.seed_val & 0xFF) / 255.0;
-                    double tint_factor = 0.88 + 0.24 * u_tint;
-
-                    double crown_rx = rk.crown_rx;
-                    double crown_ry = rk.crown_ry;
-                    double trunk_w_top = rk.trunk_w_top;
-                    double trunk_w_base = rk.trunk_w_base;
-
-                    double cx = rk.crown_x;
-                    double cy = rk.crown_y;
-                    double bx = rk.screen_x;
-                    double by = rk.screen_y;
-
-                    double trunk_w_bot = trunk_w_base;
-
-                    // If the trunk base is below the viewport, clip its bottom vertices along trunk axis
-                    double clip_bottom = dispcy * 2.0 + 40.0;
-                    if (by > clip_bottom && by > cy)
-                    {
-                        double t = (clip_bottom - cy) / (by - cy);
-                        bx = cx + (bx - cx) * t;
-                        by = clip_bottom;
-                        trunk_w_bot = trunk_w_top + (trunk_w_base - trunk_w_top) * t;
+                        base_valid = true;
+                        sx = cart.x * dispcx + dispcx;
+                        sy = cart.y * dispcx + dispcy;
+                        crown_sx = sx;
+                        crown_sy = sy - rh;
+                        crown_rx = rw * 0.5;
+                        crown_ry = rh;
+                        sort_dist = dist_m;
                     }
 
-                    // Vector along trunk from base to crown
-                    double tdir_x = cx - bx;
-                    double tdir_y = cy - by;
-                    double tdir_len = sqrt(tdir_x * tdir_x + tdir_y * tdir_y);
+                    double min_x = fmin(sx, crown_sx) - crown_rx;
+                    double max_x = fmax(sx, crown_sx) + crown_rx;
+                    double min_y = crown_sy - crown_ry;
+                    double max_y = fmax(sy, crown_sy + crown_ry);
 
-                    // Brown-gray stalk/trunk with directional lighting
-                    double trunk_light = amb_light * 0.70 + sun_light * 2.3 * fmax(0.15, (0.60 + 0.40 * sun_cos));
-                    int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
-                    int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
-                    int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
-                    ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
-
-                    if (tdir_len > 1.0)
+                    if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
                     {
-                        double ux = tdir_x / tdir_len;
-                        double uy = tdir_y / tdir_len;
-                        // Perpendicular normal to trunk vector
-                        double nx = -uy;
-                        double ny = ux;
-
-                        // Embed trunk top vertices into crown ellipse to avoid visible seam
-                        double embed_dist = fmin(crown_ry * 0.45, 40.0);
-                        double top_x = cx + ux * embed_dist;
-                        double top_y = cy + uy * embed_dist;
-
-                        ImVec2 trunk_pts[4];
-                        trunk_pts[0] = ImVec2(bx - nx * trunk_w_bot * 0.50, by - ny * trunk_w_bot * 0.50);
-                        trunk_pts[1] = ImVec2(top_x - nx * trunk_w_top * 0.38, top_y - ny * trunk_w_top * 0.38);
-                        trunk_pts[2] = ImVec2(top_x + nx * trunk_w_top * 0.38, top_y + ny * trunk_w_top * 0.38);
-                        trunk_pts[3] = ImVec2(bx + nx * trunk_w_bot * 0.50, by + ny * trunk_w_bot * 0.50);
-                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
+                        continue;
                     }
 
-                    // Oblate spheroid crown in vegetation color at the top of the stalk
-                    double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
-                    int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
-                    int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
-                    int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
-                    ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
-
-                    ImGui::GetBackgroundDrawList()->AddEllipseFilled(
-                        ImVec2(cx, cy),
-                        ImVec2((float)crown_rx, (float)crown_ry),
-                        crown_col);
-                }
-                else if (is_venus)
-                {
-                    ImVec2 slab_pts[4];
-                    slab_pts[0] = ImVec2(rx - rw * 0.50, ry);
-                    slab_pts[1] = ImVec2(rx - rw * 0.44, ry - rh);
-                    slab_pts[2] = ImVec2(rx + rw * 0.44, ry - rh);
-                    slab_pts[3] = ImVec2(rx + rw * 0.50, ry);
-
-                    int vr = fmin(255.0, (base_map_rgb.r * 0.65) * (amb_light + sun_light * 0.5));
-                    int vg = fmin(255.0, (base_map_rgb.g * 0.62) * (amb_light + sun_light * 0.5));
-                    int vb = fmin(255.0, (base_map_rgb.b * 0.50) * (amb_light + sun_light * 0.5));
-                    ImU32 slab_body = rgba_apply_redlight(IM_COL32(vr, vg, vb, 255));
-                    ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(slab_pts, 4, slab_body);
-
-                    ImU32 slab_top_edge = rgba_apply_redlight(IM_COL32(fmin(255, vr + 25), fmin(255, vg + 25), fmin(255, vb + 15), 255));
-                    ImGui::GetBackgroundDrawList()->AddLine(slab_pts[1], slab_pts[2], slab_top_edge, 1.2f);
-                }
-                else
-                {
-                    // Solar direction relative to camera azimuth
-                    double d_az = sun_az_world - azimuth;
-                    double sun_cos = cos(d_az);
-                    double sun_sin = sin(d_az);
-
-                    double br, bg, bb;
-
-                    br = base_map_rgb.r * 0.6;
-                    bg = base_map_rgb.g * 0.6;
-                    bb = base_map_rgb.b * 0.6;
-
-                    double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
-                    double amb_mult = is_moon ? 0.35 : 0.55;
-
-                    // Derive pseudo-random vertex offsets deterministically from rock seed
-                    uint32_t sh = rk.seed_val;
-                    auto next_rnd = [&sh]() -> double
+                    double rock_lift_px = 0.0;
+                    if (!dittrsa && base_valid && !is_vegetation)
                     {
-                        sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
-                        sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
-                        sh = (sh >> 16) ^ sh;
-                        return (double)(sh & 0xFFFF) / 65535.0;
-                    };
+                        int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
+                        double ground_span = sy - min_hz_y_at_x[ix_lookup];
+                        if (ground_span > 0.0)
+                        {
+                            double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
+                            rock_lift_px = ground_span * slope_factor;
+                            sy -= rock_lift_px;
+                            crown_sy -= rock_lift_px;
+                        }
 
-                    double jagg = ROCK_JAGGEDNESS;
+                        if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
+                        {
+                            continue;
+                        }
+                    }
 
-                    // Randomized silhouette vertices
-                    // Base width variation
-                    double w_l = 0.50 + jagg * (next_rnd() - 0.5);
-                    double w_r = 0.50 + jagg * (next_rnd() - 0.5);
+                    rocks[num_rocks].dist = sort_dist;
+                    rocks[num_rocks].theta = theta_world;
+                    rocks[num_rocks].screen_x = sx;
+                    rocks[num_rocks].screen_y = sy;
+                    rocks[num_rocks].crown_x = crown_sx;
+                    rocks[num_rocks].crown_y = crown_sy;
+                    rocks[num_rocks].crown_rx = crown_rx;
+                    rocks[num_rocks].crown_ry = crown_ry;
+                    rocks[num_rocks].trunk_w_top = trunk_w_top;
+                    rocks[num_rocks].trunk_w_base = trunk_w_base;
+                    rocks[num_rocks].width = rw;
+                    rocks[num_rocks].height = rh;
+                    rocks[num_rocks].size = rock_size;
+                    rocks[num_rocks].lift_px = rock_lift_px;
+                    rocks[num_rocks].seed_val = rhash;
+                    rocks[num_rocks].base_valid = base_valid;
+                    num_rocks++;
+                }
 
-                    // Peak location
-                    double peak_shift_x = (next_rnd() - 0.5) * 0.35 * rw;
-                    double peak_shift_y = (next_rnd() - 0.5) * 0.20 * rh;
-                    ImVec2 peak(rx + peak_shift_x, ry - rh + peak_shift_y);
+                std::sort(rocks, rocks + num_rocks, [](const RockInstance& a, const RockInstance& b)
+                {
+                    return a.dist > b.dist;
+                });
 
-                    // Intermediate perimeter vertices (left and right flanks)
-                    double ml_x = rx - rw * (0.35 + jagg * (next_rnd() - 0.5));
-                    double ml_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
-                    ImVec2 mid_l(ml_x, ml_y);
+                int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : ROCK_SHADOW_ALPHA_DEF));
+                int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
+                bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
 
-                    double mr_x = rx + rw * (0.35 + jagg * (next_rnd() - 0.5));
-                    double mr_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
-                    ImVec2 mid_r(mr_x, mr_y);
+                for (int ri = 0; ri < num_rocks; ri++)
+                {
+                    const RockInstance& rk = rocks[ri];
+                    double rx = rk.screen_x;
+                    double ry = rk.screen_y;
+                    double rw = rk.width;
+                    double rh = rk.height;
 
-                    double tl_x = rx - rw * (0.18 + jagg * (next_rnd() - 0.5));
-                    double tl_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
-                    ImVec2 top_l(tl_x, tl_y);
-
-                    double tr_x = rx + rw * (0.18 + jagg * (next_rnd() - 0.5));
-                    double tr_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
-                    ImVec2 top_r(tr_x, tr_y);
-
-                    ImVec2 base_l(rx - rw * w_l, ry);
-                    ImVec2 base_r(rx + rw * w_r, ry);
-
-                    // Central interior vertex that creates 3D relief and facet normals
-                    double hub_shift_x = (next_rnd() - 0.5) * 0.15 * rw;
-                    double hub_shift_y = (next_rnd() - 0.5) * 0.12 * rh;
-                    ImVec2 hub(rx + hub_shift_x, ry - rh * 0.40 + hub_shift_y);
-
-                    // Directional lighting colors per facet:
-                    // Helper to compute facet shade based on facet surface normal direction
-                    auto get_facet_col = [&](double norm_x, double norm_z, double norm_y = 0.3) -> ImU32
+                    if (has_sun_shadow && rw >= 3.0 && rk.base_valid)
                     {
-                        // norm_x: -1 (left), +1 (right)
-                        // norm_z: +1 (facing viewer/camera), -1 (facing away)
-                        // norm_y: slope upward
-                        // Sun vector in camera space:
-                        // sun_x = -sun_sin
-                        // sun_z = -sun_cos
-                        // sun_y = sin(sun_elev)
-                        double sun_cam_x =  sun_sin;
-                        double sun_cam_z = -sun_cos;
-                        double sun_cam_y = sin(fmax(0.0, sun_elev));
+                        double actual_rock_h = rk.size * rock_aspect;
+                        double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
+                        L_shadow = fmin(rk.dist * 1.5, fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow));
 
-                        double dot_sun = norm_x * sun_cam_x + norm_z * sun_cam_z + norm_y * sun_cam_y;
-                        double light_fac = amb_light * amb_mult + sun_light * sun_mult * fmax(0.0, dot_sun);
+                        double u_rock = rk.dist * sin(rk.theta);
+                        double v_rock = rk.dist * cos(rk.theta);
 
-                        int cr = fmin(255.0, br * light_fac);
-                        int cg = fmin(255.0, bg * light_fac);
-                        int cb = fmin(255.0, bb * light_fac);
-                        return rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
-                    };
+                        double u_tip = u_rock - L_shadow * sin(sun_az_world);
+                        double v_tip = v_rock - L_shadow * cos(sun_az_world);
 
-                    // Render facets around hub
-                    // Facet 1: Lower-left flank
-                    ImU32 col_ll = get_facet_col(-0.7, 0.4, 0.2);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, hub, col_ll);
+                        double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
+                        double th_tip = atan2(u_tip, v_tip);
+                        double delta_tip = atan(h_eye / dist_tip) + (dist_tip / (2.0 * R_planet));
+                        if (s_horizon > 0.0)
+                        {
+                            delta_tip -= (dist_tip / s_horizon) * horizon_lift_rad;
+                        }
 
-                    // Facet 2: Upper-left flank
-                    ImU32 col_ul = get_facet_col(-0.5, 0.3, 0.6);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_l, top_l, hub, col_ul);
+                        Point pt_tip = rotate3D(zaxis, center, xaxis, delta_tip);
+                        pt_tip = rotate3D(pt_tip, center, yaxis, th_tip);
+                        Cartesian2D cart_tip(pt_tip, azimuth, altitude, zoom);
 
-                    // Facet 3: Left peak facet
-                    ImU32 col_lp = get_facet_col(-0.3, 0.4, 0.8);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_l, peak, hub, col_lp);
+                        if (cart_tip.x > -1e10)
+                        {
+                            double tip_x = cart_tip.x * dispcx + dispcx;
+                            double tip_y = cart_tip.y * dispcx + dispcy - rk.lift_px * (dist_tip / rk.dist);
 
-                    // Facet 4: Right peak facet
-                    ImU32 col_rp = get_facet_col(0.3, 0.4, 0.8);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(peak, top_r, hub, col_rp);
+                            ImVec2 shad_pts[3];
+                            shad_pts[0] = ImVec2(rx - rw * 0.45, ry);
+                            shad_pts[1] = ImVec2(rx + rw * 0.45, ry);
+                            shad_pts[2] = ImVec2(tip_x, tip_y);
 
-                    // Facet 5: Upper-right flank
-                    ImU32 col_ur = get_facet_col(0.5, 0.3, 0.6);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_r, mid_r, hub, col_ur);
+                            ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, shadow_alpha));
+                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
+                        }
+                    }
 
-                    // Facet 6: Lower-right flank
-                    ImU32 col_lr = get_facet_col(0.7, 0.4, 0.2);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_r, base_r, hub, col_lr);
+                    if (rw < ROCK_PEBBLE_THRESH)
+                    {
+                        int pr, pg, pb;
+                        if (is_vegetation)
+                        {
+                            RGB3 vcol = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
+                                ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                                : RGB3(40, 140, 50);
+                            pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
+                            pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
+                            pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
+                        }
+                        else if (is_mars)
+                        {
+                            pr = fmin(255.0, (base_map_rgb.r * 0.55) * amb_light);
+                            pg = fmin(255.0, (base_map_rgb.g * 0.55) * amb_light);
+                            pb = fmin(255.0, (base_map_rgb.b * 0.55) * amb_light);
+                        }
+                        else
+                        {
+                            pr = fmin(255.0, (base_map_rgb.r * 0.6) * amb_light);
+                            pg = fmin(255.0, (base_map_rgb.g * 0.6) * amb_light);
+                            pb = fmin(255.0, (base_map_rgb.b * 0.6) * amb_light);
+                        }
+                        ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
+                        double px = is_vegetation ? rk.crown_x : rx;
+                        double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
+                        ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
+                        continue;
+                    }
 
-                    // Facet 7: Center base / front face
-                    ImU32 col_front = get_facet_col(0.0, 0.8, 0.2);
-                    ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, hub, base_r, col_front);
+                    if (is_vegetation)
+                    {
+                        double d_az = sun_az_world - azimuth;
+                        double sun_cos = cos(d_az + _pi);
+
+                        RGB3 veg_base = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
+                            ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                            : RGB3(40, 140, 50);
+
+                        double u_tint = (double)(rk.seed_val & 0xFF) / 255.0;
+                        double tint_factor = 0.88 + 0.24 * u_tint;
+
+                        double crown_rx = rk.crown_rx;
+                        double crown_ry = rk.crown_ry;
+                        double trunk_w_top = rk.trunk_w_top;
+                        double trunk_w_base = rk.trunk_w_base;
+
+                        double cx = rk.crown_x;
+                        double cy = rk.crown_y;
+                        double bx = rk.screen_x;
+                        double by = rk.screen_y;
+
+                        double trunk_w_bot = trunk_w_base;
+
+                        // If the trunk base is below the viewport, clip its bottom vertices along trunk axis
+                        double clip_bottom = dispcy * 2.0 + 40.0;
+                        if (by > clip_bottom && by > cy)
+                        {
+                            double t = (clip_bottom - cy) / (by - cy);
+                            bx = cx + (bx - cx) * t;
+                            by = clip_bottom;
+                            trunk_w_bot = trunk_w_top + (trunk_w_base - trunk_w_top) * t;
+                        }
+
+                        // Vector along trunk from base to crown
+                        double tdir_x = cx - bx;
+                        double tdir_y = cy - by;
+                        double tdir_len = sqrt(tdir_x * tdir_x + tdir_y * tdir_y);
+
+                        // Brown-gray stalk/trunk with directional lighting
+                        double trunk_light = amb_light * 0.70 + sun_light * 2.3 * fmax(0.15, (0.60 + 0.40 * sun_cos));
+                        int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
+                        int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
+                        int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
+                        ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
+
+                        if (tdir_len > 1.0)
+                        {
+                            double ux = tdir_x / tdir_len;
+                            double uy = tdir_y / tdir_len;
+                            // Perpendicular normal to trunk vector
+                            double nx = -uy;
+                            double ny = ux;
+
+                            // Embed trunk top vertices into crown ellipse to avoid visible seam
+                            double embed_dist = fmin(crown_ry * 0.45, 40.0);
+                            double top_x = cx + ux * embed_dist;
+                            double top_y = cy + uy * embed_dist;
+
+                            ImVec2 trunk_pts[4];
+                            trunk_pts[0] = ImVec2(bx - nx * trunk_w_bot * 0.50, by - ny * trunk_w_bot * 0.50);
+                            trunk_pts[1] = ImVec2(top_x - nx * trunk_w_top * 0.38, top_y - ny * trunk_w_top * 0.38);
+                            trunk_pts[2] = ImVec2(top_x + nx * trunk_w_top * 0.38, top_y + ny * trunk_w_top * 0.38);
+                            trunk_pts[3] = ImVec2(bx + nx * trunk_w_bot * 0.50, by + ny * trunk_w_bot * 0.50);
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
+                        }
+
+                        // Oblate spheroid crown in vegetation color at the top of the stalk
+                        double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
+                        int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
+                        int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
+                        int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
+                        ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+
+                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                            ImVec2(cx, cy),
+                            ImVec2((float)crown_rx, (float)crown_ry),
+                            crown_col);
+                    }
+                    else if (is_venus)
+                    {
+                        ImVec2 slab_pts[4];
+                        slab_pts[0] = ImVec2(rx - rw * 0.50, ry);
+                        slab_pts[1] = ImVec2(rx - rw * 0.44, ry - rh);
+                        slab_pts[2] = ImVec2(rx + rw * 0.44, ry - rh);
+                        slab_pts[3] = ImVec2(rx + rw * 0.50, ry);
+
+                        int vr = fmin(255.0, (base_map_rgb.r * 0.65) * (amb_light + sun_light * 0.5));
+                        int vg = fmin(255.0, (base_map_rgb.g * 0.62) * (amb_light + sun_light * 0.5));
+                        int vb = fmin(255.0, (base_map_rgb.b * 0.50) * (amb_light + sun_light * 0.5));
+                        ImU32 slab_body = rgba_apply_redlight(IM_COL32(vr, vg, vb, 255));
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(slab_pts, 4, slab_body);
+
+                        ImU32 slab_top_edge = rgba_apply_redlight(IM_COL32(fmin(255, vr + 25), fmin(255, vg + 25), fmin(255, vb + 15), 255));
+                        ImGui::GetBackgroundDrawList()->AddLine(slab_pts[1], slab_pts[2], slab_top_edge, 1.2f);
+                    }
+                    else
+                    {
+                        // Solar direction relative to camera azimuth
+                        double d_az = sun_az_world - azimuth;
+                        double sun_cos = cos(d_az);
+                        double sun_sin = sin(d_az);
+
+                        double br, bg, bb;
+
+                        br = base_map_rgb.r * 0.6;
+                        bg = base_map_rgb.g * 0.6;
+                        bb = base_map_rgb.b * 0.6;
+
+                        double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
+                        double amb_mult = is_moon ? 0.35 : 0.55;
+
+                        // Derive pseudo-random vertex offsets deterministically from rock seed
+                        uint32_t sh = rk.seed_val;
+                        auto next_rnd = [&sh]() -> double
+                        {
+                            sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
+                            sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
+                            sh = (sh >> 16) ^ sh;
+                            return (double)(sh & 0xFFFF) / 65535.0;
+                        };
+
+                        double jagg = ROCK_JAGGEDNESS;
+
+                        // Randomized silhouette vertices
+                        // Base width variation
+                        double w_l = 0.50 + jagg * (next_rnd() - 0.5);
+                        double w_r = 0.50 + jagg * (next_rnd() - 0.5);
+
+                        // Peak location
+                        double peak_shift_x = (next_rnd() - 0.5) * 0.35 * rw;
+                        double peak_shift_y = (next_rnd() - 0.5) * 0.20 * rh;
+                        ImVec2 peak(rx + peak_shift_x, ry - rh + peak_shift_y);
+
+                        // Intermediate perimeter vertices (left and right flanks)
+                        double ml_x = rx - rw * (0.35 + jagg * (next_rnd() - 0.5));
+                        double ml_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
+                        ImVec2 mid_l(ml_x, ml_y);
+
+                        double mr_x = rx + rw * (0.35 + jagg * (next_rnd() - 0.5));
+                        double mr_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
+                        ImVec2 mid_r(mr_x, mr_y);
+
+                        double tl_x = rx - rw * (0.18 + jagg * (next_rnd() - 0.5));
+                        double tl_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
+                        ImVec2 top_l(tl_x, tl_y);
+
+                        double tr_x = rx + rw * (0.18 + jagg * (next_rnd() - 0.5));
+                        double tr_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
+                        ImVec2 top_r(tr_x, tr_y);
+
+                        ImVec2 base_l(rx - rw * w_l, ry);
+                        ImVec2 base_r(rx + rw * w_r, ry);
+
+                        // Central interior vertex that creates 3D relief and facet normals
+                        double hub_shift_x = (next_rnd() - 0.5) * 0.15 * rw;
+                        double hub_shift_y = (next_rnd() - 0.5) * 0.12 * rh;
+                        ImVec2 hub(rx + hub_shift_x, ry - rh * 0.40 + hub_shift_y);
+
+                        // Directional lighting colors per facet:
+                        // Helper to compute facet shade based on facet surface normal direction
+                        auto get_facet_col = [&](double norm_x, double norm_z, double norm_y = 0.3) -> ImU32
+                        {
+                            // norm_x: -1 (left), +1 (right)
+                            // norm_z: +1 (facing viewer/camera), -1 (facing away)
+                            // norm_y: slope upward
+                            // Sun vector in camera space:
+                            // sun_x = -sun_sin
+                            // sun_z = -sun_cos
+                            // sun_y = sin(sun_elev)
+                            double sun_cam_x =  sun_sin;
+                            double sun_cam_z = -sun_cos;
+                            double sun_cam_y = sin(fmax(0.0, sun_elev));
+
+                            double dot_sun = norm_x * sun_cam_x + norm_z * sun_cam_z + norm_y * sun_cam_y;
+                            double light_fac = amb_light * amb_mult + sun_light * sun_mult * fmax(0.0, dot_sun);
+
+                            int cr = fmin(255.0, br * light_fac);
+                            int cg = fmin(255.0, bg * light_fac);
+                            int cb = fmin(255.0, bb * light_fac);
+                            return rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                        };
+
+                        // Render facets around hub
+                        // Facet 1: Lower-left flank
+                        ImU32 col_ll = get_facet_col(-0.7, 0.4, 0.2);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, hub, col_ll);
+
+                        // Facet 2: Upper-left flank
+                        ImU32 col_ul = get_facet_col(-0.5, 0.3, 0.6);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_l, top_l, hub, col_ul);
+
+                        // Facet 3: Left peak facet
+                        ImU32 col_lp = get_facet_col(-0.3, 0.4, 0.8);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_l, peak, hub, col_lp);
+
+                        // Facet 4: Right peak facet
+                        ImU32 col_rp = get_facet_col(0.3, 0.4, 0.8);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(peak, top_r, hub, col_rp);
+
+                        // Facet 5: Upper-right flank
+                        ImU32 col_ur = get_facet_col(0.5, 0.3, 0.6);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_r, mid_r, hub, col_ur);
+
+                        // Facet 6: Lower-right flank
+                        ImU32 col_lr = get_facet_col(0.7, 0.4, 0.2);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_r, base_r, hub, col_lr);
+
+                        // Facet 7: Center base / front face
+                        ImU32 col_front = get_facet_col(0.0, 0.8, 0.2);
+                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, hub, base_r, col_front);
+                    }
                 }
             }
         }

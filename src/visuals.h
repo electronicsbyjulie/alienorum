@@ -33,7 +33,7 @@
 #define PLANT_TRUNK_HEIGHT      22.2    // Stalk / trunk height multiplier relative to base scale
 #define PLANT_TRUNK_WIDTH       0.44    // Trunk width multiplier relative to base scale
 #define PLANT_CROWN_SIZE        2.85    // Crown horizontal radius multiplier relative to base scale
-#define PLANT_CROWN_OBLATENESS  0.55    // Crown oblateness ratio (vertical radius / horizontal radius)
+#define PLANT_CROWN_OBLATENESS  0.35    // Crown oblateness ratio (vertical radius / horizontal radius)
 #define PLANT_TRUNK_COLOR_R     115     // Trunk base red component (brown-gray)
 #define PLANT_TRUNK_COLOR_G     100     // Trunk base green component (brown-gray)
 #define PLANT_TRUNK_COLOR_B     85      // Trunk base blue component (brown-gray)
@@ -49,6 +49,26 @@
 #define WAVE_GLINT_LOW_SUN_ELEV 0.35    // Elevation angle (radians, ~20 deg) below which sunset glint path activates
 #define WAVE_GLINT_PATH_WIDTH   0.14    // Angular half-width fraction of sunset glint column
 #define WAVE_GLINT_CREST_THRESH 0.05    // Wave crest threshold for glint reflections when sun is low
+
+struct RockInstance
+{
+    double dist;
+    double theta;
+    double screen_x;
+    double screen_y;
+    double crown_x;
+    double crown_y;
+    double crown_rx;
+    double crown_ry;
+    double trunk_w_top;
+    double trunk_w_base;
+    double width;
+    double height;
+    double size;
+    double lift_px;
+    uint32_t seed_val;
+    bool base_valid;
+};
 
 void draw_ra_dec_lines();
 
