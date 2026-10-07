@@ -117,6 +117,13 @@ double alienorum::Color::hue_from_rgb(double r, double g, double b)
     return hue * fiftyseventh;
 }
 
+double alienorum::Color::sat_from_rgb(double r, double g, double b)
+{
+    double least = fmin(fmin(r, g), b), most = fmax(fmax(r, g), b);
+    if (!most) return 0;
+    return (most-least) / most;
+}
+
 ImU32 Color::black_to_transparent(ImU32 input)
 {
     int a = input >> 24;

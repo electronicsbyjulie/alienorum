@@ -814,7 +814,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (view_mode == vm_sunclock && whereami >= 0)
                 ImGui::Text("Alt:      %.3f km",
                     (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
-            else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here));
+            else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here).c_str());
         }
         else if (cels[i]->typeclass() == class_comet)
         {

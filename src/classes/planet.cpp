@@ -1088,6 +1088,7 @@ json Planet::to_json()
     towrite["opposition_surge"] = opposition_surge;
     if (atm) towrite["atmosphere"] = atm->to_json();
     if (J2) towrite["J2"] = J2;
+    towrite["overcast"] = overcast;
 
     // Both of these come from a catalog originally -- the astorb row number, and the flag that
     // says the catalog stated a type we are not to second-guess in classify(). They used not to
@@ -1114,6 +1115,10 @@ json Planet::to_json()
         towrite["ring_inner_radius"] = ring_inner_radius * 1e-3;
         towrite["ring_mean_opacity"] = ring_mean_opacity;
     }
+    towrite["transparent_clouds"] = transparent_clouds;
+    towrite["vegetation_r"] = vegetation_r;
+    towrite["vegetation_g"] = vegetation_g;
+    towrite["vegetation_b"] = vegetation_b;
 
     return towrite;
 }
@@ -1131,6 +1136,7 @@ bool Planet::from_json(json j)
         ;
     }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
+    try { j.at("overcast").get_to(overcast); } catch (...) { ; }
     // Fetch the node into a local FIRST. Written as ensure_atmosphere()->from_json(j.at(...)),
     // C++17 sequences the postfix-expression before the argument, so ensure_atmosphere() runs and
     // builds an Atmosphere before j.at() ever gets the chance to throw -- which handed an airless
@@ -1159,6 +1165,10 @@ bool Planet::from_json(json j)
     try { j.at("ring_radius").get_to(ring_radius); ring_radius *= 1e3; } catch (...) { ; }
     try { j.at("ring_inner_radius").get_to(ring_inner_radius); ring_inner_radius *= 1e3; } catch (...) { ; }
     try { j.at("ring_mean_opacity").get_to(ring_mean_opacity); } catch (...) { ; }
+    try { j.at("transparent_clouds").get_to(transparent_clouds); } catch (...) { ; }
+    try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
+    try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }
+    try { j.at("vegetation_b").get_to(vegetation_b); } catch (...) { ; }
     return true;
 }
 
