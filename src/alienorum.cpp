@@ -209,7 +209,7 @@ int main (int argc, char** argv)
 
         else if (n == 2 && argv[l][0] == '^')
         {
-            push_ctrl_char(argv[l][1] & 0x5f);
+            push_ctrl_char(argv[l][1]);
         }
 
         else if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))

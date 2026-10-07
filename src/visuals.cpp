@@ -5590,7 +5590,7 @@ void draw_horizon()
                 if (is_vegetation)
                 {
                     double d_az = sun_az_world - azimuth;
-                    double sun_cos = cos(d_az);
+                    double sun_cos = cos(d_az + _pi);
 
                     RGB3 veg_base = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
                         ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
@@ -5627,7 +5627,7 @@ void draw_horizon()
                     double tdir_len = sqrt(tdir_x * tdir_x + tdir_y * tdir_y);
 
                     // Brown-gray stalk/trunk with directional lighting
-                    double trunk_light = amb_light * 0.70 + sun_light * 1.15 * fmax(0.15, (0.60 + 0.40 * sun_cos));
+                    double trunk_light = amb_light * 0.70 + sun_light * 2.3 * fmax(0.15, (0.60 + 0.40 * sun_cos));
                     int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
                     int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
                     int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
@@ -5655,7 +5655,7 @@ void draw_horizon()
                     }
 
                     // Oblate spheroid crown in vegetation color at the top of the stalk
-                    double crown_light = amb_light * 0.65 + sun_light * 1.30 * fmax(0.15, (0.55 + 0.45 * sun_cos));
+                    double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
                     int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
                     int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
                     int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
