@@ -6111,7 +6111,8 @@ void draw_cons_lines()
     {
         for (l = 0; l < n; l++)
         {
-            if (!belongs_to_active_vantage(constellations[l]))
+            // if (!belongs_to_active_vantage(constellations[l]))
+            if (constellations[l].vantage.squared_magnitude())
             {
                 continue;
             }

@@ -752,7 +752,7 @@ bool download_file(std::string URL, std::string save_path)
     return true;
 }
 
-bool check_and_download_clouds(const std::string& URL, const std::string& save_path)
+bool check_and_download_clouds(const std::string& URL, const std::string& save_path, bool static_clouds)
 {
     if (radio_silence || URL.empty())
     {
@@ -785,7 +785,7 @@ bool check_and_download_clouds(const std::string& URL, const std::string& save_p
         }
     }
 
-    if (file_exists(save_path.c_str()) && (now - last_time < kMinRefreshSeconds) && (now >= last_time))
+    if (file_exists(save_path.c_str()) && (((now - last_time < kMinRefreshSeconds) && (now >= last_time)) || static_clouds))
     {
         return false;
     }
@@ -805,7 +805,7 @@ bool check_and_download_clouds(const std::string& URL, const std::string& save_p
 
 bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)
 {
-    return check_and_download_clouds(URL, save_path);
+    return check_and_download_clouds(URL, save_path, false);
 }
 
 // Splits one line on its commas, honouring the quoting the CSV convention gives a field that

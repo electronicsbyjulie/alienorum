@@ -51,7 +51,7 @@ void load_textures(CelestialObject* cel)
             if (p->cloud_map_url.size())
             {
                 prefer_png = (p->cloud_map_url.size() >= 4 && !strcasecmp(p->cloud_map_url.substr(p->cloud_map_url.size() - 4).c_str(), ".png"));
-                check_and_download_clouds(p->cloud_map_url, prefer_png ? cloud_png : cloud_jpg);
+                check_and_download_clouds(p->cloud_map_url, prefer_png ? cloud_png : cloud_jpg, p->static_clouds);
             }
         }
 

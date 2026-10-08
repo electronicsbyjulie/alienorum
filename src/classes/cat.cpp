@@ -4696,6 +4696,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
             try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
+            try { pl.at("CloudsStatic").get_to(p->static_clouds); } catch (...) { ; }
             try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
             try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
             try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
@@ -4809,7 +4810,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                         if (!strcmp(mapkeys[j], "CloudMap"))
                         {
                             p->cloud_map_url = mapurl;
-                            check_and_download_clouds(mapurl, destfname);
+                            check_and_download_clouds(mapurl, destfname, p->static_clouds);
                         }
                         else if (!file_exists(destfname.c_str()))
                         {
