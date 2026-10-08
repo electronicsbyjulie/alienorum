@@ -530,11 +530,10 @@ TEST_F(ExoConsTest, Generate47UrsaeMajoris_CriteriaVerification)
 
     for (const auto& c : generated)
     {
-        // Must be named after an IAU constellation
-        const auto* def = ExoConsGenerator::find_iau_def(c.abbrev);
-        EXPECT_NE(def, nullptr);
-        EXPECT_EQ(c.name, def->name);
-        EXPECT_EQ(c.genitive, def->genitive);
+        // Constellation has scientific/custom name, abbreviation, and genitive
+        EXPECT_FALSE(c.name.empty());
+        EXPECT_FALSE(c.abbrev.empty());
+        EXPECT_FALSE(c.genitive.empty());
 
         for (const auto& cl : c.lines)
         {
@@ -1024,15 +1023,10 @@ TEST_F(ExoConsTest, HamalConstellationsFormConnectedShapesWithoutStraySingleLine
     EXPECT_GE(generated.size(), 50u);
 
     int isolated_single_lines_count = 0;
-    const Constellation* and_cons = nullptr;
 
     for (const auto& c : generated)
     {
         EXPECT_GE(c.lines.size(), 3u);
-        if (c.abbrev == "And")
-        {
-            and_cons = &c;
-        }
 
         std::unordered_map<Star*, std::vector<Star*>> adj;
         for (const auto& cl : c.lines)
@@ -1095,44 +1089,49 @@ TEST_F(ExoConsTest, HamalConstellationsFormConnectedShapesWithoutStraySingleLine
         mirach = get_star("Bet And");
     }
     ASSERT_NE(mirach, nullptr);
-    ASSERT_NE(and_cons, nullptr);
-
-    bool mirach_in_and = false;
-    int mirach_comp_stars = 0;
-
-    std::unordered_map<Star*, std::vector<Star*>> and_adj;
-    for (const auto& cl : and_cons->lines)
+    const Constellation* mirach_cons = nullptr;
+    for (const auto& c : generated)
     {
-        and_adj[cl.a].push_back(cl.b);
-        and_adj[cl.b].push_back(cl.a);
-        if (cl.a == mirach || cl.b == mirach)
+        for (const auto& cl : c.lines)
         {
-            mirach_in_and = true;
+            if (cl.a == mirach || cl.b == mirach)
+            {
+                mirach_cons = &c;
+                break;
+            }
+        }
+        if (mirach_cons)
+        {
+            break;
         }
     }
+    ASSERT_NE(mirach_cons, nullptr);
 
-    EXPECT_TRUE(mirach_in_and);
-
-    if (mirach_in_and)
+    int mirach_comp_stars = 0;
+    std::unordered_map<Star*, std::vector<Star*>> mirach_adj;
+    for (const auto& cl : mirach_cons->lines)
     {
-        std::unordered_set<Star*> visited;
-        std::vector<Star*> q;
-        q.push_back(mirach);
-        visited.insert(mirach);
+        mirach_adj[cl.a].push_back(cl.b);
+        mirach_adj[cl.b].push_back(cl.a);
+    }
 
-        while (!q.empty())
+    std::unordered_set<Star*> visited;
+    std::vector<Star*> q;
+    q.push_back(mirach);
+    visited.insert(mirach);
+
+    while (!q.empty())
+    {
+        Star* curr = q.back();
+        q.pop_back();
+        mirach_comp_stars++;
+
+        for (Star* nbr : mirach_adj[curr])
         {
-            Star* curr = q.back();
-            q.pop_back();
-            mirach_comp_stars++;
-
-            for (Star* nbr : and_adj[curr])
+            if (!visited.count(nbr))
             {
-                if (!visited.count(nbr))
-                {
-                    visited.insert(nbr);
-                    q.push_back(nbr);
-                }
+                visited.insert(nbr);
+                q.push_back(nbr);
             }
         }
     }
@@ -1275,6 +1274,78 @@ TEST_F(ExoConsTest, GenerateConstellationsDurationBenchmark)
     EXPECT_GE(generated.size(), 50u);
     EXPECT_LT(elapsed_ms, 5000);
 }
+TEST_F(ExoConsTest, LineSeparationFromOtherConstellations)
+{
+    Star* uma47 = get_star("47 Ursae Majoris");
+    if (!uma47)
+    {
+        uma47 = get_star("47 UMa");
+    }
+    ASSERT_NE(uma47, nullptr);
 
+    std::vector<Constellation> generated;
+    ExoConsGenerator::generate_constellations(uma47, generated);
+    ASSERT_GE(generated.size(), 50u);
 
+    Point vantage_pt = uma47->location;
+
+    // Collect connected stars per constellation
+    std::vector<std::unordered_set<Star*>> connected_stars(generated.size());
+    for (size_t i = 0; i < generated.size(); i++)
+    {
+        for (const auto& cl : generated[i].lines)
+        {
+            connected_stars[i].insert(cl.a);
+            connected_stars[i].insert(cl.b);
+        }
+    }
+
+    // Verify: Lines should not connect any star that is less than half the line length
+    // from a connected star of a different constellation.
+    for (size_t i = 0; i < generated.size(); i++)
+    {
+        for (const auto& cl : generated[i].lines)
+        {
+            Point pa = (Point)cl.a->location - vantage_pt;
+            Point pb = (Point)cl.b->location - vantage_pt;
+            double len_a = pa.magnitude();
+            double len_b = pb.magnitude();
+            if (len_a < 1e-9 || len_b < 1e-9)
+            {
+                continue;
+            }
+            Point ua = pa * (1.0 / len_a);
+            Point ub = pb * (1.0 / len_b);
+            double cos_ang = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
+            double len_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * 180.0 / _pi;
+            double half_len = 0.5 * len_deg;
+
+            for (size_t j = 0; j < generated.size(); j++)
+            {
+                if (i == j)
+                {
+                    continue;
+                }
+                for (Star* other : connected_stars[j])
+                {
+                    Point po = (Point)other->location - vantage_pt;
+                    double len_o = po.magnitude();
+                    if (len_o < 1e-9)
+                    {
+                        continue;
+                    }
+                    Point uo = po * (1.0 / len_o);
+
+                    double cos_a = ua.x * uo.x + ua.y * uo.y + ua.z * uo.z;
+                    double cos_b = ub.x * uo.x + ub.y * uo.y + ub.z * uo.z;
+                    double dist_a = acos(std::max(-1.0, std::min(1.0, cos_a))) * 180.0 / _pi;
+                    double dist_b = acos(std::max(-1.0, std::min(1.0, cos_b))) * 180.0 / _pi;
+
+                    EXPECT_GE(dist_a, half_len - 1e-4);
+                    EXPECT_GE(dist_b, half_len - 1e-4);
+                }
+            }
+        }
+    }
+}
 
