@@ -909,6 +909,124 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObject** cels, int max, int& offset)
+{
+    char field[32];
+    uint32_t HIP;
+    Star *s = nullptr;
+
+    //   1-  6  I6    ---      HIP      Identifier (HIP)                         (D01)
+    read_field_onebased(buffer, 1, 6, field);
+    HIP = atoi(field);
+
+    Star* A = nullptr;
+    if (hipcache && HIP <= MAX_HIP)
+    {
+        A = hipcache[HIP];
+        if (A && (A->seqno < 0 || A->seqno >= ncelobjs || cels[A->seqno] != A))
+        {
+            A = hipcache[HIP] = nullptr;
+        }
+    }
+    if (!A)
+    {
+        for (int i = 0; cels[i]; i++)
+        {
+            if (cels[i]->typeclass() == class_star && ((Star*)cels[i])->HIP == HIP)
+            {
+                A = (Star*)cels[i];
+                if (hipcache && HIP <= MAX_HIP)
+                {
+                    hipcache[HIP] = A;
+                }
+                break;
+            }
+        }
+    }
+    if (!A)
+    {
+        return false;
+    }
+
+    A->set_component('A', A);
+
+    s = A->multisys->get_member('B');
+
+    if (!s)
+    {
+        s = new Star();
+        append_cel(s);
+        offset++;
+        s->absolute_magnitude = 1e29;
+    }
+    s->make_companion_of(A, 'B');
+    s->epoch = J2000 + (1991.25 - 2000);
+
+    //   8- 17  F10.4 d        P        Orbital period                           (DO2)
+    read_field_onebased(buffer, 8, 17, field);
+    s->orbit->period = atof(field) * oneday;
+
+    //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
+    read_field_onebased(buffer, 19, 29, field);
+    s->orbit->epoch = 2440000 + atof(field);
+
+    //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
+    read_field_onebased(buffer, 31, 38, field);
+    s->orbit->semimajor_axis = (atof(field)/206264806) * s->distance;
+
+    //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
+    read_field_onebased(buffer, 40, 45, field);
+    s->orbit->eccentricity = atof(field);
+
+    //  47- 52  F6.2  deg      w       *[0,360] Argument of periastron           (DO6)
+    read_field_onebased(buffer, 47, 52, field);
+    s->orbit->arg_periapsis = atof(field) * fiftyseventh;
+
+    //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
+    read_field_onebased(buffer, 54, 59, field);
+    double inclination = atof(field) * fiftyseventh;
+    s->orbit->inclination = A->obliquity = 0;
+    s->orbit->heliocentric_inclination = inclination;
+
+    //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
+    read_field_onebased(buffer, 61, 66, field);
+    double node = atof(field) * fiftyseventh;
+    s->orbit->ascending_node = A->obliquity = 0;
+    s->orbit->heliocentric_node = node;
+
+    A->known_poles = true;
+    A->obliquity = 0;
+    A->equinox = 0;
+    if (!A->location.system_center.magnitude())
+    {
+        A->location.system_center = Point::from_ra_dec(A->right_ascension, A->declination, A->distance);
+    }
+    A->location.local_system_plane = system_plane_from_incl_and_node(inclination, node, A->location.system_center);
+    A->location.orbital_plane = A->location.local_system_plane;
+    A->location.equatorial_plane = A->location.local_system_plane;
+    A->lock_system_plane = true;
+    A->lock_equatorial_plane = true;
+
+    s->location = A->location;
+    s->location.local_system_plane = A->location.local_system_plane;
+    s->location.orbital_plane = A->location.local_system_plane;
+    s->location.equatorial_plane = A->location.equatorial_plane;
+    s->lock_system_plane = true;
+    s->lock_equatorial_plane = true;
+    s->known_poles = true;
+    s->obliquity = 0;
+    s->equinox = 0;
+
+    s->distance_known = true;
+    s->apparent_magnitude = 11;         // placeholder
+    if (s->absolute_magnitude > 1e28)
+    {
+        s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
+    }
+
+    return true;
+}
+
 int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 {
     std::string path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_main.dat";
@@ -1293,73 +1411,14 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
     while (fgets(buffer, 1020, fp))
     {
-        //   1-  6  I6    ---      HIP      Identifier (HIP)                         (D01)
-        read_field_onebased(buffer, 1, 6, field);
-        HIP = atoi(field);
-
-        Star* A = hipcache[HIP];
-        if (!A) continue;
-
-        A->set_component('A', A);
-
-        s = A->multisys->get_member('B');
-
-        if (!s)
+        if (load_Hipparcos_orbit_line(buffer, cels, max, offset))
         {
-            s = new Star();
-            append_cel(s);
-            offset++;
-            s->absolute_magnitude = 1e29;
+            num_read++;
+            if (num_read >= max-4)
+            {
+                return num_read;
+            }
         }
-        s->make_companion_of(A, 'B');
-        s->epoch = J2000 + (1991.25 - 2000);
-
-        //   8- 17  F10.4 d        P        Orbital period                           (DO2)
-        read_field_onebased(buffer, 8, 17, field);
-        s->orbit->period = atof(field) * oneday;
-
-        //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
-        read_field_onebased(buffer, 19, 29, field);
-        s->orbit->epoch = 2440000 + atof(field);
-
-        //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
-        read_field_onebased(buffer, 31, 38, field);
-        s->orbit->semimajor_axis = (atof(field)/206264806) * s->distance;
-
-        //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
-        read_field_onebased(buffer, 40, 45, field);
-        s->orbit->eccentricity = atof(field);
-
-        //  47- 52  F6.2  deg      w       *[0,360] Argument of periastron           (DO6)
-        read_field_onebased(buffer, 47, 52, field);
-        s->orbit->arg_periapsis = atof(field) * fiftyseventh;
-
-        //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
-        read_field_onebased(buffer, 54, 59, field);
-        double inclination = atof(field) * fiftyseventh;
-        s->orbit->inclination = A->obliquity = 0;
-        s->orbit->heliocentric_inclination = inclination;
-
-        //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
-        read_field_onebased(buffer, 61, 66, field);
-        double node = atof(field) * fiftyseventh;
-        s->orbit->ascending_node = A->obliquity = 0;
-        s->orbit->heliocentric_node = node;
-
-        A->location.local_system_plane = system_plane_from_incl_and_node(inclination, node, A->location.system_center);
-        A->lock_system_plane = true;
-
-        // A->update_location(J2000_TIME_T);
-        s->location = A->location;
-        s->distance_known = true;
-        A->known_poles = true;
-        s->known_poles = true;
-
-        s->apparent_magnitude = 11;         // placeholder
-        if (s->absolute_magnitude > 1e28) s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
-
-        num_read++;
-        if (num_read >= max-4) return num_read;
     }
 
     fclose(fp);
@@ -5760,19 +5819,31 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->center = A;
             s->origcenname = A->name;
 
-            A->update_location(simnow);
-            if (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node)
+            A->known_poles = true;
+            A->obliquity = 0;
+            A->equinox = 0;
+            if (!A->location.system_center.magnitude())
             {
-                if (!A->lock_system_plane)
-                {
-                    A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane
-                                                   = system_plane_from_incl_and_node(s->orbit->heliocentric_inclination ?: half_pi,
-                                                           s->orbit->heliocentric_node, A->location.system_center);
-                    // A->lock_system_plane = true;
-                }
-
-                s->known_poles = A->known_poles = true;
+                A->location.system_center = Point::from_ra_dec(A->right_ascension, A->declination, A->distance);
             }
+            A->location.local_system_plane = system_plane_from_incl_and_node(
+                s->orbit->heliocentric_inclination,
+                s->orbit->heliocentric_node,
+                A->location.system_center);
+            A->location.orbital_plane = A->location.local_system_plane;
+            A->location.equatorial_plane = A->location.local_system_plane;
+            A->lock_system_plane = true;
+            A->lock_equatorial_plane = true;
+
+            s->location = A->location;
+            s->location.local_system_plane = A->location.local_system_plane;
+            s->location.orbital_plane = A->location.local_system_plane;
+            s->location.equatorial_plane = A->location.equatorial_plane;
+            s->lock_system_plane = true;
+            s->lock_equatorial_plane = true;
+            s->known_poles = true;
+            s->obliquity = 0;
+            s->equinox = 0;
         }
 
         if (!(k & 0xff))

@@ -989,9 +989,19 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     {
         Point orbit_pole = yaxis;
         orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), I);
-        if (crp) orbit_pole = rotate3D(orbit_pole, center, crp->v, -crp->a);
-        else orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+        if (crp)
+        {
+            orbit_pole = rotate3D(orbit_pole, center, crp->v, -crp->a);
+        }
+        else
+        {
+            orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+        }
         location.orbital_plane = align_points_3d(orbit_pole, yaxis, center);
+    }
+    else if (!location.orbital_plane.a && !location.orbital_plane.v.magnitude())
+    {
+        location.orbital_plane = location.local_system_plane;
     }
 
     // Precess the equinox
