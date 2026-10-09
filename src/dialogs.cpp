@@ -573,7 +573,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             {
                 ImGui::Text("%s %s%.6f", "Lat: ", (viewer_lat >= 0) ? "+" : "", viewer_lat*fiftyseven );
                 ImGui::Text("%s %s%.6f", "Lon:", (viewer_lon >= 0) ? "+" : "", viewer_lon*fiftyseven );
-                ImGui::Text("Eye: %.1f cm", viewer_eye_height * 100.0);
+                // ImGui::Text("Eye: %.1f cm", viewer_eye_height * 100.0);
             }
         }
     }
