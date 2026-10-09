@@ -279,7 +279,11 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     Star *s = nullptr;
     double density = mnrk ? (mass / sphere_volume(volumetric_mean_radius) * 1e-6) : 0;
     if (density) cached_density = density;
-    else if (cached_density) density = cached_density;
+    else if (cached_density)
+    {
+        density = cached_density;
+        mnrk = true;
+    }
 
     /* if (!strcmp(name, "K2-309 Ad"))
         std::cout << name << " has mass " << mass << " vs. rocky cutoff " << rocky_mass_cutoff

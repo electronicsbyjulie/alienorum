@@ -73,6 +73,7 @@ using json = nlohmann::json;
 #define lavaworld_rock_rain 1
 #define lavaworld_mineral_sky 1
 #define lavaworld_rock_clouds 1
+#define lavaworld_rock_cloud_complexity 3
 
 #define lunar_mass 7.349E+22
 #define earth_mass 5.97217e+27

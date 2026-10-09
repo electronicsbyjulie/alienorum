@@ -7153,11 +7153,24 @@ static void draw_lavaworld_rock_clouds(Planet *p)
             int cb = (int)(cb_top * (1.0 - under_lit) + cb_under * under_lit);
             int ca = (int)(50 + 35 * under_lit);
 
+            #if lavaworld_rock_cloud_complexity <= 2
             ImU32 puff_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
             ImU32 puff_core_col = rgba_apply_redlight(IM_COL32((int)fmin(255.0, cr * 1.15), (int)fmin(255.0, cg * 1.15), cb, (int)(ca * 1.35)));
 
-            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), pr, puff_col, 16);
-            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), pr * 0.55f, puff_core_col, 16);
+            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), pr, puff_col, 32);
+            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), pr * 0.55f, puff_core_col, 32);
+            #else
+            double inv_plex = 1.0 / lavaworld_rock_cloud_complexity;
+            ca *= inv_plex;
+            for (int pi = 0; pi < lavaworld_rock_cloud_complexity; pi++)
+            {
+                double ofmax = (double)pi * inv_plex;
+                double lpr = pr * (1.0 - 0.44 * ofmax);
+                double rgmult = 1.0 + 0.15 * ofmax, amult = 1.0 + 0.35 * ofmax;
+                ImU32 puff_col = rgba_apply_redlight(IM_COL32((int)fmin(255.0, cr * rgmult), (int)fmin(255.0, cg * rgmult), cb, (int)(ca * amult)));
+                ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), lpr, puff_col, 32);
+            }
+            #endif
         }
     }
 }
