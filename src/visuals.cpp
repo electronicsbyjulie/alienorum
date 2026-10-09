@@ -4,6 +4,7 @@
 #include "loaders.h"
 #include "sphere_impostor.h"
 #include "gputex.h"
+#include "sunclock_gpu.h"
 #include "classes/exocons.h"
 
 using namespace alienorum;
@@ -4277,15 +4278,35 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     }
 }
 
+static void compute_sunclock_rot_matrix(CelestialObject *cel, double rot_mat[16])
+{
+    Point e0 = rotate3D(Point(1, 0, 0), center, yaxis, -cel->timeofday());
+    e0 = rotate3D(e0, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    Point e1 = rotate3D(Point(0, 1, 0), center, yaxis, -cel->timeofday());
+    e1 = rotate3D(e1, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    Point e2 = rotate3D(Point(0, 0, 1), center, yaxis, -cel->timeofday());
+    e2 = rotate3D(e2, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    rot_mat[0]  = e0.x; rot_mat[1]  = e0.y; rot_mat[2]  = e0.z; rot_mat[3]  = 0.0;
+    rot_mat[4]  = e1.x; rot_mat[5]  = e1.y; rot_mat[6]  = e1.z; rot_mat[7]  = 0.0;
+    rot_mat[8]  = e2.x; rot_mat[9]  = e2.y; rot_mat[10] = e2.z; rot_mat[11] = 0.0;
+    rot_mat[12] = 0.0;  rot_mat[13] = 0.0;  rot_mat[14] = 0.0;  rot_mat[15] = 1.0;
+}
+
 ViewMode last_vmode = vm_spaceship;
 void draw_sunclock()
 {
     if (whereami < 0) return;
 
     int i;
-    if (last_vmode != view_mode) for (i=0; cels[i]; i++)
+    if (last_vmode != view_mode)
     {
-        cels[i]->drawnx = cels[i]->drawny = -1e9;
+        for (i=0; cels[i]; i++)
+        {
+            cels[i]->drawnx = cels[i]->drawny = -1e9;
+        }
     }
 
     CelestialObject *cel = cels[whereami];
@@ -4338,100 +4359,170 @@ void draw_sunclock()
     else
         equatorial_radius = cel->get_equatorial_radius();
 
+    bool gpu_rendered = false;
+    SunClockGpuInput sclk_in = {};
+    sclk_in.sclk_scale = sclk_scale;
+    sclk_in.azimuth = azimuth;
+    sclk_in.altitude = altitude;
+    sclk_in.zoom = zoom;
 
-    for (y=dispcy; y>=-dispcy; y-=step)
+    sclk_in.day_map_texture = map ? gputex_for(map) : 0;
+    sclk_in.night_map_texture = nmap ? gputex_for(nmap) : 0;
+    sclk_in.bump_map_texture = map ? gputex_bump_for(map) : 0;
+
+    sclk_in.fallback_color[0] = prgb.r / 255.0;
+    sclk_in.fallback_color[1] = prgb.g / 255.0;
+    sclk_in.fallback_color[2] = prgb.b / 255.0;
+
+    sclk_in.daylight_tint[0] = daylight.red;
+    sclk_in.daylight_tint[1] = daylight.green;
+    sclk_in.daylight_tint[2] = daylight.blue;
+
+    sclk_in.self_luminous = self_luminous;
+    sclk_in.redlight_mode = redlight_mode;
+
+    if (dwh)
     {
-        dy = dispcy + y;
-        lat = lat_from_y(y);
-        if (fabs(lat) > half_pi) continue;
+        sclk_in.body_axes[0] = ((Moon*)cel)->width * 0.5;
+        sclk_in.body_axes[1] = ((Moon*)cel)->height * 0.5;
+        sclk_in.body_axes[2] = ((Moon*)cel)->depth * 0.5;
+    }
+    else
+    {
+        sclk_in.body_axes[0] = equatorial_radius;
+        sclk_in.body_axes[1] = equatorial_radius * obl;
+        sclk_in.body_axes[2] = equatorial_radius;
+    }
 
-        for (x=-halfwid; x<halfwid; x+=step)
+    compute_sunclock_rot_matrix(cel, sclk_in.rot_matrix);
+
+    Point to_light = lightcen ? (lightcen->location.local_position - cel->location.local_position) : Point();
+    double d_light = to_light.magnitude();
+    if (d_light > 0)
+    {
+        sclk_in.light_dir[0] = to_light.x / d_light;
+        sclk_in.light_dir[1] = to_light.y / d_light;
+        sclk_in.light_dir[2] = to_light.z / d_light;
+    }
+    else
+    {
+        sclk_in.light_dir[0] = 0.0;
+        sclk_in.light_dir[1] = 0.0;
+        sclk_in.light_dir[2] = 1.0;
+    }
+    sclk_in.light_radius = sc_light_r;
+    sclk_in.light_pos_rel[0] = to_light.x;
+    sclk_in.light_pos_rel[1] = to_light.y;
+    sclk_in.light_pos_rel[2] = to_light.z;
+
+    sclk_in.num_casters = std::min(n_sc_casters, max_sunclock_casters);
+    for (i = 0; i < sclk_in.num_casters; i++)
+    {
+        Point rel_caster = sc_casters[i].center - cel->location.local_position;
+        sclk_in.casters[i].dx = rel_caster.x;
+        sclk_in.casters[i].dy = rel_caster.y;
+        sclk_in.casters[i].dz = rel_caster.z;
+        sclk_in.casters[i].radius = sc_casters[i].radius;
+    }
+
+    gpu_rendered = queue_sunclock_gpu(sclk_in, dispcx, dispcy);
+
+    if (!gpu_rendered)
+    {
+        for (y=dispcy; y>=-dispcy; y-=step)
         {
-            dx = dispcx + x;
-            lon = lon_from_x(x);
-            elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
-            land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
+            dy = dispcy + y;
+            lat = lat_from_y(y);
+            if (fabs(lat) > half_pi) continue;
 
-            if (dwh)
+            for (x=-halfwid; x<halfwid; x+=step)
             {
-                land.x *= ((Moon*)cel)->width  * .5;
-                land.y *= ((Moon*)cel)->height * .5;
-                land.z *= ((Moon*)cel)->depth  * .5;
-                if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
-            }
-            else land.y *= obl;
-            land = rotate3D(land, center, yaxis, -cel->timeofday());
-            land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                dx = dispcx + x;
+                lon = lon_from_x(x);
+                elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
+                land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
-            land += cel->location.local_position;
-            // is_night was left alone on this branch, so a star's own sun clock read whatever the
-            // previous pixel -- or, on the first pixel, the stack -- had put there, and then
-            // blended the night map by it.
-            if (self_luminous) { is_day = 1; is_night = 0; }
-            else
-            {
-                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
-                if (fabs(theta) < half_pi)
+                if (dwh)
                 {
-                    cos_theta = cos(theta);
-                    is_day = fmin(1, pow(cos_theta, 1.0/3.0));
-                    is_night = 0;
+                    land.x *= ((Moon*)cel)->width  * .5;
+                    land.y *= ((Moon*)cel)->height * .5;
+                    land.z *= ((Moon*)cel)->depth  * .5;
+                    if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
                 }
-                // TODO: Twilight
+                else land.y *= obl;
+                land = rotate3D(land, center, yaxis, -cel->timeofday());
+                land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+                land += cel->location.local_position;
+                // is_night was left alone on this branch, so a star's own sun clock read whatever the
+                // previous pixel -- or, on the first pixel, the stack -- had put there, and then
+                // blended the night map by it.
+                if (self_luminous) { is_day = 1; is_night = 0; }
                 else
                 {
-                    is_day = 0;
-                    is_night = 1;
+                    theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+                    if (fabs(theta) < half_pi)
+                    {
+                        cos_theta = cos(theta);
+                        is_day = fmin(1, pow(cos_theta, 1.0/3.0));
+                        is_night = 0;
+                    }
+                    // TODO: Twilight
+                    else
+                    {
+                        is_day = 0;
+                        is_night = 1;
+                    }
+
+                    // The eclipse itself, asked per point of the map rather than per world, which is
+                    // the whole reason it comes out as a moving spot with a soft rim instead of a
+                    // uniform dimming. Only the daylit side can lose anything: a shadow crossing the
+                    // night side has nothing to take away.
+                    if (n_sc_casters && is_day > 0)
+                    {
+                        double obsc = point_obscuration(land, sc_light_pos, sc_light_r,
+                            sc_casters, n_sc_casters);
+                        if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
+                    }
                 }
 
-                // The eclipse itself, asked per point of the map rather than per world, which is
-                // the whole reason it comes out as a moving spot with a soft rim instead of a
-                // uniform dimming. Only the daylit side can lose anything: a shadow crossing the
-                // night side has nothing to take away.
-                if (n_sc_casters && is_day > 0)
+                if (map) rgb = map->color_at(lat, lon);
+                else rgb = prgb;
+
+                if (nmap)
                 {
-                    double obsc = point_obscuration(land, sc_light_pos, sc_light_r,
-                        sc_casters, n_sc_casters);
-                    if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
+                    nrgb = nmap->color_at(lat, lon);
                 }
-            }
+                else
+                {
+                    nrgb.r = rgb.r * 0.20;
+                    nrgb.g = rgb.g * 0.25;
+                    nrgb.b = rgb.b * 0.29;
+                }
 
-            if (map) rgb = map->color_at(lat, lon);
-            else rgb = prgb;
+                if (self_luminous)
+                {
+                    rgb.r *= is_day;
+                    rgb.g *= is_day;
+                    rgb.b *= is_day;
+                }
+                else
+                {
+                    rgb.r *= is_day * daylight.red;
+                    rgb.g *= is_day * daylight.green;
+                    rgb.b *= is_day * daylight.blue;
+                }
 
-            if (nmap)
-            {
-                nrgb = nmap->color_at(lat, lon);
-            }
-            else
-            {
-                nrgb.r = rgb.r * 0.20;
-                nrgb.g = rgb.g * 0.25;
-                nrgb.b = rgb.b * 0.29;
-            }
+                if (is_night)
+                {
+                    rgb.r += nrgb.r * is_night;
+                    rgb.g += nrgb.g * is_night;
+                    rgb.b += nrgb.b * is_night;
+                }
 
-            if (self_luminous)
-            {
-                rgb.r *= is_day;
-                rgb.g *= is_day;
-                rgb.b *= is_day;
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
+                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
             }
-            else
-            {
-                rgb.r *= is_day * daylight.red;
-                rgb.g *= is_day * daylight.green;
-                rgb.b *= is_day * daylight.blue;
-            }
-
-            if (is_night)
-            {
-                rgb.r += nrgb.r * is_night;
-                rgb.g += nrgb.g * is_night;
-                rgb.b += nrgb.b * is_night;
-            }
-
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
-                rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
         }
     }
 
