@@ -326,6 +326,7 @@ namespace alienorum
         int cel_rand();
         double cel_frand(double min, double max);
         double stellar_day();                       // solar day if from any of the Sun's planets
+        bool overcast = false;                      // e.g. Venus and Titan that never see clear sky.
 
         double epoch = J2000;                       // JD
         double absolute_magnitude = 0;
@@ -398,6 +399,7 @@ namespace alienorum
         double Roche_limit(CelestialObject *orbiter = nullptr);
         json to_json();
         bool from_json(json j);
+        void mark_all_maps_for_regen();
 
         bool operator<(const CelestialObject& other) const;
 

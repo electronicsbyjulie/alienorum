@@ -91,6 +91,7 @@ namespace alienorum
         static void start_generation_for(Star* sys_star);
         static void update_frame();
         static void generate_all_synchronous(Star* sys_star);
+        static bool save_current_vantage();
         static void save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss);
         static double calculate_sky_coverage(const std::vector<Point>& lined_star_dirs, int num_samples = EXOCONS_DEFAULT_SKY_SAMPLES);
         static bool arcs_intersect(const Point& a, const Point& b, const Point& c, const Point& d);

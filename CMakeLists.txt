@@ -102,6 +102,7 @@ add_executable(alienorum
 	src/inputs.cpp
 	src/loaders.cpp
 	src/sphere_impostor.cpp
+	src/sunclock_gpu.cpp
 	src/visuals.cpp
 	src/alienorum.cpp)
 

@@ -462,6 +462,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                 if (ImGui::Selectable(vmtext[n], is_selected))
                 {
                     view_mode = (ViewMode)n;
+                    if (view_mode == vm_system) statuswnd = false;
                     set_viewer_location_and_plane();
                     viewchanged = true;
                 }
@@ -551,11 +552,28 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                     set_viewer_location_and_plane();
                     viewchanged = true;
                 }
+
+                /*
+                // Leave this commented in case we want it later.
+                double eye_cm_edit = viewer_eye_height * 100.0;
+                ImGui::Text("%s", "Eye:");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(123);
+                if (ImGui::InputDouble("##eye_ht", &eye_cm_edit, 1.0, 10.0, "%.1f cm"))
+                {
+                    if (eye_cm_edit > 0.0)
+                    {
+                        viewer_eye_height = eye_cm_edit * 0.01;
+                        save_user_json();
+                        viewchanged = true;
+                    }
+                }*/
             }
             else
             {
                 ImGui::Text("%s %s%.6f", "Lat: ", (viewer_lat >= 0) ? "+" : "", viewer_lat*fiftyseven );
                 ImGui::Text("%s %s%.6f", "Lon:", (viewer_lon >= 0) ? "+" : "", viewer_lon*fiftyseven );
+                // ImGui::Text("Eye: %.1f cm", viewer_eye_height * 100.0);
             }
         }
     }
@@ -797,7 +815,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (view_mode == vm_sunclock && whereami >= 0)
                 ImGui::Text("Alt:      %.3f km",
                     (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
-            else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here));
+            else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here).c_str());
         }
         else if (cels[i]->typeclass() == class_comet)
         {
@@ -2062,15 +2080,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (vegetation_r < 0) vegetation_r = 0;
-                    if (vegetation_r > 255) vegetation_r = 255;
+                    if (p->vegetation_r < 0) p->vegetation_r = 0;
+                    if (p->vegetation_r > 255) p->vegetation_r = 255;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation R:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputInt("##edtvegr", &vegetation_r);
+                        ImGui::InputInt("##edtvegr", &p->vegetation_r);
                     }
 
                     ImGui::Text("%s", "Sulfur dioxide %");
@@ -2082,15 +2100,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (vegetation_g < 0) vegetation_g = 0;
-                    if (vegetation_g > 255) vegetation_g = 255;
+                    if (p->vegetation_g < 0) p->vegetation_g = 0;
+                    if (p->vegetation_g > 255) p->vegetation_g = 255;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation G:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputInt("##edtvegg", &vegetation_g);
+                        ImGui::InputInt("##edtvegg", &p->vegetation_g);
                     }
 
                     ImGui::Text("%s", "Hydrogen sulfide %");
@@ -2102,15 +2120,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (vegetation_b < 0) vegetation_b = 0;
-                    if (vegetation_b > 255) vegetation_b = 255;
+                    if (p->vegetation_b < 0) p->vegetation_b = 0;
+                    if (p->vegetation_b > 255) p->vegetation_b = 255;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation B:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputInt("##edtvegb", &vegetation_b);
+                        ImGui::InputInt("##edtvegb", &p->vegetation_b);
                     }
 
                     ImGui::Text("%s", "Carbon monoxide %");
@@ -2221,40 +2239,14 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Update"))
             {
-                cel->looked_for_maps = false;
-                cel->ignore_map_files = true;
-                if (cel->surf_map)
-                {
-                    cel->surf_map->mark_for_map_regen(cel);
-                }
-                if (cel->cloud_map)
-                {
-                    cel->cloud_map->mark_for_map_regen(cel);
-                }
-                if (cel->night_map)
-                {
-                    cel->night_map->mark_for_map_regen(cel);
-                }
+                cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
                 cel->rnd_seed = rand();
-                if (randomize_txgen) vegetation_r = vegetation_g = vegetation_b = 0;     // force regenerate
-                cel->looked_for_maps = false;
-                cel->ignore_map_files = true;
-                if (cel->surf_map)
-                {
-                    cel->surf_map->mark_for_map_regen(cel, true);
-                }
-                if (cel->cloud_map)
-                {
-                    cel->cloud_map->mark_for_map_regen(cel, true);
-                }
-                if (cel->night_map)
-                {
-                    cel->night_map->mark_for_map_regen(cel, true);
-                }
+                if (randomize_txgen) ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;     // force regenerate
+                cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Reseed"))
@@ -2578,7 +2570,7 @@ void draw_system_explorer(ImGuiIO& io)
             if (ImGui::Button("Gen. Fic. Moons##explored"))
             {
                 cel->rnd_seed = 0;          // force rerandomization.
-                vegetation_r = vegetation_g = vegetation_b = 0;
+                ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;
                 double A = sqrt(cel->orbit->period / oneday) / 4;
                 double B = sqrt(cel->mass / earth_mass);
                 double C = sqrt(A*B);
@@ -2685,10 +2677,10 @@ void draw_system_explorer(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
-bool onlysun = false, onlyplt = false;
+bool onlysun = false, onlyplt = false, onlyknp = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
-float neighbly = 25, lneighbly = 0;
+int neighbly = 25, lneighbly = 0, minpl = 1;
 void draw_stellar_neighborhood(ImGuiIO &io)
 {
     if (!cels[1]) return;
@@ -2696,12 +2688,23 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
     ImGui::Checkbox("Only Sunlike##", &onlysun);
     ImGui::SameLine();
-    ImGui::Checkbox("Must Have Planets##", &onlyplt);
+    ImGui::Checkbox(onlyplt ? "Must have at least##neighb_must_have_planets" : "Must have planets##neighb_must_have_planets", &onlyplt);
+    if (minpl < 1) minpl = 1;
+    if (onlyplt)
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputInt("##neighb_minpl", &minpl, 1);
+        ImGui::SameLine();
+        ImGui::Text("planet%s", (minpl==1) ? "" : "s");
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Known Poles##", &onlyknp);
     ImGui::SameLine();
     ImGui::Text("Cutoff:");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(67);
-    ImGui::InputFloat("##neighborhood_ly_cutoff", &neighbly);
+    ImGui::SetNextItemWidth(81);
+    ImGui::InputInt("##neighborhood_ly_cutoff", &neighbly, 5);
     ImGui::SameLine();
     ImGui::Text("l.y.");
 
@@ -2711,8 +2714,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     double r, m;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    ImGui::Text("%s", " Name                                Mag.        Sp. Type        Planets     Distance");
-    if (ImGui::BeginListBox("##neighblist", ImVec2(768, 16 * ImGui::GetTextLineHeightWithSpacing())))
+    ImGui::Text("%s", " Name                                Mag.   Sp. Type        Pl./HZ   Distance");
+    if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
         if (last_neighb_cen != mycenobj || fabs(lneighbly - neighbly) > 1e-29)
@@ -2762,7 +2765,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             i = neighb_celids[j];
             Star *s = (Star*)cels[i];
             if (onlysun && !s->is_sunlike()) continue;
-            if (onlyplt && !s->has_planets) continue;
+            if (onlyplt && (s->has_planets < minpl)) continue;
+            if (onlyknp && !s->known_poles) continue;
 
             stringstream line;
             line << cels[i]->name;
@@ -2777,15 +2781,21 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             }
             else line << "-";
             l = line.str().size();
-            if (l < 48) line << std::string(48-l, ' ');
+            if (l < 43) line << std::string(43-l, ' ');
 
             line << s->spectral_type;
             l = line.str().size();
-            if (l < 64) line << std::string(64-l, ' ');
+            if (l < 59) line << std::string(59-l, ' ');
 
-            if (s->has_planets) line << s->has_planets;
+            if (s->has_planets)
+            {
+                line << s->has_planets;
+                line << "/";
+                if (s->has_hz_planets) line << s->has_hz_planets;
+                else line << "-";
+            }
             l = line.str().size();
-            if (l < 76) line << std::string(76-l, ' ');
+            if (l < 68) line << std::string(68-l, ' ');
 
             if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
             else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";

@@ -808,6 +808,43 @@ bool CelestialObject::from_json(json j)
     return true;
 }
 
+void alienorum::CelestialObject::mark_all_maps_for_regen()
+{
+    looked_for_maps = false;
+    ignore_map_files = true;
+    merged_day_cloud_gen = merged_day_surf_gen = merged_night_cloud_gen = merged_night_map_gen = 0;
+    if (surf_map)
+    {
+        surf_map->mark_for_map_regen(this);
+    }
+    if (cloud_map)
+    {
+        cloud_map->mark_for_map_regen(this);
+    }
+    if (night_map)
+    {
+        if (type != lavaworld && !has_real_maps && typeclass() != class_star)
+        {
+            delete night_map;
+            night_map = nullptr;
+        }
+        else
+        {
+            night_map->mark_for_map_regen(this);
+        }
+    }
+    if (merged_day_map)
+    {
+        delete merged_day_map;
+        merged_day_map = nullptr;
+    }
+    if (merged_night_map)
+    {
+        delete merged_night_map;
+        merged_night_map = nullptr;
+    }
+}
+
 bool alienorum::CelestialObject::operator<(const CelestialObject &other) const          // Return true if this < other.
 {
     // Is same cenobj? If not, return cenobj comparison.
@@ -952,9 +989,19 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     {
         Point orbit_pole = yaxis;
         orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), I);
-        if (crp) orbit_pole = rotate3D(orbit_pole, center, crp->v, -crp->a);
-        else orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+        if (crp)
+        {
+            orbit_pole = rotate3D(orbit_pole, center, crp->v, -crp->a);
+        }
+        else
+        {
+            orbit_pole = rotate3D(orbit_pole, center, location.local_system_plane.v, -location.local_system_plane.a);
+        }
         location.orbital_plane = align_points_3d(orbit_pole, yaxis, center);
+    }
+    else if (!location.orbital_plane.a && !location.orbital_plane.v.magnitude())
+    {
+        location.orbital_plane = location.local_system_plane;
     }
 
     // Precess the equinox
@@ -2147,12 +2194,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
-        if (has_water && life_possible && randomize_txgen && !vegetation_r && !vegetation_g && !vegetation_b)
+        if (has_water && life_possible && randomize_txgen && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             RGB3 veg_color = generate_vegetation_color(&cel->rng);
-            vegetation_r = veg_color.r;
-            vegetation_g = veg_color.g;
-            vegetation_b = veg_color.b;
+            p->vegetation_r = veg_color.r;
+            p->vegetation_g = veg_color.g;
+            p->vegetation_b = veg_color.b;
         }
         if (has_water) inv_h2o_level = 1.0 / has_water;
 
@@ -2368,12 +2415,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 150 * bmult * r_weight);
                     }
                     else if (life_possible && T_local >= veg_min_temp
-                        && (vegetation_r || vegetation_g || vegetation_b)
+                        && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
                         && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
                     {   // Forests
-                        red_data[idx] = fmin(255, vegetation_r * r_weight);
-                        green_data[idx] = fmin(255, vegetation_g * r_weight);
-                        blue_data[idx] = fmin(255, vegetation_b * r_weight);
+                        red_data[idx] = fmin(255, p->vegetation_r * r_weight);
+                        green_data[idx] = fmin(255, p->vegetation_g * r_weight);
+                        blue_data[idx] = fmin(255, p->vegetation_b * r_weight);
                     }
                     else if (T_local > water_freezing)
                     {   // Mountains
@@ -3403,10 +3450,18 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
     if (lblue ) delete[] lblue;
     resample_bump_data(cel->fictitious_map_height);
     generate_rocky_map(cel);
-    if (cel->type == lavaworld && !cel->night_map)
+    if (cel->type == lavaworld)
     {
-        cel->night_map = new Map(cel);
+        if (!cel->night_map)
+        {
+            cel->night_map = new Map(cel);
+        }
         cel->night_map->generate_lava_map(cel);
+    }
+    else if (cel->night_map && !cel->has_real_maps && cel->typeclass() != class_star)
+    {
+        delete cel->night_map;
+        cel->night_map = nullptr;
     }
 }
 
@@ -3424,7 +3479,7 @@ void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
         delete[] old_bump;
     }
 
-    if (bump_data && uses_rocky_map(cel->type))
+    if (this == cel->surf_map && bump_data && uses_rocky_map(cel->type))
     {
         mcel = cel;
         std::thread tregen(_resample_bump_regen_rocky, this, cel);

@@ -168,7 +168,7 @@ const std::time_t J2000_TIME_T = 946684800;
 
 #define mouse_drag_threshold 3
 
-#define NUM_VIEWMODES 4
+#define NUM_VIEWMODES 5
 enum ViewMode
 {
     vm_spaceship = 0,
@@ -226,7 +226,7 @@ bool file_exists(const char* fname);
 std::time_t file_age(const char* fname);                                    // seconds
 
 bool download_file(std::string URL, std::string save_path);
-bool check_and_download_clouds(const std::string& URL, const std::string& save_path);
+bool check_and_download_clouds(const std::string& URL, const std::string& save_path, bool static_clouds = false);
 bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path);
 std::vector<std::string> parse_csv_row(const char* data);
 time_t from_iso_string(std::string iso_string, const char* format = nullptr);
@@ -297,7 +297,7 @@ extern DST_Rule viewer_dst, viewer_home_dst;
 extern int ncelobjs, selected, trackidx, cursor_size, circle_size, xaorngsim, objinfwnd_hei, timeout_ms, lmx, lmy, whereami, iamhome, took_off_from,
     tookoff_countdown, nsatobjs, is_an_obj_under_cursor, planets_lblcut, celidx_sel_in_sysxplor, first_sat, inside_galaxy_idx;
 extern double azimuth, altitude, spin, global_gamma, zoom, mag_limit_adjusted, vm, vmfr, obj_magn_under_cursor, velocmag, JDnow, lbllsys_mass_lim,
-    neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz, viewer_home_tz, viewer_gamma, dev_dial, dev_dial_step;
+    neighb_rthresh, viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz, viewer_home_tz, viewer_gamma, viewer_eye_height, dev_dial, dev_dial_step;
 extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, show_orbits, lbl_localsys, show_sats, show_axes, satview_upsidedown, show_dev_dial,
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing,
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain, show_clouds,
@@ -311,7 +311,7 @@ extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
 extern float has_water, veg_min_temp, veg_max_temp;
-extern int wkday, menu_ht, cbo_edt_units, npointedstar, vegetation_r, vegetation_g, vegetation_b;
+extern int wkday, menu_ht, cbo_edt_units, npointedstar;
 extern const char* compass[16];
 extern PerlinNoise pn;
 

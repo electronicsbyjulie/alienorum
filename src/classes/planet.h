@@ -46,6 +46,8 @@ namespace alienorum
         int asteroid_no = 0;                                // Zero if major planet or moon.
         bool lock_type = false;
         std::string cloud_map_url;
+        bool static_clouds = true;
+        int vegetation_r=0, vegetation_g=0, vegetation_b=0;
 
         void setup_atm_ring_props();
         void apply_cosmic_shoreline();

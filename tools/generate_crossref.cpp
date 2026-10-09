@@ -262,6 +262,7 @@ struct StarRecord
     int soles_index = -1;
     bool is_soles = false;
     char component = 0;
+    int host_idx = -1;
 };
 
 int main()
@@ -388,16 +389,52 @@ int main()
         std::string w;
         while (ss >> w) words.push_back(w);
 
-        if (words.size() >= 2 && words.back().size() == 1 && words.back()[0] >= 'B' && words.back()[0] <= 'Z')
+        if (words.size() >= 2 && words.back().size() == 1 && words.back()[0] >= 'B' && words.back()[0] <= 'Z' && words.back()[0] != 'T')
         {
             rec.component = words.back()[0];
             std::string h_id = "";
             for (size_t wi = 0; wi < words.size() - 1; wi++)
             {
-                if (wi > 0) h_id += " ";
+                if (wi > 0)
+                {
+                    h_id += " ";
+                }
                 h_id += words[wi];
             }
             rec.orig_host_id = h_id;
+        }
+
+        std::string prim_col = (l.size() >= 300) ? trim(l.substr(286, 14)) : "";
+        if (!prim_col.empty() && rec.orig_host_id.empty())
+        {
+            rec.orig_host_id = prim_col;
+        }
+
+        std::string star_name = (l.size() >= 54) ? trim(l.substr(15, 39)) : "";
+        if (rec.component == 0 && !star_name.empty())
+        {
+            if (star_name.size() >= 2 && star_name[star_name.size() - 2] == ' ' && star_name.back() >= 'B' && star_name.back() <= 'Z' && star_name.back() != 'T')
+            {
+                rec.component = star_name.back();
+            }
+            else
+            {
+                std::stringstream nss(star_name);
+                std::vector<std::string> nwords;
+                std::string nw;
+                while (nss >> nw)
+                {
+                    nwords.push_back(nw);
+                }
+                if (!nwords.empty() && nwords.back().size() == 1 && nwords.back()[0] >= 'B' && nwords.back()[0] <= 'Z' && nwords.back()[0] != 'T')
+                {
+                    rec.component = nwords.back()[0];
+                }
+            }
+        }
+        if (rec.component == 0 && !prim_col.empty())
+        {
+            rec.component = 'B';
         }
 
         double ra_deg = safe_stod(l.substr(55, 2)) * 15.0 + safe_stod(l.substr(58, 2)) * (15.0 / 60.0) + safe_stod(l.substr(61, 4)) * (15.0 / 3600.0);
@@ -479,7 +516,7 @@ int main()
 
         if (rec.hip > 0) hip_to_record_idx[rec.hip] = idx;
         if (rec.hd > 0) hd_to_record_idx[rec.hd] = idx;
-        if (rec.component == 0 && !rec.orig_id.empty())
+        if (!rec.orig_id.empty())
         {
             orig_host_to_star_idx[rec.orig_id] = idx;
         }
@@ -677,8 +714,8 @@ int main()
             }
             else
             {
-                // Fallback: look back up to 10 stars in soles_alienorum
-                for (int k = (int)i - 1; k >= 0 && k >= (int)i - 10; k--)
+                // Fallback: look back up to 15 stars in soles_alienorum
+                for (int k = (int)i - 1; k >= 0 && k >= (int)i - 15; k--)
                 {
                     if (all_stars[k].is_soles && all_stars[k].component == 0)
                     {
@@ -688,10 +725,20 @@ int main()
                 }
             }
 
-            if (host_idx >= 0 && !all_stars[host_idx].assigned_id.empty())
+            if (host_idx >= 0)
             {
-                r.assigned_id = all_stars[host_idx].assigned_id + " " + std::string(1, r.component);
-                companions_assigned++;
+                r.host_idx = host_idx;
+                int host_A_idx = host_idx;
+                if (all_stars[host_idx].component > 0 && all_stars[host_idx].host_idx >= 0)
+                {
+                    host_A_idx = all_stars[host_idx].host_idx;
+                }
+
+                if (!all_stars[host_A_idx].assigned_id.empty())
+                {
+                    r.assigned_id = all_stars[host_A_idx].assigned_id + " " + std::string(1, r.component);
+                    companions_assigned++;
+                }
             }
         }
     }
@@ -703,7 +750,7 @@ int main()
     std::map<std::string, std::vector<StarRecord>> cons_records;
     for (const auto& r : all_stars)
     {
-        if (r.vmag < 10.0 && !r.assigned_id.empty() && !r.cons.empty())
+        if (!r.assigned_id.empty() && !r.cons.empty())
         {
             cons_records[r.cons].push_back(r);
         }
@@ -711,13 +758,17 @@ int main()
 
     for (auto& [cons, recs] : cons_records)
     {
-        std::sort(recs.begin(), recs.end(), [](const StarRecord& a, const StarRecord& b) {
+        std::sort(recs.begin(), recs.end(), [](const StarRecord& a, const StarRecord& b)
+        {
             return a.vmag < b.vmag;
         });
 
         std::string filename = "catalogs/cross_ref/" + cons + ".dat";
         std::ofstream out(filename);
-        if (!out.is_open()) continue;
+        if (!out.is_open())
+        {
+            continue;
+        }
 
         out << "#Alienorum_ID  Gaia_Source_ID      TYC            HIP     HD      Gliese           Bayer_Flamsteed      Gould  G_Cons Vmag    C\n";
         for (const auto& r : recs)
@@ -757,11 +808,14 @@ int main()
 
     for (const auto& r : all_stars)
     {
-        if (!r.is_soles || r.soles_index < 0) continue;
+        if (!r.is_soles || r.soles_index < 0)
+        {
+            continue;
+        }
         std::string l = soles_lines[r.soles_index];
 
         std::string final_id = "";
-        if (r.vmag < 10.0 && !r.assigned_id.empty())
+        if (!r.assigned_id.empty())
         {
             final_id = r.assigned_id;
             updated_soles_under10++;
@@ -772,13 +826,38 @@ int main()
         }
 
         std::string id_col = final_id;
-        if (id_col.size() < 14) id_col += std::string(14 - id_col.size(), ' ');
-        else id_col = id_col.substr(0, 14);
+        if (id_col.size() < 14)
+        {
+            id_col += std::string(14 - id_col.size(), ' ');
+        }
+        else
+        {
+            id_col = id_col.substr(0, 14);
+        }
 
         if (l.size() >= 14)
         {
             l.replace(0, 14, id_col);
         }
+
+        if (r.component > 0 && r.host_idx >= 0 && !all_stars[r.host_idx].assigned_id.empty())
+        {
+            std::string host_id = all_stars[r.host_idx].assigned_id;
+            if (host_id.size() < 14)
+            {
+                host_id += std::string(14 - host_id.size(), ' ');
+            }
+            else
+            {
+                host_id = host_id.substr(0, 14);
+            }
+
+            if (l.size() >= 300)
+            {
+                l.replace(286, 14, host_id);
+            }
+        }
+
         soles_out << l << "\n";
     }
     soles_out.close();

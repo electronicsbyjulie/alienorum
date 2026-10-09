@@ -11,6 +11,65 @@
 #define panel_width 6
 #define panel_tilt 2
 
+// Terrain rock field tuning parameters
+#define ROCK_COUNT              512     // Number of rocks in the field
+#define ROCK_MIN_DIST           1.2     // Minimum rock distance from viewer (meters)
+#define ROCK_MAX_DIST           100     // Maximum rock distance from viewer (meters)
+#define ROCK_MIN_SIZE           0.06    // Minimum rock width (meters)
+#define ROCK_MAX_SIZE           1.85    // Maximum boulder width (meters)
+#define ROCK_PEBBLE_THRESH      3.5     // Screen pixel threshold below which rocks are drawn as pebbles
+#define ROCK_ASPECT_VENUS       0.28    // Height/width aspect ratio for Venusian slabs
+#define ROCK_ASPECT_DEFAULT     0.62    // Height/width aspect ratio for standard rocks
+#define ROCK_ASPECT_ICY         0.72    // Height/width aspect ratio for icy blocks
+#define ROCK_FACET_COUNT        40      // Number of half-icosphere mesh facets for high-poly rocks
+#define ROCK_JAGGEDNESS         0.25    // Maximum random displacement fraction for rock vertices
+#define ROCK_SHADOW_MAX_MULT    10.3    // Maximum shadow length multiplier relative to height
+#define ROCK_SHADOW_ALPHA_MOON  250     // Base shadow alpha for airless/Moon worlds
+#define ROCK_SHADOW_ALPHA_MARS  224     // Base shadow alpha for thin-atmosphere/Mars worlds
+#define ROCK_SHADOW_ALPHA_VENUS  96     // Base shadow alpha for dense-atmosphere/Venus worlds
+#define ROCK_SHADOW_ALPHA_DEF   208     // Base shadow alpha for default worlds
+
+// Sedentary vegetation lifeform tuning parameters
+#define PLANT_TRUNK_HEIGHT      22.2    // Stalk / trunk height multiplier relative to base scale
+#define PLANT_TRUNK_WIDTH       0.44    // Trunk width multiplier relative to base scale
+#define PLANT_CROWN_SIZE        2.85    // Crown horizontal radius multiplier relative to base scale
+#define PLANT_CROWN_OBLATENESS  0.35    // Crown oblateness ratio (vertical radius / horizontal radius)
+#define PLANT_TRUNK_COLOR_R     115     // Trunk base red component (brown-gray)
+#define PLANT_TRUNK_COLOR_G     100     // Trunk base green component (brown-gray)
+#define PLANT_TRUNK_COLOR_B     85      // Trunk base blue component (brown-gray)
+
+// Water wave tuning parameters
+#define WAVE_STEPS_PER_ROW      96      // Horizontal resolution of wave render (steps per row)
+#define WAVE_NUM_ROWS           81      // Number of wave depth rows
+#define WAVE_NEAR_DIST          1.0     // Nearest wave distance (meters)
+#define WAVE_PERSPECTIVE_EXP    1.5     // Perspective distribution exponent (near-to-horizon row spacing)
+#define WAVE_PERSPECTIVE_OFFSET 0.2
+
+// Water sun glint / glistening tuning parameters
+#define WAVE_GLINT_LOW_SUN_ELEV 0.35    // Elevation angle (radians, ~20 deg) below which sunset glint path activates
+#define WAVE_GLINT_PATH_WIDTH   0.14    // Angular half-width fraction of sunset glint column
+#define WAVE_GLINT_CREST_THRESH 0.05    // Wave crest threshold for glint reflections when sun is low
+
+struct RockInstance
+{
+    double dist;
+    double theta;
+    double screen_x;
+    double screen_y;
+    double crown_x;
+    double crown_y;
+    double crown_rx;
+    double crown_ry;
+    double trunk_w_top;
+    double trunk_w_base;
+    double width;
+    double height;
+    double size;
+    double lift_px;
+    uint32_t seed_val;
+    bool base_valid;
+};
+
 void draw_ra_dec_lines();
 
 int draw_sphere(CelestialObject *cel, double arad);

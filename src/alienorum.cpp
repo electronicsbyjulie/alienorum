@@ -209,7 +209,7 @@ int main (int argc, char** argv)
 
         else if (n == 2 && argv[l][0] == '^')
         {
-            push_ctrl_char(argv[l][1] & 0x5f);
+            push_ctrl_char(argv[l][1]);
         }
 
         else if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))
@@ -317,6 +317,7 @@ int main (int argc, char** argv)
         {
             keyprobe = true;
         }
+        else if (!strcmp(argv[l], "\x44\x61\x6c\x69")) dittrsa = true;
         else if (!strcmp(argv[l], "magtest")) magnitude_test = true;
         else if (!strcmp(argv[l], "sizeof"))
         {
@@ -699,7 +700,8 @@ int main (int argc, char** argv)
                     CelestialObject *c = cels[iamhome];
                     if (c)
                     {
-                        if (c->onscreen && c->cloud_map && c->cloud_map->is_complete())
+                        if (c->onscreen && fabs(c->drawnxmax - c->drawnxmin) > 3
+                            && c->cloud_map && c->cloud_map->is_complete())
                         {
                             earth_clouds_shown = true;
                         }
@@ -769,6 +771,8 @@ int main (int argc, char** argv)
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;
+                zoom = 1;
+                global_brightness = default_brightness;
             }
 
             if (earth_clouds_shown)

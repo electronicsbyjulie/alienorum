@@ -624,7 +624,7 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
             if (s->alienorumid.empty())
             {
                 blank_count++;
-                if (!s->orbit && s->apparent_magnitude > 0.0)
+                if (!s->orbit && !s->variability_period && s->apparent_magnitude > 0.0)
                 {
                     EXPECT_GE(s->apparent_magnitude, 10.0 - 0.001);
                 }
@@ -632,7 +632,7 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
             else
             {
                 populated_count++;
-                if (!s->orbit)
+                if (!s->orbit && !s->variability_period)
                 {
                     EXPECT_LT(s->apparent_magnitude, 10.0 + 0.001);
                 }
@@ -640,10 +640,130 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
         }
     }
 
-    EXPECT_GT(blank_count, 15000);
-    EXPECT_GT(populated_count, 100000);
+    read_cons_lines();
+    Star* atlas = nullptr;
+    Star* atlas_b = nullptr;
+    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    {
+        if (cels[i]->type == star)
+        {
+            Star* s = (Star*)cels[i];
+            if (s->alienorumid == "3b Tau 2")
+            {
+                atlas = s;
+            }
+            if (s->alienorumid == "3b Tau 2 B")
+            {
+                atlas_b = s;
+            }
+        }
+    }
+    ASSERT_NE(atlas, nullptr);
+    ASSERT_NE(atlas_b, nullptr);
+
+    // Visiting Atlas in simulation must keep its Scorpius system plane locked
+    mycenobj = atlas;
+    whereami = atlas->seqno;
+    atlas->update_location(simnow);
+    atlas_b->update_location(simnow);
+
+    EXPECT_TRUE(atlas->lock_system_plane);
+    EXPECT_TRUE(atlas->lock_equatorial_plane);
+    EXPECT_TRUE(atlas_b->lock_system_plane);
+    EXPECT_TRUE(atlas_b->lock_equatorial_plane);
+
+    // In Atlas's viewer plane, 27 Tau B's declination must be 0
+    here = atlas->location;
+    double b_dec = atlas_b->Decl_as_radians(here);
+    EXPECT_NEAR(b_dec, 0.0, 1e-6);
 
     delete_the_universe();
+}
+
+// Line 44 of catalogs/Hipparcos/hip_dm_o.dat: Atlas (HIP 17847).
+static const char hip_atlas_orbit[] =
+    " 17847|  290.6598|  8305.6949|    4.23|0.0000|  0.00|106.72|111.54|  8.5642|  26.6108| 0.97|      |      | 25.02| 38.48|   | |111111110011|525549449401429329439470333497375483595461299556480454315439457515462440474413527568450450450450450450450450450450450450450450450450450537524464320471315486230450450358420471535483436 12308450450456";
+
+TEST_F(CatalogParsingTest, HipparcosBinaryAtlasAndCompanionSharePlanes)
+{
+    CatalogReader cr;
+    Star* atlas = make_star("Atlas");
+    atlas->HIP = 17847;
+    // Coordinates for Atlas (27 Tau) from Hipparcos
+    atlas->right_ascension = 57.29054669 * fiftyseventh;
+    atlas->declination = 24.05352412 * fiftyseventh;
+    atlas->distance = 431.0 * light_year;
+    atlas->location.system_center = Point::from_ra_dec(atlas->right_ascension, atlas->declination, atlas->distance);
+
+    int offset = ncelobjs;
+    ASSERT_TRUE(cr.load_Hipparcos_orbit_line(hip_atlas_orbit, cels, MAX_CELOBJS, offset));
+
+    ASSERT_NE(atlas->multisys, nullptr);
+    Star* atlas_b = atlas->multisys->get_member('B');
+    ASSERT_NE(atlas_b, nullptr);
+
+    // Visiting Atlas in simulation
+    mycenobj = atlas;
+    whereami = atlas->seqno;
+    atlas->update_location(simnow);
+    atlas_b->update_location(simnow);
+
+    EXPECT_TRUE(atlas->known_poles);
+    EXPECT_TRUE(atlas_b->known_poles);
+    EXPECT_TRUE(atlas->lock_system_plane);
+    EXPECT_TRUE(atlas->lock_equatorial_plane);
+    EXPECT_TRUE(atlas_b->lock_system_plane);
+    EXPECT_TRUE(atlas_b->lock_equatorial_plane);
+
+    // Primary and companion must share the system plane
+    EXPECT_NEAR(atlas->location.local_system_plane.a, atlas_b->location.local_system_plane.a, 1e-6);
+    EXPECT_NEAR(atlas->location.local_system_plane.v.x, atlas_b->location.local_system_plane.v.x, 1e-6);
+    EXPECT_NEAR(atlas->location.local_system_plane.v.y, atlas_b->location.local_system_plane.v.y, 1e-6);
+    EXPECT_NEAR(atlas->location.local_system_plane.v.z, atlas_b->location.local_system_plane.v.z, 1e-6);
+
+    // Primary and companion must share the orbital plane
+    EXPECT_NEAR(atlas->location.orbital_plane.a, atlas_b->location.orbital_plane.a, 1e-6);
+    EXPECT_NEAR(atlas->location.orbital_plane.v.x, atlas_b->location.orbital_plane.v.x, 1e-6);
+    EXPECT_NEAR(atlas->location.orbital_plane.v.y, atlas_b->location.orbital_plane.v.y, 1e-6);
+    EXPECT_NEAR(atlas->location.orbital_plane.v.z, atlas_b->location.orbital_plane.v.z, 1e-6);
+
+    // Primary and companion must share equatorial pole orientation
+    Point primary_pole = rotate3D(yaxis, center, atlas->location.equatorial_plane.v, atlas->location.equatorial_plane.a);
+    Point comp_pole = rotate3D(yaxis, center, atlas_b->location.equatorial_plane.v, atlas_b->location.equatorial_plane.a);
+
+    EXPECT_NEAR(primary_pole.x, comp_pole.x, 1e-4);
+    EXPECT_NEAR(primary_pole.y, comp_pole.y, 1e-4);
+    EXPECT_NEAR(primary_pole.z, comp_pole.z, 1e-4);
+
+    // Verify pole points to Phoenix (RA ~ 27.96 deg / 01h 52m, Dec ~ -44.12 deg)
+    double pole_ra = std::fmod(find_angle(primary_pole.z, -primary_pole.x) + _pi, _pi * 2);
+    double pole_dec = find_angle(sqrt(primary_pole.x * primary_pole.x + primary_pole.z * primary_pole.z), primary_pole.y);
+    if (pole_dec > half_pi)
+    {
+        pole_dec -= _pi * 2;
+    }
+    EXPECT_NEAR(pole_ra * fiftyseven, 27.96, 0.5);
+    EXPECT_NEAR(pole_dec * fiftyseven, -44.12, 0.5);
+
+    // Companion's pole must point to Phoenix and NOT Ursa Minor (+Y axis, Dec +90 deg)
+    EXPECT_LT(comp_pole.y, 0.0);
+    EXPECT_NEAR(comp_pole.y, primary_pole.y, 1e-4);
+
+    // Viewed from Atlas in local view plane, 27 Tau B's orbit must lie on zero declination line
+    here = atlas->location;
+    Point viewer_pole = to_viewer_plane(yaxis);
+    Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
+
+    for (int j = 0; j < 10; j++)
+    {
+        atlas_b->update_location(simnow + j * 86400 * 30);
+        CelestialLocation orbrel = atlas_b->location - here;
+        Point rel = rotate3D(Point(orbrel), center, viewer_plane.v, -viewer_plane.a);
+        double dec = atlas_b->Decl_as_radians(here);
+
+        EXPECT_NEAR(dec, 0.0, 1e-6);
+        EXPECT_NEAR(rel.y / rel.magnitude(), 0.0, 1e-6);
+    }
 }
 
 

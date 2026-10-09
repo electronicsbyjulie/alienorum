@@ -5,6 +5,7 @@
 #include "housekeeping.h"
 #include "inputs.h"
 #include "classes/sscimport.h"
+#include "classes/exocons.h"
 
 using namespace alienorum;
 
@@ -90,6 +91,7 @@ void identify_object_under_cursor(ImGuiIO& io)
 
     if (is_an_obj_under_cursor < 0)
     {
+        double threshold = 3 / zoom;
         if (view_mode == vm_sunclock)
         {
             double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
@@ -102,7 +104,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             {
                 dlat = fabs(cel->locales[i].lat - mlat);
                 dlon = fabs(cel->locales[i].lon - mlon);
-                if (dlon < 3 && dlat < 3)
+                if (dlon < threshold && dlat < threshold)
                 {
                     r = sqrt(dlat*dlat + dlon*dlon);
                     if (r < br)
@@ -225,7 +227,16 @@ void show_menu()
             if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
-            if (ImGui::MenuItem("Reload Constellations", "F5")) { process_key_F5(); menu_clicked = true; }
+            if (ImGui::MenuItem("Reload Constellations", "F5"))
+            {
+                process_key_F5();
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Save Vantage Constellations", "Shift+F5"))
+            {
+                process_save_vantage_exocons();
+                menu_clicked = true;
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Object"))
@@ -338,6 +349,7 @@ void show_menu()
             if (ImGui::MenuItem(vmtext[1], "_", view_mode == vm_horizon)) { process_key_cmd_char('_'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[2], "$", view_mode == vm_sunclock)) { process_key_cmd_char('$'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[3], "\\", view_mode == vm_skymap)) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[4], "Ctrl+V", view_mode == vm_system)) { process_key_cmd_ctrl_char('v'); menu_clicked = true; }
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
@@ -482,7 +494,6 @@ void process_key_cmd_char(char c)
 
         case 'e':
         explorer = !explorer;
-        if (explorer) process_key_cmd_ctrl_char('v');
         break;
 
         case 'E':
@@ -530,7 +541,7 @@ void process_key_cmd_char(char c)
             selected = trackidx = -1;
             global_brightness = default_brightness;
             viewer_locale = "";
-            zoom = 1;
+            zoom = global_brightness = 1;
         }
         else if (selected_locale)
         {
@@ -740,7 +751,7 @@ void process_key_cmd_char(char c)
         case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = false; break;
         case '%':
         zoom = 1;
-        global_brightness = 1;
+        global_brightness = default_brightness;
         viewchanged = true;
         if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
         break;
@@ -996,7 +1007,17 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_F5();
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
+    {
+        if (io.KeyShift || ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift))
+        {
+            process_save_vantage_exocons();
+        }
+        else
+        {
+            process_key_F5();
+        }
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) process_key_F6();
     if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
@@ -1188,6 +1209,11 @@ void process_key_F5()
     }
     splash = true;
     reload_thread = std::thread(reload_stuff);
+}
+
+void process_save_vantage_exocons()
+{
+    ExoConsGenerator::save_current_vantage();
 }
 
 void process_key_F6()

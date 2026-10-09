@@ -37,7 +37,7 @@ std::vector<std::string> themes;
 std::string default_theme = "Perseus";
 std::string viewer_theme = default_theme;
 std::mutex mtx;
-const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas" };
+const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas", "Solar System" };
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_spaceship;
@@ -50,6 +50,7 @@ double spin = 0;
 double global_gamma = default_gamma, viewer_gamma = global_gamma;
 double zoom = 1, vm, vmfr;
 double viewer_lat, viewer_lon, viewer_home_lat, viewer_home_lon, viewer_tz = 0, viewer_home_tz;
+double viewer_eye_height = 1.7526; // meters, default 5'9" (175.26 cm)
 double neighb_rthresh = 25 * light_year;
 bool save_viewer_latlon = true;
 bool show_grid = true, show_consln = true, show_xonsm = false, show_labels = true, show_orbits = false, show_sats = true, show_axes = false, draw_actual_conslines;
@@ -112,8 +113,7 @@ double bv_correction = -0.6244;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
-float has_water, veg_min_temp = 278, veg_max_temp = 310;
-int vegetation_r=0, vegetation_g=0, vegetation_b=0;
+float has_water, veg_min_temp = 278, veg_max_temp = 310;                // TODO: Move these to planet class alongside the vegetation_ vars.
 
 double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,
@@ -752,7 +752,7 @@ bool download_file(std::string URL, std::string save_path)
     return true;
 }
 
-bool check_and_download_clouds(const std::string& URL, const std::string& save_path)
+bool check_and_download_clouds(const std::string& URL, const std::string& save_path, bool static_clouds)
 {
     if (radio_silence || URL.empty())
     {
@@ -785,7 +785,7 @@ bool check_and_download_clouds(const std::string& URL, const std::string& save_p
         }
     }
 
-    if (file_exists(save_path.c_str()) && (now - last_time < kMinRefreshSeconds) && (now >= last_time))
+    if (file_exists(save_path.c_str()) && (((now - last_time < kMinRefreshSeconds) && (now >= last_time)) || static_clouds))
     {
         return false;
     }
@@ -805,7 +805,7 @@ bool check_and_download_clouds(const std::string& URL, const std::string& save_p
 
 bool check_and_download_earth_clouds(const std::string& URL, const std::string& save_path)
 {
-    return check_and_download_clouds(URL, save_path);
+    return check_and_download_clouds(URL, save_path, false);
 }
 
 // Splits one line on its commas, honouring the quoting the CSV convention gives a field that

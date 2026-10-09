@@ -4,6 +4,7 @@
 #include "loaders.h"
 #include "sphere_impostor.h"
 #include "gputex.h"
+#include "sunclock_gpu.h"
 #include "classes/exocons.h"
 
 using namespace alienorum;
@@ -23,7 +24,7 @@ void draw_ra_dec_lines()
     int i, j;
     Cartesian2D prev, zdes;
     ImU32 gc = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color, 0.1));
-    ImU32 gcb = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color_brighter, 0.1));
+    ImU32 gcb = rgba_apply_redlight(Color::adjust_alpha(global_style.grid_color_brighter, 0.15));
     ImU32 ec = rgba_apply_redlight(Color::adjust_alpha(global_style.ecliptic_color, 0.25));
     double node = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
@@ -696,7 +697,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     double pressure = pl->get_surface_pressure();
     if (pressure <= 0) return;
 
-    // For gas giants, ice giants, and overcast worlds, most of that atmosphere is below the
+    // For gas giants and ice giants, most of that atmosphere is below the
     // opaque part, below the cloud tops.
     if (uses_gaseous_map(pl->type))
         pressure = fmin(5*oneatm, pressure/100);
@@ -3896,6 +3897,8 @@ void draw_system_view()
         // dry run - find planetary system scaling
         double sdrad = dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20;
         double cursor = s->drawnx + sdrad + padding;
+        std::vector<int> plcenx, plxrad;
+        int first_hz_planet = 99999, last_hz_planet = -1;
 
         for (j=num_stars; j<n; j++)
         {
@@ -3910,6 +3913,24 @@ void draw_system_view()
             double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*20;
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
             p->drawnx = cursor + pdradr;
+            plcenx.push_back(p->drawnx);
+            plxrad.push_back(pdradr);
+            int plidx = plcenx.size()-1;
+
+            if (p->is_in_con_HZ())
+            {
+                if (first_hz_planet > plidx)
+                {
+                    first_hz_planet = plidx;
+                    // std::cout << "First HZ planet: " << p->name << " x=" << p->drawnx << std::endl;
+                }
+                if (last_hz_planet < plidx)
+                {
+                    last_hz_planet = plidx;
+                    // std::cout << "Last HZ planet: " << p->name << " x=" << p->drawnx << p->name << std::endl;
+                }
+            }
+
             // std::cout << p->name << " cursor=" << cursor << " + pdrad=" << pdrad << " + pdrad=" << pdrad;           // deliberately twice
             cursor = p->drawnx + pdradr + padding;
             // std::cout << " + padding=" << padding << " = " << cursor << std::endl;
@@ -3918,6 +3939,19 @@ void draw_system_view()
         // compute scaling
         // std::cout << "cursor=" << cursor << ", width=" << (dispcx*2) << std::endl << std::endl;
         double curscale = fmin(1, dispcx*2.0 / cursor);         // do not expand system if already fits
+
+        // Show habitable zone at-a-glance (BROKEN).
+        if (0 && first_hz_planet <= last_hz_planet)
+        {
+            int x1 = plcenx[first_hz_planet] - plxrad[first_hz_planet];
+            int x2 = plcenx[last_hz_planet] + plxrad[last_hz_planet] + padding;
+
+            int y1 = s->drawny - sdrad * 0.7;
+            int y2 = s->drawny + sdrad * 0.7;
+
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(x1*curscale,y1), ImVec2(x2*curscale,y2),
+                rgba_apply_redlight(IM_COL32(0, 255, 192, 32)));
+        }
 
         // actual draw with scaling applied
         sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
@@ -4244,15 +4278,35 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     }
 }
 
+static void compute_sunclock_rot_matrix(CelestialObject *cel, double rot_mat[16])
+{
+    Point e0 = rotate3D(Point(1, 0, 0), center, yaxis, -cel->timeofday());
+    e0 = rotate3D(e0, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    Point e1 = rotate3D(Point(0, 1, 0), center, yaxis, -cel->timeofday());
+    e1 = rotate3D(e1, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    Point e2 = rotate3D(Point(0, 0, 1), center, yaxis, -cel->timeofday());
+    e2 = rotate3D(e2, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+    rot_mat[0]  = e0.x; rot_mat[1]  = e0.y; rot_mat[2]  = e0.z; rot_mat[3]  = 0.0;
+    rot_mat[4]  = e1.x; rot_mat[5]  = e1.y; rot_mat[6]  = e1.z; rot_mat[7]  = 0.0;
+    rot_mat[8]  = e2.x; rot_mat[9]  = e2.y; rot_mat[10] = e2.z; rot_mat[11] = 0.0;
+    rot_mat[12] = 0.0;  rot_mat[13] = 0.0;  rot_mat[14] = 0.0;  rot_mat[15] = 1.0;
+}
+
 ViewMode last_vmode = vm_spaceship;
 void draw_sunclock()
 {
     if (whereami < 0) return;
 
     int i;
-    if (last_vmode != view_mode) for (i=0; cels[i]; i++)
+    if (last_vmode != view_mode)
     {
-        cels[i]->drawnx = cels[i]->drawny = -1e9;
+        for (i=0; cels[i]; i++)
+        {
+            cels[i]->drawnx = cels[i]->drawny = -1e9;
+        }
     }
 
     CelestialObject *cel = cels[whereami];
@@ -4272,8 +4326,11 @@ void draw_sunclock()
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
     sclk_scale = half_pi / size / zoom;
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
+    bool was_show_clouds = show_clouds;
+    if (cel->overcast) show_clouds = false;             // show feature-rich surface of Titan or Venus, not a damn bland cloud layer.
     Map *map = cel->get_day_map();
     Map *nmap = cel->get_night_map();
+    show_clouds = was_show_clouds;
     Point land;
     bool dwh = false;
 
@@ -4302,100 +4359,170 @@ void draw_sunclock()
     else
         equatorial_radius = cel->get_equatorial_radius();
 
+    bool gpu_rendered = false;
+    SunClockGpuInput sclk_in = {};
+    sclk_in.sclk_scale = sclk_scale;
+    sclk_in.azimuth = azimuth;
+    sclk_in.altitude = altitude;
+    sclk_in.zoom = zoom;
 
-    for (y=dispcy; y>=-dispcy; y-=step)
+    sclk_in.day_map_texture = map ? gputex_for(map) : 0;
+    sclk_in.night_map_texture = nmap ? gputex_for(nmap) : 0;
+    sclk_in.bump_map_texture = map ? gputex_bump_for(map) : 0;
+
+    sclk_in.fallback_color[0] = prgb.r / 255.0;
+    sclk_in.fallback_color[1] = prgb.g / 255.0;
+    sclk_in.fallback_color[2] = prgb.b / 255.0;
+
+    sclk_in.daylight_tint[0] = daylight.red;
+    sclk_in.daylight_tint[1] = daylight.green;
+    sclk_in.daylight_tint[2] = daylight.blue;
+
+    sclk_in.self_luminous = self_luminous;
+    sclk_in.redlight_mode = redlight_mode;
+
+    if (dwh)
     {
-        dy = dispcy + y;
-        lat = lat_from_y(y);
-        if (fabs(lat) > half_pi) continue;
+        sclk_in.body_axes[0] = ((Moon*)cel)->width * 0.5;
+        sclk_in.body_axes[1] = ((Moon*)cel)->height * 0.5;
+        sclk_in.body_axes[2] = ((Moon*)cel)->depth * 0.5;
+    }
+    else
+    {
+        sclk_in.body_axes[0] = equatorial_radius;
+        sclk_in.body_axes[1] = equatorial_radius * obl;
+        sclk_in.body_axes[2] = equatorial_radius;
+    }
 
-        for (x=-halfwid; x<halfwid; x+=step)
+    compute_sunclock_rot_matrix(cel, sclk_in.rot_matrix);
+
+    Point to_light = lightcen ? (lightcen->location.local_position - cel->location.local_position) : Point();
+    double d_light = to_light.magnitude();
+    if (d_light > 0)
+    {
+        sclk_in.light_dir[0] = to_light.x / d_light;
+        sclk_in.light_dir[1] = to_light.y / d_light;
+        sclk_in.light_dir[2] = to_light.z / d_light;
+    }
+    else
+    {
+        sclk_in.light_dir[0] = 0.0;
+        sclk_in.light_dir[1] = 0.0;
+        sclk_in.light_dir[2] = 1.0;
+    }
+    sclk_in.light_radius = sc_light_r;
+    sclk_in.light_pos_rel[0] = to_light.x;
+    sclk_in.light_pos_rel[1] = to_light.y;
+    sclk_in.light_pos_rel[2] = to_light.z;
+
+    sclk_in.num_casters = std::min(n_sc_casters, max_sunclock_casters);
+    for (i = 0; i < sclk_in.num_casters; i++)
+    {
+        Point rel_caster = sc_casters[i].center - cel->location.local_position;
+        sclk_in.casters[i].dx = rel_caster.x;
+        sclk_in.casters[i].dy = rel_caster.y;
+        sclk_in.casters[i].dz = rel_caster.z;
+        sclk_in.casters[i].radius = sc_casters[i].radius;
+    }
+
+    gpu_rendered = queue_sunclock_gpu(sclk_in, dispcx, dispcy);
+
+    if (!gpu_rendered)
+    {
+        for (y=dispcy; y>=-dispcy; y-=step)
         {
-            dx = dispcx + x;
-            lon = lon_from_x(x);
-            elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
-            land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
+            dy = dispcy + y;
+            lat = lat_from_y(y);
+            if (fabs(lat) > half_pi) continue;
 
-            if (dwh)
+            for (x=-halfwid; x<halfwid; x+=step)
             {
-                land.x *= ((Moon*)cel)->width  * .5;
-                land.y *= ((Moon*)cel)->height * .5;
-                land.z *= ((Moon*)cel)->depth  * .5;
-                if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
-            }
-            else land.y *= obl;
-            land = rotate3D(land, center, yaxis, -cel->timeofday());
-            land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                dx = dispcx + x;
+                lon = lon_from_x(x);
+                elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
+                land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
-            land += cel->location.local_position;
-            // is_night was left alone on this branch, so a star's own sun clock read whatever the
-            // previous pixel -- or, on the first pixel, the stack -- had put there, and then
-            // blended the night map by it.
-            if (self_luminous) { is_day = 1; is_night = 0; }
-            else
-            {
-                theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
-                if (fabs(theta) < half_pi)
+                if (dwh)
                 {
-                    cos_theta = cos(theta);
-                    is_day = fmin(1, pow(cos_theta, 1.0/3.0));
-                    is_night = 0;
+                    land.x *= ((Moon*)cel)->width  * .5;
+                    land.y *= ((Moon*)cel)->height * .5;
+                    land.z *= ((Moon*)cel)->depth  * .5;
+                    if (elevation) land.scale(land.magnitude()+elevation);          // TODO: This is a costly calculation - possible to streamline it?
                 }
-                // TODO: Twilight
+                else land.y *= obl;
+                land = rotate3D(land, center, yaxis, -cel->timeofday());
+                land = rotate3D(land, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+
+                land += cel->location.local_position;
+                // is_night was left alone on this branch, so a star's own sun clock read whatever the
+                // previous pixel -- or, on the first pixel, the stack -- had put there, and then
+                // blended the night map by it.
+                if (self_luminous) { is_day = 1; is_night = 0; }
                 else
                 {
-                    is_day = 0;
-                    is_night = 1;
+                    theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
+                    if (fabs(theta) < half_pi)
+                    {
+                        cos_theta = cos(theta);
+                        is_day = fmin(1, pow(cos_theta, 1.0/3.0));
+                        is_night = 0;
+                    }
+                    // TODO: Twilight
+                    else
+                    {
+                        is_day = 0;
+                        is_night = 1;
+                    }
+
+                    // The eclipse itself, asked per point of the map rather than per world, which is
+                    // the whole reason it comes out as a moving spot with a soft rim instead of a
+                    // uniform dimming. Only the daylit side can lose anything: a shadow crossing the
+                    // night side has nothing to take away.
+                    if (n_sc_casters && is_day > 0)
+                    {
+                        double obsc = point_obscuration(land, sc_light_pos, sc_light_r,
+                            sc_casters, n_sc_casters);
+                        if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
+                    }
                 }
 
-                // The eclipse itself, asked per point of the map rather than per world, which is
-                // the whole reason it comes out as a moving spot with a soft rim instead of a
-                // uniform dimming. Only the daylit side can lose anything: a shadow crossing the
-                // night side has nothing to take away.
-                if (n_sc_casters && is_day > 0)
+                if (map) rgb = map->color_at(lat, lon);
+                else rgb = prgb;
+
+                if (nmap)
                 {
-                    double obsc = point_obscuration(land, sc_light_pos, sc_light_r,
-                        sc_casters, n_sc_casters);
-                    if (obsc > 0) is_day *= fmax(1.0 - obsc, sclk_umbra_floor);
+                    nrgb = nmap->color_at(lat, lon);
                 }
-            }
+                else
+                {
+                    nrgb.r = rgb.r * 0.20;
+                    nrgb.g = rgb.g * 0.25;
+                    nrgb.b = rgb.b * 0.29;
+                }
 
-            if (map) rgb = map->color_at(lat, lon);
-            else rgb = prgb;
+                if (self_luminous)
+                {
+                    rgb.r *= is_day;
+                    rgb.g *= is_day;
+                    rgb.b *= is_day;
+                }
+                else
+                {
+                    rgb.r *= is_day * daylight.red;
+                    rgb.g *= is_day * daylight.green;
+                    rgb.b *= is_day * daylight.blue;
+                }
 
-            if (nmap)
-            {
-                nrgb = nmap->color_at(lat, lon);
-            }
-            else
-            {
-                nrgb.r = rgb.r * 0.20;
-                nrgb.g = rgb.g * 0.25;
-                nrgb.b = rgb.b * 0.29;
-            }
+                if (is_night)
+                {
+                    rgb.r += nrgb.r * is_night;
+                    rgb.g += nrgb.g * is_night;
+                    rgb.b += nrgb.b * is_night;
+                }
 
-            if (self_luminous)
-            {
-                rgb.r *= is_day;
-                rgb.g *= is_day;
-                rgb.b *= is_day;
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
+                    rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
             }
-            else
-            {
-                rgb.r *= is_day * daylight.red;
-                rgb.g *= is_day * daylight.green;
-                rgb.b *= is_day * daylight.blue;
-            }
-
-            if (is_night)
-            {
-                rgb.r += nrgb.r * is_night;
-                rgb.g += nrgb.g * is_night;
-                rgb.b += nrgb.b * is_night;
-            }
-
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
-                rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255)));
         }
     }
 
@@ -4487,7 +4614,16 @@ void find_horizon()
             horizon_lift_rad = p->atmospheric_horizon_lift();
         }
 
-        Point pthz = rotate3D(zaxis, center, xaxis, -horizon_lift_rad);
+        double R = cel->get_equatorial_radius();
+        if (R <= 0)
+        {
+            R = cel->volumetric_mean_radius;
+        }
+        double h_eye = fmax(0.01, viewer_eye_height);
+        double horizon_dip_rad = (R > 0) ? acos(R / (R + h_eye)) : 0.0;
+        double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
+
+        Point pthz = rotate3D(zaxis, center, xaxis, -net_horizon_angle);
         // std::cout << "pthz=" << pthz << std::endl;
 
         double theta = 0, step = _pi*2/hznodes;
@@ -4495,21 +4631,30 @@ void find_horizon()
         {
             draw_marker[j] = false;
             Point pt = rotate3D(pthz, center, yaxis, theta);
-            Point pt0 = rotate3D(zaxis, center, yaxis, theta);
 
             Cartesian2D horizon = Cartesian2D(pt, azimuth, altitude, zoom);
-            Cartesian2D horizon0 = Cartesian2D(pt0, azimuth, altitude, zoom);
             hz_dx[j] = horizon.x * dispcx + dispcx;
             hz_dy[j] = horizon.y * dispcx + dispcy;
             if (hz_dx[j] < -1e4) draw_marker[j] = false;
             // else if (hz_dy[j] < 0) hz_dy[j] = 0;
             else draw_marker[j] = (hz_dx[j] >= 0 && hz_dx[j] < dispcx*2);
             // if (draw_marker[j]) std::cout << "pt=" << pt << std::endl;
-            if (draw_marker[j] && hz_y > dispcy*2) hz_y = horizon0.y * dispcx + dispcy;
+            if (draw_marker[j] && hz_y > dispcy*2) hz_y = fmax(hz_y, hz_dy[j]);
             theta += step;
         }
     }
 }
+
+struct GlintSource
+{
+    double screen_x;
+    double elev;
+    double low_factor;
+    double intensity;
+    double r;
+    double g;
+    double b;
+};
 
 void draw_horizon()
 {
@@ -4547,11 +4692,30 @@ void draw_horizon()
         rgb.g = fmin(255, is_day*rgb.g);
         rgb.b = fmin(255, is_day*rgb.b);
 
-        bool is_water = uses_rocky_map(p->type)
-            && p->get_surface_pressure() >= 150
-            && p->estimate_surface_temperature() < 400
-            && (rgb.b > 0.8 * rgb.r)
-            && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r);                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
+        bool water_favorable = p->get_surface_pressure() >= 150
+            && p->estimate_surface_temperature() < 400;
+
+        bool is_water = (p && (p->type == waterworld || p->type == hycean))
+            || (uses_rocky_map(p->type)
+                && water_favorable
+                && (rgb.b > 0.8 * rgb.r)
+                && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
+
+        bool is_vegetation = false;
+        const float is_veg_threshold = 0.35;
+
+        if (p && uses_rocky_map(p->type) && water_favorable && (p->vegetation_r || p->vegetation_g))
+        {
+            double local_hue = Color::hue_from_rgb(rgb.r, rgb.g, rgb.b),
+                   veg_hue = Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
+            double local_sat = Color::sat_from_rgb(rgb.r, rgb.g, rgb.b),
+                   veg_sat = Color::sat_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
+                        
+            if (fabs(local_hue - veg_hue) < is_veg_threshold
+                && fabs(local_sat - veg_sat) < is_veg_threshold
+               )
+                is_vegetation = true;
+        }
 
         if (p && p->type == lavaworld && p->night_map)
         {
@@ -4565,37 +4729,100 @@ void draw_horizon()
         double hzheight[hznodes];
         if (show_terrain && !gaseous && !is_water)
         {
-            // The raw noise shape only depends on where the viewer is standing, not on which way
-            // they're looking or how far they've zoomed -- so it's cached and only regenerated
-            // when viewer_lat/viewer_lon/whereami actually change, instead of every frame.
+            // The raw noise shape and distant bump relief depend only on where the viewer is standing,
+            // so they are cached and regenerated when viewer_lat/viewer_lon/whereami/eye_height changes.
             static double cached_raw_noise[hznodes];
+            static double cached_bump_relief[hznodes];
             static double cached_raw_min = 0;
             static double cached_lat = 1e293, cached_lon = 1e293;
             static int cached_whereami = -2;
+            static double cached_eye_height = -1.0;
 
-            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon)
+            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon || cached_eye_height != viewer_eye_height)
             {
-                // not ideal, since the horizon will change unpredictably when walking, but for standing still this should work.
-                pn.reseed(0xb0ad * 15*viewer_lat + 0x1cea * 60*viewer_lon);
+                pn.reseed(0xb0ad * 15 * viewer_lat + 0x1cea * 60 * viewer_lon);
                 cached_raw_min = 9999;
                 for (j = 0; j < hznodes; j++)
                 {
                     double theta = _pi * 2 * j / hznodes;
                     double scale = 0.19;
                     double nx = scale * sin(theta), ny = scale * cos(theta);
-                    cached_raw_noise[j] = fBm(nx, ny, 0, 29, 1.29, 0.8559);             // The octaves must stay a high number like this or the terrain won't look realistic.
-                    if (cached_raw_noise[j] < cached_raw_min) cached_raw_min = cached_raw_noise[j];
+                    cached_raw_noise[j] = fBm(nx, ny, 0, 29, 1.29, 0.8559);
+                    if (cached_raw_noise[j] < cached_raw_min)
+                    {
+                        cached_raw_min = cached_raw_noise[j];
+                    }
                 }
+
+                bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
+                double R_planet = cel->get_equatorial_radius();
+                if (R_planet <= 0)
+                {
+                    R_planet = cel->volumetric_mean_radius;
+                }
+                if (R_planet <= 0)
+                {
+                    R_planet = earth_radius;
+                }
+                double h_eye = fmax(0.01, viewer_eye_height);
+                double geom_dist = sqrt(2.0 * R_planet * h_eye);
+                double E0 = has_bump ? cel->surf_map->elevation_at(viewer_lat, viewer_lon) : 0.0;
+                double hz_dip = acos(R_planet / (R_planet + h_eye));
+
+                for (j = 0; j < hznodes; j++)
+                {
+                    cached_bump_relief[j] = 0.0;
+                    if (has_bump)
+                    {
+                        double theta = _pi * 2 * j / hznodes;
+                        double max_alpha = -hz_dip;
+                        double max_dist = fmin(250000.0, R_planet * 0.1);
+                        for (int s_step = 1; s_step <= 8; s_step++)
+                        {
+                            double frac = (double)s_step / 8.0;
+                            double s = geom_dist + (max_dist - geom_dist) * (frac * frac);
+                            double delta_sigma = s / R_planet;
+                            double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(theta);
+                            sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
+                            double phi = asin(sin_phi);
+                            double d_lon = atan2(sin(theta) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
+                            double lam = viewer_lon + d_lon;
+                            double Es = cel->surf_map->elevation_at(phi, lam);
+                            double h_apparent = (Es - E0) - (s * s) / (2.0 * R_planet);
+                            double alpha = (h_apparent - h_eye) / s;
+                            if (alpha > max_alpha)
+                            {
+                                max_alpha = alpha;
+                            }
+                        }
+                        if (max_alpha > -hz_dip)
+                        {
+                            cached_bump_relief[j] = (max_alpha + hz_dip);
+                        }
+                    }
+                }
+
                 cached_lat = viewer_lat;
                 cached_lon = viewer_lon;
                 cached_whereami = whereami;
+                cached_eye_height = viewer_eye_height;
             }
 
-            double terrain_height = dispcx * 0.1 * zoom;
+            double terrain_height = dispcx * 0.08 * zoom;
             for (j = 0; j < hznodes; j++)
-                hzheight[j] = hz_dy[j] - terrain_height * (cached_raw_noise[j] - cached_raw_min) * 3;
+            {
+                double bump_px = cached_bump_relief[j] * dispcx * zoom;
+                double proc_px = terrain_height * (cached_raw_noise[j] - cached_raw_min) * 2.5;
+                hzheight[j] = hz_dy[j] - (bump_px + proc_px);
+            }
         }
-        else for (j = 0; j < hznodes; j++) hzheight[j] = hz_dy[j];
+        else
+        {
+            for (j = 0; j < hznodes; j++)
+            {
+                hzheight[j] = hz_dy[j];
+            }
+        }
 
         double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
@@ -4644,26 +4871,1143 @@ void draw_horizon()
 
             hz_fy = hz_y;
         }
-        else for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+        else
         {
-            j1 = j%hznodes;
-            if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
+            for (j = 0; j <= hznodes; j++)
             {
-                if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0)) goto _skip_hz_element;
-                hz_y = hzheight[j1];
-                hz_y1 = hz_fy;
+                if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+                {
+                    j1 = j%hznodes;
+                    if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
+                    {
+                        if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0))
+                        {
+                            goto _skip_hz_element;
+                        }
+                        hz_y = hzheight[j1];
+                        hz_y1 = hz_fy;
 
-                points[0] = ImVec2(hz_fx, hz_y1);
-                points[1] = ImVec2(hz_dx[j1]+1, hz_y);
-                points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
-                points[3] = ImVec2(hz_fx, dispcy*2);
+                        points[0] = ImVec2(hz_fx, hz_y1);
+                        points[1] = ImVec2(hz_dx[j1]+1, hz_y);
+                        points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
+                        points[3] = ImVec2(hz_fx, dispcy*2);
 
-                ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
+                    }
+
+                    _skip_hz_element:
+                    hz_fx = hz_dx[j1];
+                    hz_fy = hzheight[j1];
+                }
+            }
+        }
+
+        // Measure visible horizon line screen bounds and per-column horizon heights
+        double min_hz_y = 1e9;
+        int screen_w = (int)(dispcx * 2.0);
+        std::vector<double> min_hz_y_at_x(screen_w > 0 ? screen_w : 1, 1e9);
+
+        for (j = 0; j < hznodes; j++)
+        {
+            if (draw_marker[j] && hzheight[j] > -1e4 && hzheight[j] < 1e5)
+            {
+                if (hzheight[j] < min_hz_y)
+                {
+                    min_hz_y = hzheight[j];
+                }
+            }
+        }
+        if (min_hz_y > dispcy * 2)
+        {
+            min_hz_y = dispcy;
+        }
+
+        for (j = 0; j <= hznodes; j++)
+        {
+            int j0 = (j + hznodes - 1) % hznodes;
+            int j1_idx = j % hznodes;
+            if (hz_dx[j0] > -1e5 && hz_dx[j1_idx] > -1e5 && hzheight[j0] > -1e4 && hzheight[j1_idx] > -1e4)
+            {
+                double x_left = hz_dx[j0];
+                double x_right = hz_dx[j1_idx];
+                double y_left = hzheight[j0];
+                double y_right = hzheight[j1_idx];
+                if (fabs(x_left - x_right) < dispcx * zoom)
+                {
+                    if (x_left > x_right)
+                    {
+                        std::swap(x_left, x_right);
+                        std::swap(y_left, y_right);
+                    }
+                    int ix_start = fmax(0, (int)floor(x_left));
+                    int ix_end = fmin(screen_w - 1, (int)ceil(x_right));
+                    double span_x = x_right - x_left;
+                    for (int ix = ix_start; ix <= ix_end; ix++)
+                    {
+                        double t_seg = (span_x > 0.001) ? (ix - x_left) / span_x : 0.0;
+                        t_seg = fmax(0.0, fmin(1.0, t_seg));
+                        double y_val = y_left + (y_right - y_left) * t_seg;
+                        if (y_val < min_hz_y_at_x[ix])
+                        {
+                            min_hz_y_at_x[ix] = y_val;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (is_water && !faded)
+        {
+            double wave_t = ImGui::GetTime();
+            std::vector<GlintSource> glint_sources;
+            CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
+            if (sun_obj)
+            {
+                double sun_elev = sun_obj->Decl_as_radians(here);
+                if (sun_elev > 0.0)
+                {
+                    Point sun_pt = to_viewer_plane(sun_obj->tmprel);
+                    Cartesian2D sun_cart(sun_pt, azimuth + azimuth_correction, altitude, zoom);
+                    if (sun_cart.x > -1.5 && sun_cart.x < 1.5)
+                    {
+                        double low_factor = 0.0;
+                        if (sun_elev < WAVE_GLINT_LOW_SUN_ELEV)
+                        {
+                            low_factor = (WAVE_GLINT_LOW_SUN_ELEV - sun_elev) / WAVE_GLINT_LOW_SUN_ELEV * 2.0;
+                        }
+                        double warm_r = 180.0 + 50.0 * low_factor;
+                        double warm_g = 160.0 - 10.0 * low_factor;
+                        double warm_b = 120.0 - 50.0 * low_factor;
+                        glint_sources.push_back({
+                            sun_cart.x * dispcx + dispcx,
+                            sun_elev,
+                            low_factor,
+                            1.0,
+                            warm_r,
+                            warm_g,
+                            warm_b
+                        });
+                    }
+                }
             }
 
-            _skip_hz_element:
-            hz_fx = hz_dx[j1];
-            hz_fy = hzheight[j1];
+            for (int ci = 0; cels[ci] && ci < MAX_CELOBJS; ci++)
+            {
+                if (cels[ci]->deleted || ci == whereami || cels[ci] == sun_obj)
+                {
+                    continue;
+                }
+
+                double vmag = vmag_cache[ci];
+                if (vmag > -1.5)
+                {
+                    continue;
+                }
+
+                double elev = cels[ci]->Decl_as_radians(here);
+                if (elev <= 0.0)
+                {
+                    continue;
+                }
+
+                Point obj_pt = to_viewer_plane(cels[ci]->tmprel);
+                Cartesian2D obj_cart(obj_pt, azimuth + azimuth_correction, altitude, zoom);
+                if (obj_cart.x <= -1.5 || obj_cart.x >= 1.5)
+                {
+                    continue;
+                }
+
+                double mag_term = (-vmag - 1.5) / 13.0;
+                double intensity = fmin(1.0, sqrt(fmax(0.0, mag_term)));
+                if (is_day > 0.0 && vmag > -18.0)
+                {
+                    intensity *= fmax(0.0, 1.0 - is_day * 1.5);
+                }
+                if (intensity < 0.01)
+                {
+                    continue;
+                }
+
+                double low_factor = 0.0;
+                if (elev < WAVE_GLINT_LOW_SUN_ELEV)
+                {
+                    low_factor = (WAVE_GLINT_LOW_SUN_ELEV - elev) / WAVE_GLINT_LOW_SUN_ELEV * 2.0;
+                }
+
+                cel_obj_class obj_cls = cels[ci]->typeclass();
+                Color objcol = Color::color_from_magnitude_indices(0, cels[ci]->BV_color + ((obj_cls == class_star) ? 0 : planet_bv_correction));
+                double max_comp = fmax(objcol.red, fmax(objcol.green, objcol.blue));
+                double br = (max_comp > 0.0) ? (objcol.red / max_comp) : 1.0;
+                double bg = (max_comp > 0.0) ? (objcol.green / max_comp) : 1.0;
+                double bb = (max_comp > 0.0) ? (objcol.blue / max_comp) : 1.0;
+
+                double warm_r = fmin(255.0, br * 180.0 + 50.0 * low_factor);
+                double warm_g = fmax(0.0, bg * 160.0 - 10.0 * low_factor);
+                double warm_b = fmax(0.0, bb * 120.0 - 50.0 * low_factor);
+
+                glint_sources.push_back({
+                    obj_cart.x * dispcx + dispcx,
+                    elev,
+                    low_factor,
+                    intensity,
+                    warm_r,
+                    warm_g,
+                    warm_b
+                });
+            }
+
+            if (glint_sources.size() > 1)
+            {
+                std::stable_sort(glint_sources.begin(), glint_sources.end(), [](const GlintSource &a, const GlintSource &b)
+                {
+                    return a.intensity > b.intensity;
+                });
+                if (glint_sources.size() > 16)
+                {
+                    glint_sources.resize(16);
+                }
+            }
+
+            double max_low_factor = 0.0;
+            for (const auto &gsrc : glint_sources)
+            {
+                if (gsrc.low_factor * gsrc.intensity > max_low_factor)
+                {
+                    max_low_factor = gsrc.low_factor * gsrc.intensity;
+                }
+            }
+
+            double R_planet = cel->get_equatorial_radius();
+            if (R_planet <= 0)
+            {
+                R_planet = cel->volumetric_mean_radius;
+            }
+            if (R_planet <= 0)
+            {
+                R_planet = earth_radius;
+            }
+
+            double D_shore = -1.0;
+            if (p && p->surf_map)
+            {
+                double test_dists[5] = { 400.0, 1000.0, 2200.0, 4500.0, 9000.0 };
+                for (int td = 0; td < 5; td++)
+                {
+                    double s = test_dists[td];
+                    double delta_sigma = s / R_planet;
+                    double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(azimuth);
+                    sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
+                    double phi = asin(sin_phi);
+                    double d_lon = atan2(sin(azimuth) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
+                    double lam = viewer_lon + d_lon;
+                    RGB3 sc = p->surf_map->color_at(phi, lam);
+                    bool sc_is_water = (sc.b > 0.8 * sc.r) && (fmax(sc.b, sc.g) > 1.333 * sc.r);
+                    if (!sc_is_water)
+                    {
+                        D_shore = s;
+                        break;
+                    }
+                }
+            }
+
+            double horizon_lift_rad = 0;
+            if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
+            {
+                p = (Planet*)cel;
+                horizon_lift_rad = p->atmospheric_horizon_lift();
+            }
+
+            double h_eye = fmax(0.01, viewer_eye_height);
+            double horizon_dip_rad = (R_planet > 0) ? acos(R_planet / (R_planet + h_eye)) : 0.0;
+            double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
+            double delta_horizon = -net_horizon_angle;
+            double delta_near = atan(h_eye / WAVE_NEAR_DIST);
+
+            double s_horizon = sqrt(2.0 * R_planet * h_eye);
+            if (horizon_lift_rad > 0.0)
+            {
+                s_horizon += R_planet * sin(horizon_lift_rad);
+            }
+
+            double delta_far = delta_horizon;
+            double s_max = (s_horizon > 0.0) ? fmin(10000.0, s_horizon) : 5000.0;
+            if (D_shore > 0.0)
+            {
+                double delta_shore = atan(h_eye / D_shore) + (D_shore / (2.0 * R_planet));
+                if (s_horizon > 0.0)
+                {
+                    delta_shore -= (D_shore / s_horizon) * horizon_lift_rad;
+                }
+                if (delta_shore > delta_horizon)
+                {
+                    delta_far = delta_shore;
+                    s_max = D_shore;
+                }
+            }
+
+            if (delta_far >= delta_near)
+            {
+                delta_far = delta_near - 0.001;
+            }
+
+            int num_wave_rows = WAVE_NUM_ROWS;
+            for (int wr_i = 1; wr_i <= num_wave_rows; wr_i++)
+            {
+                double u = (num_wave_rows > 1) ? ((double)(wr_i - 1) / (double)(num_wave_rows - 1) + WAVE_PERSPECTIVE_OFFSET) : 1.0;
+                double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
+                double delta = delta_far + (delta_near - delta_far) * blend;
+                double dist_m = WAVE_NEAR_DIST + (s_max - WAVE_NEAR_DIST) * (u * u);
+
+                int num_steps = WAVE_STEPS_PER_ROW;
+                double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
+                double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
+                ImVec2 prev_pt;
+                bool has_prev = false;
+
+                for (int si = -num_steps; si <= num_steps; si++)
+                {
+                    double th_rel = si * step_angle + row_offset;
+                    double th_world = azimuth + th_rel;
+
+                    Point pt_w = rotate3D(zaxis, center, xaxis, delta);
+                    pt_w = rotate3D(pt_w, center, yaxis, th_world);
+                    Cartesian2D cart(pt_w, azimuth, altitude, zoom);
+
+                    if (cart.x < -1e10)
+                    {
+                        has_prev = false;
+                        continue;
+                    }
+
+                    double wx = cart.x * dispcx + dispcx;
+                    double wy = cart.y * dispcx + dispcy;
+
+                    if (wx < -20.0 || wx > dispcx * 2 + 20.0 || wy < -20.0 || wy > dispcy * 2 + 20.0)
+                    {
+                        has_prev = false;
+                        continue;
+                    }
+
+                    int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(wx)));
+                    if (wy < min_hz_y_at_x[ix_lookup] - 2.0)
+                    {
+                        has_prev = false;
+                        continue;
+                    }
+
+                    double u_world = dist_m * sin(th_world);
+                    double v_world = dist_m * cos(th_world);
+
+                    double phi1 = 0.6 * u_world + 0.3 * v_world - 2.4 * wave_t;
+                    double phi2 = -0.3 * u_world + 0.7 * v_world - 1.8 * wave_t;
+                    double wave_val = 0.6 * sin(phi1) + 0.4 * sin(phi2);
+
+                    double amp_px = fmax(0.5, fmin(4.5, (0.04 / fmax(1.0, dist_m * 0.1)) * dispcx * zoom));
+                    wy += wave_val * amp_px;
+                    if (wy < min_hz_y_at_x[ix_lookup])
+                    {
+                        wy = min_hz_y_at_x[ix_lookup];
+                    }
+
+                    ImVec2 cur_pt(wx, wy);
+
+                    // When light sources are low on the horizon, expand glint reflections
+                    double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
+                    if (has_prev && wave_val > min_crest)
+                    {
+                        double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
+                        int cr = fmin(255.0, rgb.r * 0.5 + 40.0 * crest_fac);
+                        int cg = fmin(255.0, rgb.g * 0.7 + 60.0 * crest_fac);
+                        int cb = fmin(255.0, rgb.b * 0.95 + 75.0 * crest_fac);
+                        int ca = (int)(90.0 + 130.0 * crest_fac);
+
+                        if (!glint_sources.empty())
+                        {
+                            double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
+                            double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
+                            double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
+
+                            for (const auto &gsrc : glint_sources)
+                            {
+                                double dx_src = fabs(wx - gsrc.screen_x);
+                                double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
+                                double glint_w = base_w * (1.0 + 1.2 * gsrc.low_factor);
+                                if (dx_src < glint_w * 2.5)
+                                {
+                                    double g_factor = exp(-pow(dx_src / glint_w, 2.0));
+                                    double sparkle_thresh = 0.50 - 0.25 * gsrc.low_factor;
+                                    if (sparkle > sparkle_thresh)
+                                    {
+                                        double low_boost = 1.0 + 0.8 * gsrc.low_factor;
+                                        double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
+
+                                        cr = fmin(255.0, cr + g_factor * gsrc.r * sp_int * low_boost * gsrc.intensity);
+                                        cg = fmin(255.0, cg + g_factor * gsrc.g * sp_int * low_boost * gsrc.intensity);
+                                        cb = fmin(255.0, cb + g_factor * gsrc.b * sp_int * low_boost * gsrc.intensity);
+                                        ca = fmin(255.0, ca + g_factor * 130.0 * low_boost * gsrc.intensity);
+                                    }
+                                }
+                            }
+                        }
+
+                        ImU32 w_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+                        float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
+                        ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
+                    }
+
+                    prev_pt = cur_pt;
+                    has_prev = (wave_val > min_crest * 0.8);
+                }
+            }
+
+            if (D_shore > 0.0)
+            {
+                double dep_ang_shore = atan(h_eye / D_shore) + (D_shore / (2.0 * R_planet));
+                if (s_horizon > 0.0)
+                {
+                    dep_ang_shore -= (D_shore / s_horizon) * horizon_lift_rad;
+                }
+                Point pt_shore = rotate3D(zaxis, center, xaxis, dep_ang_shore);
+                pt_shore = rotate3D(pt_shore, center, yaxis, azimuth);
+                Cartesian2D cart_shore(pt_shore, azimuth, altitude, zoom);
+
+                /*if (cart_shore.x > -1e10)
+                {
+                    double y_shore = cart_shore.y * dispcx + dispcy;
+                    if (y_shore >= 0 && y_shore < dispcy * 2)
+                    {
+                        double surf_pulse = sin(2.2 * wave_t);
+                        double swash_amp = fmax(2.0, fmin(12.0, (0.5 / D_shore) * dispcx * zoom));
+                        double y_foam = y_shore + surf_pulse * swash_amp;
+
+                        int foam_alpha = (int)(130.0 + 90.0 * (0.5 + 0.5 * surf_pulse));
+                        ImU32 foam_col = rgba_apply_redlight(IM_COL32(235, 245, 255, foam_alpha));
+
+                        double foam_step = 14.0;
+                        int f_steps = (int)(dispcx * 2 / foam_step) + 1;
+                        for (int fs = 0; fs < f_steps; fs++)
+                        {
+                            double fx0 = fs * foam_step;
+                            double fx1 = fmin(dispcx * 2, (fs + 1) * foam_step);
+                            double w_wobble0 = 2.0 * sin(fx0 * 0.04 + wave_t * 2.8);
+                            double w_wobble1 = 2.0 * sin(fx1 * 0.04 + wave_t * 2.8);
+                            ImGui::GetBackgroundDrawList()->AddLine(
+                                ImVec2(fx0, y_foam + w_wobble0),
+                                ImVec2(fx1, y_foam + w_wobble1),
+                                foam_col, 2.5f);
+                        }
+                    }
+                }*/
+            }
+        }
+        else if (!is_water && !gaseous && !faded)
+        {
+            Map *surf_map = cel->surf_map;
+            RGB3 base_map_rgb = surf_map ? surf_map->color_at(viewer_lat, viewer_lon) : RGB3(160, 120, 80);
+            double P_surf = p ? p->get_surface_pressure() : 0.0;
+            double T_surf = p ? p->estimate_surface_temperature() : 0.0;
+
+            bool is_icy = (cel->type == icy)
+                || (p && !uses_gaseous_map(p->type) && T_surf < 170.0 && base_map_rgb.r > 150 && base_map_rgb.b > 150);
+            bool is_venus = !is_icy && p && uses_rocky_map(p->type)
+                && (P_surf >= 4.0 * oneatm && T_surf >= 420.0);
+            bool is_mars = !is_icy && !is_venus && p && uses_rocky_map(p->type)
+                && (P_surf > 5.0 && P_surf < 0.3 * oneatm && T_surf > 130.0 && T_surf < 340.0);
+            bool is_moon = !is_icy && !is_venus && !is_mars && p && uses_rocky_map(p->type)
+                && (P_surf <= 50.0);
+
+            CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
+            double sun_elev = sun_obj ? sun_obj->Decl_as_radians(here) : 0.0;
+            double sun_az_world = azimuth;
+            if (sun_obj)
+            {
+                Point sun_pt = to_viewer_plane(sun_obj->tmprel);
+                Point sun_horiz = rotate3D(sun_pt, center, yaxis, -azimuth_correction);
+                sun_az_world = atan2(sun_horiz.x, sun_horiz.z);
+            }
+
+            double h_eye = fmax(0.01, viewer_eye_height);
+            double R_planet = cel->get_equatorial_radius();
+            if (R_planet <= 0)
+            {
+                R_planet = cel->volumetric_mean_radius;
+            }
+            if (R_planet <= 0)
+            {
+                R_planet = earth_radius;
+            }
+
+            double horizon_lift_rad = 0;
+            if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
+            {
+                p = (Planet*)cel;
+                horizon_lift_rad = p->atmospheric_horizon_lift();
+            }
+
+            double s_horizon = sqrt(2.0 * R_planet * h_eye);
+            if (horizon_lift_rad > 0.0)
+            {
+                s_horizon += R_planet * sin(horizon_lift_rad);
+            }
+
+            double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
+            double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
+
+            if (show_terrain)
+            {
+                RockInstance rocks[ROCK_COUNT];
+                int num_rocks = 0;
+
+                uint32_t base_seed = (uint32_t)(whereami * 2654435761u
+                    ^ (uint32_t)fabs(viewer_lat * 12345.0)
+                    ^ ((uint32_t)fabs(viewer_lon * 54321.0) << 12));
+                
+                double grav = p ? p->estimate_surface_gravity() : 1;
+                double presh = p ? (log(p->get_surface_pressure()*inv_oneatm)+1) : 1;
+
+                double plant_trunk_height = PLANT_TRUNK_HEIGHT / grav;
+                double plant_trunk_width = PLANT_TRUNK_WIDTH * grav;
+                double plant_crown_size = PLANT_CROWN_SIZE / presh;
+                double plant_crown_oblateness = PLANT_CROWN_OBLATENESS * presh;
+
+                double rock_aspect = is_vegetation
+                    ? (plant_trunk_height + plant_crown_size * plant_crown_oblateness)
+                    : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT));
+
+                // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
+                for (int ri = 0; ri < ROCK_COUNT; ri++)
+                {
+                    uint32_t rhash = base_seed + (uint32_t)ri * 2246822519u;
+                    rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
+                    rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
+                    rhash = (rhash >> 16) ^ rhash;
+
+                    double u_dist = (double)(rhash & 0xFFFF) / 65535.0;
+                    double u_az = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
+
+                    double theta_world = u_az * _pi * 2.0;
+
+                    // Organic distance variation with azimuth to break up circular symmetry
+                    double az_var = 0.35 * sin(2.0 * theta_world + 1.23)
+                                + 0.25 * cos(3.0 * theta_world + 2.45)
+                                + 0.15 * sin(5.0 * theta_world + 0.67);
+                    double local_max_dist = ROCK_MAX_DIST * (1.25 + az_var);
+
+                    // Distance distribution with natural density spread
+                    double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.4);
+                    double dist_ratio = dist_m / local_max_dist;
+                    if (dist_ratio >= 1.0)
+                    {
+                        continue;
+                    }
+
+                    // Smooth density falloff so rocks naturally thin out towards the horizon
+                    double fade_prob = 1.0 - pow(dist_ratio, 2.5);
+                    uint32_t fade_hash = (rhash * 1103515245u + 12345u);
+                    double u_fade = (double)(fade_hash & 0xFFFF) / 65535.0;
+                    if (u_fade > fade_prob)
+                    {
+                        continue;
+                    }
+
+                    uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
+                    double u_sz = (double)(sz_hash & 0xFFFF) / 65535.0;
+                    double rock_size = ROCK_MIN_SIZE + (ROCK_MAX_SIZE - ROCK_MIN_SIZE) * (u_sz * u_sz * u_sz);
+
+                    double rw = (rock_size / dist_m) * dispcx * zoom;
+                    double rh = rw * rock_aspect;
+                    if (rw < 1.5)
+                    {
+                        continue;
+                    }
+
+                    double sx = 0.0;
+                    double sy = 0.0;
+                    double crown_sx = 0.0;
+                    double crown_sy = 0.0;
+                    double crown_rx = 0.0;
+                    double crown_ry = 0.0;
+                    double trunk_w_top = 0.0;
+                    double trunk_w_base = 0.0;
+                    bool base_valid = false;
+                    double sort_dist = dist_m;
+
+                    if (is_vegetation)
+                    {
+                        double canopy_h_m = rock_size * plant_trunk_height;
+                        double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
+                        double y_base_world = -h_eye - curv_drop;
+                        double y_crown_world = canopy_h_m - h_eye - curv_drop;
+
+                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                        {
+                            double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
+                            y_base_world += lift;
+                            y_crown_world += lift;
+                        }
+
+                        double d_az_obj = theta_world - azimuth;
+                        double sin_daz = sin(d_az_obj);
+                        double cos_daz = cos(d_az_obj);
+
+                        double x_cam = dist_m * sin_daz;
+                        double z_horiz = dist_m * cos_daz;
+
+                        double cos_alt = cos(altitude);
+                        double sin_alt = sin(altitude);
+
+                        double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
+                        double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
+
+                        if (z_crown_cam < 0.2)
+                        {
+                            continue;
+                        }
+
+                        crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
+                        crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
+
+                        crown_rx = (rock_size * plant_crown_size / z_crown_cam) * dispcx * zoom;
+                        crown_rx = fmax(1.2, crown_rx);
+                        crown_ry = fmax(1.0, crown_rx * plant_crown_oblateness);
+
+                        trunk_w_top = (rock_size * plant_trunk_width / z_crown_cam) * dispcx * zoom;
+                        trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+
+                        double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
+                        double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
+
+                        if (z_base_cam >= 0.2)
+                        {
+                            base_valid = true;
+                            sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
+                            sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
+                            trunk_w_base = (rock_size * plant_trunk_width / z_base_cam) * dispcx * zoom;
+                        }
+                        else
+                        {
+                            base_valid = false;
+                            double t = (0.2 - z_base_cam) / (z_crown_cam - z_base_cam);
+                            double y_clip = y_base_cam + t * (y_crown_cam - y_base_cam);
+                            sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
+                            sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                            trunk_w_base = (rock_size * plant_trunk_width / 0.2) * dispcx * zoom;
+                        }
+                        trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
+
+                        sort_dist = z_crown_cam;
+                    }
+                    else
+                    {
+                        double d_az_obj = theta_world - azimuth;
+                        if (cos(d_az_obj) <= 0.1)
+                        {
+                            continue;
+                        }
+
+                        double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
+                        if (s_horizon > 0.0)
+                        {
+                            delta -= (dist_m / s_horizon) * horizon_lift_rad;
+                        }
+                        if (dittrsa)
+                        {
+                            delta = -delta;
+                        }
+                        Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
+                        pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
+
+                        Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
+                        if (cart.x <= -1e10)
+                        {
+                            continue;
+                        }
+
+                        base_valid = true;
+                        sx = cart.x * dispcx + dispcx;
+                        sy = cart.y * dispcx + dispcy;
+                        crown_sx = sx;
+                        crown_sy = sy - rh;
+                        crown_rx = rw * 0.5;
+                        crown_ry = rh;
+                        sort_dist = dist_m;
+                    }
+
+                    double min_x = fmin(sx, crown_sx) - crown_rx;
+                    double max_x = fmax(sx, crown_sx) + crown_rx;
+                    double min_y = crown_sy - crown_ry;
+                    double max_y = fmax(sy, crown_sy + crown_ry);
+
+                    if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
+                    {
+                        continue;
+                    }
+
+                    double rock_lift_px = 0.0;
+                    if (!dittrsa && base_valid && !is_vegetation)
+                    {
+                        int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
+                        double ground_span = sy - min_hz_y_at_x[ix_lookup];
+                        if (ground_span > 0.0)
+                        {
+                            double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
+                            rock_lift_px = ground_span * slope_factor;
+                            sy -= rock_lift_px;
+                            crown_sy -= rock_lift_px;
+                        }
+
+                        if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
+                        {
+                            continue;
+                        }
+                    }
+
+                    rocks[num_rocks].dist = sort_dist;
+                    rocks[num_rocks].theta = theta_world;
+                    rocks[num_rocks].screen_x = sx;
+                    rocks[num_rocks].screen_y = sy;
+                    rocks[num_rocks].crown_x = crown_sx;
+                    rocks[num_rocks].crown_y = crown_sy;
+                    rocks[num_rocks].crown_rx = crown_rx;
+                    rocks[num_rocks].crown_ry = crown_ry;
+                    rocks[num_rocks].trunk_w_top = trunk_w_top;
+                    rocks[num_rocks].trunk_w_base = trunk_w_base;
+                    rocks[num_rocks].width = rw;
+                    rocks[num_rocks].height = rh;
+                    rocks[num_rocks].size = rock_size;
+                    rocks[num_rocks].lift_px = rock_lift_px;
+                    rocks[num_rocks].seed_val = rhash;
+                    rocks[num_rocks].base_valid = base_valid;
+                    num_rocks++;
+                }
+
+                std::sort(rocks, rocks + num_rocks, [](const RockInstance& a, const RockInstance& b)
+                {
+                    return a.dist > b.dist;
+                });
+
+                int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : ROCK_SHADOW_ALPHA_DEF));
+                int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
+                bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
+
+                for (int ri = 0; ri < num_rocks; ri++)
+                {
+                    const RockInstance& rk = rocks[ri];
+                    double rx = rk.screen_x;
+                    double ry = rk.screen_y;
+                    double rw = rk.width;
+                    double rh = rk.height;
+
+                    if (has_sun_shadow && rw >= 3.0 && rk.base_valid)
+                    {
+                        double actual_rock_h = rk.size * rock_aspect;
+                        double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
+                        L_shadow = fmin(rk.dist * 1.5, fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow));
+
+                        double u_rock = rk.dist * sin(rk.theta);
+                        double v_rock = rk.dist * cos(rk.theta);
+
+                        double u_tip = u_rock - L_shadow * sin(sun_az_world);
+                        double v_tip = v_rock - L_shadow * cos(sun_az_world);
+
+                        double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
+                        double th_tip = atan2(u_tip, v_tip);
+                        double delta_tip = atan(h_eye / dist_tip) + (dist_tip / (2.0 * R_planet));
+                        if (s_horizon > 0.0)
+                        {
+                            delta_tip -= (dist_tip / s_horizon) * horizon_lift_rad;
+                        }
+
+                        Point pt_tip = rotate3D(zaxis, center, xaxis, delta_tip);
+                        pt_tip = rotate3D(pt_tip, center, yaxis, th_tip);
+                        Cartesian2D cart_tip(pt_tip, azimuth, altitude, zoom);
+
+                        if (cart_tip.x > -1e10)
+                        {
+                            double tip_x = cart_tip.x * dispcx + dispcx;
+                            double tip_y = cart_tip.y * dispcx + dispcy - rk.lift_px * (dist_tip / rk.dist);
+
+                            ImVec2 shad_pts[3];
+                            shad_pts[0] = ImVec2(rx - rw * 0.45, ry);
+                            shad_pts[1] = ImVec2(rx + rw * 0.45, ry);
+                            shad_pts[2] = ImVec2(tip_x, tip_y);
+
+                            ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, shadow_alpha));
+                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
+                        }
+                    }
+
+                    if (rw < ROCK_PEBBLE_THRESH)
+                    {
+                        int pr, pg, pb;
+                        if (is_vegetation)
+                        {
+                            RGB3 vcol = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
+                                ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                                : RGB3(40, 140, 50);
+                            pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
+                            pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
+                            pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
+                        }
+                        else if (is_mars)
+                        {
+                            pr = fmin(255.0, (base_map_rgb.r * 0.55) * amb_light);
+                            pg = fmin(255.0, (base_map_rgb.g * 0.55) * amb_light);
+                            pb = fmin(255.0, (base_map_rgb.b * 0.55) * amb_light);
+                        }
+                        else
+                        {
+                            pr = fmin(255.0, (base_map_rgb.r * 0.6) * amb_light);
+                            pg = fmin(255.0, (base_map_rgb.g * 0.6) * amb_light);
+                            pb = fmin(255.0, (base_map_rgb.b * 0.6) * amb_light);
+                        }
+                        ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
+                        double px = is_vegetation ? rk.crown_x : rx;
+                        double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
+                        ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
+                        continue;
+                    }
+
+                    if (is_vegetation)
+                    {
+                        double d_az = sun_az_world - azimuth;
+                        double sun_cos = cos(d_az + _pi);
+
+                        RGB3 veg_base = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
+                            ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                            : RGB3(40, 140, 50);
+
+                        double u_tint = (double)(rk.seed_val & 0xFF) / 255.0;
+                        double tint_factor = 0.88 + 0.24 * u_tint;
+
+                        double crown_rx = rk.crown_rx;
+                        double crown_ry = rk.crown_ry;
+                        double trunk_w_top = rk.trunk_w_top;
+                        double trunk_w_base = rk.trunk_w_base;
+
+                        double cx = rk.crown_x;
+                        double cy = rk.crown_y;
+                        double bx = rk.screen_x;
+                        double by = rk.screen_y;
+
+                        double trunk_w_bot = trunk_w_base;
+
+                        // If the trunk base is below the viewport, clip its bottom vertices along trunk axis
+                        double clip_bottom = dispcy * 2.0 + 40.0;
+                        if (by > clip_bottom && by > cy)
+                        {
+                            double t = (clip_bottom - cy) / (by - cy);
+                            bx = cx + (bx - cx) * t;
+                            by = clip_bottom;
+                            trunk_w_bot = trunk_w_top + (trunk_w_base - trunk_w_top) * t;
+                        }
+
+                        // Vector along trunk from base to crown
+                        double tdir_x = cx - bx;
+                        double tdir_y = cy - by;
+                        double tdir_len = sqrt(tdir_x * tdir_x + tdir_y * tdir_y);
+
+                        // Brown-gray stalk/trunk with directional lighting
+                        double trunk_light = amb_light * 0.70 + sun_light * 2.3 * fmax(0.15, (0.60 + 0.40 * sun_cos));
+                        int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
+                        int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
+                        int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
+                        ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
+
+                        if (tdir_len > 1.0)
+                        {
+                            double ux = tdir_x / tdir_len;
+                            double uy = tdir_y / tdir_len;
+                            // Perpendicular normal to trunk vector
+                            double nx = -uy;
+                            double ny = ux;
+
+                            // Embed trunk top vertices into crown ellipse to avoid visible seam
+                            double embed_dist = fmin(crown_ry * 0.45, 40.0);
+                            double top_x = cx + ux * embed_dist;
+                            double top_y = cy + uy * embed_dist;
+
+                            ImVec2 trunk_pts[4];
+                            trunk_pts[0] = ImVec2(bx - nx * trunk_w_bot * 0.50, by - ny * trunk_w_bot * 0.50);
+                            trunk_pts[1] = ImVec2(top_x - nx * trunk_w_top * 0.38, top_y - ny * trunk_w_top * 0.38);
+                            trunk_pts[2] = ImVec2(top_x + nx * trunk_w_top * 0.38, top_y + ny * trunk_w_top * 0.38);
+                            trunk_pts[3] = ImVec2(bx + nx * trunk_w_bot * 0.50, by + ny * trunk_w_bot * 0.50);
+                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
+                        }
+
+                        // Oblate spheroid crown in vegetation color at the top of the stalk
+                        double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
+                        int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
+                        int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
+                        int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
+                        ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+
+                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                            ImVec2(cx, cy),
+                            ImVec2((float)crown_rx, (float)crown_ry),
+                            crown_col);
+                    }
+                    else if (is_venus)
+                    {
+                        ImVec2 slab_pts[4];
+                        slab_pts[0] = ImVec2(rx - rw * 0.50, ry);
+                        slab_pts[1] = ImVec2(rx - rw * 0.44, ry - rh);
+                        slab_pts[2] = ImVec2(rx + rw * 0.44, ry - rh);
+                        slab_pts[3] = ImVec2(rx + rw * 0.50, ry);
+
+                        int vr = fmin(255.0, (base_map_rgb.r * 0.65) * (amb_light + sun_light * 0.5));
+                        int vg = fmin(255.0, (base_map_rgb.g * 0.62) * (amb_light + sun_light * 0.5));
+                        int vb = fmin(255.0, (base_map_rgb.b * 0.50) * (amb_light + sun_light * 0.5));
+                        ImU32 slab_body = rgba_apply_redlight(IM_COL32(vr, vg, vb, 255));
+                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(slab_pts, 4, slab_body);
+
+                        ImU32 slab_top_edge = rgba_apply_redlight(IM_COL32(fmin(255, vr + 25), fmin(255, vg + 25), fmin(255, vb + 15), 255));
+                        ImGui::GetBackgroundDrawList()->AddLine(slab_pts[1], slab_pts[2], slab_top_edge, 1.2f);
+                    }
+                    else
+                    {
+                        // Solar direction relative to camera azimuth
+                        double d_az = sun_az_world - azimuth;
+                        double sun_cos = cos(d_az);
+                        double sun_sin = sin(d_az);
+
+                        double br, bg, bb;
+
+                        br = base_map_rgb.r * 0.6;
+                        bg = base_map_rgb.g * 0.6;
+                        bb = base_map_rgb.b * 0.6;
+
+                        double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
+                        double amb_mult = is_moon ? 0.35 : 0.55;
+
+                        // Derive pseudo-random vertex offsets deterministically from rock seed
+                        uint32_t sh = rk.seed_val;
+                        auto next_rnd = [&sh]() -> double
+                        {
+                            sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
+                            sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
+                            sh = (sh >> 16) ^ sh;
+                            return (double)(sh & 0xFFFF) / 65535.0;
+                        };
+
+                        static const float rock_dome_verts[26][3] =
+                        {
+                            { 0.000000f,  1.000000f,  0.000000f}, // 0: Apex
+                            { 0.894427f,  0.447214f,  0.000000f}, // 1
+                            { 0.276393f,  0.447214f,  0.850651f}, // 2
+                            {-0.723607f,  0.447214f,  0.525731f}, // 3
+                            {-0.723607f,  0.447214f, -0.525731f}, // 4
+                            { 0.276393f,  0.447214f, -0.850651f}, // 5
+                            { 0.525731f,  0.850651f,  0.000000f}, // 6
+                            { 0.688191f,  0.525731f,  0.500000f}, // 7
+                            { 0.162460f,  0.850651f,  0.500000f}, // 8
+                            {-0.262866f,  0.525731f,  0.809017f}, // 9
+                            {-0.425325f,  0.850651f,  0.309017f}, // 10
+                            {-0.850651f,  0.525731f,  0.000000f}, // 11
+                            {-0.425325f,  0.850651f, -0.309017f}, // 12
+                            {-0.262866f,  0.525731f, -0.809017f}, // 13
+                            { 0.162460f,  0.850651f, -0.500000f}, // 14
+                            { 0.688191f,  0.525731f, -0.500000f}, // 15
+                            { 0.587785f,  0.000000f,  0.809017f}, // 16: Equator base
+                            { 0.951057f,  0.000000f,  0.309017f}, // 17
+                            { 0.951057f,  0.000000f, -0.309017f}, // 18
+                            {-0.587785f,  0.000000f,  0.809017f}, // 19
+                            { 0.000000f,  0.000000f,  1.000000f}, // 20
+                            {-0.951057f,  0.000000f, -0.309017f}, // 21
+                            {-0.951057f,  0.000000f,  0.309017f}, // 22
+                            {-0.000000f,  0.000000f, -1.000000f}, // 23
+                            {-0.587785f,  0.000000f, -0.809017f}, // 24
+                            { 0.587785f,  0.000000f, -0.809017f}  // 25
+                        };
+
+                        static const int rock_dome_faces[40][3] =
+                        {
+                            {0, 8, 6},   {1, 6, 7},   {2, 7, 8},   {6, 8, 7},
+                            {0, 10, 8},  {2, 8, 9},   {3, 9, 10},  {8, 10, 9},
+                            {0, 12, 10}, {3, 10, 11}, {4, 11, 12}, {10, 12, 11},
+                            {0, 14, 12}, {4, 12, 13}, {5, 13, 14}, {12, 14, 13},
+                            {0, 6, 14},  {5, 14, 15}, {1, 15, 6},  {14, 6, 15},
+                            {1, 7, 17},  {2, 16, 7},  {7, 16, 17}, {1, 17, 18},
+                            {2, 9, 20},  {3, 19, 9},  {9, 19, 20}, {2, 20, 16},
+                            {3, 11, 22}, {4, 21, 11}, {11, 21, 22},{3, 22, 19},
+                            {4, 13, 24}, {5, 23, 13}, {13, 23, 24},{4, 24, 21},
+                            {5, 15, 25}, {1, 18, 15}, {15, 18, 25},{5, 25, 23}
+                        };
+
+                        double yaw = next_rnd() * 2.0 * _pi;
+                        double cos_y = cos(yaw);
+                        double sin_y = sin(yaw);
+
+                        double scale_x = rw * 0.5 * (0.88 + 0.24 * next_rnd());
+                        double scale_z = rw * 0.5 * (0.78 + 0.30 * next_rnd());
+                        double scale_y = rh * (0.92 + 0.16 * next_rnd());
+
+                        double apex_shift_x = (next_rnd() - 0.5) * 0.35;
+                        double apex_shift_z = (next_rnd() - 0.5) * 0.35;
+
+                        double tilt_x = (next_rnd() - 0.5) * 0.12;
+                        double tilt_z = (next_rnd() - 0.5) * 0.12;
+
+                        // Viewer depression angle looking down at ground at rock distance
+                        double alpha = atan2(h_eye, rk.dist);
+                        double cos_a = cos(alpha);
+                        double sin_a = sin(alpha);
+
+                        // Direction vector towards the sun in camera space (tilted by alpha)
+                        double sun_cam_x = sun_sin;
+                        double sun_h_y = sin(fmax(0.0, sun_elev));
+                        double sun_h_z = -sun_cos;
+                        double sun_cam_y = sun_h_y * cos_a + sun_h_z * sin_a;
+                        double sun_cam_z = -sun_h_y * sin_a + sun_h_z * cos_a;
+                        double sun_cam_len = sqrt(sun_cam_x * sun_cam_x + sun_cam_y * sun_cam_y + sun_cam_z * sun_cam_z);
+                        if (sun_cam_len > 1e-6)
+                        {
+                            sun_cam_x /= sun_cam_len;
+                            sun_cam_y /= sun_cam_len;
+                            sun_cam_z /= sun_cam_len;
+                        }
+
+                        double jagg = ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
+
+                        struct CamVertex
+                        {
+                            double x;
+                            double y;
+                            double z;
+                        };
+
+                        CamVertex cam_v[26];
+                        ImVec2 screen_v[26];
+
+                        for (int vi = 0; vi < 26; vi++)
+                        {
+                            uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
+                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                            vsh = (vsh >> 16) ^ vsh;
+                            double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
+
+                            double disp = 1.0 + jagg * (vrnd - 0.5);
+                            double vx = rock_dome_verts[vi][0] * disp;
+                            double vy = rock_dome_verts[vi][1] * disp;
+                            double vz = rock_dome_verts[vi][2] * disp;
+
+                            if (vi == 0)
+                            {
+                                vx += apex_shift_x;
+                                vz += apex_shift_z;
+                            }
+                            else if (rock_dome_verts[vi][1] < 0.05f)
+                            {
+                                vy = 0.0;
+                            }
+
+                            // Rotate around Y axis (yaw) and scale
+                            double rx_ = (vx * cos_y + vz * sin_y) * scale_x;
+                            double rz_ = (-vx * sin_y + vz * cos_y) * scale_z;
+                            double ry_ = vy * scale_y + (rx_ * tilt_x + rz_ * tilt_z);
+                            if (ry_ < 0.0)
+                            {
+                                ry_ = 0.0;
+                            }
+
+                            // Camera depression transform
+                            double xc = rx_;
+                            double yc = ry_ * cos_a - rz_ * sin_a;
+                            double zc = ry_ * sin_a + rz_ * cos_a;
+
+                            cam_v[vi].x = xc;
+                            cam_v[vi].y = yc;
+                            cam_v[vi].z = zc;
+
+                            screen_v[vi] = ImVec2((float)(rx + xc), (float)(ry - yc));
+                        }
+
+                        struct RockFacet
+                        {
+                            double depth;
+                            ImVec2 p0;
+                            ImVec2 p1;
+                            ImVec2 p2;
+                            ImU32 col;
+                        };
+
+                        RockFacet facets_to_draw[40];
+                        int facet_count = 0;
+
+                        for (int fi = 0; fi < 40; fi++)
+                        {
+                            int idx0 = rock_dome_faces[fi][0];
+                            int idx1 = rock_dome_faces[fi][1];
+                            int idx2 = rock_dome_faces[fi][2];
+
+                            const CamVertex& v0 = cam_v[idx0];
+                            const CamVertex& v1 = cam_v[idx1];
+                            const CamVertex& v2 = cam_v[idx2];
+
+                            double e1x = v1.x - v0.x;
+                            double e1y = v1.y - v0.y;
+                            double e1z = v1.z - v0.z;
+
+                            double e2x = v2.x - v0.x;
+                            double e2y = v2.y - v0.y;
+                            double e2z = v2.z - v0.z;
+
+                            // Cross product (outward normal)
+                            double nx = e1y * e2z - e1z * e2y;
+                            double ny = e1z * e2x - e1x * e2z;
+                            double nz = e1x * e2y - e1y * e2x;
+
+                            double nlen = sqrt(nx * nx + ny * ny + nz * nz);
+                            if (nlen < 1e-6)
+                            {
+                                continue;
+                            }
+
+                            nx /= nlen;
+                            ny /= nlen;
+                            nz /= nlen;
+
+                            // Backface culling: front-facing facets have normal pointing towards viewer (nz > 0)
+                            if (nz <= 0.001)
+                            {
+                                continue;
+                            }
+
+                            double dot_sun = fmax(0.0, nx * sun_cam_x + ny * sun_cam_y + nz * sun_cam_z);
+                            double sky_fac = 0.80 + 0.35 * fmax(0.0, ny);
+                            double light_fac = amb_light * amb_mult * sky_fac + sun_light * sun_mult * dot_sun;
+
+                            int cr = fmin(255.0, br * light_fac);
+                            int cg = fmin(255.0, bg * light_fac);
+                            int cb = fmin(255.0, bb * light_fac);
+                            ImU32 fcol = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+
+                            facets_to_draw[facet_count].depth = (v0.z + v1.z + v2.z) / 3.0;
+                            facets_to_draw[facet_count].p0 = screen_v[idx0];
+                            facets_to_draw[facet_count].p1 = screen_v[idx1];
+                            facets_to_draw[facet_count].p2 = screen_v[idx2];
+                            facets_to_draw[facet_count].col = fcol;
+                            facet_count++;
+                        }
+
+                        // Painter's algorithm sort: draw farther facets before nearer ones
+                        std::sort(facets_to_draw, facets_to_draw + facet_count, [](const RockFacet& a, const RockFacet& b)
+                        {
+                            return a.depth < b.depth;
+                        });
+
+                        for (int fi = 0; fi < facet_count; fi++)
+                        {
+                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(
+                                facets_to_draw[fi].p0,
+                                facets_to_draw[fi].p1,
+                                facets_to_draw[fi].p2,
+                                facets_to_draw[fi].col);
+                        }
+                    }
+                }
+            }
         }
 
         double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g + _lum_b_comp*rgb.b;
@@ -4710,12 +6054,20 @@ void draw_sky_gradient()
                     g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
                     b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
                     a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
+            if (p->overcast) a = 1;
 
             double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
             if (mycenobj)
             {
                 double atm_high_unused[3], atm_low[3], atm_umbra_unused[3];
-                atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
+                if (p->overcast && p->cloud_map)
+                {
+                    RGB3 dammit_bots = p->cloud_map->color_at(viewer_lat, viewer_lon);     // why didn't the LLMs use the Color class for this? IT'S EXACTLY WHAT IT'S FKN FOR!
+                    atm_low[0] = dammit_bots.r;
+                    atm_low[1] = dammit_bots.g;
+                    atm_low[2] = dammit_bots.b;
+                }
+                else atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
 
                 double sun_elev = sin(mycenobj->Decl_as_radians(here));
                 double redden_t = fmin(1.0, fmax(0.0, (0.35 - sun_elev) / (0.35 - 0.02)));
@@ -4976,7 +6328,8 @@ void draw_cons_lines()
     {
         for (l = 0; l < n; l++)
         {
-            if (!belongs_to_active_vantage(constellations[l]))
+            // if (!belongs_to_active_vantage(constellations[l]))
+            if (constellations[l].vantage.squared_magnitude())
             {
                 continue;
             }
@@ -5164,6 +6517,7 @@ void draw_cloudy_sky()
     {
         return;
     }
+    if (p->overcast) haziness = 1;
 
     double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
 

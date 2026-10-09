@@ -61,7 +61,7 @@ OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJIGFD)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJINT)/, $(basename $(notdir $(CLASSES_SRC)))))
 OBJS += $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
-	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o
+	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 
@@ -268,6 +268,9 @@ $(OBJINT)/gputex.o: src/gputex.cpp
 
 $(OBJINT)/sphere_impostor.o: src/sphere_impostor.cpp
 	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJINT)/sphere_impostor.o
+
+$(OBJINT)/sunclock_gpu.o: src/sunclock_gpu.cpp
+	$(CPP) src/sunclock_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/sunclock_gpu.o
 
 
 # Every test binary links the whole object set, so $(OBJS) has to be a prerequisite of each of
