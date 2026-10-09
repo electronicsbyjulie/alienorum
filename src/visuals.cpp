@@ -4829,12 +4829,12 @@ void draw_horizon()
             if (p && p->type == lavaworld)
             {
                 double t_shimmer = ImGui::GetTime();
-                double amp_px = dispcx * 0.0035 * zoom;
+                double amp_px = dispcx * 0.0016 * zoom;
                 for (j = 0; j < hznodes; j++)
                 {
-                    double shim = sin(j * 0.42 + t_shimmer * 7.8) * 0.55
-                                + sin(j * 0.95 - t_shimmer * 12.3) * 0.32
-                                + cos(j * 1.83 + t_shimmer * 19.4) * 0.18;
+                    double shim = sin(j * 0.63 + 0.4) * sin(t_shimmer * 16.2) * 0.45
+                                + sin(j * 1.47 + 1.9) * cos(t_shimmer * 23.7) * 0.35
+                                + cos(j * 2.89 + 0.8) * sin(t_shimmer * 37.4) * 0.20;
                     hzheight[j] += shim * amp_px;
                 }
             }
@@ -4987,10 +4987,11 @@ void draw_horizon()
             if (p && p->type == lavaworld)
             {
                 double t_shim = ImGui::GetTime();
-                double haze_h = fmin(dispcy * 0.28, 38.0 * zoom);
-                if (haze_h > 2.0)
+                double haze_h = fmin(dispcy * 0.35, 48.0 * zoom);
+                if (haze_h > 3.0)
                 {
-                    int col_step = 3;
+                    // Standing optical thermal haze above horizon
+                    int col_step = 4;
                     for (int ix = 0; ix < screen_w; ix += col_step)
                     {
                         double y_base = min_hz_y_at_x[ix];
@@ -4999,23 +5000,63 @@ void draw_horizon()
                             continue;
                         }
 
-                        double wave1 = sin(ix * 0.038 + t_shim * 4.8);
-                        double wave2 = sin(ix * 0.082 - t_shim * 7.4);
-                        double wave3 = cos(ix * 0.165 + t_shim * 12.1);
-                        double plume_var = 0.55 + 0.28 * wave1 + 0.12 * wave2 + 0.05 * wave3;
-                        double cur_h = haze_h * plume_var;
+                        // Pure standing waves: stationary spatial nodes with temporal oscillation
+                        double wave1 = sin(ix * 0.045 + 0.3) * sin(t_shim * 14.2);
+                        double wave2 = cos(ix * 0.112 + 1.1) * cos(t_shim * 22.5);
+                        double wave3 = sin(ix * 0.235 + 2.5) * sin(t_shim * 35.8);
+                        double plume_var = 0.50 + 0.25 * wave1 + 0.15 * wave2 + 0.10 * wave3;
+                        double cur_h = haze_h * fmax(0.2, plume_var);
 
                         double y_top = y_base - cur_h;
-                        int shimmer_alpha = (int)(fmin(75.0, fmax(15.0, 48.0 * plume_var)));
+                        int shimmer_alpha = (int)(fmin(85.0, fmax(15.0, 52.0 * plume_var)));
 
-                        ImU32 col_base = rgba_apply_redlight(IM_COL32(255, 125, 25, shimmer_alpha));
-                        ImU32 col_top = rgba_apply_redlight(IM_COL32(230, 75, 10, 0));
+                        ImU32 col_base = rgba_apply_redlight(IM_COL32(255, 120, 25, shimmer_alpha));
+                        ImU32 col_top = rgba_apply_redlight(IM_COL32(230, 70, 10, 0));
 
                         ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(
                             ImVec2((float)ix, (float)y_top),
                             ImVec2((float)fmin(screen_w, ix + col_step), (float)y_base),
                             col_top, col_top, col_base, col_base
                         );
+                    }
+
+                    // Vertical convective mirage ribbons (rising heat plumes)
+                    int num_ribbons = 48;
+                    for (int ri = 0; ri < num_ribbons; ri++)
+                    {
+                        uint32_t rhash = (uint32_t)(ri * 2654435761u + (whereami >= 0 ? whereami * 1013904223u : 0));
+                        double u_x = (double)(rhash & 0x7FFF) / 32767.0;
+                        double u_h = (double)((rhash >> 15) & 0x7FFF) / 32767.0;
+
+                        double rx_base = u_x * (screen_w - 1);
+                        int ix_base = (int)fmax(0.0, fmin((double)(screen_w - 1), rx_base));
+                        double ry_base = min_hz_y_at_x[ix_base];
+                        if (ry_base < -40.0 || ry_base > dispcy * 2.0 + 40.0)
+                        {
+                            continue;
+                        }
+
+                        double ribbon_h = haze_h * (0.8 + 1.2 * u_h);
+                        int num_seg = 8;
+                        double dy_seg = ribbon_h / (double)num_seg;
+
+                        ImVec2 p_prev((float)rx_base, (float)ry_base);
+                        for (int si = 1; si <= num_seg; si++)
+                        {
+                            double y_curr = ry_base - si * dy_seg;
+                            double h_frac = (double)si / (double)num_seg;
+
+                            // Convective motion: phase moves upward
+                            double flutter = sin((ry_base - y_curr) * 0.16 - t_shim * 18.0 + ri * 0.7) * (2.2 + 3.0 * h_frac);
+                            double x_curr = rx_base + flutter;
+
+                            int r_alpha = (int)(fmax(0.0, (1.0 - h_frac)) * (75.0 + 35.0 * sin(t_shim * 12.0 + ri)));
+                            ImU32 ribbon_col = rgba_apply_redlight(IM_COL32(255, 145, 40, r_alpha));
+
+                            ImVec2 p_curr((float)x_curr, (float)y_curr);
+                            ImGui::GetBackgroundDrawList()->AddLine(p_prev, p_curr, ribbon_col, 1.8f);
+                            p_prev = p_curr;
+                        }
                     }
                 }
             }
@@ -5426,134 +5467,204 @@ void draw_horizon()
                     if (is_lava)
                     {
                         double wave_t = ImGui::GetTime();
-                        double horizon_dip_rad = (R_planet > 0) ? acos(R_planet / (R_planet + h_eye)) : 0.0;
-                        double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
-                        double delta_horizon = -net_horizon_angle;
-                        double delta_near = atan(h_eye / 1.5);
-                        double delta_far = delta_horizon;
-                        if (delta_far >= delta_near)
+                        double s_max = (s_horizon > 0.0) ? fmin(2500.0, s_horizon) : 1500.0;
+                        int num_fissure_systems = 28;
+
+                        auto project_ground_coord = [&](double xw, double yw, double zw, ImVec2 &out_pt, double &out_depth) -> bool
                         {
-                            delta_far = delta_near - 0.001;
-                        }
-
-                        double s_max = (s_horizon > 0.0) ? fmin(4000.0, s_horizon) : 2500.0;
-                        int num_fissure_rows = 44;
-                        int num_fissure_steps = 70;
-                        double step_angle = (0.95 / fmax(0.3, zoom)) / (double)num_fissure_steps;
-
-                        struct FissurePt
-                        {
-                            ImVec2 pt;
-                            double crack;
-                            bool valid;
-                        };
-
-                        std::vector<FissurePt> prev_row(num_fissure_steps * 2 + 1, { ImVec2(0, 0), 0.0, false });
-                        std::vector<FissurePt> cur_row(num_fissure_steps * 2 + 1, { ImVec2(0, 0), 0.0, false });
-
-                        for (int fr_i = 1; fr_i <= num_fissure_rows; fr_i++)
-                        {
-                            double u = (double)(fr_i - 1) / (double)(num_fissure_rows - 1);
-                            double blend = pow(1.0 - u, 1.8);
-                            double delta = delta_far + (delta_near - delta_far) * blend;
-                            double dist_m = 1.5 + (s_max - 1.5) * (u * u);
-                            double line_th = fmax(1.0f, (float)(2.4 / fmax(1.0, dist_m * 0.08)));
-
-                            for (int si = -num_fissure_steps; si <= num_fissure_steps; si++)
+                            double d_horiz = sqrt(xw * xw + zw * zw);
+                            double th_w = atan2(xw, zw);
+                            double d_az = th_w - azimuth;
+                            while (d_az > _pi)
                             {
-                                int idx = si + num_fissure_steps;
-                                cur_row[idx].valid = false;
-
-                                double th_rel = si * step_angle;
-                                double th_world = azimuth + th_rel;
-
-                                Point pt_w = rotate3D(zaxis, center, xaxis, delta);
-                                pt_w = rotate3D(pt_w, center, yaxis, th_world);
-                                Cartesian2D cart(pt_w, azimuth, altitude, zoom);
-
-                                if (cart.x < -1e10)
-                                {
-                                    continue;
-                                }
-
-                                double fx = cart.x * dispcx + dispcx;
-                                double fy = cart.y * dispcx + dispcy;
-
-                                if (fx < -20.0 || fx > dispcx * 2.0 + 20.0 || fy < -20.0 || fy > dispcy * 2.0 + 20.0)
-                                {
-                                    continue;
-                                }
-
-                                int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(fx)));
-                                if (fy < min_hz_y_at_x[ix_lookup] - 1.0)
-                                {
-                                    continue;
-                                }
-
-                                double u_world = dist_m * sin(th_world);
-                                double v_world = dist_m * cos(th_world);
-
-                                double c1 = sin(u_world * 0.16 + v_world * 0.07 + sin(u_world * 0.04 + v_world * 0.05));
-                                double c2 = sin(-u_world * 0.08 + v_world * 0.15 + cos(u_world * 0.05 - v_world * 0.03));
-                                double c3 = cos(u_world * 0.12 - v_world * 0.11);
-                                double k1 = 1.0 - fabs(c1);
-                                double k2 = 1.0 - fabs(c2);
-                                double k3 = 1.0 - fabs(c3);
-                                double crack_val = fmax(k1 * k2, fmax(k1 * k3, k2 * k3));
-
-                                cur_row[idx].pt = ImVec2((float)fx, (float)fy);
-                                cur_row[idx].crack = crack_val;
-                                cur_row[idx].valid = true;
-
-                                if (si > -num_fissure_steps)
-                                {
-                                    int prev_idx = idx - 1;
-                                    if (cur_row[prev_idx].valid)
-                                    {
-                                        double max_c = fmax(crack_val, cur_row[prev_idx].crack);
-                                        if (max_c > 0.62)
-                                        {
-                                            double pulse = 0.88 + 0.12 * sin(wave_t * 2.1 + u_world * 0.08 + v_world * 0.08);
-                                            if (max_c > 0.85)
-                                            {
-                                                ImU32 col_core = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(230 * pulse), (int)(130 * pulse), 255));
-                                                ImGui::GetBackgroundDrawList()->AddLine(cur_row[prev_idx].pt, cur_row[idx].pt, col_core, line_th * 1.0f);
-                                            }
-                                            else if (max_c > 0.72)
-                                            {
-                                                ImU32 col_mid = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(115 * pulse), 20, 235));
-                                                ImGui::GetBackgroundDrawList()->AddLine(cur_row[prev_idx].pt, cur_row[idx].pt, col_mid, line_th * 1.5f);
-                                            }
-                                            else
-                                            {
-                                                ImU32 col_outer = rgba_apply_redlight(IM_COL32((int)(190 * pulse), 45, 10, 180));
-                                                ImGui::GetBackgroundDrawList()->AddLine(cur_row[prev_idx].pt, cur_row[idx].pt, col_outer, line_th * 2.2f);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (prev_row[idx].valid)
-                                {
-                                    double max_long_c = fmax(crack_val, prev_row[idx].crack);
-                                    if (max_long_c > 0.70)
-                                    {
-                                        double pulse = 0.88 + 0.12 * sin(wave_t * 2.1 + u_world * 0.08 + v_world * 0.08);
-                                        if (max_long_c > 0.86)
-                                        {
-                                            ImU32 col_core = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(230 * pulse), (int)(130 * pulse), 255));
-                                            ImGui::GetBackgroundDrawList()->AddLine(prev_row[idx].pt, cur_row[idx].pt, col_core, line_th * 0.9f);
-                                        }
-                                        else
-                                        {
-                                            ImU32 col_mid = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(105 * pulse), 15, 220));
-                                            ImGui::GetBackgroundDrawList()->AddLine(prev_row[idx].pt, cur_row[idx].pt, col_mid, line_th * 1.4f);
-                                        }
-                                    }
-                                }
+                                d_az -= 2.0 * _pi;
+                            }
+                            while (d_az < -_pi)
+                            {
+                                d_az += 2.0 * _pi;
                             }
 
-                            prev_row = cur_row;
+                            if (cos(d_az) <= 0.08)
+                            {
+                                return false;
+                            }
+
+                            double xc = d_horiz * sin(d_az);
+                            double zc = d_horiz * cos(d_az);
+                            double yc = yw;
+
+                            double yc_rot = yc * cos(altitude) - zc * sin(altitude);
+                            double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+
+                            if (zc_rot <= 0.35 || zc <= 0.1)
+                            {
+                                return false;
+                            }
+
+                            double fx = (xc / zc_rot) * zoom * dispcx + dispcx;
+                            double fy = (-yc_rot / zc_rot) * zoom * dispcx + dispcy;
+
+                            if (fx < -50.0 || fx > dispcx * 2.0 + 50.0 || fy < -50.0 || fy > dispcy * 2.0 + 50.0)
+                            {
+                                return false;
+                            }
+
+                            int ix_lookup = (int)fmax(0.0, fmin((double)(screen_w - 1), fx));
+                            if (fy < min_hz_y_at_x[ix_lookup] - 2.0)
+                            {
+                                return false;
+                            }
+
+                            out_pt = ImVec2((float)fx, (float)fy);
+                            out_depth = zc_rot;
+                            return true;
+                        };
+
+                        for (int fi = 0; fi < num_fissure_systems; fi++)
+                        {
+                            uint32_t fseed = (uint32_t)(whereami * 1013904223u + fi * 2246822519u + 0x8a35c);
+                            fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
+                            fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
+                            fseed = (fseed >> 16) ^ fseed;
+
+                            double u_ang = (double)(fseed & 0xFFFF) / 65535.0;
+                            double u_dist = (double)((fseed >> 16) & 0x7FFF) / 32767.0;
+
+                            double root_ang = u_ang * 2.0 * _pi;
+                            double root_dist = 2.2 + (s_max * 0.18) * pow(u_dist, 1.8);
+                            double root_heading = root_ang + 1.25 + ((double)((fseed >> 8) & 0xFF) / 255.0 - 0.5) * 1.6;
+
+                            double seg_len_base = (1.8 + 3.2 * ((double)(fseed & 0xFF) / 255.0)) * sqrt(root_dist / 6.0);
+                            int num_trunk_segs = 14 + (int)((fseed >> 4) % 6);
+
+                            double cur_xw = root_dist * sin(root_ang);
+                            double cur_zw = root_dist * cos(root_ang);
+                            double cur_heading = root_heading;
+
+                            double cur_d = sqrt(cur_xw * cur_xw + cur_zw * cur_zw);
+                            double cur_yw = -h_eye - (cur_d * cur_d) / (2.0 * R_planet);
+
+                            ImVec2 p_prev;
+                            double depth_prev;
+                            bool prev_valid = project_ground_coord(cur_xw, cur_yw, cur_zw, p_prev, depth_prev);
+
+                            uint32_t walk_seed = fseed;
+
+                            for (int si = 0; si < num_trunk_segs; si++)
+                            {
+                                walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
+                                walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
+                                walk_seed = (walk_seed >> 16) ^ walk_seed;
+
+                                double u_turn = (double)(walk_seed & 0x7FFF) / 32767.0;
+                                double u_len = (double)((walk_seed >> 15) & 0x7FFF) / 32767.0;
+
+                                double deflection = (u_turn - 0.5) * (96.0 * fiftyseventh);
+                                cur_heading += deflection;
+                                double slen = seg_len_base * (0.65 + 0.70 * u_len);
+
+                                double next_xw = cur_xw + slen * sin(cur_heading);
+                                double next_zw = cur_zw + slen * cos(cur_heading);
+                                double next_d = sqrt(next_xw * next_xw + next_zw * next_zw);
+                                double next_yw = -h_eye - (next_d * next_d) / (2.0 * R_planet);
+
+                                ImVec2 p_next;
+                                double depth_next;
+                                bool next_valid = project_ground_coord(next_xw, next_yw, next_zw, p_next, depth_next);
+
+                                if (prev_valid && next_valid)
+                                {
+                                    double avg_depth = (depth_prev + depth_next) * 0.5;
+                                    float base_w = (float)fmax(0.9, fmin(10.0, 7.5 / sqrt(fmax(0.5, avg_depth))));
+                                    double pulse = 0.88 + 0.12 * sin(wave_t * 2.3 + fi * 0.9 + si * 0.35);
+
+                                    // Incandescent outer margin (ember vermilion)
+                                    ImU32 col_outer = rgba_apply_redlight(IM_COL32((int)(210 * pulse), 45, 10, 165));
+                                    ImGui::GetBackgroundDrawList()->AddLine(p_prev, p_next, col_outer, base_w * 2.2f);
+
+                                    // Molten lava stream (fiery orange)
+                                    ImU32 col_mid = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(125 * pulse), 20, 230));
+                                    ImGui::GetBackgroundDrawList()->AddLine(p_prev, p_next, col_mid, base_w * 1.3f);
+
+                                    // White-hot golden incandescent core
+                                    ImU32 col_core = rgba_apply_redlight(IM_COL32(255, (int)(230 * pulse), (int)(140 * pulse), 255));
+                                    ImGui::GetBackgroundDrawList()->AddLine(p_prev, p_next, col_core, base_w * 0.65f);
+                                }
+
+                                // Branching forks (lightning bolt branches)
+                                if ((si == 3 || si == 7 || si == 11) && prev_valid)
+                                {
+                                    double branch_heading = cur_heading + ((si % 2 == 0) ? 1.0 : -1.0) * (42.0 * fiftyseventh);
+                                    double b_xw = cur_xw;
+                                    double b_zw = cur_zw;
+                                    ImVec2 b_prev = p_prev;
+                                    double b_depth_prev = depth_prev;
+                                    bool b_prev_valid = true;
+
+                                    uint32_t b_seed = walk_seed ^ 0x9e3779b9;
+                                    int branch_segs = 5 + (si % 3);
+
+                                    for (int bi = 0; bi < branch_segs; bi++)
+                                    {
+                                        b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
+                                        b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
+                                        b_seed = (b_seed >> 16) ^ b_seed;
+
+                                        double bu_turn = (double)(b_seed & 0x7FFF) / 32767.0;
+                                        double bu_len = (double)((b_seed >> 15) & 0x7FFF) / 32767.0;
+                                        branch_heading += (bu_turn - 0.5) * (70.0 * fiftyseventh);
+                                        double b_slen = seg_len_base * 0.65 * (0.6 + 0.6 * bu_len);
+
+                                        double b_next_xw = b_xw + b_slen * sin(branch_heading);
+                                        double b_next_zw = b_zw + b_slen * cos(branch_heading);
+                                        double b_next_d = sqrt(b_next_xw * b_next_xw + b_next_zw * b_next_zw);
+                                        double b_next_yw = -h_eye - (b_next_d * b_next_d) / (2.0 * R_planet);
+
+                                        ImVec2 b_next;
+                                        double b_depth_next;
+                                        bool b_next_valid = project_ground_coord(b_next_xw, b_next_yw, b_next_zw, b_next, b_depth_next);
+
+                                        if (b_prev_valid && b_next_valid)
+                                        {
+                                            double b_avg_depth = (b_depth_prev + b_depth_next) * 0.5;
+                                            float b_w = (float)fmax(0.7, fmin(6.5, 4.5 / sqrt(fmax(0.5, b_avg_depth))));
+                                            double pulse = 0.88 + 0.12 * sin(wave_t * 2.3 + fi * 0.9 + bi * 0.4);
+
+                                            ImU32 col_outer = rgba_apply_redlight(IM_COL32((int)(195 * pulse), 40, 10, 140));
+                                            ImGui::GetBackgroundDrawList()->AddLine(b_prev, b_next, col_outer, b_w * 1.8f);
+
+                                            ImU32 col_mid = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(110 * pulse), 15, 210));
+                                            ImGui::GetBackgroundDrawList()->AddLine(b_prev, b_next, col_mid, b_w * 1.0f);
+
+                                            ImU32 col_core = rgba_apply_redlight(IM_COL32(255, (int)(220 * pulse), (int)(120 * pulse), 240));
+                                            ImGui::GetBackgroundDrawList()->AddLine(b_prev, b_next, col_core, b_w * 0.5f);
+                                        }
+
+                                        b_xw = b_next_xw;
+                                        b_zw = b_next_zw;
+                                        b_prev = b_next;
+                                        b_depth_prev = b_depth_next;
+                                        b_prev_valid = b_next_valid;
+                                    }
+
+                                    // Glowing magma node at fork
+                                    if (prev_valid)
+                                    {
+                                        float node_r = (float)fmax(1.2, fmin(5.5, 4.0 / sqrt(fmax(0.5, depth_prev))));
+                                        ImU32 node_outer = rgba_apply_redlight(IM_COL32(255, 110, 20, 180));
+                                        ImU32 node_inner = rgba_apply_redlight(IM_COL32(255, 235, 130, 240));
+                                        ImGui::GetBackgroundDrawList()->AddCircleFilled(p_prev, node_r * 1.5f, node_outer);
+                                        ImGui::GetBackgroundDrawList()->AddCircleFilled(p_prev, node_r * 0.7f, node_inner);
+                                    }
+                                }
+
+                                cur_xw = next_xw;
+                                cur_zw = next_zw;
+                                cur_yw = next_yw;
+                                p_prev = p_next;
+                                depth_prev = depth_next;
+                                prev_valid = next_valid;
+                            }
                         }
                     }
                 }
@@ -6272,11 +6383,11 @@ void draw_horizon()
             if (p && p->type == lavaworld)
             {
                 double t_rain = ImGui::GetTime();
-                double dispw = dispcx * 2.0;
-                double disph = dispcy * 2.0;
+                double h_eye = fmax(0.01, viewer_eye_height);
                 uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x5a17e);
+                int num_particles = 320;
 
-                for (int pi = 0; pi < 256; pi++)
+                for (int pi = 0; pi < num_particles; pi++)
                 {
                     uint32_t phash = rain_seed + (uint32_t)pi * 2246822519u;
                     phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
@@ -6286,61 +6397,133 @@ void draw_horizon()
                     double u0 = (double)(phash & 0x3FFF) / 16383.0;
                     double u1 = (double)((phash >> 14) & 0x3FFF) / 16383.0;
                     double u2 = (double)((phash >> 20) & 0xFF) / 255.0;
+                    double u3 = (double)((phash >> 8) & 0xFF) / 255.0;
 
-                    double fall_speed = 40.0 + 90.0 * u1;
-                    double wind_speed = 35.0 + 55.0 * u2;
-                    double wobble_freq = 1.5 + 3.0 * u0;
-                    double wobble_amp = 8.0 + 16.0 * u2;
+                    // 3D cylindrical/spherical field around the observer
+                    double p_theta = u0 * 2.0 * _pi;
+                    double p_dist = 1.2 + 38.0 * sqrt(u1);
 
-                    double y = fmod(u0 * disph + t_rain * fall_speed, disph);
-                    double x = fmod(u1 * dispw + t_rain * wind_speed + sin(t_rain * wobble_freq + u0 * 6.28) * wobble_amp, dispw);
-                    if (x < 0.0)
+                    double fall_speed = 7.0 + 15.0 * u2;
+                    double span_h = 28.0;
+                    double y_ground = -h_eye;
+                    double cur_y = y_ground + fmod(u3 * span_h - t_rain * fall_speed - y_ground, span_h);
+                    while (cur_y < y_ground)
                     {
-                        x += dispw;
+                        cur_y += span_h;
                     }
+
+                    // World position including thermal updraft waver
+                    double drift_amp = 0.25 + 0.45 * u2;
+                    double xw = p_dist * sin(p_theta) + sin(t_rain * 2.2 + u0 * 6.28) * drift_amp;
+                    double zw = p_dist * cos(p_theta) + cos(t_rain * 2.2 + u0 * 6.28) * drift_amp;
+                    double yw = cur_y;
+
+                    // Transform to camera coordinates: rotates with azimuth
+                    double th_w = atan2(xw, zw);
+                    double d_az = th_w - azimuth;
+                    while (d_az > _pi)
+                    {
+                        d_az -= 2.0 * _pi;
+                    }
+                    while (d_az < -_pi)
+                    {
+                        d_az += 2.0 * _pi;
+                    }
+
+                    if (cos(d_az) <= 0.05)
+                    {
+                        continue;
+                    }
+
+                    double d_horiz = sqrt(xw * xw + zw * zw);
+                    double xc = d_horiz * sin(d_az);
+                    double zc = d_horiz * cos(d_az);
+                    double yc = yw;
+
+                    // Pitch with camera altitude
+                    double yc_rot = yc * cos(altitude) - zc * sin(altitude);
+                    double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+
+                    if (zc_rot <= 0.35 || zc <= 0.1)
+                    {
+                        continue;
+                    }
+
+                    double sx_head = (xc / zc_rot) * zoom * dispcx + dispcx;
+                    double sy_head = (-yc_rot / zc_rot) * zoom * dispcx + dispcy;
+
+                    if (sx_head < -30.0 || sx_head > dispcx * 2.0 + 30.0 ||
+                        sy_head < -30.0 || sy_head > dispcy * 2.0 + 30.0)
+                    {
+                        continue;
+                    }
+
+                    // Perspective streak tail
+                    double streak_dt = 0.038;
+                    double yw_tail = yw + fall_speed * streak_dt;
+                    double yc_tail_rot = yw_tail * cos(altitude) - zc * sin(altitude);
+                    double zc_tail_rot = yw_tail * sin(altitude) + zc * cos(altitude);
+
+                    if (zc_tail_rot <= 0.30)
+                    {
+                        continue;
+                    }
+
+                    double sx_tail = (xc / zc_tail_rot) * zoom * dispcx + dispcx;
+                    double sy_tail = (-yc_tail_rot / zc_tail_rot) * zoom * dispcx + dispcy;
 
                     int p_type = pi % 8;
                     float pt_sz;
                     int r_c, g_c, b_c, a_c;
-                    double streak_len;
 
                     if (p_type < 4)
                     {
-                        // Fine mineral dust / volcanic ash embers (background)
-                        pt_sz = 1.2f;
+                        // Fine mineral dust / volcanic ash embers
+                        pt_sz = (float)fmax(0.7, fmin(3.5, 1.8 / (zc_rot * 0.30)));
                         r_c = 245;
                         g_c = (int)(90 + 40 * u2);
                         b_c = 15;
-                        a_c = (int)(110 + 60 * u0);
-                        streak_len = 2.0;
+                        a_c = (int)(120 + 70 * u0);
                     }
                     else if (p_type < 7)
                     {
-                        // Glowing molten rock droplets / enstatite precipitation (midground)
-                        pt_sz = 2.0f;
+                        // Glowing molten rock droplets / enstatite precipitation
+                        pt_sz = (float)fmax(1.0, fmin(5.0, 2.8 / (zc_rot * 0.28)));
                         r_c = 255;
-                        g_c = (int)(160 + 50 * u2);
-                        b_c = 40;
-                        a_c = (int)(160 + 75 * u0);
-                        streak_len = 4.5;
+                        g_c = (int)(155 + 55 * u2);
+                        b_c = 35;
+                        a_c = (int)(170 + 75 * u0);
                     }
                     else
                     {
-                        // Incandescent liquid iron / silicate pellets (foreground sparks)
-                        pt_sz = 3.2f;
+                        // Incandescent liquid iron / silicate pellets
+                        pt_sz = (float)fmax(1.4, fmin(7.0, 4.0 / (zc_rot * 0.25)));
                         r_c = 255;
                         g_c = 230;
-                        b_c = 140;
-                        a_c = 220;
-                        streak_len = 7.0;
+                        b_c = 130;
+                        a_c = 235;
                     }
 
                     ImU32 pcol = rgba_apply_redlight(IM_COL32(r_c, g_c, b_c, a_c));
-                    ImVec2 p_head((float)x, (float)y);
-                    ImVec2 p_tail((float)(x - (wind_speed / fall_speed) * streak_len), (float)(y - streak_len));
+                    ImVec2 p_head((float)sx_head, (float)sy_head);
+                    ImVec2 p_tail((float)sx_tail, (float)sy_tail);
 
                     ImGui::GetBackgroundDrawList()->AddLine(p_tail, p_head, pcol, pt_sz);
                     ImGui::GetBackgroundDrawList()->AddCircleFilled(p_head, pt_sz * 0.75f, pcol);
+
+                    if (p_type >= 7)
+                    {
+                        ImU32 core_col = rgba_apply_redlight(IM_COL32(255, 255, 210, 255));
+                        ImGui::GetBackgroundDrawList()->AddCircleFilled(p_head, pt_sz * 0.40f, core_col);
+                    }
+
+                    // Molten ground impact spark
+                    if (cur_y < y_ground + 0.35)
+                    {
+                        float spark_r = (float)fmax(0.8, fmin(4.5, 3.2 / (zc_rot * 0.35)));
+                        ImU32 spark_col = rgba_apply_redlight(IM_COL32(255, 175, 50, (int)(180 * (1.0 - (cur_y - y_ground) / 0.35))));
+                        ImGui::GetBackgroundDrawList()->AddCircle(p_head, spark_r, spark_col, 8, 1.2f);
+                    }
                 }
             }
         }
@@ -6376,11 +6559,28 @@ void draw_sky_gradient()
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.00125 * city_lights);
             sky_mag_shift = skylight * -10;
 
-            double  r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight),
-                    g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight),
-                    b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight),
-                    a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
-            if (p->overcast) a = 1;
+            double r, g, b, a;
+            if (lavaworld_mineral_sky && p->type == lavaworld)
+            {
+                // Scorched bronze / burnt amber mineral vapor sky
+                // Rich in vaporized silicates (SiO, SiO2, Na, K, Fe, Mg, TiO)
+                // illuminated from below by the molten planetary crust
+                r = fmin(1.0, 0.84 * skylight + 0.24);
+                g = fmin(1.0, 0.44 * skylight + 0.09);
+                b = fmin(1.0, 0.16 * skylight + 0.02);
+                a = fmin(1.0, pow(p->get_surface_pressure(), 0.08) * 0.82 + 0.20);
+            }
+            else
+            {
+                r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight);
+                g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight);
+                b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight);
+                a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
+            }
+            if (p->overcast)
+            {
+                a = 1;
+            }
 
             double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
             if (mycenobj)
@@ -6415,9 +6615,18 @@ void draw_sky_gradient()
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
                     rgba_apply_redlight(IM_COL32( (int)(r255), (int)(g255), (int)(b255), (int)(a*255) ) ));
 
-                r *= 0.999;
-                g *= 0.9995;
-                b *= 0.9999;
+                if (lavaworld_mineral_sky && p->type == lavaworld)
+                {
+                    r *= 0.9985;
+                    g *= 0.9978;
+                    b *= 0.9992;
+                }
+                else
+                {
+                    r *= 0.999;
+                    g *= 0.9995;
+                    b *= 0.9999;
+                }
                 redden *= kSkyReddenVerticalFalloff;
 
                 sky_grad[y] = RGB3(r255*a, g255*a, b255*a);
@@ -6808,6 +7017,151 @@ void draw_mouse_cursor(ImGuiIO& io)
     }
 }
 
+static void draw_lavaworld_rock_clouds(Planet *p)
+{
+    if (!p)
+    {
+        return;
+    }
+
+    double t_cloud = ImGui::GetTime();
+    uint32_t cseed = (uint32_t)(whereami >= 0 ? whereami * 1013904223u + 0x7e1a3 : 0x7e1a3);
+
+    const int num_clusters = 22;
+    const double sky_R = 400.0;
+
+    struct CloudCluster
+    {
+        ImVec2 center_screen;
+        double radius_px;
+        double depth;
+        double elev_rad;
+        double az_rad;
+        uint32_t seed;
+        bool valid;
+    };
+
+    std::vector<CloudCluster> clusters;
+    clusters.reserve(num_clusters);
+
+    double wind_az = t_cloud * 0.006;
+
+    for (int ci = 0; ci < num_clusters; ci++)
+    {
+        uint32_t chash = cseed + (uint32_t)ci * 2246822519u;
+        chash = ((chash >> 16) ^ chash) * 0x45d9f3b;
+        chash = ((chash >> 16) ^ chash) * 0x45d9f3b;
+        chash = (chash >> 16) ^ chash;
+
+        double u_az = (double)(chash & 0x3FFF) / 16383.0;
+        double u_el = (double)((chash >> 14) & 0x1FFF) / 8191.0;
+        double u_sz = (double)((chash >> 27) & 0x1F) / 31.0;
+
+        double elev_rad = (12.0 + 56.0 * u_el) * fiftyseventh;
+        double az_world = u_az * 2.0 * _pi + wind_az;
+
+        double yw = sky_R * sin(elev_rad);
+
+        double d_az = az_world - azimuth;
+        while (d_az > _pi)
+        {
+            d_az -= 2.0 * _pi;
+        }
+        while (d_az < -_pi)
+        {
+            d_az += 2.0 * _pi;
+        }
+
+        if (cos(d_az) <= 0.05)
+        {
+            continue;
+        }
+
+        double d_horiz = sky_R * cos(elev_rad);
+        double xc = d_horiz * sin(d_az);
+        double zc = d_horiz * cos(d_az);
+        double yc = yw;
+
+        double yc_rot = yc * cos(altitude) - zc * sin(altitude);
+        double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+
+        if (zc_rot <= 1.0)
+        {
+            continue;
+        }
+
+        double sx = (xc / zc_rot) * zoom * dispcx + dispcx;
+        double sy = (-yc_rot / zc_rot) * zoom * dispcx + dispcy;
+
+        double cluster_r_m = 65.0 + 75.0 * u_sz;
+        double r_px = (cluster_r_m / zc_rot) * zoom * dispcx;
+
+        if (sx + r_px < -120.0 || sx - r_px > dispcx * 2.0 + 120.0 ||
+            sy + r_px < -120.0 || sy - r_px > dispcy * 2.0 + 120.0)
+        {
+            continue;
+        }
+
+        CloudCluster cl;
+        cl.center_screen = ImVec2((float)sx, (float)sy);
+        cl.radius_px = r_px;
+        cl.depth = zc_rot;
+        cl.elev_rad = elev_rad;
+        cl.az_rad = az_world;
+        cl.seed = chash;
+        cl.valid = true;
+        clusters.push_back(cl);
+    }
+
+    std::sort(clusters.begin(), clusters.end(), [](const CloudCluster &a, const CloudCluster &b)
+    {
+        return a.depth > b.depth;
+    });
+
+    double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
+
+    for (const auto &cl : clusters)
+    {
+        const int num_puffs = 9;
+        for (int pi = 0; pi < num_puffs; pi++)
+        {
+            uint32_t phash = cl.seed + (uint32_t)pi * 1013904223u;
+            phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+            phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+            phash = (phash >> 16) ^ phash;
+
+            double puff_ang = (double)(phash & 0x1FFF) / 8191.0 * 2.0 * _pi;
+            double puff_dist = (double)((phash >> 13) & 0x1FFF) / 8191.0 * 0.65;
+            double puff_scale = 0.55 + 0.45 * ((double)((phash >> 26) & 0x3F) / 63.0);
+
+            float px = cl.center_screen.x + (float)(cos(puff_ang) * puff_dist * cl.radius_px);
+            float py = cl.center_screen.y + (float)(sin(puff_ang) * puff_dist * cl.radius_px * 0.75);
+            float pr = (float)(cl.radius_px * puff_scale * 0.70);
+
+            // Underside illuminated by glowing molten crust; tops illuminated by sky
+            double under_lit = fmax(0.0, sin(puff_ang));
+            int cr_under = 245;
+            int cg_under = (int)(85 + 45 * under_lit);
+            int cb_under = 18;
+
+            int cr_top = (int)(150 + 60 * is_day);
+            int cg_top = (int)(95 + 40 * is_day);
+            int cb_top = (int)(55 + 25 * is_day);
+
+            int cr = (int)(cr_top * (1.0 - under_lit) + cr_under * under_lit);
+            int cg = (int)(cg_top * (1.0 - under_lit) + cg_under * under_lit);
+            int cb = (int)(cb_top * (1.0 - under_lit) + cb_under * under_lit);
+            int ca = (int)(50 + 35 * under_lit);
+
+            ImU32 puff_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+            ImU32 puff_core_col = rgba_apply_redlight(IM_COL32((int)fmin(255.0, cr * 1.15), (int)fmin(255.0, cg * 1.15), cb, (int)(ca * 1.35)));
+
+            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), pr, puff_col, 16);
+            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), pr * 0.55f, puff_core_col, 16);
+        }
+    }
+}
+
 std::vector<Cloud> skyclouds;
 void draw_cloudy_sky()
 {
@@ -6826,7 +7180,23 @@ void draw_cloudy_sky()
         return;
     }
     CelestialObject *cel = cels[whereami];
-    if (!cel || !cel->cloud_map || !cel->cloud_map->is_complete())
+    if (!cel)
+    {
+        return;
+    }
+    cel_obj_class cls = cel->typeclass();
+    Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
+
+    if (lavaworld_rock_clouds)
+    {
+        if (p && p->type == lavaworld)
+        {
+            draw_lavaworld_rock_clouds(p);
+            return;
+        }
+    }
+
+    if (!cel->cloud_map || !cel->cloud_map->is_complete())
     {
         return;
     }
@@ -6834,8 +7204,6 @@ void draw_cloudy_sky()
     {
         return;
     }
-    cel_obj_class cls = cel->typeclass();
-    Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
     RGB3 rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
     double haziness = std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);

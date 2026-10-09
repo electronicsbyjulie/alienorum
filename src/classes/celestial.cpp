@@ -2665,9 +2665,10 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
 
                 // Volcanic calderas and mantle plume hotspots
                 double vent_val = sin(nx * 6.5 + 12.1) * cos(ny * 6.5 + 34.5) * sin(nz * 6.5 + 56.7);
+                double vent_intensity = 0.0;
                 if (vent_val > 0.64)
                 {
-                    double vent_intensity = pow((vent_val - 0.64) / 0.36, 2.0);
+                    vent_intensity = pow((vent_val - 0.64) / 0.36, 2.0);
                     base_T = fmax(base_T, 1420.0 + vent_intensity * 520.0);
                 }
 
@@ -2678,45 +2679,53 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
                     base_T = fmax(base_T, 1550.0 + dayside_ocean * 650.0);
                 }
 
-                // Map effective temperature to incandescent emission color
-                if (base_T < 920.0)
+                // Magma crust fraction:
+                // Chilled crust forms dark basalt rafts with low thermal emission.
+                // Active incandescence is concentrated in fissures, caldera hotspots,
+                // and lowland magma basins.
+                double lava_activity = fmax(total_fissure, vent_intensity * 0.85);
+                if (height < 0.44)
                 {
-                    // Solid cooled basalt crust: almost no visible emission
-                    rgb.r = (unsigned char)fmin(15.0, base_T * 0.015);
-                    rgb.g = 0;
-                    rgb.b = 0;
+                    double basin_dep = (0.44 - height) / 0.44;
+                    lava_activity = fmax(lava_activity, basin_dep * 0.75);
                 }
-                else if (base_T < 1150.0)
+                if (tidal_locked && psi < 0.65)
                 {
-                    // Dull cherry red (cooling crust / fissure margins)
-                    double t = (base_T - 920.0) / 230.0;
-                    rgb.r = (unsigned char)fmin(255.0, 15.0 + 155.0 * t);
-                    rgb.g = (unsigned char)fmin(255.0, 28.0 * t * t);
-                    rgb.b = (unsigned char)fmin(255.0, 6.0 * t * t);
+                    double dayside_ocean = pow(1.0 - psi / 0.65, 1.4);
+                    lava_activity = fmax(lava_activity, dayside_ocean * 0.90);
                 }
-                else if (base_T < 1450.0)
+
+                // Chilled crust: dark basalt with faint crimson warmth near cracks
+                if (lava_activity < 0.08)
                 {
-                    // Vibrant molten orange (active exposed lava)
-                    double t = (base_T - 1150.0) / 300.0;
-                    rgb.r = (unsigned char)fmin(255.0, 170.0 + 85.0 * t);
-                    rgb.g = (unsigned char)fmin(255.0, 28.0 + 132.0 * t);
-                    rgb.b = (unsigned char)fmin(255.0, 6.0 + 34.0 * t);
+                    double t_crust = lava_activity / 0.08;
+                    rgb.r = (unsigned char)(8 + 24 * t_crust);
+                    rgb.g = (unsigned char)(3 + 8 * t_crust);
+                    rgb.b = (unsigned char)(2 + 4 * t_crust);
                 }
-                else if (base_T < 1850.0)
+                else if (lava_activity < 0.35)
                 {
-                    // Radiant golden yellow (churning magma lakes)
-                    double t = (base_T - 1450.0) / 400.0;
+                    // Incandescent cherry-red to deep vermilion
+                    double t = (lava_activity - 0.08) / 0.27;
+                    rgb.r = (unsigned char)fmin(255.0, 32.0 + 195.0 * t);
+                    rgb.g = (unsigned char)fmin(255.0, 11.0 + 45.0 * t);
+                    rgb.b = (unsigned char)fmin(255.0, 6.0 + 10.0 * t);
+                }
+                else if (lava_activity < 0.75)
+                {
+                    // Vibrant molten orange to fiery gold
+                    double t = (lava_activity - 0.35) / 0.40;
                     rgb.r = 255;
-                    rgb.g = (unsigned char)fmin(255.0, 160.0 + 75.0 * t);
-                    rgb.b = (unsigned char)fmin(255.0, 40.0 + 120.0 * t);
+                    rgb.g = (unsigned char)fmin(255.0, 56.0 + 120.0 * t);
+                    rgb.b = (unsigned char)fmin(255.0, 16.0 + 35.0 * t);
                 }
                 else
                 {
-                    // Incandescent white-hot liquid rock (substellar core)
-                    double t = fmin(1.0, (base_T - 1850.0) / 600.0);
+                    // Intense incandescent golden-amber core (never solid white)
+                    double t = fmin(1.0, (lava_activity - 0.75) / 0.25);
                     rgb.r = 255;
-                    rgb.g = (unsigned char)fmin(255.0, 235.0 + 20.0 * t);
-                    rgb.b = (unsigned char)fmin(255.0, 160.0 + 95.0 * t);
+                    rgb.g = (unsigned char)fmin(255.0, 176.0 + 45.0 * t);
+                    rgb.b = (unsigned char)fmin(255.0, 51.0 + 75.0 * t);
                 }
 
                 red_data[idx] = rgb.r;
