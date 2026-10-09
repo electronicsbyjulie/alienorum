@@ -5699,95 +5699,221 @@ void draw_horizon()
                             return (double)(sh & 0xFFFF) / 65535.0;
                         };
 
-                        double jagg = ROCK_JAGGEDNESS;
-
-                        // Randomized silhouette vertices
-                        // Base width variation
-                        double w_l = 0.50 + jagg * (next_rnd() - 0.5);
-                        double w_r = 0.50 + jagg * (next_rnd() - 0.5);
-
-                        // Peak location
-                        double peak_shift_x = (next_rnd() - 0.5) * 0.35 * rw;
-                        double peak_shift_y = (next_rnd() - 0.5) * 0.20 * rh;
-                        ImVec2 peak(rx + peak_shift_x, ry - rh + peak_shift_y);
-
-                        // Intermediate perimeter vertices (left and right flanks)
-                        double ml_x = rx - rw * (0.35 + jagg * (next_rnd() - 0.5));
-                        double ml_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
-                        ImVec2 mid_l(ml_x, ml_y);
-
-                        double mr_x = rx + rw * (0.35 + jagg * (next_rnd() - 0.5));
-                        double mr_y = ry - rh * (0.50 + jagg * (next_rnd() - 0.5));
-                        ImVec2 mid_r(mr_x, mr_y);
-
-                        double tl_x = rx - rw * (0.18 + jagg * (next_rnd() - 0.5));
-                        double tl_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
-                        ImVec2 top_l(tl_x, tl_y);
-
-                        double tr_x = rx + rw * (0.18 + jagg * (next_rnd() - 0.5));
-                        double tr_y = ry - rh * (0.80 + jagg * (next_rnd() - 0.5));
-                        ImVec2 top_r(tr_x, tr_y);
-
-                        ImVec2 base_l(rx - rw * w_l, ry);
-                        ImVec2 base_r(rx + rw * w_r, ry);
-
-                        // Central interior vertex that creates 3D relief and facet normals
-                        double hub_shift_x = (next_rnd() - 0.5) * 0.15 * rw;
-                        double hub_shift_y = (next_rnd() - 0.5) * 0.12 * rh;
-                        ImVec2 hub(rx + hub_shift_x, ry - rh * 0.40 + hub_shift_y);
-
-                        // Directional lighting colors per facet:
-                        // Helper to compute facet shade based on facet surface normal direction
-                        auto get_facet_col = [&](double norm_x, double norm_z, double norm_y = 0.3) -> ImU32
+                        static const float rock_dome_verts[26][3] =
                         {
-                            // norm_x: -1 (left), +1 (right)
-                            // norm_z: +1 (facing viewer/camera), -1 (facing away)
-                            // norm_y: slope upward
-                            // Sun vector in camera space:
-                            // sun_x = -sun_sin
-                            // sun_z = -sun_cos
-                            // sun_y = sin(sun_elev)
-                            double sun_cam_x =  sun_sin;
-                            double sun_cam_z = -sun_cos;
-                            double sun_cam_y = sin(fmax(0.0, sun_elev));
+                            { 0.000000f,  1.000000f,  0.000000f}, // 0: Apex
+                            { 0.894427f,  0.447214f,  0.000000f}, // 1
+                            { 0.276393f,  0.447214f,  0.850651f}, // 2
+                            {-0.723607f,  0.447214f,  0.525731f}, // 3
+                            {-0.723607f,  0.447214f, -0.525731f}, // 4
+                            { 0.276393f,  0.447214f, -0.850651f}, // 5
+                            { 0.525731f,  0.850651f,  0.000000f}, // 6
+                            { 0.688191f,  0.525731f,  0.500000f}, // 7
+                            { 0.162460f,  0.850651f,  0.500000f}, // 8
+                            {-0.262866f,  0.525731f,  0.809017f}, // 9
+                            {-0.425325f,  0.850651f,  0.309017f}, // 10
+                            {-0.850651f,  0.525731f,  0.000000f}, // 11
+                            {-0.425325f,  0.850651f, -0.309017f}, // 12
+                            {-0.262866f,  0.525731f, -0.809017f}, // 13
+                            { 0.162460f,  0.850651f, -0.500000f}, // 14
+                            { 0.688191f,  0.525731f, -0.500000f}, // 15
+                            { 0.587785f,  0.000000f,  0.809017f}, // 16: Equator base
+                            { 0.951057f,  0.000000f,  0.309017f}, // 17
+                            { 0.951057f,  0.000000f, -0.309017f}, // 18
+                            {-0.587785f,  0.000000f,  0.809017f}, // 19
+                            { 0.000000f,  0.000000f,  1.000000f}, // 20
+                            {-0.951057f,  0.000000f, -0.309017f}, // 21
+                            {-0.951057f,  0.000000f,  0.309017f}, // 22
+                            {-0.000000f,  0.000000f, -1.000000f}, // 23
+                            {-0.587785f,  0.000000f, -0.809017f}, // 24
+                            { 0.587785f,  0.000000f, -0.809017f}  // 25
+                        };
 
-                            double dot_sun = norm_x * sun_cam_x + norm_z * sun_cam_z + norm_y * sun_cam_y;
-                            double light_fac = amb_light * amb_mult + sun_light * sun_mult * fmax(0.0, dot_sun);
+                        static const int rock_dome_faces[40][3] =
+                        {
+                            {0, 8, 6},   {1, 6, 7},   {2, 7, 8},   {6, 8, 7},
+                            {0, 10, 8},  {2, 8, 9},   {3, 9, 10},  {8, 10, 9},
+                            {0, 12, 10}, {3, 10, 11}, {4, 11, 12}, {10, 12, 11},
+                            {0, 14, 12}, {4, 12, 13}, {5, 13, 14}, {12, 14, 13},
+                            {0, 6, 14},  {5, 14, 15}, {1, 15, 6},  {14, 6, 15},
+                            {1, 7, 17},  {2, 16, 7},  {7, 16, 17}, {1, 17, 18},
+                            {2, 9, 20},  {3, 19, 9},  {9, 19, 20}, {2, 20, 16},
+                            {3, 11, 22}, {4, 21, 11}, {11, 21, 22},{3, 22, 19},
+                            {4, 13, 24}, {5, 23, 13}, {13, 23, 24},{4, 24, 21},
+                            {5, 15, 25}, {1, 18, 15}, {15, 18, 25},{5, 25, 23}
+                        };
+
+                        double yaw = next_rnd() * 2.0 * _pi;
+                        double cos_y = cos(yaw);
+                        double sin_y = sin(yaw);
+
+                        double scale_x = rw * 0.5 * (0.88 + 0.24 * next_rnd());
+                        double scale_z = rw * 0.5 * (0.78 + 0.30 * next_rnd());
+                        double scale_y = rh * (0.92 + 0.16 * next_rnd());
+
+                        double apex_shift_x = (next_rnd() - 0.5) * 0.35;
+                        double apex_shift_z = (next_rnd() - 0.5) * 0.35;
+
+                        double tilt_x = (next_rnd() - 0.5) * 0.12;
+                        double tilt_z = (next_rnd() - 0.5) * 0.12;
+
+                        // Viewer depression angle looking down at ground at rock distance
+                        double alpha = atan2(h_eye, rk.dist);
+                        double cos_a = cos(alpha);
+                        double sin_a = sin(alpha);
+
+                        // Direction vector towards the sun in camera space (tilted by alpha)
+                        double sun_cam_x = sun_sin;
+                        double sun_h_y = sin(fmax(0.0, sun_elev));
+                        double sun_h_z = -sun_cos;
+                        double sun_cam_y = sun_h_y * cos_a + sun_h_z * sin_a;
+                        double sun_cam_z = -sun_h_y * sin_a + sun_h_z * cos_a;
+                        double sun_cam_len = sqrt(sun_cam_x * sun_cam_x + sun_cam_y * sun_cam_y + sun_cam_z * sun_cam_z);
+                        if (sun_cam_len > 1e-6)
+                        {
+                            sun_cam_x /= sun_cam_len;
+                            sun_cam_y /= sun_cam_len;
+                            sun_cam_z /= sun_cam_len;
+                        }
+
+                        double jagg = ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
+
+                        struct CamVertex
+                        {
+                            double x;
+                            double y;
+                            double z;
+                        };
+
+                        CamVertex cam_v[26];
+                        ImVec2 screen_v[26];
+
+                        for (int vi = 0; vi < 26; vi++)
+                        {
+                            uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
+                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                            vsh = (vsh >> 16) ^ vsh;
+                            double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
+
+                            double disp = 1.0 + jagg * (vrnd - 0.5);
+                            double vx = rock_dome_verts[vi][0] * disp;
+                            double vy = rock_dome_verts[vi][1] * disp;
+                            double vz = rock_dome_verts[vi][2] * disp;
+
+                            if (vi == 0)
+                            {
+                                vx += apex_shift_x;
+                                vz += apex_shift_z;
+                            }
+                            else if (rock_dome_verts[vi][1] < 0.05f)
+                            {
+                                vy = 0.0;
+                            }
+
+                            // Rotate around Y axis (yaw) and scale
+                            double rx_ = (vx * cos_y + vz * sin_y) * scale_x;
+                            double rz_ = (-vx * sin_y + vz * cos_y) * scale_z;
+                            double ry_ = vy * scale_y + (rx_ * tilt_x + rz_ * tilt_z);
+                            if (ry_ < 0.0)
+                            {
+                                ry_ = 0.0;
+                            }
+
+                            // Camera depression transform
+                            double xc = rx_;
+                            double yc = ry_ * cos_a - rz_ * sin_a;
+                            double zc = ry_ * sin_a + rz_ * cos_a;
+
+                            cam_v[vi].x = xc;
+                            cam_v[vi].y = yc;
+                            cam_v[vi].z = zc;
+
+                            screen_v[vi] = ImVec2((float)(rx + xc), (float)(ry - yc));
+                        }
+
+                        struct RockFacet
+                        {
+                            double depth;
+                            ImVec2 p0;
+                            ImVec2 p1;
+                            ImVec2 p2;
+                            ImU32 col;
+                        };
+
+                        RockFacet facets_to_draw[40];
+                        int facet_count = 0;
+
+                        for (int fi = 0; fi < 40; fi++)
+                        {
+                            int idx0 = rock_dome_faces[fi][0];
+                            int idx1 = rock_dome_faces[fi][1];
+                            int idx2 = rock_dome_faces[fi][2];
+
+                            const CamVertex& v0 = cam_v[idx0];
+                            const CamVertex& v1 = cam_v[idx1];
+                            const CamVertex& v2 = cam_v[idx2];
+
+                            double e1x = v1.x - v0.x;
+                            double e1y = v1.y - v0.y;
+                            double e1z = v1.z - v0.z;
+
+                            double e2x = v2.x - v0.x;
+                            double e2y = v2.y - v0.y;
+                            double e2z = v2.z - v0.z;
+
+                            // Cross product (outward normal)
+                            double nx = e1y * e2z - e1z * e2y;
+                            double ny = e1z * e2x - e1x * e2z;
+                            double nz = e1x * e2y - e1y * e2x;
+
+                            double nlen = sqrt(nx * nx + ny * ny + nz * nz);
+                            if (nlen < 1e-6)
+                            {
+                                continue;
+                            }
+
+                            nx /= nlen;
+                            ny /= nlen;
+                            nz /= nlen;
+
+                            // Backface culling: front-facing facets have normal pointing towards viewer (nz > 0)
+                            if (nz <= 0.001)
+                            {
+                                continue;
+                            }
+
+                            double dot_sun = fmax(0.0, nx * sun_cam_x + ny * sun_cam_y + nz * sun_cam_z);
+                            double sky_fac = 0.80 + 0.35 * fmax(0.0, ny);
+                            double light_fac = amb_light * amb_mult * sky_fac + sun_light * sun_mult * dot_sun;
 
                             int cr = fmin(255.0, br * light_fac);
                             int cg = fmin(255.0, bg * light_fac);
                             int cb = fmin(255.0, bb * light_fac);
-                            return rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
-                        };
+                            ImU32 fcol = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
 
-                        // Render facets around hub
-                        // Facet 1: Lower-left flank
-                        ImU32 col_ll = get_facet_col(-0.7, 0.4, 0.2);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, mid_l, hub, col_ll);
+                            facets_to_draw[facet_count].depth = (v0.z + v1.z + v2.z) / 3.0;
+                            facets_to_draw[facet_count].p0 = screen_v[idx0];
+                            facets_to_draw[facet_count].p1 = screen_v[idx1];
+                            facets_to_draw[facet_count].p2 = screen_v[idx2];
+                            facets_to_draw[facet_count].col = fcol;
+                            facet_count++;
+                        }
 
-                        // Facet 2: Upper-left flank
-                        ImU32 col_ul = get_facet_col(-0.5, 0.3, 0.6);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_l, top_l, hub, col_ul);
+                        // Painter's algorithm sort: draw farther facets before nearer ones
+                        std::sort(facets_to_draw, facets_to_draw + facet_count, [](const RockFacet& a, const RockFacet& b)
+                        {
+                            return a.depth < b.depth;
+                        });
 
-                        // Facet 3: Left peak facet
-                        ImU32 col_lp = get_facet_col(-0.3, 0.4, 0.8);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_l, peak, hub, col_lp);
-
-                        // Facet 4: Right peak facet
-                        ImU32 col_rp = get_facet_col(0.3, 0.4, 0.8);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(peak, top_r, hub, col_rp);
-
-                        // Facet 5: Upper-right flank
-                        ImU32 col_ur = get_facet_col(0.5, 0.3, 0.6);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(top_r, mid_r, hub, col_ur);
-
-                        // Facet 6: Lower-right flank
-                        ImU32 col_lr = get_facet_col(0.7, 0.4, 0.2);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(mid_r, base_r, hub, col_lr);
-
-                        // Facet 7: Center base / front face
-                        ImU32 col_front = get_facet_col(0.0, 0.8, 0.2);
-                        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_l, hub, base_r, col_front);
+                        for (int fi = 0; fi < facet_count; fi++)
+                        {
+                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(
+                                facets_to_draw[fi].p0,
+                                facets_to_draw[fi].p1,
+                                facets_to_draw[fi].p2,
+                                facets_to_draw[fi].col);
+                        }
                     }
                 }
             }
