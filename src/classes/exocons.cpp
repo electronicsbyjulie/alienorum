@@ -734,6 +734,7 @@ namespace alienorum
                 cons_stars.push_back(c_stars);
             }
         }
+        const int existing_cons_count = (int)cons_stars.size();
 
         // 2. Collect candidate stars outside local system
         std::vector<CandStar> candidates;
@@ -1478,14 +1479,18 @@ namespace alienorum
 
             // Step A: Attempt to attach to an existing constellation (direct or via bridging star)
             Star* best_existing_target = nullptr;
+            Point best_existing_target_u;
             Star* best_mid_target = nullptr;
+            Point best_mid_target_u;
             int best_existing_c_idx = -1;
+            int best_existing_out_idx = -1;
             double best_existing_dist = 1e9;
 
-            for (size_t c_idx = 0; c_idx < out_conss.size(); c_idx++)
+            for (size_t out_i = 0; out_i < out_conss.size(); out_i++)
             {
+                int c_idx = existing_cons_count + (int)out_i;
                 std::unordered_map<Star*, int> deg_map;
-                for (const auto& cl : out_conss[c_idx].lines)
+                for (const auto& cl : out_conss[out_i].lines)
                 {
                     deg_map[cl.a]++;
                     deg_map[cl.b]++;
@@ -1506,11 +1511,13 @@ namespace alienorum
                     double len = ang_dist_deg(u_bright, it_u->second);
                     if (len <= 14.0 && len < best_existing_dist)
                     {
-                        if (is_candidate_line_valid(s_bright, u_bright, target, it_u->second, len, (int)c_idx))
+                        if (is_candidate_line_valid(s_bright, u_bright, target, it_u->second, len, c_idx))
                         {
                             best_existing_dist = len;
                             best_existing_target = target;
-                            best_existing_c_idx = (int)c_idx;
+                            best_existing_target_u = it_u->second;
+                            best_existing_c_idx = c_idx;
+                            best_existing_out_idx = (int)out_i;
                             best_mid_target = nullptr;
                         }
                         else
@@ -1538,13 +1545,16 @@ namespace alienorum
                                 {
                                     return;
                                 }
-                                if (is_candidate_line_valid(s_bright, u_bright, sm, um, len_a, (int)c_idx) &&
-                                    is_candidate_line_valid(sm, um, target, it_u->second, len_b, (int)c_idx))
+                                if (is_candidate_line_valid(s_bright, u_bright, sm, um, len_a, c_idx) &&
+                                    is_candidate_line_valid(sm, um, target, it_u->second, len_b, c_idx))
                                 {
                                     best_existing_dist = len;
                                     best_existing_target = target;
-                                    best_existing_c_idx = (int)c_idx;
+                                    best_existing_target_u = it_u->second;
+                                    best_existing_c_idx = c_idx;
+                                    best_existing_out_idx = (int)out_i;
                                     best_mid_target = sm;
+                                    best_mid_target_u = um;
                                 }
                             });
                         }
@@ -1552,7 +1562,7 @@ namespace alienorum
                 }
             }
 
-            if (best_existing_target)
+            if (best_existing_target && best_existing_out_idx >= 0 && best_existing_out_idx < (int)out_conss.size())
             {
                 if (best_mid_target)
                 {
@@ -1561,25 +1571,24 @@ namespace alienorum
                     cl1.b = best_mid_target;
                     cl1.starnamea = get_consline_star_name(s_bright);
                     cl1.starnameb = get_consline_star_name(best_mid_target);
-                    out_conss[best_existing_c_idx].lines.push_back(cl1);
+                    out_conss[best_existing_out_idx].lines.push_back(cl1);
 
-                    Point um = star_u_map[best_mid_target];
-                    double la = ang_dist_deg(u_bright, um);
+                    double la = ang_dist_deg(u_bright, best_mid_target_u);
                     double cos_half_a = cos(0.5 * la * (_pi / 180.0));
-                    all_lines.push_back({s_bright, best_mid_target, u_bright, um, la, cos_half_a, best_existing_c_idx});
+                    all_lines.push_back({s_bright, best_mid_target, u_bright, best_mid_target_u, la, cos_half_a, best_existing_c_idx});
                     placed_stars.push_back({s_bright, u_bright, best_existing_c_idx});
-                    placed_stars.push_back({best_mid_target, um, best_existing_c_idx});
+                    placed_stars.push_back({best_mid_target, best_mid_target_u, best_existing_c_idx});
 
                     ConsLine cl2;
                     cl2.a = best_mid_target;
                     cl2.b = best_existing_target;
                     cl2.starnamea = get_consline_star_name(best_mid_target);
                     cl2.starnameb = get_consline_star_name(best_existing_target);
-                    out_conss[best_existing_c_idx].lines.push_back(cl2);
+                    out_conss[best_existing_out_idx].lines.push_back(cl2);
 
-                    double lb = ang_dist_deg(um, star_u_map[best_existing_target]);
+                    double lb = ang_dist_deg(best_mid_target_u, best_existing_target_u);
                     double cos_half_b = cos(0.5 * lb * (_pi / 180.0));
-                    all_lines.push_back({best_mid_target, best_existing_target, um, star_u_map[best_existing_target], lb, cos_half_b, best_existing_c_idx});
+                    all_lines.push_back({best_mid_target, best_existing_target, best_mid_target_u, best_existing_target_u, lb, cos_half_b, best_existing_c_idx});
 
                     cons_stars[best_existing_c_idx].insert(s_bright);
                     cons_stars[best_existing_c_idx].insert(best_mid_target);
@@ -1594,10 +1603,10 @@ namespace alienorum
                     cl.b = best_existing_target;
                     cl.starnamea = get_consline_star_name(s_bright);
                     cl.starnameb = get_consline_star_name(best_existing_target);
-                    out_conss[best_existing_c_idx].lines.push_back(cl);
+                    out_conss[best_existing_out_idx].lines.push_back(cl);
 
                     double cos_half = cos(0.5 * best_existing_dist * (_pi / 180.0));
-                    all_lines.push_back({s_bright, best_existing_target, u_bright, star_u_map[best_existing_target], best_existing_dist, cos_half, best_existing_c_idx});
+                    all_lines.push_back({s_bright, best_existing_target, u_bright, best_existing_target_u, best_existing_dist, cos_half, best_existing_c_idx});
                     placed_stars.push_back({s_bright, u_bright, best_existing_c_idx});
                     cons_stars[best_existing_c_idx].insert(s_bright);
                     all_connected_stars.insert(s_bright);
@@ -1706,16 +1715,26 @@ namespace alienorum
 
             // Find closest candidate star in placed_stars to connect directly
             Star* best_target = nullptr;
+            Point best_target_u;
             int best_c_idx = -1;
             double best_dist = 1e9;
 
             for (const auto& ps : placed_stars)
             {
+                if (ps.cons_idx < existing_cons_count)
+                {
+                    continue;
+                }
+                int out_i = ps.cons_idx - existing_cons_count;
+                if (out_i < 0 || out_i >= (int)out_conss.size())
+                {
+                    continue;
+                }
                 double d = ang_dist_deg(u_cand, ps.u);
                 if (d <= 15.0 && d < best_dist)
                 {
                     int deg = 0;
-                    for (const auto& cl : out_conss[ps.cons_idx].lines)
+                    for (const auto& cl : out_conss[out_i].lines)
                     {
                         if (cl.a == ps.s || cl.b == ps.s)
                         {
@@ -1726,57 +1745,61 @@ namespace alienorum
                     {
                         best_dist = d;
                         best_target = ps.s;
+                        best_target_u = ps.u;
                         best_c_idx = ps.cons_idx;
                     }
                 }
             }
 
-            if (best_target && best_c_idx >= 0)
+            if (best_target && best_c_idx >= existing_cons_count)
             {
-                ConsLine cl;
-                cl.a = s_cand;
-                cl.b = best_target;
-                cl.starnamea = get_consline_star_name(s_cand);
-                cl.starnameb = get_consline_star_name(best_target);
-                out_conss[best_c_idx].lines.push_back(cl);
-
-                Point ut = star_u_map[best_target];
-                double cos_half = cos(0.5 * best_dist * (_pi / 180.0));
-                all_lines.push_back({s_cand, best_target, u_cand, ut, best_dist, cos_half, best_c_idx});
-                placed_stars.push_back({s_cand, u_cand, best_c_idx});
-                cons_stars[best_c_idx].insert(s_cand);
-                all_connected_stars.insert(s_cand);
-
-                // Optionally close a loop if another node in this constellation is within 14.0 deg
-                for (const auto& ps : placed_stars)
+                int out_i = best_c_idx - existing_cons_count;
+                if (out_i >= 0 && out_i < (int)out_conss.size())
                 {
-                    if (ps.cons_idx != best_c_idx || ps.s == s_cand || ps.s == best_target)
-                    {
-                        continue;
-                    }
-                    double d2 = ang_dist_deg(u_cand, ps.u);
-                    if (d2 <= 14.0)
-                    {
-                        int deg2 = 0;
-                        for (const auto& cl : out_conss[best_c_idx].lines)
-                        {
-                            if (cl.a == ps.s || cl.b == ps.s)
-                            {
-                                deg2++;
-                            }
-                        }
-                        if (deg2 < 3 && is_candidate_line_valid(s_cand, u_cand, ps.s, ps.u, d2, best_c_idx))
-                        {
-                            ConsLine cl_loop;
-                            cl_loop.a = s_cand;
-                            cl_loop.b = ps.s;
-                            cl_loop.starnamea = get_consline_star_name(s_cand);
-                            cl_loop.starnameb = get_consline_star_name(ps.s);
-                            out_conss[best_c_idx].lines.push_back(cl_loop);
+                    ConsLine cl;
+                    cl.a = s_cand;
+                    cl.b = best_target;
+                    cl.starnamea = get_consline_star_name(s_cand);
+                    cl.starnameb = get_consline_star_name(best_target);
+                    out_conss[out_i].lines.push_back(cl);
 
-                            double cos_half2 = cos(0.5 * d2 * (_pi / 180.0));
-                            all_lines.push_back({s_cand, ps.s, u_cand, ps.u, d2, cos_half2, best_c_idx});
-                            break;
+                    double cos_half = cos(0.5 * best_dist * (_pi / 180.0));
+                    all_lines.push_back({s_cand, best_target, u_cand, best_target_u, best_dist, cos_half, best_c_idx});
+                    placed_stars.push_back({s_cand, u_cand, best_c_idx});
+                    cons_stars[best_c_idx].insert(s_cand);
+                    all_connected_stars.insert(s_cand);
+
+                    // Optionally close a loop if another node in this constellation is within 14.0 deg
+                    for (const auto& ps : placed_stars)
+                    {
+                        if (ps.cons_idx != best_c_idx || ps.s == s_cand || ps.s == best_target)
+                        {
+                            continue;
+                        }
+                        double d2 = ang_dist_deg(u_cand, ps.u);
+                        if (d2 <= 14.0)
+                        {
+                            int deg2 = 0;
+                            for (const auto& cl : out_conss[out_i].lines)
+                            {
+                                if (cl.a == ps.s || cl.b == ps.s)
+                                {
+                                    deg2++;
+                                }
+                            }
+                            if (deg2 < 3 && is_candidate_line_valid(s_cand, u_cand, ps.s, ps.u, d2, best_c_idx))
+                            {
+                                ConsLine cl_loop;
+                                cl_loop.a = s_cand;
+                                cl_loop.b = ps.s;
+                                cl_loop.starnamea = get_consline_star_name(s_cand);
+                                cl_loop.starnameb = get_consline_star_name(ps.s);
+                                out_conss[out_i].lines.push_back(cl_loop);
+
+                                double cos_half2 = cos(0.5 * d2 * (_pi / 180.0));
+                                all_lines.push_back({s_cand, ps.s, u_cand, ps.u, d2, cos_half2, best_c_idx});
+                                break;
+                            }
                         }
                     }
                 }
