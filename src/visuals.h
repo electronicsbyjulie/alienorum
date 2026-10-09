@@ -21,6 +21,7 @@
 #define ROCK_ASPECT_VENUS       0.28    // Height/width aspect ratio for Venusian slabs
 #define ROCK_ASPECT_DEFAULT     0.62    // Height/width aspect ratio for standard rocks
 #define ROCK_ASPECT_ICY         0.72    // Height/width aspect ratio for icy blocks
+#define ROCK_ASPECT_LAVA        0.30    // Height/width aspect ratio for crust rafts and lava crags
 #define ROCK_FACET_COUNT        40      // Number of half-icosphere mesh facets for high-poly rocks
 #define ROCK_JAGGEDNESS         0.25    // Maximum random displacement fraction for rock vertices
 #define ROCK_SHADOW_MAX_MULT    10.3    // Maximum shadow length multiplier relative to height

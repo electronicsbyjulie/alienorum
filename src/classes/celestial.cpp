@@ -2435,12 +2435,62 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 240 + 15 * r_weight);
                     }
                 }
+                else if (cel->type == lavaworld)
+                {
+                    // Basaltic crust base with volcanic mineralization and rifts
+                    double basalt_r = 34.0 * rmult * r_weight;
+                    double basalt_g = 30.0 * gmult * r_weight;
+                    double basalt_b = 32.0 * bmult * r_weight;
+
+                    // Magma basins / smooth vitrified maria
+                    if (height_value < 0.46)
+                    {
+                        double basin_dep = (0.46 - height_value) / 0.46;
+                        basalt_r *= (1.0 - 0.45 * basin_dep);
+                        basalt_g *= (1.0 - 0.45 * basin_dep);
+                        basalt_b *= (1.0 - 0.45 * basin_dep);
+                    }
+
+                    // Sulfur deposits and iron oxide staining along volcanic provinces
+                    double mineral_noise = fBm(nx * 11.0 + 3.2, ny * 11.0 + 7.5, nz * 11.0 + 1.8, 3, 2.0, 0.5);
+                    if (mineral_noise > 0.62)
+                    {
+                        double s_factor = (mineral_noise - 0.62) / 0.38;
+                        basalt_r += 95.0 * s_factor;
+                        basalt_g += 82.0 * s_factor;
+                        basalt_b += 20.0 * s_factor;
+                    }
+
+                    // Incandescent rift veins breaking through the crust
+                    double crack1 = 1.0 - fabs(sin(wx * 22.0 + wy * 11.0 + sin(wz * 16.0)));
+                    double crack2 = 1.0 - fabs(sin(-wx * 12.0 + wy * 20.0 + cos(wz * 14.0)));
+                    double crack3 = 1.0 - fabs(sin(wz * 22.0 + wx * 10.0));
+                    double crack_val = fmax(crack1 * crack2, fmax(crack1 * crack3, crack2 * crack3));
+                    if (crack_val > 0.62)
+                    {
+                        double lava_factor = pow((crack_val - 0.62) / 0.38, 2.0);
+                        basalt_r = fmin(255.0, basalt_r + 215.0 * lava_factor);
+                        basalt_g = fmin(255.0, basalt_g + 88.0 * lava_factor);
+                        basalt_b = fmin(255.0, basalt_b + 16.0 * lava_factor);
+                    }
+
+                    // Tidally locked substellar magma ocean
+                    if (tidal_locked_to_star && psi < 0.72)
+                    {
+                        double ocean_intensity = pow(1.0 - psi / 0.72, 1.4);
+                        basalt_r = fmin(255.0, basalt_r * (1.0 - ocean_intensity) + (245.0 + 10.0 * ocean_intensity) * ocean_intensity);
+                        basalt_g = fmin(255.0, basalt_g * (1.0 - ocean_intensity) + (135.0 + 85.0 * ocean_intensity) * ocean_intensity);
+                        basalt_b = fmin(255.0, basalt_b * (1.0 - ocean_intensity) + (28.0 + 82.0 * ocean_intensity) * ocean_intensity);
+                    }
+
+                    red_data[idx] = (unsigned char)fmin(255.0, basalt_r);
+                    green_data[idx] = (unsigned char)fmin(255.0, basalt_g);
+                    blue_data[idx] = (unsigned char)fmin(255.0, basalt_b);
+                }
                 else
                 {
                     // Lifeless planet or moon
-                    red_data[idx] = (cel->type == lavaworld)
-                        ? ((unsigned char)(128 + fmin(127, rgb.r * rmult * r_weight + radd)))
-                        : ((unsigned char)(fmin(255, rgb.r * rmult * r_weight + radd)));
+                    red_data[idx] = (unsigned char)(fmin(255, rgb.r * rmult * r_weight + radd));
                     green_data[idx] = (unsigned char)(fmin(255, rgb.g * gmult * r_weight + gadd));
                     blue_data[idx] = (unsigned char)(fmin(255, rgb.b * bmult * r_weight + badd));
                 }
@@ -2531,29 +2581,143 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
         mtx.unlock();
 
         // Based on temperature, calculate the degree of lava glow.
-        double tempK = p->estimate_surface_temperature(), ltemp;
-        const double glow_amt = 6.0 / blackbody_flux(tempK, R_band);
-        std::cout << glow_amt << std::endl;
-        double Tswing = tempK * 0.1 / (1.0 + p->get_surface_pressure() * 3.5e-5);
+        double tempK = p->estimate_surface_temperature();
+        if (tempK < 1000.0)
+        {
+            tempK = 1350.0;
+        }
+
+        bool tidal_locked = p->orbit && p->orbit->center && p->orbit->center->type == star && p->is_tidal_locked();
 
         // Fill in glowing hot lava.
         int x, y, y1, idx;
         double height;
         RGB3 rgb;
-        for (y=0; y<image_height; y++)
+        for (y = 0; y < image_height; y++)
         {
-            if (done || abort_load) { generating_fic_texture = false; return; }
+            if (done || abort_load)
+            {
+                generating_fic_texture = false;
+                return;
+            }
             y1 = y * image_width;
-            for (x=0; x<image_width; x++)
+            double v = (double)y / (double)image_height;
+            double theta = v * _pi;
+            double sin_th = sin(theta);
+            double cos_th = cos(theta);
+
+            for (x = 0; x < image_width; x++)
             {
                 idx = y1 + x;
-                height = 0.5 + inv_bump_scale * bump_data[idx];
-                ltemp = tempK - Tswing * height;
+                double u = (double)x / (double)image_width;
+                double phi = u * 2.0 * _pi;
+                double nx = sin_th * cos(phi);
+                double ny = sin_th * sin(phi);
+                double nz = cos_th;
 
-                // if (!x) std::cout << ltemp << " -> " << (glow_amt * blackbody_flux(ltemp, R_band)) << std::endl;
-                rgb.r = fmin(255, glow_amt * blackbody_flux(ltemp*1.25, R_band));            // exaggerate the colors for effect.
-                rgb.g = fmin(255, glow_amt * blackbody_flux(ltemp, V_band));
-                rgb.b = fmin(255, glow_amt * blackbody_flux(ltemp, U_band));
+                height = 0.5 + inv_bump_scale * bump_data[idx];
+
+                double base_T = tempK;
+                double psi = 0.0;
+                if (tidal_locked)
+                {
+                    psi = find_3D_angle(Point(nx, ny, nz), xaxis, center);
+                    double cos_psi = fmax(-1.0, fmin(1.0, cos(psi)));
+                    double day_factor = (cos_psi + 1.0) * 0.5;
+                    double T_substellar = tempK * 1.45;
+                    double T_night = tempK * 0.60;
+                    base_T = T_night + (T_substellar - T_night) * pow(day_factor, 1.5);
+                }
+
+                // Elevation cooling: highlands cool faster than deep lowlands
+                base_T -= (height - 0.5) * 220.0;
+
+                // Magma basins / lava seas in deep depressions
+                if (height < 0.48)
+                {
+                    double basin_dep = pow((0.48 - height) / 0.48, 1.2);
+                    base_T = fmax(base_T, 1380.0 + basin_dep * 380.0);
+                }
+
+                // Domain-warped 3D cellular rift / fissure network
+                double warp_x = nx + 0.18 * sin(ny * 5.0 + nz * 4.0);
+                double warp_y = ny + 0.18 * sin(nz * 5.0 + nx * 4.0);
+                double warp_z = nz + 0.18 * sin(nx * 5.0 + ny * 4.0);
+
+                double c1 = sin(warp_x * 19.0 + warp_y * 11.0 + sin(warp_z * 13.0));
+                double c2 = sin(-warp_x * 10.0 + warp_y * 18.0 + cos(warp_z * 12.0));
+                double c3 = cos(warp_z * 20.0 + warp_x * 9.0);
+                double k1 = 1.0 - fabs(c1);
+                double k2 = 1.0 - fabs(c2);
+                double k3 = 1.0 - fabs(c3);
+                double crack = fmax(k1 * k2, fmax(k1 * k3, k2 * k3));
+
+                // Micro-crack texture across crust plates
+                double micro = 1.0 - fabs(sin(warp_x * 46.0 + warp_y * 36.0 + warp_z * 32.0));
+                double fissure_intensity = (crack > 0.58) ? pow((crack - 0.58) / 0.42, 2.2) : 0.0;
+                double micro_intensity = (micro > 0.74) ? pow((micro - 0.74) / 0.26, 3.0) : 0.0;
+                double total_fissure = fmin(1.0, fissure_intensity + 0.45 * micro_intensity);
+
+                if (total_fissure > 0.0)
+                {
+                    base_T = fmax(base_T, 1300.0 + total_fissure * 480.0);
+                }
+
+                // Volcanic calderas and mantle plume hotspots
+                double vent_val = sin(nx * 6.5 + 12.1) * cos(ny * 6.5 + 34.5) * sin(nz * 6.5 + 56.7);
+                if (vent_val > 0.64)
+                {
+                    double vent_intensity = pow((vent_val - 0.64) / 0.36, 2.0);
+                    base_T = fmax(base_T, 1420.0 + vent_intensity * 520.0);
+                }
+
+                // Tidally locked substellar magma ocean
+                if (tidal_locked && psi < 0.72)
+                {
+                    double dayside_ocean = pow(1.0 - psi / 0.72, 1.3);
+                    base_T = fmax(base_T, 1550.0 + dayside_ocean * 650.0);
+                }
+
+                // Map effective temperature to incandescent emission color
+                if (base_T < 920.0)
+                {
+                    // Solid cooled basalt crust: almost no visible emission
+                    rgb.r = (unsigned char)fmin(15.0, base_T * 0.015);
+                    rgb.g = 0;
+                    rgb.b = 0;
+                }
+                else if (base_T < 1150.0)
+                {
+                    // Dull cherry red (cooling crust / fissure margins)
+                    double t = (base_T - 920.0) / 230.0;
+                    rgb.r = (unsigned char)fmin(255.0, 15.0 + 155.0 * t);
+                    rgb.g = (unsigned char)fmin(255.0, 28.0 * t * t);
+                    rgb.b = (unsigned char)fmin(255.0, 6.0 * t * t);
+                }
+                else if (base_T < 1450.0)
+                {
+                    // Vibrant molten orange (active exposed lava)
+                    double t = (base_T - 1150.0) / 300.0;
+                    rgb.r = (unsigned char)fmin(255.0, 170.0 + 85.0 * t);
+                    rgb.g = (unsigned char)fmin(255.0, 28.0 + 132.0 * t);
+                    rgb.b = (unsigned char)fmin(255.0, 6.0 + 34.0 * t);
+                }
+                else if (base_T < 1850.0)
+                {
+                    // Radiant golden yellow (churning magma lakes)
+                    double t = (base_T - 1450.0) / 400.0;
+                    rgb.r = 255;
+                    rgb.g = (unsigned char)fmin(255.0, 160.0 + 75.0 * t);
+                    rgb.b = (unsigned char)fmin(255.0, 40.0 + 120.0 * t);
+                }
+                else
+                {
+                    // Incandescent white-hot liquid rock (substellar core)
+                    double t = fmin(1.0, (base_T - 1850.0) / 600.0);
+                    rgb.r = 255;
+                    rgb.g = (unsigned char)fmin(255.0, 235.0 + 20.0 * t);
+                    rgb.b = (unsigned char)fmin(255.0, 160.0 + 95.0 * t);
+                }
 
                 red_data[idx] = rgb.r;
                 green_data[idx] = rgb.g;

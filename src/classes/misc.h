@@ -67,6 +67,11 @@ using json = nlohmann::json;
 #define icy_T_cutoff 200
 #define lava_T_cutoff 1300
 
+// Lavaworld horizon visual effects toggles
+#define lavaworld_heat_shimmer 1
+#define lavaworld_crust_fissures 1
+#define lavaworld_rock_rain 1
+
 #define lunar_mass 7.349E+22
 #define earth_mass 5.97217e+27
 #define jupiter_mass 1.898e+30

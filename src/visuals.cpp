@@ -4824,10 +4824,36 @@ void draw_horizon()
             }
         }
 
+        if (lavaworld_heat_shimmer)
+        {
+            if (p && p->type == lavaworld)
+            {
+                double t_shimmer = ImGui::GetTime();
+                double amp_px = dispcx * 0.0035 * zoom;
+                for (j = 0; j < hznodes; j++)
+                {
+                    double shim = sin(j * 0.42 + t_shimmer * 7.8) * 0.55
+                                + sin(j * 0.95 - t_shimmer * 12.3) * 0.32
+                                + cos(j * 1.83 + t_shimmer * 19.4) * 0.18;
+                    hzheight[j] += shim * amp_px;
+                }
+            }
+        }
+
         double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
         bool faded = !dragging && gaseous;
         ImU32 terraincol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255));
+        if (lavaworld_crust_fissures)
+        {
+            if (p && p->type == lavaworld)
+            {
+                int crust_r = (int)fmin(55.0, fmax(18.0, rgb.r * 0.22));
+                int crust_g = (int)fmin(42.0, fmax(14.0, rgb.g * 0.18));
+                int crust_b = (int)fmin(42.0, fmax(14.0, rgb.b * 0.18));
+                terraincol = rgba_apply_redlight(IM_COL32(crust_r, crust_g, crust_b, dragging ? (192 - 128 * is_day) : 255));
+            }
+        }
 
         if (faded) 
         {
@@ -4951,6 +4977,45 @@ void draw_horizon()
                         {
                             min_hz_y_at_x[ix] = y_val;
                         }
+                    }
+                }
+            }
+        }
+
+        if (lavaworld_heat_shimmer)
+        {
+            if (p && p->type == lavaworld)
+            {
+                double t_shim = ImGui::GetTime();
+                double haze_h = fmin(dispcy * 0.28, 38.0 * zoom);
+                if (haze_h > 2.0)
+                {
+                    int col_step = 3;
+                    for (int ix = 0; ix < screen_w; ix += col_step)
+                    {
+                        double y_base = min_hz_y_at_x[ix];
+                        if (y_base < -40.0 || y_base > dispcy * 2.0 + 40.0)
+                        {
+                            continue;
+                        }
+
+                        double wave1 = sin(ix * 0.038 + t_shim * 4.8);
+                        double wave2 = sin(ix * 0.082 - t_shim * 7.4);
+                        double wave3 = cos(ix * 0.165 + t_shim * 12.1);
+                        double plume_var = 0.55 + 0.28 * wave1 + 0.12 * wave2 + 0.05 * wave3;
+                        double cur_h = haze_h * plume_var;
+
+                        double y_top = y_base - cur_h;
+                        int shimmer_alpha = (int)(fmin(75.0, fmax(15.0, 48.0 * plume_var)));
+
+                        ImU32 col_base = rgba_apply_redlight(IM_COL32(255, 125, 25, shimmer_alpha));
+                        ImU32 col_top = rgba_apply_redlight(IM_COL32(230, 75, 10, 0));
+
+                        ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(
+                            ImVec2((float)ix, (float)y_top),
+                            ImVec2((float)fmin(screen_w, ix + col_step), (float)y_base),
+                            col_top, col_top, col_base, col_base
+                        );
                     }
                 }
             }
@@ -5307,13 +5372,14 @@ void draw_horizon()
             double P_surf = p ? p->get_surface_pressure() : 0.0;
             double T_surf = p ? p->estimate_surface_temperature() : 0.0;
 
+            bool is_lava = (p && p->type == lavaworld);
             bool is_icy = (cel->type == icy)
                 || (p && !uses_gaseous_map(p->type) && T_surf < 170.0 && base_map_rgb.r > 150 && base_map_rgb.b > 150);
-            bool is_venus = !is_icy && p && uses_rocky_map(p->type)
+            bool is_venus = !is_icy && !is_lava && p && uses_rocky_map(p->type)
                 && (P_surf >= 4.0 * oneatm && T_surf >= 420.0);
-            bool is_mars = !is_icy && !is_venus && p && uses_rocky_map(p->type)
+            bool is_mars = !is_icy && !is_venus && !is_lava && p && uses_rocky_map(p->type)
                 && (P_surf > 5.0 && P_surf < 0.3 * oneatm && T_surf > 130.0 && T_surf < 340.0);
-            bool is_moon = !is_icy && !is_venus && !is_mars && p && uses_rocky_map(p->type)
+            bool is_moon = !is_icy && !is_venus && !is_mars && !is_lava && p && uses_rocky_map(p->type)
                 && (P_surf <= 50.0);
 
             CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
@@ -5355,6 +5421,143 @@ void draw_horizon()
 
             if (show_terrain)
             {
+                if (lavaworld_crust_fissures)
+                {
+                    if (is_lava)
+                    {
+                        double wave_t = ImGui::GetTime();
+                        double horizon_dip_rad = (R_planet > 0) ? acos(R_planet / (R_planet + h_eye)) : 0.0;
+                        double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
+                        double delta_horizon = -net_horizon_angle;
+                        double delta_near = atan(h_eye / 1.5);
+                        double delta_far = delta_horizon;
+                        if (delta_far >= delta_near)
+                        {
+                            delta_far = delta_near - 0.001;
+                        }
+
+                        double s_max = (s_horizon > 0.0) ? fmin(4000.0, s_horizon) : 2500.0;
+                        int num_fissure_rows = 44;
+                        int num_fissure_steps = 70;
+                        double step_angle = (0.95 / fmax(0.3, zoom)) / (double)num_fissure_steps;
+
+                        struct FissurePt
+                        {
+                            ImVec2 pt;
+                            double crack;
+                            bool valid;
+                        };
+
+                        std::vector<FissurePt> prev_row(num_fissure_steps * 2 + 1, { ImVec2(0, 0), 0.0, false });
+                        std::vector<FissurePt> cur_row(num_fissure_steps * 2 + 1, { ImVec2(0, 0), 0.0, false });
+
+                        for (int fr_i = 1; fr_i <= num_fissure_rows; fr_i++)
+                        {
+                            double u = (double)(fr_i - 1) / (double)(num_fissure_rows - 1);
+                            double blend = pow(1.0 - u, 1.8);
+                            double delta = delta_far + (delta_near - delta_far) * blend;
+                            double dist_m = 1.5 + (s_max - 1.5) * (u * u);
+                            double line_th = fmax(1.0f, (float)(2.4 / fmax(1.0, dist_m * 0.08)));
+
+                            for (int si = -num_fissure_steps; si <= num_fissure_steps; si++)
+                            {
+                                int idx = si + num_fissure_steps;
+                                cur_row[idx].valid = false;
+
+                                double th_rel = si * step_angle;
+                                double th_world = azimuth + th_rel;
+
+                                Point pt_w = rotate3D(zaxis, center, xaxis, delta);
+                                pt_w = rotate3D(pt_w, center, yaxis, th_world);
+                                Cartesian2D cart(pt_w, azimuth, altitude, zoom);
+
+                                if (cart.x < -1e10)
+                                {
+                                    continue;
+                                }
+
+                                double fx = cart.x * dispcx + dispcx;
+                                double fy = cart.y * dispcx + dispcy;
+
+                                if (fx < -20.0 || fx > dispcx * 2.0 + 20.0 || fy < -20.0 || fy > dispcy * 2.0 + 20.0)
+                                {
+                                    continue;
+                                }
+
+                                int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(fx)));
+                                if (fy < min_hz_y_at_x[ix_lookup] - 1.0)
+                                {
+                                    continue;
+                                }
+
+                                double u_world = dist_m * sin(th_world);
+                                double v_world = dist_m * cos(th_world);
+
+                                double c1 = sin(u_world * 0.16 + v_world * 0.07 + sin(u_world * 0.04 + v_world * 0.05));
+                                double c2 = sin(-u_world * 0.08 + v_world * 0.15 + cos(u_world * 0.05 - v_world * 0.03));
+                                double c3 = cos(u_world * 0.12 - v_world * 0.11);
+                                double k1 = 1.0 - fabs(c1);
+                                double k2 = 1.0 - fabs(c2);
+                                double k3 = 1.0 - fabs(c3);
+                                double crack_val = fmax(k1 * k2, fmax(k1 * k3, k2 * k3));
+
+                                cur_row[idx].pt = ImVec2((float)fx, (float)fy);
+                                cur_row[idx].crack = crack_val;
+                                cur_row[idx].valid = true;
+
+                                if (si > -num_fissure_steps)
+                                {
+                                    int prev_idx = idx - 1;
+                                    if (cur_row[prev_idx].valid)
+                                    {
+                                        double max_c = fmax(crack_val, cur_row[prev_idx].crack);
+                                        if (max_c > 0.62)
+                                        {
+                                            double pulse = 0.88 + 0.12 * sin(wave_t * 2.1 + u_world * 0.08 + v_world * 0.08);
+                                            if (max_c > 0.85)
+                                            {
+                                                ImU32 col_core = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(230 * pulse), (int)(130 * pulse), 255));
+                                                ImGui::GetBackgroundDrawList()->AddLine(cur_row[prev_idx].pt, cur_row[idx].pt, col_core, line_th * 1.0f);
+                                            }
+                                            else if (max_c > 0.72)
+                                            {
+                                                ImU32 col_mid = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(115 * pulse), 20, 235));
+                                                ImGui::GetBackgroundDrawList()->AddLine(cur_row[prev_idx].pt, cur_row[idx].pt, col_mid, line_th * 1.5f);
+                                            }
+                                            else
+                                            {
+                                                ImU32 col_outer = rgba_apply_redlight(IM_COL32((int)(190 * pulse), 45, 10, 180));
+                                                ImGui::GetBackgroundDrawList()->AddLine(cur_row[prev_idx].pt, cur_row[idx].pt, col_outer, line_th * 2.2f);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (prev_row[idx].valid)
+                                {
+                                    double max_long_c = fmax(crack_val, prev_row[idx].crack);
+                                    if (max_long_c > 0.70)
+                                    {
+                                        double pulse = 0.88 + 0.12 * sin(wave_t * 2.1 + u_world * 0.08 + v_world * 0.08);
+                                        if (max_long_c > 0.86)
+                                        {
+                                            ImU32 col_core = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(230 * pulse), (int)(130 * pulse), 255));
+                                            ImGui::GetBackgroundDrawList()->AddLine(prev_row[idx].pt, cur_row[idx].pt, col_core, line_th * 0.9f);
+                                        }
+                                        else
+                                        {
+                                            ImU32 col_mid = rgba_apply_redlight(IM_COL32((int)(255 * pulse), (int)(105 * pulse), 15, 220));
+                                            ImGui::GetBackgroundDrawList()->AddLine(prev_row[idx].pt, cur_row[idx].pt, col_mid, line_th * 1.4f);
+                                        }
+                                    }
+                                }
+                            }
+
+                            prev_row = cur_row;
+                        }
+                    }
+                }
+
                 RockInstance rocks[ROCK_COUNT];
                 int num_rocks = 0;
 
@@ -5372,7 +5575,7 @@ void draw_horizon()
 
                 double rock_aspect = is_vegetation
                     ? (plant_trunk_height + plant_crown_size * plant_crown_oblateness)
-                    : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT));
+                    : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
                 for (int ri = 0; ri < ROCK_COUNT; ri++)
@@ -5586,7 +5789,7 @@ void draw_horizon()
                     return a.dist > b.dist;
                 });
 
-                int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : ROCK_SHADOW_ALPHA_DEF));
+                int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : (is_lava ? 70 : ROCK_SHADOW_ALPHA_DEF)));
                 int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
                 bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
 
@@ -5648,6 +5851,12 @@ void draw_horizon()
                             pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
                             pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
                             pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
+                        }
+                        else if (is_lava)
+                        {
+                            pr = fmin(255.0, 38.0 * amb_light + 35.0);
+                            pg = fmin(255.0, 24.0 * amb_light + 14.0);
+                            pb = fmin(255.0, 20.0 * amb_light + 6.0);
                         }
                         else if (is_mars)
                         {
@@ -5773,9 +5982,18 @@ void draw_horizon()
 
                         double br, bg, bb;
 
-                        br = base_map_rgb.r * 0.6;
-                        bg = base_map_rgb.g * 0.6;
-                        bb = base_map_rgb.b * 0.6;
+                        if (is_lava)
+                        {
+                            br = 34.0;
+                            bg = 28.0;
+                            bb = 30.0;
+                        }
+                        else
+                        {
+                            br = base_map_rgb.r * 0.6;
+                            bg = base_map_rgb.g * 0.6;
+                            bb = base_map_rgb.b * 0.6;
+                        }
 
                         double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
                         double amb_mult = is_moon ? 0.35 : 0.55;
@@ -5981,6 +6199,17 @@ void draw_horizon()
                             int cr = fmin(255.0, br * light_fac);
                             int cg = fmin(255.0, bg * light_fac);
                             int cb = fmin(255.0, bb * light_fac);
+
+                            if (lavaworld_crust_fissures)
+                            {
+                                if (is_lava)
+                                {
+                                    double ground_glow = fmax(0.0, -ny * 0.85 + 0.15);
+                                    cr = (int)fmin(255.0, cr + 255.0 * 0.80 * ground_glow);
+                                    cg = (int)fmin(255.0, cg + 110.0 * 0.65 * ground_glow);
+                                    cb = (int)fmin(255.0, cb + 20.0 * 0.40 * ground_glow);
+                                }
+                            }
                             ImU32 fcol = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
 
                             facets_to_draw[facet_count].depth = (v0.z + v1.z + v2.z) / 3.0;
@@ -6005,6 +6234,25 @@ void draw_horizon()
                                 facets_to_draw[fi].p2,
                                 facets_to_draw[fi].col);
                         }
+
+                        if (lavaworld_crust_fissures)
+                        {
+                            if (is_lava && rw >= 4.0 && rk.base_valid)
+                            {
+                                float rim_rx = (float)(rw * 0.46);
+                                float rim_ry = (float)fmax(1.0, rw * 0.10);
+                                ImU32 rim_outer = rgba_apply_redlight(IM_COL32(255, 105, 20, 160));
+                                ImU32 rim_inner = rgba_apply_redlight(IM_COL32(255, 230, 90, 210));
+                                ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                                    ImVec2((float)rx, (float)ry),
+                                    ImVec2(rim_rx, rim_ry),
+                                    rim_outer);
+                                ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                                    ImVec2((float)rx, (float)ry),
+                                    ImVec2(rim_rx * 0.65f, rim_ry * 0.55f),
+                                    rim_inner);
+                            }
+                        }
                     }
                 }
             }
@@ -6017,6 +6265,84 @@ void draw_horizon()
         {
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
             if (hzbrt >= 144) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
+        }
+
+        if (lavaworld_rock_rain)
+        {
+            if (p && p->type == lavaworld)
+            {
+                double t_rain = ImGui::GetTime();
+                double dispw = dispcx * 2.0;
+                double disph = dispcy * 2.0;
+                uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x5a17e);
+
+                for (int pi = 0; pi < 256; pi++)
+                {
+                    uint32_t phash = rain_seed + (uint32_t)pi * 2246822519u;
+                    phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+                    phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+                    phash = (phash >> 16) ^ phash;
+
+                    double u0 = (double)(phash & 0x3FFF) / 16383.0;
+                    double u1 = (double)((phash >> 14) & 0x3FFF) / 16383.0;
+                    double u2 = (double)((phash >> 20) & 0xFF) / 255.0;
+
+                    double fall_speed = 40.0 + 90.0 * u1;
+                    double wind_speed = 35.0 + 55.0 * u2;
+                    double wobble_freq = 1.5 + 3.0 * u0;
+                    double wobble_amp = 8.0 + 16.0 * u2;
+
+                    double y = fmod(u0 * disph + t_rain * fall_speed, disph);
+                    double x = fmod(u1 * dispw + t_rain * wind_speed + sin(t_rain * wobble_freq + u0 * 6.28) * wobble_amp, dispw);
+                    if (x < 0.0)
+                    {
+                        x += dispw;
+                    }
+
+                    int p_type = pi % 8;
+                    float pt_sz;
+                    int r_c, g_c, b_c, a_c;
+                    double streak_len;
+
+                    if (p_type < 4)
+                    {
+                        // Fine mineral dust / volcanic ash embers (background)
+                        pt_sz = 1.2f;
+                        r_c = 245;
+                        g_c = (int)(90 + 40 * u2);
+                        b_c = 15;
+                        a_c = (int)(110 + 60 * u0);
+                        streak_len = 2.0;
+                    }
+                    else if (p_type < 7)
+                    {
+                        // Glowing molten rock droplets / enstatite precipitation (midground)
+                        pt_sz = 2.0f;
+                        r_c = 255;
+                        g_c = (int)(160 + 50 * u2);
+                        b_c = 40;
+                        a_c = (int)(160 + 75 * u0);
+                        streak_len = 4.5;
+                    }
+                    else
+                    {
+                        // Incandescent liquid iron / silicate pellets (foreground sparks)
+                        pt_sz = 3.2f;
+                        r_c = 255;
+                        g_c = 230;
+                        b_c = 140;
+                        a_c = 220;
+                        streak_len = 7.0;
+                    }
+
+                    ImU32 pcol = rgba_apply_redlight(IM_COL32(r_c, g_c, b_c, a_c));
+                    ImVec2 p_head((float)x, (float)y);
+                    ImVec2 p_tail((float)(x - (wind_speed / fall_speed) * streak_len), (float)(y - streak_len));
+
+                    ImGui::GetBackgroundDrawList()->AddLine(p_tail, p_head, pcol, pt_sz);
+                    ImGui::GetBackgroundDrawList()->AddCircleFilled(p_head, pt_sz * 0.75f, pcol);
+                }
+            }
         }
     }
 }
