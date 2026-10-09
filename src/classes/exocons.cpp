@@ -161,150 +161,8 @@ namespace alienorum
         return ang_dist_rad(a, b) * (180.0 / _pi);
     }
 
-    const IAUConstellationDef scientific_constellations[] =
-    {
-        {"Nex", "Nexus", "Nexi"},
-        {"Hlx", "Helix", "Helicis"},
-        {"Vtx", "Vortex", "Vorticis"},
-        {"Spr", "Spira", "Spirae"},
-        {"Anl", "Anulus", "Anuli"},
-        {"Trd", "Tridens", "Tridentis"},
-        {"Clv", "Clavis", "Clavis"},
-        {"Arc", "Arcus", "Arcus"},
-        {"Lby", "Labyrinthus", "Labyrinthi"},
-        {"Vec", "Vector", "Vectoris"},
-        {"Apx", "Apex", "Apicis"},
-        {"Vrx", "Vertex", "Verticis"},
-        {"Spc", "Spectra", "Spectrae"},
-        {"Umb", "Umbra", "Umbrae"},
-        {"Pnb", "Penumbra", "Penumbrae"},
-        {"Flg", "Fulgur", "Fulguris"},
-        {"Cth", "Clathrus", "Clathri"},
-        {"Plx", "Plexus", "Plexus"},
-        {"Rad", "Radiata", "Radiatae"},
-        {"Str", "Stria", "Striae"},
-        {"Tor", "Torus", "Tori"},
-        {"Pln", "Planum", "Plani"},
-        {"Frc", "Fractus", "Fracti"},
-        {"Rho", "Rhombus", "Rhombi"},
-        {"Prs", "Prisma", "Prismatis"},
-        {"Pnd", "Pendulum", "Penduli"},
-        {"Gyr", "Gyro", "Gyri"},
-        {"Phs", "Phasor", "Phasoris"},
-        {"Sld", "Solenoid", "Solenoidis"},
-        {"Qsr", "Quasar", "Quasaris"},
-        {"Psr", "Pulsar", "Pulsaris"},
-        {"Clr", "Calcar", "Calcaris"},
-        {"Flx", "Falx", "Falcis"},
-        {"Cat", "Catena", "Catenae"},
-        {"Sil", "Silva", "Silvae"},
-        {"Mns", "Mons", "Montis"},
-        {"Val", "Vallis", "Vallis"},
-        {"Mar", "Mare", "Maris"},
-        {"Lac", "Lacus", "Lacus"},
-        {"Sin", "Sinus", "Sinus"},
-        {"Pal", "Palus", "Paludis"},
-        {"Rup", "Rupes", "Rupis"},
-        {"Fos", "Fossa", "Fossae"},
-        {"Rim", "Rima", "Rimae"},
-        {"Dor", "Dorsum", "Dorsi"},
-        {"Cra", "Crater", "Crateris"},
-        {"Cho", "Chaos", "Chaois"},
-        {"Mac", "Macula", "Maculae"},
-        {"Fac", "Facula", "Faculae"},
-        {"Reg", "Regio", "Regionis"},
-        {"Pla", "Planitia", "Planitiae"},
-        {"Ter", "Terra", "Terrae"},
-        {"Tes", "Tessera", "Tesserae"},
-        {"Lin", "Linea", "Lineae"},
-        {"Flu", "Fluctus", "Fluctus"},
-        {"Col", "Colles", "Collium"},
-        {"Tho", "Tholus", "Tholi"},
-        {"Pat", "Patera", "Paterae"},
-        {"Sul", "Sulcus", "Sulci"},
-        {"Lbe", "Labes", "Labis"},
-        {"Chs", "Chasma", "Chasmatis"},
-        {"Fre", "Fretum", "Freti"},
-        {"Aet", "Aether", "Aetheris"},
-        {"Ast", "Astraea", "Astraeae"},
-        {"Bor", "Boreas", "Boreae"},
-        {"Zep", "Zephyrus", "Zephyri"},
-        {"Not", "Notus", "Noti"},
-        {"Eur", "Eurus", "Euri"},
-        {"Scy", "Scylla", "Scyllae"},
-        {"Chy", "Charybdis", "Charybdis"},
-        {"Ret", "Reticulum", "Reticuli"},
-        {"Mic", "Microscopium", "Microscopii"},
-        {"Tel", "Telescopium", "Telescopii"},
-        {"Hor", "Horologium", "Horologii"},
-        {"For", "Fornax", "Fornacis"},
-        {"Ant", "Antlia", "Antliae"},
-        {"Nor", "Norma", "Normae"},
-        {"Cir", "Circinus", "Circini"},
-        {"Tri", "Triangulum", "Trianguli"},
-        {"Oct", "Octans", "Octantis"},
-        {"Sex", "Sextans", "Sextantis"},
-        {"Sct", "Scutum", "Scuti"},
-        {"Pyx", "Pyxis", "Pyxidis"},
-        {"Cae", "Caelum", "Caeli"},
-        {"Scp", "Sceptrum", "Sceptri"},
-        {"Mon", "Monoceros", "Monocerotis"},
-        {"Cor", "Corona", "Coronae"},
-        {"Vol", "Volans", "Volantis"},
-        {"Vel", "Vela", "Velorum"},
-        {"Car", "Carina", "Carinae"},
-        {"Pup", "Puppis", "Puppis"},
-        {"Hyi", "Hydrus", "Hydri"},
-        {"Pav", "Pavo", "Pavonis"},
-        {"Tuc", "Tucana", "Tucanae"},
-        {"Gru", "Grus", "Gruis"},
-        {"Phe", "Phoenix", "Phoenicis"},
-        {"Drd", "Dorado", "Doradus"},
-        {"Pic", "Pictor", "Pictoris"},
-        {"Men", "Mensa", "Mensae"},
-        {"Cha", "Chamaeleon", "Chamaeleontis"},
-        {"Mus", "Musca", "Muscae"},
-        {"Aps", "Apus", "Apodis"},
-        {"Ara", "Ara", "Arae"},
-        {"Ind", "Indus", "Indi"},
-        {"Cru", "Crux", "Crucis"},
-        {"Cen", "Centaurus", "Centauri"},
-        {"Lup", "Lupus", "Lupi"},
-        {"CrA", "Corona Australis", "Coronae Australis"},
-        {"CrB", "Corona Borealis", "Coronae Borealis"},
-        {"Sge", "Sagitta", "Sagittae"},
-        {"Del", "Delphinus", "Delphini"},
-        {"Equ", "Equuleus", "Equulei"},
-        {"Vul", "Vulpecula", "Vulpeculae"},
-        {"Cyg", "Cygnus", "Cygni"},
-        {"Lyr", "Lyra", "Lyrae"},
-        {"Aql", "Aquila", "Aquilae"},
-        {"Ser", "Serpens", "Serpentis"},
-        {"Oph", "Ophiuchus", "Ophiuchi"},
-        {"Sco", "Scorpius", "Scorpii"},
-        {"Lib", "Libra", "Librae"},
-        {"Vir", "Virgo", "Virginis"},
-        {"Leo", "Leo", "Leonis"},
-        {"Cnc", "Cancer", "Cancri"},
-        {"Gem", "Gemini", "Geminorum"},
-        {"Tau", "Taurus", "Tauri"},
-        {"Ari", "Aries", "Arietis"},
-        {"Psc", "Pisces", "Piscium"},
-        {"Aqr", "Aquarius", "Aquarii"},
-        {"Cap", "Capricornus", "Capricorni"},
-        {"Sgr", "Sagittarius", "Sagittarii"}
-    };
-    static const size_t NUM_SCIENTIFIC_CONSTELLATIONS = sizeof(scientific_constellations) / sizeof(scientific_constellations[0]);
-
     const IAUConstellationDef* ExoConsGenerator::find_iau_def(const std::string& abbrev)
     {
-        for (size_t i = 0; i < NUM_SCIENTIFIC_CONSTELLATIONS; i++)
-        {
-            if (abbrev == scientific_constellations[i].abbrev)
-            {
-                return &scientific_constellations[i];
-            }
-        }
         for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
         {
             if (abbrev == iau_constellations[i].abbrev)
@@ -1410,27 +1268,7 @@ namespace alienorum
             std::string c_name;
             std::string c_genitive;
 
-            while (name_cursor < NUM_SCIENTIFIC_CONSTELLATIONS)
-            {
-                std::string cand_abbr = scientific_constellations[name_cursor].abbrev;
-                if (!existing_cons_abbrevs.count(cand_abbr))
-                {
-                    c_abbrev = cand_abbr;
-                    c_name = scientific_constellations[name_cursor].name;
-                    c_genitive = scientific_constellations[name_cursor].genitive;
-                    existing_cons_abbrevs.insert(cand_abbr);
-                    name_cursor++;
-                    break;
-                }
-                name_cursor++;
-            }
-
-            if (c_abbrev.empty())
-            {
-                c_abbrev = "Exo" + std::to_string(out_conss.size() + 1);
-                c_name = c_abbrev;
-                c_genitive = c_abbrev;
-            }
+            // TODO:
 
             Constellation cons;
             cons.abbrev = c_abbrev;
@@ -1652,20 +1490,7 @@ namespace alienorum
                     std::string c_name;
                     std::string c_genitive;
 
-                    while (name_cursor < NUM_SCIENTIFIC_CONSTELLATIONS)
-                    {
-                        std::string cand_abbr = scientific_constellations[name_cursor].abbrev;
-                        if (!existing_cons_abbrevs.count(cand_abbr))
-                        {
-                            c_abbrev = cand_abbr;
-                            c_name = scientific_constellations[name_cursor].name;
-                            c_genitive = scientific_constellations[name_cursor].genitive;
-                            existing_cons_abbrevs.insert(cand_abbr);
-                            name_cursor++;
-                            break;
-                        }
-                        name_cursor++;
-                    }
+                    // TODO:
 
                     if (c_abbrev.empty())
                     {
@@ -1916,20 +1741,7 @@ namespace alienorum
                     std::string c_name;
                     std::string c_genitive;
 
-                    while (name_cursor < NUM_SCIENTIFIC_CONSTELLATIONS)
-                    {
-                        std::string cand_abbr = scientific_constellations[name_cursor].abbrev;
-                        if (!existing_cons_abbrevs.count(cand_abbr))
-                        {
-                            c_abbrev = cand_abbr;
-                            c_name = scientific_constellations[name_cursor].name;
-                            c_genitive = scientific_constellations[name_cursor].genitive;
-                            existing_cons_abbrevs.insert(cand_abbr);
-                            name_cursor++;
-                            break;
-                        }
-                        name_cursor++;
-                    }
+                    // TODO:
 
                     if (c_abbrev.empty())
                     {
