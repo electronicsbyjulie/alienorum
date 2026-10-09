@@ -37,7 +37,7 @@ std::vector<std::string> themes;
 std::string default_theme = "Perseus";
 std::string viewer_theme = default_theme;
 std::mutex mtx;
-const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas" };
+const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas", "Solar System" };
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_spaceship;

@@ -570,7 +570,91 @@ namespace alienorum
         return true;
     }
 
-        void ExoConsGenerator::generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss)
+    struct CandStar
+    {
+        Star* s = nullptr;
+        double mag = 99.0;
+        Point u;
+        int id = 0;
+    };
+
+    struct CandSpatialGrid
+    {
+        static const int GRID_RES = 10;
+        std::vector<int> head;
+        std::vector<int> next;
+        const std::vector<CandStar>& stars;
+
+        CandSpatialGrid(const std::vector<CandStar>& cands)
+            : head(GRID_RES * GRID_RES * GRID_RES, -1),
+              next(cands.size(), -1),
+              stars(cands)
+        {
+            for (size_t i = 0; i < cands.size(); i++)
+            {
+                int cell = get_cell(cands[i].u);
+                if (cell >= 0 && cell < (int)head.size())
+                {
+                    next[i] = head[cell];
+                    head[cell] = (int)i;
+                }
+            }
+        }
+
+        static int cell_coord(double v)
+        {
+            int c = (int)((v + 1.0) * 0.5 * (double)GRID_RES);
+            if (c < 0)
+            {
+                return 0;
+            }
+            if (c >= GRID_RES)
+            {
+                return GRID_RES - 1;
+            }
+            return c;
+        }
+
+        static int get_cell(const Point& p)
+        {
+            int cx = cell_coord(p.x);
+            int cy = cell_coord(p.y);
+            int cz = cell_coord(p.z);
+            return cx + GRID_RES * (cy + GRID_RES * cz);
+        }
+
+        template<typename Func>
+        void for_each_near(const Point& pt, double radius_deg, Func&& func) const
+        {
+            double rad = radius_deg * (_pi / 180.0);
+            double chord = 2.0 * sin(0.5 * rad) * 1.05;
+            int min_x = cell_coord(pt.x - chord);
+            int max_x = cell_coord(pt.x + chord);
+            int min_y = cell_coord(pt.y - chord);
+            int max_y = cell_coord(pt.y + chord);
+            int min_z = cell_coord(pt.z - chord);
+            int max_z = cell_coord(pt.z + chord);
+
+            for (int cz = min_z; cz <= max_z; cz++)
+            {
+                for (int cy = min_y; cy <= max_y; cy++)
+                {
+                    for (int cx = min_x; cx <= max_x; cx++)
+                    {
+                        int cell = cx + GRID_RES * (cy + GRID_RES * cz);
+                        int idx = head[cell];
+                        while (idx >= 0)
+                        {
+                            func(idx);
+                            idx = next[idx];
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    void ExoConsGenerator::generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss)
     {
         out_conss.clear();
         if (sys_star && sys_star->cenobj && sys_star->cenobj->typeclass() == class_star)
@@ -603,10 +687,19 @@ namespace alienorum
             Point ua;
             Point ub;
             double len_deg = 0.0;
+            double cos_half_len = 0.0;
+            int cons_idx = -1;
+        };
+
+        struct PlacedStar
+        {
+            Star* s = nullptr;
+            Point u;
             int cons_idx = -1;
         };
 
         std::vector<LineRecord> all_lines;
+        std::vector<PlacedStar> placed_stars;
         std::vector<std::unordered_set<Star*>> cons_stars;
 
         for (const auto& c : constellations)
@@ -632,7 +725,10 @@ namespace alienorum
                         Point ua = normalize_point(rel_a);
                         Point ub = normalize_point(rel_b);
                         double len = ang_dist_deg(ua, ub);
-                        all_lines.push_back({cl.a, cl.b, ua, ub, len, c_idx});
+                        double cos_half = cos(0.5 * len * (_pi / 180.0));
+                        all_lines.push_back({cl.a, cl.b, ua, ub, len, cos_half, c_idx});
+                        placed_stars.push_back({cl.a, ua, c_idx});
+                        placed_stars.push_back({cl.b, ub, c_idx});
                     }
                 }
                 cons_stars.push_back(c_stars);
@@ -640,14 +736,6 @@ namespace alienorum
         }
 
         // 2. Collect candidate stars outside local system
-        struct CandStar
-        {
-            Star* s = nullptr;
-            double mag = 99.0;
-            Point u;
-            int id = 0;
-        };
-
         std::vector<CandStar> candidates;
         candidates.reserve(8192);
         std::unordered_map<Star*, Point> star_u_map;
@@ -710,6 +798,8 @@ namespace alienorum
             candidates[i].id = (int)i;
         }
 
+        CandSpatialGrid cand_grid(candidates);
+
         // 3. Cluster stars by spatial proximity and brightness similarity
         std::vector<bool> assigned(candidates.size(), false);
 
@@ -730,20 +820,38 @@ namespace alienorum
             cl.center = candidates[seed_idx].u;
             cl.mean_mag = candidates[seed_idx].mag;
 
+            std::vector<int> cluster_candidates;
+            cand_grid.for_each_near(cl.center, 25.0, [&](int i)
+            {
+                cluster_candidates.push_back(i);
+            });
+
             while ((int)cl.star_indices.size() < max_size)
             {
                 int best_cand = -1;
                 double best_cost = 1e9;
 
-                for (size_t i = 0; i < candidates.size(); i++)
+                for (int i : cluster_candidates)
                 {
                     if (assigned[i])
                     {
                         continue;
                     }
                     const auto& cand = candidates[i];
+
+                    // Skip dimmer stars in initial cluster growth to allow constellations
+                    // to reach across wider areas of prominent stars
+                    if (cand.mag > 5.2 && cl.mean_mag < 4.5)
+                    {
+                        continue;
+                    }
+                    if (cand.mag > 5.7)
+                    {
+                        continue;
+                    }
+
                     double dist_center = ang_dist_deg(cand.u, cl.center);
-                    if (dist_center > 14.0)
+                    if (dist_center > 24.0)
                     {
                         continue;
                     }
@@ -760,7 +868,7 @@ namespace alienorum
                         }
                     }
 
-                    if (min_nbr_dist > 11.0)
+                    if (min_nbr_dist > 14.5)
                     {
                         continue;
                     }
@@ -783,7 +891,7 @@ namespace alienorum
                     }
                 }
 
-                if (best_cand >= 0 && best_cost <= 14.0)
+                if (best_cand >= 0 && best_cost <= 22.0)
                 {
                     cl.star_indices.push_back(best_cand);
                     assigned[best_cand] = true;
@@ -807,23 +915,23 @@ namespace alienorum
             clusters.push_back(cl);
         };
 
-        // Phase A: Seed clusters from bright stars (mag < 3.0)
+        // Phase A: Seed clusters from bright stars (mag < 3.2)
         for (size_t i = 0; i < candidates.size(); i++)
         {
-            if (candidates[i].mag >= 3.0)
+            if (candidates[i].mag >= 3.2)
             {
                 break;
             }
             if (!assigned[i])
             {
-                grow_cluster((int)i, 7);
+                grow_cluster((int)i, 11);
             }
         }
 
-        // Phase B: Seed clusters from medium-bright stars (mag < 4.5), keeping cluster centers spaced
+        // Phase B: Seed clusters from medium-bright stars (mag < 4.8), keeping cluster centers spaced
         for (size_t i = 0; i < candidates.size(); i++)
         {
-            if (candidates[i].mag >= 4.5)
+            if (candidates[i].mag >= 4.8)
             {
                 break;
             }
@@ -835,7 +943,7 @@ namespace alienorum
             bool too_close = false;
             for (const auto& cl : clusters)
             {
-                if (ang_dist_deg(candidates[i].u, cl.center) < 12.0)
+                if (ang_dist_deg(candidates[i].u, cl.center) < 16.0)
                 {
                     too_close = true;
                     break;
@@ -843,7 +951,7 @@ namespace alienorum
             }
             if (!too_close)
             {
-                grow_cluster((int)i, 7);
+                grow_cluster((int)i, 11);
             }
         }
 
@@ -862,7 +970,7 @@ namespace alienorum
             bool region_covered = false;
             for (const auto& cl : clusters)
             {
-                if (ang_dist_deg(sample_pt, cl.center) < 13.0)
+                if (ang_dist_deg(sample_pt, cl.center) < 16.0)
                 {
                     region_covered = true;
                     break;
@@ -873,25 +981,25 @@ namespace alienorum
             {
                 int best_seed = -1;
                 double best_mag = 1e9;
-                for (size_t ci = 0; ci < candidates.size(); ci++)
+                cand_grid.for_each_near(sample_pt, 12.0, [&](int ci)
                 {
                     if (assigned[ci] || candidates[ci].mag > 5.5)
                     {
-                        continue;
+                        return;
                     }
                     if (ang_dist_deg(sample_pt, candidates[ci].u) < 10.0)
                     {
                         if (candidates[ci].mag < best_mag)
                         {
                             best_mag = candidates[ci].mag;
-                            best_seed = (int)ci;
+                            best_seed = ci;
                         }
                     }
-                }
+                });
 
                 if (best_seed >= 0)
                 {
-                    grow_cluster(best_seed, 6);
+                    grow_cluster(best_seed, 9);
                 }
             }
         }
@@ -916,21 +1024,19 @@ namespace alienorum
                         best_cl_idx = (int)ci;
                     }
                 }
-                if (best_cl_idx >= 0 && min_dist <= 16.0)
+                if (best_cl_idx >= 0 && min_dist <= 20.0)
                 {
                     clusters[best_cl_idx].star_indices.push_back((int)i);
                     assigned[i] = true;
                 }
                 else
                 {
-                    grow_cluster((int)i, 5);
+                    grow_cluster((int)i, 8);
                 }
             }
         }
 
         // 4. Line separation, impinging near-miss, and validity rules
-        const double cos16deg = cos(16.0 * _pi / 180.0);
-
         auto is_candidate_line_valid = [&](
             Star* sa, Point ua,
             Star* sb, Point ub,
@@ -942,55 +1048,42 @@ namespace alienorum
             }
 
             double half_len = 0.5 * len_deg;
+            double cos_half = cos(half_len * (_pi / 180.0));
 
             // Condition 1: line (sa, sb) must not connect any star that is less than half its length
             // from a connected star of a different constellation.
-            for (int c_idx = 0; c_idx < (int)cons_stars.size(); c_idx++)
+            for (const auto& ps : placed_stars)
             {
-                if (c_idx == target_cons_idx)
+                if (ps.cons_idx == target_cons_idx || ps.s == sa || ps.s == sb)
                 {
                     continue;
                 }
-                for (Star* other_star : cons_stars[c_idx])
+                if (dot_product(ua, ps.u) > cos_half || dot_product(ub, ps.u) > cos_half)
                 {
-                    if (other_star == sa || other_star == sb)
-                    {
-                        continue;
-                    }
-                    auto it = star_u_map.find(other_star);
-                    if (it == star_u_map.end())
-                    {
-                        continue;
-                    }
-                    double dist_a = ang_dist_deg(ua, it->second);
-                    double dist_b = ang_dist_deg(ub, it->second);
-                    if (dist_a < half_len || dist_b < half_len)
-                    {
-                        return false;
-                    }
+                    return false;
                 }
             }
 
             // Condition 2: connecting sa or sb must not violate the half-length distance of any existing line in another constellation
+            bool sa_new = (target_cons_idx >= (int)cons_stars.size() || !cons_stars[target_cons_idx].count(sa));
+            bool sb_new = (target_cons_idx >= (int)cons_stars.size() || !cons_stars[target_cons_idx].count(sb));
+
             for (const auto& el : all_lines)
             {
                 if (el.cons_idx == target_cons_idx)
                 {
                     continue;
                 }
-                double half_other = 0.5 * el.len_deg;
-                bool sa_new = (target_cons_idx >= (int)cons_stars.size() || !cons_stars[target_cons_idx].count(sa));
                 if (sa_new)
                 {
-                    if (ang_dist_deg(el.ua, ua) < half_other || ang_dist_deg(el.ub, ua) < half_other)
+                    if (dot_product(el.ua, ua) > el.cos_half_len || dot_product(el.ub, ua) > el.cos_half_len)
                     {
                         return false;
                     }
                 }
-                bool sb_new = (target_cons_idx >= (int)cons_stars.size() || !cons_stars[target_cons_idx].count(sb));
                 if (sb_new)
                 {
-                    if (ang_dist_deg(el.ua, ub) < half_other || ang_dist_deg(el.ub, ub) < half_other)
+                    if (dot_product(el.ua, ub) > el.cos_half_len || dot_product(el.ub, ub) > el.cos_half_len)
                     {
                         return false;
                     }
@@ -1008,27 +1101,54 @@ namespace alienorum
 
             // Condition 4: Near miss check against all candidate stars
             Point mid_u = normalize_point(ua + ub);
-            for (const auto& cand : candidates)
+            bool near_miss = false;
+            cand_grid.for_each_near(mid_u, 0.5 * len_deg + 2.5, [&](int cand_idx)
             {
+                if (near_miss)
+                {
+                    return;
+                }
+                const auto& cand = candidates[cand_idx];
                 if (cand.s == sa || cand.s == sb)
                 {
-                    continue;
-                }
-                if (dot_product(cand.u, mid_u) < cos16deg)
-                {
-                    continue;
+                    return;
                 }
                 double d_out = 0.0;
                 if (point_near_arc(ua, ub, cand.u, 1.5, &d_out, 0.8))
                 {
-                    return false;
+                    near_miss = true;
                 }
+            });
+            if (near_miss)
+            {
+                return false;
             }
 
             return true;
         };
+
         // 5. Line generation per cluster
         size_t name_cursor = 0;
+        auto allocate_cons_name = [&](std::string& out_abbrev, std::string& out_name, std::string& out_genitive)
+        {
+            while (name_cursor < EXOCONS_NUM_IAU_CONSTELLATIONS)
+            {
+                std::string cand_abbr = iau_constellations[name_cursor].abbrev;
+                if (!existing_cons_abbrevs.count(cand_abbr))
+                {
+                    out_abbrev = iau_constellations[name_cursor].abbrev;
+                    out_name = iau_constellations[name_cursor].name;
+                    out_genitive = iau_constellations[name_cursor].genitive;
+                    existing_cons_abbrevs.insert(cand_abbr);
+                    name_cursor++;
+                    return;
+                }
+                name_cursor++;
+            }
+            out_abbrev = "Exo" + std::to_string(out_conss.size() + 1);
+            out_name = out_abbrev;
+            out_genitive = out_abbrev;
+        };
 
         for (size_t cl_i = 0; cl_i < clusters.size(); cl_i++)
         {
@@ -1141,15 +1261,12 @@ namespace alienorum
                 accepted_edges.push_back(edge);
             }
 
-            // Optionally add at most 1 short cycle / chord edge (trapezoid, loop) if degrees <= 3 and no crossing
+            // Add cycle / chord edges to close open ends into loops (triangles, quadrilaterals, polygons)
             if (accepted_edges.size() >= 3)
             {
+                std::vector<CandEdge> chord_candidates;
                 for (const auto& edge : valid_edges)
                 {
-                    if (degrees[edge.u_idx] >= 3 || degrees[edge.v_idx] >= 3)
-                    {
-                        continue;
-                    }
                     bool already = false;
                     for (const auto& acc : accepted_edges)
                     {
@@ -1160,7 +1277,35 @@ namespace alienorum
                             break;
                         }
                     }
-                    if (already)
+                    if (!already)
+                    {
+                        chord_candidates.push_back(edge);
+                    }
+                }
+
+                std::sort(chord_candidates.begin(), chord_candidates.end(), [&](const CandEdge& a, const CandEdge& b)
+                {
+                    int deg_score_a = (degrees[a.u_idx] == 1 ? 3 : (degrees[a.u_idx] == 2 ? 1 : 0)) +
+                                      (degrees[a.v_idx] == 1 ? 3 : (degrees[a.v_idx] == 2 ? 1 : 0));
+                    int deg_score_b = (degrees[b.u_idx] == 1 ? 3 : (degrees[b.u_idx] == 2 ? 1 : 0)) +
+                                      (degrees[b.v_idx] == 1 ? 3 : (degrees[b.v_idx] == 2 ? 1 : 0));
+                    if (deg_score_a != deg_score_b)
+                    {
+                        return deg_score_a > deg_score_b;
+                    }
+                    return a.cost < b.cost;
+                });
+
+                int chords_added = 0;
+                int max_chords = std::min(3, std::max(1, (int)accepted_edges.size() / 3));
+
+                for (const auto& edge : chord_candidates)
+                {
+                    if (chords_added >= max_chords)
+                    {
+                        break;
+                    }
+                    if (degrees[edge.u_idx] >= 3 || degrees[edge.v_idx] >= 3)
                     {
                         continue;
                     }
@@ -1186,7 +1331,7 @@ namespace alienorum
                     degrees[edge.u_idx]++;
                     degrees[edge.v_idx]++;
                     accepted_edges.push_back(edge);
-                    break;
+                    chords_added++;
                 }
             }
 
@@ -1263,12 +1408,11 @@ namespace alienorum
                 continue;
             }
 
-            // Select next available scientific constellation name
+            // Select next available constellation name
             std::string c_abbrev;
             std::string c_name;
             std::string c_genitive;
-
-            // TODO:
+            allocate_cons_name(c_abbrev, c_name, c_genitive);
 
             Constellation cons;
             cons.abbrev = c_abbrev;
@@ -1297,7 +1441,10 @@ namespace alienorum
 
                 new_c_stars.insert(sa);
                 new_c_stars.insert(sb);
-                all_lines.push_back({sa, sb, ua, ub, edge.len_deg, new_c_idx});
+                double cos_half = cos(0.5 * edge.len_deg * (_pi / 180.0));
+                all_lines.push_back({sa, sb, ua, ub, edge.len_deg, cos_half, new_c_idx});
+                placed_stars.push_back({sa, ua, new_c_idx});
+                placed_stars.push_back({sb, ub, new_c_idx});
             }
 
             cons_stars.push_back(new_c_stars);
@@ -1369,19 +1516,27 @@ namespace alienorum
                         else
                         {
                             // Check if an intermediate unconnected star bridges s_bright and target
-                            for (size_t mi = 0; mi < candidates.size(); mi++)
+                            cand_grid.for_each_near(u_bright, len + 1.5, [&](int mi)
                             {
+                                if (best_mid_target)
+                                {
+                                    return;
+                                }
                                 Star* sm = candidates[mi].s;
                                 if (sm == s_bright || sm == target || all_connected_stars.count(sm))
                                 {
-                                    continue;
+                                    return;
                                 }
                                 Point um = candidates[mi].u;
                                 double len_a = ang_dist_deg(u_bright, um);
                                 double len_b = ang_dist_deg(um, it_u->second);
+                                if (len_a > 15.0 || len_b > 15.0)
+                                {
+                                    return;
+                                }
                                 if (len_a + len_b > len + 1.5)
                                 {
-                                    continue;
+                                    return;
                                 }
                                 if (is_candidate_line_valid(s_bright, u_bright, sm, um, len_a, (int)c_idx) &&
                                     is_candidate_line_valid(sm, um, target, it_u->second, len_b, (int)c_idx))
@@ -1390,9 +1545,8 @@ namespace alienorum
                                     best_existing_target = target;
                                     best_existing_c_idx = (int)c_idx;
                                     best_mid_target = sm;
-                                    break;
                                 }
-                            }
+                            });
                         }
                     }
                 }
@@ -1411,7 +1565,10 @@ namespace alienorum
 
                     Point um = star_u_map[best_mid_target];
                     double la = ang_dist_deg(u_bright, um);
-                    all_lines.push_back({s_bright, best_mid_target, u_bright, um, la, best_existing_c_idx});
+                    double cos_half_a = cos(0.5 * la * (_pi / 180.0));
+                    all_lines.push_back({s_bright, best_mid_target, u_bright, um, la, cos_half_a, best_existing_c_idx});
+                    placed_stars.push_back({s_bright, u_bright, best_existing_c_idx});
+                    placed_stars.push_back({best_mid_target, um, best_existing_c_idx});
 
                     ConsLine cl2;
                     cl2.a = best_mid_target;
@@ -1421,7 +1578,8 @@ namespace alienorum
                     out_conss[best_existing_c_idx].lines.push_back(cl2);
 
                     double lb = ang_dist_deg(um, star_u_map[best_existing_target]);
-                    all_lines.push_back({best_mid_target, best_existing_target, um, star_u_map[best_existing_target], lb, best_existing_c_idx});
+                    double cos_half_b = cos(0.5 * lb * (_pi / 180.0));
+                    all_lines.push_back({best_mid_target, best_existing_target, um, star_u_map[best_existing_target], lb, cos_half_b, best_existing_c_idx});
 
                     cons_stars[best_existing_c_idx].insert(s_bright);
                     cons_stars[best_existing_c_idx].insert(best_mid_target);
@@ -1438,7 +1596,9 @@ namespace alienorum
                     cl.starnameb = get_consline_star_name(best_existing_target);
                     out_conss[best_existing_c_idx].lines.push_back(cl);
 
-                    all_lines.push_back({s_bright, best_existing_target, u_bright, star_u_map[best_existing_target], best_existing_dist, best_existing_c_idx});
+                    double cos_half = cos(0.5 * best_existing_dist * (_pi / 180.0));
+                    all_lines.push_back({s_bright, best_existing_target, u_bright, star_u_map[best_existing_target], best_existing_dist, cos_half, best_existing_c_idx});
+                    placed_stars.push_back({s_bright, u_bright, best_existing_c_idx});
                     cons_stars[best_existing_c_idx].insert(s_bright);
                     all_connected_stars.insert(s_bright);
                     connected = true;
@@ -1449,18 +1609,18 @@ namespace alienorum
             {
                 // Step B: Form a dedicated constellation around s_bright using unconnected stars
                 std::vector<int> near_indices;
-                for (size_t other_i = 0; other_i < candidates.size(); other_i++)
+                cand_grid.for_each_near(u_bright, 14.0, [&](int other_i)
                 {
-                    if (other_i == ci || all_connected_stars.count(candidates[other_i].s))
+                    if (other_i == (int)ci || all_connected_stars.count(candidates[other_i].s))
                     {
-                        continue;
+                        return;
                     }
                     double d = ang_dist_deg(u_bright, candidates[other_i].u);
                     if (d <= 14.0)
                     {
-                        near_indices.push_back((int)other_i);
+                        near_indices.push_back(other_i);
                     }
-                }
+                });
                 std::sort(near_indices.begin(), near_indices.end(), [&](int a, int b)
                 {
                     return ang_dist_deg(u_bright, candidates[a].u) < ang_dist_deg(u_bright, candidates[b].u);
@@ -1489,15 +1649,7 @@ namespace alienorum
                     std::string c_abbrev;
                     std::string c_name;
                     std::string c_genitive;
-
-                    // TODO:
-
-                    if (c_abbrev.empty())
-                    {
-                        c_abbrev = "Exo" + std::to_string(out_conss.size() + 1);
-                        c_name = c_abbrev;
-                        c_genitive = c_abbrev;
-                    }
+                    allocate_cons_name(c_abbrev, c_name, c_genitive);
 
                     Constellation cons;
                     cons.abbrev = c_abbrev;
@@ -1509,6 +1661,7 @@ namespace alienorum
 
                     std::unordered_set<Star*> new_c_stars;
                     new_c_stars.insert(s_bright);
+                    placed_stars.push_back({s_bright, u_bright, target_c_idx});
 
                     for (Star* st : dedicated_stars)
                     {
@@ -1521,7 +1674,9 @@ namespace alienorum
 
                         Point ut = star_u_map[st];
                         double len = ang_dist_deg(u_bright, ut);
-                        all_lines.push_back({s_bright, st, u_bright, ut, len, target_c_idx});
+                        double cos_half = cos(0.5 * len * (_pi / 180.0));
+                        all_lines.push_back({s_bright, st, u_bright, ut, len, cos_half, target_c_idx});
+                        placed_stars.push_back({st, ut, target_c_idx});
                         new_c_stars.insert(st);
                         all_connected_stars.insert(st);
                     }
@@ -1530,6 +1685,100 @@ namespace alienorum
                     all_connected_stars.insert(s_bright);
                     out_conss.push_back(cons);
                     connected = true;
+                }
+            }
+        }
+
+        // 6.5. Scavenge unjoined stars with mag <= 4.0 to join the nearest constellation
+        for (size_t ci = 0; ci < candidates.size(); ci++)
+        {
+            if (candidates[ci].mag > 4.0)
+            {
+                break;
+            }
+            Star* s_cand = candidates[ci].s;
+            if (all_connected_stars.count(s_cand))
+            {
+                continue;
+            }
+
+            Point u_cand = candidates[ci].u;
+
+            // Find closest candidate star in placed_stars to connect directly
+            Star* best_target = nullptr;
+            int best_c_idx = -1;
+            double best_dist = 1e9;
+
+            for (const auto& ps : placed_stars)
+            {
+                double d = ang_dist_deg(u_cand, ps.u);
+                if (d <= 15.0 && d < best_dist)
+                {
+                    int deg = 0;
+                    for (const auto& cl : out_conss[ps.cons_idx].lines)
+                    {
+                        if (cl.a == ps.s || cl.b == ps.s)
+                        {
+                            deg++;
+                        }
+                    }
+                    if (deg < 3 && is_candidate_line_valid(s_cand, u_cand, ps.s, ps.u, d, ps.cons_idx))
+                    {
+                        best_dist = d;
+                        best_target = ps.s;
+                        best_c_idx = ps.cons_idx;
+                    }
+                }
+            }
+
+            if (best_target && best_c_idx >= 0)
+            {
+                ConsLine cl;
+                cl.a = s_cand;
+                cl.b = best_target;
+                cl.starnamea = get_consline_star_name(s_cand);
+                cl.starnameb = get_consline_star_name(best_target);
+                out_conss[best_c_idx].lines.push_back(cl);
+
+                Point ut = star_u_map[best_target];
+                double cos_half = cos(0.5 * best_dist * (_pi / 180.0));
+                all_lines.push_back({s_cand, best_target, u_cand, ut, best_dist, cos_half, best_c_idx});
+                placed_stars.push_back({s_cand, u_cand, best_c_idx});
+                cons_stars[best_c_idx].insert(s_cand);
+                all_connected_stars.insert(s_cand);
+
+                // Optionally close a loop if another node in this constellation is within 14.0 deg
+                for (const auto& ps : placed_stars)
+                {
+                    if (ps.cons_idx != best_c_idx || ps.s == s_cand || ps.s == best_target)
+                    {
+                        continue;
+                    }
+                    double d2 = ang_dist_deg(u_cand, ps.u);
+                    if (d2 <= 14.0)
+                    {
+                        int deg2 = 0;
+                        for (const auto& cl : out_conss[best_c_idx].lines)
+                        {
+                            if (cl.a == ps.s || cl.b == ps.s)
+                            {
+                                deg2++;
+                            }
+                        }
+                        if (deg2 < 3 && is_candidate_line_valid(s_cand, u_cand, ps.s, ps.u, d2, best_c_idx))
+                        {
+                            ConsLine cl_loop;
+                            cl_loop.a = s_cand;
+                            cl_loop.b = ps.s;
+                            cl_loop.starnamea = get_consline_star_name(s_cand);
+                            cl_loop.starnameb = get_consline_star_name(ps.s);
+                            out_conss[best_c_idx].lines.push_back(cl_loop);
+
+                            double cos_half2 = cos(0.5 * d2 * (_pi / 180.0));
+                            all_lines.push_back({s_cand, ps.s, u_cand, ps.u, d2, cos_half2, best_c_idx});
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -1568,17 +1817,17 @@ namespace alienorum
             }
 
             std::vector<int> gap_stars;
-            for (size_t ci = 0; ci < candidates.size(); ci++)
+            cand_grid.for_each_near(sample_pt, 10.0, [&](int ci)
             {
                 if (all_connected_stars.count(candidates[ci].s) || candidates[ci].mag > 5.8)
                 {
-                    continue;
+                    return;
                 }
                 if (ang_dist_deg(sample_pt, candidates[ci].u) < 9.0)
                 {
-                    gap_stars.push_back((int)ci);
+                    gap_stars.push_back(ci);
                 }
-            }
+            });
 
             if (gap_stars.size() >= 4)
             {
@@ -1629,7 +1878,10 @@ namespace alienorum
                 }
                 std::function<int(int)> find_gp = [&](int x) -> int
                 {
-                    if (g_parent[x] == x) return x;
+                    if (g_parent[x] == x)
+                    {
+                        return x;
+                    }
                     return g_parent[x] = find_gp(g_parent[x]);
                 };
 
@@ -1670,6 +1922,74 @@ namespace alienorum
                     g_accepted.push_back(ge);
                 }
 
+                // Add chord edges to gap constellation to close loops
+                if (g_accepted.size() >= 3)
+                {
+                    std::vector<GEdge> gap_chord_cands;
+                    for (const auto& ge : g_edges)
+                    {
+                        bool already = false;
+                        for (const auto& acc : g_accepted)
+                        {
+                            if ((acc.u == ge.u && acc.v == ge.v) ||
+                                (acc.u == ge.v && acc.v == ge.u))
+                            {
+                                already = true;
+                                break;
+                            }
+                        }
+                        if (!already)
+                        {
+                            gap_chord_cands.push_back(ge);
+                        }
+                    }
+
+                    std::sort(gap_chord_cands.begin(), gap_chord_cands.end(), [&](const GEdge& a, const GEdge& b)
+                    {
+                        int score_a = (g_deg[a.u] == 1 ? 3 : (g_deg[a.u] == 2 ? 1 : 0)) +
+                                      (g_deg[a.v] == 1 ? 3 : (g_deg[a.v] == 2 ? 1 : 0));
+                        int score_b = (g_deg[b.u] == 1 ? 3 : (g_deg[b.u] == 2 ? 1 : 0)) +
+                                      (g_deg[b.v] == 1 ? 3 : (g_deg[b.v] == 2 ? 1 : 0));
+                        if (score_a != score_b)
+                        {
+                            return score_a > score_b;
+                        }
+                        return a.cost < b.cost;
+                    });
+
+                    int gap_chords = 0;
+                    for (const auto& ge : gap_chord_cands)
+                    {
+                        if (gap_chords >= 2)
+                        {
+                            break;
+                        }
+                        if (g_deg[ge.u] >= 3 || g_deg[ge.v] >= 3)
+                        {
+                            continue;
+                        }
+                        bool crosses = false;
+                        for (const auto& acc : g_accepted)
+                        {
+                            if (arcs_intersect(candidates[gap_stars[ge.u]].u, candidates[gap_stars[ge.v]].u,
+                                               candidates[gap_stars[acc.u]].u, candidates[gap_stars[acc.v]].u))
+                            {
+                                crosses = true;
+                                break;
+                            }
+                        }
+                        if (crosses)
+                        {
+                            continue;
+                        }
+
+                        g_deg[ge.u]++;
+                        g_deg[ge.v]++;
+                        g_accepted.push_back(ge);
+                        gap_chords++;
+                    }
+                }
+
                 // Find largest component
                 std::unordered_map<int, std::vector<int>> g_adj;
                 for (const auto& acc : g_accepted)
@@ -1683,7 +2003,10 @@ namespace alienorum
 
                 for (const auto& pair : g_adj)
                 {
-                    if (g_visited.count(pair.first)) continue;
+                    if (g_visited.count(pair.first))
+                    {
+                        continue;
+                    }
                     std::unordered_set<int> comp;
                     std::vector<int> q;
                     q.push_back(pair.first);
@@ -1728,8 +2051,9 @@ namespace alienorum
                         cl.b = sb;
                         cl.starnamea = get_consline_star_name(sa);
                         cl.starnameb = get_consline_star_name(sb);
+                        double cos_half = cos(0.5 * ge.len * (_pi / 180.0));
                         gap_lines.push_back(cl);
-                        gap_line_records.push_back({sa, sb, ua, ub, ge.len, target_c_idx});
+                        gap_line_records.push_back({sa, sb, ua, ub, ge.len, cos_half, target_c_idx});
                         gap_c_stars.insert(sa);
                         gap_c_stars.insert(sb);
                     }
@@ -1740,15 +2064,7 @@ namespace alienorum
                     std::string c_abbrev;
                     std::string c_name;
                     std::string c_genitive;
-
-                    // TODO:
-
-                    if (c_abbrev.empty())
-                    {
-                        c_abbrev = "Exo" + std::to_string(out_conss.size() + 1);
-                        c_name = c_abbrev;
-                        c_genitive = c_abbrev;
-                    }
+                    allocate_cons_name(c_abbrev, c_name, c_genitive);
 
                     Constellation cons;
                     cons.abbrev = c_abbrev;
@@ -1762,6 +2078,8 @@ namespace alienorum
                     for (const auto& gl : gap_line_records)
                     {
                         all_lines.push_back(gl);
+                        placed_stars.push_back({gl.a, gl.ua, target_c_idx});
+                        placed_stars.push_back({gl.b, gl.ub, target_c_idx});
                         lined_dirs.push_back(gl.ua);
                         lined_dirs.push_back(gl.ub);
                     }

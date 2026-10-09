@@ -349,6 +349,7 @@ void show_menu()
             if (ImGui::MenuItem(vmtext[1], "_", view_mode == vm_horizon)) { process_key_cmd_char('_'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[2], "$", view_mode == vm_sunclock)) { process_key_cmd_char('$'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[3], "\\", view_mode == vm_skymap)) { process_key_cmd_char('\\'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[4], "Ctrl+V", view_mode == vm_system)) { process_key_cmd_ctrl_char('v'); menu_clicked = true; }
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
@@ -493,7 +494,6 @@ void process_key_cmd_char(char c)
 
         case 'e':
         explorer = !explorer;
-        if (explorer) process_key_cmd_ctrl_char('v');
         break;
 
         case 'E':

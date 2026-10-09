@@ -462,6 +462,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                 if (ImGui::Selectable(vmtext[n], is_selected))
                 {
                     view_mode = (ViewMode)n;
+                    if (view_mode == vm_system) statuswnd = false;
                     set_viewer_location_and_plane();
                     viewchanged = true;
                 }
