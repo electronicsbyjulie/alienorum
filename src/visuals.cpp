@@ -4824,7 +4824,8 @@ void draw_horizon()
             }
         }
 
-        if (lavaworld_heat_shimmer)
+        #if lavaworld_heat_shimmer
+        if (show_terrain)
         {
             if (p && p->type == lavaworld)
             {
@@ -4839,12 +4840,14 @@ void draw_horizon()
                 }
             }
         }
+        #endif
 
         double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
         bool faded = !dragging && gaseous;
         ImU32 terraincol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255));
-        if (lavaworld_crust_fissures)
+        #if lavaworld_crust_fissures
+        if (show_terrain)
         {
             if (p && p->type == lavaworld)
             {
@@ -4854,6 +4857,7 @@ void draw_horizon()
                 terraincol = rgba_apply_redlight(IM_COL32(crust_r, crust_g, crust_b, dragging ? (192 - 128 * is_day) : 255));
             }
         }
+        #endif
 
         if (faded) 
         {
@@ -4982,7 +4986,8 @@ void draw_horizon()
             }
         }
 
-        if (lavaworld_heat_shimmer)
+        #if lavaworld_heat_shimmer
+        if (show_terrain)
         {
             if (p && p->type == lavaworld)
             {
@@ -5061,6 +5066,7 @@ void draw_horizon()
                 }
             }
         }
+        #endif
 
         if (is_water && !faded)
         {
@@ -5462,7 +5468,8 @@ void draw_horizon()
 
             if (show_terrain)
             {
-                if (lavaworld_crust_fissures)
+                #if lavaworld_crust_fissures
+                if (show_terrain)
                 {
                     if (is_lava)
                     {
@@ -5668,6 +5675,7 @@ void draw_horizon()
                         }
                     }
                 }
+                #endif
 
                 RockInstance rocks[ROCK_COUNT];
                 int num_rocks = 0;
@@ -6311,7 +6319,8 @@ void draw_horizon()
                             int cg = fmin(255.0, bg * light_fac);
                             int cb = fmin(255.0, bb * light_fac);
 
-                            if (lavaworld_crust_fissures)
+                            #if lavaworld_crust_fissures
+                            if (show_terrain)
                             {
                                 if (is_lava)
                                 {
@@ -6321,6 +6330,7 @@ void draw_horizon()
                                     cb = (int)fmin(255.0, cb + 20.0 * 0.40 * ground_glow);
                                 }
                             }
+                            #endif
                             ImU32 fcol = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
 
                             facets_to_draw[facet_count].depth = (v0.z + v1.z + v2.z) / 3.0;
@@ -6346,7 +6356,8 @@ void draw_horizon()
                                 facets_to_draw[fi].col);
                         }
 
-                        if (lavaworld_crust_fissures)
+                        #if lavaworld_crust_fissures
+                        if (show_terrain)
                         {
                             if (is_lava && rw >= 4.0 && rk.base_valid)
                             {
@@ -6364,6 +6375,7 @@ void draw_horizon()
                                     rim_inner);
                             }
                         }
+                        #endif
                     }
                 }
             }
@@ -6378,7 +6390,8 @@ void draw_horizon()
             if (hzbrt >= 144) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
         }
 
-        if (lavaworld_rock_rain)
+        #if lavaworld_rock_rain
+        if (show_terrain)
         {
             if (p && p->type == lavaworld)
             {
@@ -6527,6 +6540,7 @@ void draw_horizon()
                 }
             }
         }
+        #endif
     }
 }
 
@@ -6560,7 +6574,7 @@ void draw_sky_gradient()
             sky_mag_shift = skylight * -10;
 
             double r, g, b, a;
-            if (lavaworld_mineral_sky && p->type == lavaworld)
+            if (show_terrain && lavaworld_mineral_sky && p->type == lavaworld)
             {
                 // Scorched bronze / burnt amber mineral vapor sky
                 // Rich in vaporized silicates (SiO, SiO2, Na, K, Fe, Mg, TiO)
@@ -6615,7 +6629,7 @@ void draw_sky_gradient()
                 ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
                     rgba_apply_redlight(IM_COL32( (int)(r255), (int)(g255), (int)(b255), (int)(a*255) ) ));
 
-                if (lavaworld_mineral_sky && p->type == lavaworld)
+                if (show_terrain && lavaworld_mineral_sky && p->type == lavaworld)
                 {
                     r *= 0.9985;
                     g *= 0.9978;
@@ -7200,7 +7214,8 @@ void draw_cloudy_sky()
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
-    if (lavaworld_rock_clouds)
+    #if lavaworld_rock_clouds
+    if (show_terrain)
     {
         if (p && p->type == lavaworld)
         {
@@ -7208,6 +7223,7 @@ void draw_cloudy_sky()
             return;
         }
     }
+    #endif
 
     if (!cel->cloud_map || !cel->cloud_map->is_complete())
     {
