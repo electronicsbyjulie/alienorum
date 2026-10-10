@@ -508,7 +508,13 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             sssg << "Est. gravity: " << (f >= 0.01 ? std::fixed : std::scientific) << std::setprecision(3) << f << " g";
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
-            sssg << "Est. temp.:   " << std::fixed << std::setprecision(1) << ((Planet*)cels[whereami])->estimate_surface_temperature() << " K";
+            sssg << "Est. temp.:   " << std::fixed << std::setprecision(1)
+                #if show_local_temp
+                << ((Planet*)cels[whereami])->est_local_temp(viewer_lat, viewer_lon)
+                #else
+                << ((Planet*)cels[whereami])->estimate_surface_temperature()
+                #endif
+                << " K";
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
             double bar = ((Planet*)cels[whereami])->get_surface_pressure() / 1e5;
@@ -648,60 +654,92 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         ImGui::TextColored(ImVec4(1, 0, 0, 1), "TRACKING");
     }
 
-    if (is_an_obj_under_cursor >= 0)
+    if (is_a_locale_under_cursor)
     {
-        int i = is_an_obj_under_cursor;
-        double lmag = vmag_cache[i];
-        bool am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
-        bool sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
-
+        objname = is_a_locale_under_cursor->name;
+        ImGui::Text("%s", objname.c_str());
+        ImGui::Text("Lat.: %s%.3f", (is_a_locale_under_cursor->lat < 0 ? "" : "+"), is_a_locale_under_cursor->lat);
+        ImGui::Text("Lon.: %s%.3f", (is_a_locale_under_cursor->lon < 0 ? "" : "+"), is_a_locale_under_cursor->lon);
+        #if show_local_temp
+        ImGui::Separator();
+        cel_obj_class pcls = cels[whereami]->typeclass();
+        if (pcls == class_planet || pcls == class_moon)
+        {
+            Planet* p = (Planet*)cels[whereami];
+            if (p->surf_map)
+            {
+                double elev = p->surf_map->elevation_at(is_a_locale_under_cursor->lat, is_a_locale_under_cursor->lon) * p->m_bump_scale;
+                ImGui::Text("Elev:     %.0f km", elev/1000);
+                #if show_local_temp
+                double lT = p->est_local_temp(is_a_locale_under_cursor->lat, is_a_locale_under_cursor->lon);
+                ImGui::Text("Temp:     %.1f K", lT);
+                #endif
+            }
+        }
+        #endif
+    }
+    else if (is_an_obj_under_cursor >= 0 || view_mode == vm_sunclock)
+    {
+        int i = -1;
+        double lmag = 9999;
+        bool am_satellite = false;
+        bool sat_low_orbit = false;
+        cel_obj_class cls = class_unknown;
         std::stringstream oss;
         Star *s = nullptr;
 
-        cel_obj_class cls = cels[i]->typeclass();
-        if (cls == class_star)
+        if (is_an_obj_under_cursor >= 0)
         {
-            s = (Star*)cels[i];
-            if ((s == mycenobj || s->cenobj == mycenobj) && s->local_name.size())
+            i = is_an_obj_under_cursor;
+            cels[i]->typeclass();
+            lmag = vmag_cache[i];
+            am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
+            sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);
+
+            if (cls == class_star)
             {
-                ImGui::Text("%s", s->local_name.c_str());
+                s = (Star*)cels[i];
+                if ((s == mycenobj || s->cenobj == mycenobj) && s->local_name.size())
+                {
+                    ImGui::Text("%s", s->local_name.c_str());
+                }
             }
-        }
 
-        objname = cels[i]->name;
-        ImGui::Text("%s", objname.c_str());
-        if (!strcmp(cels[i]->name, "Earth") && cels[i]->cloud_map && cels[i]->cloud_map->is_complete())
-        {
-            ImGui::TextWrapped("Clouds: Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps");
-        }
-        ImGui::Separator();
-
-        if (cels[i]->type == star)
-        {
-            Star* s = (Star*)cels[i];
-            if (s->alienorumid.size()) ImGui::Text("%s", s->alienorumid.c_str());
-            if (strlen(s->Bayer) && strlen(s->Flamsteed))
+            objname = cels[i]->name;
+            ImGui::Text("%s", objname.c_str());
+            if (!strcmp(cels[i]->name, "Earth") && cels[i]->cloud_map && cels[i]->cloud_map->is_complete())
             {
-                int Fl = atoi(s->Flamsteed);
-                ImGui::Text("%s", (std::to_string(Fl) + (std::string)s->Bayer).c_str());
-            }
-            else if (strlen(s->Flamsteed)) ImGui::Text("%s", s->Flamsteed);
-            else if (strlen(s->Bayer)) ImGui::Text("%s", s->Bayer);
-            if (s->GouldNo > 0) ImGui::Text("%s", (std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->Gouldcons)).c_str());
-
-            if (strlen(s->Gliese)) ImGui::Text("%s", s->Gliese);
-            if (s->HD) ImGui::Text("%s", ((std::string)"HD" + std::to_string(s->HD)).c_str());
-            if (s->HR) ImGui::Text("%s", ((std::string)"HR" + std::to_string(s->HR)).c_str());
-            if (s->HIP) ImGui::Text("%s", ((std::string)"HIP" + std::to_string(s->HIP)).c_str());
-            if (s->WD.size()) ImGui::Text("%s", s->WD.c_str());
-            if (s->Bonn_survey[0])
-            {
-                char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
-                std::string bdstr = std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
-                    + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential);
-                ImGui::Text("%s", bdstr.c_str());
+                ImGui::TextWrapped("Clouds: Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps");
             }
             ImGui::Separator();
+
+            if (cels[i]->type == star)
+            {
+                Star* s = (Star*)cels[i];
+                if (s->alienorumid.size()) ImGui::Text("%s", s->alienorumid.c_str());
+                if (strlen(s->Bayer) && strlen(s->Flamsteed))
+                {
+                    int Fl = atoi(s->Flamsteed);
+                    ImGui::Text("%s", (std::to_string(Fl) + (std::string)s->Bayer).c_str());
+                }
+                else if (strlen(s->Flamsteed)) ImGui::Text("%s", s->Flamsteed);
+                else if (strlen(s->Bayer)) ImGui::Text("%s", s->Bayer);
+                if (s->GouldNo > 0) ImGui::Text("%s", (std::to_string(s->GouldNo) + std::string(" G. ") + std::string(s->Gouldcons)).c_str());
+
+                if (strlen(s->Gliese)) ImGui::Text("%s", s->Gliese);
+                if (s->HD) ImGui::Text("%s", ((std::string)"HD" + std::to_string(s->HD)).c_str());
+                if (s->HR) ImGui::Text("%s", ((std::string)"HR" + std::to_string(s->HR)).c_str());
+                if (s->HIP) ImGui::Text("%s", ((std::string)"HIP" + std::to_string(s->HIP)).c_str());
+                if (s->WD.size()) ImGui::Text("%s", s->WD.c_str());
+                if (s->Bonn_survey[0])
+                {
+                    char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
+                    std::string bdstr = std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
+                        + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential);
+                    ImGui::Text("%s", bdstr.c_str());
+                }
+                ImGui::Separator();
+            }
         }
 
         myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
@@ -736,11 +774,38 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         else if (view_mode == vm_sunclock)
         {
-            double lat = cels[i]->Decl_as_radians(here), lon = cels[i]->RA_as_radians(here, cels[whereami]->timeofday());
-            if (lon > _pi) lon -= _pi*2;
+            double lat, lon;
+            if (i >= 0)
+            {
+                lat = cels[i]->Decl_as_radians(here);
+                lon = cels[i]->RA_as_radians(here, cels[whereami]->timeofday());
+                if (lon > _pi) lon -= _pi*2;
+            }
+            else
+            {
+                lat = 0.0 - _pi * (io.MousePos.y-dispcy) / dispcx;
+                lon = _pi * io.MousePos.x / dispcx - _pi;
+
+                if (lat < -half_pi) lat = -half_pi;
+                if (lat >  half_pi) lat =  half_pi;
+            }
             ImGui::Text("Lat:      %.3f", lat * fiftyseven);
             ImGui::Text("Lon:      %.3f", lon * fiftyseven);
+            #if show_local_temp
             ImGui::Separator();
+            cel_obj_class pcls = cels[whereami]->typeclass();
+            if (pcls == class_planet || pcls == class_moon)
+            {
+                Planet* p = (Planet*)cels[whereami];
+                if (p->surf_map)
+                {
+                    double elev = p->surf_map->elevation_at(lat, lon) * p->m_bump_scale;
+                    ImGui::Text("Elev:     %.0f km", elev/1000);
+                    double lT = p->est_local_temp(lat, lon);
+                    ImGui::Text("Temp:     %.1f K", lT);
+                }
+            }
+            #endif
         }
         else if (view_mode == vm_system)
         {
@@ -765,7 +830,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             ImGui::Text("Azimuth:  %.2f", objaz*fiftyseven);
             ImGui::Separator();
         }
-        if (!sat_low_orbit && cels[i]->typeclass() != class_satellite && view_mode != vm_system)
+        if (!sat_low_orbit && i >= 0 && cels[i]->typeclass() != class_satellite && view_mode != vm_system)
         {
             ImGui::Text("Mag:      %.2f", lmag);
             ImGui::Separator();
@@ -796,7 +861,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
             ImGui::Separator();
         }
-        else if (cels[i]->type == star)
+        else if (i >= 0 && cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
             ImGui::Text("SpTyp:    %s", s->spectral_type);
@@ -806,18 +871,18 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
             }
         }
-        else if (cels[i]->type == galaxy)
+        else if (i >= 0 && cels[i]->type == galaxy)
         {
             ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here, sat_low_orbit).c_str());
         }
-        else if (cels[i]->type == artificial)
+        else if (i >= 0 && cels[i]->type == artificial)
         {
             if (view_mode == vm_sunclock && whereami >= 0)
                 ImGui::Text("Alt:      %.3f km",
                     (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
             else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here).c_str());
         }
-        else if (cels[i]->typeclass() == class_comet)
+        else if (i >= 0 && cels[i]->typeclass() == class_comet)
         {
             Comet *cm = (Comet*)cels[i];
             oss << "Dist:     " << cels[i]->scaled_distance(here);
@@ -846,7 +911,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 else ImGui::Text("          Unbound; no return");
             }
         }
-        else
+        else if (i >= 0)
         {
             oss << "Dist:     " << cels[i]->scaled_distance(here, sat_low_orbit);
             ImGui::Text("%s", oss.str().c_str());
@@ -866,7 +931,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
         }
 
-        if (cels[i]->mass)
+        if (i >= 0 && cels[i]->mass)
         {
             if (cls == class_star)
                 ; // oss << "Mass:  " << std::setprecision(2) << (cels[i]->mass / solar_mass) << " M(sun)";       // TODO: Fix Star::estimate_mass()
@@ -883,7 +948,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
         }
 
-        if (cels[i]->volumetric_mean_radius)
+        if (i >= 0 && cels[i]->volumetric_mean_radius)
         {
             if (cls == class_star)
                 ; // oss << "Radius: " << std::setprecision(2) << (cels[i]->volumetric_mean_radius / solar_radius) << " R(sun)";       // TODO: Fix Star::estimate_radius()
@@ -931,13 +996,6 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         #ifdef DEBUG
         ImGui::Text("index:    %d", is_an_obj_under_cursor);
         #endif
-    }
-    else if (is_a_locale_under_cursor)
-    {
-        objname = is_a_locale_under_cursor->name;
-        ImGui::Text("%s", objname.c_str());
-        ImGui::Text("Lat.: %s%.3f", (is_a_locale_under_cursor->lat < 0 ? "" : "+"), is_a_locale_under_cursor->lat);
-        ImGui::Text("Lon.: %s%.3f", (is_a_locale_under_cursor->lon < 0 ? "" : "+"), is_a_locale_under_cursor->lon);
     }
     else
     {
@@ -2020,15 +2078,15 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (has_water < 0) has_water = 0;
-                    if (has_water > 1) has_water = 1;
+                    if (p->has_water < 0) p->has_water = 0;
+                    if (p->has_water > 1) p->has_water = 1;
                     if (p->type == rocky && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Water up to:    ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputFloat("##edth2olvl", &has_water);
+                        ImGui::InputFloat("##edth2olvl", &p->has_water);
                     }
 
                     ImGui::Text("%s", "Water vapor %");

@@ -113,7 +113,7 @@ double bv_correction = -0.6244;
 double sphere_quality = 1, npaz = 0, luminous_flux = 0, sclk_scale = 1;
 bool lbl_localsys = true, show_localsys = true, mouse_over_menu = false, menu_clicked = false;
 double lbllsys_mass_lim = 2.5e+23;
-float has_water, veg_min_temp = 278, veg_max_temp = 310;                // TODO: Move these to planet class alongside the vegetation_ vars.
+float veg_min_temp = 278, veg_max_temp = 310;                // TODO: Move these to planet class alongside the vegetation_ vars.
 
 double appmagn_lblcut = 2.5,
        absmagn_lblcut = -3.5,

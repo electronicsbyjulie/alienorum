@@ -4762,6 +4762,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
             try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0; } catch (...) { ; }
             try { pl.at("Equinox").get_to(p->equinox); p->equinox *= fiftyseventh; } catch (...) { ; }
+            try { pl.at("HasWater").get_to(p->has_water); } catch (...) { ; }
             try { pl.at("Incl").get_to(p->orbit->inclination); p->orbit->inclination *= fiftyseventh; } catch (...) { ; }
             try { pl.at("J2").get_to(p->J2); } catch (...) { ; }
             try { pl.at("Lon_J2000_offset").get_to(p->lon_J2000_offset); p->lon_J2000_offset *= fiftyseventh; } catch (...) { ; }

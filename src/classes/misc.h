@@ -77,6 +77,7 @@ using json = nlohmann::json;
 
 // Planetary rain visual effects toggles
 #define planetary_rain 1
+#define show_local_temp 0
 
 #define lunar_mass 7.349E+22
 #define earth_mass 5.97217e+27
@@ -321,7 +322,7 @@ extern std::atomic<int> texture_loads_pending;
 extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
-extern float has_water, veg_min_temp, veg_max_temp;
+extern float veg_min_temp, veg_max_temp;
 extern int wkday, menu_ht, cbo_edt_units, npointedstar;
 extern const char* compass[16];
 extern PerlinNoise pn;

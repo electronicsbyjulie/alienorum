@@ -2101,7 +2101,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         bool force_has_water = false;
         if (cel->type == waterworld || cel->type == hycean)
         {
-            has_water = 1;
+            p->has_water = 1;
             force_has_water = true;
         }
 
@@ -2124,21 +2124,21 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
         if (!force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
-            has_water = 0;
+            p->has_water = 0;
             life_possible = false;
             want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
         }
         else if (!force_has_water && pressure < 150)
         {
-            has_water = 0;
+            p->has_water = 0;
             life_possible = false;
         }
 
         int octaves = 5 + (cel->cel_rand() % 4);
         double lacbase = sqrt(fmax(1, log(cel->volumetric_mean_radius)));
         double lacunarity = p->cel_frand(0.51*lacbase, 0.53*lacbase);
-        double gain = has_water ? 0.5 : 2.5;
-        double scale = p->cel_frand(has_water ? 1.5 : 0.2, has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
+        double gain = p->has_water ? 0.5 : 2.5;
+        double scale = p->cel_frand(p->has_water ? 1.5 : 0.2, p->has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
 
         Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
         RGB3 rgb = Color::rgb_from_color(col, -1);
@@ -2178,7 +2178,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         lon_scale = (double)image_width / (_pi * 2);
         inv_lat_scale = 1.0 / lat_scale;
         inv_lon_scale = 1.0 / lon_scale;
-        bump_scale = p->estimate_bump_scale();
+        bump_scale = p->m_bump_scale = p->estimate_bump_scale();
         inv_bump_scale = 1.0 / bump_scale;
         std::cout << "Allocated " << allocated << " pixels for fictitious rocky " << cel->name << " map." << std::endl;
 
@@ -2194,16 +2194,16 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
-        if (has_water && life_possible && randomize_txgen && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
+        if (p->has_water && life_possible && randomize_txgen && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             RGB3 veg_color = generate_vegetation_color(&cel->rng);
             p->vegetation_r = veg_color.r;
             p->vegetation_g = veg_color.g;
             p->vegetation_b = veg_color.b;
         }
-        if (has_water) inv_h2o_level = 1.0 / has_water;
+        if (p->has_water) inv_h2o_level = 1.0 / p->has_water;
 
-        if (!has_water) life_possible = false;
+        if (!p->has_water) life_possible = false;
 
         bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && p->is_tidal_locked();
@@ -2376,13 +2376,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         3, lacunarity, gain);
                 }
 
-                if (has_water)
+                if (p && p->has_water)
                 {
                     T_base = tidal_locked_to_star
                         ? (T_surf + halfswing - Tswing * cos(psi*0.5))
                         : (T_surf - halfswing + Tswing * sin(theta));
-                    T_local = T_base - Tswing * fmax(0, height_value - has_water);
-                    if (height_value < has_water && (T_local < water_freezing))
+                    T_local = T_base - Tswing * fmax(0, height_value - p->has_water);
+                    if (height_value < p->has_water && (T_local < water_freezing))
                     {
                         // Polar ice
                         red_data[idx] = fmin(255, 167 + 67 * r_weight);
@@ -2398,7 +2398,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 32+128*height_value);
                     }
                     // Biome allocation based on height thresholds
-                    else if (height_value < has_water && T_local < Tboil)
+                    else if (height_value < p->has_water && T_local < Tboil)
                     {   // Ocean
                         sh = height_value*inv_h2o_level;
                         // sh *= (Tboil - T_base) / (Tboil - water_freezing);
@@ -2497,7 +2497,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
-        cel->BV_color = 0.9 - has_water;
+        cel->BV_color = 0.9 - p->has_water;
 
     }
     catch (...)

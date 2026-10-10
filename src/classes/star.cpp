@@ -672,7 +672,8 @@ double alienorum::Star::interpolate_mseq_mass(double mseqidx)
     if (mseqidx < mseqmin) mseqidx = mseqmin;
     if (mseqidx > mseqmax) mseqidx = mseqmax;
     int i = floor(mseqidx);
-    if (i == mseqmax-1) return msq_mass[i];
+    if (i<0) i=0;
+    if (i >= mseqmax-1) return msq_mass[mseqmax-1];
     double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
     return coeff0 * msq_mass[i] + coeff1 * msq_mass[i+1];
 }
@@ -682,7 +683,7 @@ double alienorum::Star::interpolate_mseq_rad(double mseqidx)
     if (mseqidx < mseqmin) mseqidx = mseqmin;
     if (mseqidx > mseqmax) mseqidx = mseqmax;
     int i = floor(mseqidx);
-    if (i == mseqmax-1) return msq_rad[i];
+    if (i == mseqmax-1) return msq_rad[mseqmax-1];
     double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
     return coeff0 * msq_rad[i] + coeff1 * msq_rad[i+1];
 }
@@ -692,7 +693,7 @@ double alienorum::Star::interpolate_mseq_lum(double mseqidx)
     if (mseqidx < mseqmin) mseqidx = mseqmin;
     if (mseqidx > mseqmax) mseqidx = mseqmax;
     int i = floor(mseqidx);
-    if (i == mseqmax-1) return msq_lum[i];
+    if (i == mseqmax-1) return msq_lum[mseqmax-1];
     double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
     return coeff0 * msq_lum[i] + coeff1 * msq_lum[i+1];
 }
@@ -702,7 +703,7 @@ double alienorum::Star::interpolate_mseq_temp(double mseqidx)
     if (mseqidx < mseqmin) mseqidx = mseqmin;
     if (mseqidx > mseqmax) mseqidx = mseqmax;
     int i = floor(mseqidx);
-    if (i == mseqmax-1) return msq_temp[i];
+    if (i == mseqmax-1) return msq_temp[mseqmax-1];
     double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
     return coeff0 * msq_temp[i] + coeff1 * msq_temp[i+1];
 }
@@ -712,7 +713,7 @@ double alienorum::Star::interpolate_mseq_BV(double mseqidx)
     if (mseqidx < mseqmin) mseqidx = mseqmin;
     if (mseqidx > mseqmax) mseqidx = mseqmax;
     int i = floor(mseqidx);
-    if (i == mseqmax-1) return msq_BV[i];
+    if (i == mseqmax-1) return msq_BV[mseqmax-1];
     double coeff1 = mseqidx - i, coeff0 = 1.0 - coeff1;
     return coeff0 * msq_BV[i] + coeff1 * msq_BV[i+1];
 }

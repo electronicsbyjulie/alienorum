@@ -49,6 +49,7 @@ namespace alienorum
         bool static_clouds = true;
         int vegetation_r=0, vegetation_g=0, vegetation_b=0;
         double plant_trunk_height = 0, plant_trunk_width = 0, plant_crown_size = 0, plant_crown_oblateness = 0;
+        float has_water;
 
         void setup_atm_ring_props();
         void apply_cosmic_shoreline();
@@ -57,6 +58,7 @@ namespace alienorum
         void classify();
         void classify(bool HZ, bool mass_and_rad_known = false, bool color_known = false);
                                                             // set the type, e.g. for exoplanets
+        double est_local_temp(double lat, double lon);
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets
         double viewer_reflectance_magnitude(CelestialLocation seen_from, double phase = -1, double sourceabsmagn = -1e9, double sourcedist = 0);

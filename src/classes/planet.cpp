@@ -413,6 +413,24 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     }
 }
 
+double alienorum::Planet::est_local_temp(double lat, double lon)
+{
+    double T_surf = estimate_surface_temperature();
+    if (!surf_map) return T_surf;
+    if (!m_bump_scale) m_bump_scale = estimate_bump_scale();
+    double height_value = surf_map->elevation_at(lat, lon) / m_bump_scale + 0.5;
+    double Tswing = 256.0 / (get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
+    double T_base = is_tidal_locked()
+        ? (T_surf + halfswing - Tswing * cos(lon*0.5))
+        : (T_surf - halfswing + Tswing * sin(lat));
+    double T_local = T_base - Tswing * fmax(0, height_value - has_water);
+    #if 0
+    std::cout << "T_surf=" << T_surf << " height_value=" << height_value << " Tswing=" << Tswing << " T_base=" << T_base
+        << " has_water=" << has_water << " T_local=" << T_local << std::endl;
+    #endif
+    return T_local;
+}
+
 void Planet::estimate_radius()
 {
     // https://doi.org/10.1051/0004-6361/202348690

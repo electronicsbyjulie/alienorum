@@ -346,6 +346,7 @@ namespace alienorum
         Map *surf_map = nullptr, *cloud_map = nullptr, *night_map = nullptr,
             *ring_map = nullptr, *ringx_map = nullptr;
         Map *merged_day_map = nullptr, *merged_night_map = nullptr;
+        double m_bump_scale = 0;
         unsigned int merged_day_cloud_gen = 0, merged_day_surf_gen = 0;
         unsigned int merged_night_cloud_gen = 0, merged_night_map_gen = 0;
         bool transparent_clouds = false;
