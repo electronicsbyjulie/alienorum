@@ -6030,7 +6030,7 @@ void draw_horizon()
                 {
                     if (!p->plant_trunk_height)     p->plant_trunk_height       = PLANT_TRUNK_HEIGHT / grav;
                     if (!p->plant_trunk_width)      p->plant_trunk_width        = PLANT_TRUNK_WIDTH * grav;
-                    if (!p->plant_crown_size)       p->plant_crown_size         = PLANT_CROWN_SIZE / presh;
+                    if (!p->plant_crown_size)       p->plant_crown_size         = fmin(PLANT_CROWN_SIZE / presh, 10);
                     if (!p->plant_crown_oblateness) p->plant_crown_oblateness   = PLANT_CROWN_OBLATENESS * presh;
                 }
 

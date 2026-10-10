@@ -1123,6 +1123,10 @@ json Planet::to_json()
     towrite["vegetation_r"] = vegetation_r;
     towrite["vegetation_g"] = vegetation_g;
     towrite["vegetation_b"] = vegetation_b;
+    towrite["plant_trunk_height"] = plant_trunk_height;
+    towrite["plant_trunk_width"] = plant_trunk_width;
+    towrite["plant_crown_size"] = plant_crown_size;
+    towrite["plant_crown_oblateness"] = plant_crown_oblateness;
 
     return towrite;
 }
@@ -1173,6 +1177,10 @@ bool Planet::from_json(json j)
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
     try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }
     try { j.at("vegetation_b").get_to(vegetation_b); } catch (...) { ; }
+    try { j.at("plant_trunk_height").get_to(plant_trunk_height); } catch (...) { ; }
+    try { j.at("plant_trunk_width").get_to(plant_trunk_width); } catch (...) { ; }
+    try { j.at("plant_crown_size").get_to(plant_crown_size); } catch (...) { ; }
+    try { j.at("plant_crown_oblateness").get_to(plant_crown_oblateness); } catch (...) { ; }
     return true;
 }
 
