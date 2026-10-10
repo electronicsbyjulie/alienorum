@@ -1,6 +1,7 @@
 
 #include "globals.h"
 #include "visuals.h"
+#include "housekeeping.h"
 #include "loaders.h"
 #include "sphere_impostor.h"
 #include "gputex.h"
@@ -1269,18 +1270,44 @@ int draw_sphere(CelestialObject* cel, double arad)
                 }
                 else
                 {
-                    here.galactic_center = cel->location.galactic_center;
-                    here.system_center = cel->location.system_center;
-                    here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = -cel->RA_as_radians(here, cel->timeofday()) + _pi;
-                    viewer_lat = -cel->Decl_as_radians(here);
+                    Point rel = rotate3D(cel->tmprel, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                    rel = rotate3D(rel, center, yaxis, cel->timeofday());
+
+                    bool dwh = false;
+                    if (cls == class_moon)
+                    {
+                        Moon *moon = (Moon*)cel;
+                        dwh = (moon->depth > zero_isnt_really_zero
+                            && moon->width > zero_isnt_really_zero
+                            && moon->height > zero_isnt_really_zero);
+                        if (dwh)
+                        {
+                            rel.x /= (moon->width * 0.5);
+                            rel.y /= (moon->height * 0.5);
+                            rel.z /= (moon->depth * 0.5);
+                        }
+                    }
+                    if (!dwh)
+                    {
+                        double obl = 1.0 - cel->oblateness;
+                        if (obl > zero_isnt_really_zero)
+                        {
+                            rel.y /= obl;
+                        }
+                    }
+
+                    double hyp = sqrt(rel.x * rel.x + rel.z * rel.z);
+                    viewer_lat = (hyp || rel.y) ? atan2(rel.y, hyp) : 0;
+                    viewer_lon = (hyp > 0) ? atan2(-rel.x, rel.z) : 0;
                     viewer_tz = 0;
                     whereami = cel->seqno;
                     viewer_locale = "";
-                    velocity = Point(0,0,0);
+                    velocity = Point(0, 0, 0);
                     view_mode = vm_horizon;
                     altitude = 0;
                     trackidx = -1;
+                    set_viewer_surface_location(true);
+                    return 0;
                 }
             }
         }

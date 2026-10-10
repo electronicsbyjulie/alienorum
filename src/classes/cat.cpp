@@ -5824,31 +5824,38 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->center = A;
             s->origcenname = A->name;
 
-            A->known_poles = true;
-            A->obliquity = 0;
-            A->equinox = 0;
-            if (!A->location.system_center.magnitude())
+            if (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node)
             {
-                A->location.system_center = Point::from_ra_dec(A->right_ascension, A->declination, A->distance);
-            }
-            A->location.local_system_plane = system_plane_from_incl_and_node(
-                s->orbit->heliocentric_inclination,
-                s->orbit->heliocentric_node,
-                A->location.system_center);
-            A->location.orbital_plane = A->location.local_system_plane;
-            A->location.equatorial_plane = A->location.local_system_plane;
-            A->lock_system_plane = true;
-            A->lock_equatorial_plane = true;
+                A->known_poles = true;
+                A->obliquity = 0;
+                A->equinox = 0;
+                if (!A->location.system_center.magnitude())
+                {
+                    A->location.system_center = Point::from_ra_dec(A->right_ascension, A->declination, A->distance);
+                }
+                A->location.local_system_plane = system_plane_from_incl_and_node(
+                    s->orbit->heliocentric_inclination,
+                    s->orbit->heliocentric_node,
+                    A->location.system_center);
+                A->location.orbital_plane = A->location.local_system_plane;
+                A->location.equatorial_plane = A->location.local_system_plane;
+                A->lock_system_plane = true;
+                A->lock_equatorial_plane = true;
 
-            s->location = A->location;
-            s->location.local_system_plane = A->location.local_system_plane;
-            s->location.orbital_plane = A->location.local_system_plane;
-            s->location.equatorial_plane = A->location.equatorial_plane;
-            s->lock_system_plane = true;
-            s->lock_equatorial_plane = true;
-            s->known_poles = true;
-            s->obliquity = 0;
-            s->equinox = 0;
+                s->location = A->location;
+                s->location.local_system_plane = A->location.local_system_plane;
+                s->location.orbital_plane = A->location.local_system_plane;
+                s->location.equatorial_plane = A->location.equatorial_plane;
+                s->lock_system_plane = true;
+                s->lock_equatorial_plane = true;
+                s->known_poles = true;
+                s->obliquity = 0;
+                s->equinox = 0;
+            }
+            else
+            {
+                s->location = A->location;
+            }
         }
 
         if (!(k & 0xff))
