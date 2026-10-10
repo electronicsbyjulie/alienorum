@@ -782,7 +782,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 {
     Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
     Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
-    bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
+    bool airy_rock = view_mode == vm_horizon && whereami > 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
     Point display_space = (view_mode == vm_horizon)
         ? rotate3D(airy_rock ? refract_true_point(cel_azrot) : cel_azrot, center, xaxis, altitude)
         : camera_space;
@@ -869,6 +869,10 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     // Lighting: matches the CPU path's own Lambertian day/night blend (see the "self_luminous"/
     // "daylight" logic further down in this file, in the CPU polygon-shading loop).
     CelestialObject *lightcen = cel->get_light_center();
+    if (!lightcen)
+    {
+        lightcen = cel;
+    }
     bool self_luminous = (lightcen == cel);
 
     double limb_a = 0, limb_b = 0;
@@ -896,7 +900,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         }
     }
 
-    double atm_pressure = (whereami >= 0 && uses_rocky_map(cels[whereami]->type)) ? ((Planet*)cels[whereami])->get_surface_pressure() : 0;
+    double atm_pressure = (whereami >= 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type)) ? ((Planet*)cels[whereami])->get_surface_pressure() : 0;
     double atm_yellowing = 0;
     if (atm_pressure && view_mode == vm_horizon)
     {
@@ -1014,6 +1018,11 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     cel->drawnxmax = xmax;
     cel->drawnymin = ymin;
     cel->drawnymax = ymax;
+    if (cel->drawnx < -1e4 || cel->drawny < -1e4 || cel->drawnx > 1e4 || cel->drawny > 1e4)
+    {
+        cel->drawnx = (float)((xmin + xmax) * 0.5);
+        cel->drawny = (float)((ymin + ymax) * 0.5);
+    }
 
     ImGuiIO& io = ImGui::GetIO();
     /*std::cout << cel->name << ": " << xmin << "," << ymin << " ~ " << xmax << "," << ymax
@@ -1263,7 +1272,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     here.galactic_center = cel->location.galactic_center;
                     here.system_center = cel->location.system_center;
                     here.equatorial_plane = cel->location.equatorial_plane;
-                    viewer_lon = cel->RA_as_radians(here, cel->timeofday()) - _pi;
+                    viewer_lon = -cel->RA_as_radians(here, cel->timeofday()) + _pi;
                     viewer_lat = -cel->Decl_as_radians(here);
                     viewer_tz = 0;
                     whereami = cel->seqno;
@@ -3151,6 +3160,7 @@ bool draw_single_object(int i)
         
         if (selected == i)
         {
+            xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
             ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
         }
     }
@@ -3248,6 +3258,7 @@ bool draw_single_object(int i)
     }
     if (selected == i && cels[1])
     {
+        xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
     }
     
@@ -3793,14 +3804,54 @@ void draw_objects()
             // sentinel for that is -1e29, several orders past the window below.
             if (cels[i]->typeclass() == class_comet)
             {
-                if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw) continue;
-                if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph) continue;
+                if (cels[i]->drawnx < -4*dispw || cels[i]->drawnx > 5*dispw)
+                {
+                    continue;
+                }
+                if (cels[i]->drawny < -4*disph || cels[i]->drawny > 5*disph)
+                {
+                    continue;
+                }
+            }
+            else if (angular_radius[i]*zoom >= sphere_rad_threshold)
+            {
+                // A large body or nearby planet whose center may be off screen or even behind
+                // the camera plane (cz <= 0) while its surface or horizon is still visible in the view.
+                Point cel_azrot = rotate3D(to_viewer_plane(cels[i]->tmprel), center, yaxis, -(azimuth + azimuth_correction));
+                Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+                double d = camera_space.magnitude();
+                double obj_r = cels[i]->get_equatorial_radius();
+                if (cels[i]->typeclass() == class_planet && ((Planet*)cels[i])->ring_radius > obj_r)
+                {
+                    obj_r = ((Planet*)cels[i])->ring_radius;
+                }
+                else
+                {
+                    obj_r *= 1.25;
+                }
+
+                if (d > obj_r)
+                {
+                    if (camera_space.z <= -obj_r)
+                    {
+                        continue;
+                    }
+                    double alpha = asin(std::min(1.0, obj_r / d));
+                    double cos_theta = std::max(-1.0, std::min(1.0, camera_space.z / d));
+                    double theta = acos(cos_theta);
+                    double theta_min = std::max(0.0, theta - alpha);
+
+                    double r_diag = sqrt(dispcx * dispcx + dispcy * dispcy) / (dispcx * zoom);
+                    double max_half_fov = atan(r_diag) + 0.2;
+                    if (theta_min > max_half_fov)
+                    {
+                        continue;
+                    }
+                }
             }
             else
             {
-                double r_bound = (angular_radius[i]*zoom < sphere_rad_threshold)
-                    ? 0.0
-                    : fmax(max_bloomrad, angular_radius[i] * zoom * dispcx * 2.5);
+                double r_bound = max_bloomrad;
                 if (cels[i]->drawnx < -r_bound || cels[i]->drawnx >= dispw + r_bound
                     || cels[i]->drawny < -r_bound || cels[i]->drawny >= disph + r_bound)
                 {

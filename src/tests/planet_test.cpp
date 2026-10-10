@@ -1136,3 +1136,69 @@ TEST(PlanetTest, SystemViewRingsQueueCorrectly)
     ImGui::DestroyContext(ctx);
 }
 
+TEST(PlanetTest, ObliqueViewNearPlanet_NotCulledWhenLimbInFrustum)
+{
+    ImGuiContext* ctx = ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(1920, 1080);
+    dispcx = 960;
+    dispcy = 540;
+    zoom = 1.0;
+
+    Planet earth;
+    strcpy(earth.name, "Earth");
+    earth.volumetric_mean_radius = 6371000.0;
+    earth.seqno = 3;
+    earth.looked_for_maps = true;
+    whereami = -1;
+    view_mode = vm_spaceship;
+
+    // Observer at distance 6800 km from center of Earth.
+    // Earth is positioned at (0, -6800000, 0) relative to viewer.
+    earth.tmprel = Point(0, -6800000.0, 0);
+
+    // Tilt look direction up by 5 degrees above the horizontal plane (altitude = 5 * pi / 180),
+    // looking away from Earth's center (which is at -90 degrees, nadir).
+    // The angle between look direction and Earth's center is 95 degrees (> 90 degrees),
+    // so the center of Earth has camera_space.z < 0.
+    azimuth = 0.0;
+    azimuth_correction = 0.0;
+    altitude = 5.0 * _pi / 180.0;
+
+    // Verify Cartesian2D of center produces sentinel -1e29 because cz < 0
+    Point rel = earth.tmprel;
+    Cartesian2D cart(rel, azimuth + azimuth_correction, altitude, zoom);
+    EXPECT_LT(cart.x, -1e20);
+    EXPECT_LT(cart.y, -1e20);
+
+    // Camera-space geometry
+    Point cel_azrot = rotate3D(to_viewer_plane(earth.tmprel), center, yaxis, -(azimuth + azimuth_correction));
+    Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+    EXPECT_LT(camera_space.z, 0.0);
+
+    double d = camera_space.magnitude();
+    double obj_r = earth.get_equatorial_radius() * 1.25;
+    EXPECT_GT(d, obj_r * 0.5);
+
+    double alpha = asin(std::min(1.0, obj_r / d));
+    double cos_theta = std::max(-1.0, std::min(1.0, camera_space.z / d));
+    double theta = acos(cos_theta);
+    double theta_min = std::max(0.0, theta - alpha);
+
+    double r_diag = sqrt(dispcx * dispcx + dispcy * dispcy) / (dispcx * zoom);
+    double max_half_fov = atan(r_diag) + 0.2;
+
+    // The limb of Earth must still be inside the view frustum
+    EXPECT_LE(theta_min, max_half_fov);
+
+    // Render sphere impostor via GPU path
+    double arad = asin(std::min(1.0, earth.volumetric_mean_radius / d));
+    int res = draw_sphere_gpu(&earth, arad);
+    EXPECT_GT(res, 0);
+    EXPECT_TRUE(earth.onscreen);
+    EXPECT_LE(earth.drawnymin, 1080.0f);
+    EXPECT_GE(earth.drawnymax, 0.0f);
+
+    ImGui::DestroyContext(ctx);
+}
+
