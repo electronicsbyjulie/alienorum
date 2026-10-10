@@ -4735,8 +4735,9 @@ static void draw_planetary_rain(Planet *p)
     else
     {
         bool too_low = (rain_intensity < 0.25 * max_rain_intensity);
-        drainint += frand(too_low ? 0 : -0.01, 0.01) * frand(0.001, 1);
+        drainint += frand(too_low ? 0 : -0.01, 0.03) * frand(0.001, 1);
         rain_intensity *= (1.0 + drainint);
+        if (too_low) rain_intensity += 0.1;
 
         // std::cout << "Rain intensity " << rain_intensity << " + " << drainint << std::endl;
 

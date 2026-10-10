@@ -699,8 +699,10 @@ TEST_F(ExoConsTest, FileCachingAndReload_MatchesConslineFormat)
     ExoConsGenerator::generate_constellations(uma47, generated);
     ASSERT_GE(generated.size(), 50u);
 
-    // Save to exocons.dat
-    ExoConsGenerator::save_to_exocons_file("47 Ursae Majoris", generated);
+    // Test saving exocons without writing a bunch of stuff to exocons.dat
+    std::vector<Constellation> sample_conss;
+    sample_conss.push_back(generated[0]);
+    ExoConsGenerator::save_to_exocons_file("47 Ursae Majoris", sample_conss);
 
     // Verify exocons.dat exists and has proper format
     std::ifstream file("exocons.dat");
@@ -747,7 +749,7 @@ TEST_F(ExoConsTest, FileCachingAndReload_MatchesConslineFormat)
             uma_cons_count++;
         }
     }
-    EXPECT_GE(uma_cons_count, 50);
+    EXPECT_EQ(uma_cons_count, 1);
 }
 
 TEST_F(ExoConsTest, ProgressiveFrameGeneration_ExecutesSmoothly)
@@ -797,13 +799,8 @@ TEST_F(ExoConsTest, NearbyVantageWithin10LightYears_SuppressesExoconsGeneration)
     EXPECT_LT(dist, light_year * 10.0);
     EXPECT_GT(dist, light_year * 0.1);
 
-    // Generate constellations for Tau Ceti and save to exocons.dat
+    // Generate constellations for Tau Ceti synchronously into memory
     ExoConsGenerator::generate_all_synchronous(tau_cet);
-
-    // Verify exocons.dat has Tau Ceti constellations
-    constellations.clear();
-    num_reg_cons = 0;
-    read_cons_lines();
 
     int tau_cet_count = 0;
     for (const auto& c : constellations)

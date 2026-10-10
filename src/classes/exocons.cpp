@@ -925,7 +925,7 @@ namespace alienorum
             }
             if (!assigned[i])
             {
-                grow_cluster((int)i, 11);
+                grow_cluster((int)i, 13);
             }
         }
 
@@ -944,7 +944,7 @@ namespace alienorum
             bool too_close = false;
             for (const auto& cl : clusters)
             {
-                if (ang_dist_deg(candidates[i].u, cl.center) < 16.0)
+                if (ang_dist_deg(candidates[i].u, cl.center) < 18.0)
                 {
                     too_close = true;
                     break;
@@ -952,7 +952,7 @@ namespace alienorum
             }
             if (!too_close)
             {
-                grow_cluster((int)i, 11);
+                grow_cluster((int)i, 13);
             }
         }
 
@@ -971,7 +971,7 @@ namespace alienorum
             bool region_covered = false;
             for (const auto& cl : clusters)
             {
-                if (ang_dist_deg(sample_pt, cl.center) < 16.0)
+                if (ang_dist_deg(sample_pt, cl.center) < 18.0)
                 {
                     region_covered = true;
                     break;
@@ -982,13 +982,13 @@ namespace alienorum
             {
                 int best_seed = -1;
                 double best_mag = 1e9;
-                cand_grid.for_each_near(sample_pt, 12.0, [&](int ci)
+                cand_grid.for_each_near(sample_pt, 14.0, [&](int ci)
                 {
                     if (assigned[ci] || candidates[ci].mag > 5.5)
                     {
                         return;
                     }
-                    if (ang_dist_deg(sample_pt, candidates[ci].u) < 10.0)
+                    if (ang_dist_deg(sample_pt, candidates[ci].u) < 12.0)
                     {
                         if (candidates[ci].mag < best_mag)
                         {
@@ -1000,7 +1000,7 @@ namespace alienorum
 
                 if (best_seed >= 0)
                 {
-                    grow_cluster(best_seed, 9);
+                    grow_cluster(best_seed, 11);
                 }
             }
         }
@@ -1038,6 +1038,7 @@ namespace alienorum
         }
 
         // 4. Line separation, impinging near-miss, and validity rules
+        const std::unordered_set<Star*>* active_cluster_stars = nullptr;
         auto is_candidate_line_valid = [&](
             Star* sa, Point ua,
             Star* sb, Point ub,
@@ -1062,6 +1063,33 @@ namespace alienorum
                 if (dot_product(ua, ps.u) > cos_half || dot_product(ub, ps.u) > cos_half)
                 {
                     return false;
+                }
+            }
+
+            // Condition 1b: During initial cluster line generation (Phase 5), a line must not
+            // have an endpoint closer than half its length to any unconnected bright star (mag < 3.0)
+            // outside this cluster. Such a line would engulf the bright star in its exclusion zone
+            // and permanently prevent it from joining any constellation.
+            if (active_cluster_stars)
+            {
+                for (const auto& bc : candidates)
+                {
+                    if (bc.mag >= 3.0)
+                    {
+                        break;
+                    }
+                    if (bc.s == sa || bc.s == sb)
+                    {
+                        continue;
+                    }
+                    if (active_cluster_stars->count(bc.s))
+                    {
+                        continue;
+                    }
+                    if (dot_product(ua, bc.u) > cos_half || dot_product(ub, bc.u) > cos_half)
+                    {
+                        return false;
+                    }
                 }
             }
 
@@ -1160,6 +1188,13 @@ namespace alienorum
             {
                 continue;
             }
+
+            std::unordered_set<Star*> curr_cluster_set;
+            for (int idx : star_indices)
+            {
+                curr_cluster_set.insert(candidates[idx].s);
+            }
+            active_cluster_stars = &curr_cluster_set;
 
             struct CandEdge
             {
@@ -1452,6 +1487,8 @@ namespace alienorum
             out_conss.push_back(cons);
         }
 
+        active_cluster_stars = nullptr;
+
         // 6. Guarantee all stars with mag < 3.0 are connected
         std::unordered_set<Star*> all_connected_stars;
         for (const auto& c_set : cons_stars)
@@ -1617,83 +1654,327 @@ namespace alienorum
             if (!connected)
             {
                 // Step B: Form a dedicated constellation around s_bright using unconnected stars
-                std::vector<int> near_indices;
-                cand_grid.for_each_near(u_bright, 14.0, [&](int other_i)
+                std::vector<int> b_stars;
+                b_stars.push_back((int)ci);
+
+                cand_grid.for_each_near(u_bright, 15.0, [&](int other_i)
                 {
-                    if (other_i == (int)ci || all_connected_stars.count(candidates[other_i].s))
+                    if (other_i == (int)ci || all_connected_stars.count(candidates[other_i].s) || candidates[other_i].mag > 6.0)
                     {
                         return;
                     }
                     double d = ang_dist_deg(u_bright, candidates[other_i].u);
-                    if (d <= 14.0)
+                    if (d <= 15.0 && d >= 1.0)
                     {
-                        near_indices.push_back(other_i);
+                        b_stars.push_back(other_i);
                     }
                 });
-                std::sort(near_indices.begin(), near_indices.end(), [&](int a, int b)
-                {
-                    return ang_dist_deg(u_bright, candidates[a].u) < ang_dist_deg(u_bright, candidates[b].u);
-                });
 
-                std::vector<Star*> dedicated_stars;
-                int target_c_idx = (int)cons_stars.size();
-
-                for (int near_idx : near_indices)
+                if (b_stars.size() >= 4)
                 {
-                    Star* st = candidates[near_idx].s;
-                    Point ut = candidates[near_idx].u;
-                    double len = ang_dist_deg(u_bright, ut);
-                    if (is_candidate_line_valid(s_bright, u_bright, st, ut, len, target_c_idx))
+                    int bn = (int)b_stars.size();
+                    int target_c_idx = (int)cons_stars.size();
+
+                    struct BEdge
                     {
-                        dedicated_stars.push_back(st);
-                        if (dedicated_stars.size() == 3)
+                        int u = 0;
+                        int v = 0;
+                        double cost = 0.0;
+                        double len = 0.0;
+                    };
+                    std::vector<BEdge> b_edges;
+
+                    for (int ba = 0; ba < bn; ba++)
+                    {
+                        for (int bb = ba + 1; bb < bn; bb++)
                         {
-                            break;
+                            Star* sa = candidates[b_stars[ba]].s;
+                            Star* sb = candidates[b_stars[bb]].s;
+                            Point ua = candidates[b_stars[ba]].u;
+                            Point ub = candidates[b_stars[bb]].u;
+                            double len = ang_dist_deg(ua, ub);
+
+                            if (is_candidate_line_valid(sa, ua, sb, ub, len, target_c_idx))
+                            {
+                                double cost = len * (1.0 + 0.4 * std::abs(candidates[b_stars[ba]].mag - candidates[b_stars[bb]].mag));
+                                b_edges.push_back({ba, bb, cost, len});
+                            }
+                        }
+                    }
+
+                    if (!b_edges.empty())
+                    {
+                        std::sort(b_edges.begin(), b_edges.end(), [](const BEdge& a, const BEdge& b)
+                        {
+                            return a.cost < b.cost;
+                        });
+
+                        std::vector<int> b_parent(bn);
+                        for (int bi = 0; bi < bn; bi++)
+                        {
+                            b_parent[bi] = bi;
+                        }
+                        std::function<int(int)> find_bp = [&](int x) -> int
+                        {
+                            if (b_parent[x] == x)
+                            {
+                                return x;
+                            }
+                            return b_parent[x] = find_bp(b_parent[x]);
+                        };
+
+                        std::vector<BEdge> b_accepted;
+                        std::vector<int> b_deg(bn, 0);
+
+                        for (const auto& be : b_edges)
+                        {
+                            if (b_deg[be.u] >= 3 || b_deg[be.v] >= 3)
+                            {
+                                continue;
+                            }
+                            int ru = find_bp(be.u);
+                            int rv = find_bp(be.v);
+                            if (ru == rv)
+                            {
+                                continue;
+                            }
+
+                            bool cross = false;
+                            for (const auto& acc : b_accepted)
+                            {
+                                if (arcs_intersect(candidates[b_stars[be.u]].u, candidates[b_stars[be.v]].u,
+                                                   candidates[b_stars[acc.u]].u, candidates[b_stars[acc.v]].u))
+                                {
+                                    cross = true;
+                                    break;
+                                }
+                            }
+                            if (cross)
+                            {
+                                continue;
+                            }
+
+                            b_parent[ru] = rv;
+                            b_deg[be.u]++;
+                            b_deg[be.v]++;
+                            b_accepted.push_back(be);
+                        }
+
+                        if (b_accepted.size() >= 3)
+                        {
+                            std::vector<BEdge> b_chord_cands;
+                            for (const auto& be : b_edges)
+                            {
+                                bool already = false;
+                                for (const auto& acc : b_accepted)
+                                {
+                                    if ((acc.u == be.u && acc.v == be.v) ||
+                                        (acc.u == be.v && acc.v == be.u))
+                                    {
+                                        already = true;
+                                        break;
+                                    }
+                                }
+                                if (!already)
+                                {
+                                    b_chord_cands.push_back(be);
+                                }
+                            }
+
+                            int b_chords = 0;
+                            for (const auto& be : b_chord_cands)
+                            {
+                                if (b_chords >= 2 || b_deg[be.u] >= 3 || b_deg[be.v] >= 3)
+                                {
+                                    break;
+                                }
+                                bool cross = false;
+                                for (const auto& acc : b_accepted)
+                                {
+                                    if (arcs_intersect(candidates[b_stars[be.u]].u, candidates[b_stars[be.v]].u,
+                                                       candidates[b_stars[acc.u]].u, candidates[b_stars[acc.v]].u))
+                                    {
+                                        cross = true;
+                                        break;
+                                    }
+                                }
+                                if (cross)
+                                {
+                                    continue;
+                                }
+                                b_deg[be.u]++;
+                                b_deg[be.v]++;
+                                b_accepted.push_back(be);
+                                b_chords++;
+                            }
+                        }
+
+                        std::unordered_map<int, std::vector<int>> b_adj;
+                        for (const auto& acc : b_accepted)
+                        {
+                            b_adj[acc.u].push_back(acc.v);
+                            b_adj[acc.v].push_back(acc.u);
+                        }
+
+                        std::unordered_set<int> b_comp;
+                        std::vector<int> q;
+                        q.push_back(0);
+                        b_comp.insert(0);
+
+                        while (!q.empty())
+                        {
+                            int curr = q.back();
+                            q.pop_back();
+                            for (int nbr : b_adj[curr])
+                            {
+                                if (!b_comp.count(nbr))
+                                {
+                                    b_comp.insert(nbr);
+                                    q.push_back(nbr);
+                                }
+                            }
+                        }
+
+                        std::vector<ConsLine> b_lines;
+                        std::vector<LineRecord> b_line_records;
+                        std::unordered_set<Star*> b_c_stars;
+
+                        for (const auto& be : b_accepted)
+                        {
+                            if (b_comp.count(be.u) && b_comp.count(be.v))
+                            {
+                                Star* sa = candidates[b_stars[be.u]].s;
+                                Star* sb = candidates[b_stars[be.v]].s;
+                                Point ua = candidates[b_stars[be.u]].u;
+                                Point ub = candidates[b_stars[be.v]].u;
+
+                                ConsLine cl;
+                                cl.a = sa;
+                                cl.b = sb;
+                                cl.starnamea = get_consline_star_name(sa);
+                                cl.starnameb = get_consline_star_name(sb);
+                                double cos_half = cos(0.5 * be.len * (_pi / 180.0));
+                                b_lines.push_back(cl);
+                                b_line_records.push_back({sa, sb, ua, ub, be.len, cos_half, target_c_idx});
+                                b_c_stars.insert(sa);
+                                b_c_stars.insert(sb);
+                            }
+                        }
+
+                        if (b_lines.size() >= 3)
+                        {
+                            std::string c_abbrev;
+                            std::string c_name;
+                            std::string c_genitive;
+                            allocate_cons_name(c_abbrev, c_name, c_genitive);
+
+                            Constellation cons;
+                            cons.abbrev = c_abbrev;
+                            cons.name = c_name;
+                            cons.genitive = c_genitive;
+                            cons.vantage = vantage_pt;
+                            cons.vantage_name = sys_name;
+                            cons.vantage_resolved = true;
+                            cons.lines = b_lines;
+
+                            for (const auto& bl : b_line_records)
+                            {
+                                all_lines.push_back(bl);
+                                placed_stars.push_back({bl.a, bl.ua, target_c_idx});
+                                placed_stars.push_back({bl.b, bl.ub, target_c_idx});
+                            }
+                            for (Star* s : b_c_stars)
+                            {
+                                all_connected_stars.insert(s);
+                            }
+
+                            cons_stars.push_back(b_c_stars);
+                            out_conss.push_back(cons);
+                            connected = true;
                         }
                     }
                 }
 
-                if (dedicated_stars.size() >= 3)
+                if (!connected)
                 {
-                    std::string c_abbrev;
-                    std::string c_name;
-                    std::string c_genitive;
-                    allocate_cons_name(c_abbrev, c_name, c_genitive);
-
-                    Constellation cons;
-                    cons.abbrev = c_abbrev;
-                    cons.name = c_name;
-                    cons.genitive = c_genitive;
-                    cons.vantage = vantage_pt;
-                    cons.vantage_name = sys_name;
-                    cons.vantage_resolved = true;
-
-                    std::unordered_set<Star*> new_c_stars;
-                    new_c_stars.insert(s_bright);
-                    placed_stars.push_back({s_bright, u_bright, target_c_idx});
-
-                    for (Star* st : dedicated_stars)
+                    std::vector<int> near_indices;
+                    cand_grid.for_each_near(u_bright, 15.0, [&](int other_i)
                     {
-                        ConsLine cl;
-                        cl.a = s_bright;
-                        cl.b = st;
-                        cl.starnamea = get_consline_star_name(s_bright);
-                        cl.starnameb = get_consline_star_name(st);
-                        cons.lines.push_back(cl);
+                        if (other_i == (int)ci || all_connected_stars.count(candidates[other_i].s))
+                        {
+                            return;
+                        }
+                        double d = ang_dist_deg(u_bright, candidates[other_i].u);
+                        if (d <= 15.0)
+                        {
+                            near_indices.push_back(other_i);
+                        }
+                    });
+                    std::sort(near_indices.begin(), near_indices.end(), [&](int a, int b)
+                    {
+                        return ang_dist_deg(u_bright, candidates[a].u) < ang_dist_deg(u_bright, candidates[b].u);
+                    });
 
-                        Point ut = star_u_map[st];
+                    std::vector<Star*> dedicated_stars;
+                    int target_c_idx = (int)cons_stars.size();
+
+                    for (int near_idx : near_indices)
+                    {
+                        Star* st = candidates[near_idx].s;
+                        Point ut = candidates[near_idx].u;
                         double len = ang_dist_deg(u_bright, ut);
-                        double cos_half = cos(0.5 * len * (_pi / 180.0));
-                        all_lines.push_back({s_bright, st, u_bright, ut, len, cos_half, target_c_idx});
-                        placed_stars.push_back({st, ut, target_c_idx});
-                        new_c_stars.insert(st);
-                        all_connected_stars.insert(st);
+                        if (is_candidate_line_valid(s_bright, u_bright, st, ut, len, target_c_idx))
+                        {
+                            dedicated_stars.push_back(st);
+                            if (dedicated_stars.size() == 3)
+                            {
+                                break;
+                            }
+                        }
                     }
 
-                    cons_stars.push_back(new_c_stars);
-                    all_connected_stars.insert(s_bright);
-                    out_conss.push_back(cons);
-                    connected = true;
+                    if (dedicated_stars.size() >= 3)
+                    {
+                        std::string c_abbrev;
+                        std::string c_name;
+                        std::string c_genitive;
+                        allocate_cons_name(c_abbrev, c_name, c_genitive);
+
+                        Constellation cons;
+                        cons.abbrev = c_abbrev;
+                        cons.name = c_name;
+                        cons.genitive = c_genitive;
+                        cons.vantage = vantage_pt;
+                        cons.vantage_name = sys_name;
+                        cons.vantage_resolved = true;
+
+                        std::unordered_set<Star*> new_c_stars;
+                        new_c_stars.insert(s_bright);
+                        placed_stars.push_back({s_bright, u_bright, target_c_idx});
+
+                        for (Star* st : dedicated_stars)
+                        {
+                            ConsLine cl;
+                            cl.a = s_bright;
+                            cl.b = st;
+                            cl.starnamea = get_consline_star_name(s_bright);
+                            cl.starnameb = get_consline_star_name(st);
+                            cons.lines.push_back(cl);
+
+                            Point ut = star_u_map[st];
+                            double len = ang_dist_deg(u_bright, ut);
+                            double cos_half = cos(0.5 * len * (_pi / 180.0));
+                            all_lines.push_back({s_bright, st, u_bright, ut, len, cos_half, target_c_idx});
+                            placed_stars.push_back({st, ut, target_c_idx});
+                            new_c_stars.insert(st);
+                            all_connected_stars.insert(st);
+                        }
+
+                        cons_stars.push_back(new_c_stars);
+                        all_connected_stars.insert(s_bright);
+                        out_conss.push_back(cons);
+                        connected = true;
+                    }
                 }
             }
         }
@@ -1840,13 +2121,13 @@ namespace alienorum
             }
 
             std::vector<int> gap_stars;
-            cand_grid.for_each_near(sample_pt, 10.0, [&](int ci)
+            cand_grid.for_each_near(sample_pt, 14.0, [&](int ci)
             {
                 if (all_connected_stars.count(candidates[ci].s) || candidates[ci].mag > 5.8)
                 {
                     return;
                 }
-                if (ang_dist_deg(sample_pt, candidates[ci].u) < 9.0)
+                if (ang_dist_deg(sample_pt, candidates[ci].u) < 12.0)
                 {
                     gap_stars.push_back(ci);
                 }
@@ -2117,6 +2398,156 @@ namespace alienorum
                 }
             }
         }
+
+        // 8. Cast net wider to aim for constellations about 15-20 degrees across
+        auto get_cons_span = [&](const Constellation& c) -> double
+        {
+            double max_span = 0.0;
+            std::vector<Point> u_stars;
+            for (const auto& cl : c.lines)
+            {
+                if (cl.a && cl.b)
+                {
+                    auto it_a = star_u_map.find(cl.a);
+                    auto it_b = star_u_map.find(cl.b);
+                    if (it_a != star_u_map.end() && it_b != star_u_map.end())
+                    {
+                        u_stars.push_back(it_a->second);
+                        u_stars.push_back(it_b->second);
+                    }
+                }
+            }
+            for (size_t a = 0; a < u_stars.size(); a++)
+            {
+                for (size_t b = a + 1; b < u_stars.size(); b++)
+                {
+                    double d = ang_dist_deg(u_stars[a], u_stars[b]);
+                    if (d > max_span)
+                    {
+                        max_span = d;
+                    }
+                }
+            }
+            return max_span;
+        };
+
+        for (size_t out_i = 0; out_i < out_conss.size(); out_i++)
+        {
+            int c_idx = existing_cons_count + (int)out_i;
+            int max_steps = 10;
+            while (max_steps-- > 0)
+            {
+                double cur_span = get_cons_span(out_conss[out_i]);
+                if (cur_span >= 15.0)
+                {
+                    break;
+                }
+
+                std::unordered_map<Star*, int> deg_map;
+                for (const auto& cl : out_conss[out_i].lines)
+                {
+                    deg_map[cl.a]++;
+                    deg_map[cl.b]++;
+                }
+
+                Star* best_cand = nullptr;
+                Star* best_attach = nullptr;
+                Point best_cand_u;
+                Point best_attach_u;
+                double best_new_span = cur_span;
+                double best_len = 0.0;
+
+                for (const auto& pair : deg_map)
+                {
+                    if (pair.second >= 3)
+                    {
+                        continue;
+                    }
+                    Star* sa = pair.first;
+                    Point ua = star_u_map[sa];
+
+                    cand_grid.for_each_near(ua, 15.0, [&](int ci)
+                    {
+                        Star* sb = candidates[ci].s;
+                        if (all_connected_stars.count(sb) || candidates[ci].mag > 5.8)
+                        {
+                            return;
+                        }
+                        Point ub = candidates[ci].u;
+                        double len = ang_dist_deg(ua, ub);
+                        if (len > 15.0 || len < 1.0)
+                        {
+                            return;
+                        }
+
+                        double test_span = cur_span;
+                        for (const auto& other_pair : deg_map)
+                        {
+                            test_span = std::max(test_span, ang_dist_deg(ub, star_u_map[other_pair.first]));
+                        }
+
+                        if (test_span > best_new_span && is_candidate_line_valid(sa, ua, sb, ub, len, c_idx))
+                        {
+                            best_new_span = test_span;
+                            best_cand = sb;
+                            best_attach = sa;
+                            best_cand_u = ub;
+                            best_attach_u = ua;
+                            best_len = len;
+                        }
+                    });
+                }
+
+                if (best_cand && best_attach)
+                {
+                    ConsLine cl;
+                    cl.a = best_attach;
+                    cl.b = best_cand;
+                    cl.starnamea = get_consline_star_name(best_attach);
+                    cl.starnameb = get_consline_star_name(best_cand);
+                    out_conss[out_i].lines.push_back(cl);
+
+                    double cos_half = cos(0.5 * best_len * (_pi / 180.0));
+                    all_lines.push_back({best_attach, best_cand, best_attach_u, best_cand_u, best_len, cos_half, c_idx});
+                    placed_stars.push_back({best_cand, best_cand_u, c_idx});
+                    cons_stars[c_idx].insert(best_cand);
+                    all_connected_stars.insert(best_cand);
+                    lined_dirs.push_back(best_cand_u);
+
+                    deg_map[best_attach]++;
+                    deg_map[best_cand]++;
+
+                    // Attempt chord loop closure to another node in this constellation if within 14 deg
+                    for (const auto& pair : deg_map)
+                    {
+                        Star* sc = pair.first;
+                        if (sc == best_attach || sc == best_cand || pair.second >= 3)
+                        {
+                            continue;
+                        }
+                        Point uc = star_u_map[sc];
+                        double d2 = ang_dist_deg(best_cand_u, uc);
+                        if (d2 >= 1.0 && d2 <= 14.0 && is_candidate_line_valid(best_cand, best_cand_u, sc, uc, d2, c_idx))
+                        {
+                            ConsLine cl_loop;
+                            cl_loop.a = best_cand;
+                            cl_loop.b = sc;
+                            cl_loop.starnamea = get_consline_star_name(best_cand);
+                            cl_loop.starnameb = get_consline_star_name(sc);
+                            out_conss[out_i].lines.push_back(cl_loop);
+
+                            double cos_half2 = cos(0.5 * d2 * (_pi / 180.0));
+                            all_lines.push_back({best_cand, sc, best_cand_u, uc, d2, cos_half2, c_idx});
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
     }
 
     void ExoConsGenerator::save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss)
@@ -2204,7 +2635,6 @@ namespace alienorum
             constellations.push_back(c);
         }
 
-        save_to_exocons_file(vname, generated);
         completed_vantages.insert(vname);
     }
 
