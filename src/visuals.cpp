@@ -1270,7 +1270,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                 }
                 else
                 {
-                    Point rel = rotate3D(cel->tmprel, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                    Point rel = rotate3D(center - cel->tmprel, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
                     rel = rotate3D(rel, center, yaxis, cel->timeofday());
 
                     bool dwh = false;
