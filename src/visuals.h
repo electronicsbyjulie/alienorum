@@ -51,6 +51,10 @@
 #define WAVE_GLINT_PATH_WIDTH   0.14    // Angular half-width fraction of sunset glint column
 #define WAVE_GLINT_CREST_THRESH 0.05    // Wave crest threshold for glint reflections when sun is low
 
+// Planetary water rain
+#define rain_cloudiness_threshold 0.35
+#define RAIN_MULTIPLIER 503
+
 struct RockInstance
 {
     double dist;

@@ -4656,6 +4656,266 @@ struct GlintSource
     double b;
 };
 
+#if planetary_rain
+double norm_cloud, min_rain_intensity = 0.0, max_rain_intensity = 0;
+double rain_intensity = 0, rainint_lat = -1e3, rainint_lon = -1e5, drainint;
+static void draw_planetary_rain(Planet *p)
+{
+    if (!p)
+    {
+        return;
+    }
+
+    // Must be a non-gaseous, non-lava celestial body
+    if (uses_gaseous_map(p->type) || p->type == lavaworld)
+    {
+        return;
+    }
+
+    // Clouds must be enabled and complete cloud map available
+    if (!show_clouds || !p->cloud_map || !p->cloud_map->is_complete())
+    {
+        return;
+    }
+
+    // Candidate criteria: temperate planet with suitable atmospheric pressure
+    double p_surf = p->get_surface_pressure();
+    if (p_surf < 10000.0 || p_surf > 500000.0)
+    {
+        return;
+    }
+
+    double t_surf = p->estimate_surface_temperature();
+    if (t_surf < 260.0 || t_surf > 330.0)
+    {
+        return;
+    }
+
+    // Sample local cloudiness at viewer location
+    RGB3 c_rgb = p->cloud_map->color_at(viewer_lat, viewer_lon);
+    double local_cloudiness = std::clamp(c_rgb.luminance() / 255.0, 0.0, 1.0);
+    if (p->overcast)
+    {
+        local_cloudiness = 1.0;
+    }
+
+    // Only show rain when local cloudiness is above the threshold amount
+    if (local_cloudiness < rain_cloudiness_threshold)
+    {
+        return;
+    }
+
+    if (fabs(rainint_lat - viewer_lat) > 1e-5 || fabs(rainint_lon - viewer_lon) > 1e-5)
+    {
+        // Normalize cloudiness above threshold into [0, 1]
+        norm_cloud = std::clamp((local_cloudiness - rain_cloudiness_threshold) / (1.0 - rain_cloudiness_threshold), 0.0, 1.0);
+
+        // Calculate maximum rain intensity (minimum will always be zero) for the local cloudiness:
+        // If the sky is white (moderate clouds), max intensity is light drizzle (~0.25).
+        // If the clouds are so thick that the sky is gray, max intensity reaches 1.0 (downpour).
+        max_rain_intensity = std::clamp(0.25 * norm_cloud + 0.75 * pow(norm_cloud, 2.5), 0.0, 1.0) * RAIN_MULTIPLIER;
+
+        // Choose a random value within that range [min_rain_intensity, max_rain_intensity]:
+        // Continuous 3D fractal noise on the sphere + slow weather drift so weather
+        // is spatially distributed and temporally continuous without frame-to-frame flicker.
+        double clat = cos(viewer_lat);
+        double nx = clat * cos(viewer_lon);
+        double ny = sin(viewer_lat);
+        double nz = clat * sin(viewer_lon);
+        double t_weather = ImGui::GetTime() * 0.005;
+        double weather_sample = fBm(nx * 6.0 + 23.4 + t_weather, ny * 6.0 + 51.2, nz * 6.0 + 87.6 + t_weather * 0.6, 3, 2.0, 0.5);
+        double rand_val = std::clamp((weather_sample - 0.15) / 0.70, 0.0, 1.0);
+
+        rain_intensity = min_rain_intensity + rand_val * (max_rain_intensity - min_rain_intensity);
+        drainint = frand(-0.01, 0.01);
+
+        rainint_lat = viewer_lat;
+        rainint_lon = viewer_lon;
+    }
+    else
+    {
+        bool too_low = (rain_intensity < 0.25 * max_rain_intensity);
+        drainint += frand(too_low ? 0 : -0.01, 0.01) * frand(0.001, 1);
+        rain_intensity *= (1.0 + drainint);
+
+        // std::cout << "Rain intensity " << rain_intensity << " + " << drainint << std::endl;
+
+        if (rain_intensity > max_rain_intensity)
+        {
+            drainint = -fabs(drainint);
+            rain_intensity = max_rain_intensity;
+        }
+
+        drainint *= 0.9999;
+    }
+    if (rain_intensity <= 0.005)
+    {
+        return;
+    }
+
+    // Render rain particle simulation
+    double t_rain = ImGui::GetTime();
+    double h_eye = fmax(0.01, viewer_eye_height);
+    uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x4f2d7);
+    int num_particles = (int)(60 + rain_intensity * 460);
+    num_particles = std::clamp(num_particles, 60, 2400);
+
+    double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
+    int r_c = (int)(180 * is_day + 40 * (1.0 - is_day));
+    int g_c = (int)(205 * is_day + 48 * (1.0 - is_day));
+    int b_c = (int)(230 * is_day + 60 * (1.0 - is_day));
+
+    // Precompute camera orientation matrix for linear world-to-camera rotation
+    double cos_az = cos(azimuth);
+    double sin_az = sin(azimuth);
+    double cos_alt = cos(altitude);
+    double sin_alt = sin(altitude);
+
+    const double span_h = 32.0;
+    const double radius_h = 34.0;
+    double y_ground = -h_eye;
+
+    // Atmospheric wind drift
+    double wind_speed_x = (0.60 + 0.30 * sin(t_rain * 0.22));
+    double streak_base_dt = 0.018 + 0.008 * fmin(1.0, rain_intensity * 0.1);
+
+    for (int pi = 0; pi < num_particles; pi++)
+    {
+        // Independent uniform random variables for each dimension
+        uint32_t h0 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0x1a874b21u;
+        h0 = ((h0 >> 16) ^ h0) * 0x45d9f3bu;
+        h0 = ((h0 >> 16) ^ h0) * 0x45d9f3bu;
+        h0 = (h0 >> 16) ^ h0;
+        double u0 = (double)h0 / 4294967296.0;
+
+        uint32_t h1 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0x85ebca6bu;
+        h1 = ((h1 >> 16) ^ h1) * 0x45d9f3bu;
+        h1 = ((h1 >> 16) ^ h1) * 0x45d9f3bu;
+        h1 = (h1 >> 16) ^ h1;
+        double u1 = (double)h1 / 4294967296.0;
+
+        uint32_t h2 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0xc2b2ae35u;
+        h2 = ((h2 >> 16) ^ h2) * 0x45d9f3bu;
+        h2 = ((h2 >> 16) ^ h2) * 0x45d9f3bu;
+        h2 = (h2 >> 16) ^ h2;
+        double u2 = (double)h2 / 4294967296.0;
+
+        uint32_t h3 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0x27d4eb2fu;
+        h3 = ((h3 >> 16) ^ h3) * 0x45d9f3bu;
+        h3 = ((h3 >> 16) ^ h3) * 0x45d9f3bu;
+        h3 = (h3 >> 16) ^ h3;
+        double u3 = (double)h3 / 4294967296.0;
+
+        // Uniform horizontal disk distribution (constant area density across the sky)
+        double p_theta = u0 * 2.0 * _pi;
+        double p_dist = radius_h * sqrt(u1);
+
+        double fall_speed = 8.5 + 9.5 * u2;
+
+        // Vertical wrapping
+        double cur_y = y_ground + fmod(u3 * span_h - t_rain * fall_speed - y_ground, span_h);
+        while (cur_y < y_ground)
+        {
+            cur_y += span_h;
+        }
+        while (cur_y >= y_ground + span_h)
+        {
+            cur_y -= span_h;
+        }
+
+        // Particle world position
+        double xw_drift = wind_speed_x * (cur_y - y_ground) * 0.10;
+        double xw = p_dist * sin(p_theta) + xw_drift;
+        double zw = p_dist * cos(p_theta);
+        double yw = cur_y;
+
+        // Transform head to camera coordinates
+        double x1_head = xw * cos_az - zw * sin_az;
+        double z1_head = xw * sin_az + zw * cos_az;
+        double xc_head = x1_head;
+        double yc_head = yw * cos_alt - z1_head * sin_alt;
+        double zc_head = yw * sin_alt + z1_head * cos_alt;
+
+        // Clip if behind near plane
+        if (zc_head <= 0.16)
+        {
+            continue;
+        }
+
+        double sx_head = (xc_head / zc_head) * zoom * dispcx + dispcx;
+        double sy_head = (-yc_head / zc_head) * zoom * dispcx + dispcy;
+
+        // Particle streak tail: straight line along 3D velocity vector
+        double streak_dt = streak_base_dt;
+        double xw_tail = xw - wind_speed_x * streak_dt * 0.7;
+        double yw_tail = yw + fall_speed * streak_dt;
+        double zw_tail = zw;
+
+        double x1_tail = xw_tail * cos_az - zw_tail * sin_az;
+        double z1_tail = xw_tail * sin_az + zw_tail * cos_az;
+        double xc_tail = x1_tail;
+        double yc_tail = yw_tail * cos_alt - z1_tail * sin_alt;
+        double zc_tail = yw_tail * sin_alt + z1_tail * cos_alt;
+
+        if (zc_tail <= 0.10)
+        {
+            continue;
+        }
+
+        double sx_tail = (xc_tail / zc_tail) * zoom * dispcx + dispcx;
+        double sy_tail = (-yc_tail / zc_tail) * zoom * dispcx + dispcy;
+
+        // Screen boundary culling
+        if ((sx_head < -40.0 && sx_tail < -40.0) ||
+            (sx_head > dispcx * 2.0 + 40.0 && sx_tail > dispcx * 2.0 + 40.0) ||
+            (sy_head < -40.0 && sy_tail < -40.0) ||
+            (sy_head > dispcy * 2.0 + 40.0 && sy_tail > dispcy * 2.0 + 40.0))
+        {
+            continue;
+        }
+
+        // Distance attenuation
+        double dist_fade = fmax(0.12, 1.0 - zc_head / radius_h);
+        int a_c = (int)std::clamp((42.0 + 75.0 * u0) * dist_fade, 12.0, 160.0);
+        float line_w = (float)std::clamp(0.85 / (zc_head * 0.28), 0.6, 2.0);
+
+        ImU32 pcol = rgba_apply_redlight(IM_COL32(r_c, g_c, b_c, a_c));
+        ImVec2 p_head((float)sx_head, (float)sy_head);
+        ImVec2 p_tail((float)sx_tail, (float)sy_tail);
+
+        ImGui::GetBackgroundDrawList()->AddLine(p_tail, p_head, pcol, line_w);
+
+        // Ground impact splash ripple
+        if (cur_y < y_ground + 0.28)
+        {
+            float splash_prog = (float)((cur_y - y_ground) / 0.28);
+            float splash_r = (float)fmax(0.6, fmin(3.5, 1.6 / (zc_head * 0.32)));
+            int splash_alpha = (int)(std::clamp(130.0 * (1.0f - splash_prog) * dist_fade, 0.0, 130.0));
+            if (splash_alpha > 5)
+            {
+                ImU32 splash_col = rgba_apply_redlight(IM_COL32(r_c, g_c, b_c, splash_alpha));
+                ImVec2 splash_radii(splash_r, splash_r * 0.35f);
+                ImGui::GetBackgroundDrawList()->AddEllipse(p_head, splash_radii, splash_col, 8, 1.0f);
+            }
+        }
+    }
+
+    // Subtle precipitation mist / haze near horizon during heavier rain
+    if (rain_intensity > 0.15)
+    {
+        float haze_y0 = fmax(0.0f, (float)(hz_y - 40.0));
+        float haze_y1 = fmin((float)(dispcy * 2.0), (float)(hz_y + 80.0));
+        if (haze_y1 > haze_y0)
+        {
+            int haze_alpha = (int)(26.0 * (rain_intensity - 0.15) / 0.85);
+            ImU32 haze_col = rgba_apply_redlight(IM_COL32(r_c, g_c, b_c, haze_alpha));
+            ImGui::GetBackgroundDrawList()->AddRectFilled(
+                ImVec2(0, haze_y0), ImVec2((float)(dispcx * 2.0), haze_y1), haze_col);
+        }
+    }
+}
+#endif
+
 void draw_horizon()
 {
     // Horizon
@@ -5687,13 +5947,16 @@ void draw_horizon()
                 double grav = p ? p->estimate_surface_gravity() : 1;
                 double presh = p ? (log(p->get_surface_pressure()*inv_oneatm)+1) : 1;
 
-                double plant_trunk_height = PLANT_TRUNK_HEIGHT / grav;
-                double plant_trunk_width = PLANT_TRUNK_WIDTH * grav;
-                double plant_crown_size = PLANT_CROWN_SIZE / presh;
-                double plant_crown_oblateness = PLANT_CROWN_OBLATENESS * presh;
+                if (p)
+                {
+                    if (!p->plant_trunk_height)     p->plant_trunk_height       = PLANT_TRUNK_HEIGHT / grav;
+                    if (!p->plant_trunk_width)      p->plant_trunk_width        = PLANT_TRUNK_WIDTH * grav;
+                    if (!p->plant_crown_size)       p->plant_crown_size         = PLANT_CROWN_SIZE / presh;
+                    if (!p->plant_crown_oblateness) p->plant_crown_oblateness   = PLANT_CROWN_OBLATENESS * presh;
+                }
 
-                double rock_aspect = is_vegetation
-                    ? (plant_trunk_height + plant_crown_size * plant_crown_oblateness)
+                double rock_aspect = (is_vegetation && p)
+                    ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
                     : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
@@ -5756,7 +6019,7 @@ void draw_horizon()
 
                     if (is_vegetation)
                     {
-                        double canopy_h_m = rock_size * plant_trunk_height;
+                        double canopy_h_m = rock_size * p->plant_trunk_height;
                         double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
                         double y_base_world = -h_eye - curv_drop;
                         double y_crown_world = canopy_h_m - h_eye - curv_drop;
@@ -5789,11 +6052,11 @@ void draw_horizon()
                         crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
                         crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
 
-                        crown_rx = (rock_size * plant_crown_size / z_crown_cam) * dispcx * zoom;
+                        crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
                         crown_rx = fmax(1.2, crown_rx);
-                        crown_ry = fmax(1.0, crown_rx * plant_crown_oblateness);
+                        crown_ry = fmax(1.0, crown_rx * p->plant_crown_oblateness);
 
-                        trunk_w_top = (rock_size * plant_trunk_width / z_crown_cam) * dispcx * zoom;
+                        trunk_w_top = (rock_size * p->plant_trunk_width / z_crown_cam) * dispcx * zoom;
                         trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
 
                         double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
@@ -5804,7 +6067,7 @@ void draw_horizon()
                             base_valid = true;
                             sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
                             sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
-                            trunk_w_base = (rock_size * plant_trunk_width / z_base_cam) * dispcx * zoom;
+                            trunk_w_base = (rock_size * p->plant_trunk_width / z_base_cam) * dispcx * zoom;
                         }
                         else
                         {
@@ -5813,7 +6076,7 @@ void draw_horizon()
                             double y_clip = y_base_cam + t * (y_crown_cam - y_base_cam);
                             sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
                             sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
-                            trunk_w_base = (rock_size * plant_trunk_width / 0.2) * dispcx * zoom;
+                            trunk_w_base = (rock_size * p->plant_trunk_width / 0.2) * dispcx * zoom;
                         }
                         trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
 
@@ -6539,6 +6802,13 @@ void draw_horizon()
                     }
                 }
             }
+        }
+        #endif
+
+        #if planetary_rain
+        if (show_terrain)
+        {
+            draw_planetary_rain(p);
         }
         #endif
     }

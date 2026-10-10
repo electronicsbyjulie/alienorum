@@ -4678,7 +4678,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     {
         json pl = planets[i];
         std::string bodyname, cenname, mapurl;
-        m = nullptr;                            // MERCURY ISN'T A FUCKING MOON, IMBECILE.
+        m = nullptr;
         try
         {
             pl.at("BODYNAME").get_to(bodyname);
@@ -4828,6 +4828,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 }
                 catch (...) { ; }
             }
+
+            try { pl.at("PlantTrunkHeight").get_to(p->plant_trunk_height); } catch (...) { ; }
+            try { pl.at("PlantTrunkWidth").get_to(p->plant_trunk_width); } catch (...) { ; }
+            try { pl.at("PlantCrownSize").get_to(p->plant_crown_size); } catch (...) { ; }
+            try { pl.at("PlantCrownOblateness").get_to(p->plant_crown_oblateness); } catch (...) { ; }
             
             try { pl.at("VolMeanRad").get_to(p->volumetric_mean_radius); } catch (...) { ; }
             try { pl.at("RingRadius").get_to(p->ring_radius); p->ring_radius *= 1000; p->ring_status_known = true; } catch (...) { ; }
