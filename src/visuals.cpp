@@ -5027,24 +5027,14 @@ void draw_horizon()
 
         Map *map = gaseous ? cel->cloud_map : cel->surf_map;
         RGB3 rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3(0, 8, 24);
-        rgb.r = fmin(255, is_day*rgb.r);
-        rgb.g = fmin(255, is_day*rgb.g);
-        rgb.b = fmin(255, is_day*rgb.b);
 
         bool water_favorable = p->get_surface_pressure() >= 150
             && p->estimate_surface_temperature() < 400;
 
-        bool is_water = (p && (p->type == waterworld || p->type == hycean))
-            || (uses_rocky_map(p->type)
-                // && water_favorable
-                && p->has_water
-                && (rgb.b > 0.8 * rgb.r)
-                && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
-
         bool is_vegetation = false;
         const float is_veg_threshold = 0.35;
 
-        if (p && uses_rocky_map(p->type) && water_favorable && (p->vegetation_r || p->vegetation_g))
+        if (p && uses_rocky_map(p->type) && water_favorable && p->has_water && (p->vegetation_r || p->vegetation_g))
         {
             double local_hue = Color::hue_from_rgb(rgb.r, rgb.g, rgb.b),
                    veg_hue = Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
@@ -5056,6 +5046,17 @@ void draw_horizon()
                )
                 is_vegetation = true;
         }
+
+        rgb.r = fmin(255, is_day*rgb.r);
+        rgb.g = fmin(255, is_day*rgb.g);
+        rgb.b = fmin(255, is_day*rgb.b);
+
+        bool is_water = (p && (p->type == waterworld || p->type == hycean))
+            || (uses_rocky_map(p->type)
+                // && water_favorable
+                && p->has_water
+                && (rgb.b > 0.8 * rgb.r)
+                && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
         if (p && p->type == lavaworld && p->night_map)
         {

@@ -1700,6 +1700,7 @@ void draw_objedit_window(ImGuiIO& io)
                     double instellation = s_eff_lum / (sma_au*sma_au);
                     orb->semimajor_axis *= sqrt(instellation);
                     orb->compute_period(cel->mass);
+                    lsyscache.clear();
                     cel->temperature = 0;
                     if (cel->typeclass() == class_planet
                         || cel->typeclass() == class_moon               // See Kepler-1625b.
@@ -3737,12 +3738,7 @@ void draw_exoplanet_load_window(ImGuiIO &io)
     }
     else
     {
-        ImGui::Text("Read %d objects.", count);
-        ImGui::ProgressBar(1.0f, ImVec2(380, 0), "Complete");
-        if (ImGui::Button("Close##exoplanet_load", ImVec2(100, 0)))
-        {
-            exoplanet_load_wnd = false;
-        }
+        exoplanet_load_wnd = false;
     }
 
     ImGui::SetWindowSize(ImVec2(0, 0));
