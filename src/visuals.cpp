@@ -3380,10 +3380,25 @@ bool draw_single_object(int i)
         {
             dy = disph-sz.y;
         }
+
+        #if cache_labels
+        if (view_mode != vm_horizon || cels[i]->viewrel.y >= 0)
+        {
+            DrawLabel llbl;
+            llbl.font = font;
+            llbl.fontsz = lfontsz;
+            llbl.pos = ImVec2(cels[i]->drawnx - sz.x/2, dy);
+            llbl.color = Color::ensure_wcag_contrast(
+                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+            llbl.text = dispname;
+            labels2draw.push_back(llbl);
+        }
+        #else
         ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, dy),
             rgba_apply_redlight(Color::ensure_wcag_contrast(
                 (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
             dispname);
+        #endif
         cels[i]->label_shown = true;
     }
     return true;
@@ -4050,10 +4065,21 @@ void draw_system_view()
             ImVec2 lsz = ImGui::CalcTextSize(dispname);
             int dy = s->drawny+sdrad+1;
             if (s->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+            #if cache_labels
+            DrawLabel llbl;
+            llbl.font = font;
+            llbl.fontsz = lfontsz;
+            llbl.pos = ImVec2(fmax(0, s->drawnx - lsz.x/2), dy);
+            llbl.color = Color::ensure_wcag_contrast(
+                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+            llbl.text = dispname;
+            labels2draw.push_back(llbl);
+            #else
             ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(fmax(0, s->drawnx - lsz.x/2), dy),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(
                     (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                 dispname);
+            #endif
         }
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
@@ -4091,10 +4117,20 @@ void draw_system_view()
                 ImVec2 lsz = ImGui::CalcTextSize(dispname);
                 int dy = p->drawny+pdrad+1;
                 if (p->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                #if cache_labels
+                DrawLabel llbl;
+                llbl.font = global_font;
+                llbl.pos = ImVec2(p->drawnx - lsz.x/2, dy);
+                llbl.color = Color::ensure_wcag_contrast(
+                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+                llbl.text = dispname;
+                labels2draw.push_back(llbl);
+                #else
                 ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(p->drawnx - lsz.x/2, dy),
                     rgba_apply_redlight(Color::ensure_wcag_contrast(
                         (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                     dispname);
+                #endif
             }
         }
 
@@ -4116,10 +4152,20 @@ void draw_system_view()
                 ImVec2 lsz = ImGui::CalcTextSize(dispname);
                 int dy = csel->drawny+selrad+1;
                 if (csel->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                #if cache_labels
+                DrawLabel llbl;
+                llbl.font = global_font;
+                llbl.pos = ImVec2(csel->drawnx - lsz.x/2, dy);
+                llbl.color = Color::ensure_wcag_contrast(
+                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+                llbl.text = dispname;
+                labels2draw.push_back(llbl);
+                #else
                 ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(csel->drawnx - lsz.x/2, dy),
                     rgba_apply_redlight(Color::ensure_wcag_contrast(
                         (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                     dispname);
+                #endif
             }
 
             // Moons.
@@ -4177,10 +4223,20 @@ void draw_system_view()
                     ImVec2 lsz = ImGui::CalcTextSize(dispname);
                     int dy = m->drawny+moonrad+1;
                     if (m->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
+                    #if cache_labels
+                    DrawLabel llbl;
+                    llbl.font = global_font;
+                    llbl.pos = ImVec2(m->drawnx - lsz.x/2, dy);
+                    llbl.color = Color::ensure_wcag_contrast(
+                            (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+                    llbl.text = dispname;
+                    labels2draw.push_back(llbl);
+                    #else
                     ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(m->drawnx - lsz.x/2, dy),
                         rgba_apply_redlight(Color::ensure_wcag_contrast(
                             (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                         dispname);
+                    #endif
                 }
             }
 
@@ -4309,10 +4365,20 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
             std::string str;
             double lfontsz = global_font_size;
             ImVec2 sz = ImGui::CalcTextSize(dispname);
+            #if cache_labels
+            DrawLabel llbl;
+            llbl.font = global_font;
+            llbl.pos = ImVec2(obj->drawnx - sz.x/2, obj->drawny+bloomrad+1);
+            llbl.color = Color::ensure_wcag_contrast(
+                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+            llbl.text = dispname;
+            labels2draw.push_back(llbl);
+            #else
             ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(obj->drawnx - sz.x/2, obj->drawny+bloomrad+1),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(
                     (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                 dispname);
+            #endif
         }
 
         if (show_orbits && obj->orbit)
@@ -6790,12 +6856,27 @@ void draw_horizon()
         }
 
         double hzbrt = _lum_r_comp*rgb.r + _lum_g_comp*rgb.g + _lum_b_comp*rgb.b;
-        ImU32 mkrcol = rgba_apply_redlight((hzbrt >= 144) ? IM_COL32(0,0,0,255) : global_style.conslbl_color);
+        ImU32 mkrcol = (hzbrt >= 144) ? IM_COL32(0,0,0,255) : global_style.conslbl_color;
         const int hz_nodes_sixteenth = hznodes / 16;
         if (show_grid) for (i = 0; i < 16; i++) if (draw_marker[j = i*hz_nodes_sixteenth])
         {
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), mkrcol, compass[i]);
+            #if cache_labels
+            DrawLabel llbl;
+            llbl.font = global_font;
+            llbl.fontsz = global_font_size * 1.1;
+            llbl.pos = ImVec2(hz_dx[j], hz_dy[j]);
+            llbl.color = mkrcol;
+            llbl.text = compass[i];
+            labels2draw.push_back(llbl);
+            if (hzbrt >= 144)
+            {
+                llbl.pos = ImVec2(hz_dx[j]-1, hz_dy[j]);
+                labels2draw.push_back(llbl);
+            }
+            #else
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j], hz_dy[j]), rgba_apply_redlight(mkrcol), compass[i]);
             if (hzbrt >= 144) ImGui::GetBackgroundDrawList()->AddText(ImVec2(hz_dx[j]-1, hz_dy[j]), mkrcol, compass[i]);
+            #endif
         }
 
         #if lavaworld_rock_rain
@@ -7206,10 +7287,10 @@ void draw_cons_lines()
         }
     }
 
-    if (!active_vantage_found)
+    /*if (!active_vantage_found)
     {
         return;
-    }
+    }*/
 
     auto belongs_to_active_vantage = [&](const Constellation& c) -> bool
     {
@@ -7346,9 +7427,21 @@ void draw_cons_lines()
         dy -= sz.y/2;
         if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
         {
+            #if cache_labels
+            if (view_mode != vm_horizon || lconsdir.y >= 0)
+            {
+                DrawLabel llbl;
+                llbl.font = global_font;
+                llbl.pos = ImVec2(dx, dy);
+                llbl.color = Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 2.9, 3.5, true);
+                llbl.text = dispname;
+                labels2draw.push_back(llbl);
+            }
+            #else
             ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 2.9, 3.5, true)),
                 dispname.c_str() );
+            #endif
         }
     }
 }
@@ -7379,12 +7472,30 @@ void draw_cons_lines()
                     case 2: axname += std::string("Z"); axcolor = IM_COL32(0, 0, 255, 255); break;
                 }
 
+                #if cache_labels
+                DrawLabel llbl;
+                llbl.font = global_font;
+                llbl.fontsz = 64;
+                llbl.pos = ImVec2(dx, dy);
+                llbl.color = rgba_apply_redlight(axcolor);
+                llbl.text = axname;
+                labels2draw.push_back(llbl);
+                #else
                 ImGui::GetBackgroundDrawList()->AddText(global_font, 64,
                     ImVec2(dx, dy),
-                    rgba_apply_redlight(axcolor),
+                    axcolor,
                     axname.c_str());
+                #endif
             }
         }
+    }
+}
+
+void draw_cached_labels()
+{
+    for (const DrawLabel& llbl : labels2draw)
+    {
+        ImGui::GetBackgroundDrawList()->AddText(llbl.font, llbl.fontsz, llbl.pos, rgba_apply_redlight(llbl.color), llbl.text.c_str());
     }
 }
 

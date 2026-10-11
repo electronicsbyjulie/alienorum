@@ -180,6 +180,9 @@ const std::time_t J2000_TIME_T = 946684800;
 
 #define mouse_drag_threshold 3
 
+#define cache_labels 1
+#define global_font_size (8.647 * 1.8)
+
 #define NUM_VIEWMODES 5
 enum ViewMode
 {
@@ -213,6 +216,14 @@ enum DST_Rule
     dst_nz
 };
 
+struct DrawLabel
+{
+    ImFont *font;
+    double fontsz = global_font_size;
+    ImVec2 pos;
+    ImU32 color;                // DO NOT apply rgba_apply_redlight(); draw_cached_labels() does it for you and it's bad to apply redlight twice.
+    std::string text;
+};
 
 #define debug_planet_class_color 0
 
@@ -319,6 +330,7 @@ extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, sho
 extern std::atomic<bool> abort_load;
 extern std::atomic<bool> load_completed;
 extern std::atomic<int> texture_loads_pending;
+extern std::vector<DrawLabel> labels2draw;
 extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;

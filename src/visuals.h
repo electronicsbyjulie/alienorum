@@ -91,6 +91,7 @@ void find_horizon();
 void draw_horizon();
 void draw_sky_gradient();
 void draw_cons_lines();
+void draw_cached_labels();
 void draw_mouse_cursor(ImGuiIO &io);
 
 void draw_cloudy_sky();
@@ -125,8 +126,6 @@ extern double eclipsed_fraction;
 
 // NEVER bloom point sources into a giant disc - keep this constant low.
 #define max_bloomrad 3
-
-#define global_font_size (8.647 * 1.776)
 
 extern double hz_y, jay, appmag, bloomrad, flare, theta, lmasslim;
 extern ImVec2 xycoord;
