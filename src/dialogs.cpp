@@ -531,12 +531,12 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
             sssg << "Est. temp.:   " << std::fixed << std::setprecision(1)
-                #if show_local_temp
-                << ((Planet*)cels[whereami])->est_local_temp(viewer_lat, viewer_lon)
-                #else
-                << ((Planet*)cels[whereami])->estimate_surface_temperature()
-                #endif
-                << " K";
+            #if show_local_temp
+            << ((Planet*)cels[whereami])->est_local_temp(viewer_lat, viewer_lon)
+            #else
+            << ((Planet*)cels[whereami])->estimate_surface_temperature()
+            #endif
+            << " K";
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
             double bar = ((Planet*)cels[whereami])->get_surface_pressure() / 1e5;
@@ -714,6 +714,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             i = is_an_obj_under_cursor;
             cels[i]->typeclass();
+            cls = cels[i]->typeclass();
             lmag = vmag_cache[i];
             am_satellite = (whereami>0) && (cels[whereami]->type == artificial);
             sat_low_orbit = am_satellite && (cels[i]->tmprel.magnitude() < cels[i]->volumetric_mean_radius*2);

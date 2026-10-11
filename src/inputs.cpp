@@ -227,6 +227,27 @@ void show_menu()
             if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
+
+            if (noexo)
+            {
+                if (ImGui::MenuItem("Load Exoplanets", ""))
+                {
+                    CatalogReader cr;
+                    cr.load_exoplanets_from_tap(true);
+
+                    cr.read_star_orbits_dat(cels);
+
+                    cout << "Reading exoplanets..." << endl << flush;
+                    int nexo = cr.load_exoplanets_from_tap();
+                    if (!nexo) nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+                    if (nexo) have_exo = true;
+                    num_planets += nexo;
+                    cout << "Read " << nexo << " objects." << endl << flush;
+                    
+                    noexo = false;
+                }
+            }
+
             if (ImGui::MenuItem("Reload Constellations", "F5"))
             {
                 process_key_F5();
