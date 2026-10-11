@@ -385,6 +385,10 @@ void compute_object_draw_coordinates()
         {
             for (i=0; cels[i]; i++)
             {
+                if (cels[i]->location.distance_to(here) < light_year)
+                {
+                    std::cout << cels[i]->name << " cenobj=" << (cels[i]->cenobj ? cels[i]->cenobj->name : "") << std::endl;
+                }
                 if (cels[i]->cenobj != mycenobj) continue;
                 lsyscache.push_back(cels[i]);
             }

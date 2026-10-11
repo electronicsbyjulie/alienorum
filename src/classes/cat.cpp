@@ -6429,7 +6429,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     snprintf(new_planet->name, sizeof(new_planet->name), "%s", row.pl_name.c_str());
-    new_planet->cenobj = host_star;
+    new_planet->cenobj = (host_star && host_star->cenobj) ? host_star->cenobj : host_star;
 
     double inclination = isnan(row.pl_orbincl) ? 0 : row.pl_orbincl * fiftyseventh;
 
