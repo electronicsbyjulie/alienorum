@@ -6228,6 +6228,7 @@ void draw_horizon()
                     }
 
                     rocks[num_rocks].dist = sort_dist;
+                    rocks[num_rocks].ground_dist = dist_m;
                     rocks[num_rocks].theta = theta_world;
                     rocks[num_rocks].screen_x = sx;
                     rocks[num_rocks].screen_y = sy;
@@ -6255,6 +6256,108 @@ void draw_horizon()
                 int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
                 bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
 
+                if (has_sun_shadow)
+                {
+                    double cos_alt = cos(altitude);
+                    double sin_alt = sin(altitude);
+                    double cos_az = cos(azimuth);
+                    double sin_az = sin(azimuth);
+                    ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, shadow_alpha));
+
+                    for (int ri = 0; ri < num_rocks; ri++)
+                    {
+                        const RockInstance& rk = rocks[ri];
+                        if (rk.width < 3.0 || !rk.base_valid)
+                        {
+                            continue;
+                        }
+
+                        double rx = rk.screen_x;
+                        double ry = rk.screen_y;
+                        double rw = rk.width;
+
+                        double actual_rock_h = rk.size * rock_aspect;
+                        double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
+                        if (!is_vegetation)
+                        {
+                            L_shadow = fmin(rk.ground_dist * 1.5, L_shadow);
+                        }
+                        L_shadow = fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow);
+
+                        double u_rock = rk.ground_dist * sin(rk.theta);
+                        double v_rock = rk.ground_dist * cos(rk.theta);
+
+                        double u_tip = u_rock - L_shadow * sin(sun_az_world);
+                        double v_tip = v_rock - L_shadow * cos(sun_az_world);
+
+                        double x_base_cam = u_rock * cos_az - v_rock * sin_az;
+                        double z_base_horiz = u_rock * sin_az + v_rock * cos_az;
+
+                        double curv_drop_rock = (rk.ground_dist * rk.ground_dist) / (2.0 * R_planet);
+                        double y_base_world = -h_eye - curv_drop_rock;
+                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                        {
+                            y_base_world += (rk.ground_dist / s_horizon) * horizon_lift_rad * rk.ground_dist;
+                        }
+
+                        double z_base_cam = y_base_world * sin_alt + z_base_horiz * cos_alt;
+                        double y_base_cam = y_base_world * cos_alt - z_base_horiz * sin_alt;
+
+                        double x_tip_cam = u_tip * cos_az - v_tip * sin_az;
+                        double z_tip_horiz = u_tip * sin_az + v_tip * cos_az;
+
+                        double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
+                        double curv_drop_tip = (dist_tip * dist_tip) / (2.0 * R_planet);
+                        double y_tip_world = -h_eye - curv_drop_tip;
+                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                        {
+                            y_tip_world += (dist_tip / s_horizon) * horizon_lift_rad * dist_tip;
+                        }
+
+                        double z_tip_cam = y_tip_world * sin_alt + z_tip_horiz * cos_alt;
+                        double y_tip_cam = y_tip_world * cos_alt - z_tip_horiz * sin_alt;
+
+                        double tip_x = 0.0;
+                        double tip_y = 0.0;
+                        bool tip_valid = false;
+
+                        if (z_tip_cam >= 0.2)
+                        {
+                            tip_x = (x_tip_cam / z_tip_cam) * dispcx * zoom + dispcx;
+                            tip_y = (-y_tip_cam / z_tip_cam) * dispcx * zoom + dispcy;
+                            tip_valid = true;
+                        }
+                        else if (z_base_cam > 0.2)
+                        {
+                            double t = (z_base_cam - 0.2) / (z_base_cam - z_tip_cam);
+                            if (t > 0.0 && t <= 1.0)
+                            {
+                                double x_clip = x_base_cam + t * (x_tip_cam - x_base_cam);
+                                double y_clip = y_base_cam + t * (y_tip_cam - y_base_cam);
+                                tip_x = (x_clip / 0.2) * dispcx * zoom + dispcx;
+                                tip_y = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                                tip_valid = true;
+                            }
+                        }
+
+                        if (tip_valid)
+                        {
+                            if (rk.lift_px > 0.0 && rk.ground_dist > 0.0)
+                            {
+                                tip_y -= rk.lift_px * (dist_tip / rk.ground_dist);
+                            }
+
+                            double half_base_w = is_vegetation ? (rk.trunk_w_base * 0.5) : (rw * 0.45);
+                            ImVec2 shad_pts[3];
+                            shad_pts[0] = ImVec2(rx - half_base_w, ry);
+                            shad_pts[1] = ImVec2(rx + half_base_w, ry);
+                            shad_pts[2] = ImVec2(tip_x, tip_y);
+
+                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
+                        }
+                    }
+                }
+
                 for (int ri = 0; ri < num_rocks; ri++)
                 {
                     const RockInstance& rk = rocks[ri];
@@ -6262,45 +6365,6 @@ void draw_horizon()
                     double ry = rk.screen_y;
                     double rw = rk.width;
                     double rh = rk.height;
-
-                    if (has_sun_shadow && rw >= 3.0 && rk.base_valid)
-                    {
-                        double actual_rock_h = rk.size * rock_aspect;
-                        double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
-                        L_shadow = fmin(rk.dist * 1.5, fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow));
-
-                        double u_rock = rk.dist * sin(rk.theta);
-                        double v_rock = rk.dist * cos(rk.theta);
-
-                        double u_tip = u_rock - L_shadow * sin(sun_az_world);
-                        double v_tip = v_rock - L_shadow * cos(sun_az_world);
-
-                        double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
-                        double th_tip = atan2(u_tip, v_tip);
-                        double delta_tip = atan(h_eye / dist_tip) + (dist_tip / (2.0 * R_planet));
-                        if (s_horizon > 0.0)
-                        {
-                            delta_tip -= (dist_tip / s_horizon) * horizon_lift_rad;
-                        }
-
-                        Point pt_tip = rotate3D(zaxis, center, xaxis, delta_tip);
-                        pt_tip = rotate3D(pt_tip, center, yaxis, th_tip);
-                        Cartesian2D cart_tip(pt_tip, azimuth, altitude, zoom);
-
-                        if (cart_tip.x > -1e10)
-                        {
-                            double tip_x = cart_tip.x * dispcx + dispcx;
-                            double tip_y = cart_tip.y * dispcx + dispcy - rk.lift_px * (dist_tip / rk.dist);
-
-                            ImVec2 shad_pts[3];
-                            shad_pts[0] = ImVec2(rx - rw * 0.45, ry);
-                            shad_pts[1] = ImVec2(rx + rw * 0.45, ry);
-                            shad_pts[2] = ImVec2(tip_x, tip_y);
-
-                            ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, shadow_alpha));
-                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
-                        }
-                    }
 
                     if (rw < ROCK_PEBBLE_THRESH)
                     {
@@ -6529,7 +6593,7 @@ void draw_horizon()
                         double tilt_z = (next_rnd() - 0.5) * 0.12;
 
                         // Viewer depression angle looking down at ground at rock distance
-                        double alpha = atan2(h_eye, rk.dist);
+                        double alpha = atan2(h_eye, rk.ground_dist);
                         double cos_a = cos(alpha);
                         double sin_a = sin(alpha);
 

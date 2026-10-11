@@ -58,6 +58,7 @@
 struct RockInstance
 {
     double dist;
+    double ground_dist;
     double theta;
     double screen_x;
     double screen_y;
