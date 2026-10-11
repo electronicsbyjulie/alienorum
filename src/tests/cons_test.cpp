@@ -1365,14 +1365,14 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
 
     Point sun_pt = sun->location;
 
-    // 1. Separate ground-truth heliocentric constellations (from consline.dat) from others
-    std::vector<Constellation> ground_truth;
+    // 1. Separate reference heliocentric constellations (from consline.dat) from others
+    std::vector<Constellation> reference_cons;
     std::vector<Constellation> non_heliocentric;
     for (const auto& c : constellations)
     {
         if (c.vantage_name.empty() || c.vantage_name == "Sun" || c.vantage_name == "Sol")
         {
-            ground_truth.push_back(c);
+            reference_cons.push_back(c);
         }
         else
         {
@@ -1380,7 +1380,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
         }
     }
 
-    ASSERT_FALSE(ground_truth.empty());
+    ASSERT_FALSE(reference_cons.empty());
 
     // 2. Wipe heliocentric constellations so generate_constellations starts from a blank slate at [0,0,0]
     constellations = non_heliocentric;
@@ -1390,7 +1390,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
     ExoConsGenerator::generate_constellations(sun, generated_cons);
 
     // 4. Restore original constellations
-    constellations = ground_truth;
+    constellations = reference_cons;
     for (const auto& c : non_heliocentric)
     {
         constellations.push_back(c);
@@ -1455,18 +1455,18 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
         return acos(dot) * 180.0 / _pi;
     };
 
-    // Collect Ground Truth sets
-    std::set<std::pair<Star*, Star*>> gt_lines;
-    std::unordered_set<Star*> gt_stars;
-    std::vector<double> gt_spans;
-    std::vector<double> gt_line_lengths;
+    // Collect Reference sets
+    std::set<std::pair<Star*, Star*>> ref_lines;
+    std::unordered_set<Star*> ref_stars;
+    std::vector<double> ref_spans;
+    std::vector<double> ref_line_lengths;
 
-    for (const auto& c : ground_truth)
+    for (const auto& c : reference_cons)
     {
         double span = get_cons_span_deg(c, sun_pt);
         if (span > 0.0)
         {
-            gt_spans.push_back(span);
+            ref_spans.push_back(span);
         }
         for (const auto& cl : c.lines)
         {
@@ -1474,11 +1474,154 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
             {
                 Star* sa = std::min(cl.a, cl.b);
                 Star* sb = std::max(cl.a, cl.b);
-                gt_lines.insert({sa, sb});
-                gt_stars.insert(cl.a);
-                gt_stars.insert(cl.b);
-                gt_line_lengths.push_back(get_line_len_deg(cl.a, cl.b, sun_pt));
+                ref_lines.insert({sa, sb});
+                ref_stars.insert(cl.a);
+                ref_stars.insert(cl.b);
+                ref_line_lengths.push_back(get_line_len_deg(cl.a, cl.b, sun_pt));
             }
+        }
+    }
+
+    // Diagnostic check: test Pass 1, 2, 3 included stars vs reference_cons
+    struct StarCand { Star* s; double mag; Point u; std::string orig_cons; };
+    std::vector<StarCand> all_cands;
+    for (int i = 0; cels[i]; i++)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+        Star* s = (Star*)cels[i];
+        if (s == sun || s->cenobj == sun) continue;
+        double mag = s->viewer_magnitude(sun->location);
+        if (std::isnan(mag) || std::isinf(mag) || mag > 8.0) continue;
+        Point rel = (Point)s->location - sun_pt;
+        if (rel.magnitude() < 1e-9) continue;
+        all_cands.push_back({s, mag, rel * (1.0 / rel.magnitude()), ExoConsGenerator::extract_star_cons_abbrev(s)});
+    }
+
+    std::vector<StarCand> inc_cands;
+    std::unordered_set<Star*> inc_set;
+    for (const auto& c : all_cands)
+    {
+        if (c.mag < 4.0)
+        {
+            inc_cands.push_back(c);
+            inc_set.insert(c.s);
+        }
+    }
+    double cos4 = cos(4.0 * _pi / 180.0);
+    for (int iter = 0; iter < 2; iter++)
+    {
+        for (const auto& c : all_cands)
+        {
+            if (c.mag < 5.0 && !inc_set.count(c.s))
+            {
+                for (const auto& inc : inc_cands)
+                {
+                    if ((c.u.x * inc.u.x + c.u.y * inc.u.y + c.u.z * inc.u.z) >= cos4)
+                    {
+                        inc_cands.push_back(c);
+                        inc_set.insert(c.s);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    std::unordered_map<std::string, std::unordered_set<Star*>> inc_by_cons;
+    for (const auto& c : inc_cands)
+    {
+        inc_by_cons[c.orig_cons].insert(c.s);
+    }
+
+    double diag_sum_jaccard = 0.0;
+    int diag_count = 0;
+    for (const auto& rc : reference_cons)
+    {
+        std::string expected_abbr = rc.abbrev;
+        if (expected_abbr == "Ser1" || expected_abbr == "Ser2")
+        {
+            expected_abbr = "Ser";
+        }
+        std::unordered_set<Star*> unique_rc_stars;
+        for (const auto& cl : rc.lines)
+        {
+            if (cl.a && cl.b)
+            {
+                unique_rc_stars.insert(cl.a);
+                unique_rc_stars.insert(cl.b);
+            }
+        }
+        if (unique_rc_stars.empty()) continue;
+
+        const auto& c_stars = inc_by_cons[expected_abbr];
+        int shared = 0;
+        for (Star* s : c_stars)
+        {
+            if (unique_rc_stars.count(s)) shared++;
+        }
+        int un = (int)(unique_rc_stars.size() + c_stars.size()) - shared;
+        double jac = (un > 0) ? (double)shared / un : 0.0;
+        diag_sum_jaccard += jac;
+        diag_count++;
+    }
+    // Check line separation on reference_cons
+    int ref_line_sep_violations = 0;
+    for (size_t i = 0; i < reference_cons.size(); i++)
+    {
+        for (const auto& cl : reference_cons[i].lines)
+        {
+            if (!cl.a || !cl.b) continue;
+            Point pa = (Point)cl.a->location - sun_pt;
+            Point pb = (Point)cl.b->location - sun_pt;
+            Point ua = pa * (1.0 / pa.magnitude());
+            Point ub = pb * (1.0 / pb.magnitude());
+            double len_deg = acos(std::max(-1.0, std::min(1.0, ua.x*ub.x + ua.y*ub.y + ua.z*ub.z))) * 180.0 / _pi;
+            double half_len = 0.5 * len_deg;
+
+            for (size_t j = 0; j < reference_cons.size(); j++)
+            {
+                if (i == j) continue;
+                for (const auto& other_cl : reference_cons[j].lines)
+                {
+                    for (Star* other : {other_cl.a, other_cl.b})
+                    {
+                        if (!other) continue;
+                        Point po = (Point)other->location - sun_pt;
+                        Point uo = po * (1.0 / po.magnitude());
+                        double dist_a = acos(std::max(-1.0, std::min(1.0, ua.x*uo.x + ua.y*uo.y + ua.z*uo.z))) * 180.0 / _pi;
+                        double dist_b = acos(std::max(-1.0, std::min(1.0, ub.x*uo.x + ub.y*uo.y + ub.z*uo.z))) * 180.0 / _pi;
+                        if (dist_a < half_len - 1e-4 || dist_b < half_len - 1e-4)
+                        {
+                            ref_line_sep_violations++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    std::cout << "DIAGNOSTIC: reference_cons has " << ref_line_sep_violations << " line separation violations!" << std::endl;
+
+    for (const std::string& target_abbr : {"Ori", "Cas", "CrB", "Del", "UMa"})
+    {
+        for (const auto& rc : reference_cons)
+        {
+            if (rc.abbrev != target_abbr) continue;
+            std::unordered_set<Star*> unique_rc_stars;
+            for (const auto& cl : rc.lines)
+            {
+                if (cl.a && cl.b)
+                {
+                    unique_rc_stars.insert(cl.a);
+                    unique_rc_stars.insert(cl.b);
+                }
+            }
+            const auto& c_stars = inc_by_cons[target_abbr];
+            std::cout << "\n--- Constellation " << target_abbr << " ---" << std::endl;
+            std::cout << "Ref stars (" << unique_rc_stars.size() << "): ";
+            for (Star* s : unique_rc_stars) std::cout << (s->name[0] ? s->name : s->Bayer) << " (" << s->viewer_magnitude(sun->location) << "), ";
+            std::cout << "\nInc stars (" << c_stars.size() << "): ";
+            for (Star* s : c_stars) std::cout << (s->name[0] ? s->name : s->Bayer) << " (" << s->viewer_magnitude(sun->location) << "), ";
+            std::cout << std::endl;
         }
     }
 
@@ -1513,7 +1656,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
     int matching_lines = 0;
     for (const auto& l : gen_lines)
     {
-        if (gt_lines.count(l))
+        if (ref_lines.count(l))
         {
             matching_lines++;
         }
@@ -1523,22 +1666,22 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
     int shared_stars = 0;
     for (Star* s : gen_stars)
     {
-        if (gt_stars.count(s))
+        if (ref_stars.count(s))
         {
             shared_stars++;
         }
     }
 
     // Line stats
-    double line_recall = gt_lines.empty() ? 0.0 : (matching_lines * 100.0) / gt_lines.size();
+    double line_recall = ref_lines.empty() ? 0.0 : (matching_lines * 100.0) / ref_lines.size();
     double line_precision = gen_lines.empty() ? 0.0 : (matching_lines * 100.0) / gen_lines.size();
-    int line_union = (int)(gt_lines.size() + gen_lines.size()) - matching_lines;
+    int line_union = (int)(ref_lines.size() + gen_lines.size()) - matching_lines;
     double line_jaccard = (line_union > 0) ? (matching_lines * 100.0) / line_union : 0.0;
 
     // Star stats
-    double star_recall = gt_stars.empty() ? 0.0 : (shared_stars * 100.0) / gt_stars.size();
+    double star_recall = ref_stars.empty() ? 0.0 : (shared_stars * 100.0) / ref_stars.size();
     double star_precision = gen_stars.empty() ? 0.0 : (shared_stars * 100.0) / gen_stars.size();
-    int star_union = (int)(gt_stars.size() + gen_stars.size()) - shared_stars;
+    int star_union = (int)(ref_stars.size() + gen_stars.size()) - shared_stars;
     double star_jaccard = (star_union > 0) ? (shared_stars * 100.0) / star_union : 0.0;
 
     // Span stats
@@ -1573,14 +1716,14 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
         std_v = sqrt(sum_sq / v.size());
     };
 
-    double gt_min_span, gt_max_span, gt_mean_span, gt_std_span;
-    compute_stats(gt_spans, gt_min_span, gt_max_span, gt_mean_span, gt_std_span);
+    double ref_min_span, ref_max_span, ref_mean_span, ref_std_span;
+    compute_stats(ref_spans, ref_min_span, ref_max_span, ref_mean_span, ref_std_span);
 
     double gen_min_span, gen_max_span, gen_mean_span, gen_std_span;
     compute_stats(gen_spans, gen_min_span, gen_max_span, gen_mean_span, gen_std_span);
 
-    double gt_min_len, gt_max_len, gt_mean_len, gt_std_len;
-    compute_stats(gt_line_lengths, gt_min_len, gt_max_len, gt_mean_len, gt_std_len);
+    double ref_min_len, ref_max_len, ref_mean_len, ref_std_len;
+    compute_stats(ref_line_lengths, ref_min_len, ref_max_len, ref_mean_len, ref_std_len);
 
     double gen_min_len, gen_max_len, gen_mean_len, gen_std_len;
     compute_stats(gen_line_lengths, gen_min_len, gen_max_len, gen_mean_len, gen_std_len);
@@ -1605,32 +1748,32 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
         }
     }
 
-    // Distribution of ground truth spans:
-    int gt_span_under_15 = 0;
-    int gt_span_15_to_20 = 0;
-    int gt_span_over_20 = 0;
-    for (double s : gt_spans)
+    // Distribution of reference spans:
+    int ref_span_under_15 = 0;
+    int ref_span_15_to_20 = 0;
+    int ref_span_over_20 = 0;
+    for (double s : ref_spans)
     {
         if (s < 15.0)
         {
-            gt_span_under_15++;
+            ref_span_under_15++;
         }
         else if (s <= 20.0)
         {
-            gt_span_15_to_20++;
+            ref_span_15_to_20++;
         }
         else
         {
-            gt_span_over_20++;
+            ref_span_over_20++;
         }
     }
 
-    // Match each IAU constellation to best generated constellation
+    // Match each reference constellation to best generated constellation
     struct MatchRecord
     {
-        std::string gt_abbrev;
-        std::string gt_name;
-        int gt_star_count = 0;
+        std::string ref_abbrev;
+        std::string ref_name;
+        int ref_star_count = 0;
         std::string gen_abbrev;
         int shared_stars = 0;
         int shared_lines = 0;
@@ -1639,20 +1782,20 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
     std::vector<MatchRecord> match_records;
     double sum_best_jaccard = 0.0;
 
-    for (const auto& gc : ground_truth)
+    for (const auto& rc : reference_cons)
     {
-        std::unordered_set<Star*> gc_stars;
-        std::set<std::pair<Star*, Star*>> gc_lines;
-        for (const auto& cl : gc.lines)
+        std::unordered_set<Star*> rc_stars;
+        std::set<std::pair<Star*, Star*>> rc_lines;
+        for (const auto& cl : rc.lines)
         {
             if (cl.a && cl.b)
             {
-                gc_stars.insert(cl.a);
-                gc_stars.insert(cl.b);
-                gc_lines.insert({std::min(cl.a, cl.b), std::max(cl.a, cl.b)});
+                rc_stars.insert(cl.a);
+                rc_stars.insert(cl.b);
+                rc_lines.insert({std::min(cl.a, cl.b), std::max(cl.a, cl.b)});
             }
         }
-        if (gc_stars.empty())
+        if (rc_stars.empty())
         {
             continue;
         }
@@ -1676,12 +1819,12 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
             }
             for (Star* s : genc_stars)
             {
-                if (gc_stars.count(s))
+                if (rc_stars.count(s))
                 {
                     c_shared_stars++;
                 }
             }
-            int un = (int)(gc_stars.size() + genc_stars.size()) - c_shared_stars;
+            int un = (int)(rc_stars.size() + genc_stars.size()) - c_shared_stars;
             double jac = (un > 0) ? (double)c_shared_stars / un : 0.0;
 
             if (jac > best_jac)
@@ -1692,7 +1835,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
                 best_shared_lines = 0;
                 for (const auto& cl : genc.lines)
                 {
-                    if (cl.a && cl.b && gc_lines.count({std::min(cl.a, cl.b), std::max(cl.a, cl.b)}))
+                    if (cl.a && cl.b && rc_lines.count({std::min(cl.a, cl.b), std::max(cl.a, cl.b)}))
                     {
                         best_shared_lines++;
                     }
@@ -1700,7 +1843,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
             }
         }
 
-        match_records.push_back({gc.abbrev, gc.name, (int)gc_stars.size(), best_gen_name, best_shared_stars, best_shared_lines, best_jac});
+        match_records.push_back({rc.abbrev, rc.name, (int)rc_stars.size(), best_gen_name, best_shared_stars, best_shared_lines, best_jac});
         sum_best_jaccard += best_jac;
     }
 
@@ -1712,21 +1855,78 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
         return a.jaccard > b.jaccard;
     });
 
+    CelestialLocation sun_loc = sun->location;
+    // Magnitude stats
+    int ref_mag_u3 = 0, ref_mag_34 = 0, ref_mag_45 = 0, ref_mag_56 = 0, ref_mag_o6 = 0;
+    for (Star* s : ref_stars)
+    {
+        double m = s->viewer_magnitude(sun_loc);
+        if (m < 3.0)
+        {
+            ref_mag_u3++;
+        }
+        else if (m < 4.0)
+        {
+            ref_mag_34++;
+        }
+        else if (m < 5.0)
+        {
+            ref_mag_45++;
+        }
+        else if (m < 6.0)
+        {
+            ref_mag_56++;
+        }
+        else
+        {
+            ref_mag_o6++;
+        }
+    }
+    int gen_mag_u3 = 0, gen_mag_34 = 0, gen_mag_45 = 0, gen_mag_56 = 0, gen_mag_o6 = 0;
+    for (Star* s : gen_stars)
+    {
+        double m = s->viewer_magnitude(sun_loc);
+        if (m < 3.0)
+        {
+            gen_mag_u3++;
+        }
+        else if (m < 4.0)
+        {
+            gen_mag_34++;
+        }
+        else if (m < 5.0)
+        {
+            gen_mag_45++;
+        }
+        else if (m < 6.0)
+        {
+            gen_mag_56++;
+        }
+        else
+        {
+            gen_mag_o6++;
+        }
+    }
+
     // Print detailed metrics report
     std::cout << "\n================================================================================" << std::endl;
     std::cout << "  HELIOCENTRIC EXOCONS SIMILARITY & VARIANCE REPORT (consline.dat vs Generated) " << std::endl;
     std::cout << "================================================================================" << std::endl;
     std::cout << std::fixed << std::setprecision(2);
-    std::cout << "  Constellation Counts:       Ground Truth = " << ground_truth.size()
+    std::cout << "  Constellation Counts:       Reference = " << reference_cons.size()
               << ", Generated = " << generated_cons.size() << std::endl;
-    std::cout << "  Unique Constellation Stars: Ground Truth = " << gt_stars.size()
+    std::cout << "  Unique Constellation Stars: Reference = " << ref_stars.size()
               << ", Generated = " << gen_stars.size() << std::endl;
-    std::cout << "  Unique Lines:               Ground Truth = " << gt_lines.size()
+    std::cout << "    Ref Stars by Mag:         <3.0: " << ref_mag_u3 << " | 3-4: " << ref_mag_34
+              << " | 4-5: " << ref_mag_45 << " | 5-6: " << ref_mag_56 << " | >6: " << ref_mag_o6 << std::endl;
+    std::cout << "    Gen Stars by Mag:         <3.0: " << gen_mag_u3 << " | 3-4: " << gen_mag_34
+              << " | 4-5: " << gen_mag_45 << " | 5-6: " << gen_mag_56 << " | >6: " << gen_mag_o6 << std::endl;
+    std::cout << "  Unique Lines:               Reference = " << ref_lines.size()
               << ", Generated = " << gen_lines.size() << std::endl;
     std::cout << "--------------------------------------------------------------------------------" << std::endl;
     std::cout << "  [Star Overlap]" << std::endl;
     std::cout << "    Shared Stars:             " << shared_stars << std::endl;
-    std::cout << "    Star Recall (IAU stars):  " << star_recall << "%" << std::endl;
+    std::cout << "    Star Recall (Ref stars):  " << star_recall << "%" << std::endl;
     std::cout << "    Star Precision:           " << star_precision << "%" << std::endl;
     std::cout << "    Star Jaccard Index:       " << star_jaccard << "%" << std::endl;
     std::cout << "--------------------------------------------------------------------------------" << std::endl;
@@ -1737,26 +1937,26 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
     std::cout << "    Line Jaccard Index:       " << line_jaccard << "%" << std::endl;
     std::cout << "--------------------------------------------------------------------------------" << std::endl;
     std::cout << "  [Constellation Angular Span (degrees)]" << std::endl;
-    std::cout << "    Ground Truth (IAU):       Mean = " << gt_mean_span << " deg (std = " << gt_std_span << "), Range = [" << gt_min_span << " .. " << gt_max_span << "] deg" << std::endl;
-    std::cout << "      Distribution:           <15 deg: " << gt_span_under_15 << " | 15-20 deg: " << gt_span_15_to_20 << " | >20 deg: " << gt_span_over_20 << std::endl;
+    std::cout << "    Reference (IAU):          Mean = " << ref_mean_span << " deg (std = " << ref_std_span << "), Range = [" << ref_min_span << " .. " << ref_max_span << "] deg" << std::endl;
+    std::cout << "      Distribution:           <15 deg: " << ref_span_under_15 << " | 15-20 deg: " << ref_span_15_to_20 << " | >20 deg: " << ref_span_over_20 << std::endl;
     std::cout << "    Generated Exocons:        Mean = " << gen_mean_span << " deg (std = " << gen_std_span << "), Range = [" << gen_min_span << " .. " << gen_max_span << "] deg" << std::endl;
     std::cout << "      Distribution:           <15 deg: " << gen_span_under_15 << " | 15-20 deg: " << gen_span_15_to_20 << " | >20 deg: " << gen_span_over_20 << std::endl;
-    std::cout << "    Span Variance / Delta:    Mean diff = " << (gen_mean_span - gt_mean_span) << " deg" << std::endl;
+    std::cout << "    Span Variance / Delta:    Mean diff = " << (gen_mean_span - ref_mean_span) << " deg" << std::endl;
     std::cout << "--------------------------------------------------------------------------------" << std::endl;
     std::cout << "  [Line Length (degrees)]" << std::endl;
-    std::cout << "    Ground Truth (IAU):       Mean = " << gt_mean_len << " deg, Range = [" << gt_min_len << " .. " << gt_max_len << "] deg" << std::endl;
+    std::cout << "    Reference (IAU):          Mean = " << ref_mean_len << " deg, Range = [" << ref_min_len << " .. " << ref_max_len << "] deg" << std::endl;
     std::cout << "    Generated Exocons:        Mean = " << gen_mean_len << " deg, Range = [" << gen_min_len << " .. " << gen_max_len << "] deg" << std::endl;
     std::cout << "--------------------------------------------------------------------------------" << std::endl;
     std::cout << "  [Per-Constellation Best Match Similarity]" << std::endl;
-    std::cout << "    Average Best Match Jaccard across all IAU constellations: " << mean_cons_jaccard << "%" << std::endl;
+    std::cout << "    Average Best Match Jaccard across all Reference constellations: " << mean_cons_jaccard << "%" << std::endl;
     std::cout << "    Top 15 Most Similar Constellations:" << std::endl;
     int top_n = std::min(15, (int)match_records.size());
     for (int i = 0; i < top_n; i++)
     {
         const auto& mr = match_records[i];
-        std::cout << "      " << std::setw(3) << mr.gt_abbrev << " (" << std::setw(14) << std::left << mr.gt_name << std::right << ")"
+        std::cout << "      " << std::setw(3) << mr.ref_abbrev << " (" << std::setw(14) << std::left << mr.ref_name << std::right << ")"
                   << " -> " << std::setw(22) << std::left << mr.gen_abbrev << std::right
-                  << "  Shared Stars: " << mr.shared_stars << "/" << mr.gt_star_count
+                  << "  Shared Stars: " << mr.shared_stars << "/" << mr.ref_star_count
                   << "  Shared Lines: " << mr.shared_lines
                   << "  Jaccard: " << (mr.jaccard * 100.0) << "%" << std::endl;
     }

@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -335,7 +336,7 @@ namespace alienorum
         return "";
     }
 
-    static std::string extract_star_cons_abbrev(Star* s)
+    std::string ExoConsGenerator::extract_star_cons_abbrev(Star* s)
     {
         if (s->constellation[0])
         {
@@ -736,6 +737,15 @@ namespace alienorum
         }
         const int existing_cons_count = (int)cons_stars.size();
 
+        const char* pool_setting = std::getenv("ALIENORUM_EXOCONS_POOL_MAG");
+        const char* separation_setting = std::getenv("ALIENORUM_EXOCONS_SEPARATION");
+        const char* size_setting = std::getenv("ALIENORUM_EXOCONS_CLUSTER_SIZE");
+        const char* adaptive_setting = std::getenv("ALIENORUM_EXOCONS_ADAPTIVE_SIZE");
+        const double pool_mag = pool_setting ? std::atof(pool_setting) : 5.5;
+        const double separation_fraction = separation_setting ? std::atof(separation_setting) : 0.25;
+        const int cluster_size = size_setting ? std::atoi(size_setting) : 12;
+        const bool adaptive_size = adaptive_setting && std::atoi(adaptive_setting) != 0;
+
         // 2. Collect candidate stars outside local system
         std::vector<CandStar> candidates;
         candidates.reserve(8192);
@@ -768,7 +778,7 @@ namespace alienorum
             }
 
             double mag = s->viewer_magnitude(vantage_loc);
-            if (std::isnan(mag) || std::isinf(mag) || mag > 6.2)
+            if (std::isnan(mag) || std::isinf(mag) || mag > pool_mag)
             {
                 continue;
             }
@@ -801,6 +811,7 @@ namespace alienorum
 
         CandSpatialGrid cand_grid(candidates);
 
+
         // 3. Cluster stars by spatial proximity and brightness similarity
         std::vector<bool> assigned(candidates.size(), false);
 
@@ -813,8 +824,24 @@ namespace alienorum
 
         std::vector<SkyCluster> clusters;
 
+
         auto grow_cluster = [&](int seed_idx, int max_size)
         {
+            max_size = cluster_size;
+            if (adaptive_size && candidates[seed_idx].mag < 3.2)
+            {
+                int bright_neighbors = 0;
+                cand_grid.for_each_near(candidates[seed_idx].u, 15.0, [&](int i)
+                {
+                    if (!assigned[i] && candidates[i].mag <= 4.0
+                        && ang_dist_deg(candidates[seed_idx].u, candidates[i].u) <= 15.0)
+                    {
+                        bright_neighbors++;
+                    }
+                });
+                max_size = std::max(max_size, std::min(24, bright_neighbors * 2));
+            }
+            const double cluster_mag_limit = 5.5;
             SkyCluster cl;
             cl.star_indices.push_back(seed_idx);
             assigned[seed_idx] = true;
@@ -822,7 +849,7 @@ namespace alienorum
             cl.mean_mag = candidates[seed_idx].mag;
 
             std::vector<int> cluster_candidates;
-            cand_grid.for_each_near(cl.center, 30.0, [&](int i)
+            cand_grid.for_each_near(cl.center, 35.0, [&](int i)
             {
                 cluster_candidates.push_back(i);
             });
@@ -831,6 +858,7 @@ namespace alienorum
             {
                 int best_cand = -1;
                 double best_cost = 1e9;
+                bool best_is_dim = true;
 
                 for (int i : cluster_candidates)
                 {
@@ -842,57 +870,67 @@ namespace alienorum
 
                     // Skip dimmer stars in initial cluster growth to allow constellations
                     // to reach across wider areas of prominent stars
-                    if (cand.mag > 5.2 && cl.mean_mag < 4.5)
+                    if (cand.mag > 5.2 && cl.mean_mag < 4.2)
                     {
                         continue;
                     }
-                    if (cand.mag > 5.7)
+                    // Sparse regions can use fainter stars without crowding bright figures.
+                    if (cand.mag > cluster_mag_limit)
                     {
                         continue;
                     }
 
                     double dist_center = ang_dist_deg(cand.u, cl.center);
-                    if (dist_center > 40.0)
+                    if (dist_center > 32.0)
                     {
                         continue;
                     }
 
                     double min_nbr_dist = 1e9;
-                    double nbr_mag = cl.mean_mag;
+                    double best_nbr_mag_diff = 1e9;
                     for (int member_idx : cl.star_indices)
                     {
                         double d = ang_dist_deg(cand.u, candidates[member_idx].u);
                         if (d < min_nbr_dist)
                         {
                             min_nbr_dist = d;
-                            nbr_mag = candidates[member_idx].mag;
+                        }
+                        if (d <= 15.0)
+                        {
+                            double md = std::abs(cand.mag - candidates[member_idx].mag);
+                            if (md < best_nbr_mag_diff)
+                            {
+                                best_nbr_mag_diff = md;
+                            }
                         }
                     }
 
-                    if (min_nbr_dist > 14.5)
+                    const bool is_dim = cand.mag > 4.0 && candidates[seed_idx].mag <= 4.0;
+                    if (min_nbr_dist > (is_dim ? 4.0 : 10.0))
                     {
                         continue;
                     }
 
-                    double mag_diff_nbr = std::abs(cand.mag - nbr_mag);
                     double mag_diff_mean = std::abs(cand.mag - cl.mean_mag);
                     // Clusters must consist of similarly bright stars
-                    double max_delta = (cand.mag <= 3.5 || cl.mean_mag <= 3.5) ? 2.8 : 1.8;
-                    if (mag_diff_mean > max_delta || mag_diff_nbr > max_delta)
+                    double max_delta = (cand.mag <= 4.0 || cl.mean_mag <= 3.8) ? 3.0 : 2.0;
+                    if (mag_diff_mean > max_delta || best_nbr_mag_diff > max_delta)
                     {
                         continue;
                     }
 
-                    // Prioritize by spatial proximity vs. by magnitude difference
-                    double cost = min_nbr_dist + 1.0 * mag_diff_nbr + 1.0 * mag_diff_mean;
-                    if (cost < best_cost)
+                    // Prioritize by spatial proximity, magnitude similarity, and absolute brightness
+                    double cost = min_nbr_dist + 0.6 * best_nbr_mag_diff + 0.6 * mag_diff_mean + 1.8 * cand.mag;
+                    if (best_cand < 0 || (!is_dim && best_is_dim)
+                        || (is_dim == best_is_dim && cost < best_cost))
                     {
                         best_cost = cost;
                         best_cand = (int)i;
+                        best_is_dim = is_dim;
                     }
                 }
 
-                if (best_cand >= 0 && best_cost <= 22.0)
+                if (best_cand >= 0 && best_cost <= 26.0)
                 {
                     cl.star_indices.push_back(best_cand);
                     assigned[best_cand] = true;
@@ -925,7 +963,7 @@ namespace alienorum
             }
             if (!assigned[i])
             {
-                grow_cluster((int)i, 13);
+                grow_cluster((int)i, 12);
             }
         }
 
@@ -944,15 +982,22 @@ namespace alienorum
             bool too_close = false;
             for (const auto& cl : clusters)
             {
-                if (ang_dist_deg(candidates[i].u, cl.center) < 18.0)
+                for (int member_idx : cl.star_indices)
                 {
-                    too_close = true;
+                    if (ang_dist_deg(candidates[i].u, candidates[member_idx].u) < 6.0)
+                    {
+                        too_close = true;
+                        break;
+                    }
+                }
+                if (too_close)
+                {
                     break;
                 }
             }
             if (!too_close)
             {
-                grow_cluster((int)i, 13);
+                grow_cluster((int)i, 10);
             }
         }
 
@@ -971,7 +1016,7 @@ namespace alienorum
             bool region_covered = false;
             for (const auto& cl : clusters)
             {
-                if (ang_dist_deg(sample_pt, cl.center) < 18.0)
+                if (ang_dist_deg(sample_pt, cl.center) < 19.5)
                 {
                     region_covered = true;
                     break;
@@ -1000,7 +1045,7 @@ namespace alienorum
 
                 if (best_seed >= 0)
                 {
-                    grow_cluster(best_seed, 11);
+                    grow_cluster(best_seed, 8);
                 }
             }
         }
@@ -1019,20 +1064,20 @@ namespace alienorum
                 for (size_t ci = 0; ci < clusters.size(); ci++)
                 {
                     double d = ang_dist_deg(candidates[i].u, clusters[ci].center);
-                    if (d < min_dist && std::abs(candidates[i].mag - clusters[ci].mean_mag) <= 1.8)
+                    if (d < min_dist)
                     {
                         min_dist = d;
                         best_cl_idx = (int)ci;
                     }
                 }
-                if (best_cl_idx >= 0 && min_dist <= 20.0)
+                if (best_cl_idx >= 0 && min_dist <= 24.0)
                 {
                     clusters[best_cl_idx].star_indices.push_back((int)i);
                     assigned[i] = true;
                 }
                 else
                 {
-                    grow_cluster((int)i, 8);
+                    grow_cluster((int)i, 10);
                 }
             }
         }
@@ -1044,12 +1089,12 @@ namespace alienorum
             Star* sb, Point ub,
             double len_deg, int target_cons_idx) -> bool
         {
-            if (len_deg > 15.0 || len_deg < 0.1)
+            if (len_deg > 30.0 || len_deg < 0.1)
             {
                 return false;
             }
 
-            double half_len = 0.5 * len_deg;
+            double half_len = separation_fraction * len_deg;
             double cos_half = cos(half_len * (_pi / 180.0));
 
             // Condition 1: line (sa, sb) must not connect any star that is less than half its length
@@ -1103,16 +1148,17 @@ namespace alienorum
                 {
                     continue;
                 }
+                double cos_separation = cos(separation_fraction * el.len_deg * (_pi / 180.0));
                 if (sa_new)
                 {
-                    if (dot_product(el.ua, ua) > el.cos_half_len || dot_product(el.ub, ua) > el.cos_half_len)
+                    if (dot_product(el.ua, ua) > cos_separation || dot_product(el.ub, ua) > cos_separation)
                     {
                         return false;
                     }
                 }
                 if (sb_new)
                 {
-                    if (dot_product(el.ua, ub) > el.cos_half_len || dot_product(el.ub, ub) > el.cos_half_len)
+                    if (dot_product(el.ua, ub) > cos_separation || dot_product(el.ub, ub) > cos_separation)
                     {
                         return false;
                     }
@@ -1131,6 +1177,7 @@ namespace alienorum
             // Condition 4: Near miss check against all candidate stars
             Point mid_u = normalize_point(ua + ub);
             bool near_miss = false;
+            const bool prominent_connection = star_mag_map[sa] <= 4.0 && star_mag_map[sb] <= 4.0;
             cand_grid.for_each_near(mid_u, 0.5 * len_deg + 2.5, [&](int cand_idx)
             {
                 if (near_miss)
@@ -1139,6 +1186,13 @@ namespace alienorum
                 }
                 const auto& cand = candidates[cand_idx];
                 if (cand.s == sa || cand.s == sb)
+                {
+                    return;
+                }
+                // Faint points do not interrupt the bright skeleton, even when
+                // selected as branches of the same figure.
+                if (cand.mag > 4.0 && (prominent_connection || !active_cluster_stars
+                    || !active_cluster_stars->count(cand.s)))
                 {
                     return;
                 }
@@ -1215,7 +1269,7 @@ namespace alienorum
                     const auto& cb = candidates[star_indices[j]];
 
                     double len = ang_dist_deg(ca.u, cb.u);
-                    if (len > 15.0 || len < 0.1)
+                    if (len > 30.0 || len < 0.1)
                     {
                         continue;
                     }
@@ -1226,7 +1280,10 @@ namespace alienorum
                     }
 
                     double mag_diff = std::abs(ca.mag - cb.mag);
-                    double cost = len * (1.0 + 0.4 * mag_diff) * (1.0 + 0.1 * std::min(ca.mag, cb.mag));
+                    double avg_mag = 0.5 * (ca.mag + cb.mag);
+                    double effective_len = std::max(2.8, len);
+                    double mag_bonus = (ca.mag < 3.5 && cb.mag < 3.5) ? 0.6 : (avg_mag < 4.0 ? 0.8 : 1.0);
+                    double cost = effective_len * mag_bonus * (1.0 + 0.3 * mag_diff) * (1.0 + 0.12 * avg_mag);
                     valid_edges.push_back({i, j, cost, len});
                 }
             }
@@ -1439,7 +1496,7 @@ namespace alienorum
                 }
             }
 
-            if (final_edges.size() < 3)
+            if (final_edges.empty())
             {
                 continue;
             }
@@ -1513,6 +1570,12 @@ namespace alienorum
 
             Point u_bright = candidates[ci].u;
             bool connected = false;
+
+            bool is_nu = (s_bright && s_bright->name && std::string(s_bright->name).find("Nu Hy") != std::string::npos);
+            if (is_nu)
+            {
+                printf("DEBUG: Nu Hydrae entered Step 6. candidates ci=%zu, mag=%.2f, out_cons.size()=%zu\n", ci, candidates[ci].mag, out_cons.size());
+            }
 
             // Step A: Attempt to attach to an existing constellation (direct or via bridging star)
             Star* best_existing_target = nullptr;
@@ -1669,6 +1732,11 @@ namespace alienorum
                         b_stars.push_back(other_i);
                     }
                 });
+
+                if (is_nu)
+                {
+                    printf("DEBUG: Nu Hydrae in Step B: b_stars.size()=%zu\n", b_stars.size());
+                }
 
                 if (b_stars.size() >= 4)
                 {
@@ -1895,6 +1963,11 @@ namespace alienorum
                     }
                 }
 
+                if (is_nu)
+                {
+                    printf("DEBUG: Nu Hydrae after Step B: connected=%d\n", (int)connected);
+                }
+
                 if (!connected)
                 {
                     std::vector<int> near_indices;
@@ -1931,6 +2004,11 @@ namespace alienorum
                                 break;
                             }
                         }
+                    }
+
+                    if (is_nu)
+                    {
+                        printf("DEBUG: Nu Hydrae fallback: near_indices.size()=%zu, dedicated_stars.size()=%zu\n", near_indices.size(), dedicated_stars.size());
                     }
 
                     if (dedicated_stars.size() >= 3)
