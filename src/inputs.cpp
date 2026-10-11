@@ -228,23 +228,23 @@ void show_menu()
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
 
-            if (noexo)
+            if (noexo || exoplanet_loading.load())
             {
-                if (ImGui::MenuItem("Load Exoplanets", ""))
+                if (exoplanet_loading.load())
                 {
-                    CatalogReader cr;
-                    cr.load_exoplanets_from_tap(true);
-
-                    cr.read_star_orbits_dat(cels);
-
-                    cout << "Reading exoplanets..." << endl << flush;
-                    int nexo = cr.load_exoplanets_from_tap();
-                    if (!nexo) nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
-                    if (nexo) have_exo = true;
-                    num_planets += nexo;
-                    cout << "Read " << nexo << " objects." << endl << flush;
-                    
-                    noexo = false;
+                    float progress = exoplanet_load_progress.load();
+                    char overlay[64];
+                    snprintf(overlay, sizeof(overlay), "%.0f%%", progress * 100.0f);
+                    ImGui::MenuItem("Loading Exoplanets...", "", false, false);
+                    ImGui::ProgressBar(progress, ImVec2(180, 0), overlay);
+                }
+                else
+                {
+                    if (ImGui::MenuItem("Load Exoplanets", ""))
+                    {
+                        start_exoplanet_background_load();
+                        menu_clicked = true;
+                    }
                 }
             }
 

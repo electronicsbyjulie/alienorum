@@ -19,6 +19,7 @@
 #include "serial.h"
 #include "cons.h"
 #include "shore.h"
+#include "../globals.h"
 
 // Zeta 1,2 Reticuli is the test case for binary detection: well separated in distance and angle,
 // near edge-on, close enough to calibrate parallax tolerances, and NOT flagged as an A/B pair in
@@ -7156,10 +7157,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         FILE* fp = fopen(derived_cache, "rb");
         if (fp)
         {
+            fseek(fp, 0, SEEK_END);
+            long total_bytes = ftell(fp);
+            fseek(fp, 0, SEEK_SET);
+
             ExoRow row;
             int addedexo = 0;
             Star* last_host_star = nullptr;
             std::string last_hostname;
+            int line_count = 0;
 
             while (exorow_read_line(fp, row))
             {
@@ -7170,6 +7176,26 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 if (ncelobjs >= MAX_CELOBJS)
                 {
                     break;
+                }
+
+                line_count++;
+                if (exoplanet_loading.load() && (line_count & 31) == 0 && total_bytes > 0)
+                {
+                    long pos = ftell(fp);
+                    float frac = (float)pos / (float)total_bytes;
+                    if (frac > 1.0f)
+                    {
+                        frac = 1.0f;
+                    }
+                    if (stars_only)
+                    {
+                        exoplanet_load_progress.store(0.05f + 0.38f * frac);
+                    }
+                    else
+                    {
+                        exoplanet_load_progress.store(0.50f + 0.48f * frac);
+                        exoplanet_count_loaded.store(addedexo);
+                    }
                 }
 
                 Star* host_star = nullptr;
@@ -7672,9 +7698,30 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     int rows_written = 0;
     Star* last_host_star = nullptr;
     std::string last_hostname;
+    size_t total_p = planets_array.size();
+    size_t cur_p = 0;
 
     for (const auto& jrow : planets_array)
     {
+        cur_p++;
+        if (exoplanet_loading.load() && (cur_p & 31) == 0 && total_p > 0)
+        {
+            float frac = (float)cur_p / (float)total_p;
+            if (frac > 1.0f)
+            {
+                frac = 1.0f;
+            }
+            if (stars_only)
+            {
+                exoplanet_load_progress.store(0.05f + 0.38f * frac);
+            }
+            else
+            {
+                exoplanet_load_progress.store(0.50f + 0.48f * frac);
+                exoplanet_count_loaded.store(result);
+            }
+        }
+
         if (ncelobjs >= MAX_CELOBJS)
         {
             std::cerr << "Warning: Maximum sequential object allocation threshold reached (" << MAX_CELOBJS << ")." << std::endl;

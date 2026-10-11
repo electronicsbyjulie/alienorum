@@ -737,6 +737,7 @@ int main (int argc, char** argv)
             if (locwnd) draw_loc_window(io);
             if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
+            draw_exoplanet_load_window(io);
 
             if (just_clicked_menu)
             {
@@ -1188,6 +1189,10 @@ int main (int argc, char** argv)
     if (astorb_thread.joinable())
     {
         astorb_thread.join();
+    }
+    if (exoplanet_load_thread.joinable())
+    {
+        exoplanet_load_thread.join();
     }
     alienorum::ExoConsGenerator::reset();
 

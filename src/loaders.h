@@ -27,6 +27,8 @@ void reload_stuff();
 bool save_user_json();
 void start_astorb_background_load();
 void link_astorb_with_cels();
+void start_exoplanet_background_load();
+void load_exoplanets_worker();
 
 extern int sats_added, sat_errors;
 extern std::atomic<bool> batch_sats_running;

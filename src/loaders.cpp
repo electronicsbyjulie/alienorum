@@ -1703,3 +1703,64 @@ void link_astorb_with_cels()
         }
     }
 }
+
+void load_exoplanets_worker()
+{
+    try
+    {
+        exoplanet_load_progress.store(0.05f);
+        CatalogReader cr;
+        cr.load_exoplanets_from_tap(true);
+        exoplanet_load_progress.store(0.45f);
+
+        cr.read_star_orbits_dat(cels);
+        exoplanet_load_progress.store(0.50f);
+
+        std::cout << "Reading exoplanets..." << std::endl << std::flush;
+        int nexo = cr.load_exoplanets_from_tap();
+        if (!nexo)
+        {
+            nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
+        }
+        if (nexo)
+        {
+            have_exo = true;
+        }
+        num_planets += nexo;
+        exoplanet_count_loaded.store(nexo);
+        std::cout << "Read " << nexo << " objects." << std::endl << std::flush;
+
+        noexo = false;
+        exoplanet_load_progress.store(1.0f);
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Exception in load_exoplanets_worker: " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown exception in load_exoplanets_worker." << std::endl;
+    }
+    exoplanet_loading.store(false);
+}
+
+void start_exoplanet_background_load()
+{
+    if (exoplanet_loading.load())
+    {
+        return;
+    }
+
+    if (exoplanet_load_thread.joinable())
+    {
+        exoplanet_load_thread.join();
+    }
+
+    exoplanet_load_progress.store(0.0f);
+    exoplanet_count_loaded.store(0);
+    exoplanet_load_wnd = true;
+    exoplanet_loading.store(true);
+
+    exoplanet_load_thread = std::thread(load_exoplanets_worker);
+}
+
