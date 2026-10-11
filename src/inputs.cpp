@@ -240,7 +240,7 @@ void show_menu()
                 }
                 else
                 {
-                    if (ImGui::MenuItem("Load Exoplanets", ""))
+                    if (ImGui::MenuItem("Load Exoplanets", "F2"))
                     {
                         start_exoplanet_background_load();
                         menu_clicked = true;
@@ -1195,18 +1195,20 @@ void process_key_end()
 
 void process_key_F1()
 {
+    menu = !menu;
 }
 
 void process_key_F2()
 {
-    menu = !menu;
+    if (noexo) start_exoplanet_background_load();
+    noexo = false;
 }
 
 void process_key_F3()
 {
-        focus_findbox = true;
-        statuswnd = true;
-        lookfor[0] = 0;
+    focus_findbox = true;
+    statuswnd = true;
+    lookfor[0] = 0;
 }
 
 void process_key_F4()

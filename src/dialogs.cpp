@@ -129,7 +129,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 {
     if (!cels[1]) return;
     int stattop = menu ? menu_ht : 0, statleft = 0;
-    ImGui::Begin("Status", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin("Status (S)", &statuswnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     /////////////////////////////////////////////////////
 
@@ -669,7 +669,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 void draw_objinf_window(ImGuiIO& io)                // the N panel
 {
     if (!cels[1]) return;
-    ImGui::Begin("Object", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin("Object (N)", &objinfwnd, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
 
     if (trackidx >= 0)
     {
@@ -1022,8 +1022,30 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
     }
     else
     {
-        objname = "Press N to toggle\nthis window.";
-        ImGui::Text("%s", objname.c_str());
+        ImGui::Text("Hover over an");
+        ImGui::Text("object for info.");
+        ImGui::Separator();
+        ImGui::Text("Press F1 for menu");
+        ImGui::Text("& key shortcuts.");
+        if (noexo)
+        {
+            ImGui::Separator();
+            ImGui::Text("Press F2 to load");
+            ImGui::Text("exoplanets.");
+        }
+        if (view_mode == vm_horizon)
+        {
+            ImGui::Separator();
+            ImGui::Text("To show/hide trees");
+            ImGui::Text("and terrain press");
+            ImGui::Text("Ctrl+T.");
+            ImGui::Separator();
+            ImGui::Text("To show/hide clouds");
+            ImGui::Text("and rain press");
+            ImGui::Text("Ctrl+C.");
+        }
+        ImGui::Separator();
+        ImGui::Text("Fullscreen: F11.");
         if (is_click && !dragged) selected = -1;
     }
 

@@ -1199,6 +1199,7 @@ void load_stuff()
         json j;
         fs >> j;
         double dbl;
+        if (!noexo) try { j.at("ExosOnDemand").get_to(noexo); } catch(...) { noexo = true; }
         try { j.at("Latitude").get_to(dbl); viewer_lat = viewer_home_lat = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Longitude").get_to(dbl); viewer_lon = viewer_home_lon = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Timezone").get_to(dbl); viewer_tz = viewer_home_tz = dbl * 60; } catch(...) { ; }
@@ -1231,23 +1232,8 @@ void load_stuff()
             ;
         }
 
-        try
-        {
-            j.at("FaveStars").get_to(lfaves);
-        }
-        catch (...)
-        {
-            ;
-        }
-
-        try
-        {
-            j.at("PlayRiseSetSounds").get_to(play_rise_set_sound);
-        }
-        catch (...)
-        {
-            ;
-        }
+        try { j.at("FaveStars").get_to(lfaves); } catch (...) {;}
+        try { j.at("PlayRiseSetSounds").get_to(play_rise_set_sound); } catch (...) {;}
 
         try
         {
@@ -1287,6 +1273,8 @@ void load_stuff()
     {
         viewer_lat = 32.5425   * fiftyseventh;              // Babylon, site of some of the earliest attested astronomical knowledge.
         viewer_lon = 44.421111 * fiftyseventh;
+
+        noexo = true;                       // Default to fast load for first run, since a first-time user probably won't jump straight to exos and we tell how to load them.
     }
 
     if (load_aborted()) return;

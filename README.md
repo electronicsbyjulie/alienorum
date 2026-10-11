@@ -57,7 +57,7 @@ After downloading finishes, the application will load a selection of stars from 
 
 ## Menu
 
-To access the menu system, press F2. Every menu command has a keyboard shortcut. For certain functions such as spaceflight, you will definitely want to memorize the keyboard shortcuts since accessing everything through a menu is by nature not fast enough to effectively control the app while zooming past planets.
+To access the menu system, press F1. Every menu command has a keyboard shortcut. For certain functions such as spaceflight, you will definitely want to memorize the keyboard shortcuts since accessing everything through a menu is by nature not fast enough to effectively control the app while zooming past planets.
 
 
 ## Spaceflight
@@ -156,6 +156,11 @@ IMPORTANT: After loading a universe with F4, subsequently saving your changes wi
 
 ## Editing user.json
 
+In the project root folder is a file called `user.json`, a standard JSON-formatted settings file. If you don't see this file, press Shift+U from the Alienorum app window
+and the app will create the file. You can edit it in a normal text editor as long as the format stays valid JSON. For best results, paste the edited file contents into a 
+JSON validator or ask an AI to check the syntax.
+
+
 ### Setting Your Latitude/Longitude
 
 The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json`
@@ -221,6 +226,28 @@ You can also set a different theme for each day of the week if you prefer. The d
 ```
 
 The above example will start the application in Lacerta theme on Sundays, Crater on Mondays, Dorado on Tuesdays, and so on.
+
+
+### Setting Your Eye Height
+
+In planetfall mode, certain features depend on the eye level of the viewer above the ground. You can fine tune this in `user.json` by specifying `EyeHeight` in centimeters,
+for example:
+
+```
+    "EyeHeight": 176.0
+```
+
+
+### Configuring Exoplanet Loading
+
+By default, Alienorum will load exoplanets during application startup, when it reads the star catalog, solar system, constellations, and so on. However, the sheer number
+of known exoplanets is large enough that loading them all takes about a minute, which is too much extra effort if all you want to do is find out what's visible in your area
+tonight or fly around the Solar System. However, if your use of the app is more focused on exoplanets, you can add the following line in `user.json` to enable loading the
+exoplanet catalog every time the application starts:
+
+```
+    "ExosOnDemand": false
+```
 
 
 ## Troubleshooting
