@@ -179,7 +179,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 
     ImGui::Separator();
 
-    flagstr = (std::string)"Redlgt (Sh+R): "
+    /*flagstr = (std::string)"Redlgt (Sh+R): "
         + std::string(redlight_mode ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
@@ -210,7 +210,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s", flagstr.c_str());
     }
 
-    ImGui::Separator();
+    ImGui::Separator();*/
 
     flagstr = (std::string)"Labels (L): "
         + std::string(show_labels ? (shortnames ? "SHORT" : "ON") : "OFF");
@@ -292,7 +292,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         }
     }
 
-    flagstr = (std::string)"Galaxy labels (K): "
+    /*flagstr = (std::string)"Galaxy labels (K): "
         + std::string(label_galaxies ? "ON" : "OFF");
     ImGui::Text("%s", flagstr.c_str());
 
@@ -312,7 +312,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::InputDouble("##lbllsysmasslim", &lbllsys_mass_lim, 0, 0, "%.2e");
         ImGui::SameLine();
         ImGui::Text("kg");
-    }
+    }*/
 
     ImGui::Separator();
 
@@ -413,6 +413,28 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s %s", datedisp.c_str(), timedisp.c_str());
     }
 
+    if (view_mode == vm_horizon && whereami >= 0 && cels && cels[whereami])
+    {
+        double solartime = cels[whereami]->local_solar_time(viewer_lon);
+        if (solartime >= 0)
+        {
+            double total_sec = (solartime / (_pi * 2)) * 86400.0;
+            int sec_int = (int)floor(total_sec);
+            if (sec_int >= 86400)
+            {
+                sec_int = 0;
+            }
+            else if (sec_int < 0)
+            {
+                sec_int = 0;
+            }
+            int hr = sec_int / 3600;
+            int mn = (sec_int % 3600) / 60;
+            int sec = sec_int % 60;
+            ImGui::Text("Local solar time: %02d:%02d:%02d", hr, mn, sec);
+        }
+    }
+
     std::string JDdisp = std::string("JD") + std::to_string(JDnow);
     ImGui::Text("%s", JDdisp.c_str());
 
@@ -421,11 +443,11 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     ImGui::Separator();
 
     std::string numobjs;
-    if (num_stars)
+    /*if (num_stars)
     {
         numobjs = std::to_string(num_stars) + " stars";
         ImGui::Text("%s", numobjs.c_str());
-    }
+    }*/
     if (num_stars_in_box>1)             // There will always be at least one.
     {
         numobjs = std::to_string(num_stars_in_box) + " stars in range";

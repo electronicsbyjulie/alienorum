@@ -166,6 +166,47 @@ TEST(CelestialObjectTest, TidalLockingEvaluation)
     EXPECT_FALSE(planet.is_tidal_locked());
 }
 
+TEST(CelestialObjectTest, LocalSolarTimeReturnsNegativeWithoutLightCenter)
+{
+    Star a_star;
+    EXPECT_LT(a_star.local_solar_time(0.0), 0.0);
+
+    Planet rogue_planet;
+    rogue_planet.type = rocky;
+    EXPECT_LT(rogue_planet.local_solar_time(0.0), 0.0);
+}
+
+TEST(CelestialObjectTest, LocalSolarTimeCalculatesCorrectHours)
+{
+    Star host_star;
+    host_star.location.local_position = Point(0, 0, 0);
+
+    Planet planet;
+    planet.type = rocky;
+    planet.location.local_position = Point(AU, 0, 0);
+    planet.location.equatorial_plane.a = 0;
+    planet.sidereal_rotational_period = oneday;
+
+    planet.orbit = new Orbit();
+    planet.orbit->center = &host_star;
+
+    Point star_rel = Point(0, 0, 0) - Point(AU, 0, 0);
+    Point star_body = rotate3D(star_rel, center, yaxis, planet.timeofday());
+    double subsolar_lon = find_angle(star_body.z, -star_body.x);
+
+    double noon_time = planet.local_solar_time(subsolar_lon);
+    EXPECT_NEAR(noon_time, _pi, 1e-6);
+
+    double midnight_time = planet.local_solar_time(subsolar_lon + _pi);
+    EXPECT_NEAR(midnight_time, 0.0, 1e-6);
+
+    double sunset_time = planet.local_solar_time(subsolar_lon + half_pi);
+    EXPECT_NEAR(sunset_time, 1.5 * _pi, 1e-6);
+
+    double sunrise_time = planet.local_solar_time(subsolar_lon - half_pi);
+    EXPECT_NEAR(sunrise_time, 0.5 * _pi, 1e-6);
+}
+
 TEST(CelestialObjectTest, DensityCalculation)
 {
     CelestialObject cel;

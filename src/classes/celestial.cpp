@@ -187,6 +187,36 @@ double alienorum::CelestialObject::timeofday()
     return _currTOD;
 }
 
+double alienorum::CelestialObject::local_solar_time(double lon)
+{
+    CelestialObject *lcen = get_light_center();
+    if (!lcen || lcen == this)
+    {
+        return -1.0;
+    }
+
+    Point star_rel = (lcen->location.galactic_center - location.galactic_center) * light_year * 1e+6
+        + (lcen->location.system_center - location.system_center)
+        + (lcen->location.local_position - location.local_position);
+
+    if (star_rel.squared_magnitude() == 0)
+    {
+        return -1.0;
+    }
+
+    Point star_eq = rotate3D(star_rel, center, location.equatorial_plane.v, location.equatorial_plane.a);
+    Point star_body = rotate3D(star_eq, center, yaxis, timeofday());
+    double star_lon = find_angle(star_body.z, -star_body.x);
+    double H = lon - star_lon;
+    double solar_angle = std::fmod(H + _pi, _pi * 2);
+    if (solar_angle < 0)
+    {
+        solar_angle += _pi * 2;
+    }
+
+    return solar_angle;
+}
+
 int alienorum::CelestialObject::read_locales(std::string fn)
 {
     bool upside_down = !strcmp(name, "Venus");          // kludge

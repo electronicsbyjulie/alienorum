@@ -375,6 +375,7 @@ namespace alienorum
         double get_horizon_angle();
         double get_horizon_distance();
         double timeofday();
+        double local_solar_time(double lon);
         int read_locales(std::string json_fname);
         inline bool is_tidal_locked() { return orbit ? (fabs((sidereal_rotational_period / orbit->period) - 1) < 0.01) : false; }
 
