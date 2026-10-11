@@ -4058,6 +4058,7 @@ void draw_system_view()
         if (lbl_localsys)
         {
             const char *dispname = s->name;
+            if (s->local_name.size()) dispname = s->local_name.c_str();
             int disph = dispcy * 2;
             ImFont *font = global_font;
             double lfontsz = global_font_size;
