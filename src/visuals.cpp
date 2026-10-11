@@ -6059,7 +6059,7 @@ void draw_horizon()
                     double local_max_dist = ROCK_MAX_DIST * (1.25 + az_var);
 
                     // Distance distribution with natural density spread
-                    double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.4);
+                    double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.0);
                     double dist_ratio = dist_m / local_max_dist;
                     if (dist_ratio >= 1.0)
                     {
