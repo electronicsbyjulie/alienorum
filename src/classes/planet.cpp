@@ -110,7 +110,7 @@ bool alienorum::Planet::estimate_habitability()
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
-        if (randomize_txgen)
+        if (!has_water && randomize_txgen)
         {
             if (type == waterworld || type == hycean) has_water = 1;
             else if (T_surf < 0.9 * water_freezing)
@@ -1111,6 +1111,7 @@ json Planet::to_json()
     if (atm) towrite["atmosphere"] = atm->to_json();
     if (J2) towrite["J2"] = J2;
     towrite["overcast"] = overcast;
+    towrite["has_water"] = has_water;
 
     // Both of these come from a catalog originally -- the astorb row number, and the flag that
     // says the catalog stated a type we are not to second-guess in classify(). They used not to
@@ -1192,6 +1193,7 @@ bool Planet::from_json(json j)
     try { j.at("ring_inner_radius").get_to(ring_inner_radius); ring_inner_radius *= 1e3; } catch (...) { ; }
     try { j.at("ring_mean_opacity").get_to(ring_mean_opacity); } catch (...) { ; }
     try { j.at("transparent_clouds").get_to(transparent_clouds); } catch (...) { ; }
+    try { j.at("has_water").get_to(has_water); } catch (...) { ; }
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
     try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }
     try { j.at("vegetation_b").get_to(vegetation_b); } catch (...) { ; }

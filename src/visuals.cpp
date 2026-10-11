@@ -5036,7 +5036,8 @@ void draw_horizon()
 
         bool is_water = (p && (p->type == waterworld || p->type == hycean))
             || (uses_rocky_map(p->type)
-                && water_favorable
+                // && water_favorable
+                && p->has_water
                 && (rgb.b > 0.8 * rgb.r)
                 && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
