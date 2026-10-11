@@ -1360,6 +1360,9 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
     }
     ASSERT_NE(sun, nullptr);
 
+    // Resolve star pointers for loaded constellations
+    cache_cons_lines();
+
     Point sun_pt = sun->location;
 
     // 1. Separate ground-truth heliocentric constellations (from consline.dat) from others
