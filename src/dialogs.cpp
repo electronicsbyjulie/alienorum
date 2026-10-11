@@ -1122,6 +1122,7 @@ void draw_addcel_window(ImGuiIO& io)
                     cel->orbit->period = oneday*7;
                     cel->orbit->epoch = JDnow;
                     cel->cenobj = cels[addcenidx]->cenobj;
+                    lsyscache.clear();
                 }
                 if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
                 {
@@ -1661,6 +1662,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 orb->semimajor_axis = sma_limit;
                 orb->compute_period(cel->mass);
+                lsyscache.clear();
             }
             edit_sma = orb->semimajor_axis / AU;
             ImGui::Text("%s", "Semimaj.Axis");
@@ -1673,6 +1675,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->user_added) orb->compute_period(cel->mass);
                 cel->user_edited = true;
                 viewchanged = true;
+                lsyscache.clear();
                 if (cel->typeclass() == class_planet
                     || cel->typeclass() == class_moon               // See Kepler-1625b.
                     ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
@@ -1717,6 +1720,7 @@ void draw_objedit_window(ImGuiIO& io)
                     {
                         orb->semimajor_axis = sma_limit;
                         orb->compute_period(cel->mass);
+                        lsyscache.clear();
                     }
                     cel->temperature = 0;
                     if (cel->typeclass() == class_planet
@@ -1785,6 +1789,7 @@ void draw_objedit_window(ImGuiIO& io)
                     edit_period = orb->period / oneday;
                     cel->user_edited = true;
                     viewchanged = true;
+                    lsyscache.clear();
                     sat->update_location(simnow);
                 }
                 ImGui::SameLine(col2);
@@ -1805,6 +1810,7 @@ void draw_objedit_window(ImGuiIO& io)
                     edit_period = orb->period / oneday;
                     cel->user_edited = true;
                     viewchanged = true;
+                    lsyscache.clear();
                     sat->update_location(simnow);
                 }
                 edit_node = cel->orbit->ascending_node * fiftyseven;
@@ -2695,12 +2701,14 @@ void draw_system_explorer(ImGuiIO& io)
                         double A = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
                         m->orbit->semimajor_axis = A;
                         m->orbit->compute_period(m->mass);
+                        lsyscache.clear();
                     }
                     else
                     {
                         // Base the SMA off the previous moon.
                         m->orbit->period = frand(1.8, 2.2) * P;
                         m->orbit->compute_semimajor_axis(m->mass);
+                        lsyscache.clear();
                     }
 
                     double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);

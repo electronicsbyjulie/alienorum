@@ -65,5 +65,10 @@ extern std::atomic<bool> astorb_load_failed;
 extern std::atomic<bool> astorb_cancel;
 extern std::atomic<float> astorb_load_progress;
 extern std::atomic<size_t> astorb_rows_loaded;
+extern std::thread exoplanet_load_thread;
+extern std::atomic<bool> exoplanet_loading;
+extern std::atomic<float> exoplanet_load_progress;
+extern std::atomic<int> exoplanet_count_loaded;
+extern bool exoplanet_load_wnd;
 
 #endif
