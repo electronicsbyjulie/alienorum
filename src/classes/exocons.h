@@ -87,12 +87,12 @@ namespace alienorum
     {
         public:
         static bool check_should_generate_for(Star* sys_star, std::string& vantage_name_out);
-        static void generate_constellations(Star* sys_star, std::vector<Constellation>& out_conss);
+        static void generate_constellations(Star* sys_star, std::vector<Constellation>& out_cons);
         static void start_generation_for(Star* sys_star);
         static void update_frame();
         static void generate_all_synchronous(Star* sys_star);
         static bool save_current_vantage();
-        static void save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& conss);
+        static void save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& cons);
         static double calculate_sky_coverage(const std::vector<Point>& lined_star_dirs, int num_samples = EXOCONS_DEFAULT_SKY_SAMPLES);
         static bool arcs_intersect(const Point& a, const Point& b, const Point& c, const Point& d);
         static bool point_near_arc(const Point& a, const Point& b, const Point& p, double max_dist_deg, double* dist_out = nullptr, double min_end_dist_deg = EXOCONS_DEFAULT_MIN_END_DIST_DEG);
@@ -105,8 +105,8 @@ namespace alienorum
         }
 
         private:
-        static std::vector<Constellation> pending_conss;
-        static std::vector<Constellation> generated_conss;
+        static std::vector<Constellation> pending_cons;
+        static std::vector<Constellation> generated_cons;
         static Star* current_sys_star;
         static std::string current_vantage_name;
         static bool is_generating;

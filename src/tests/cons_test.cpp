@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <iomanip>
 #include "../classes/cons.h"
 #include "../classes/star.h"
 #include "../classes/exocons.h"
@@ -700,9 +701,9 @@ TEST_F(ExoConsTest, FileCachingAndReload_MatchesConslineFormat)
     ASSERT_GE(generated.size(), 50u);
 
     // Test saving exocons without writing a bunch of stuff to exocons.dat
-    std::vector<Constellation> sample_conss;
-    sample_conss.push_back(generated[0]);
-    ExoConsGenerator::save_to_exocons_file("47 Ursae Majoris", sample_conss);
+    std::vector<Constellation> sample_cons;
+    sample_cons.push_back(generated[0]);
+    ExoConsGenerator::save_to_exocons_file("47 Ursae Majoris", sample_cons);
 
     // Verify exocons.dat exists and has proper format
     std::ifstream file("exocons.dat");
@@ -1345,4 +1346,420 @@ TEST_F(ExoConsTest, LineSeparationFromOtherConstellations)
         }
     }
 }
+
+TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
+{
+    Star* sun = (Star*)cels[0];
+    if (!sun || strcmp(sun->name, "Sun") != 0)
+    {
+        sun = get_star("Sun");
+    }
+    if (!sun)
+    {
+        sun = get_star("Sol");
+    }
+    ASSERT_NE(sun, nullptr);
+
+    Point sun_pt = sun->location;
+
+    // 1. Separate ground-truth heliocentric constellations (from consline.dat) from others
+    std::vector<Constellation> ground_truth;
+    std::vector<Constellation> non_heliocentric;
+    for (const auto& c : constellations)
+    {
+        if (c.vantage_name.empty() || c.vantage_name == "Sun" || c.vantage_name == "Sol")
+        {
+            ground_truth.push_back(c);
+        }
+        else
+        {
+            non_heliocentric.push_back(c);
+        }
+    }
+
+    ASSERT_FALSE(ground_truth.empty());
+
+    // 2. Wipe heliocentric constellations so generate_constellations starts from a blank slate at [0,0,0]
+    constellations = non_heliocentric;
+
+    // 3. Generate procedural constellations for the Solar System ([0,0,0])
+    std::vector<Constellation> generated_cons;
+    ExoConsGenerator::generate_constellations(sun, generated_cons);
+
+    // 4. Restore original constellations
+    constellations = ground_truth;
+    for (const auto& c : non_heliocentric)
+    {
+        constellations.push_back(c);
+    }
+
+    // 5. Quantify similarity and variance
+
+    // Helper: calculate angular span of a constellation (degrees)
+    auto get_cons_span_deg = [](const Constellation& c, const Point& vantage) -> double
+    {
+        std::vector<Point> uvec;
+        for (const auto& cl : c.lines)
+        {
+            if (cl.a && cl.b)
+            {
+                Point pa = (Point)cl.a->location - vantage;
+                Point pb = (Point)cl.b->location - vantage;
+                double la = pa.magnitude();
+                double lb = pb.magnitude();
+                if (la > 1e-9)
+                {
+                    uvec.push_back(pa * (1.0 / la));
+                }
+                if (lb > 1e-9)
+                {
+                    uvec.push_back(pb * (1.0 / lb));
+                }
+            }
+        }
+        double max_deg = 0.0;
+        for (size_t i = 0; i < uvec.size(); i++)
+        {
+            for (size_t j = i + 1; j < uvec.size(); j++)
+            {
+                double dot = uvec[i].x * uvec[j].x + uvec[i].y * uvec[j].y + uvec[i].z * uvec[j].z;
+                dot = std::max(-1.0, std::min(1.0, dot));
+                double deg = acos(dot) * 180.0 / _pi;
+                if (deg > max_deg)
+                {
+                    max_deg = deg;
+                }
+            }
+        }
+        return max_deg;
+    };
+
+    // Helper: calculate length of a line in degrees
+    auto get_line_len_deg = [](Star* a, Star* b, const Point& vantage) -> double
+    {
+        Point pa = (Point)a->location - vantage;
+        Point pb = (Point)b->location - vantage;
+        double la = pa.magnitude();
+        double lb = pb.magnitude();
+        if (la < 1e-9 || lb < 1e-9)
+        {
+            return 0.0;
+        }
+        Point ua = pa * (1.0 / la);
+        Point ub = pb * (1.0 / lb);
+        double dot = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
+        dot = std::max(-1.0, std::min(1.0, dot));
+        return acos(dot) * 180.0 / _pi;
+    };
+
+    // Collect Ground Truth sets
+    std::set<std::pair<Star*, Star*>> gt_lines;
+    std::unordered_set<Star*> gt_stars;
+    std::vector<double> gt_spans;
+    std::vector<double> gt_line_lengths;
+
+    for (const auto& c : ground_truth)
+    {
+        double span = get_cons_span_deg(c, sun_pt);
+        if (span > 0.0)
+        {
+            gt_spans.push_back(span);
+        }
+        for (const auto& cl : c.lines)
+        {
+            if (cl.a && cl.b)
+            {
+                Star* sa = std::min(cl.a, cl.b);
+                Star* sb = std::max(cl.a, cl.b);
+                gt_lines.insert({sa, sb});
+                gt_stars.insert(cl.a);
+                gt_stars.insert(cl.b);
+                gt_line_lengths.push_back(get_line_len_deg(cl.a, cl.b, sun_pt));
+            }
+        }
+    }
+
+    // Collect Generated sets
+    std::set<std::pair<Star*, Star*>> gen_lines;
+    std::unordered_set<Star*> gen_stars;
+    std::vector<double> gen_spans;
+    std::vector<double> gen_line_lengths;
+
+    for (const auto& c : generated_cons)
+    {
+        double span = get_cons_span_deg(c, sun_pt);
+        if (span > 0.0)
+        {
+            gen_spans.push_back(span);
+        }
+        for (const auto& cl : c.lines)
+        {
+            if (cl.a && cl.b)
+            {
+                Star* sa = std::min(cl.a, cl.b);
+                Star* sb = std::max(cl.a, cl.b);
+                gen_lines.insert({sa, sb});
+                gen_stars.insert(cl.a);
+                gen_stars.insert(cl.b);
+                gen_line_lengths.push_back(get_line_len_deg(cl.a, cl.b, sun_pt));
+            }
+        }
+    }
+
+    // Line overlap
+    int matching_lines = 0;
+    for (const auto& l : gen_lines)
+    {
+        if (gt_lines.count(l))
+        {
+            matching_lines++;
+        }
+    }
+
+    // Star overlap
+    int shared_stars = 0;
+    for (Star* s : gen_stars)
+    {
+        if (gt_stars.count(s))
+        {
+            shared_stars++;
+        }
+    }
+
+    // Line stats
+    double line_recall = gt_lines.empty() ? 0.0 : (matching_lines * 100.0) / gt_lines.size();
+    double line_precision = gen_lines.empty() ? 0.0 : (matching_lines * 100.0) / gen_lines.size();
+    int line_union = (int)(gt_lines.size() + gen_lines.size()) - matching_lines;
+    double line_jaccard = (line_union > 0) ? (matching_lines * 100.0) / line_union : 0.0;
+
+    // Star stats
+    double star_recall = gt_stars.empty() ? 0.0 : (shared_stars * 100.0) / gt_stars.size();
+    double star_precision = gen_stars.empty() ? 0.0 : (shared_stars * 100.0) / gen_stars.size();
+    int star_union = (int)(gt_stars.size() + gen_stars.size()) - shared_stars;
+    double star_jaccard = (star_union > 0) ? (shared_stars * 100.0) / star_union : 0.0;
+
+    // Span stats
+    auto compute_stats = [](const std::vector<double>& v, double& min_v, double& max_v, double& mean_v, double& std_v)
+    {
+        if (v.empty())
+        {
+            min_v = max_v = mean_v = std_v = 0.0;
+            return;
+        }
+        min_v = 1e9;
+        max_v = -1e9;
+        double sum = 0.0;
+        for (double x : v)
+        {
+            if (x < min_v)
+            {
+                min_v = x;
+            }
+            if (x > max_v)
+            {
+                max_v = x;
+            }
+            sum += x;
+        }
+        mean_v = sum / v.size();
+        double sum_sq = 0.0;
+        for (double x : v)
+        {
+            sum_sq += (x - mean_v) * (x - mean_v);
+        }
+        std_v = sqrt(sum_sq / v.size());
+    };
+
+    double gt_min_span, gt_max_span, gt_mean_span, gt_std_span;
+    compute_stats(gt_spans, gt_min_span, gt_max_span, gt_mean_span, gt_std_span);
+
+    double gen_min_span, gen_max_span, gen_mean_span, gen_std_span;
+    compute_stats(gen_spans, gen_min_span, gen_max_span, gen_mean_span, gen_std_span);
+
+    double gt_min_len, gt_max_len, gt_mean_len, gt_std_len;
+    compute_stats(gt_line_lengths, gt_min_len, gt_max_len, gt_mean_len, gt_std_len);
+
+    double gen_min_len, gen_max_len, gen_mean_len, gen_std_len;
+    compute_stats(gen_line_lengths, gen_min_len, gen_max_len, gen_mean_len, gen_std_len);
+
+    // Distribution of generated spans:
+    int gen_span_under_15 = 0;
+    int gen_span_15_to_20 = 0;
+    int gen_span_over_20 = 0;
+    for (double s : gen_spans)
+    {
+        if (s < 15.0)
+        {
+            gen_span_under_15++;
+        }
+        else if (s <= 20.0)
+        {
+            gen_span_15_to_20++;
+        }
+        else
+        {
+            gen_span_over_20++;
+        }
+    }
+
+    // Distribution of ground truth spans:
+    int gt_span_under_15 = 0;
+    int gt_span_15_to_20 = 0;
+    int gt_span_over_20 = 0;
+    for (double s : gt_spans)
+    {
+        if (s < 15.0)
+        {
+            gt_span_under_15++;
+        }
+        else if (s <= 20.0)
+        {
+            gt_span_15_to_20++;
+        }
+        else
+        {
+            gt_span_over_20++;
+        }
+    }
+
+    // Match each IAU constellation to best generated constellation
+    struct MatchRecord
+    {
+        std::string gt_abbrev;
+        std::string gt_name;
+        int gt_star_count = 0;
+        std::string gen_abbrev;
+        int shared_stars = 0;
+        int shared_lines = 0;
+        double jaccard = 0.0;
+    };
+    std::vector<MatchRecord> match_records;
+    double sum_best_jaccard = 0.0;
+
+    for (const auto& gc : ground_truth)
+    {
+        std::unordered_set<Star*> gc_stars;
+        std::set<std::pair<Star*, Star*>> gc_lines;
+        for (const auto& cl : gc.lines)
+        {
+            if (cl.a && cl.b)
+            {
+                gc_stars.insert(cl.a);
+                gc_stars.insert(cl.b);
+                gc_lines.insert({std::min(cl.a, cl.b), std::max(cl.a, cl.b)});
+            }
+        }
+        if (gc_stars.empty())
+        {
+            continue;
+        }
+
+        double best_jac = 0.0;
+        int best_shared_stars = 0;
+        int best_shared_lines = 0;
+        std::string best_gen_name = "(none)";
+
+        for (const auto& genc : generated_cons)
+        {
+            int c_shared_stars = 0;
+            std::unordered_set<Star*> genc_stars;
+            for (const auto& cl : genc.lines)
+            {
+                if (cl.a && cl.b)
+                {
+                    genc_stars.insert(cl.a);
+                    genc_stars.insert(cl.b);
+                }
+            }
+            for (Star* s : genc_stars)
+            {
+                if (gc_stars.count(s))
+                {
+                    c_shared_stars++;
+                }
+            }
+            int un = (int)(gc_stars.size() + genc_stars.size()) - c_shared_stars;
+            double jac = (un > 0) ? (double)c_shared_stars / un : 0.0;
+
+            if (jac > best_jac)
+            {
+                best_jac = jac;
+                best_shared_stars = c_shared_stars;
+                best_gen_name = genc.abbrev + " (" + genc.name + ")";
+                best_shared_lines = 0;
+                for (const auto& cl : genc.lines)
+                {
+                    if (cl.a && cl.b && gc_lines.count({std::min(cl.a, cl.b), std::max(cl.a, cl.b)}))
+                    {
+                        best_shared_lines++;
+                    }
+                }
+            }
+        }
+
+        match_records.push_back({gc.abbrev, gc.name, (int)gc_stars.size(), best_gen_name, best_shared_stars, best_shared_lines, best_jac});
+        sum_best_jaccard += best_jac;
+    }
+
+    double mean_cons_jaccard = match_records.empty() ? 0.0 : (sum_best_jaccard / match_records.size()) * 100.0;
+
+    // Sort match records by Jaccard descending to highlight closest matches
+    std::sort(match_records.begin(), match_records.end(), [](const MatchRecord& a, const MatchRecord& b)
+    {
+        return a.jaccard > b.jaccard;
+    });
+
+    // Print detailed metrics report
+    std::cout << "\n================================================================================" << std::endl;
+    std::cout << "  HELIOCENTRIC EXOCONS SIMILARITY & VARIANCE REPORT (consline.dat vs Generated) " << std::endl;
+    std::cout << "================================================================================" << std::endl;
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "  Constellation Counts:       Ground Truth = " << ground_truth.size()
+              << ", Generated = " << generated_cons.size() << std::endl;
+    std::cout << "  Unique Constellation Stars: Ground Truth = " << gt_stars.size()
+              << ", Generated = " << gen_stars.size() << std::endl;
+    std::cout << "  Unique Lines:               Ground Truth = " << gt_lines.size()
+              << ", Generated = " << gen_lines.size() << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+    std::cout << "  [Star Overlap]" << std::endl;
+    std::cout << "    Shared Stars:             " << shared_stars << std::endl;
+    std::cout << "    Star Recall (IAU stars):  " << star_recall << "%" << std::endl;
+    std::cout << "    Star Precision:           " << star_precision << "%" << std::endl;
+    std::cout << "    Star Jaccard Index:       " << star_jaccard << "%" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+    std::cout << "  [Line Overlap]" << std::endl;
+    std::cout << "    Exactly Matched Lines:    " << matching_lines << std::endl;
+    std::cout << "    Line Recall:              " << line_recall << "%" << std::endl;
+    std::cout << "    Line Precision:           " << line_precision << "%" << std::endl;
+    std::cout << "    Line Jaccard Index:       " << line_jaccard << "%" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+    std::cout << "  [Constellation Angular Span (degrees)]" << std::endl;
+    std::cout << "    Ground Truth (IAU):       Mean = " << gt_mean_span << " deg (std = " << gt_std_span << "), Range = [" << gt_min_span << " .. " << gt_max_span << "] deg" << std::endl;
+    std::cout << "      Distribution:           <15 deg: " << gt_span_under_15 << " | 15-20 deg: " << gt_span_15_to_20 << " | >20 deg: " << gt_span_over_20 << std::endl;
+    std::cout << "    Generated Exocons:        Mean = " << gen_mean_span << " deg (std = " << gen_std_span << "), Range = [" << gen_min_span << " .. " << gen_max_span << "] deg" << std::endl;
+    std::cout << "      Distribution:           <15 deg: " << gen_span_under_15 << " | 15-20 deg: " << gen_span_15_to_20 << " | >20 deg: " << gen_span_over_20 << std::endl;
+    std::cout << "    Span Variance / Delta:    Mean diff = " << (gen_mean_span - gt_mean_span) << " deg" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+    std::cout << "  [Line Length (degrees)]" << std::endl;
+    std::cout << "    Ground Truth (IAU):       Mean = " << gt_mean_len << " deg, Range = [" << gt_min_len << " .. " << gt_max_len << "] deg" << std::endl;
+    std::cout << "    Generated Exocons:        Mean = " << gen_mean_len << " deg, Range = [" << gen_min_len << " .. " << gen_max_len << "] deg" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+    std::cout << "  [Per-Constellation Best Match Similarity]" << std::endl;
+    std::cout << "    Average Best Match Jaccard across all IAU constellations: " << mean_cons_jaccard << "%" << std::endl;
+    std::cout << "    Top 15 Most Similar Constellations:" << std::endl;
+    int top_n = std::min(15, (int)match_records.size());
+    for (int i = 0; i < top_n; i++)
+    {
+        const auto& mr = match_records[i];
+        std::cout << "      " << std::setw(3) << mr.gt_abbrev << " (" << std::setw(14) << std::left << mr.gt_name << std::right << ")"
+                  << " -> " << std::setw(22) << std::left << mr.gen_abbrev << std::right
+                  << "  Shared Stars: " << mr.shared_stars << "/" << mr.gt_star_count
+                  << "  Shared Lines: " << mr.shared_lines
+                  << "  Jaccard: " << (mr.jaccard * 100.0) << "%" << std::endl;
+    }
+    std::cout << "================================================================================\n" << std::endl;
+
+    SUCCEED();
+}
+
 

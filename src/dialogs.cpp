@@ -275,7 +275,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         ImGui::Text("%s", "Cons:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(123);
-        if (ImGui::BeginCombo("##lblconsstars", cons4lbl ? cons4lbl->name.c_str() : "(all)"))
+        if (ImGui::BeginCombo("##lblconstars", cons4lbl ? cons4lbl->name.c_str() : "(all)"))
         {
             if (ImGui::Selectable("(all)", !cons4lbl)) cons4lbl = nullptr;
             

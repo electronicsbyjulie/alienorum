@@ -464,6 +464,9 @@ void show_menu()
 
 void process_key_cmd_char(char c)
 {
+    ImGuiIO &io = ImGui::GetIO();
+    if (io.KeyCtrl) return;
+
     cel_obj_class cls;
     if (!cels[1]) return;
 
@@ -877,6 +880,11 @@ void process_key_cmd_char(char c)
 
 void process_key_cmd_ctrl_char(char c)
 {
+    if (c == '0')
+    {
+        constellations.resize(num_reg_cons);
+        ExoConsGenerator::reset();
+    }
     if (c == '3')
     {
         int i, j, l, m, n;
