@@ -2157,6 +2157,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
             p->has_water = 0;
             life_possible = false;
             want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
+            p->transparent_clouds = false;
+            p->overcast = true;
         }
         else if (!force_has_water && pressure < 150)
         {
