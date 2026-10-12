@@ -24,3 +24,4 @@ a[h-j]*
 exocons.dat
 catalogs/cross_ref/
 tools/generate_crossref
+.aider*

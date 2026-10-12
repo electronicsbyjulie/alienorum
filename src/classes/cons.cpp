@@ -85,48 +85,64 @@ void Constellation::build_constellation_perimeter()
     bounds = perimeter;
 }
 
-// Helper algorithm to handle Point-In-Polygon on the celestial sphere
-// Warning: THis fuction is buggy AI slop and should be deleted and rewritten from scratch.
+// Helper algorithm to determine if a celestial point lies within a constellation polygon.
+// Implemented using a robust spherical winding‑number technique.
+// Robust spherical polygon inclusion test using angle summation (winding number).
+// Returns true if the point (s_ra, s_decl) lies inside the polygon defined by bounds.
 bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std::vector<ConsBoundary>& bounds)
 {
-    bool inside = false;
+    // Convert the test point to a 3D unit vector.
+    double cos_decl = cos(s_decl);
+    double x0 = cos_decl * cos(s_ra);
+    double y0 = cos_decl * sin(s_ra);
+    double z0 = sin(s_decl);
+    double sum_angle = 0.0;
     int n = bounds.size();
+    if (n < 3) return false;
 
-    // Loop through each edge of the polygon
-    for (int i = 0, j = n - 1; i < n; j = i++) 
+    for (int i = 0; i < n; ++i)
     {
-        double decl_i = bounds[i].decl;
-        double decl_j = bounds[j].decl;
+        const ConsBoundary& a = bounds[i];
+        const ConsBoundary& b = bounds[(i + 1) % n];
+        // Convert vertices to unit vectors.
+        double ca = cos(a.decl);
+        double xb = ca * cos(a.RA);
+        double yb = ca * sin(a.RA);
+        double zb = sin(a.decl);
 
-        // 1. Check if the star's declination falls within the vertical range of this edge
-        if ((decl_i > s_decl) != (decl_j > s_decl)) 
-        {
-            // 2. Shift the RA of the boundary points so the star is at relative RA = 0
-            double ra_i = bounds[i].RA - s_ra;
-            double ra_j = bounds[j].RA - s_ra;
+        double cb = cos(b.decl);
+        double xc = cb * cos(b.RA);
+        double yc = cb * sin(b.RA);
+        double zc = sin(b.decl);
 
-            // 3. Normalize the relative RA values to range [-pi, pi]
-            while (ra_i <= -_pi) ra_i += 2.0 * _pi;
-            while (ra_i >   _pi) ra_i -= 2.0 * _pi;
-            while (ra_j <= -_pi) ra_j += 2.0 * _pi;
-            while (ra_j >   _pi) ra_j -= 2.0 * _pi;
+        // Vectors from point to the two vertices.
+        double v1x = xb - x0;
+        double v1y = yb - y0;
+        double v1z = zb - z0;
+        double v2x = xc - x0;
+        double v2y = yc - y0;
+        double v2z = zc - z0;
 
-            // 4. Handle edges that cross the anti-meridian in our local coordinate system
-            if (ra_j - ra_i > _pi) ra_j -= 2.0 * _pi;
-            else if (ra_i - ra_j > _pi) ra_i -= 2.0 * _pi;
+        // Normalize them.
+        double len1 = sqrt(v1x * v1x + v1y * v1y + v1z * v1z);
+        double len2 = sqrt(v2x * v2x + v2y * v2y + v2z * v2z);
+        if (len1 == 0.0 || len2 == 0.0) continue;
+        v1x /= len1; v1y /= len1; v1z /= len1;
+        v2x /= len2; v2y /= len2; v2z /= len2;
 
-            // 5. Interpolate to find the exact RA intersection point on the edge
-            double intersect_ra = ra_i + (s_decl - decl_i) / (decl_j - decl_i) * (ra_j - ra_i);
-
-            // 6. Ray-cast check: If the intersection is in the positive RA direction, count it
-            if (intersect_ra > 0.0 && intersect_ra < _pi) 
-            {
-                inside = !inside;
-            }
-        }
+        // Compute the angle between the two vectors.
+        double dot = v1x * v2x + v1y * v2y + v1z * v2z;
+        if (dot > 1.0) dot = 1.0; if (dot < -1.0) dot = -1.0;
+        double angle = acos(dot);
+        // Determine the sign of the angle using cross product direction.
+        double cx = v1y * v2z - v1z * v2y;
+        double cy = v1z * v2x - v1x * v2z;
+        double cz = v1x * v2y - v1y * v2x;
+        double sign = (cx * x0 + cy * y0 + cz * z0) >= 0.0 ? 1.0 : -1.0;
+        sum_angle += sign * angle;
     }
-
-    return inside;
+    // Inside if absolute winding sum exceeds pi.
+    return fabs(sum_angle) > M_PI;
 }
 
 Constellation *identify_cons_from_coords(double RA, double Decl)

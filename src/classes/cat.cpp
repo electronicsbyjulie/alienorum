@@ -4644,8 +4644,14 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (inclination || ascending_node)
         {
             s->location.equatorial_plane = s->location.orbital_plane = s->location.local_system_plane = new_orbital_plane;
-            if (!A->lock_equatorial_plane && !A->lock_system_plane)
+            // std::cout << "Set " << s->name << " incl=" << (inclination * fiftyseven) << " node=" << (ascending_node * fiftyseven) << std::endl;
+
+            if (!A->multisys || s == A->multisys->get_member('B'))
+            {
                 A->location.equatorial_plane = A->location.orbital_plane = A->location.local_system_plane = new_orbital_plane;
+                // std::cout << "Also set " << A->name << " incl=" << (inclination * fiftyseven) << " node=" << (ascending_node * fiftyseven) << std::endl;
+            }
+
             s->lock_system_plane = true;
             s->lock_equatorial_plane = true;
             s->obliquity = 0;
@@ -7178,6 +7184,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     break;
                 }
 
+                if (!strcasecmp(row.pl_name.c_str(), "eps Ind Bb")) continue;
+
                 line_count++;
                 if (exoplanet_loading.load() && (line_count & 31) == 0 && total_bytes > 0)
                 {
@@ -7734,6 +7742,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         {
             continue;
         }
+
+        if (!strcasecmp(row.pl_name.c_str(), "eps Ind Bb")) continue;
 
         Star* host_star = nullptr;
         bool was_new = false;
