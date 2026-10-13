@@ -190,6 +190,7 @@ int main (int argc, char** argv)
     };
 
     bool argsfs = false;
+    bool nlo = (loc_time->tm_mon == 3 && loc_time->tm_mday == 1);
 
     memset(lookfor, 0, name_max_len);
     memset(edit_name, 0, name_max_len);
@@ -260,6 +261,10 @@ int main (int argc, char** argv)
         else if (!strcmp(argv[l], "devdial") || !strcmp(argv[l], "dd"))
         {
             show_dev_dial = true;
+        }
+        else if (!strcmp(argv[l], "nlo") || !strcmp(argv[l], "\x75\x66\x6f"))
+        {
+            nlo = true;
         }
         else if (!strcmp(argv[l], "dds"))
         {
@@ -487,7 +492,6 @@ int main (int argc, char** argv)
         alienr = 0.003921569 * ((alien_color & 0xff)),
         aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
-    bool nlo = (loc_time->tm_mon == 3 && loc_time->tm_mday == 1);
     ImVec2 ovni(2061, 123), nlorad(54, 29);
     double dxovni = -1.3, dyovni = -0.0029;
     std::deque<ImVec2> trail;
@@ -1124,7 +1128,7 @@ int main (int argc, char** argv)
             if (io.MousePos.x != lmx || io.MousePos.y != lmy) frames_without_mousemove = 0;
             else frames_without_mousemove++;
 
-            if ((io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude() || is_mouse_over_window || nlo)
+            if ((view_mode == vm_horizon || io.MousePos.x != lmx || io.MousePos.y != lmy || viewchanged || velocity.magnitude() || is_mouse_over_window || nlo)
                 && frame_dur > (1.0/target_frame_rate))
             {
                 timeout_ms *= 0.333;
