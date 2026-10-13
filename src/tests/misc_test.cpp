@@ -2,8 +2,103 @@
 #include <gtest/gtest.h>
 #include "../classes/misc.h"
 #include "../classes/point.h"
+#include "../classes/surfacescatter.h"
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace alienorum;
+
+TEST(SurfaceSceneryTest, WalkingPreservesObjectsAcrossCellAndFaceBoundaries)
+{
+    const double radius = 6371000.0;
+    const double spacing = sqrt(_pi * 10000.0 / 512.0);
+    const double longitudes[] =
+    {
+        0.0, _pi / 4.0, _pi, -_pi / 4.0
+    };
+    for (double longitude : longitudes)
+    {
+        const auto before = surface_scenery(radius, 0.0, longitude - 0.5 / radius, 100.0, spacing, 42);
+        const auto after = surface_scenery(radius, 0.0, longitude + 0.5 / radius, 100.0, spacing, 42);
+        std::unordered_map<std::uint64_t, SurfaceScenery> prior;
+        for (const auto &object : before)
+        {
+            prior.emplace(object.id, object);
+        }
+        int shared = 0;
+        for (const auto &object : after)
+        {
+            const auto found = prior.find(object.id);
+            if (found == prior.end())
+            {
+                continue;
+            }
+            ++shared;
+            EXPECT_EQ(object.seed, found->second.seed);
+            EXPECT_NEAR(object.east, found->second.east - 1.0, 1.0e-6);
+            EXPECT_NEAR(object.north, found->second.north, 1.0e-8);
+        }
+        EXPECT_GT(shared, 300);
+        EXPECT_GT(shared, static_cast<int>(before.size() * 0.95));
+    }
+}
+
+TEST(SurfaceSceneryTest, LatitudeMovementAndPolesStayContinuous)
+{
+    const double radius = 6371000.0;
+    const double spacing = sqrt(_pi * 10000.0 / 512.0);
+    const double latitudes[] =
+    {
+        -half_pi, -0.615479708670387, 0.0, 0.615479708670387, half_pi
+    };
+    for (double latitude : latitudes)
+    {
+        const auto before = surface_scenery(radius, latitude - 0.5 / radius, _pi / 4.0, 100.0, spacing, 42);
+        const auto after = surface_scenery(radius, latitude + 0.5 / radius, _pi / 4.0, 100.0, spacing, 42);
+        std::unordered_map<std::uint64_t, SurfaceScenery> prior;
+        for (const auto &object : before)
+        {
+            prior.emplace(object.id, object);
+        }
+        int shared = 0;
+        for (const auto &object : after)
+        {
+            const auto found = prior.find(object.id);
+            if (found != prior.end())
+            {
+                ++shared;
+                EXPECT_EQ(object.seed, found->second.seed);
+                EXPECT_NEAR(object.east, found->second.east, 1.0e-6);
+                EXPECT_NEAR(object.north, found->second.north - 1.0, 1.0e-6);
+            }
+        }
+        EXPECT_GT(shared, 300);
+        EXPECT_GT(shared, static_cast<int>(before.size() * 0.95));
+    }
+}
+
+TEST(SurfaceSceneryTest, RepeatableUniqueAndPeriodic)
+{
+    const double radius = 6371000.0;
+    const auto first = surface_scenery(radius, 0.5, -_pi, 100.0, 8.0, 42);
+    const auto again = surface_scenery(radius, 0.5, _pi, 100.0, 8.0, 42);
+    const auto other_world = surface_scenery(radius, 0.5, _pi, 100.0, 8.0, 43);
+    ASSERT_EQ(first.size(), again.size());
+    std::unordered_set<std::uint64_t> identities;
+    for (size_t i = 0; i < first.size(); ++i)
+    {
+        EXPECT_EQ(first[i].id, again[i].id);
+        EXPECT_EQ(first[i].seed, again[i].seed);
+        EXPECT_NEAR(first[i].east, again[i].east, 1.0e-6);
+        EXPECT_NEAR(first[i].north, again[i].north, 1.0e-6);
+        EXPECT_TRUE(identities.insert(first[i].id).second);
+        EXPECT_LE(hypot(first[i].east, first[i].north), 100.0);
+    }
+    for (const auto &object : other_world)
+    {
+        EXPECT_EQ(identities.count(object.id), 0u);
+    }
+}
 
 // Nothing in this file touches the network. download_file() is the one function in misc.h that
 // does, and it is deliberately left alone: CelesTrak's terms ask for one fetch per file per two

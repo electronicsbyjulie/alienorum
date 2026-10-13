@@ -77,6 +77,7 @@ struct RockInstance
     double height;
     double size;
     double lift_px;
+    double opacity;
     uint32_t seed_val;
     bool base_valid;
 };

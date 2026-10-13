@@ -7,6 +7,7 @@
 #include "gputex.h"
 #include "sunclock_gpu.h"
 #include "classes/exocons.h"
+#include "classes/surfacescatter.h"
 
 using namespace alienorum;
 
@@ -6113,12 +6114,13 @@ void draw_horizon()
                 }
                 #endif
 
-                RockInstance rocks[ROCK_COUNT];
+                std::vector<RockInstance> rocks;
                 int num_rocks = 0;
 
-                uint32_t base_seed = (uint32_t)(whereami * 2654435761u
-                    ^ (uint32_t)fabs(viewer_lat * 12345.0)
-                    ^ ((uint32_t)fabs(viewer_lon * 54321.0) << 12));
+                const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
+                const auto scenery = surface_scenery(R_planet, viewer_lat, viewer_lon,
+                    ROCK_MAX_DIST, scenery_spacing, static_cast<std::uint64_t>(whereami));
+                rocks.reserve(scenery.size());
                 
                 double grav = p ? p->estimate_surface_gravity() : 1;
                 double presh = p ? (log(p->get_surface_pressure()*inv_oneatm)+1) : 1;
@@ -6136,37 +6138,13 @@ void draw_horizon()
                     : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
-                for (int ri = 0; ri < ROCK_COUNT; ri++)
+                for (const SurfaceScenery &object : scenery)
                 {
-                    uint32_t rhash = base_seed + (uint32_t)ri * 2246822519u;
-                    rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
-                    rhash = ((rhash >> 16) ^ rhash) * 0x45d9f3b;
-                    rhash = (rhash >> 16) ^ rhash;
-
-                    double u_dist = (double)(rhash & 0xFFFF) / 65535.0;
-                    double u_az = (double)((rhash >> 16) & 0xFFFF) / 65535.0;
-
-                    double theta_world = u_az * _pi * 2.0;
-
-                    // Organic distance variation with azimuth to break up circular symmetry
-                    double az_var = 0.35 * sin(2.0 * theta_world + 1.23)
-                                + 0.25 * cos(3.0 * theta_world + 2.45)
-                                + 0.15 * sin(5.0 * theta_world + 0.67);
-                    double local_max_dist = ROCK_MAX_DIST * (1.25 + az_var);
-
-                    // Distance distribution with natural density spread
-                    double dist_m = ROCK_MIN_DIST + (local_max_dist - ROCK_MIN_DIST) * pow(u_dist, 1.0);
-                    double dist_ratio = dist_m / local_max_dist;
-                    if (dist_ratio >= 1.0)
-                    {
-                        continue;
-                    }
-
-                    // Smooth density falloff so rocks naturally thin out towards the horizon
-                    double fade_prob = 1.0 - pow(dist_ratio, 2.5);
-                    uint32_t fade_hash = (rhash * 1103515245u + 12345u);
-                    double u_fade = (double)(fade_hash & 0xFFFF) / 65535.0;
-                    if (u_fade > fade_prob)
+                    const uint32_t rhash = object.seed;
+                    const double theta_world = atan2(object.east, object.north);
+                    const double dist_m = hypot(object.east, object.north);
+                    const double dist_ratio = dist_m / ROCK_MAX_DIST;
+                    if (dist_m < 0.05 || dist_ratio >= 1.0)
                     {
                         continue;
                     }
@@ -6323,6 +6301,7 @@ void draw_horizon()
                         }
                     }
 
+                    rocks.emplace_back();
                     rocks[num_rocks].dist = sort_dist;
                     rocks[num_rocks].ground_dist = dist_m;
                     rocks[num_rocks].theta = theta_world;
@@ -6338,12 +6317,15 @@ void draw_horizon()
                     rocks[num_rocks].height = rh;
                     rocks[num_rocks].size = rock_size;
                     rocks[num_rocks].lift_px = rock_lift_px;
+                    const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
+                    rocks[num_rocks].opacity = fade * fade * (3.0 - 2.0 * fade)
+                        * std::clamp(rw - 1.5, 0.0, 1.0);
                     rocks[num_rocks].seed_val = rhash;
                     rocks[num_rocks].base_valid = base_valid;
                     num_rocks++;
                 }
 
-                std::sort(rocks, rocks + num_rocks, [](const RockInstance& a, const RockInstance& b)
+                std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
                 {
                     return a.dist > b.dist;
                 });
@@ -6358,11 +6340,12 @@ void draw_horizon()
                     double sin_alt = sin(altitude);
                     double cos_az = cos(azimuth);
                     double sin_az = sin(azimuth);
-                    ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0, shadow_alpha));
 
                     for (int ri = 0; ri < num_rocks; ri++)
                     {
                         const RockInstance& rk = rocks[ri];
+                        const ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0,
+                            static_cast<int>(shadow_alpha * rk.opacity)));
                         if (rk.width < 3.0 || !rk.base_valid)
                         {
                             continue;
@@ -6454,9 +6437,22 @@ void draw_horizon()
                     }
                 }
 
+                ImDrawList *scenery_draw_list = ImGui::GetBackgroundDrawList();
+                auto fade_scenery = [&](int first_vertex, double opacity)
+                {
+                    for (int vertex = first_vertex; vertex < scenery_draw_list->VtxBuffer.Size; ++vertex)
+                    {
+                        ImU32 &color = scenery_draw_list->VtxBuffer[vertex].col;
+                        const ImU32 alpha = static_cast<ImU32>(((color & IM_COL32_A_MASK)
+                            >> IM_COL32_A_SHIFT) * opacity);
+                        color = (color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+                    }
+                };
+
                 for (int ri = 0; ri < num_rocks; ri++)
                 {
                     const RockInstance& rk = rocks[ri];
+                    const int first_vertex = scenery_draw_list->VtxBuffer.Size;
                     double rx = rk.screen_x;
                     double ry = rk.screen_y;
                     double rw = rk.width;
@@ -6496,6 +6492,7 @@ void draw_horizon()
                         double px = is_vegetation ? rk.crown_x : rx;
                         double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
                         ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
+                        fade_scenery(first_vertex, rk.opacity);
                         continue;
                     }
 
@@ -6880,6 +6877,7 @@ void draw_horizon()
                         }
                         #endif
                     }
+                    fade_scenery(first_vertex, rk.opacity);
                 }
             }
         }
