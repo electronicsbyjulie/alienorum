@@ -7733,7 +7733,6 @@ static void draw_lavaworld_rock_clouds(Planet *p)
     }
 }
 
-std::vector<Cloud> skyclouds;
 void draw_cloudy_sky()
 {
     if (!show_clouds)
@@ -7758,6 +7757,11 @@ void draw_cloudy_sky()
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
+    if (!p)
+    {
+        return;
+    }
+
     #if lavaworld_rock_clouds
     if (show_terrain)
     {
@@ -7778,13 +7782,46 @@ void draw_cloudy_sky()
         return;
     }
 
-    RGB3 rgb = cel->cloud_map->color_at(viewer_lat, viewer_lon);
-    double haziness = std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);
-    if (haziness <= 0.001)
+    double planet_radius = cel->get_equatorial_radius();
+    if (!(planet_radius > 0) || !std::isfinite(planet_radius))
+    {
+        planet_radius = cel->volumetric_mean_radius;
+    }
+    if (!(planet_radius > 0) || !std::isfinite(planet_radius)
+        || !(zoom > 0) || !std::isfinite(zoom) || dispcx <= 0 || dispcy <= 0)
     {
         return;
     }
-    if (p->overcast) haziness = 1;
+
+    // A spherical cloud ceiling: rays near the horizon reach distant map locations.
+    // This height is a visual approximation, independent of storm size and pressure.
+    constexpr double cloud_height = 5000.0;
+    const double eye_height = std::isfinite(viewer_eye_height) ? std::max(0.01, viewer_eye_height) : 1.75;
+    const double observer_radius = planet_radius + eye_height;
+    const double shell_radius = planet_radius + cloud_height;
+    const double shell_delta = (cloud_height - eye_height) * (shell_radius + observer_radius);
+    const double ground_dip_sin = -sqrt(eye_height * (2.0 * planet_radius + eye_height)) / observer_radius;
+    const double cos_lat = cos(viewer_lat);
+    const double sin_lat = sin(viewer_lat);
+    const double cos_lon = cos(viewer_lon);
+    const double sin_lon = sin(viewer_lon);
+    const double cos_az = cos(azimuth);
+    const double sin_az = sin(azimuth);
+    const double cos_alt = cos(altitude);
+    const double sin_alt = sin(altitude);
+    const double focal_length = zoom * dispcx;
+    Map *clouds = cel->cloud_map;
+    const double horizon_lift = p->atmospheric_horizon_lift();
+    // Invert the same refraction curve used for sky objects. A shared lookup avoids
+    // iterating the atmospheric calculation separately for every cloud mesh vertex.
+    constexpr int refraction_steps = 2048;
+    const double altitude_step = _pi / refraction_steps;
+    std::vector<double> apparent_altitudes(refraction_steps + 1);
+    for (int i = 0; i <= refraction_steps; ++i)
+    {
+        const double true_altitude = -half_pi + i * altitude_step;
+        apparent_altitudes[i] = true_altitude + p->atmospheric_refraction(true_altitude);
+    }
 
     double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
 
@@ -7795,38 +7832,129 @@ void draw_cloudy_sky()
     }
     is_day = std::clamp(is_day, 0.0, 1.0);
 
-    // Turn day skies gray; night skies dark overcast obscuring stars and objects.
-    // Cloud pixel value sets the haziness level ranging from none to full.
-    const double kOvercastGrayFactor = 160.0 / 255.0;
-    int cr = std::clamp((int)(rgb.r * is_day * kOvercastGrayFactor), 0, 255);
-    int cg = std::clamp((int)(rgb.g * is_day * kOvercastGrayFactor), 0, 255);
-    int cb = std::clamp((int)(rgb.b * is_day * kOvercastGrayFactor), 0, 255);
-    int ca = std::clamp((int)(255.0 * haziness), 0, 255);
-
-    ImU32 imc = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
-    float sky_bottom = fmax(0.0f, fmin((float)hz_y, (float)(dispcy * 2)));
-    if (sky_bottom > 0)
+    auto sky_color = [&](double screen_x, double screen_y) -> ImU32
     {
-        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, sky_bottom), imc);
-    }
+        const double camera_x = (screen_x - dispcx) / focal_length;
+        const double camera_y = (dispcy - screen_y) / focal_length;
+        const double inverse_length = 1.0 / sqrt(camera_x * camera_x + camera_y * camera_y + 1.0);
+        const double forward = cos_alt - camera_y * sin_alt;
+        // Inverse of Cartesian2D's camera rotation: local x/east, y/up, z/north.
+        double east = (camera_x * cos_az + forward * sin_az) * inverse_length;
+        double up = (camera_y * cos_alt + sin_alt) * inverse_length;
+        double north = (forward * cos_az - camera_x * sin_az) * inverse_length;
+        const double horizontal = hypot(east, north);
+        const double apparent_altitude = atan2(up, horizontal);
+        auto upper = std::lower_bound(apparent_altitudes.begin(), apparent_altitudes.end(), apparent_altitude);
+        if (upper != apparent_altitudes.begin() && upper != apparent_altitudes.end() && horizontal > 1.0e-10)
+        {
+            const size_t index = upper - apparent_altitudes.begin();
+            const double fraction = (apparent_altitude - apparent_altitudes[index - 1])
+                / (apparent_altitudes[index] - apparent_altitudes[index - 1]);
+            const double true_altitude = -half_pi + (index - 1 + fraction) * altitude_step;
+            const double horizontal_scale = cos(true_altitude) / horizontal;
+            east *= horizontal_scale;
+            north *= horizontal_scale;
+            up = sin(true_altitude);
+        }
+        if (shell_delta > 0 && up < ground_dip_sin)
+        {
+            return IM_COL32(0, 0, 0, 0);
+        }
 
-    #if 0
-    if (!skyclouds.size())
+        const double along_ray = observer_radius * up;
+        const double discriminant = along_ray * along_ray + shell_delta;
+        if (discriminant < 0)
+        {
+            return IM_COL32(0, 0, 0, 0);
+        }
+        const double root = sqrt(discriminant);
+        double distance;
+        if (shell_delta >= 0)
+        {
+            // Rationalized root avoids subtracting two planet-sized values overhead.
+            distance = along_ray > 0 ? shell_delta / (root + along_ray) : root - along_ray;
+        }
+        else
+        {
+            // An elevated observer above the cloud shell sees its nearest intersection.
+            if (along_ray >= 0)
+            {
+                return IM_COL32(0, 0, 0, 0);
+            }
+            distance = -shell_delta / (root - along_ray);
+        }
+
+        const double radial = observer_radius + distance * up;
+        const double north_offset = distance * north;
+        const double east_offset = distance * east;
+        // Convert the hit from the local east/north/up basis to map latitude/longitude.
+        const double equatorial = radial * cos_lat - north_offset * sin_lat;
+        const double hit_x = equatorial * cos_lon - east_offset * sin_lon;
+        const double hit_y = equatorial * sin_lon + east_offset * cos_lon;
+        const double hit_z = radial * sin_lat + north_offset * cos_lat;
+        const double lat = atan2(hit_z, hypot(hit_x, hit_y));
+        const double lon = atan2(hit_y, hit_x);
+        RGB3 rgb = clouds->color_at_bilinear(lat, lon);
+        const double haziness = p->overcast ? 1.0 : std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);
+        const double light = is_day * (160.0 / 255.0);
+        const int cr = std::clamp((int)(rgb.r * light), 0, 255);
+        const int cg = std::clamp((int)(rgb.g * light), 0, 255);
+        const int cb = std::clamp((int)(rgb.b * light), 0, 255);
+        const int ca = std::clamp((int)(255.0 * haziness + 0.5), 0, 255);
+        return rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+    };
+
+    // Vertex colors interpolate between ray samples. Extra rows near the horizon
+    // resolve distant cloud banks that occupy only a few pixels of vertical sky.
+    const float screen_width = dispcx * 2.0f;
+    const float screen_height = dispcy * 2.0f;
+    const int columns = std::clamp((int)ceil(screen_width / 24.0f), 16, 160);
+    const int base_rows = std::clamp((int)ceil(screen_height / 16.0f), 16, 160);
+    std::vector<float> rows;
+    rows.reserve(base_rows + 66);
+    for (int row = 0; row <= base_rows; ++row)
     {
-        // TODO:
-
-        Cloud c;
-        c.color = rgb;
-        c.core_dist = cel->volumetric_mean_radius + 1500;
-        c.height = 200;
-        c.width = 500;
-        c.latitude = viewer_lat;
-        c.longitude = viewer_lon;
-
-        skyclouds.push_back(c);
+        rows.push_back(screen_height * row / base_rows);
     }
+    const double horizon_pitch = altitude - horizon_lift;
+    if (fabs(cos(horizon_pitch)) > 1.0e-6)
+    {
+        const double horizon_y = dispcy + focal_length * tan(horizon_pitch);
+        if (horizon_y > -64.0 && horizon_y < screen_height + 64.0)
+        {
+            for (int offset = -64; offset <= 64; offset += 2)
+            {
+                rows.push_back((float)std::clamp(horizon_y + offset, 0.0, (double)screen_height));
+            }
+        }
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
 
-    int i, n = skyclouds.size();
-    for (i=0; i<n; i++) skyclouds[i].draw(cel->volumetric_mean_radius);
-    #endif
+    std::vector<ImU32> top(columns + 1);
+    std::vector<ImU32> bottom(columns + 1);
+    for (int col = 0; col <= columns; ++col)
+    {
+        top[col] = sky_color(screen_width * col / columns, rows.front());
+    }
+    ImDrawList *draw_list = ImGui::GetBackgroundDrawList();
+    for (size_t row = 1; row < rows.size(); ++row)
+    {
+        for (int col = 0; col <= columns; ++col)
+        {
+            bottom[col] = sky_color(screen_width * col / columns, rows[row]);
+        }
+        for (int col = 0; col < columns; ++col)
+        {
+            if (((top[col] | top[col + 1] | bottom[col] | bottom[col + 1]) & IM_COL32_A_MASK) == 0)
+            {
+                continue;
+            }
+            draw_list->AddRectFilledMultiColor(
+                ImVec2(screen_width * col / columns, rows[row - 1]),
+                ImVec2(screen_width * (col + 1) / columns, rows[row]),
+                top[col], top[col + 1], bottom[col + 1], bottom[col]);
+        }
+        top.swap(bottom);
+    }
 }

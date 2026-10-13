@@ -2080,6 +2080,39 @@ RGB3 Map::color_at(double lat, double lon)
     return result;
 }
 
+RGB3 Map::color_at_bilinear(double lat, double lon) const
+{
+    if (!is_complete() || !image_width || allocated < image_width * image_height
+        || !std::isfinite(lat) || !std::isfinite(lon))
+    {
+        return RGB3(0, 0, 0);
+    }
+
+    // Use the same angular grid as color_at(), interpolating across the longitude seam.
+    double wrapped_lon = fmod(lon + _pi, 2.0 * _pi);
+    if (wrapped_lon < 0)
+    {
+        wrapped_lon += 2.0 * _pi;
+    }
+    const double xf = wrapped_lon * lon_scale;
+    const double yf = std::clamp((half_pi - lat) * lat_scale, 0.0, (double)(image_height - 1));
+    const double x_floor = floor(xf);
+    const unsigned long x0 = (unsigned long)x_floor % image_width;
+    const unsigned long x1 = (x0 + 1) % image_width;
+    const unsigned long y0 = (unsigned long)floor(yf);
+    const unsigned long y1 = std::min(y0 + 1, image_height - 1);
+    const double tx = xf - x_floor;
+    const double ty = yf - y0;
+
+    auto channel = [&](const unsigned char *data) -> unsigned char
+    {
+        const double top = data[y0 * image_width + x0] * (1.0 - tx) + data[y0 * image_width + x1] * tx;
+        const double bottom = data[y1 * image_width + x0] * (1.0 - tx) + data[y1 * image_width + x1] * tx;
+        return (unsigned char)std::clamp(top * (1.0 - ty) + bottom * ty + 0.5, 0.0, 255.0);
+    };
+    return RGB3(channel(red_data), channel(green_data), channel(blue_data));
+}
+
 double Map::elevation_at(double lat, double lon)
 {
     if (bump_data)
