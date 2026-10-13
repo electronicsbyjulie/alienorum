@@ -871,14 +871,23 @@ bool Star::correct_main_sequence_absmag(double threshold)
         return false;
     }
 
+    // Stellar companions share the system center's distance and astrometric status.
+    const Star* distance_source = this;
+    if (cenobj && cenobj->typeclass() == class_star)
+    {
+        distance_source = static_cast<const Star*>(cenobj);
+    }
+    double observed_distance = distance_source->distance;
+    bool observed_distance_known = distance_source->distance_known;
+
     // Check if distance and apparent magnitude are available
     bool has_appmag = (!isnan(apparent_magnitude) && !isinf(apparent_magnitude) && apparent_magnitude > -30.0 && apparent_magnitude < 60.0 && apparent_magnitude != 0.0);
-    bool has_dist = (!isnan(distance) && !isinf(distance) && distance > 0);
+    bool has_dist = (!isnan(observed_distance) && !isinf(observed_distance) && observed_distance > 0);
 
     double m_obs = 1e29;
     if (has_appmag && has_dist)
     {
-        double intrinsic_brightness = pow(magnbase, -apparent_magnitude) * pow(fmax(AU, distance) / parsec / 10.0, 2);
+        double intrinsic_brightness = pow(magnbase, -apparent_magnitude) * pow(fmax(AU, observed_distance) / parsec / 10.0, 2);
         if (intrinsic_brightness > 0)
         {
             m_obs = -log(intrinsic_brightness) * invlogmagnbase;
@@ -923,7 +932,7 @@ bool Star::correct_main_sequence_absmag(double threshold)
                           || (mass > 0 && mass < 0.6 * solar_mass)
                           || (spectral_type[0] == 'M')
                           || (spectral_type[0] == 'd' && spectral_type[1] == 'M');
-    if (!is_verified_dwarf && m_obs < 1e28 && (exp_mag - m_obs >= threshold) && distance_known)
+    if (!is_verified_dwarf && m_obs < 1e28 && (exp_mag - m_obs >= threshold) && observed_distance_known)
     {
         absolute_magnitude = m_obs;
 
@@ -962,7 +971,7 @@ bool Star::correct_main_sequence_absmag(double threshold)
     // Case 3: Distance was NOT measured trigonometrically (or invalid/unreliable).
     // The spectral classification is trusted, so assign the expected main-sequence magnitude,
     // and compute the photometric distance so that apparent magnitude matches the catalog.
-    if (!distance_known || !has_dist)
+    if (!observed_distance_known || !has_dist)
     {
         absolute_magnitude = exp_mag;
         if (has_appmag)
@@ -1000,9 +1009,9 @@ bool Star::correct_main_sequence_absmag(double threshold)
 
     // Universal invariant guard:
     // No star should ever end up with a significantly brighter apparent magnitude than what's in the catalogs.
-    if (has_appmag && has_dist && distance > 0)
+    if (has_appmag && has_dist)
     {
-        double effective_appmag = absolute_magnitude + 5.0 * (log10(distance / (parsec * 10.0)));
+        double effective_appmag = absolute_magnitude + 5.0 * (log10(observed_distance / (parsec * 10.0)));
         if (effective_appmag < apparent_magnitude - 0.25)
         {
             absolute_magnitude = old_absmag;

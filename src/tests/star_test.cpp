@@ -476,6 +476,30 @@ TEST(StarTest, CorrectMainSequenceK2106)
     EXPECT_STREQ(k2_106.spectral_type, "G5 V");
 }
 
+TEST(StarTest, CorrectCompanionMagnitudeUsesSystemDistance)
+{
+    Star::load_main_seq_dat();
+
+    Star primary;
+    primary.distance = 56.234 * light_year;
+    primary.distance_known = true;
+
+    Star companion;
+    strcpy(companion.spectral_type, "F5V+...");
+    companion.cenobj = &primary;
+    companion.apparent_magnitude = 4.77;
+    companion.absolute_magnitude = 5.06;
+    companion.distance = 179.32 * light_year;
+    companion.distance_known = false;
+    companion.volumetric_mean_radius = 1.3424 * solar_radius;
+
+    EXPECT_TRUE(companion.correct_main_sequence_absmag());
+    EXPECT_NEAR(companion.absolute_magnitude, 3.587, 0.01);
+    EXPECT_STREQ(companion.spectral_type, "F5V+...");
+    EXPECT_EQ(companion.cenobj, &primary);
+    EXPECT_DOUBLE_EQ(companion.distance, 179.32 * light_year);
+}
+
 TEST(StarTest, CorrectMainSequenceHD7229)
 {
     Star::load_main_seq_dat();
