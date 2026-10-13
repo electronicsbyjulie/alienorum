@@ -5079,6 +5079,22 @@ static void draw_planetary_rain(Planet *p)
 }
 #endif
 
+void draw_local_rings()
+{
+    if (view_mode != vm_horizon || whereami < 0 || !cels[whereami])
+    {
+        return;
+    }
+
+    CelestialObject *cel = cels[whereami];
+    const cel_obj_class cls = cel->typeclass();
+    if ((cls == class_planet || cls == class_moon) && ((Planet*)cel)->ring_radius)
+    {
+        // Clouds and terrain are drawn afterward to obscure the local rings.
+        draw_ring_gpu(cel);
+    }
+}
+
 void draw_horizon()
 {
     // Horizon
@@ -5093,11 +5109,6 @@ void draw_horizon()
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
         bool gaseous = uses_gaseous_map(p->type);
     
-        if ((cls == class_planet || cls == class_moon) && p && p->ring_radius)
-        {
-            draw_ring_gpu(cel);                     // TODO: Rings appear in front of atmosphere - bad - but if we move this to draw_sky_gradient() it cuts them off.
-        }
-
         spawn_texture_load(cel);
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);

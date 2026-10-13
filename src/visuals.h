@@ -88,6 +88,7 @@ void draw_objects();
 void draw_system_view();
 void draw_sunclock();
 void find_horizon();
+void draw_local_rings();
 void draw_horizon();
 void draw_sky_gradient();
 void draw_cons_lines();

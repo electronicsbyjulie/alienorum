@@ -493,7 +493,7 @@ int main (int argc, char** argv)
         aliendr = frand(-aliend, aliend), aliendg = frand(-aliend, aliend), aliendb = frand(-aliend, aliend);
 
     ImVec2 ovni(2061, 123), nlorad(54, 29);
-    double dxovni = -1.3, dyovni = -0.0029;
+    double dxovni = -5.03, dyovni = -0.029;
     std::deque<ImVec2> trail;
 
     SDL_Surface* surface = IMG_Load("assets/blank.png");
@@ -706,6 +706,7 @@ int main (int argc, char** argv)
                 if (show_grid) draw_ra_dec_lines();
                 if (show_consln) draw_cons_lines();
                 draw_objects();
+                draw_local_rings();
                 draw_cloudy_sky();
                 draw_horizon();
 
@@ -1043,7 +1044,7 @@ int main (int argc, char** argv)
             argsfs = false;
         }
 
-        if (nlo)
+        if (nlo && !splash)
         {
             n = trail.size();
             if (n > 54) trail.pop_front();
