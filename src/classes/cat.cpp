@@ -5954,7 +5954,7 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     }
 
     std::string pl_name_check = it_pl->get<std::string>();
-    if (!has_smax || !has_per)
+    if (!has_smax && !has_per)
     {
         bool is_special_imaging = (pl_name_check == "PDS 70 e" || pl_name_check == "HIP 65426 b" || pl_name_check == "WD 0806-661 b");
         if (!is_special_imaging)
