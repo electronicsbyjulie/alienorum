@@ -248,6 +248,7 @@ namespace alienorum
         RGB3 color_at(double latitude, double longitude);
         RGB3 color_at_bilinear(double latitude, double longitude) const;
         double elevation_at(double latitude, double longitude);     // Returns meters.
+        double elevation_at_bilinear(double latitude, double longitude) const;
         void generate_rocky_map(CelestialObject *cel);
         void generate_lava_map(CelestialObject *cel);
         void generate_gas_giant_map(CelestialObject *cel);

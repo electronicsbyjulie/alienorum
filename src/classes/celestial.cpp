@@ -2113,6 +2113,36 @@ RGB3 Map::color_at_bilinear(double lat, double lon) const
     return RGB3(channel(red_data), channel(green_data), channel(blue_data));
 }
 
+double Map::elevation_at_bilinear(double lat, double lon) const
+{
+    if (!bump_data || !image_width || !image_height || allocated < image_width * image_height
+        || !std::isfinite(lat) || !std::isfinite(lon))
+    {
+        return 0.0;
+    }
+    double wrapped_lon = fmod(lon + _pi, 2.0 * _pi);
+    if (wrapped_lon < 0.0)
+    {
+        wrapped_lon += 2.0 * _pi;
+    }
+    const double xf = wrapped_lon * lon_scale;
+    const double yf = std::clamp((half_pi - lat) * lat_scale, 0.0, (double)(image_height - 1));
+    const double x_floor = floor(xf);
+    const unsigned long x0 = (unsigned long)x_floor % image_width;
+    const unsigned long x1 = (x0 + 1) % image_width;
+    const unsigned long y0 = (unsigned long)floor(yf);
+    const unsigned long y1 = std::min(y0 + 1, image_height - 1);
+    const double tx = xf - x_floor, ty = yf - y0;
+    auto sample = [&](unsigned long x, unsigned long y) -> double
+    {
+        const double height = bump_data[y * image_width + x];
+        return std::isfinite(height) ? height : 0.0;
+    };
+    const double top = sample(x0, y0) * (1.0 - tx) + sample(x1, y0) * tx;
+    const double bottom = sample(x0, y1) * (1.0 - tx) + sample(x1, y1) * tx;
+    return top * (1.0 - ty) + bottom * ty;
+}
+
 double Map::elevation_at(double lat, double lon)
 {
     if (bump_data)

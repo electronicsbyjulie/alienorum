@@ -10,6 +10,46 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+class SkylineElevationMap : public Map
+{
+    public:
+    SkylineElevationMap()
+    {
+        image_width = 4;
+        image_height = 2;
+        allocated = 8;
+        lon_scale = image_width / (2.0 * _pi);
+        lat_scale = image_height / _pi;
+        bump_data = new double[allocated];
+        for (unsigned long pixel = 0; pixel < allocated; ++pixel)
+        {
+            bump_data[pixel] = pixel * 100.0;
+        }
+    }
+};
+
+TEST(MapTest, SkylineElevationInterpolatesBetweenPixels)
+{
+    SkylineElevationMap map;
+    EXPECT_NEAR(map.elevation_at_bilinear(_pi / 4.0, -3.0 * _pi / 4.0), 250.0, 1.0e-9);
+    EXPECT_NEAR(map.elevation_at_bilinear(half_pi, 3.0 * _pi / 4.0), 150.0, 1.0e-9);
+    const double delta = 1.0e-8;
+    EXPECT_NEAR(map.elevation_at_bilinear(0.0, -half_pi - delta),
+        map.elevation_at_bilinear(0.0, -half_pi + delta), 1.0e-5);
+}
+
+TEST(MapTest, SkylineElevationWrapsAndClamps)
+{
+    SkylineElevationMap map;
+    const double delta = 1.0e-8;
+    EXPECT_NEAR(map.elevation_at_bilinear(0.0, _pi - delta),
+        map.elevation_at_bilinear(0.0, -_pi + delta), 1.0e-5);
+    EXPECT_DOUBLE_EQ(map.elevation_at_bilinear(half_pi + 1.0, -_pi), 0.0);
+    EXPECT_DOUBLE_EQ(map.elevation_at_bilinear(-half_pi - 1.0, -_pi), 400.0);
+    Map empty;
+    EXPECT_DOUBLE_EQ(empty.elevation_at_bilinear(0.0, 0.0), 0.0);
+}
+
 // =====================================================================
 // Global / Helper Tests
 // =====================================================================

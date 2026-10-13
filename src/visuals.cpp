@@ -5174,24 +5174,14 @@ void draw_horizon()
             static double cached_lat = 1e293, cached_lon = 1e293;
             static int cached_whereami = -2;
             static double cached_eye_height = -1.0;
+            static PerlinNoise skyline_noise;
 
             if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon || cached_eye_height != viewer_eye_height)
             {
-                pn.reseed(0xb0ad * 15 * viewer_lat + 0x1cea * 60 * viewer_lon);
-                cached_raw_min = 9999;
-                for (j = 0; j < hznodes; j++)
+                if (cached_whereami != whereami)
                 {
-                    double theta = _pi * 2 * j / hznodes;
-                    double scale = 0.19;
-                    double nx = scale * sin(theta), ny = scale * cos(theta);
-                    cached_raw_noise[j] = fBm(nx, ny, 0, 29, 1.29, 0.8559);
-                    if (cached_raw_noise[j] < cached_raw_min)
-                    {
-                        cached_raw_min = cached_raw_noise[j];
-                    }
+                    skyline_noise.reseed(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
                 }
-
-                bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
                 double R_planet = cel->get_equatorial_radius();
                 if (R_planet <= 0)
                 {
@@ -5201,9 +5191,42 @@ void draw_horizon()
                 {
                     R_planet = earth_radius;
                 }
+                // A continuous field around a distant ring on the planet. The
+                // same location gives the same skyline, independent of travel history.
+                const double spatial_scale = 50000.0;
+                const double ring_angle = std::min(0.19, 9500.0 / R_planet);
+                const double sin_lat = sin(viewer_lat), cos_lat = cos(viewer_lat);
+                const double sin_lon = sin(viewer_lon), cos_lon = cos(viewer_lon);
+                cached_raw_min = 9999;
+                for (j = 0; j < hznodes; j++)
+                {
+                    double theta = _pi * 2 * j / hznodes;
+                    const double radial = R_planet * cos(ring_angle) / spatial_scale;
+                    const double north = R_planet * sin(ring_angle) * cos(theta) / spatial_scale;
+                    const double east = R_planet * sin(ring_angle) * sin(theta) / spatial_scale;
+                    const double equatorial = radial * cos_lat - north * sin_lat;
+                    const double nx = equatorial * cos_lon - east * sin_lon;
+                    const double ny = equatorial * sin_lon + east * cos_lon;
+                    const double nz = radial * sin_lat + north * cos_lat;
+                    double total = 0.0, amplitude = 1.0, frequency = 1.0, weight = 0.0;
+                    for (int octave = 0; octave < 29; ++octave)
+                    {
+                        total += skyline_noise.noise(nx * frequency, ny * frequency, nz * frequency) * amplitude;
+                        weight += amplitude;
+                        amplitude *= 0.8559;
+                        frequency *= 1.29;
+                    }
+                    cached_raw_noise[j] = 0.5 + 0.5 * total / weight;
+                    if (cached_raw_noise[j] < cached_raw_min)
+                    {
+                        cached_raw_min = cached_raw_noise[j];
+                    }
+                }
+
+                bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
                 double h_eye = fmax(0.01, viewer_eye_height);
                 double geom_dist = sqrt(2.0 * R_planet * h_eye);
-                double E0 = has_bump ? cel->surf_map->elevation_at(viewer_lat, viewer_lon) : 0.0;
+                double E0 = has_bump ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
                 double hz_dip = acos(R_planet / (R_planet + h_eye));
 
                 for (j = 0; j < hznodes; j++)
@@ -5224,7 +5247,7 @@ void draw_horizon()
                             double phi = asin(sin_phi);
                             double d_lon = atan2(sin(theta) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
                             double lam = viewer_lon + d_lon;
-                            double Es = cel->surf_map->elevation_at(phi, lam);
+                            double Es = cel->surf_map->elevation_at_bilinear(phi, lam);
                             double h_apparent = (Es - E0) - (s * s) / (2.0 * R_planet);
                             double alpha = (h_apparent - h_eye) / s;
                             if (alpha > max_alpha)
