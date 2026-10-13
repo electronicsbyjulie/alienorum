@@ -3491,6 +3491,8 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     const int body_octaves = octaves_for(4.0, 5);
     const int detail_octaves = octaves_for(18.0, 4);
     const int wisp_octaves = octaves_for(36.0, 4);
+    const int depth_octaves = octaves_for(2.6, 4);
+    const int cell_octaves = octaves_for(30.0, 3);
 
     for (unsigned long y = 0; y < image_height; ++y)
     {
@@ -3591,11 +3593,30 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
                 wz * 36.0 + oz + 67.9, wisp_octaves, 2.0, 0.5);
             const double body = smooth(0.48, 0.57, broad + 0.22 * (detail - 0.5));
             const double fringe = smooth(0.42, 0.50, broad) * smooth(0.49, 0.60, filament);
-            const double background = std::max(body, 0.65 * fringe);
             const double organized = storm_weight * smooth(0.12, 0.80,
                 storm_shape + 0.30 * (detail - 0.5) + 0.16 * (filament - 0.5));
-            const double coverage = std::max(background * (1.0 - 0.80 * storm_weight), organized);
-            const unsigned char brightness = (unsigned char)(242.0 * coverage);
+
+            // Thickness varies independently of the cloud footprint. Sample the same
+            // wound coordinates so variations follow the fronts instead of cutting across them.
+            const double column = smooth(0.32, 0.68,
+                fBm(wx * 2.6 + ox + 43.7, wy * 2.6 + oy + 91.1, wz * 2.6 + oz + 7.9,
+                    depth_octaves, 2.0, 0.5));
+            const double cells = smooth(0.34, 0.66,
+                fBm(wx * 30.0 + ox + 29.3, wy * 30.0 + oy + 5.7, wz * 30.0 + oz + 113.2,
+                    cell_octaves, 2.0, 0.5));
+            const double body_depth = (0.55 + 3.80 * column) * (0.55 + 0.80 * cells);
+            const double wisp_depth = (0.12 + 0.65 * column) * (0.80 + 0.40 * cells);
+            const double storm_depth = (1.20 + 3.20 * column + 1.50 * storm_shape) * (0.70 + 0.60 * cells);
+
+            // Convert dimensionless optical depth to opacity. Fractional coverage keeps
+            // feathered edges soft even when the interior of a cloud becomes opaque.
+            const double body_opacity = body * (1.0 - exp(-body_depth));
+            const double wisp_opacity = 0.65 * fringe * (1.0 - exp(-wisp_depth));
+            const double storm_opacity = organized * (1.0 - exp(-storm_depth));
+            const double background_opacity = std::max(body_opacity, wisp_opacity) * (1.0 - 0.80 * storm_weight);
+            const double opacity = std::clamp(std::max(background_opacity, storm_opacity), 0.0, 1.0);
+            // Grayscale is premultiplied white: the existing map compositor also reads it as alpha.
+            const unsigned char brightness = (unsigned char)(255.0 * opacity + 0.5);
             const unsigned long idx = y * image_width + x;
             red_data[idx] = brightness;
             green_data[idx] = brightness;
