@@ -244,19 +244,19 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "go"))
         {
-            if (const char* a = next_arg("go")) push_str(CliCmd::k_go, a);
+            if (const char* a = next_arg(argv[l])) push_str(CliCmd::k_go, a);
         }
         else if (!strcmp(argv[l], "alt"))
         {
-            if (const char* a = next_arg("alt")) push_str(CliCmd::k_alt, a);
+            if (const char* a = next_arg(argv[l])) push_str(CliCmd::k_alt, a);
         }
         else if (!strcmp(argv[l], "az"))
         {
-            if (const char* a = next_arg("az")) push_str(CliCmd::k_az, a);
+            if (const char* a = next_arg(argv[l])) push_str(CliCmd::k_az, a);
         }
         else if (!strcmp(argv[l], "zoom"))
         {
-            if (const char* a = next_arg("zoom")) push_str(CliCmd::k_zoom, a);
+            if (const char* a = next_arg(argv[l])) push_str(CliCmd::k_zoom, a);
         }
         else if (!strcmp(argv[l], "devdial") || !strcmp(argv[l], "dd"))
         {
@@ -268,7 +268,7 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "dds"))
         {
-            if (const char* a = next_arg("zoom")) dev_dial_step = atof(a);
+            if (const char* a = next_arg(argv[l])) dev_dial_step = atof(a);
         }
         else if (!strcmp(argv[l], "fs") || !strcmp(argv[l], "fullscreen"))
         {
@@ -276,7 +276,7 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "jd") || !strcmp(argv[l], "JD"))
         {
-            if (const char* a = next_arg("jd")) setjd = a;
+            if (const char* a = next_arg(argv[l])) setjd = a;
         }
         else if (argv[l][0] == 'J' && argv[l][1] == 'D' && argv[l][2] >= '0' && argv[l][2] <= '9')
         {
@@ -292,11 +292,11 @@ int main (int argc, char** argv)
         }
         else if (!strcmp(argv[l], "lblmag"))
         {
-            if (const char* a = next_arg("lblmag")) appmagn_lblcut = atof(a);
+            if (const char* a = next_arg(argv[l])) appmagn_lblcut = atof(a);
         }
         else if (!strcmp(argv[l], "theme"))
         {
-            if (const char* a = next_arg("theme")) global_style.load(std::string(a));
+            if (const char* a = next_arg(argv[l])) global_style.load(std::string(a));
         }
         else if (!strcmp(argv[l], "noexo"))
         {

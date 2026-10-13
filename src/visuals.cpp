@@ -7861,7 +7861,7 @@ void draw_cloudy_sky()
     const double sample_spacing = std::max(screen_width / columns, screen_height / base_rows);
     // Match the sky's perceptual daylight response, with bright white cumulus.
     // Retain the original linear illumination for the continuous cloud deck.
-    const double cumulus_light = std::clamp(cumulus_night_minimum + cumulus_day_swing * is_day, 0.0, 1.0) * cumulus_day_maximum;
+    const double cumulus_light = std::clamp(cumulus_day_swing * pow(is_day, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum;
 
     auto sky_color = [&](double screen_x, double screen_y) -> ImU32
     {

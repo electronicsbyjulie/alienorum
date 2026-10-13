@@ -56,8 +56,8 @@
 #define RAIN_MULTIPLIER 503
 
 // Cloud display parameters
-#define cumulus_night_minimum 0.03
-#define cumulus_day_swing 0.95
+#define cumulus_day_swing 1.3
+#define cumulus_day_exponent 0.666
 #define cumulus_day_maximum 0.71
 
 struct RockInstance
