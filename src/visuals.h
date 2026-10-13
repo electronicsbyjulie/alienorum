@@ -55,6 +55,11 @@
 #define rain_cloudiness_threshold 0.35
 #define RAIN_MULTIPLIER 503
 
+// Cloud display parameters
+#define cumulus_night_minimum 0.03
+#define cumulus_day_swing 0.95
+#define cumulus_day_maximum 0.71
+
 struct RockInstance
 {
     double dist;
