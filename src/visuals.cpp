@@ -4829,6 +4829,11 @@ static void draw_planetary_rain(Planet *p)
         return;
     }
 
+    if (p->has_water < 0.05)
+    {
+        return;
+    }
+
     // Must be a non-gaseous, non-lava celestial body
     if (uses_gaseous_map(p->type) || p->type == lavaworld)
     {
@@ -4843,13 +4848,7 @@ static void draw_planetary_rain(Planet *p)
 
     // Candidate criteria: temperate planet with suitable atmospheric pressure
     double p_surf = p->get_surface_pressure();
-    if (p_surf < 10000.0 || p_surf > 500000.0)
-    {
-        return;
-    }
-
-    double t_surf = p->estimate_surface_temperature();
-    if (t_surf < 260.0 || t_surf > 330.0)
+    if (p_surf < 611.0 || p_surf > 21800000.0)
     {
         return;
     }

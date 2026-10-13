@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <memory>
 #include "celestial.h"
 #include "shore.h"
 
@@ -2577,6 +2578,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->ring_map->generate_ring_map(p, p->ring_radius / p->volumetric_mean_radius * 1024,
             p->ring_inner_radius/p->ring_radius, p->ring_mean_opacity, p->ringx_map);
     }
+
+    cel->generate_water_clouds();
 }
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel)
@@ -3286,6 +3289,185 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     touch_gen();
 }
 
+void CelestialObject::generate_water_clouds()
+{
+    // Surface regeneration and the loader can both reach this fallback.
+    std::lock_guard<std::mutex> lock(mtx);
+    const cel_obj_class cls = typeclass();
+    if ((cls != class_planet && cls != class_moon) || !uses_rocky_map(type)
+        || type == lavaworld || cloud_map || !surf_map || !surf_map->is_complete()
+        || done || abort_load)
+    {
+        return;
+    }
+
+    try
+    {
+        std::unique_ptr<Map> clouds(new Map(this));
+        if (clouds->generate_water_cloud_map(this))
+        {
+            transparent_clouds = true;
+            ((Planet*)this)->overcast = false;
+            cloud_map = clouds.release();
+        }
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "Water cloud generation failed for " << name << ": " << error.what() << std::endl;
+    }
+    generating_fic_texture = false;
+}
+
+bool Map::generate_water_cloud_map(CelestialObject *cel)
+{
+    Planet *p = (Planet*)cel;
+    const double pressure = p->get_surface_pressure();
+    if (!(p->has_water > 0) || !std::isfinite(p->has_water)
+        || !std::isfinite(pressure) || pressure < 611.657)
+    {
+        return false;
+    }
+
+    const double surface_temp = p->estimate_surface_temperature();
+    if (!(surface_temp > 0) || !std::isfinite(surface_temp))
+    {
+        return false;
+    }
+
+    // Match the existing approximate pressure correction for water's boiling point.
+    // The critical temperature caps this approximation at high pressure.
+    const double inverse_boil = 1.0 / (water_freezing + 100.0)
+        - (8.314 / 40660.0) * std::log(pressure / 1.0e5);
+    const double boiling_temp = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
+    const double swing = 256.0 / (pressure * 3.5e-5);
+    const bool tidal_locked = p->orbit && p->orbit->center && p->orbit->center->type == star
+        && p->is_tidal_locked();
+    Map *surface = cel->surf_map;
+    const bool full_ocean = cel->type == waterworld || cel->type == hycean;
+    const bool sample_oceans = surface->has_bump_data() && p->m_bump_scale > 0;
+    bool liquid_ocean = false;
+
+    // Sample actual ocean elevations when available. Imported color maps without
+    // elevation data use the stored water amount and the same regional temperatures.
+    for (unsigned long row = 0; row < 32 && !liquid_ocean; ++row)
+    {
+        const unsigned long sy = row * surface->image_height / 32;
+        const double theta = sy * _pi / surface->image_height;
+        for (unsigned long col = 0; col < 64; ++col)
+        {
+            const unsigned long sx = col * surface->image_width / 64;
+            if (sample_oceans && !full_ocean)
+            {
+                const double height = surface->bump_data[sy * surface->image_width + sx]
+                    / p->m_bump_scale + 0.5;
+                if (!std::isfinite(height) || height >= p->has_water)
+                {
+                    continue;
+                }
+            }
+            const double phi = sx * 2.0 * _pi / surface->image_width;
+            const double psi = acos(std::clamp(sin(theta) * cos(phi), -1.0, 1.0));
+            const double local_temp = tidal_locked
+                ? surface_temp + swing * 0.5 - swing * cos(psi * 0.5)
+                : surface_temp - swing * 0.5 + swing * sin(theta);
+            if (local_temp >= water_freezing && local_temp < boiling_temp)
+            {
+                liquid_ocean = true;
+                break;
+            }
+        }
+    }
+    if (!liquid_ocean || !cel->fictitious_map_height)
+    {
+        return false;
+    }
+
+    generating_fic_texture = true;
+    if (!cel->rnd_seed)
+    {
+        cel->randomize();
+    }
+    // A separate stream keeps cloud parameters independent of terrain generation.
+    std::mt19937 cloud_rng(static_cast<unsigned int>(cel->rnd_seed) ^ 0x63a9d27bu);
+    std::uniform_real_distribution<double> offset(0.0, 128.0);
+    const double ox = offset(cloud_rng);
+    const double oy = offset(cloud_rng);
+    const double oz = offset(cloud_rng);
+
+    image_height = cel->fictitious_map_height;
+    image_width = image_height * 2;
+    allocated = image_height * image_width;
+    red_data = new unsigned char[allocated];
+    green_data = new unsigned char[allocated];
+    blue_data = new unsigned char[allocated];
+    lat_scale = image_height / _pi;
+    lon_scale = image_width / (2.0 * _pi);
+    inv_lat_scale = 1.0 / lat_scale;
+    inv_lon_scale = 1.0 / lon_scale;
+
+    auto smooth = [](double low, double high, double value) -> double
+    {
+        const double t = std::clamp((value - low) / (high - low), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    };
+    auto octaves_for = [this](double scale, int limit) -> int
+    {
+        // Stop the finest octave before its features fall below roughly two pixels.
+        const double ratio = image_height / (2.0 * _pi * scale);
+        return std::clamp(1 + (int)floor(log2(std::max(1.0, ratio))), 1, limit);
+    };
+    const int body_octaves = octaves_for(4.0, 5);
+    const int detail_octaves = octaves_for(18.0, 4);
+    const int wisp_octaves = octaves_for(36.0, 4);
+
+    for (unsigned long y = 0; y < image_height; ++y)
+    {
+        if (done || abort_load)
+        {
+            return false;
+        }
+        const double theta = y * inv_lat_scale;
+        const double ring_radius = sin(theta);
+        const double nz = cos(theta);
+        for (unsigned long x = 0; x < image_width; ++x)
+        {
+            const double phi = x * inv_lon_scale;
+            const double nx = ring_radius * cos(phi);
+            const double ny = ring_radius * sin(phi);
+
+            // All fields live in 3D, so longitude wraps and polar samples converge.
+            const double warp_x = fBm(nx * 2.0 + ox, ny * 2.0 + oy, nz * 2.0 + oz, 3, 2.0, 0.5) - 0.5;
+            const double warp_y = fBm(nx * 2.0 + ox + 37.1, ny * 2.0 + oy + 11.7,
+                nz * 2.0 + oz + 53.3, 3, 2.0, 0.5) - 0.5;
+            const double warp_z = fBm(nx * 2.0 + ox + 73.9, ny * 2.0 + oy + 61.2,
+                nz * 2.0 + oz + 19.4, 3, 2.0, 0.5) - 0.5;
+            const double wx = nx + 0.35 * warp_x;
+            const double wy = ny + 0.35 * warp_y;
+            const double wz = nz + 0.35 * warp_z;
+            const double broad = fBm(wx * 4.0 + ox, wy * 4.0 + oy, wz * 4.0 + oz,
+                body_octaves, 2.0, 0.5);
+            const double detail = fBm(wx * 18.0 + ox + 17.2, wy * 18.0 + oy + 49.6,
+                wz * 18.0 + oz + 31.8, detail_octaves, 2.0, 0.5);
+
+            // Unequal scales stretch fine noise into filaments, with a soft fringe
+            // around broad cloud patches. Storm organization is a later stage.
+            const double filament = fBm(wx * 9.0 + ox + 81.3, wy * 9.0 + oy + 24.5,
+                wz * 36.0 + oz + 67.9, wisp_octaves, 2.0, 0.5);
+            const double body = smooth(0.48, 0.57, broad + 0.22 * (detail - 0.5));
+            const double fringe = smooth(0.42, 0.50, broad) * smooth(0.49, 0.60, filament);
+            const double coverage = std::max(body, 0.65 * fringe);
+            const unsigned char brightness = (unsigned char)(242.0 * coverage);
+            const unsigned long idx = y * image_width + x;
+            red_data[idx] = brightness;
+            green_data[idx] = brightness;
+            blue_data[idx] = brightness;
+        }
+    }
+
+    touch_gen();
+    return true;
+}
+
 void Map::generate_stellar_map(CelestialObject *cel)
 {
     assert(cel->typeclass() == class_star);
@@ -3686,6 +3868,7 @@ void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
 
     if (this == cel->surf_map && bump_data && uses_rocky_map(cel->type))
     {
+        gen = 0;
         mcel = cel;
         std::thread tregen(_resample_bump_regen_rocky, this, cel);
         tregen.detach();

@@ -251,6 +251,7 @@ namespace alienorum
         void generate_lava_map(CelestialObject *cel);
         void generate_gas_giant_map(CelestialObject *cel);
         void generate_overcast_sky(CelestialObject *cel);
+        bool generate_water_cloud_map(CelestialObject *cel);
         void generate_stellar_map(CelestialObject *cel);
         void generate_ring_map(CelestialObject *cel, int resolution, double rel_inner_radius, double mean_opacity, Map* transparency_map);
         void mark_for_map_regen(CelestialObject *cel, bool discard_bump = false);
@@ -402,6 +403,7 @@ namespace alienorum
         json to_json();
         bool from_json(json j);
         void mark_all_maps_for_regen();
+        void generate_water_clouds();
 
         bool operator<(const CelestialObject& other) const;
 

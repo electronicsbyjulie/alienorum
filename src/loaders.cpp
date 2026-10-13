@@ -390,6 +390,8 @@ void load_textures(CelestialObject* cel)
                 break;
         }
     }
+
+    cel->generate_water_clouds();
 }
 
 void save_textures(CelestialObject* cel)
