@@ -7843,6 +7843,26 @@ void draw_cloudy_sky()
     }
     is_day = std::clamp(is_day, 0.0, 1.0);
 
+    // Sample a fixed field in planet coordinates so turning and zooming never
+    // regenerate the clouds. Three scales give rounded masses and smaller lobes.
+    static PerlinNoise cumulus_noise(0x43554d55u);
+    const double cloud_scale = std::clamp(planet_radius * 0.001, 1200.0, 8000.0);
+    auto smooth_cloud = [](double value) -> double
+    {
+        const double t = std::clamp(value, 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    };
+
+    const float screen_width = dispcx * 2.0f;
+    const float screen_height = dispcy * 2.0f;
+    const float mesh_spacing = p->overcast ? 24.0f : 6.0f;
+    const int columns = std::clamp((int)ceil(screen_width / mesh_spacing), 16, 640);
+    const int base_rows = std::clamp((int)ceil(screen_height / (p->overcast ? 16.0f : 6.0f)), 16, 360);
+    const double sample_spacing = std::max(screen_width / columns, screen_height / base_rows);
+    // Match the sky's perceptual daylight response, with bright white cumulus.
+    // Retain the original linear illumination for the continuous cloud deck.
+    const double cumulus_light = std::clamp(1.6 * pow(is_day, 1.0 / 5.5), 0.0, 1.0) * 0.666;
+
     auto sky_color = [&](double screen_x, double screen_y) -> ImU32
     {
         const double camera_x = (screen_x - dispcx) / focal_length;
@@ -7906,21 +7926,51 @@ void draw_cloudy_sky()
         const double lat = atan2(hit_z, hypot(hit_x, hit_y));
         const double lon = atan2(hit_y, hit_x);
         RGB3 rgb = clouds->color_at_bilinear(lat, lon);
-        const double haziness = p->overcast ? 1.0 : std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);
+        const double coverage = std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);
+        double haziness = p->overcast ? 1.0 : coverage;
+        double cumulus_shade = 1.0;
+        const double deck_blend = p->overcast ? 1.0 : smooth_cloud((coverage - 0.70) / 0.20);
+        // The shell normal gives the grazing angle even at a curved horizon.
+        const double footprint = distance / (focal_length * std::max(0.02, root / shell_radius));
+        // Filter over an entire mesh cell, not a single screen pixel. This also
+        // accounts for the sample cap on large displays.
+        const double filter_width = footprint * sample_spacing / cloud_scale;
+        const double unresolved = smooth_cloud((filter_width - 0.08) / 0.22);
+        const double blend = deck_blend + (1.0 - deck_blend) * unresolved;
+        if (blend < 1.0 && coverage > 0.0)
+        {
+            const double x = hit_x / cloud_scale;
+            const double y = hit_y / cloud_scale;
+            const double z = hit_z / cloud_scale;
+            const double mass = cumulus_noise.noise(x, y, z);
+            // Remove small lobes before they become smaller than a mesh cell.
+            const double lobe_weight = 1.0 - smooth_cloud(filter_width * 2.7 / 0.35);
+            const double detail_weight = 1.0 - smooth_cloud(filter_width * 7.1 / 0.35);
+            const double lobes = lobe_weight * cumulus_noise.noise(x * 2.7, y * 2.7, z * 2.7);
+            const double detail = detail_weight * cumulus_noise.noise(x * 7.1, y * 7.1, z * 7.1);
+            const double field = std::clamp(0.5 + 0.85 * mass + 0.20 * lobes + 0.06 * detail, 0.0, 1.0);
+            // Black map pixels remain clear; opaque interiors hide stars and rings.
+            const double threshold = 1.0 - coverage;
+            const double edge_width = std::max(0.045, 2.0 * filter_width);
+            const double patch_alpha = smooth_cloud((field - threshold) / edge_width + 0.5);
+            // At grazing angles the projected pattern becomes subpixel. Fade to
+            // its mean opacity there rather than letting distant clouds shimmer.
+            haziness = patch_alpha * (1.0 - blend) + coverage * blend;
+            cumulus_shade = 1.0 - 0.035 * (1.0 - field);
+        }
+        // Opacity supplies the clear gaps; edge vertices keep the same white
+        // color as interiors to avoid dark fringes during interpolation.
         const double light = is_day * (160.0 / 255.0);
-        const int cr = std::clamp((int)(rgb.r * light), 0, 255);
-        const int cg = std::clamp((int)(rgb.g * light), 0, 255);
-        const int cb = std::clamp((int)(rgb.b * light), 0, 255);
+        const double white = 255.0 * cumulus_light * cumulus_shade * (1.0 - deck_blend);
+        const int cr = std::clamp((int)(rgb.r * light * deck_blend + white), 0, 255);
+        const int cg = std::clamp((int)(rgb.g * light * deck_blend + white), 0, 255);
+        const int cb = std::clamp((int)(rgb.b * light * deck_blend + white), 0, 255);
         const int ca = std::clamp((int)(255.0 * haziness + 0.5), 0, 255);
         return rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
     };
 
     // Vertex colors interpolate between ray samples. Extra rows near the horizon
     // resolve distant cloud banks that occupy only a few pixels of vertical sky.
-    const float screen_width = dispcx * 2.0f;
-    const float screen_height = dispcy * 2.0f;
-    const int columns = std::clamp((int)ceil(screen_width / 24.0f), 16, 160);
-    const int base_rows = std::clamp((int)ceil(screen_height / 16.0f), 16, 160);
     std::vector<float> rows;
     rows.reserve(base_rows + 66);
     for (int row = 0; row <= base_rows; ++row)
