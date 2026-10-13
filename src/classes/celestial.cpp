@@ -6,6 +6,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -3383,16 +3384,87 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     }
 
     generating_fic_texture = true;
-    if (!cel->rnd_seed)
+    // Weather varies by real-world hour and planet name, independently of terrain.
+    const std::uint64_t weather_hour = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::hours>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    std::uint32_t planet_hash = 2166136261u;
+    for (const char *c = cel->name; *c; ++c)
     {
-        cel->randomize();
+        planet_hash ^= static_cast<unsigned char>(*c);
+        planet_hash *= 16777619u;
     }
-    // A separate stream keeps cloud parameters independent of terrain generation.
-    std::mt19937 cloud_rng(static_cast<unsigned int>(cel->rnd_seed) ^ 0x63a9d27bu);
+    std::seed_seq weather_seed
+    {
+        planet_hash,
+        static_cast<std::uint32_t>(weather_hour),
+        static_cast<std::uint32_t>(weather_hour >> 32),
+        static_cast<std::uint32_t>(0x63a9d27bu)
+    };
+    std::mt19937 cloud_rng(weather_seed);
     std::uniform_real_distribution<double> offset(0.0, 128.0);
     const double ox = offset(cloud_rng);
     const double oy = offset(cloud_rng);
     const double oz = offset(cloud_rng);
+
+    struct CloudStorm
+    {
+        Point center;
+        Point east;
+        Point north;
+        double radius;
+        double cos_radius;
+        double orientation;
+        double twist;
+        double bend;
+        double width;
+        bool compact;
+    };
+    std::vector<CloudStorm> storms;
+    std::uniform_real_distribution<double> unit(0.0, 1.0);
+    std::uniform_int_distribution<int> system_count(7, 10);
+    const int storm_count = system_count(cloud_rng);
+    const double rotation_sign = cel->sidereal_rotational_period < 0 ? -1.0 : 1.0;
+    for (int i = 0; i < storm_count; ++i)
+    {
+        CloudStorm storm;
+        storm.compact = (i % 4 == 0);
+        storm.radius = storm.compact ? 0.08 + 0.05 * unit(cloud_rng) : 0.14 + 0.10 * unit(cloud_rng);
+        storm.cos_radius = cos(storm.radius);
+        storm.orientation = 2.0 * _pi * unit(cloud_rng);
+        const double hemisphere = (i % 2 == 0) ? 1.0 : -1.0;
+        storm.twist = hemisphere * rotation_sign * (5.0 + 3.0 * unit(cloud_rng));
+        storm.bend = 0.35 + 0.45 * unit(cloud_rng);
+        storm.width = storm.compact ? 0.08 : 0.10 + 0.06 * unit(cloud_rng);
+
+        // Keep systems apart so their outer wisps can merge without piling up cores.
+        // These latitude ranges describe an artistic weather pattern, not a climate solver.
+        for (int attempt = 0; attempt < 48; ++attempt)
+        {
+            const double lat = hemisphere * (storm.compact
+                ? 0.20 + 0.32 * unit(cloud_rng) : 0.44 + 0.65 * unit(cloud_rng));
+            const double lon = 2.0 * _pi * unit(cloud_rng);
+            storm.center = Point(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat));
+            storm.east = Point(-sin(lon), cos(lon), 0.0);
+            storm.north = Point(-sin(lat) * cos(lon), -sin(lat) * sin(lon), cos(lat));
+            bool overlaps = false;
+            for (const CloudStorm& other : storms)
+            {
+                const double separation_cos = storm.center.x * other.center.x
+                    + storm.center.y * other.center.y + storm.center.z * other.center.z;
+                if (separation_cos > cos(0.88 * (storm.radius + other.radius)))
+                {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (!overlaps)
+            {
+                storms.push_back(storm);
+                break;
+            }
+        }
+    }
 
     image_height = cel->fictitious_map_height;
     image_width = image_height * 2;
@@ -3435,27 +3507,94 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
             const double nx = ring_radius * cos(phi);
             const double ny = ring_radius * sin(phi);
 
+            double flow_x = nx;
+            double flow_y = ny;
+            double flow_z = nz;
+            double storm_shape = 0.0;
+            double storm_weight = 0.0;
+            for (const CloudStorm& storm : storms)
+            {
+                const double axis_dot = std::clamp(nx * storm.center.x
+                    + ny * storm.center.y + nz * storm.center.z, -1.0, 1.0);
+                if (axis_dot <= storm.cos_radius)
+                {
+                    continue;
+                }
+
+                // Angular distance and a tangent basis work across the map seam and poles.
+                const double angle = acos(axis_dot);
+                const double radius = angle / storm.radius;
+                const double envelope = 1.0 - smooth(0.72, 1.0, radius);
+                const double east = nx * storm.east.x + ny * storm.east.y + nz * storm.east.z;
+                const double north = nx * storm.north.x + ny * storm.north.y + nz * storm.north.z;
+                const double tangent_scale = angle > 1.0e-8
+                    ? angle / (sin(angle) * storm.radius) : 1.0 / storm.radius;
+                const double winding = storm.twist * (1.0 - radius) * (1.0 - radius);
+                const double turn_cos = cos(winding);
+                const double turn_sin = sin(winding);
+                const double turned_east = turn_cos * east - turn_sin * north;
+                const double turned_north = turn_sin * east + turn_cos * north;
+                const double orientation_cos = cos(storm.orientation);
+                const double orientation_sin = sin(storm.orientation);
+                const double u = tangent_scale * (orientation_cos * turned_east - orientation_sin * turned_north);
+                const double v = tangent_scale * (orientation_sin * turned_east + orientation_cos * turned_north);
+
+                // Pull the underlying noise around the same vortex as its cloud bands.
+                // Both displacement and its slope fade out at the system boundary.
+                flow_x += envelope * (axis_dot * storm.center.x
+                    + turned_east * storm.east.x + turned_north * storm.north.x - nx);
+                flow_y += envelope * (axis_dot * storm.center.y
+                    + turned_east * storm.east.y + turned_north * storm.north.y - ny);
+                flow_z += envelope * (axis_dot * storm.center.z
+                    + turned_east * storm.east.z + turned_north * storm.north.z - nz);
+
+                const double front_distance = u - storm.bend * (v * v - 0.15);
+                double bands = 1.0 - smooth(storm.width * 0.5, storm.width * 1.8, fabs(front_distance));
+                double head;
+                if (storm.compact)
+                {
+                    // Two wound arms and a small clear eye within a cloud shield.
+                    const double eye = smooth(0.035, 0.11, radius);
+                    head = 0.85 * exp(-radius * radius / 0.075);
+                    bands = std::max(bands, head) * eye;
+                }
+                else
+                {
+                    // A broad cloud head feeds into one long curved frontal tail.
+                    bands *= smooth(-0.40, -0.05, v);
+                    const double head_u = (u + 0.10) / 0.30;
+                    const double head_v = (v + 0.18) / 0.43;
+                    head = exp(-head_u * head_u - head_v * head_v);
+                    bands = std::max(bands, head);
+                }
+                storm_shape = std::max(storm_shape, envelope * bands);
+                storm_weight = std::max(storm_weight, envelope);
+            }
+
             // All fields live in 3D, so longitude wraps and polar samples converge.
-            const double warp_x = fBm(nx * 2.0 + ox, ny * 2.0 + oy, nz * 2.0 + oz, 3, 2.0, 0.5) - 0.5;
-            const double warp_y = fBm(nx * 2.0 + ox + 37.1, ny * 2.0 + oy + 11.7,
-                nz * 2.0 + oz + 53.3, 3, 2.0, 0.5) - 0.5;
-            const double warp_z = fBm(nx * 2.0 + ox + 73.9, ny * 2.0 + oy + 61.2,
-                nz * 2.0 + oz + 19.4, 3, 2.0, 0.5) - 0.5;
-            const double wx = nx + 0.35 * warp_x;
-            const double wy = ny + 0.35 * warp_y;
-            const double wz = nz + 0.35 * warp_z;
+            const double warp_x = fBm(flow_x * 2.0 + ox, flow_y * 2.0 + oy, flow_z * 2.0 + oz, 3, 2.0, 0.5) - 0.5;
+            const double warp_y = fBm(flow_x * 2.0 + ox + 37.1, flow_y * 2.0 + oy + 11.7,
+                flow_z * 2.0 + oz + 53.3, 3, 2.0, 0.5) - 0.5;
+            const double warp_z = fBm(flow_x * 2.0 + ox + 73.9, flow_y * 2.0 + oy + 61.2,
+                flow_z * 2.0 + oz + 19.4, 3, 2.0, 0.5) - 0.5;
+            const double wx = flow_x + 0.35 * warp_x;
+            const double wy = flow_y + 0.35 * warp_y;
+            const double wz = flow_z + 0.35 * warp_z;
             const double broad = fBm(wx * 4.0 + ox, wy * 4.0 + oy, wz * 4.0 + oz,
                 body_octaves, 2.0, 0.5);
             const double detail = fBm(wx * 18.0 + ox + 17.2, wy * 18.0 + oy + 49.6,
                 wz * 18.0 + oz + 31.8, detail_octaves, 2.0, 0.5);
 
             // Unequal scales stretch fine noise into filaments, with a soft fringe
-            // around broad cloud patches. Storm organization is a later stage.
+            // around broad cloud patches and along the wound fronts.
             const double filament = fBm(wx * 9.0 + ox + 81.3, wy * 9.0 + oy + 24.5,
                 wz * 36.0 + oz + 67.9, wisp_octaves, 2.0, 0.5);
             const double body = smooth(0.48, 0.57, broad + 0.22 * (detail - 0.5));
             const double fringe = smooth(0.42, 0.50, broad) * smooth(0.49, 0.60, filament);
-            const double coverage = std::max(body, 0.65 * fringe);
+            const double background = std::max(body, 0.65 * fringe);
+            const double organized = storm_weight * smooth(0.12, 0.80,
+                storm_shape + 0.30 * (detail - 0.5) + 0.16 * (filament - 0.5));
+            const double coverage = std::max(background * (1.0 - 0.80 * storm_weight), organized);
             const unsigned char brightness = (unsigned char)(242.0 * coverage);
             const unsigned long idx = y * image_width + x;
             red_data[idx] = brightness;

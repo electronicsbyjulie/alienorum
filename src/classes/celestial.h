@@ -356,7 +356,7 @@ namespace alienorum
         int nlocales = 0;
         float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;
         bool looked_for_maps = false, ignore_map_files = false;
-        unsigned int fictitious_map_height = 512;            // Good enough for flying around but inadequate for world building.
+        unsigned int fictitious_map_height = 768;            // Good enough for flying around and sun clocks but inadequate for world building.
         bool onscreen = false;
         bool label_shown = false;
         bool alert_rise = false;
