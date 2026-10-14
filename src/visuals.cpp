@@ -6167,7 +6167,8 @@ void draw_horizon()
                     const uint32_t rhash = object.seed;
                     const double theta_world = atan2(object.east, object.north);
                     const double dist_m = hypot(object.east, object.north);
-                    const double dist_ratio = dist_m / ROCK_MAX_DIST;
+                    double dist_ratio = dist_m / ROCK_MAX_DIST;
+                    if (is_vegetation) dist_ratio *= 0.666;
                     if (dist_m < 0.05 || dist_ratio >= 1.0)
                     {
                         continue;
