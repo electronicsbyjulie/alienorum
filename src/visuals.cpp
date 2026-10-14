@@ -6,7 +6,7 @@
 #include "sphere_impostor.h"
 #include "gputex.h"
 #include "sunclock_gpu.h"
-#include "clouds_gpu.h"
+#include "classes/clouds_gpu.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 
@@ -7890,6 +7890,7 @@ void draw_cloudy_sky()
     in.light[1] = (float)(std::clamp(cumulus_day_swing * pow(daylight, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum);
     in.light[2] = p->overcast ? 1.0f : 0.0f;
     in.light[3] = redlight_mode ? 1.0f : 0.0f;
+    in.light[4] = (float)dev_dial;                  // Leave this here in case we find other constants to adjust at a later date.
     // Align texture centers with the original CPU map's angular pixel grid.
     in.light[8] = 0.5f / cel->cloud_map->get_width();
     in.light[9] = 0.5f / cel->cloud_map->get_height();

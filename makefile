@@ -269,8 +269,8 @@ $(OBJINT)/gputex.o: src/gputex.cpp
 $(OBJINT)/sphere_impostor.o: src/sphere_impostor.cpp
 	$(CPP) src/sphere_impostor.cpp $(CPPFLAGS) -c -o $(OBJINT)/sphere_impostor.o
 
-$(OBJINT)/clouds_gpu.o: src/clouds_gpu.cpp
-	$(CPP) src/clouds_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/clouds_gpu.o
+$(OBJINT)/clouds_gpu.o: src/classes/clouds_gpu.cpp
+	$(CPP) src/classes/clouds_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/clouds_gpu.o
 
 $(OBJINT)/sunclock_gpu.o: src/sunclock_gpu.cpp
 	$(CPP) src/sunclock_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/sunclock_gpu.o
