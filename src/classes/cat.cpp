@@ -5012,17 +5012,26 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 4;
     line << std::string(l - line.str().size(), ' ');
 
-    if (s->proper_motion_RA >= 0) line << " ";
+    if (!std::signbit(s->proper_motion_RA))
+    {
+        line << " ";
+    }
     line << std::scientific << std::setprecision(4) << s->proper_motion_RA << std::flush;
     l += 12;
     line << std::string(l - line.str().size(), ' ');
 
-    if (s->proper_motion_decl >= 0) line << " ";
+    if (!std::signbit(s->proper_motion_decl))
+    {
+        line << " ";
+    }
     line << std::scientific << std::setprecision(4) << s->proper_motion_decl << std::flush;
     l += 12;
     line << std::string(l - line.str().size(), ' ');
 
-    if (s->radial_velocity >= 0) line << " ";
+    if (!std::signbit(s->radial_velocity))
+    {
+        line << " ";
+    }
     line << std::scientific << std::setprecision(4) << s->radial_velocity << std::flush;
     l += 12;
     line << std::string(l - line.str().size(), ' ');
@@ -5643,7 +5652,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         s->HR = atoi(field);
 
         read_field_onebased(buffer, 134, 140, field);
-        s->HR = atoi(field);
+        s->SB9 = atoi(field);
 
         read_field_onebased(buffer, 142, 145, field);
         s->FlamsteedNo = atoi(field);

@@ -43,7 +43,7 @@ TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
 			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp 
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/catalog_integrity_test.cpp
 
 BIN = bin
 OBJ = obj
@@ -116,6 +116,9 @@ $(OBJIGFD):
 
 $(OBJINT):
 	mkdir -p $(OBJINT)
+
+$(OBJS): | $(OBJIMGUI) $(OBJIGFD) $(OBJINT)
+$(TESTS) $(BIN)/alienorum: | $(BIN)
 
 clean:
 	rm -Rf $(OBJINT)/*.o
@@ -276,6 +279,9 @@ $(OBJINT)/sunclock_gpu.o: src/sunclock_gpu.cpp
 	$(CPP) src/sunclock_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/sunclock_gpu.o
 
 
+$(BIN)/catalog_integrity_test: $(OBJS) $(TESTS_DIR)/catalog_integrity_test.cpp
+	$(CPP) $(TESTS_DIR)/catalog_integrity_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/catalog_integrity_test
+
 # Every test binary links the whole object set, so $(OBJS) has to be a prerequisite of each of
 # them as well: without it, editing a class only rebuilt that class's .o, and the test kept the
 # copy that was linked into it before the edit -- passing or failing on code that is no longer
@@ -333,3 +339,11 @@ $(BIN)/alienorum: $(OBJS) src/alienorum.cpp
 # make won't complain on a clean checkout, before any .d files exist yet.
 -include $(OBJS:.o=.d)
 
+
+.PHONY: catalog-tests catalog-audit
+catalog-tests: $(BIN)/catalog_integrity_test
+	python3 -B -m unittest discover -s src/tests -p test_catalog_integrity.py
+	$(BIN)/catalog_integrity_test
+
+catalog-audit:
+	python3 -B src/tests/catalog_integrity.py catalogs/soles_alienorum.dat --sources catalogs

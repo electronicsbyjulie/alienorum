@@ -1,0 +1,29 @@
+name: Stellar catalog integrity
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Run independent schema and corruption tests
+        run: python3 -B -m unittest discover -s src/tests -p test_catalog_integrity.py
+      - name: Install C++ test libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsdl2-dev libsdl2-image-dev libjpeg-dev libpng-dev libcurl4-openssl-dev libarchive-dev libgtest-dev libgl1-mesa-dev
+      - name: Build and run native catalog regression tests
+        run: make -j2 catalog-tests
