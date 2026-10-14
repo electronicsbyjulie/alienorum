@@ -6,6 +6,7 @@
 #include "sphere_impostor.h"
 #include "gputex.h"
 #include "sunclock_gpu.h"
+#include "clouds_gpu.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 
@@ -7825,218 +7826,75 @@ void draw_cloudy_sky()
         return;
     }
 
-    // A spherical cloud ceiling: rays near the horizon reach distant map locations.
-    // This height is a visual approximation, independent of storm size and pressure.
+    // The CPU supplies only camera/lighting constants and a cached refraction
+    // curve. Projection, map sampling, cloud geometry, and shading run per pixel.
     constexpr double cloud_height = 5000.0;
     const double eye_height = std::isfinite(viewer_eye_height) ? std::max(0.01, viewer_eye_height) : 1.75;
-    const double observer_radius = planet_radius + eye_height;
-    const double shell_radius = planet_radius + cloud_height;
-    const double shell_delta = (cloud_height - eye_height) * (shell_radius + observer_radius);
-    const double ground_dip_sin = -sqrt(eye_height * (2.0 * planet_radius + eye_height)) / observer_radius;
-    const double cos_lat = cos(viewer_lat);
-    const double sin_lat = sin(viewer_lat);
-    const double cos_lon = cos(viewer_lon);
-    const double sin_lon = sin(viewer_lon);
-    const double cos_az = cos(azimuth);
-    const double sin_az = sin(azimuth);
-    const double cos_alt = cos(altitude);
-    const double sin_alt = sin(altitude);
-    const double focal_length = zoom * dispcx;
-    Map *clouds = cel->cloud_map;
-    const double horizon_lift = p->atmospheric_horizon_lift();
-    // Invert the same refraction curve used for sky objects. A shared lookup avoids
-    // iterating the atmospheric calculation separately for every cloud mesh vertex.
-    constexpr int refraction_steps = 2048;
-    const double altitude_step = _pi / refraction_steps;
-    std::vector<double> apparent_altitudes(refraction_steps + 1);
-    for (int i = 0; i <= refraction_steps; ++i)
-    {
-        const double true_altitude = -half_pi + i * altitude_step;
-        apparent_altitudes[i] = true_altitude + p->atmospheric_refraction(true_altitude);
-    }
+    const double scale = std::clamp(planet_radius * 0.001, 1200.0, 8000.0);
+    const double observer = planet_radius + eye_height;
+    const double shell = planet_radius + cloud_height;
+    const double cos_lat = cos(viewer_lat), sin_lat = sin(viewer_lat);
+    const double cos_lon = cos(viewer_lon), sin_lon = sin(viewer_lon);
 
-    double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
-
-    // If overcast sky, adjust for relative instellation.
-    if (p && p->cloud_map)
+    // Probe the curve at three altitudes to track atmosphere/temperature edits.
+    // Most frames reuse all 1025 samples and the already uploaded GPU texture.
+    static Planet *cached_planet = nullptr;
+    static double cached_probes[3] = {};
+    static float refraction[1025];
+    const double probes[3] =
     {
-        is_day /= fmin(1.0, fmax(0.01, sqrt(p->mean_instellation())));
-    }
-    is_day = std::clamp(is_day, 0.0, 1.0);
-
-    // Sample a fixed field in planet coordinates so turning and zooming never
-    // regenerate the clouds. Three scales give rounded masses and smaller lobes.
-    static PerlinNoise cumulus_noise(0x43554d55u);
-    const double cloud_scale = std::clamp(planet_radius * 0.001, 1200.0, 8000.0);
-    auto smooth_cloud = [](double value) -> double
-    {
-        const double t = std::clamp(value, 0.0, 1.0);
-        return t * t * (3.0 - 2.0 * t);
+        p->atmospheric_refraction(-half_pi * 0.5),
+        p->atmospheric_refraction(0.0),
+        p->atmospheric_refraction(half_pi * 0.5)
     };
-
-    const float screen_width = dispcx * 2.0f;
-    const float screen_height = dispcy * 2.0f;
-    const float mesh_spacing = p->overcast ? 24.0f : 6.0f;
-    const int columns = std::clamp((int)ceil(screen_width / mesh_spacing), 16, 640);
-    const int base_rows = std::clamp((int)ceil(screen_height / (p->overcast ? 16.0f : 6.0f)), 16, 360);
-    const double sample_spacing = std::max(screen_width / columns, screen_height / base_rows);
-    // Match the sky's perceptual daylight response, with bright white cumulus.
-    // Retain the original linear illumination for the continuous cloud deck.
-    const double cumulus_light = std::clamp(cumulus_day_swing * pow(is_day, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum;
-
-    auto sky_color = [&](double screen_x, double screen_y) -> ImU32
+    bool changed = cached_planet != p;
+    for (int i = 0; i < 3; ++i)
     {
-        const double camera_x = (screen_x - dispcx) / focal_length;
-        const double camera_y = (dispcy - screen_y) / focal_length;
-        const double inverse_length = 1.0 / sqrt(camera_x * camera_x + camera_y * camera_y + 1.0);
-        const double forward = cos_alt - camera_y * sin_alt;
-        // Inverse of Cartesian2D's camera rotation: local x/east, y/up, z/north.
-        double east = (camera_x * cos_az + forward * sin_az) * inverse_length;
-        double up = (camera_y * cos_alt + sin_alt) * inverse_length;
-        double north = (forward * cos_az - camera_x * sin_az) * inverse_length;
-        const double horizontal = hypot(east, north);
-        const double apparent_altitude = atan2(up, horizontal);
-        auto upper = std::lower_bound(apparent_altitudes.begin(), apparent_altitudes.end(), apparent_altitude);
-        if (upper != apparent_altitudes.begin() && upper != apparent_altitudes.end() && horizontal > 1.0e-10)
-        {
-            const size_t index = upper - apparent_altitudes.begin();
-            const double fraction = (apparent_altitude - apparent_altitudes[index - 1])
-                / (apparent_altitudes[index] - apparent_altitudes[index - 1]);
-            const double true_altitude = -half_pi + (index - 1 + fraction) * altitude_step;
-            const double horizontal_scale = cos(true_altitude) / horizontal;
-            east *= horizontal_scale;
-            north *= horizontal_scale;
-            up = sin(true_altitude);
-        }
-        if (shell_delta > 0 && up < ground_dip_sin)
-        {
-            return IM_COL32(0, 0, 0, 0);
-        }
-
-        const double along_ray = observer_radius * up;
-        const double discriminant = along_ray * along_ray + shell_delta;
-        if (discriminant < 0)
-        {
-            return IM_COL32(0, 0, 0, 0);
-        }
-        const double root = sqrt(discriminant);
-        double distance;
-        if (shell_delta >= 0)
-        {
-            // Rationalized root avoids subtracting two planet-sized values overhead.
-            distance = along_ray > 0 ? shell_delta / (root + along_ray) : root - along_ray;
-        }
-        else
-        {
-            // An elevated observer above the cloud shell sees its nearest intersection.
-            if (along_ray >= 0)
-            {
-                return IM_COL32(0, 0, 0, 0);
-            }
-            distance = -shell_delta / (root - along_ray);
-        }
-
-        const double radial = observer_radius + distance * up;
-        const double north_offset = distance * north;
-        const double east_offset = distance * east;
-        // Convert the hit from the local east/north/up basis to map latitude/longitude.
-        const double equatorial = radial * cos_lat - north_offset * sin_lat;
-        const double hit_x = equatorial * cos_lon - east_offset * sin_lon;
-        const double hit_y = equatorial * sin_lon + east_offset * cos_lon;
-        const double hit_z = radial * sin_lat + north_offset * cos_lat;
-        const double lat = atan2(hit_z, hypot(hit_x, hit_y));
-        const double lon = atan2(hit_y, hit_x);
-        RGB3 rgb = clouds->color_at_bilinear(lat, lon);
-        const double coverage = std::clamp(rgb.luminance() / 255.0, 0.0, 1.0);
-        double haziness = p->overcast ? 1.0 : coverage;
-        double cumulus_shade = 1.0;
-        const double deck_blend = p->overcast ? 1.0 : smooth_cloud((coverage - 0.70) / 0.20);
-        // The shell normal gives the grazing angle even at a curved horizon.
-        const double footprint = distance / (focal_length * std::max(0.02, root / shell_radius));
-        // Filter over an entire mesh cell, not a single screen pixel. This also
-        // accounts for the sample cap on large displays.
-        const double filter_width = footprint * sample_spacing / cloud_scale;
-        const double unresolved = smooth_cloud((filter_width - 0.08) / 0.22);
-        const double blend = deck_blend + (1.0 - deck_blend) * unresolved;
-        if (blend < 1.0 && coverage > 0.0)
-        {
-            const double x = hit_x / cloud_scale;
-            const double y = hit_y / cloud_scale;
-            const double z = hit_z / cloud_scale;
-            const double mass = cumulus_noise.noise(x, y, z);
-            // Remove small lobes before they become smaller than a mesh cell.
-            const double lobe_weight = 1.0 - smooth_cloud(filter_width * 2.7 / 0.35);
-            const double detail_weight = 1.0 - smooth_cloud(filter_width * 7.1 / 0.35);
-            const double lobes = lobe_weight * cumulus_noise.noise(x * 2.7, y * 2.7, z * 2.7);
-            const double detail = detail_weight * cumulus_noise.noise(x * 7.1, y * 7.1, z * 7.1);
-            const double field = std::clamp(0.5 + 0.85 * mass + 0.20 * lobes + 0.06 * detail, 0.0, 1.0);
-            // Black map pixels remain clear; opaque interiors hide stars and rings.
-            const double threshold = 1.0 - coverage;
-            const double edge_width = std::max(0.045, 2.0 * filter_width);
-            const double patch_alpha = smooth_cloud((field - threshold) / edge_width + 0.5);
-            // At grazing angles the projected pattern becomes subpixel. Fade to
-            // its mean opacity there rather than letting distant clouds shimmer.
-            haziness = patch_alpha * (1.0 - blend) + coverage * blend;
-            cumulus_shade = 1.0 - 0.035 * (1.0 - field);
-        }
-        // Opacity supplies the clear gaps; edge vertices keep the same white
-        // color as interiors to avoid dark fringes during interpolation.
-        const double light = is_day * (160.0 / 255.0);
-        const double white = 255.0 * cumulus_light * cumulus_shade * (1.0 - deck_blend);
-        const int cr = std::clamp((int)(rgb.r * light * deck_blend + white), 0, 255);
-        const int cg = std::clamp((int)(rgb.g * light * deck_blend + white), 0, 255);
-        const int cb = std::clamp((int)(rgb.b * light * deck_blend + white), 0, 255);
-        const int ca = std::clamp((int)(255.0 * haziness + 0.5), 0, 255);
-        return rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
-    };
-
-    // Vertex colors interpolate between ray samples. Extra rows near the horizon
-    // resolve distant cloud banks that occupy only a few pixels of vertical sky.
-    std::vector<float> rows;
-    rows.reserve(base_rows + 66);
-    for (int row = 0; row <= base_rows; ++row)
-    {
-        rows.push_back(screen_height * row / base_rows);
+        changed = changed || fabs(probes[i] - cached_probes[i]) > 1.0e-7;
     }
-    const double horizon_pitch = altitude - horizon_lift;
-    if (fabs(cos(horizon_pitch)) > 1.0e-6)
+    if (changed)
     {
-        const double horizon_y = dispcy + focal_length * tan(horizon_pitch);
-        if (horizon_y > -64.0 && horizon_y < screen_height + 64.0)
+        cached_planet = p;
+        for (int i = 0; i < 3; ++i)
         {
-            for (int offset = -64; offset <= 64; offset += 2)
-            {
-                rows.push_back((float)std::clamp(horizon_y + offset, 0.0, (double)screen_height));
-            }
+            cached_probes[i] = probes[i];
+        }
+        for (int i = 0; i <= 1024; ++i)
+        {
+            const double a = -half_pi + i * _pi / 1024.0;
+            refraction[i] = (float)(a + p->atmospheric_refraction(a));
         }
     }
-    std::sort(rows.begin(), rows.end());
-    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
-
-    std::vector<ImU32> top(columns + 1);
-    std::vector<ImU32> bottom(columns + 1);
-    for (int col = 0; col <= columns; ++col)
-    {
-        top[col] = sky_color(screen_width * col / columns, rows.front());
-    }
-    ImDrawList *draw_list = ImGui::GetBackgroundDrawList();
-    for (size_t row = 1; row < rows.size(); ++row)
-    {
-        for (int col = 0; col <= columns; ++col)
-        {
-            bottom[col] = sky_color(screen_width * col / columns, rows[row]);
-        }
-        for (int col = 0; col < columns; ++col)
-        {
-            if (((top[col] | top[col + 1] | bottom[col] | bottom[col + 1]) & IM_COL32_A_MASK) == 0)
-            {
-                continue;
-            }
-            draw_list->AddRectFilledMultiColor(
-                ImVec2(screen_width * col / columns, rows[row - 1]),
-                ImVec2(screen_width * (col + 1) / columns, rows[row]),
-                top[col], top[col + 1], bottom[col + 1], bottom[col]);
-        }
-        top.swap(bottom);
-    }
+    double daylight = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
+    daylight /= fmin(1.0, fmax(0.01, sqrt(p->mean_instellation())));
+    daylight = std::clamp(daylight, 0.0, 1.0);
+    CloudSkyGpuInput in = {};
+    in.camera[0] = (float)azimuth;
+    in.camera[1] = (float)altitude;
+    in.camera[2] = (float)(1.0 / zoom);
+    in.camera[3] = (float)(dispcy / (zoom * dispcx));
+    // Columns 1..3: planet-fixed east, north, up basis vectors.
+    in.camera[4] = (float)-sin_lon;
+    in.camera[5] = (float)cos_lon;
+    in.camera[8] = (float)(-sin_lat * cos_lon);
+    in.camera[9] = (float)(-sin_lat * sin_lon);
+    in.camera[10] = (float)cos_lat;
+    in.camera[12] = (float)(cos_lat * cos_lon);
+    in.camera[13] = (float)(cos_lat * sin_lon);
+    in.camera[14] = (float)sin_lat;
+    in.world[0] = (float)(observer / scale);
+    in.world[1] = (float)(shell / scale);
+    in.world[2] = (float)((cloud_height - eye_height) * (shell + observer) / (scale * scale));
+    in.world[3] = (float)(-sqrt(eye_height * (2.0 * planet_radius + eye_height)) / observer);
+    in.light[0] = (float)daylight;
+    in.light[1] = (float)(std::clamp(cumulus_day_swing * pow(daylight, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum);
+    in.light[2] = p->overcast ? 1.0f : 0.0f;
+    in.light[3] = redlight_mode ? 1.0f : 0.0f;
+    // Align texture centers with the original CPU map's angular pixel grid.
+    in.light[8] = 0.5f / cel->cloud_map->get_width();
+    in.light[9] = 0.5f / cel->cloud_map->get_height();
+    in.texture = gputex_for(cel->cloud_map);
+    in.revision = cel->cloud_map->gen;
+    in.refraction = refraction;
+    queue_cloud_sky_gpu(in);
 }

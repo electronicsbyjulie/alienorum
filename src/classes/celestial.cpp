@@ -3387,7 +3387,7 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     // It was a humid autumn evening when I had the AI write this code... Indigenous People's Day 2026 (fuck Columbus),
     // and the doors to the house were open so the warm humid Phoenix air was permeating everything. I could hear rain
     // coming and going outside. So here I am testing the new exo-clouds, viewing from the surface of HD 40307 g, this
-    // huge planet estimated by the algorithm to be a waterworld, and I'm motorboating around its huge ocean, speeding
+    // huge planet estimated by the algorithm to be a waterworld, and I'm speedboating around its huge ocean, zooming
     // under clouds and seeing the rain come and go on my screen, hanging out in the eye of a hurricane, and it's all
     // so fitting because the clouds and storms on my screen look exactly how the room feels.
     Planet *p = (Planet*)cel;
