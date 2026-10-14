@@ -261,14 +261,23 @@ def related(a, b):
     return bool(a.root and a.root == b.root)
 
 
-def ancestor_values(row, identities, key):
-    values, seen = set(), set()
+def ancestors(row, identities):
+    seen = set()
     while row and row.line not in seen:
         seen.add(row.line)
-        if row.number(key):
-            values.add(row.number(key))
+        yield row
         row = identities.get(row.text('parent'))
-    return values
+
+
+def ancestor_values(row, identities, key):
+    return {member.number(key) for member in ancestors(row, identities) if member.number(key)}
+
+
+def constellation_label(label):
+    for cons, genitive in CONSTELLATIONS.items():
+        if label in (cons, genitive) + GENITIVE_ALIASES.get(cons, ()):
+            return cons
+    return None
 
 
 def separation_arcsec(ra1, dec1, ra2, dec2):
@@ -389,31 +398,36 @@ def check_relationships(records, report):
                 report.add('bayer_name', row, f'Display name conflicts with {row.text("bayer")!r}')
             elif not designation:
                 parent = identities.get(row.text('parent'))
-                inherited = greek_name(parent.name) if parent else None
+                inherited = None
+                for member in ancestors(parent, identities):
+                    inherited = parse_bayer(member.text('bayer')) or greek_name(member.name)
+                    if inherited:
+                        break
                 if not inherited or explicit[:3] != inherited[:3]:
                     report.add('invented_bayer', row, 'Greek display name without its own or its primary\'s Bayer identity')
             if component and row.component and component != row.component:
                 report.add('name_component', row, 'Display-name component conflicts with Alienorum ID')
         if re.fullmatch(r'HD\s*\d+(?:\s+[A-Z])?', row.name):
             hd = int(re.search(r'\d+', row.name)[0])
-            parent = identities.get(row.text('parent'))
             if hd not in ancestor_values(row, identities, 'hd'):
                 report.add('hd_name', row, 'HD display name conflicts with its own or primary identifier')
         if re.fullmatch(r'HIP\s*\d+(?:\s+[A-Z])?', row.name):
             hip = int(re.search(r'\d+', row.name)[0])
-            parent = identities.get(row.text('parent'))
             if hip not in ancestor_values(row, identities, 'hip'):
                 report.add('hip_name', row, 'HIP display name conflicts with its own or primary identifier')
         numeric_name = re.fullmatch(r'(\d+)\s+(?:(G\.)\s+)?(.+?)(?:\s+([A-Z]))?', ' '.join(row.name.split()))
         if numeric_name:
             number, gould_marker, cons_label, component = numeric_name.groups()
-            recognized = cons_label in CONSTELLATIONS or any(cons_label in (genitive,) + GENITIVE_ALIASES.get(cons, ()) for cons, genitive in CONSTELLATIONS.items())
-            if recognized:
-                key = 'gould' if gould_marker or (cons_label == 'Eri' and number == '82') else 'flamsteed'
+            cons = constellation_label(cons_label)
+            if cons:
+                key = 'gould' if gould_marker or (cons == 'Eri' and number == '82') else 'flamsteed'
                 if int(number) not in ancestor_values(row, identities, key):
                     report.add('numbered_name', row, f'{key} display number conflicts with catalog identity')
-                if gould_marker and cons_label in CONSTELLATIONS and cons_label != row.text('gould_cons'):
+                matching = [member for member in ancestors(row, identities) if member.number(key) == int(number)]
+                if key == 'gould' and matching and all(member.text('gould_cons') != cons for member in matching):
                     report.add('gould_name', row, 'Gould display constellation conflicts with metadata')
+                if key == 'flamsteed' and matching and all((parse_bayer(member.text('bayer')) or (None, None, member.constellation))[2] != cons for member in matching):
+                    report.add('flamsteed_name', row, 'Flamsteed display constellation conflicts with metadata')
                 if component and row.component and component != row.component:
                     report.add('name_component', row, 'Numbered display-name component conflicts with ID')
         if re.match(r'GJ\s*\d', row.name) and row.text('gliese') and ' '.join(row.name.split()) != ' '.join(row.text('gliese').split()):

@@ -403,3 +403,67 @@ TEST_F(CondensedCatalogTest, EveryGreekLetterAndNumberedVariantHasTheCorrectInde
         EXPECT_EQ(grkno_from_abbrev(blank), -1);
     }
 }
+
+TEST_F(CondensedCatalogTest, HipparcosIcrsPositionsAreNotPrecessedAsAnEquinox)
+{
+    make_star("Sun");
+    std::filesystem::create_directories("catalogs/Hipparcos");
+    std::ofstream file("catalogs/Hipparcos/hip_main.dat", std::ios::binary);
+    for (int index = 0; index < 2; ++index)
+    {
+        std::string row(450, ' ');
+        put(row, 9, 14, std::to_string(100 + index));
+        put(row, 18, 28, "01 00 00.00");
+        put(row, 30, 40, "+60 00 00.0");
+        put(row, 42, 46, "5.00");
+        put(row, 52, 63, index == 0 ? "15.00000000" : "0.00000000");
+        put(row, 65, 76, index == 0 ? "60.00000000" : "0.00000000");
+        put(row, 80, 86, "50.00");
+        put(row, 88, 95, "0.00");
+        put(row, 97, 104, "0.00");
+        put(row, 246, 251, "0.650");
+        put(row, 391, 396, std::to_string(10000 + index));
+        put(row, 436, 447, "G2V");
+        file << row << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 2);
+    ASSERT_NE(hipcache[100], nullptr);
+    EXPECT_NEAR(hipcache[100]->right_ascension * fiftyseven, 15.0, 1e-10);
+    EXPECT_NEAR(hipcache[100]->declination * fiftyseven, 60.0, 1e-10);
+    ASSERT_NE(hipcache[101], nullptr);
+    EXPECT_DOUBLE_EQ(hipcache[101]->right_ascension, 0.0);
+    EXPECT_DOUBLE_EQ(hipcache[101]->declination, 0.0);
+    EXPECT_DOUBLE_EQ(hipcache[100]->epoch, J2000);
+}
+
+TEST_F(CondensedCatalogTest, HipparcosProperMotionAdvancesTheEpochWithCosDeclination)
+{
+    make_star("Sun");
+    std::filesystem::create_directories("catalogs/Hipparcos");
+    std::string row(450, ' ');
+    put(row, 9, 14, "100");
+    put(row, 18, 28, "01 00 00.00");
+    put(row, 30, 40, "+60 00 00.0");
+    put(row, 42, 46, "5.00");
+    put(row, 52, 63, "15.00000000");
+    put(row, 65, 76, "60.00000000");
+    put(row, 80, 86, "50.00");
+    put(row, 88, 95, "1000.00");
+    put(row, 97, 104, "0.00");
+    put(row, 246, 251, "0.650");
+    put(row, 391, 396, "10000");
+    put(row, 436, 447, "G2V");
+    std::ofstream file("catalogs/Hipparcos/hip_main.dat", std::ios::binary);
+    file << row << '\n';
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    Star *star = hipcache[100];
+    ASSERT_NE(star, nullptr);
+    // 1 arcsec/year in mu_alpha*cos(delta), 8.75 years, cos(60 deg)=0.5.
+    const double shift_arcsec = (star->right_ascension * fiftyseven - 15.0) * 3600;
+    EXPECT_NEAR(shift_arcsec, 17.5, 0.01);
+    EXPECT_NEAR(star->proper_motion_RA * oneyear * fiftyseven * 3600, 2.0, 1e-8);
+}

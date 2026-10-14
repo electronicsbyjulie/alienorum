@@ -1224,15 +1224,24 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         Decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
 
-        if (RA && Decl)
+        read_field_onebased(buffer, 52, 63, field);
+        const std::string ra_degrees = trim(field);
+        read_field_onebased(buffer, 65, 76, field);
+        const std::string dec_degrees = trim(field);
+        bool have_position = !ra_degrees.empty() && !dec_degrees.empty();
+        if (have_position)
         {
-            double ra2000, dec2000;
-            convert_to_J2000(RA, Decl, 1991.25, ra2000, dec2000, false);
-            s->right_ascension = ra2000;
-            s->declination = dec2000;
-            s->epoch = J2000;
+            RA = atof(ra_degrees.c_str()) * fiftyseventh;
+            Decl = atof(dec_degrees.c_str()) * fiftyseventh;
         }
         else
+        {
+            read_field_onebased(buffer, 18, 28, field);
+            const bool have_ra = !trim(field).empty();
+            read_field_onebased(buffer, 30, 40, field);
+            have_position = have_ra && !trim(field).empty();
+        }
+        if (!have_position)
         {
             std::cout << "ERROR: HIP" << HIP << " has no RA/Decl" << std::endl;
             throw 0xbadda7a;
@@ -1257,12 +1266,32 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
         read_field_onebased(buffer, 88, 95, field);
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_RA = f;
+        if (!trim(field).empty())
+        {
+            s->proper_motion_RA = f / fmax(1e-12, fabs(cos(Decl)));
+        }
 
         //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS
         read_field_onebased(buffer, 97, 104, field);
         f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_decl = f;
+        if (!trim(field).empty())
+        {
+            s->proper_motion_decl = f;
+        }
+
+        // Hipparcos positions use ICRS axes at epoch J1991.25, not a 1991
+        // equinox. Advance proper motion to the cache's J2000 epoch without
+        // precessing the reference frame. Tangent vectors remain safe at poles.
+        constexpr double hipparcos_epoch = 2448349.0625;
+        const double epoch_seconds = (J2000 - hipparcos_epoch) * oneday;
+        Point east(-cos(RA), 0.0, -sin(RA));
+        Point north(sin(RA) * sin(Decl), cos(Decl), -cos(RA) * sin(Decl));
+        const Point position = Point::from_ra_dec(RA, Decl, 1.0)
+            + east * (s->proper_motion_RA * cos(Decl) * epoch_seconds)
+            + north * (s->proper_motion_decl * epoch_seconds);
+        s->right_ascension = fmod(atan2(-position.x, position.z) + 2.0 * _pi, 2.0 * _pi);
+        s->declination = atan2(position.y, hypot(position.x, position.z));
+        s->epoch = J2000;
 
         //  42- 46  F5.2  mag     Vmag      ? Magnitude in Johnson V                  (H5)
         read_field_onebased(buffer, 42, 46, field);

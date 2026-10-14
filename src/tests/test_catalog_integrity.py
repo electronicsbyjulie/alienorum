@@ -243,6 +243,33 @@ class CatalogIntegrityTest(unittest.TestCase):
         child = companion(id='2c Oph 1 C', name='HD159561 C', hd='', hip='1', parent='2c Oph 1 B')
         self.assertEqual(self.audit(root, middle, child).errors, 0)
 
+    def test_inherited_gould_and_abbreviated_bayer_names(self):
+        primary = row(name='187 G. Oph', bayer='', gould='187', gould_cons='Oph')
+        secondary = companion(name='187 G. Oph B', bayer='', gould='', gould_cons='')
+        self.assertEqual(self.audit(primary, secondary).errors, 0)
+        self.assert_code(self.audit(primary, companion(name='187 G. Ser B', bayer='')), 'gould_name')
+        self.assertEqual(self.audit(row(name='82 Eridani', bayer='', gould='82', gould_cons='Eri')).errors, 0)
+        primary = row(name='Mu 2 Oph', bayer='Mu 2Oph')
+        self.assertEqual(self.audit(primary, companion(name='Mu 2 Ophiuchi B', bayer='')).errors, 0)
+        self.assert_code(self.audit(primary, companion(name='Mu 1 Ophiuchi B', bayer='')), 'invented_bayer')
+        self.assert_code(self.audit(row(name='55 Serpentis', flamsteed='55')), 'flamsteed_name')
+
+    def test_source_positions_and_spectral_families_are_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            source = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (52, 63, '263.77958333'),
+                                      (65, 76, '12.67138889'), (436, 447, 'A5III')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos' / 'hip_main.dat').write_bytes(source + b'\n')
+            report = audit_bytes(sun() + row(), root)
+            self.assertFalse(any(issue.code in ('source_position', 'source_spectral_class') for issue in report.issues))
+            self.assert_code(audit_bytes(sun() + row(ra='17:36:07.1'), root), 'source_position', 'warning')
+            self.assert_code(audit_bytes(sun() + row(spectral='K5III'), root), 'source_spectral_class', 'warning')
+            report = audit_bytes(sun() + row(ra='17:36:07.1', pm_ra='1e-11'), root)
+            self.assertFalse(any(issue.code == 'source_position' for issue in report.issues))
+
     def test_close_pairs_are_reviewed_across_ra_wrap_and_at_poles(self):
         first = row(ra='23:59:59.9', dec='+00:00:00')
         other = row(id='3c Oph 2', name='Other', hd='1', hip='1', hr='', bayer='', ra='00:00:00.0', dec='+00:00:00')
