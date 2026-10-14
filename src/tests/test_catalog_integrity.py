@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Mutation tests for the independent condensed-catalog auditor."""
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import gzip
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -60,6 +61,7 @@ class CatalogIntegrityTest(unittest.TestCase):
             report = self.audit(row(id='', name='HIP 100', hip='100', hd='', hr='', bayer='', magnitude=magnitude))
             self.assertEqual(report.errors, 0, report.issues)
         self.assert_code(self.audit(companion(id='', magnitude='+12.50')), 'missing_component_id')
+        self.assert_code(self.audit(row(id='', magnitude='+09.99')), 'bright_missing_id', 'warning')
 
     def test_empty_catalog_and_missing_or_duplicate_sun(self):
         self.assert_code(audit_bytes(b''), 'empty_catalog')
@@ -99,6 +101,7 @@ class CatalogIntegrityTest(unittest.TestCase):
     def test_ids_constellation_and_faint_rows(self):
         self.assert_code(self.audit(row(id='2c Xxx 1')), 'alienorum_id')
         self.assert_code(self.audit(row(id='2c Oph 0')), 'alienorum_id')
+        self.assert_code(self.audit(row(id='2z Oph 1')), 'alienorum_id')
         self.assert_code(self.audit(companion(id='')), 'missing_component_id')
         self.assertEqual(self.audit(row(id='', name='HD159561', bayer='')).errors, 0)
 
@@ -247,12 +250,23 @@ class CatalogIntegrityTest(unittest.TestCase):
         primary = row(name='187 G. Oph', bayer='', gould='187', gould_cons='Oph')
         secondary = companion(name='187 G. Oph B', bayer='', gould='', gould_cons='')
         self.assertEqual(self.audit(primary, secondary).errors, 0)
+        self.assertEqual(self.audit(primary, companion(name='187 Oph B', bayer='')).errors, 0)
         self.assert_code(self.audit(primary, companion(name='187 G. Ser B', bayer='')), 'gould_name')
         self.assertEqual(self.audit(row(name='82 Eridani', bayer='', gould='82', gould_cons='Eri')).errors, 0)
         primary = row(name='Mu 2 Oph', bayer='Mu 2Oph')
         self.assertEqual(self.audit(primary, companion(name='Mu 2 Ophiuchi B', bayer='')).errors, 0)
         self.assert_code(self.audit(primary, companion(name='Mu 1 Ophiuchi B', bayer='')), 'invented_bayer')
         self.assert_code(self.audit(row(name='55 Serpentis', flamsteed='55')), 'flamsteed_name')
+        self.assertEqual(self.audit(row(name='55 Serpentis', flamsteed='55', bayer='')).errors, 0)
+
+    def test_child_of_unlinked_component_retains_its_family_root(self):
+        primary = row(name='Mu 1 Ophiuchi', bayer='Mu 1Oph')
+        secondary = companion(name='Mu 2 Ophiuchi B', bayer='Mu 2Oph', parent='')
+        tertiary = companion(id='2c Oph 1 C', name='Mu 2 Ophiuchi C', hd='1', hip='1',
+                             bayer='', parent='2c Oph 1 B')
+        report = self.audit(primary, secondary, tertiary)
+        self.assertEqual(report.errors, 0)
+        self.assertFalse(any(issue.code in ('coincident_stars', 'duplicate_bayer') for issue in report.issues))
 
     def test_source_positions_and_spectral_families_are_checked(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -308,6 +322,48 @@ class CatalogIntegrityTest(unittest.TestCase):
         duplicate = next(issue for issue in first.issues if issue.code == 'duplicate_id')
         self.assertEqual((duplicate.line, duplicate.related_line), (3, 2))
         self.assertEqual(len(first.digest), 64)
+
+    def test_gliese_id_syntax_and_component_spacing(self):
+        for identifier in ('GJ banana', 'GJ 0', 'GJ -1', 'GJ 700..1', 'GJ 700.1!'):
+            self.assert_code(self.audit(row(gliese=identifier)), 'gliese_syntax')
+        for identifier in ('GJ 700.1 C', 'GJ700.1C', 'GJ 1001 AB', 'GJ 15 A'):
+            self.assertEqual(self.audit(row(gliese=identifier)).errors, 0)
+        other = row(id='3c Oph 2', name='Other', hd='1', hip='1', hr='', bayer='', gliese='GJ700.1C')
+        self.assert_code(self.audit(row(gliese='GJ 700.1 C'), other), 'duplicate_gliese')
+        report = self.audit(row(name='GJ700.1C', gliese='GJ 700.1 C'))
+        self.assertFalse(any(issue.code == 'gliese_name' for issue in report.issues))
+
+    def test_compressed_sources_empty_sources_and_duplicate_source_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            path = root / 'Hipparcos' / 'hip_main.dat.gz'
+            source = bytearray(b' ' * 450)
+            source[8:14] = b'86032 '
+            path.write_bytes(gzip.compress(source + b'\n'))
+            report = audit_bytes(sun() + row(), root)
+            self.assertEqual(report.errors, 0)
+            self.assertEqual(report.sources, [str(path)])
+            path.write_bytes(gzip.compress((source + b'\n') * 2))
+            self.assert_code(audit_bytes(sun() + row(), root), 'duplicate_source_id')
+            path.write_bytes(gzip.compress(b''))
+            self.assert_code(audit_bytes(sun() + row(), root), 'empty_source_catalog')
+
+    def test_cli_reports_json_strict_warnings_and_corrupt_inputs(self):
+        with tempfile.TemporaryDirectory() as directory, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            root = Path(directory)
+            path, report = root / 'soles.dat', root / 'report.json'
+            path.write_bytes(sun() + row(distance='1000'))
+            self.assertEqual(main([str(path), '--report', str(report)]), 0)
+            self.assertGreater(json.loads(report.read_text())['warnings'], 0)
+            self.assertEqual(main([str(path), '--strict-warnings']), 1)
+            self.assertEqual(main([str(path), '--report', str(root / 'absent' / 'report.json')]), 2)
+            self.assertEqual(main([str(root / 'absent.dat')]), 2)
+            archive = root / 'corrupt.gz'
+            archive.write_bytes(b'garbage')
+            self.assertEqual(main([str(archive)]), 2)
+            archive.write_bytes(gzip.compress(sun() + row())[:-5])
+            self.assertEqual(main([str(archive)]), 2)
 
 
 if __name__ == '__main__':

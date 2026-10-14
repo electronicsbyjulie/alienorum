@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 import re
 import sys
+import zlib
 
 # One-based inclusive columns, kept independent of the C++ reader and writer.
 FIELDS = dict(
@@ -28,6 +29,7 @@ FIELDS = dict(
     bright_epoch=(419, 435), eclipsing=(437, 437), dm_survey=(439, 440),
     dm_zone=(442, 445), dm_number=(447, 452), custom=(454, 454),
 )
+FIELD_COLUMNS = frozenset(index for start, end in FIELDS.values() for index in range(start - 1, end))
 INTEGER_FIELDS = frozenset(('hd', 'hip', 'hr', 'sb9', 'flamsteed', 'gould', 'dm_zone', 'dm_number'))
 NUMERIC_FIELDS = INTEGER_FIELDS | frozenset((
     'magnitude', 'bv', 'ub', 'pm_ra', 'pm_dec', 'velocity', 'parallax',
@@ -45,8 +47,9 @@ GENITIVE_ALIASES = dict(CMa=('Canes Majoris',), CMi=('Canes Minoris',))
 GREEK = tuple('Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Nu Xi Omicron Pi Rho Sigma Tau Upsilon Phi Chi Psi Omega'.split())
 ABBREVIATIONS = tuple('Alp Bet Gam Del Eps Zet Eta The Iot Kap Lam Mu Nu Xi Omi Pi Rho Sig Tau Ups Phi Chi Psi Ome'.split())
 BAYER = re.compile(r'(Alp|Bet|Gam|Del|Eps|Zet|Eta|The|Iot|Kap|Lam|Mu|Nu|Xi|Omi|Pi|Rho|Sig|Tau|Ups|Phi|Chi|Psi|Ome)\s*([1-9]?)\s*([A-Za-z]{3})\Z')
-ID = re.compile(r'(?P<bin>-?\d{1,2}[a-z]|V[a-z])\s+(?P<cons>[A-Za-z]{3})(?:\s+(?P<sequence>[1-9]\d*))?(?:\s+(?P<component>[A-Z]))?\Z')
+ID = re.compile(r'(?P<bin>-?\d{1,2}[bcwyor]|V[bcwyor])\s+(?P<cons>[A-Za-z]{3})(?:\s+(?P<sequence>[1-9]\d*))?(?:\s+(?P<component>[A-Z]))?\Z')
 SPECTRAL = re.compile(r'(?:e?sd)?(?:[OBAFGKMLTYRNSC]|D[A-Z]?|W[NCOR]?|[cp]?[OBAFGKM])', re.I)
+GLIESE = re.compile(r'GJ\s*([1-9]\d*(?:\.\d+)?)(?:\s*([A-Z]{1,3}))?\Z')
 LY_PER_PC = 3.2615637771674336
 RAD_PER_ARCSEC = math.pi / (180.0 * 3600.0)
 
@@ -118,10 +121,7 @@ def parse_record(raw, line, report):
         raw.decode('utf-8')
     except UnicodeDecodeError:
         report.add('encoding', row, 'Invalid UTF-8')
-    occupied = set()
-    for start, end in FIELDS.values():
-        occupied.update(range(start - 1, end))
-    if any(c != 32 for index, c in enumerate(raw) if index not in occupied):
+    if any(c != 32 for index, c in enumerate(raw) if index not in FIELD_COLUMNS):
         report.add('separator', row, 'Data spilled into a separator or reserved column')
     if not row.name:
         report.add('empty_name', row, 'Every row must have a display name')
@@ -196,6 +196,9 @@ def parse_record(raw, line, report):
             report.add('durchmusterung', row, 'Incomplete or malformed Durchmusterung identity')
     elif zone is not None or row.number('dm_number') is not None:
         report.add('durchmusterung', row, 'Durchmusterung values have no survey prefix')
+    gliese = row.text('gliese')
+    if gliese and not GLIESE.fullmatch(gliese) and not (row.identity == '-26' and gliese in ('Sun', 'Sol')):
+        report.add('gliese_syntax', row, f'Malformed Gliese identity {gliese!r}')
     return row
 
 
@@ -225,6 +228,8 @@ def greek_name(value):
 
 def check_photometry(row, report):
     m, absolute, distance = (row.number(key) for key in ('magnitude', 'absolute', 'distance'))
+    if not row.identity and m is not None and m < 10 and not row.text('parent') and not row.number('variability'):
+        report.add('bright_missing_id', row, 'Bright standalone star has no Alienorum ID; review completeness', 'warning')
     parallax = row.number('parallax')
     if distance is not None and distance > 0 and parallax and parallax > 0:
         expected = LY_PER_PC * RAD_PER_ARCSEC / parallax
@@ -270,7 +275,7 @@ def ancestors(row, identities):
 
 
 def ancestor_values(row, identities, key):
-    return {member.number(key) for member in ancestors(row, identities) if member.number(key)}
+    return set(member.number(key) for member in ancestors(row, identities) if member.number(key))
 
 
 def constellation_label(label):
@@ -278,6 +283,11 @@ def constellation_label(label):
         if label in (cons, genitive) + GENITIVE_ALIASES.get(cons, ()):
             return cons
     return None
+
+
+def gliese_identity(value):
+    match = GLIESE.fullmatch(value)
+    return (match[1], match[2] or '') if match else value
 
 
 def separation_arcsec(ra1, dec1, ra2, dec2):
@@ -337,7 +347,7 @@ def check_relationships(records, report):
             current = identities[parent_id]
         else:
             for member in chain:
-                member.root = current.identity or current.name
+                member.root = current.root or current.identity or current.name
         parent = identities.get(row.text('parent'))
         if parent and row.identity and not row.component:
             report.add('component_suffix', row, 'Orbiting star has no component letter in its ID')
@@ -360,6 +370,8 @@ def check_relationships(records, report):
                 value = (row.number('gould'), row.text('gould_cons')) if row.number('gould') else None
             elif key == 'dm':
                 value = (row.text('dm_survey'), row.text('dm_zone'), row.number('dm_number')) if row.text('dm_survey') else None
+            elif key == 'gliese':
+                value = gliese_identity(row.text(key))
             else:
                 value = ' '.join((row.name if key == 'name' else row.text(key)).split())
             if not value or (key == 'gliese' and value in ('Sun', 'Sol')):
@@ -378,8 +390,10 @@ def check_relationships(records, report):
                 owners[value] = row
     positions = dict()
     for row in records:
+        if row.identity == '-26':
+            continue
         position = (row.text('ra'), row.text('dec'))
-        if position in positions and row.identity != '-26':
+        if position in positions:
             first = positions[position]
             if not related(first, row):
                 report.add('coincident_stars', row, 'Same rounded coordinates in unrelated systems; possible duplicate or unresolved pair', 'warning', first)
@@ -420,17 +434,24 @@ def check_relationships(records, report):
             number, gould_marker, cons_label, component = numeric_name.groups()
             cons = constellation_label(cons_label)
             if cons:
-                key = 'gould' if gould_marker or (cons == 'Eri' and number == '82') else 'flamsteed'
-                if int(number) not in ancestor_values(row, identities, key):
+                number = int(number)
+                inherited_gould = any(member.number('gould') == number and member.text('gould_cons') == cons
+                                      for member in ancestors(row, identities))
+                key = 'gould' if gould_marker or (number not in ancestor_values(row, identities, 'flamsteed') and inherited_gould) else 'flamsteed'
+                if number not in ancestor_values(row, identities, key):
                     report.add('numbered_name', row, f'{key} display number conflicts with catalog identity')
-                matching = [member for member in ancestors(row, identities) if member.number(key) == int(number)]
+                matching = [member for member in ancestors(row, identities) if member.number(key) == number]
                 if key == 'gould' and matching and all(member.text('gould_cons') != cons for member in matching):
                     report.add('gould_name', row, 'Gould display constellation conflicts with metadata')
-                if key == 'flamsteed' and matching and all((parse_bayer(member.text('bayer')) or (None, None, member.constellation))[2] != cons for member in matching):
+                designated = [parse_bayer(member.text('bayer')) for member in matching if parse_bayer(member.text('bayer'))]
+                # The current sky bin can differ from a historical designation.
+                # Without Bayer/source metadata the condensed row cannot prove
+                # a Flamsteed constellation conflict from its ID alone.
+                if key == 'flamsteed' and designated and all(designation[2] != cons for designation in designated):
                     report.add('flamsteed_name', row, 'Flamsteed display constellation conflicts with metadata')
                 if component and row.component and component != row.component:
                     report.add('name_component', row, 'Numbered display-name component conflicts with ID')
-        if re.match(r'GJ\s*\d', row.name) and row.text('gliese') and ' '.join(row.name.split()) != ' '.join(row.text('gliese').split()):
+        if re.match(r'GJ\s*\d', row.name) and row.text('gliese') and gliese_identity(row.name) != gliese_identity(row.text('gliese')):
             report.add('gliese_name', row, 'GJ display name differs from its catalog identity', 'warning')
     check_near_duplicates(records, report)
     return identities
@@ -443,15 +464,31 @@ def source_position(row, ra, dec, report, label):
         report.add('source_position', row, f'{label} coordinates differ by {separation:.1f} arcsec (epoch/proper-motion review)', 'warning')
 
 
+def source_index(path, start, end, label, report):
+    if not path.exists():
+        path = Path(str(path) + '.gz')
+    if not path.exists():
+        return None
+    report.sources.append(str(path))
+    data = gzip.decompress(path.read_bytes()) if path.suffix == '.gz' else path.read_bytes()
+    source = dict()
+    for raw in data.decode('utf-8').splitlines():
+        identifier = raw[start:end].strip()
+        if identifier.isdigit():
+            identifier = int(identifier)
+            if identifier in source:
+                report.add('duplicate_source_id', Record(b'', 0, identity=f'{label} {identifier}'), f'Identifier repeats in {path}')
+            source[identifier] = raw
+    if not source:
+        report.add('empty_source_catalog', Record(b'', 0, identity=label), f'No recognizable source rows in {path}')
+    return source
+
+
 def check_sources(records, report, directory):
     directory = Path(directory)
     bsc_path = directory / 'BSC' / 'catalog'
-    if bsc_path.exists():
-        report.sources.append(str(bsc_path))
-        source = dict()
-        for raw in bsc_path.read_text().splitlines():
-            if raw[:4].strip().isdigit():
-                source[int(raw[:4])] = raw
+    source = source_index(bsc_path, 0, 4, 'HR', report)
+    if source is not None:
         covered_hr = {row.number('hr') for row in records}
         covered_hd = {row.number('hd') for row in records}
         for hr, raw in source.items():
@@ -480,12 +517,8 @@ def check_sources(records, report, directory):
             if source_flam.isdigit() and row.number('flamsteed') != int(source_flam) and not row.component:
                 report.add('bsc_flamsteed', row, f'Flamsteed number conflicts with BSC: {source_flam}')
     hip_path = directory / 'Hipparcos' / 'hip_main.dat'
-    if hip_path.exists():
-        report.sources.append(str(hip_path))
-        source = dict()
-        for raw in hip_path.read_text().splitlines():
-            if raw[8:14].strip().isdigit():
-                source[int(raw[8:14])] = raw
+    source = source_index(hip_path, 8, 14, 'HIP', report)
+    if source is not None:
         covered_hip = {row.number('hip') for row in records}
         covered_hd = {row.number('hd') for row in records}
         for hip, raw in source.items():
@@ -556,7 +589,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         report = audit_path(args.catalog, args.sources)
-    except (OSError, EOFError, gzip.BadGzipFile, UnicodeError) as error:
+    except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, zlib.error) as error:
         print(f'Catalog audit could not run: {error}', file=sys.stderr)
         return 2
     print(f'{report.rows} rows; {report.errors} errors; {len(report.issues) - report.errors} review warnings')
@@ -565,7 +598,11 @@ def main(argv=None):
         for issue in [item for item in report.issues if item.severity == severity and item.code == code][:3]:
             print(f'  line {issue.line}: {issue.identity}: {issue.detail}')
     if args.report:
-        Path(args.report).write_text(json.dumps(report.as_dict(), indent=2) + '\n')
+        try:
+            Path(args.report).write_text(json.dumps(report.as_dict(), indent=2) + '\n')
+        except OSError as error:
+            print(f'Catalog report could not be written: {error}', file=sys.stderr)
+            return 2
     return 1 if report.errors or (args.strict_warnings and report.issues) else 0
 
 

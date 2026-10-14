@@ -383,6 +383,27 @@ TEST_F(CondensedCatalogTest, MissingAndOversizedCatalogIdsCannotIndexOutsideCach
     EXPECT_EQ(hipcache[MAX_HIP], nullptr);
 }
 
+TEST_F(CondensedCatalogTest, FaintStandaloneBlankAlienorumIdPreservesCatalogIdentity)
+{
+    std::string row = primary_row();
+    put(row, 1, 14, "");
+    put(row, 16, 54, "HIP 86032");
+    put(row, 77, 82, "+12.50");
+    put(row, 142, 152, "");
+    write_rows({row});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    Star *star = (Star*)cels[1];
+    EXPECT_TRUE(star->alienorumid.empty());
+    EXPECT_STREQ(star->name, "HIP 86032");
+    EXPECT_EQ(star->HIP, 86032);
+    EXPECT_EQ(hipcache[86032], star);
+    EXPECT_EQ(star->BayerGrkno, -1);
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 12.5);
+    EXPECT_EQ(star->orbit, nullptr);
+    EXPECT_EQ(written_row(star).substr(0, 14), std::string(14, ' '));
+}
+
 TEST_F(CondensedCatalogTest, EveryGreekLetterAndNumberedVariantHasTheCorrectIndex)
 {
     const char *abbreviations[] =
@@ -401,6 +422,56 @@ TEST_F(CondensedCatalogTest, EveryGreekLetterAndNumberedVariantHasTheCorrectInde
     for (const char *blank : {"", "    ", "\t", "9   ", "-   "})
     {
         EXPECT_EQ(grkno_from_abbrev(blank), -1);
+    }
+}
+
+TEST_F(CondensedCatalogTest, BrightStarBlankBayerAndSharedDmKeepDistinctIdentities)
+{
+    make_star("Sun");
+    std::filesystem::create_directories("catalogs/BSC");
+    std::ofstream file("catalogs/BSC/catalog", std::ios::binary);
+    for (int index = 0; index < 2; ++index)
+    {
+        std::string row(197, ' ');
+        put(row, 1, 4, std::to_string(6375 + index));
+        put(row, 5, 7, std::to_string(88 + index));
+        put(row, 12, 14, "Oph");
+        put(row, 15, 16, "BD");
+        put(row, 17, 19, "-10");
+        put(row, 20, 25, "4445");
+        put(row, 26, 31, std::to_string(155078 + index));
+        put(row, 76, 77, "17");
+        put(row, 78, 79, "10");
+        put(row, 80, 83, index == 0 ? "00.7" : "02.7");
+        put(row, 84, 84, "-");
+        put(row, 85, 86, "10");
+        put(row, 87, 88, "24");
+        put(row, 89, 90, "51");
+        put(row, 103, 107, "5.43");
+        put(row, 110, 114, "0.47");
+        put(row, 116, 120, "0.02");
+        put(row, 128, 147, "F5IV");
+        put(row, 162, 166, "0.024");
+        file << row << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_BrightStars_catalog(cels, MAX_CELOBJS), 2);
+    ASSERT_NE(hdcache[155078], nullptr);
+    ASSERT_NE(hdcache[155079], nullptr);
+    EXPECT_NE(hdcache[155078], hdcache[155079]);
+    for (int index = 0; index < 2; ++index)
+    {
+        Star *star = hdcache[155078 + index];
+        EXPECT_EQ(star->BayerGrkno, -1);
+        EXPECT_STREQ(star->Bayer, "");
+        EXPECT_EQ(star->HR, 6375 + index);
+        EXPECT_EQ(star->FlamsteedNo, 88 + index);
+        star->rename_from_Bayer_Flamsteed();
+        EXPECT_EQ(std::string(star->name), std::to_string(88 + index) + " Ophiuchi");
+        EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5.43);
+        EXPECT_DOUBLE_EQ(star->BV_color, 0.47);
+        EXPECT_STREQ(star->spectral_type, "F5IV");
     }
 }
 
