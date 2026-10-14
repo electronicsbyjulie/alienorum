@@ -843,6 +843,7 @@ void process_key_cmd_char(char c)
                 altitude=0;
                 azimuth=0;
                 viewchanged = true;
+                trackidx = -1;
             }
         }
         break;

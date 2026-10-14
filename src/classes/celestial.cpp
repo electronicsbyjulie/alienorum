@@ -13,6 +13,7 @@
 #include <memory>
 #include "celestial.h"
 #include "shore.h"
+#include "lavafissures.h"
 
 using namespace alienorum;
 
@@ -2358,6 +2359,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
+        LavaFissures lava_fissures(static_cast<std::uint32_t>(cel->rnd_seed));
         for (y = 0; y < image_height; ++y)
         {
             if (done || abort_load) { generating_fic_texture = false; return; }
@@ -2559,13 +2561,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     }
 
                     // Incandescent rift veins breaking through the crust
-                    double crack1 = 1.0 - fabs(sin(wx * 22.0 + wy * 11.0 + sin(wz * 16.0)));
-                    double crack2 = 1.0 - fabs(sin(-wx * 12.0 + wy * 20.0 + cos(wz * 14.0)));
-                    double crack3 = 1.0 - fabs(sin(wz * 22.0 + wx * 10.0));
-                    double crack_val = fmax(crack1 * crack2, fmax(crack1 * crack3, crack2 * crack3));
-                    if (crack_val > 0.62)
+                    const double lava_factor = lava_fissures.intensity(nx, ny, nz);
+                    if (lava_factor > 0.0)
                     {
-                        double lava_factor = pow((crack_val - 0.62) / 0.38, 2.0);
                         basalt_r = fmin(255.0, basalt_r + 215.0 * lava_factor);
                         basalt_g = fmin(255.0, basalt_g + 88.0 * lava_factor);
                         basalt_b = fmin(255.0, basalt_b + 16.0 * lava_factor);
@@ -2687,6 +2685,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
         }
 
         bool tidal_locked = p->orbit && p->orbit->center && p->orbit->center->type == star && p->is_tidal_locked();
+        LavaFissures lava_fissures(static_cast<std::uint32_t>(cel->rnd_seed));
 
         // Fill in glowing hot lava.
         int x, y, y1, idx;
@@ -2738,24 +2737,8 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
                     base_T = fmax(base_T, 1380.0 + basin_dep * 380.0);
                 }
 
-                // Domain-warped 3D cellular rift / fissure network
-                double warp_x = nx + 0.18 * sin(ny * 5.0 + nz * 4.0);
-                double warp_y = ny + 0.18 * sin(nz * 5.0 + nx * 4.0);
-                double warp_z = nz + 0.18 * sin(nx * 5.0 + ny * 4.0);
-
-                double c1 = sin(warp_x * 19.0 + warp_y * 11.0 + sin(warp_z * 13.0));
-                double c2 = sin(-warp_x * 10.0 + warp_y * 18.0 + cos(warp_z * 12.0));
-                double c3 = cos(warp_z * 20.0 + warp_x * 9.0);
-                double k1 = 1.0 - fabs(c1);
-                double k2 = 1.0 - fabs(c2);
-                double k3 = 1.0 - fabs(c3);
-                double crack = fmax(k1 * k2, fmax(k1 * k3, k2 * k3));
-
-                // Micro-crack texture across crust plates
-                double micro = 1.0 - fabs(sin(warp_x * 46.0 + warp_y * 36.0 + warp_z * 32.0));
-                double fissure_intensity = (crack > 0.58) ? pow((crack - 0.58) / 0.42, 2.2) : 0.0;
-                double micro_intensity = (micro > 0.74) ? pow((micro - 0.74) / 0.26, 3.0) : 0.0;
-                double total_fissure = fmin(1.0, fissure_intensity + 0.45 * micro_intensity);
+                // The same irregular, branching fractures as the surface map.
+                const double total_fissure = lava_fissures.intensity(nx, ny, nz);
 
                 if (total_fissure > 0.0)
                 {
