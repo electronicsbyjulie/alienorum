@@ -177,6 +177,8 @@ double alienorum::Color::compute_atmospheric_yellowing(double surface_pressure, 
 {
     double surface_pressure_hpa = surface_pressure / 100;
 
+    if (zenith_angle_rad > half_pi) zenith_angle_rad = _pi - zenith_angle_rad;
+
     // Calculate the mass of air (approximation, valid for z < 60°)
     double airmass = 1.0 / (std::cos(zenith_angle_rad) + 0.025);
 

@@ -7869,6 +7869,12 @@ void draw_cloudy_sky()
     double daylight = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
     daylight /= fmin(1.0, fmax(0.01, sqrt(p->mean_instellation())));
     daylight = std::clamp(daylight, 0.0, 1.0);
+
+    CelestialObject *sun_obj = p->get_light_center();
+    double atm_pressure = (whereami >= 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type)) ? ((Planet*)cels[whereami])->get_surface_pressure() : 0;
+    double zenith_rad = find_3D_angle(sun_obj->viewrel, yaxis, center);
+    double atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad) * 3;
+
     CloudSkyGpuInput in = {};
     in.camera[0] = (float)azimuth;
     in.camera[1] = (float)altitude;
@@ -7892,6 +7898,24 @@ void draw_cloudy_sky()
     in.light[2] = p->overcast ? 1.0f : 0.0f;
     in.light[3] = redlight_mode ? 1.0f : 0.0f;
     in.light[4] = (float)dev_dial;                  // Leave this here in case we find other constants to adjust at a later date.
+
+    if (sun_obj && sun_obj->typeclass() == class_star)
+    {
+        // Warm cloud lighting peaks at the horizon, with a short twilight tail.
+        const double sun_elevation = sun_obj->Decl_as_radians(here);
+        const double twi_deg = 6.0 * fiftyseventh;
+        double twi_mul = 1.0;
+        if (sun_elevation < -twi_deg) twi_mul = 0;
+        else if (sun_elevation < 0) twi_mul = (sun_elevation + twi_deg) / twi_deg;
+
+        // const double twilight = std::clamp((sun_elevation * fiftyseven + 6.0) / 5.0, 0.0, 1.0);
+        // const double low_sun = std::clamp((12.0 - sun_elevation * fiftyseven) / 12.0, 0.0, 1.0);
+
+        in.light[5] = std::clamp( atm_yellowing * 1.5
+            // was: (float)(twilight * twilight * (3.0 - 2.0 * twilight) * low_sun * low_sun * (3.0 - 2.0 * low_sun))
+            , 0.0, 5.0) * twi_mul;
+        // std::cout << "Sunset warmth=" << in.light[5] << endl;
+    }
     // Align texture centers with the original CPU map's angular pixel grid.
     in.light[8] = 0.5f / cel->cloud_map->get_width();
     in.light[9] = 0.5f / cel->cloud_map->get_height();

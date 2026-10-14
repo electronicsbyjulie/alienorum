@@ -135,6 +135,7 @@ void main()
     float blend = deck + (1.0 - deck) * unresolved;
     float alpha = coverage;
     float shade = 1.0;
+    float warm_weight = 1.0;
     if (blend < 0.999)
     {
         vec3 tangent_east = vec3(-sin(lon), cos(lon), 0.0);
@@ -144,6 +145,7 @@ void main()
         int band = int(floor((lat + HALF_PI) / step));
         float solid = 0.0;
         float nearest = 1e30;
+        float underside = 0.0;
         for (int row = -1; row <= 1; ++row)
         {
             float clat = -HALF_PI + (float(band + row) + 0.5) * step;
@@ -209,6 +211,7 @@ void main()
                                 nearest = entry;
                                 vec3 surface = normalize((entry * r - p) / (axes * axes));
                                 shade = clamp(0.78 + 0.22 * surface.z, 0.56, 1.0);
+                                underside = smoothstep(0.0, 0.75, -surface.z);
                             }
                         }
                     }
@@ -239,10 +242,17 @@ void main()
         float feather = strands * (0.48 + 0.52 * fibers) + 0.22 * fibers;
         float cirrus = 0.42 * veil * feather
             * smoothstep(0.0, 0.12, coverage) * (1.0 - smoothstep(0.55, 0.80, coverage));
-        alpha = mix(solid + cirrus * (1.0 - solid), coverage, blend);
+        float cirrus_alpha = cirrus * (1.0 - solid);
+        float combined_alpha = solid + cirrus_alpha;
+        alpha = mix(combined_alpha, coverage, blend);
+        // Cirrus catches the warm light throughout; cumulus only on undersides.
+        warm_weight = mix((solid * underside + cirrus_alpha) / max(1e-5, combined_alpha), 1.0, blend);
     }
     vec3 color = rgb * uLight[0].x * (160.0 / 255.0) * deck
         + vec3(uLight[0].y * shade * (1.0 - deck));
+    float warmth = 0.85 * uLight[1].y * warm_weight;
+    float glow_light = max(0.18, max(color.r, max(color.g, color.b)));
+    color = mix(color, vec3(1.0, 0.45, 0.15) * glow_light, warmth);
     if (uLight[0].w > 0.5)
     {
         color = vec3(min(1.0, color.r + 0.5 * color.g + 0.3 * color.b), color.g / 3.0, color.b / 3.0);
@@ -457,7 +467,7 @@ void main()
         for (int i = 0; i < 16; ++i)
         {
             // Sub-byte illumination changes can reuse the displayed layer.
-            const float tolerance = i < 2 ? 1.0f / 512.0f : 0.0f;
+            const float tolerance = (i < 2 || i == 5) ? 1.0f / 512.0f : 0.0f;
             if (std::fabs(p.light[i] - s_cached_params.light[i]) > tolerance)
             {
                 return false;
