@@ -23,7 +23,7 @@ FIELDS = dict(
     radius=(257, 266), temperature=(268, 274), rotation=(276, 285),
     parent=(287, 300), period=(302, 312), axis=(315, 326),
     eccentricity=(328, 334), periapsis=(341, 348), anomaly=(350, 357),
-    orbit_epoch=(359, 372), inclination=(374, 381), node=(383, 390),
+    orbit_epoch=(359, 373), inclination=(374, 381), node=(383, 390),
     variability=(392, 403), bright=(405, 410), faint=(412, 417),
     bright_epoch=(419, 435), eclipsing=(437, 437), dm_survey=(439, 440),
     dm_zone=(442, 445), dm_number=(447, 452), custom=(454, 454),
@@ -261,6 +261,45 @@ def related(a, b):
     return bool(a.root and a.root == b.root)
 
 
+def ancestor_values(row, identities, key):
+    values, seen = set(), set()
+    while row and row.line not in seen:
+        seen.add(row.line)
+        if row.number(key):
+            values.add(row.number(key))
+        row = identities.get(row.text('parent'))
+    return values
+
+
+def separation_arcsec(ra1, dec1, ra2, dec2):
+    ra1, dec1, ra2, dec2 = map(math.radians, (ra1, dec1, ra2, dec2))
+    h = math.sin((dec2 - dec1) / 2) ** 2 + math.cos(dec1) * math.cos(dec2) * math.sin((ra2 - ra1) / 2) ** 2
+    return 2 * math.asin(math.sqrt(min(1.0, max(0.0, h)))) / RAD_PER_ARCSEC
+
+
+def check_near_duplicates(records, report):
+    # A Cartesian bucket grid works across RA=0 and at both poles. Only nearby
+    # buckets are visited; this does not compare every star with every other star.
+    from itertools import product
+    offsets = tuple(product((-1, 0, 1), repeat=3))
+    cell_size = 2 * RAD_PER_ARCSEC
+    buckets = dict()
+    for row in records:
+        if row.identity == '-26':
+            continue
+        ra, dec = math.radians(row.ra), math.radians(row.dec)
+        position = (math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec))
+        cell = tuple(math.floor(v / cell_size) for v in position)
+        for dx, dy, dz in offsets:
+            for candidate in buckets.get((cell[0] + dx, cell[1] + dy, cell[2] + dz), ()):
+                if related(row, candidate) or (row.text('ra'), row.text('dec')) == (candidate.text('ra'), candidate.text('dec')):
+                    continue
+                separation = separation_arcsec(row.ra, row.dec, candidate.ra, candidate.dec)
+                if separation <= 2:
+                    report.add('near_duplicate_position', row, f'Unrelated entries separated by {separation:.3f} arcsec; inspect source identities', 'warning', candidate)
+        buckets.setdefault(cell, []).append(row)
+
+
 def check_relationships(records, report):
     identities, raw_rows = dict(), dict()
     for row in records:
@@ -358,16 +397,36 @@ def check_relationships(records, report):
         if re.fullmatch(r'HD\s*\d+(?:\s+[A-Z])?', row.name):
             hd = int(re.search(r'\d+', row.name)[0])
             parent = identities.get(row.text('parent'))
-            if hd != row.number('hd') and not (parent and hd == parent.number('hd')):
+            if hd not in ancestor_values(row, identities, 'hd'):
                 report.add('hd_name', row, 'HD display name conflicts with its own or primary identifier')
         if re.fullmatch(r'HIP\s*\d+(?:\s+[A-Z])?', row.name):
             hip = int(re.search(r'\d+', row.name)[0])
             parent = identities.get(row.text('parent'))
-            if hip != row.number('hip') and not (parent and hip == parent.number('hip')):
+            if hip not in ancestor_values(row, identities, 'hip'):
                 report.add('hip_name', row, 'HIP display name conflicts with its own or primary identifier')
+        numeric_name = re.fullmatch(r'(\d+)\s+(?:(G\.)\s+)?(.+?)(?:\s+([A-Z]))?', ' '.join(row.name.split()))
+        if numeric_name:
+            number, gould_marker, cons_label, component = numeric_name.groups()
+            recognized = cons_label in CONSTELLATIONS or any(cons_label in (genitive,) + GENITIVE_ALIASES.get(cons, ()) for cons, genitive in CONSTELLATIONS.items())
+            if recognized:
+                key = 'gould' if gould_marker or (cons_label == 'Eri' and number == '82') else 'flamsteed'
+                if int(number) not in ancestor_values(row, identities, key):
+                    report.add('numbered_name', row, f'{key} display number conflicts with catalog identity')
+                if gould_marker and cons_label in CONSTELLATIONS and cons_label != row.text('gould_cons'):
+                    report.add('gould_name', row, 'Gould display constellation conflicts with metadata')
+                if component and row.component and component != row.component:
+                    report.add('name_component', row, 'Numbered display-name component conflicts with ID')
         if re.match(r'GJ\s*\d', row.name) and row.text('gliese') and ' '.join(row.name.split()) != ' '.join(row.text('gliese').split()):
             report.add('gliese_name', row, 'GJ display name differs from its catalog identity', 'warning')
+    check_near_duplicates(records, report)
     return identities
+
+
+def source_position(row, ra, dec, report, label):
+    drift = math.hypot(row.number('pm_ra') or 0, row.number('pm_dec') or 0) * (100 * 365.25 * 86400) / RAD_PER_ARCSEC
+    separation = separation_arcsec(row.ra, row.dec, ra, dec)
+    if separation > max(60.0, drift + 30.0):
+        report.add('source_position', row, f'{label} coordinates differ by {separation:.1f} arcsec (epoch/proper-motion review)', 'warning')
 
 
 def check_sources(records, report, directory):
@@ -379,6 +438,13 @@ def check_sources(records, report, directory):
         for raw in bsc_path.read_text().splitlines():
             if raw[:4].strip().isdigit():
                 source[int(raw[:4])] = raw
+        covered_hr = {row.number('hr') for row in records}
+        covered_hd = {row.number('hd') for row in records}
+        for hr, raw in source.items():
+            magnitude = raw[102:107].strip()
+            hd = raw[25:31].strip()
+            if NUMBER.fullmatch(magnitude) and float(magnitude) < 10 and hd.isdigit() and hr not in covered_hr and int(hd) not in covered_hd:
+                report.add('bsc_bright_missing', Record(b'', 0, identity=f'HR {hr}'), 'Bright source star is absent by both HR and HD', 'warning')
         for row in records:
             raw = source.get(row.number('hr'))
             if not raw:
@@ -386,6 +452,11 @@ def check_sources(records, report, directory):
             hd = raw[25:31].strip()
             if hd.isdigit() and row.number('hd') and int(hd) != row.number('hd'):
                 report.add('bsc_cross_id', row, f'HR {row.number("hr")} belongs to HD {hd} in BSC')
+            parts = (raw[75:77], raw[77:79], raw[79:83], raw[84:86], raw[86:88], raw[88:90])
+            if all(NUMBER.fullmatch(v.strip()) for v in parts):
+                hh, mm, ss, dd, dm, ds = map(float, parts)
+                source_position(row, (hh + mm / 60 + ss / 3600) * 15,
+                                (dd + dm / 60 + ds / 3600) * (-1 if raw[83:84] == '-' else 1), report, 'BSC')
             source_bayer = raw[7:11].strip() + raw[11:14].strip()
             expected = parse_bayer(source_bayer) if raw[7:11].strip() else None
             actual = parse_bayer(row.text('bayer')) if row.text('bayer') else None
@@ -401,6 +472,13 @@ def check_sources(records, report, directory):
         for raw in hip_path.read_text().splitlines():
             if raw[8:14].strip().isdigit():
                 source[int(raw[8:14])] = raw
+        covered_hip = {row.number('hip') for row in records}
+        covered_hd = {row.number('hd') for row in records}
+        for hip, raw in source.items():
+            magnitude = raw[41:46].strip()
+            hd = raw[390:396].strip()
+            if NUMBER.fullmatch(magnitude) and float(magnitude) < 10 and hip not in covered_hip and not (hd.isdigit() and int(hd) in covered_hd):
+                report.add('hip_bright_missing', Record(b'', 0, identity=f'HIP {hip}'), 'Bright source star is absent by both HIP and HD', 'warning')
         for row in records:
             raw = source.get(row.number('hip'))
             if not raw:
@@ -408,6 +486,13 @@ def check_sources(records, report, directory):
             hd = raw[390:396].strip()
             if hd.isdigit() and row.number('hd') and int(hd) != row.number('hd'):
                 report.add('hip_cross_id', row, f'HIP {row.number("hip")} belongs to HD {hd}', 'warning' if row.component else 'error')
+            ra, dec = raw[51:63].strip(), raw[64:76].strip()
+            if NUMBER.fullmatch(ra) and NUMBER.fullmatch(dec):
+                source_position(row, float(ra), float(dec), report, 'Hipparcos')
+            spectral = raw[435:447].strip()
+            own_spectral = row.text('spectral').strip()
+            if spectral and own_spectral and spectral[0] in 'OBAFGKM' and own_spectral[0] in 'OBAFGKM' and spectral[0] != own_spectral[0]:
+                report.add('source_spectral_class', row, f'Spectral family {own_spectral} differs from Hipparcos {spectral}', 'warning')
             for key, start, end, tolerance in (('magnitude', 42, 46, 0.5), ('bv', 246, 251, 0.4)):
                 value = raw[start - 1:end].strip()
                 if NUMBER.fullmatch(value) and row.number(key) is not None and abs(row.number(key) - float(value)) > tolerance:

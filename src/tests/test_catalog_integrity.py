@@ -234,6 +234,46 @@ class CatalogIntegrityTest(unittest.TestCase):
             self.assert_code(audit_bytes(sun() + row(magnitude='8', bv='2'), root), 'hip_bv', 'warning')
             self.assert_code(audit_bytes(sun() + row(), root / 'absent'), 'source_catalogs_absent')
 
+    def test_numbered_names_and_inherited_ancestor_names(self):
+        self.assert_code(self.audit(row(name='56 Ophiuchi', flamsteed='55')), 'numbered_name')
+        self.assertEqual(self.audit(row(name='55 Ophiuchi', flamsteed='55')).errors, 0)
+        self.assert_code(self.audit(row(name='187 G. Ser', bayer='', gould='187', gould_cons='Oph')), 'gould_name')
+        root = row(name='HD159561')
+        middle = companion(name='HD159561 B', hd='')
+        child = companion(id='2c Oph 1 C', name='HD159561 C', hd='', hip='1', parent='2c Oph 1 B')
+        self.assertEqual(self.audit(root, middle, child).errors, 0)
+
+    def test_close_pairs_are_reviewed_across_ra_wrap_and_at_poles(self):
+        first = row(ra='23:59:59.9', dec='+00:00:00')
+        other = row(id='3c Oph 2', name='Other', hd='1', hip='1', hr='', bayer='', ra='00:00:00.0', dec='+00:00:00')
+        self.assert_code(self.audit(first, other), 'near_duplicate_position', 'warning')
+        first = row(ra='00:00:00.0', dec='+89:59:59')
+        other = row(id='3c Oph 2', name='Other', hd='1', hip='1', hr='', bayer='', ra='06:00:00.0', dec='+89:59:59')
+        self.assert_code(self.audit(first, other), 'near_duplicate_position', 'warning')
+
+    def test_large_physical_numbers_are_diagnosed_without_math_overflow(self):
+        self.assert_code(self.audit(row(distance='1e308')), 'physical_overflow')
+        self.assert_code(self.audit(row(), companion(axis='1e308')), 'physical_overflow')
+
+    def test_negative_magnitude_ids_and_full_negative_epoch_are_valid(self):
+        self.assertEqual(self.audit(row(id='-1c CMa', name='HD159561', bayer='')).errors, 0)
+        self.assertEqual(self.audit(row(), companion(orbit_epoch='-4.09111277e+09')).errors, 0)
+
+    def test_source_completeness_respects_the_magnitude_ten_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            source = []
+            for identifier, magnitude in (('101', '9.99'), ('102', '10.00'), ('103', '12.00')):
+                raw = bytearray(b' ' * 450)
+                raw[8:14] = identifier.encode().ljust(6)
+                raw[41:46] = magnitude.encode().ljust(5)
+                source.append(bytes(raw))
+            (root / 'Hipparcos' / 'hip_main.dat').write_bytes(b'\n'.join(source))
+            report = audit_bytes(sun() + row(), root)
+            missing = [issue for issue in report.issues if issue.code == 'hip_bright_missing']
+            self.assertEqual([issue.identity for issue in missing], ['HIP 101'])
+
     def test_reports_have_stable_line_numbers_and_checksums(self):
         data = sun() + row() + row()
         first, second = audit_bytes(data), audit_bytes(data)

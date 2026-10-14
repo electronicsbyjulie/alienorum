@@ -39,6 +39,11 @@ class CondensedCatalogTest : public UniverseFixture
         oph.abbrev = "Oph";
         oph.genitive = "Ophiuchi";
         constellations.push_back(oph);
+        Constellation ser;
+        ser.name = "Serpens";
+        ser.abbrev = "Ser";
+        ser.genitive = "Serpentis";
+        constellations.push_back(ser);
         saved_hd = hdcache;
         saved_hip = hipcache;
         saved_dm = std::move(dmcache);
@@ -319,4 +324,82 @@ TEST_F(CondensedCatalogTest, NegativeZeroAstrometryCannotOverflowIntoAdjacentCol
         EXPECT_EQ(encoded[start + 10], ' ');
     }
     EXPECT_NEAR(std::stod(encoded.substr(213, 10)), star->parallax, 1e-12);
+}
+
+TEST_F(CondensedCatalogTest, BayerConstellationAndIndexesFollowDesignationRatherThanSkyBin)
+{
+    std::string row = primary_row();
+    put(row, 16, 54, "Alpha Serpentis");
+    put(row, 146, 152, "Alp Ser");
+    put(row, 454, 454, "");
+    write_rows({row});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    Star *star = (Star*)cels[1];
+    EXPECT_STREQ(star->constellation, "Ser");
+    EXPECT_EQ(constellations[1].Bayer_stars[0], star);
+    star->rename_from_Bayer_Flamsteed();
+    EXPECT_STREQ(star->name, "Alpha Serpentis");
+}
+
+TEST_F(CondensedCatalogTest, NegativeOrbitalEpochKeepsTheEntireExponent)
+{
+    std::string secondary = primary_row();
+    put(secondary, 1, 14, "2c Oph 1 B");
+    put(secondary, 16, 54, "Secondary");
+    put(secondary, 114, 119, "159562");
+    put(secondary, 121, 126, "86033");
+    put(secondary, 287, 300, "2c Oph 1");
+    put(secondary, 302, 312, "365.25");
+    put(secondary, 315, 326, "1.5");
+    put(secondary, 359, 373, "-4.09111277e+09");
+    put(secondary, 374, 381, "60.0");
+    write_rows({primary_row(), secondary});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    Star *star = (Star*)cels[2];
+    ASSERT_NE(star->orbit, nullptr);
+    EXPECT_DOUBLE_EQ(star->orbit->epoch, -4.09111277e9);
+    EXPECT_NEAR(star->orbit->heliocentric_inclination * fiftyseven, 60, 1e-10);
+    const std::string encoded = written_row(star);
+    EXPECT_EQ(std::stod(encoded.substr(358, 15)), -4.09111277e9);
+}
+
+TEST_F(CondensedCatalogTest, MissingAndOversizedCatalogIdsCannotIndexOutsideCaches)
+{
+    std::string unknown = primary_row();
+    put(unknown, 114, 119, "");
+    put(unknown, 121, 126, "");
+    std::string invalid = primary_row();
+    put(invalid, 1, 14, "3c Oph 2");
+    put(invalid, 114, 119, "359084");
+    put(invalid, 121, 126, "120417");
+    write_rows({unknown, invalid});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    EXPECT_EQ(hdcache[0], nullptr);
+    EXPECT_EQ(hipcache[0], nullptr);
+    EXPECT_EQ(hdcache[MAX_HD], nullptr);
+    EXPECT_EQ(hipcache[MAX_HIP], nullptr);
+}
+
+TEST_F(CondensedCatalogTest, EveryGreekLetterAndNumberedVariantHasTheCorrectIndex)
+{
+    const char *abbreviations[] =
+    {
+        "Alp", "Bet", "Gam", "Del", "Eps", "Zet", "Eta", "The", "Iot", "Kap", "Lam", "Mu ",
+        "Nu ", "Xi ", "Omi", "Pi ", "Rho", "Sig", "Tau", "Ups", "Phi", "Chi", "Psi", "Ome"
+    };
+    for (int index = 0; index < 24; ++index)
+    {
+        SCOPED_TRACE(abbreviations[index]);
+        std::string plain = std::string(abbreviations[index]) + " Oph";
+        std::string numbered = std::string(abbreviations[index]) + "1Oph";
+        EXPECT_EQ(grkno_from_abbrev(plain.c_str()), index);
+        EXPECT_EQ(grkno_from_abbrev(numbered.c_str()), 100 + index * 10 + 1);
+    }
+    for (const char *blank : {"", "    ", "\t", "9   ", "-   "})
+    {
+        EXPECT_EQ(grkno_from_abbrev(blank), -1);
+    }
 }

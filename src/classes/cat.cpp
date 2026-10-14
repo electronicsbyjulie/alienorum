@@ -5642,11 +5642,17 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 114, 119, field);
         s->HD = atoi(field);
-        hdcache[s->HD] = s;
+        if (s->HD > 0 && s->HD <= MAX_HD)
+        {
+            hdcache[s->HD] = s;
+        }
 
         read_field_onebased(buffer, 121, 126, field);
         s->HIP = atoi(field);
-        hipcache[s->HIP] = s;
+        if (s->HIP > 0 && s->HIP <= MAX_HIP)
+        {
+            hipcache[s->HIP] = s;
+        }
 
         read_field_onebased(buffer, 128, 132, field);
         s->HR = atoi(field);
@@ -5678,9 +5684,24 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         Constellation *mycons = nullptr;
         if (strlen(s->Bayer) || (s->FlamsteedNo > 0) || (s->GouldNo > 0))
         {
-            strcpy(s->constellation, cons_from_alienorumid(s->alienorumid).c_str());
+            std::string designation_cons = cons_from_alienorumid(s->alienorumid);
+            if (s->BayerGrkno >= 0 && strlen(s->Bayer) >= 3)
+            {
+                designation_cons = std::string(s->Bayer).substr(strlen(s->Bayer) - 3);
+            }
+            else if (s->FlamsteedNo <= 0 && s->GouldNo > 0)
+            {
+                designation_cons = trim(s->Gouldcons);
+            }
+            strcpy(s->constellation, designation_cons.c_str());
             j = constellations.size();
-            for (i=0; i<j && !mycons; i++) if (!strcmp(constellations[i].name.c_str(), s->constellation)) mycons = &constellations[i];
+            for (i = 0; i < j && !mycons; ++i)
+            {
+                if (constellations[i].abbrev == designation_cons)
+                {
+                    mycons = &constellations[i];
+                }
+            }
         }
 
         if (s->FlamsteedNo > 0)
@@ -5754,7 +5775,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 350, 357, field);
         if (s->orbit) s->orbit->mean_anomaly = atof(field) * fiftyseventh;
 
-        read_field_onebased(buffer, 359, 372, field);
+        read_field_onebased(buffer, 359, 373, field);
         if (s->orbit) s->orbit->epoch = atof(field);
 
         read_field_onebased(buffer, 374, 381, field);
