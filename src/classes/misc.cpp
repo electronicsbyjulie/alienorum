@@ -345,17 +345,21 @@ std::string cons_from_alienorumid(const std::string alienorumid)
 
 int grkno_from_abbrev(const char *abbrev)
 {
+    if (!abbrev || !abbrev[0])
+    {
+        return -1;
+    }
     static const int ionly1[26] = {0, 1, 21, 3, -1, -2, 2, -2, 8, -2, 9, 10, 11, 12, -1, -1, -2, 16, 17, -1, 19, -2, -2, 13, -2, 5};
     char c = abbrev[0] & 0x5f;
     int i = c - 'A', idx, result=-1;
+    if (i < 0 || i >= 26)
+    {
+        return -1;
+    }
     idx = ionly1[i];
     if (idx < -1) result = -1;
     else if (idx >= 0) result = idx;
     else if (!abbrev[1])
-    {
-        // TODO:
-    }
-    else if (!abbrev[2])
     {
         return -1;
     }
@@ -385,10 +389,13 @@ int grkno_from_abbrev(const char *abbrev)
         else if (c == 'S') result = 22;
     }
 
-    if (result >= 0 && abbrev[3])
+    if (result >= 0 && strlen(abbrev) > 3)
     {
         int n = abbrev[3] - '0';
-        if (n > 0) result = 100 + 10*result + n;
+        if (n >= 1 && n <= 9)
+        {
+            result = 100 + 10*result + n;
+        }
     }
 
     return result;

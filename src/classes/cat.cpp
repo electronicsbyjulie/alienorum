@@ -717,7 +717,10 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         s->FlamsteedNo = atoi(field);
         read_field_onebased(buffer, 8, 11, field);
         std::string bayer = trim(field);
-        if (field[3] < 'A') s->BayerGrkno = grkno_from_abbrev(field);
+        if (!bayer.empty() && field[3] < 'A')
+        {
+            s->BayerGrkno = grkno_from_abbrev(field);
+        }
         read_field_onebased(buffer, 12, 14, field);
         std::string cons = trim(field);
 

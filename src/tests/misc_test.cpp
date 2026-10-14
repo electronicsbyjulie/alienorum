@@ -287,6 +287,27 @@ TEST(GreekTest, LettersAndAbbreviations)
     EXPECT_EQ(Greek_from_abbrev(nonsense), std::string(""));
 }
 
+TEST(GreekTest, BlankBayerFieldsHaveNoGreekLetter)
+{
+    EXPECT_EQ(grkno_from_abbrev(nullptr), -1);
+    EXPECT_EQ(grkno_from_abbrev(""), -1);
+    EXPECT_EQ(grkno_from_abbrev("    "), -1);
+    EXPECT_EQ(grkno_from_abbrev("7   "), -1);
+    EXPECT_EQ(grkno_from_abbrev("-   "), -1);
+    EXPECT_EQ(grkno_from_abbrev("\t"), -1);
+}
+
+TEST(GreekTest, BayerComponentsAndShortNamesAreSafe)
+{
+    EXPECT_EQ(grkno_from_abbrev("Alp "), 0);
+    EXPECT_EQ(grkno_from_abbrev("Gam1"), 121);
+    EXPECT_EQ(grkno_from_abbrev("Gam2Vel"), 122);
+    EXPECT_EQ(grkno_from_abbrev("Mu"), 11);
+    EXPECT_EQ(grkno_from_abbrev("Pi"), 15);
+    EXPECT_EQ(grkno_from_abbrev("Xi"), 13);
+    EXPECT_EQ(grkno_from_abbrev("Alp Oph"), 0);
+}
+
 TEST(ConsFromAlienorumIdTest, ExtractsTheConstellation)
 {
     // An alienorumid is a sequence number followed by the IAU constellation abbreviation.
