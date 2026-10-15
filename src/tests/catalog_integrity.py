@@ -490,6 +490,7 @@ def modern_identity_support(records, directory, report):
     for record in records:
         targets.setdefault(int(record.number('hd')), []).append(record)
     supported = dict()
+    target_hd = re.compile(r'\bHD\s*0*(?:' + '|'.join(str(value) for value in sorted(targets)) + r')\b', re.I)
     greek_codes = 'ALF BET GAM DEL EPS ZET ETA THE IOT KAP LAM MU NU KSI OMI PI RHO SIG TAU UPS PHI KHI PSI OME'.split()
 
     def key(value):
@@ -500,9 +501,10 @@ def modern_identity_support(records, directory, report):
     for path in sorted((directory / 'reference').glob('SIMBAD*.tsv')) if targets else []:
         with path.open(newline='', encoding='utf-8') as stream:
             for source in csv.DictReader(stream, delimiter='\t'):
-                if source.get('otype') == '**' or not source.get('oid'):
+                raw_aliases = source.get('ids', '')
+                if source.get('otype') == '**' or not source.get('oid') or not target_hd.search(raw_aliases):
                     continue
-                aliases = {key(value) for value in source.get('ids', '').split('|')}
+                aliases = {key(value) for value in raw_aliases.split('|')}
                 ids = {int(value[2:]) for value in aliases if re.fullmatch(r'HD[0-9]+', value)}
                 for hd in ids & targets.keys():
                     try:
