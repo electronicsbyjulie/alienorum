@@ -1221,3 +1221,118 @@ TEST_F(CondensedCatalogTest, IauNamesResolveThroughExplicitIdentifiers)
     EXPECT_STREQ(star->name, "Approved name");
     EXPECT_TRUE(star->has_custom_name);
 }
+
+TEST_F(CondensedCatalogTest, RoundedMagnitudesNeverOverflowIntoSeparators)
+{
+    Star *star = make_star();
+    star->apparent_magnitude = 9.999;
+    star->absolute_magnitude = -9.999;
+    star->BV_color = star->UB_color = 9.999;
+    const std::string encoded = written_row(star);
+    ASSERT_EQ(encoded.size(), 456u);
+    EXPECT_EQ(encoded.substr(76, 6), "+10.00");
+    EXPECT_EQ(encoded.substr(99, 6), "+10.00");
+    EXPECT_EQ(encoded.substr(106, 6), "+10.00");
+    EXPECT_EQ(encoded.substr(237, 6), "-10.00");
+    EXPECT_EQ(encoded[82], ' ');
+    EXPECT_EQ(encoded[105], ' ');
+    EXPECT_EQ(encoded[112], ' ');
+    EXPECT_EQ(encoded[243], ' ');
+}
+
+TEST_F(CondensedCatalogTest, ReferenceIdentificationRepairsDisplayOnlyPrimaryIdentifiers)
+{
+    make_star("Sun");
+    Star *hd = make_star("HD10001 A");
+    Star *numbered = make_star("55 Oph A");
+    hd->right_ascension = 10 * fiftyseventh;
+    numbered->right_ascension = 20 * fiftyseventh;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10001\tHD 10001|HIP 100\t10\t0\tG2V\n"
+        "2\t* 55 Oph\t* 55 Oph|HIP 101\t20\t0\tG2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(hd->HD, 10001u);
+    EXPECT_EQ(hd->HIP, 100u);
+    EXPECT_EQ(numbered->FlamsteedNo, 55);
+    EXPECT_EQ(numbered->HIP, 101u);
+}
+
+TEST_F(CondensedCatalogTest, DistinctResolvedComponentsKeepTheirOwnIdentityAndPhotometry)
+{
+    make_star("Sun");
+    Star *a = make_star("HD10001");
+    Star *b = make_star("HD10002");
+    a->HD = 10001;
+    b->HD = 10002;
+    a->HIP = b->HIP = 100;
+    a->set_component('A', a);
+    b->make_companion_of(a, 'B');
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
+        "1\tHD 10001\tHD 10001|HIP 100\t0\t0\tG2V\t5\n"
+        "2\tHD 10002\tHD 10002|HIP 100\t0\t0\tK2V\t7\n");
+    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(a->apparent_magnitude, 5);
+    EXPECT_DOUBLE_EQ(b->apparent_magnitude, 7);
+    EXPECT_STREQ(a->spectral_type, "G2V");
+    EXPECT_STREQ(b->spectral_type, "K2V");
+    EXPECT_FALSE(a->deleted);
+    EXPECT_FALSE(b->deleted);
+    EXPECT_EQ(report["merged_rows"], 0);
+}
+
+TEST_F(CondensedCatalogTest, SpectralReferencesDoNotReplaceModernClassificationsWithOlderOnes)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10001");
+    star->HD = 10001;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tsp_bibcode\n"
+        "1\tHD 10001\tHD 10001\t0\t0\tG2V\t2026A&A...000....1A\n");
+    reference_file("Skiff.tsv", "Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n"
+        "HD 10001\tA0\t1900ApJ.....0....1A\t0\t0\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(star->spectral_type, "G2V");
+}
+
+TEST_F(CondensedCatalogTest, ReferenceEndpointsComeExclusivelyFromTheManifest)
+{
+    for (const auto &source : stellar_reference_sources())
+    {
+        EXPECT_TRUE(source.url.empty());
+    }
+    std::ofstream manifest("catalogs/urls.dat");
+    manifest << "# ignored comment\n"
+        << "other SIMBAD.tsv ignored-source\n"
+        << "reference SIMBAD.tsv configured-source\n"
+        << "reference IAU.iau configured-names\n";
+    manifest.close();
+    for (const auto &source : stellar_reference_sources())
+    {
+        if (source.name == "SIMBAD")
+        {
+            EXPECT_EQ(source.url, "configured-source");
+        }
+        else if (source.name == "IAU")
+        {
+            EXPECT_EQ(source.url, "configured-names");
+        }
+        else
+        {
+            EXPECT_TRUE(source.url.empty());
+        }
+    }
+}
+
+TEST_F(CondensedCatalogTest, VariabilityAndRotationFormattingRespectFixedColumns)
+{
+    Star *star = make_star();
+    star->variability_period = 0.26781595 * oneday;
+    star->sidereal_rotational_period = 9.99999 * oneday;
+    star->minmag = star->maxmag = 9.999;
+    const std::string row = written_row(star);
+    ASSERT_EQ(row.size(), 456u);
+    EXPECT_EQ(row.substr(275, 10), "    10.000");
+    EXPECT_EQ(row.substr(391, 12), "2.678160e-01");
+    EXPECT_EQ(row[403], ' ');
+    EXPECT_EQ(row.substr(404, 6), "+10.00");
+    EXPECT_EQ(row.substr(411, 6), "+10.00");
+}

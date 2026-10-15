@@ -33,28 +33,6 @@ namespace
         return value;
     }
 
-    std::string encoded(const std::string &value)
-    {
-        std::ostringstream result;
-        for (unsigned char c : value)
-        {
-            if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
-            {
-                result << c;
-            }
-            else
-            {
-                result << '%' << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << int(c);
-            }
-        }
-        return result.str();
-    }
-
-    std::string tap_url(const std::string &endpoint, const std::string &query)
-    {
-        return endpoint + "?REQUEST=doQuery&LANG=ADQL&FORMAT=tsv&MAXREC=2000000&QUERY=" + encoded(query);
-    }
-
     std::string cell(const Row &row, const std::string &column)
     {
         auto found = row.find(lowercase(column));
@@ -146,10 +124,42 @@ namespace
         size_t count = 0;
         while (std::getline(file, line))
         {
+            if (trim(line) == "[EOD]")
+            {
+                break;
+            }
             if (trim(line).empty() || line[0] == '#'
                 || line.find_first_not_of("- \t\r") == std::string::npos)
             {
                 continue;
+            }
+            auto balanced = [](const std::string &text)
+            {
+                bool quoted = false;
+                for (size_t i = 0; i < text.size(); i++)
+                {
+                    if (text[i] == '"')
+                    {
+                        if (quoted && i + 1 < text.size() && text[i + 1] == '"')
+                        {
+                            i++;
+                        }
+                        else
+                        {
+                            quoted = !quoted;
+                        }
+                    }
+                }
+                return !quoted;
+            };
+            while (!balanced(line))
+            {
+                std::string continuation;
+                if (!std::getline(file, continuation))
+                {
+                    throw std::runtime_error("Truncated multiline reference field: " + source.name);
+                }
+                line += '\n' + continuation;
             }
             const auto fields = stellar_table_fields(line);
             if (fields.size() != columns.size())
@@ -223,6 +233,7 @@ namespace
         std::unordered_map<std::string, std::vector<Star*>> resolved_objects;
         std::unordered_map<std::string, std::string> object_types;
         std::unordered_map<std::string, std::vector<Star*>> spatial;
+        std::unordered_map<Star*, std::vector<Star*>> children;
         std::map<std::string, Row> sbx_systems;
         std::map<std::string, std::vector<Star*>> sbx_members;
         std::map<std::string, std::pair<int, std::string>> sbx_ranks;
@@ -280,6 +291,13 @@ namespace
                 add_alias(bonn_survey_key(star->Bonn_survey, star->Bonn_survey_declination,
                     star->Bonn_survey_sequential), star);
                 spatial[spatial_key(star->right_ascension * fiftyseven, star->declination * fiftyseven)].push_back(star);
+            }
+            for (Star *star : stars)
+            {
+                if (star->orbit && star->orbit->center && star->orbit->center->typeclass() == class_star)
+                {
+                    children[static_cast<Star*>(star->orbit->center)].push_back(star);
+                }
             }
         }
 
@@ -391,7 +409,7 @@ namespace
             {
                 return;
             }
-            if (!std::isfinite(target) || fabs(target - value) > 1e-9 * std::max(1.0, fabs(value)))
+            if (!std::isfinite(target) || fabs(target - value) > 1e-9 * std::max(1e-300, fabs(value)))
             {
                 json change;
                 change["star"] = star->name;
@@ -401,8 +419,8 @@ namespace
                 change["new"] = value;
                 change["source"] = source;
                 report["changes"].push_back(change);
-                target = value;
             }
+            target = value;
             provenance(star, field, source, row, value, unit, uncertainty);
         }
 
@@ -413,7 +431,8 @@ namespace
             {
                 return;
             }
-            const auto priority = std::make_pair(rank, cell(row, "bibcode"));
+            const std::string citation = cell(row, "bibcode").empty() ? cell(row, "sp_bibcode") : cell(row, "bibcode");
+            const auto priority = std::make_pair(rank, citation);
             if (spectral_ranks.count(star) && spectral_ranks[star] > priority)
             {
                 return;
@@ -481,6 +500,8 @@ namespace
             const std::regex gliese("^GJ([0-9]+(?:\\.[0-9]+)?)([A-Z]{0,3})$");
             std::string gliese_value;
             int gliese_score = -1;
+            const std::string original_bayer = star->Bayer;
+            int bayer_score = -1;
             for (const auto &alias : names)
             {
                 const std::string key = stellar_identifier_key(alias);
@@ -572,8 +593,11 @@ namespace
                         const int component = end == position ? 0 : atoi(key.substr(position, end - position).c_str());
                         const std::string value = abbreviations[g]
                             + (component ? std::to_string(component) : " ") + cons.abbrev;
-                        if (value.size() <= 7)
+                        const int score = (component ? 8 : 0) + (value == original_bayer ? 2 : 0)
+                            + (suffix.size() == 4 ? 1 : 0);
+                        if (value.size() <= 7 && score > bayer_score)
                         {
+                            bayer_score = score;
                             strcpy(star->Bayer, value.c_str());
                             star->BayerGrkno = g;
                             strcpy(star->constellation, cons.abbrev.c_str());
@@ -591,7 +615,9 @@ namespace
             const std::string current = trim(star->name);
             if (current.rfind("HD", 0) == 0 && star->HD)
             {
-                name(star, "HD" + std::to_string(star->HD), "SIMBAD", row);
+                const char last = current.back();
+                const std::string component = last >= 'A' && last <= 'Z' ? " " + std::string(1, last) : "";
+                name(star, "HD" + std::to_string(star->HD) + component, "SIMBAD", row);
             }
             else if (!current.empty() && std::isdigit(static_cast<unsigned char>(current[0]))
                 && star->FlamsteedNo > 0 && atoi(current.c_str()) != star->FlamsteedNo)
@@ -651,7 +677,9 @@ namespace
                     add_alias(alias, star);
                 }
                 designation(star, names, row);
-                spectrum(star, cell(row, "sp_type"), "SIMBAD", row, 10);
+                const std::string quality = cell(row, "sp_qual");
+                spectrum(star, cell(row, "sp_type"), "SIMBAD", row,
+                    quality == "D" || quality == "E" ? 5 : 20);
                 const double v = number(row, "V"), b = number(row, "B"), u = number(row, "U");
                 if (v >= -40 && v < 99)
                 {
@@ -737,6 +765,19 @@ namespace
                 "Gaia_DR3", row, "rad", error / 1000 / 3600 * fiftyseventh);
             adopt(star, "distance", star->distance, 1000.0 / plx * parsec, "Gaia_DR3", row, "m");
             star->distance_known = true;
+            const auto family = children.find(star);
+            if (family != children.end())
+            {
+                for (Star *companion : family->second)
+                {
+                    if (!companion->HIP || companion->HIP == star->HIP)
+                    {
+                        adopt(companion, "distance", companion->distance, star->distance, "Gaia_DR3", row, "m");
+                        adopt(companion, "parallax", companion->parallax, star->parallax, "Gaia_DR3", row, "rad");
+                        companion->distance_known = true;
+                    }
+                }
+            }
             // Gaia coordinates and tangent proper motion are referred to epoch J2016.0.
             const double ra = number(row, "ra") * fiftyseventh;
             const double dec = number(row, "dec") * fiftyseventh;
@@ -822,7 +863,10 @@ namespace
             const bool visual = flags.find_first_of("BKR") == std::string::npos;
             if (visual)
             {
-                if (members.second && number(row, "mag2") > -40 && number(row, "mag2") < 99)
+                const bool resolved_measurement = members.second && report["provenance"]
+                    .contains(std::to_string(members.second->seqno))
+                    && report["provenance"][std::to_string(members.second->seqno)]["fields"].contains("V");
+                if (members.second && !resolved_measurement && number(row, "mag2") > -40 && number(row, "mag2") < 99)
                 {
                     adopt(members.second, "V", members.second->apparent_magnitude,
                         number(row, "mag2"), "WDS", row, "mag");
@@ -1443,11 +1487,14 @@ std::string alienorum::stellar_identifier_key(const std::string &identifier)
     static const std::regex numbered("^(HD|HIP|HR|GJ)([0-9]+)(.*)$");
     static const std::regex dm("^(BD|CD|CP)([+-])([0-9]{2})([0-9]+)([A-Z]?)$");
     std::smatch match;
-    if (std::regex_match(key, match, numbered))
+    const bool numeric_catalog = key.rfind("HD", 0) == 0 || key.rfind("HIP", 0) == 0
+        || key.rfind("HR", 0) == 0 || key.rfind("GJ", 0) == 0;
+    const bool dm_catalog = key.rfind("BD", 0) == 0 || key.rfind("CD", 0) == 0 || key.rfind("CP", 0) == 0;
+    if (numeric_catalog && std::regex_match(key, match, numbered))
     {
         key = match[1].str() + std::to_string(strtoul(match[2].str().c_str(), nullptr, 10)) + match[3].str();
     }
-    else if (std::regex_match(key, match, dm))
+    else if (dm_catalog && std::regex_match(key, match, dm))
     {
         key = match[1].str() + match[2].str() + match[3].str()
             + std::to_string(strtoul(match[4].str().c_str(), nullptr, 10)) + match[5].str();
@@ -1457,92 +1504,93 @@ std::string alienorum::stellar_identifier_key(const std::string &identifier)
 
 std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
 {
-    const std::string vizier = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync";
-    const std::string simbad = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync";
-    const std::string sbx = "https://astro.ulb.ac.be/sbx/tap/sync";
     std::vector<StellarReferenceSource> sources;
-    auto add = [&](const std::string &name, const std::string &endpoint, const std::string &query,
-        const std::vector<std::string> &columns)
+    auto add = [&](const std::string &name, const std::vector<std::string> &columns)
     {
         StellarReferenceSource source;
         source.name = name;
-        source.url = tap_url(endpoint, query);
         source.format = "tsv";
         source.columns = columns;
         sources.push_back(source);
     };
     for (int page = 0; page < 12; page++)
     {
-        add(page == 0 ? "SIMBAD" : "SIMBAD_" + std::to_string(page), simbad,
-            "SELECT b.oid,b.main_id,b.otype,b.ra,b.dec,b.sp_type,b.sp_qual,b.sp_bibcode,"
-            "b.plx_value,b.plx_err,b.plx_bibcode,b.pmra,b.pmdec,b.rvz_radvel,b.rvz_bibcode,"
-            "i.ids,f.V,f.B,f.U FROM basic b JOIN ids i ON i.oidref=b.oid "
-            "LEFT JOIN allfluxes f ON f.oidref=b.oid WHERE (f.V<11 OR b.plx_value>10) AND b.ra>="
-            + std::to_string(page * 30) + " AND b.ra<" + std::to_string((page + 1) * 30),
+        add(page == 0 ? "SIMBAD" : "SIMBAD_" + std::to_string(page),
             std::vector<std::string>
             {
                 "oid", "main_id", "ids", "ra", "dec", "sp_type"
             });
     }
-    add("Mermilliod", vizier, "SELECT * FROM \"II/168/ubvmeans\"",
+    add("Mermilliod",
         std::vector<std::string>
         {
             "SimbadName", "m_LID", "Vmag", "B-V", "U-B"
         });
-    add("Skiff", vizier, "SELECT * FROM \"B/mk/mktypes\" WHERE Mag<12 OR Mag IS NULL",
+    add("Skiff",
         std::vector<std::string>
         {
             "Name", "SpType", "Bibcode", "RAJ2000", "DEJ2000"
         });
-    add("WDS", vizier, "SELECT * FROM \"B/wds/wds\"",
+    add("WDS",
         std::vector<std::string>
         {
             "WDS", "Comp", "mag1", "mag2", "sep2", "pa2", "RAJ2000", "DEJ2000"
         });
-    add("SBX_systems", sbx, "SELECT * FROM systems",
+    add("SBX_systems",
         std::vector<std::string>
         {
             "sn", "ra", "dec"
         });
-    add("SBX_alias", sbx, "SELECT * FROM alias",
+    add("SBX_alias",
         std::vector<std::string>
         {
             "sn", "catalog", "identifier"
         });
-    add("SBX_orbits", sbx, "SELECT * FROM orbits",
+    add("SBX_orbits",
         std::vector<std::string>
         {
             "sn", "period", "eccentricity", "bibcode"
         });
-    add("Gaia_DR3", "https://gea.esac.esa.int/tap-server/tap/sync",
-        "SELECT g.source_id,n.original_ext_source_id AS HIP,n.number_of_neighbours,"
-        "g.ra,g.dec,g.ref_epoch,g.parallax,g.parallax_error,g.pmra,g.pmdec,g.radial_velocity,g.ruwe,"
-        "g.teff_gspphot,g.teff_gspphot_lower,g.teff_gspphot_upper "
-        "FROM gaiadr3.gaia_source g JOIN gaiadr3.hipparcos2_best_neighbour n ON g.source_id=n.source_id",
+    add("Gaia_DR3",
         std::vector<std::string>
         {
             "source_id", "hip", "parallax", "parallax_error", "ruwe"
         });
-    add("VSX", vizier, "SELECT * FROM \"B/vsx/vsx\" WHERE \"max\"<11 AND n_max='V'",
+    add("VSX",
         std::vector<std::string>
         {
             "OID", "Name", "max", "min", "n_max", "n_min", "Period"
         });
     StellarReferenceSource debcat;
     debcat.name = "DEBCat";
-    debcat.url = "https://astro.keele.ac.uk/jkt/debcat/debs.dat";
     debcat.format = "debcat";
     sources.push_back(debcat);
     StellarReferenceSource orb6;
     orb6.name = "ORB6";
-    orb6.url = "https://crf.usno.navy.mil/data_products/WDS/orb6/orb6orbits.txt";
     orb6.format = "orb6";
     sources.push_back(orb6);
     StellarReferenceSource iau;
     iau.name = "IAU";
-    iau.url = "https://exopla.net/star-names/modern-iau-star-names/";
     iau.format = "iau";
     sources.push_back(iau);
+    std::ifstream manifest("catalogs/urls.dat");
+    std::string line;
+    while (std::getline(manifest, line))
+    {
+        std::istringstream fields(line);
+        std::string group, filename, url;
+        if (!(fields >> group >> filename >> url) || group != "reference")
+        {
+            continue;
+        }
+        for (auto &source : sources)
+        {
+            if (filename == source.name + "." + source.format)
+            {
+                source.url = url;
+            }
+        }
+    }
     return sources;
 }
 
@@ -1572,6 +1620,11 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
             const auto path = std::filesystem::path(cache_directory) / (source.name + "." + source.format);
             if (std::filesystem::exists(path))
             {
+                continue;
+            }
+            if (source.url.empty())
+            {
+                std::cerr << "Missing reference endpoint in catalogs/urls.dat: " << source.name << std::endl;
                 continue;
             }
             std::cout << "Fetching stellar reference " << source.name << std::endl;

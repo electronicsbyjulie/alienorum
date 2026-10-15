@@ -138,6 +138,12 @@ elseif(WIN32)
     )
 endif()
 
+get_target_property(CATALOG_PREVIEW_SUPPORT alienorum SOURCES)
+list(REMOVE_ITEM CATALOG_PREVIEW_SUPPORT src/alienorum.cpp)
+add_executable(catalog_reconcile EXCLUDE_FROM_ALL src/catalog_reconcile.cpp ${CATALOG_PREVIEW_SUPPORT})
+target_link_libraries(catalog_reconcile PRIVATE $<TARGET_PROPERTY:alienorum,LINK_LIBRARIES>)
+target_compile_definitions(catalog_reconcile PRIVATE $<TARGET_PROPERTY:alienorum,COMPILE_DEFINITIONS>)
+
 # --- Windows installer packaging (see package/build_windows_installer.sh) ---
 if(WIN32)
 	install(TARGETS alienorum RUNTIME DESTINATION .)

@@ -158,11 +158,11 @@ void CatalogReader::download_catalogs(bool hih)
         throw 0xbadf12e;
     }
 
-    char buffer[1024], *catname = nullptr, *url = nullptr;
+    char buffer[16384], *catname = nullptr, *url = nullptr;
     std::string destfname = "";
     int i, j, l;
     bool frist = true;
-    while (fgets(buffer, 1020, fp))
+    while (fgets(buffer, sizeof(buffer), fp))
     {
         if (buffer[0] == '#')
         {
@@ -179,6 +179,11 @@ void CatalogReader::download_catalogs(bool hih)
 
         for (j=i; buffer[j] && buffer[j] > ' '; j++);
         buffer[j] = 0;
+
+        if (strcmp(catname, "reference") == 0)
+        {
+            continue;
+        }
 
         std::string destdir = (std::string)"catalogs" + _FSSTR + (std::string)catname;
 
@@ -5094,21 +5099,31 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
 void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 {
     std::stringstream line;
+    auto pad = [&](int column)
+    {
+        const size_t length = line.str().size();
+        if (length > static_cast<size_t>(column))
+        {
+            throw std::runtime_error("Catalog field overflow for " + std::string(s->name)
+                + " at column " + std::to_string(column) + ": " + line.str());
+        }
+        line << std::string(column - length, ' ');
+    };
     line << s->alienorumid << std::flush;
     int l = 15;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << std::string(s->name) << std::flush;
     l += 40;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << s->RA_as_hms(0) << std::flush;
     l += 11;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << s->Decl_as_degms() << std::flush;
     l += 10;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     const bool have_magnitude = std::isfinite(s->apparent_magnitude)
         && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99;
@@ -5119,11 +5134,11 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
             << fabs(s->apparent_magnitude) << std::setfill(' ') << std::flush;
     }
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << s->spectral_type << std::flush;
     l += 16;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (!s->has_catalog_BV && !s->BV_color)
     {
@@ -5133,7 +5148,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     line << std::fixed << std::setprecision(2) << std::setw(5) << std::setfill('0')
         << fabs(s->BV_color) << std::setfill(' ') << std::flush;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (!s->has_catalog_UB && !s->UB_color)
     {
@@ -5143,43 +5158,43 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     line << std::fixed << std::setprecision(2) << std::setw(5) << std::setfill('0')
         << fabs(s->UB_color) << std::setfill(' ') << std::flush;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->HD) line << s->HD << std::flush;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->HIP) line << s->HIP << std::flush;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->HR) line << s->HR << std::flush;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->SB9) line << s->SB9 << std::flush;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->FlamsteedNo > 0) line << s->FlamsteedNo << std::flush;
     l += 4;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << s->Bayer << std::flush;
     l += 8;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << s->Gliese << std::flush;
     l += 16;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->GouldNo > 0) line << s->GouldNo << std::flush;
     l += 4;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->Gouldcons[0] > 0) line << s->Gouldcons << std::flush;
     l += 4;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (!std::signbit(s->proper_motion_RA))
     {
@@ -5187,7 +5202,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     }
     line << std::scientific << std::setprecision(4) << s->proper_motion_RA << std::flush;
     l += 12;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (!std::signbit(s->proper_motion_decl))
     {
@@ -5195,7 +5210,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     }
     line << std::scientific << std::setprecision(4) << s->proper_motion_decl << std::flush;
     l += 12;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (!std::signbit(s->radial_velocity))
     {
@@ -5203,15 +5218,15 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     }
     line << std::scientific << std::setprecision(4) << s->radial_velocity << std::flush;
     l += 12;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     line << std::scientific << std::setprecision(4) << s->parallax << std::flush;
     l += 12;
-    line << std::string(l - line.str().size(), ' ') << std::flush;
+    pad(l);
 
     line << std::scientific << std::setprecision(4) << (s->distance / light_year) << std::flush;
     l += 12;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (!s->absolute_magnitude && have_magnitude && std::isfinite(s->distance) && s->distance > 0)
     {
@@ -5226,7 +5241,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
             << fabs(s->absolute_magnitude) << std::setfill(' ') << std::flush;
     }
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->mass)
     {
@@ -5234,7 +5249,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         line << std::scientific << std::setprecision(4) << M << std::flush;
     }
     l += 12;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->volumetric_mean_radius)
     {
@@ -5242,7 +5257,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         line << std::scientific << std::setprecision(4) << R << std::flush;
     }
     l += 12;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->temperature)
     {
@@ -5255,124 +5270,112 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         line << std::fixed << T << std::flush;
     }
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->sidereal_rotational_period)
     {
         double P = s->sidereal_rotational_period / oneday;
-        if (P < 100000) line << " ";
-        if (P <  10000) line << " ";
-        if (P <   1000) line << " ";
-        if (P <    100) line << " ";
-        if (P <     10) line << " ";
-        line << std::fixed << std::setprecision(3) << P << std::flush;
+        line << std::fixed << std::setw(10) << std::setprecision(3) << P << std::flush;
     }
     l += 11;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->center) line << ((Star*)s->orbit->center)->alienorumid;
     l += 15;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->period) line << std::scientific << std::setprecision(5) << (s->orbit->period / oneday);
     l += 13;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->semimajor_axis) line << std::scientific << std::setprecision(5) << (s->orbit->semimajor_axis / AU);
     l += 13;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->eccentricity) line << std::fixed << std::setprecision(5) << (s->orbit->eccentricity);
     l += 13;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->arg_periapsis)
     {
         double omega = s->orbit->arg_periapsis * fiftyseven;
         if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
+        line << std::fixed << std::setw(8) << std::setprecision(4) << omega << std::flush;
     }
     l += 9;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->mean_anomaly)
     {
         double omega = s->orbit->mean_anomaly * fiftyseven;
         if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
+        line << std::fixed << std::setw(8) << std::setprecision(4) << omega << std::flush;
     }
     l += 9;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->epoch && (s->orbit->mean_anomaly || (fabs(s->orbit->epoch - J2000) > 0.001)))
         line << std::scientific << std::setprecision(8) << s->orbit->epoch;
     l += 15;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->heliocentric_inclination)
     {
         double omega = s->orbit->heliocentric_inclination * fiftyseven;
         if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
+        line << std::fixed << std::setw(8) << std::setprecision(4) << omega << std::flush;
     }
     l += 9;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->orbit && s->orbit->heliocentric_node)
     {
         double omega = s->orbit->heliocentric_node * fiftyseven;
         if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
+        line << std::fixed << std::setw(8) << std::setprecision(4) << omega << std::flush;
     }
     l += 9;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     // Variability
     // TODO:
-    if (s->variability_period) line << std::scientific << (s->variability_period / oneday);
+    if (s->variability_period)
+    {
+        line << std::scientific << std::setprecision(6) << (s->variability_period / oneday);
+    }
     l += 13;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->minmag)
     {
         line << ((s->minmag >= 0) ? "+" : "-");
-        if (fabs(s->minmag) < 10) line << "0";
-        line << std::fixed << std::setprecision(2) << fabs(s->minmag) << std::flush;
+        line << std::fixed << std::setfill('0') << std::setw(5) << std::setprecision(2) << fabs(s->minmag) << std::setfill(' ') << std::flush;
     }
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->maxmag)
     {
         line << ((s->maxmag >= 0) ? "+" : "-");
-        if (fabs(s->maxmag) < 10) line << "0";
-        line << std::fixed << std::setprecision(2) << fabs(s->maxmag) << std::flush;
+        line << std::fixed << std::setfill('0') << std::setw(5) << std::setprecision(2) << fabs(s->maxmag) << std::setfill(' ') << std::flush;
     }
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->variability_period && s->epoch_max_brightness)
         line << std::fixed << std::setprecision(4) << s->epoch_max_brightness;
     l += 18;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->variability_period && s->is_eclipsing_binary) line << "E";
     l += 2;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     // Durchmusterung (BD/CD/CP) designation, kept so re-derived caches and later-loaded catalogs
     // (SB9, CCDM) can still cross-reference stars that carry no HD/HIP -- see bonn_survey_key().
     if (s->Bonn_survey[0]) line << s->Bonn_survey[0] << s->Bonn_survey[1];
     l += 3;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->Bonn_survey[0])
     {
@@ -5381,11 +5384,11 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         line << abs(s->Bonn_survey_declination) << std::flush;
     }
     l += 5;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     if (s->Bonn_survey[0]) line << s->Bonn_survey_sequential;
     l += 7;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     // has_custom_name: not derivable from anything else in this format, and unlike every other
     // field here it's read back into a struct member that starts false, so simply never touching
@@ -5398,7 +5401,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     // Centauri", only after closing and reopening once the correct name was already baked in.
     if (s->has_custom_name) line << "Y";
     l += 2;
-    line << std::string(l - line.str().size(), ' ');
+    pad(l);
 
     // std::cout << line << std::endl;
     line << std::string("\n");
