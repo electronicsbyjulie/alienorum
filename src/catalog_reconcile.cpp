@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 
 using namespace alienorum;
 
@@ -60,7 +61,7 @@ int main(int argc, char **argv)
         }
         const json report = reconcile_stellar_sources(cels, (original / "catalogs").string(), !offline);
         std::ofstream provenance(output / "reference_report.json");
-        provenance << report.dump(2) << '\n';
+        provenance << std::setw(2) << report << '\n';
         provenance.close();
         if (!download_only)
         {

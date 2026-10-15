@@ -50,6 +50,43 @@ class CatalogIntegrityTest(unittest.TestCase):
         if severity:
             self.assertTrue(all(issue.severity == severity for issue in matches))
 
+    def test_modern_measurements_require_identifiers_position_and_recent_spectra(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            (root / 'SIMBAD').mkdir()
+            legacy = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (42, 46, '4.00'),
+                                      (246, 251, '1.20'), (391, 396, '159561'), (436, 447, 'G2V')):
+                legacy[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos/hip_main.dat').write_bytes(legacy + b'\n')
+            header = 'oid\totype\tids\tra\tdec\tsp_type\tsp_bibcode\tV\tB\n'
+            evidence = '1\t*\tHD 159561|HIP 86032\t263.77958333333333\t12.67138888888889\tA5III\t2020A&A...000....1A\t2.08\t2.23\n'
+            path = root / 'SIMBAD/SIMBAD.tsv'
+            path.write_text(header + evidence)
+            report = audit_bytes(sun() + row(), root)
+            codes = ('source_spectral_class', 'hip_magnitude', 'hip_bv')
+            self.assertFalse(any(issue.code in codes for issue in report.issues))
+            self.assertEqual(len(report.verifications), 3)
+            for changed in (evidence.replace('263.77958333333333', '10'),
+                            evidence.replace('HD 159561', 'HD 159562')):
+                path.write_text(header + changed)
+                report = audit_bytes(sun() + row(), root)
+                for code in codes:
+                    self.assert_code(report, code, 'warning')
+            path.write_text(header + evidence.replace('2020A&A', '1960A&A'))
+            self.assert_code(audit_bytes(sun() + row(), root), 'source_spectral_class', 'warning')
+
+    def test_faint_system_catalog_links_preserve_names_without_alienorum_ids(self):
+        primary = row(id='', name='Long faint primary name', hd='10000', hip='100', hr='',
+                      bayer='', magnitude='+12.00', absolute='+11.22')
+        secondary = companion(id='', name='HD10000 B', hd='', hip='100', bayer='',
+                              parent='HD10000', magnitude='+15.00', absolute='+14.22')
+        report = self.audit(primary, secondary)
+        self.assertEqual(report.errors, 0, report.issues)
+        self.assertFalse(any(issue.code in ('hip_name', 'hd_name', 'orphan_component',
+                                           'coincident_stars') for issue in report.issues))
+
     def test_valid_catalog_and_unknown_optional_fields(self):
         report = self.audit(row(), companion(), row(id='', name='HIP 100', hip='100', hd='', hr='',
                           bayer='', spectral='', magnitude='', bv='', ub='', mass='', radius='',
@@ -166,7 +203,9 @@ class CatalogIntegrityTest(unittest.TestCase):
         self.assert_code(self.audit(companion()), 'missing_parent')
         self.assert_code(self.audit(row(), companion(parent='2c Oph 1 B')), 'orbit_cycle')
         self.assert_code(self.audit(row(parent='2c Oph 1 B'), companion()), 'orbit_cycle')
-        self.assert_code(self.audit(row(), companion(parent='', period='', axis='')), 'orphan_component')
+        linked = self.audit(row(), companion(parent='', period='', axis=''))
+        self.assertFalse(any(issue.code == 'orphan_component' for issue in linked.issues))
+        self.assert_code(self.audit(companion(parent='', period='', axis='')), 'orphan_component')
         self.assert_code(self.audit(row(), companion(id='3c Oph 2')), 'component_suffix')
 
     def test_nested_systems_and_distinct_companion_catalog_numbers(self):

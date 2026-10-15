@@ -71,6 +71,7 @@ class Report:
     rows: int = 0
     sources: list = field(default_factory=list)
     digest: str = ''
+    verifications: list = field(default_factory=list)
 
     def add(self, code, record, detail, severity='error', related=None):
         self.issues.append(Issue(severity, code, record.line, record.identity or record.name,
@@ -86,6 +87,7 @@ class Report:
     def as_dict(self):
         return dict(rows=self.rows, sha256=self.digest, source_catalogs=self.sources,
                     errors=self.errors, warnings=len(self.issues) - self.errors,
+                    verified_measurements=self.verifications,
                     issues=[vars(issue) for issue in self.issues])
 
 
@@ -167,8 +169,6 @@ def parse_record(raw, line, report):
             row.component = identity['component'] or ''
             row.constellation = identity['cons']
             row.root = ' '.join((row.identity.rsplit(' ', 1)[0] if row.component else row.identity).split())
-    elif row.text('parent'):
-        report.add('missing_component_id', row, 'An orbiting component has no stable ID')
     for name, limits in dict(hd=(1, 359083), hip=(1, 120416), hr=(1, 9110), sb9=(1, 9999999),
                              flamsteed=(1, 999), gould=(1, 999), dm_number=(1, 999999)).items():
         value = row.number(name)
@@ -272,7 +272,7 @@ def ancestors(row, identities):
     while row and row.line not in seen:
         seen.add(row.line)
         yield row
-        row = identities.get(row.text('parent'))
+        row = identities.get(row.text('parent')) or (identities.get(row.root) if row.component else None)
 
 
 def ancestor_values(row, identities, key):
@@ -332,6 +332,21 @@ def check_relationships(records, report):
             report.add('duplicate_row', row, 'Identical catalog row repeated', related=raw_rows[row.raw])
         else:
             raw_rows[row.raw] = row
+    for row in records:
+        if not row.identity:
+            row.root = 'row:' + str(row.line)
+            if len(row.name) <= 14:
+                link = row.name
+            elif row.number('hd'):
+                link = 'HD' + str(int(row.number('hd')))
+            elif row.number('hip'):
+                link = 'HIP' + str(int(row.number('hip')))
+            else:
+                link = row.text('gliese')
+            if link:
+                identities.setdefault(link, row)
+            if row.text('parent') and re.fullmatch(r'.+ [B-Z]', row.name):
+                row.component = row.name[-1]
     # Iterative traversal handles long chains without recursion limits.
     for row in records:
         current, chain, seen = row, [], set()
@@ -350,9 +365,11 @@ def check_relationships(records, report):
             for member in chain:
                 member.root = current.root or current.identity or current.name
         parent = identities.get(row.text('parent'))
+        if not row.identity and row.text('parent') and (parent is None or parent.identity):
+            report.add('missing_component_id', row, 'A component of an identified system has no stable ID')
         if parent and row.identity and not row.component:
             report.add('component_suffix', row, 'Orbiting star has no component letter in its ID')
-        if row.component and not parent:
+        if row.component and not parent and row.root not in identities:
             report.add('orphan_component', row, 'Component letter without a resolved parent; review optical or unresolved membership', 'warning')
         if parent and row.component and row.component == parent.component:
             report.add('component_identity', row, 'Child and parent use the same component letter')
@@ -531,6 +548,85 @@ def modern_identity_support(records, directory, report):
     return {line: next(iter(objects.values())) for line, objects in supported.items() if len(objects) == 1}
 
 
+def modern_measurement_support(records, directory, report):
+    targets = dict()
+    for record in records:
+        for catalog, field in (('HD', 'hd'), ('HIP', 'hip')):
+            if record.number(field):
+                targets.setdefault((catalog, int(record.number(field))), []).append(record)
+    supported = dict()
+    identifier = re.compile(r'^(HD|HIP)\s*0*([0-9]+)$')
+
+    def candidates(aliases, ra, dec):
+        found = dict()
+        keys = set()
+        for alias in aliases:
+            match = identifier.fullmatch(alias.strip())
+            if match:
+                keys.add((match[1], int(match[2])))
+                for record in targets.get((match[1], int(match[2])), ()):
+                    found[record.line] = record
+        try:
+            ra, dec = float(ra), float(dec)
+        except (ValueError, TypeError):
+            return []
+        if not math.isfinite(ra) or not math.isfinite(dec):
+            return []
+        return [record for record in found.values()
+                if separation_arcsec(record.ra, record.dec, ra, dec) <= 2
+                and all(not record.number(field) or not any(key[0] == catalog for key in keys)
+                        or (catalog, int(record.number(field))) in keys
+                        for catalog, field in (('HD', 'hd'), ('HIP', 'hip')))]
+
+    def confirm(record, field, value, label, citation=''):
+        if field == 'spectral':
+            matches = re.sub(r'\s+', '', record.text(field)) == re.sub(r'\s+', '', value)
+        else:
+            try:
+                matches = record.number(field) is not None and abs(record.number(field) - float(value)) <= 0.015
+            except (ValueError, TypeError):
+                matches = False
+        if matches:
+            supported[(record.line, field)] = dict(source=label, citation=citation)
+
+    paths = sorted((directory / 'SIMBAD').glob('SIMBAD*.tsv')) if targets else []
+    for path in paths:
+        if str(path) not in report.sources:
+            report.sources.append(str(path))
+        with path.open(newline='', encoding='utf-8') as stream:
+            for source in csv.DictReader(stream, delimiter='\t'):
+                if source.get('otype', '').strip() == '**':
+                    continue
+                aliases = source.get('ids', '').split('|')
+                for record in candidates(aliases, source.get('ra'), source.get('dec')):
+                    citation = source.get('sp_bibcode', '').strip()
+                    if citation[:4].isdigit() and int(citation[:4]) >= 1997:
+                        confirm(record, 'spectral', source.get('sp_type', ''), 'SIMBAD', citation)
+                    confirm(record, 'magnitude', source.get('V'), 'SIMBAD')
+                    try:
+                        confirm(record, 'bv', float(source['B']) - float(source['V']), 'SIMBAD')
+                    except (KeyError, ValueError):
+                        pass
+    for label, filename, name, ra, dec in (('Skiff', 'Skiff.tsv', 'Name', 'RAJ2000', 'DEJ2000'),
+                                           ('Mermilliod', 'Mermilliod.tsv', 'SimbadName', '_RA', '_DE')):
+        path = directory / label / filename
+        if not targets or not path.exists():
+            continue
+        report.sources.append(str(path))
+        with path.open(newline='', encoding='utf-8') as stream:
+            for source in csv.DictReader(stream, delimiter='\t'):
+                for record in candidates([source.get(name, '')], source.get(ra), source.get(dec)):
+                    if label == 'Skiff':
+                        citation = source.get('Bibcode', '').strip()
+                        if citation[:4].isdigit() and int(citation[:4]) >= 1997:
+                            confirm(record, 'spectral', source.get('SpType', ''), label, citation)
+                    elif source.get('m_LID', '').strip() in ('', '1', 'A'):
+                        confirm(record, 'bv', source.get('B-V'), label)
+                        if not source.get('var', '').strip() and not record.number('variability'):
+                            confirm(record, 'magnitude', source.get('Vmag'), label)
+    return supported
+
+
 def check_sources(records, report, directory):
     directory = Path(directory)
     bsc_path = directory / 'BSC' / 'catalog'
@@ -548,6 +644,27 @@ def check_sources(records, report, directory):
                     and int(astrometric[390:396]) != record.number('hd'))):
             candidates.append(record)
     modern = modern_identity_support(candidates, directory, report)
+    measurement_targets = []
+    for record in records:
+        raw = (hip or dict()).get(record.number('hip'), '')
+        if not raw:
+            continue
+        spectral = raw[435:447].strip()
+        own = record.text('spectral')
+        mismatch = bool(spectral and own and spectral[0] != own[0])
+        for field, start, end, tolerance in (('magnitude', 41, 46, 0.5), ('bv', 245, 251, 0.4)):
+            value = raw[start:end].strip()
+            mismatch |= bool(NUMBER.fullmatch(value) and record.number(field) is not None
+                             and abs(record.number(field) - float(value)) > tolerance)
+        if mismatch:
+            measurement_targets.append(record)
+    measurements = modern_measurement_support(measurement_targets, directory, report)
+
+    def corroborated(record, field):
+        proof = measurements.get((record.line, field))
+        if proof:
+            report.verifications.append(dict(line=record.line, field=field, **proof))
+        return bool(proof)
 
     def identity_issue(code, record, detail, severity='error'):
         if code in modern.get(record.line, set()):
@@ -614,11 +731,13 @@ def check_sources(records, report, directory):
                 source_position(row, float(ra), float(dec), report, 'Hipparcos')
             spectral = raw[435:447].strip()
             own_spectral = row.text('spectral').strip()
-            if spectral and own_spectral and spectral[0] in 'OBAFGKM' and own_spectral[0] in 'OBAFGKM' and spectral[0] != own_spectral[0]:
+            if (spectral and own_spectral and spectral[0] in 'OBAFGKM' and own_spectral[0] in 'OBAFGKM'
+                    and spectral[0] != own_spectral[0] and not corroborated(row, 'spectral')):
                 report.add('source_spectral_class', row, f'Spectral family {own_spectral} differs from Hipparcos {spectral}', 'warning')
             for key, start, end, tolerance in (('magnitude', 42, 46, 0.5), ('bv', 246, 251, 0.4)):
                 value = raw[start - 1:end].strip()
-                if NUMBER.fullmatch(value) and row.number(key) is not None and abs(row.number(key) - float(value)) > tolerance:
+                if (NUMBER.fullmatch(value) and row.number(key) is not None
+                        and abs(row.number(key) - float(value)) > tolerance and not corroborated(row, key)):
                     report.add('hip_' + key, row, f'{key} differs from Hipparcos; review component/blend/variable photometry', 'warning')
     if not report.sources:
         row = records[0] if records else Record(b'', 0)

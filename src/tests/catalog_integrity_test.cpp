@@ -2029,7 +2029,7 @@ TEST_F(CondensedCatalogTest, ExoplanetHostNamesStayLocalDuringIauReconciliation)
         star->HIP = 100 + index;
         const std::string identifier = "HD" + std::to_string(hd[index]);
         names << identifier << std::string(40 - identifier.size(), ' ')
-            << local[index] << std::string(24 - strlen(local[index]), ' ') << '\n';
+            << local[index] << '\n';
         table += "<tr><td>" + std::string(local[index]) + "</td><td>"
             + std::to_string(star->HIP) + "</td><td>HIP " + std::to_string(star->HIP) + "</td></tr>";
     }
@@ -2110,4 +2110,53 @@ TEST_F(CondensedCatalogTest, CatalogIdsStopAtTenExceptForBrightSystemCompanions)
     EXPECT_TRUE(faint->alienorumid.empty());
     EXPECT_TRUE(boundary->alienorumid.empty());
     EXPECT_EQ(companion->alienorumid, bright->alienorumid + " B");
+}
+
+TEST_F(CondensedCatalogTest, FaintSystemsRoundTripTheirOrbitsWithoutAlienorumIds)
+{
+    Star *sun = make_star("Sun");
+    sun->alienorumid = "-26";
+    Star *primary = make_star("Long faint primary name");
+    primary->HD = 10000;
+    primary->apparent_magnitude = 12;
+    primary->set_component('A', primary);
+    Star *companion = make_star("HD10000 B");
+    companion->apparent_magnitude = 15;
+    companion->set_component('B', primary);
+    companion->orbit = new Orbit();
+    companion->orbit->center = primary;
+    companion->orbit->period = 100 * oneday;
+    companion->orbit->semimajor_axis = 0.5 * AU;
+    EXPECT_EQ(stellar_catalog_link(primary), "HD10000");
+    std::ofstream output("catalogs/soles_alienorum.dat");
+    output << written_row(sun) << written_row(primary) << written_row(companion);
+    output.close();
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    primary = static_cast<Star*>(cels[1]);
+    companion = static_cast<Star*>(cels[2]);
+    EXPECT_TRUE(primary->alienorumid.empty());
+    EXPECT_TRUE(companion->alienorumid.empty());
+    ASSERT_NE(companion->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, primary);
+    EXPECT_EQ(companion->get_component(), 'B');
+    EXPECT_EQ(companion->multisys, primary->multisys);
+    EXPECT_DOUBLE_EQ(companion->orbit->period, 100 * oneday);
+}
+
+TEST_F(CondensedCatalogTest, NewIauNamesDoNotReplaceGlobalBayerDesignations)
+{
+    make_star("Sun");
+    Star *star = make_star("Alpha Mensae");
+    star->HD = 43834;
+    star->HIP = 29271;
+    star->BayerGrkno = 0;
+    strcpy(star->Bayer, "Alp Men");
+    reference_file("IAU.iau", "<table><tr><th>proper names</th><th>HIP</th>"
+        "<th>Designation</th></tr><tr><td>Hoerikwaggo</td><td>29271</td>"
+        "<td>HIP 29271</td></tr></table>");
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_STREQ(star->name, "Alpha Mensae");
+    EXPECT_EQ(star->local_name, "Hoerikwaggo");
 }

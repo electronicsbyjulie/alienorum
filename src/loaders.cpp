@@ -4,6 +4,7 @@
 #include "classes/cons.h"
 #include "classes/stellar_sources.h"
 #include <cstdlib>
+#include <iomanip>
 #include <unordered_map>
 #include <string_view>
 
@@ -1353,9 +1354,10 @@ void load_stuff()
             }
         }
         ConsBins cb = fill_alienorum_ids();
-        cr.write_condensed_star_cat(cb);
         std::ofstream provenance("catalogs" _FILESLASH "soles_alienorum.provenance.json");
-        provenance << reference_report.dump(2) << '\n';
+        provenance << std::setw(2) << reference_report << '\n';
+        provenance.close();
+        cr.write_condensed_star_cat(cb);
     }
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;

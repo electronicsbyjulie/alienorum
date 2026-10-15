@@ -229,6 +229,7 @@ namespace
         json &report;
         std::vector<Star*> stars;
         std::set<std::string> local_names;
+        std::set<Star*> designated_stars;
         std::unordered_map<std::string, std::vector<Star*>> aliases;
         std::unordered_map<Star*, std::string> object_ids;
         std::unordered_map<std::string, std::set<std::string>> identifier_claims;
@@ -259,7 +260,7 @@ namespace
             std::string local_row;
             while (std::getline(local_catalog, local_row))
             {
-                if (local_row.size() >= 63 && local_row.rfind("HD", 0) == 0)
+                if (local_row.size() > 40 && local_row.rfind("HD", 0) == 0)
                 {
                     const std::string designation = trim(local_row.substr(0, 39));
                     if (designation.find_first_not_of("0123456789 ", 2) == std::string::npos)
@@ -276,6 +277,10 @@ namespace
                 }
                 Star *star = static_cast<Star*>(input[i]);
                 stars.push_back(star);
+                if (!star->has_custom_name && ((star->BayerGrkno >= 0 && star->Bayer[0]) || star->FlamsteedNo > 0))
+                {
+                    designated_stars.insert(star);
+                }
                 add_alias(star->name, star);
                 add_alias(star->Gliese, star);
                 add_alias(star->Bayer, star);
@@ -1738,9 +1743,19 @@ namespace
                 return;
             }
             const std::string value = cell(row, "proper names");
-            if (local_names.count(value) == 0)
+            Star *star = matches.front();
+            const bool local = local_names.count(value) != 0 || designated_stars.count(star) != 0
+                || lowercase(cell(row, "Reference")).find("nameexoworlds") != std::string::npos;
+            if (local)
             {
-                name(matches.front(), value, "IAU", row);
+                if (star->local_name.empty())
+                {
+                    star->local_name = value;
+                }
+            }
+            else
+            {
+                name(star, value, "IAU", row);
             }
         }
 
@@ -2092,6 +2107,32 @@ std::string alienorum::stellar_identifier_key(const std::string &identifier)
     return key;
 }
 
+std::string alienorum::stellar_catalog_link(const Star *star)
+{
+    if (!star->alienorumid.empty())
+    {
+        return star->alienorumid;
+    }
+    const std::string name = star->name;
+    if (!name.empty() && name.size() <= 14)
+    {
+        return name;
+    }
+    if (star->HD)
+    {
+        return "HD" + std::to_string(star->HD);
+    }
+    if (star->HIP)
+    {
+        return "HIP" + std::to_string(star->HIP);
+    }
+    if (star->Gliese[0] && strlen(star->Gliese) <= 14)
+    {
+        return star->Gliese;
+    }
+    return "";
+}
+
 void alienorum::restore_stellar_component_membership(CelestialObject **objects)
 {
     std::vector<Star*> stars;
@@ -2100,6 +2141,26 @@ void alienorum::restore_stellar_component_membership(CelestialObject **objects)
         if (!objects[i]->deleted && objects[i]->typeclass() == class_star)
         {
             stars.push_back(static_cast<Star*>(objects[i]));
+        }
+    }
+    // Faint systems use catalog names for orbit links while their Alienorum IDs stay blank.
+    for (Star *star : stars)
+    {
+        const std::string name = star->name;
+        if (!star->alienorumid.empty() || star->multisys || !star->orbit || !star->orbit->center
+            || star->orbit->center->typeclass() != class_star || name.size() < 3
+            || name[name.size() - 2] != ' ' || name.back() < 'B' || name.back() > 'Z')
+        {
+            continue;
+        }
+        Star *primary = static_cast<Star*>(star->orbit->center);
+        if (!primary->multisys)
+        {
+            primary->set_component('A', primary);
+        }
+        if (!primary->multisys->get_member(name.back()))
+        {
+            star->set_component(name.back(), primary);
         }
     }
     // Rebuild component membership from explicit condensed IDs without changing orbit centers.

@@ -5329,7 +5329,15 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 11;
     pad(l);
 
-    if (s->orbit && s->orbit->center) line << ((Star*)s->orbit->center)->alienorumid;
+    if (s->orbit && s->orbit->center)
+    {
+        const std::string parent = stellar_catalog_link(static_cast<Star*>(s->orbit->center));
+        if (parent.empty())
+        {
+            throw std::runtime_error("No catalog link for parent of " + std::string(s->name));
+        }
+        line << parent;
+    }
     l += 15;
     pad(l);
 
@@ -6118,7 +6126,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     loading_msg = std::string("Verifying star orbits...");
 
-    std::unordered_map<std::string_view, Star*> id_to_star;
+    std::unordered_map<std::string, Star*> id_to_star;
     id_to_star.reserve(num_read + 100);
 
     std::vector<Star*> orbiting_stars;
@@ -6129,9 +6137,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (cels[i]->type == star)
         {
             Star *s = (Star*)cels[i];
-            if (!s->alienorumid.empty())
+            const std::string link = stellar_catalog_link(s);
+            if (!link.empty())
             {
-                id_to_star.emplace(s->alienorumid, s);
+                id_to_star.emplace(link, s);
             }
             if (s->orbit && !s->orbit->center_name.empty())
             {
