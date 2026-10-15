@@ -34,7 +34,7 @@ TESTS_DIR = src/tests
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
-CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
+CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/stellar_sources.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp
@@ -218,6 +218,9 @@ $(OBJINT)/comet.o: $(CLASSES_DIR)/comet.cpp
 $(OBJINT)/star.o: $(CLASSES_DIR)/star.cpp
 	$(CPP) $(CLASSES_DIR)/star.cpp $(CPPFLAGS) -c -o $(OBJINT)/star.o
 
+$(OBJINT)/stellar_sources.o: $(CLASSES_DIR)/stellar_sources.cpp
+	$(CPP) $(CLASSES_DIR)/stellar_sources.cpp $(CPPFLAGS) -c -o $@
+
 $(OBJINT)/cons.o: $(CLASSES_DIR)/cons.cpp
 	$(CPP) $(CLASSES_DIR)/cons.cpp $(CPPFLAGS) -c -o $(OBJINT)/cons.o
 
@@ -341,6 +344,9 @@ $(BIN)/alienorum: $(OBJS) src/alienorum.cpp
 
 
 .PHONY: catalog-tests catalog-audit
+$(BIN)/catalog_reconcile: $(OBJS) src/catalog_reconcile.cpp | $(BIN)
+	$(CPP) src/catalog_reconcile.cpp $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
+
 catalog-tests: $(BIN)/catalog_integrity_test
 	python3 -B -m unittest discover -s src/tests -p test_catalog_integrity.py
 	$(BIN)/catalog_integrity_test

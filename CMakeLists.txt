@@ -83,6 +83,7 @@ add_library(CLASSES STATIC
 	src/classes/sound.cpp
 	src/classes/sscimport.cpp
 	src/classes/star.cpp
+	src/classes/stellar_sources.cpp
 )
 
 target_include_directories(CLASSES PUBLIC src/classes src/include src/include/imgui src/include/imgui/backends

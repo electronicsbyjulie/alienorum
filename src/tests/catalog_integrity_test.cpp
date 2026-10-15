@@ -7,9 +7,42 @@
 #include <set>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
+#include "../classes/stellar_sources.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
+
+TEST(StellarSourceTableTest, QuotedFieldsPreserveBlankCellsAndEmbeddedSeparators)
+{
+    const auto fields = stellar_table_fields("\"HD 100\"\t\t\"A\tB\"\t\"quote\"\"mark\"\t");
+    ASSERT_EQ(fields.size(), 5u);
+    EXPECT_EQ(fields[0], "HD 100");
+    EXPECT_EQ(fields[1], "");
+    EXPECT_EQ(fields[2], "A\tB");
+    EXPECT_EQ(fields[3], "quote\"mark");
+    EXPECT_EQ(fields[4], "");
+    EXPECT_THROW(stellar_table_fields("\"unterminated"), std::runtime_error);
+}
+
+TEST(StellarSourceTableTest, RegistryCoversEachFieldSpecificReference)
+{
+    std::set<std::string> names;
+    for (const auto &source : stellar_reference_sources())
+    {
+        EXPECT_TRUE(names.insert(source.name).second);
+        EXPECT_EQ(source.url.rfind("https://", 0), 0u);
+    }
+    EXPECT_EQ(names.count("SIMBAD"), 1u);
+    EXPECT_EQ(names.count("Mermilliod"), 1u);
+    EXPECT_EQ(names.count("Skiff"), 1u);
+    EXPECT_EQ(names.count("WDS"), 1u);
+    EXPECT_EQ(names.count("IAU"), 1u);
+    EXPECT_EQ(names.count("Gaia_DR3"), 1u);
+    EXPECT_EQ(names.count("ORB6"), 1u);
+    EXPECT_EQ(names.count("SBX_orbits"), 1u);
+    EXPECT_EQ(names.count("DEBCat"), 1u);
+    EXPECT_NE(stellar_identifier_key("HD 100 A"), stellar_identifier_key("HD 100 B"));
+}
 
 class CondensedCatalogReader : public CatalogReader
 {
