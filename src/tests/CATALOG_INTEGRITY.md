@@ -137,9 +137,17 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 35 Python tests and 47 native tests pass; CMake configures
+Checkpoint on 2026-10-14: 35 Python tests and 49 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
 working catalog is absent during regeneration; partial preview files are not
 valid comparison inputs.
+
+Commit `18472af` makes catalog writes transactional: a field overflow or output
+failure removes the temporary output and preserves the previous complete file.
+The exact GJ 575 B variability value is covered by a fixed-column regression.
+Orbit ranking has separate policies for SBX legacy grades and ORB6 grades, plus
+regressions against replacing a higher-quality orbit with a lower-quality one.
+The preview loads constellation boundaries before assigning IDs and fails clearly
+if they are absent. A comparison made without those boundaries is invalid.

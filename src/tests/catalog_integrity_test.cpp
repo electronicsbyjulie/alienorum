@@ -1172,6 +1172,13 @@ TEST_F(CondensedCatalogTest, Orb6ConvertsRelativeAxesAndEpochsWithoutPhotocentre
     EXPECT_NEAR(b->orbit->semimajor_axis / AU, 10, 1e-8);
     EXPECT_DOUBLE_EQ(b->orbit->epoch, 2450000);
     EXPECT_NEAR(b->orbit->heliocentric_inclination * fiftyseven, 45, 1e-10);
+    std::string lower_quality = row;
+    put(lower_quality, 234, 234, "3");
+    put(lower_quality, 81, 92, "20.0");
+    put(lower_quality, 238, 245, "Ref2027a");
+    reference_file("ORB6.orb6", row + "\n" + lower_quality + "\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
 }
 
 TEST_F(CondensedCatalogTest, DebcatConvertsLogarithmsAndTracksComponentAssignment)
