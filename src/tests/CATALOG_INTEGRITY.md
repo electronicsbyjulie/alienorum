@@ -341,3 +341,48 @@ components. Source-proven A/B links now consolidate those single-member groups,
 while rejecting groups with other members or existing physical orbit centers.
 The shared-HD regression exercises this legacy topology. The displaced-identity
 regression also verifies that an imprecise replacement parallax blocks movement.
+
+## Zero-error fresh generation on 2026-10-15
+
+The fresh raw-source generation at code commit `6d52b87` writes 131,550 rows.
+Its SHA-256 is
+`fdce8091a489cde3ccbe9b37459c7d6aaedd7d9885ce19aa8772bc9118f630a7`.
+The independent audit, including BSC/Hipparcos and downloaded resolved SIMBAD
+comparisons, exits successfully with **0 hard errors and 14,336 review warnings**.
+The full result is `/tmp/soles_zero_verified.json`; the isolated catalog is
+`/tmp/alienorum_zero_verified/catalogs/soles_alienorum.dat` and source provenance
+is `/tmp/alienorum_zero_verified/reference_report.json`.
+
+| Shared HD | Primary HIP | Secondary HIP |
+| --- | ---: | ---: |
+| 61907 | 37884 | 37882 |
+| 174152 | 92487 | 92490 |
+| 206151 | 107092 | 107094 |
+| 154907 | 83852 | 83851 |
+| 185344 | 96667 | 96666 |
+| 219175 | 114702 | 114703 |
+
+Both members retain their shared HD identity and occupy A/B positions in the
+same native family. No physical orbit is created by these associations. All
+131,550 rows survive; the changes do not delete stars to remove duplicate checks.
+HD 336187 retains its own record at 18:25:31.2 +24:48:55 with V=9.57 and source
+astrometry, while HIP 90265 remains on GJ 4057 / HD 336196 at its original position.
+
+Five legacy identity disagreements remain explicit warnings: three checks for
+Gamma Arietis, one for the HD 166464 Flamsteed designation, and one for HIP 90265.
+These pass only with a unique independent source identity and positional
+corroboration. The corruption regressions confirm that wrong IDs, wrong positions,
+contradictory designations and ambiguous source identities still fail.
+
+Warnings have not been eliminated. The largest categories are 8,768 spectral-family
+comparisons, 1,808 Hipparcos magnitude comparisons, 1,323 component-without-physical-
+parent reviews, and 1,279 Hipparcos color comparisons. Many newly identified visual
+components intentionally have no physical orbit; their native family membership
+persists through serialization and reload. Distance/parallax and Kepler reviews
+remain at 232 and 425 respectively. These review categories are not hard failures.
+
+All 40 Python regressions and 74 native regressions pass. The supplemental
+Hipparcos source contains 4,299 rows, and all 24 configured source tables parse
+successfully. The production generated `.dat` and `.gz` were not edited by this
+repair. Rebuild and freshly regenerate through the application to apply the
+changes to those files, then run `make catalog-audit` on that exact output.
