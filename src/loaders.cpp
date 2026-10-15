@@ -1335,7 +1335,7 @@ void load_stuff()
         mtx.lock();
         loading_msg = "Reconciling stellar reference sources...";
         mtx.unlock();
-        reference_report = reconcile_stellar_sources(cels, "catalogs" _FILESLASH "reference");
+        reference_report = reconcile_stellar_sources(cels, "catalogs");
     }
 
     mtx.lock();

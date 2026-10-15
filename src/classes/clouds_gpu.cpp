@@ -133,7 +133,7 @@ void main()
     float footprint = max(length(dFdx(hit)) * uWorld[1].x, length(dFdy(hit)) * uWorld[1].y);
     float unresolved = smoothstep(0.025, 0.16, footprint);
     float blend = deck + (1.0 - deck) * unresolved;
-    float alpha = coverage;
+    float alpha = mix(coverage, 1.0, deck);
     float shade = 1.0;
     float warm_weight = 1.0;
     if (blend < 0.999)
@@ -142,76 +142,104 @@ void main()
         vec3 tangent_north = cross(normal, tangent_east);
         vec3 r = vec3(dot(direction, tangent_east), dot(direction, tangent_north), dot(direction, normal));
         float step = 2.8 / shell;
-        int band = int(floor((lat + HALF_PI) / step));
+        // Search the entire cloud volume along the ray. A neighborhood at the
+        // shell crossing alone cuts off lobes that extend across cell borders.
+        float outer = shell + 1.35;
+        float inner = shell - 1.35;
+        float outer_root = sqrt(max(0.0, along * along + (outer - observer) * (outer + observer)));
+        float segment_start = max(0.0, -along - outer_root);
+        float segment_end = -along + outer_root;
+        float inner_disc = along * along + (inner - observer) * (inner + observer);
+        if (inner_disc > 0.0)
+        {
+            float inner_root = sqrt(inner_disc);
+            if (observer < inner)
+            {
+                segment_start = -along + inner_root;
+            }
+            else if (-along - inner_root > segment_start)
+            {
+                segment_end = -along - inner_root;
+            }
+        }
         float solid = 0.0;
         float nearest = 1e30;
         float underside = 0.0;
-        for (int row = -1; row <= 1; ++row)
+        int probes = max(1, int(ceil((segment_end - segment_start) / 1.4)));
+        for (int probe = 0; probe <= probes; ++probe)
         {
-            float clat = -HALF_PI + (float(band + row) + 0.5) * step;
-            if (abs(clat) >= HALF_PI)
+            float travel = mix(segment_start, segment_end, float(probe) / float(probes));
+            vec3 search = up * observer + travel * direction;
+            float search_lat = atan(search.z, length(search.xy));
+            float search_lon = atan(search.y, search.x);
+            int band = int(floor((search_lat + HALF_PI) / step));
+            for (int row = -1; row <= 1; ++row)
             {
-                continue;
-            }
-            float cells = max(1.0, round(TWO_PI * shell * cos(clat) / 2.8));
-            float lon_step = TWO_PI / cells;
-            float column = floor((lon + PI) / lon_step);
-            for (int col = -1; col <= 1; ++col)
-            {
-                float clon = -PI + (mod(column + float(col), cells) + 0.5) * lon_step;
-                vec3 center = shell * vec3(cos(clat) * cos(clon), cos(clat) * sin(clon), sin(clat));
-                // Reject the whole cluster before noise and six lobe tests.
-                vec3 offset = center - hit;
-                float projection = dot(offset, direction);
-                float miss = max(0.0, dot(offset, offset) - projection * projection);
-                if (miss > 1.35 * 1.35)
+                float clat = -HALF_PI + (float(band + row) + 0.5) * step;
+                if (abs(clat) >= HALF_PI)
                 {
                     continue;
                 }
-                // Cluster membership is fixed at its center. Testing the ray's
-                // map coverage here sliced silhouettes along map boundaries.
-                vec2 cluster_uv = vec2(clon / TWO_PI + 0.5, 0.5 - clat / PI);
-                float cluster_coverage = dot(textureLod(uCloudMap, cluster_uv + uLight[2].xy, 0.0).rgb,
-                    vec3(0.29, 0.53, 0.18));
-                if (cluster_coverage <= 0.0)
+                float cells = max(1.0, round(TWO_PI * shell * cos(clat) / 2.8));
+                float lon_step = TWO_PI / cells;
+                float column = floor((search_lon + PI) / lon_step);
+                for (int col = -1; col <= 1; ++col)
                 {
-                    continue;
-                }
-                float mass = clamp(0.5 + noise(center * 0.37), 0.0, 1.0);
-                if (mass > min(1.0, cluster_coverage * 1.8))
-                {
-                    continue;
-                }
-                float size = 0.65 + 0.45 * mass;
-                vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
-                for (int puff = 0; puff < 6; ++puff)
-                {
-                    float angle = float(puff) * 2.39996323 + mass * 6.0;
-                    float radius = puff == 0 ? 0.0 : 0.43 * size;
-                    vec3 p = base + vec3(radius * cos(angle), radius * sin(angle),
-                        puff == 0 ? -0.18 : 0.05 + 0.16 * sin(angle * 1.7));
-                    float hh = (puff == 0 ? 0.85 : 0.46) * size;
-                    float vv = (puff == 0 ? 0.16 : 0.38) * size;
-                    vec3 axes = vec3(hh, hh, vv);
-                    vec3 rr = r / axes;
-                    vec3 pp = p / axes;
-                    float aa = dot(rr, rr);
-                    float bb = dot(pp, rr);
-                    float cc = dot(pp, pp) - 1.0;
-                    float disc = bb * bb - aa * cc;
-                    float edge = max(1e-5, footprint * 1.5);
-                    if (disc >= 0.0)
+                    float clon = -PI + (mod(column + float(col), cells) + 0.5) * lon_step;
+                    vec3 center = shell * vec3(cos(clat) * cos(clon), cos(clat) * sin(clon), sin(clat));
+                    // Reject the whole cluster before noise and six lobe tests.
+                    vec3 offset = center - hit;
+                    float projection = dot(offset, direction);
+                    float miss = max(0.0, dot(offset, offset) - projection * projection);
+                    if (miss > 1.35 * 1.35)
                     {
-                        float entry = (bb - sqrt(disc)) / aa;
-                        if (entry > -distance)
+                        continue;
+                    }
+                    // Cluster membership is fixed at its center. Testing the ray's
+                    // map coverage here sliced silhouettes along map boundaries.
+                    vec2 cluster_uv = vec2(clon / TWO_PI + 0.5, 0.5 - clat / PI);
+                    float cluster_coverage = dot(textureLod(uCloudMap, cluster_uv + uLight[2].xy, 0.0).rgb,
+                        vec3(0.29, 0.53, 0.18));
+                    if (cluster_coverage <= 0.0)
+                    {
+                        continue;
+                    }
+                    float mass = clamp(0.5 + noise(center * 0.37), 0.0, 1.0);
+                    if (mass > min(1.0, cluster_coverage * 1.8))
+                    {
+                        continue;
+                    }
+                    float size = 0.65 + 0.45 * mass;
+                    vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
+                    for (int puff = 0; puff < 6; ++puff)
+                    {
+                        float angle = float(puff) * 2.39996323 + mass * 6.0;
+                        float radius = puff == 0 ? 0.0 : 0.43 * size;
+                        vec3 p = base + vec3(radius * cos(angle), radius * sin(angle),
+                            puff == 0 ? -0.18 : 0.05 + 0.16 * sin(angle * 1.7));
+                        float hh = (puff == 0 ? 0.85 : 0.46) * size;
+                        float vv = (puff == 0 ? 0.16 : 0.38) * size;
+                        vec3 axes = vec3(hh, hh, vv);
+                        vec3 rr = r / axes;
+                        vec3 pp = p / axes;
+                        float aa = dot(rr, rr);
+                        float bb = dot(pp, rr);
+                        float cc = dot(pp, pp) - 1.0;
+                        float disc = bb * bb - aa * cc;
+                        float edge = max(1e-5, footprint * 1.5);
+                        if (disc >= 0.0)
                         {
-                            solid = max(solid, smoothstep(0.0, edge, disc / aa));
-                            if (entry < nearest)
+                            float entry = (bb - sqrt(disc)) / aa;
+                            if (entry > -distance)
                             {
-                                nearest = entry;
-                                vec3 surface = normalize((entry * r - p) / (axes * axes));
-                                shade = clamp(0.78 + 0.22 * surface.z, 0.56, 1.0);
-                                underside = smoothstep(0.0, 0.75, -surface.z);
+                                solid = max(solid, smoothstep(0.0, edge, disc / aa));
+                                if (entry < nearest)
+                                {
+                                    nearest = entry;
+                                    vec3 surface = normalize((entry * r - p) / (axes * axes));
+                                    shade = clamp(0.78 + 0.22 * surface.z, 0.56, 1.0);
+                                    underside = smoothstep(0.0, 0.75, -surface.z);
+                                }
                             }
                         }
                     }
@@ -244,7 +272,8 @@ void main()
             * smoothstep(0.0, 0.12, coverage) * (1.0 - smoothstep(0.55, 0.80, coverage));
         float cirrus_alpha = cirrus * (1.0 - solid);
         float combined_alpha = solid + cirrus_alpha;
-        alpha = mix(combined_alpha, coverage, blend);
+        // Resolved opaque lobes retain their opacity during the distant veil blend.
+        alpha = solid + (1.0 - solid) * mix(cirrus, coverage, blend);
         // Cirrus catches the warm light throughout; cumulus only on undersides.
         warm_weight = mix((solid * underside + cirrus_alpha) / max(1e-5, combined_alpha), 1.0, blend);
     }

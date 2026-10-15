@@ -80,6 +80,8 @@ struct RockInstance
     double opacity;
     uint32_t seed_val;
     bool base_valid;
+    bool vegetation;
+    double aspect;
 };
 
 void draw_ra_dec_lines();

@@ -12,6 +12,8 @@ namespace alienorum
     {
         double east;
         double north;
+        double latitude;
+        double longitude;
         std::uint64_t id;
         std::uint32_t seed;
     };
@@ -109,7 +111,7 @@ namespace alienorum
                     }
                     result.push_back(
                     {
-                        offset_east, offset_north, id, static_cast<std::uint32_t>(scenery_hash(id + 3))
+                        offset_east, offset_north, asin(position[2] / length), atan2(position[1], position[0]), id, static_cast<std::uint32_t>(scenery_hash(id + 3))
                     });
                 }
             }

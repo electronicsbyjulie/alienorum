@@ -228,6 +228,7 @@ namespace
         CelestialObject **objects;
         json &report;
         std::vector<Star*> stars;
+        std::set<std::string> local_names;
         std::unordered_map<std::string, std::vector<Star*>> aliases;
         std::unordered_map<Star*, std::string> object_ids;
         std::unordered_map<std::string, std::set<std::string>> identifier_claims;
@@ -254,6 +255,19 @@ namespace
 
         Context(CelestialObject **input, json &output) : objects(input), report(output)
         {
+            std::ifstream local_catalog("exoname.dat");
+            std::string local_row;
+            while (std::getline(local_catalog, local_row))
+            {
+                if (local_row.size() >= 63 && local_row.rfind("HD", 0) == 0)
+                {
+                    const std::string designation = trim(local_row.substr(0, 39));
+                    if (designation.find_first_not_of("0123456789 ", 2) == std::string::npos)
+                    {
+                        local_names.insert(trim(local_row.substr(40, 23)));
+                    }
+                }
+            }
             for (int i = 1; input[i]; i++)
             {
                 if (input[i]->typeclass() != class_star || input[i]->deleted)
@@ -1724,7 +1738,10 @@ namespace
                 return;
             }
             const std::string value = cell(row, "proper names");
-            name(matches.front(), value, "IAU", row);
+            if (local_names.count(value) == 0)
+            {
+                name(matches.front(), value, "IAU", row);
+            }
         }
 
         void vsx(const Row &row)
@@ -2132,6 +2149,8 @@ std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
     {
         StellarReferenceSource source;
         source.name = name;
+        source.directory = name.rfind("SIMBAD", 0) == 0 ? "SIMBAD"
+            : (name.rfind("SBX_", 0) == 0 ? "SBX" : (name == "Gaia_DR3" ? "GAIA" : name));
         source.format = "tsv";
         source.columns = columns;
         sources.push_back(source);
@@ -2190,14 +2209,17 @@ std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
         });
     StellarReferenceSource debcat;
     debcat.name = "DEBCat";
+    debcat.directory = debcat.name;
     debcat.format = "debcat";
     sources.push_back(debcat);
     StellarReferenceSource orb6;
     orb6.name = "ORB6";
+    orb6.directory = orb6.name;
     orb6.format = "orb6";
     sources.push_back(orb6);
     StellarReferenceSource iau;
     iau.name = "IAU";
+    iau.directory = iau.name;
     iau.format = "iau";
     sources.push_back(iau);
     std::ifstream manifest("catalogs/urls.dat");
@@ -2206,7 +2228,7 @@ std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
     {
         std::istringstream fields(line);
         std::string group, filename, url;
-        if (!(fields >> group >> filename >> url) || group != "reference")
+        if (!(fields >> group >> filename >> url) || group.front() == '#')
         {
             continue;
         }
@@ -2215,6 +2237,7 @@ std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
             if (filename == source.name + "." + source.format)
             {
                 source.url = url;
+                source.directory = group;
             }
         }
     }
@@ -2238,13 +2261,24 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
     std::filesystem::create_directories(cache_directory);
     Context context(objects, report);
     const auto sources = stellar_reference_sources();
+    for (const auto &source : sources)
+    {
+        const auto destination = std::filesystem::path(cache_directory) / source.directory;
+        std::filesystem::create_directories(destination);
+        const auto filename = source.name + "." + source.format;
+        const auto legacy = std::filesystem::path(cache_directory) / "reference" / filename;
+        if (!std::filesystem::exists(destination / filename) && std::filesystem::exists(legacy))
+        {
+            std::filesystem::rename(legacy, destination / filename);
+        }
+    }
     if (allow_download && !radio_silence)
     {
         curl_global_init(CURL_GLOBAL_DEFAULT);
         std::vector<std::future<bool>> downloads;
         for (const auto &source : sources)
         {
-            const auto path = std::filesystem::path(cache_directory) / (source.name + "." + source.format);
+            const auto path = std::filesystem::path(cache_directory) / source.directory / (source.name + "." + source.format);
             if (std::filesystem::exists(path))
             {
                 continue;
@@ -2281,7 +2315,7 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
             context.restore_component_groups();
             context.finalize_identifiers();
         }
-        const auto path = std::filesystem::path(cache_directory) / (source.name + "." + source.format);
+        const auto path = std::filesystem::path(cache_directory) / source.directory / (source.name + "." + source.format);
         json status;
         status["name"] = source.name;
         status["url"] = source.url;

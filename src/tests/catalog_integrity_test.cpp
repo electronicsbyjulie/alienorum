@@ -207,8 +207,21 @@ class CondensedCatalogTest : public UniverseFixture
 
     void reference_file(const std::string &name, const std::string &text)
     {
-        std::filesystem::create_directories("catalogs/reference");
-        std::ofstream file(std::string("catalogs/reference/") + name);
+        std::string group = name.substr(0, name.find('.'));
+        if (group.rfind("SIMBAD", 0) == 0)
+        {
+            group = "SIMBAD";
+        }
+        else if (group.rfind("SBX_", 0) == 0)
+        {
+            group = "SBX";
+        }
+        else if (group == "Gaia_DR3")
+        {
+            group = "GAIA";
+        }
+        std::filesystem::create_directories("catalogs/" + group);
+        std::ofstream file("catalogs/" + group + "/" + name);
         file << text;
     }
 };
@@ -1106,7 +1119,7 @@ TEST_F(CondensedCatalogTest, ReferenceSourcesCorrectSpectraAndPreserveMeasuredUb
         "HD 010001\t\t5.14\t0.49\t0.08\n");
     reference_file("Skiff.tsv", "Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n"
         "HD 10001\tF7V\t2026A&A...000....1A\t311\t16\n");
-    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    const json report = reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(star->spectral_type, "F7V");
     EXPECT_NEAR(star->BV_color, 0.49, 1e-12);
     EXPECT_NEAR(star->UB_color, 0.08, 1e-12);
@@ -1133,7 +1146,7 @@ TEST_F(CondensedCatalogTest, ReferenceGaiaRejectsAmbiguousAndPoorAstrometry)
         "1000\t100\t5\t0.01\t1.0\t1\n"
         "1001\t101\t5\t0.01\t3.0\t1\n"
         "1002\t102\t5\t0.01\t1.0\t2\n[EOD]\nQUERY_STATUS: OK\n");
-    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    const json report = reconcile_stellar_sources(cels, "catalogs", false);
     for (const auto &source : report["sources"])
     {
         if (source["name"] == "Gaia_DR3")
@@ -1155,12 +1168,12 @@ TEST_F(CondensedCatalogTest, WdsUsesResolvedVisualPhotometryAndRejectsInfrared)
     b->apparent_magnitude = 11;
     reference_file("WDS.tsv", "WDS\tComp\tmag1\tmag2\tsep2\tpa2\tRAJ2000\tDEJ2000\tNotes\n"
         "00001+0001\tAB\t1\t2\t1\t90\t0\t0\tK\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(b->apparent_magnitude, 11);
     EXPECT_EQ(b->orbit, nullptr);
     reference_file("WDS.tsv", "WDS\tComp\tmag1\tmag2\tsep2\tpa2\tRAJ2000\tDEJ2000\tNotes\n"
         "00001+0001\tAB\t1\t2\t1\t90\t0\t0\tS\n");
-    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    const json report = reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(b->apparent_magnitude, 2);
     EXPECT_EQ(b->orbit, nullptr);
     EXPECT_FALSE(report["conflicts"].empty());
@@ -1189,11 +1202,11 @@ TEST_F(CondensedCatalogTest, Orb6ConvertsRelativeAxesAndEpochsWithoutPhotocentre
     put(row, 234, 234, "9");
     put(row, 238, 245, "Ref2026a");
     reference_file("ORB6.orb6", row + "\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(b->orbit, nullptr);
     put(row, 234, 234, "2");
     reference_file("ORB6.orb6", row + "\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     ASSERT_NE(b->orbit, nullptr);
     EXPECT_EQ(b->orbit->center, a);
     EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
@@ -1205,13 +1218,13 @@ TEST_F(CondensedCatalogTest, Orb6ConvertsRelativeAxesAndEpochsWithoutPhotocentre
     put(lower_quality, 81, 92, "20.0");
     put(lower_quality, 238, 245, "Ref2027a");
     reference_file("ORB6.orb6", row + "\n" + lower_quality + "\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
     Star *third = make_star("Additional component");
     third->set_component('C', a);
     put(row, 81, 92, "20.0");
     reference_file("ORB6.orb6", row + "\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
 }
 
@@ -1224,7 +1237,7 @@ TEST_F(CondensedCatalogTest, DebcatConvertsLogarithmsAndTracksComponentAssignmen
     b->make_companion_of(a, 'B');
     reference_file("DEBCat.debcat", "# System logM1 logM2 logR1 logR2 logT1 logT2\n"
         "Test_Pair 0.30103 0.0 0.30103 0.0 3.7 3.6\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_NEAR(a->mass / solar_mass, 2, 1e-7);
     EXPECT_DOUBLE_EQ(b->mass / solar_mass, 1);
     EXPECT_NEAR(a->volumetric_mean_radius / solar_radius, 2, 1e-7);
@@ -1244,7 +1257,7 @@ TEST_F(CondensedCatalogTest, SbxDoesNotUseProjectedVelocityAsRelativeOrbitSize)
     reference_file("SBX_alias.tsv", "sn\tcatalog\tidentifier\n1\tHD\t10000\n");
     reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade\tK1\tK2\tnote\n"
         "1\t10\t0.2\t2026A&A...000....1A\t1\t25\t30\t\"first line\nsecond line\"\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
     EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);
     EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 2 * AU);
@@ -1258,7 +1271,7 @@ TEST_F(CondensedCatalogTest, IauNamesResolveThroughExplicitIdentifiers)
     reference_file("IAU.iau", "<table><thead><tr><th>proper names</th><th>HIP</th>"
         "<th>Designation</th></tr></thead><tbody><tr><td>Approved name</td>"
         "<td>100</td><td>HIP 100</td></tr></tbody></table>");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(star->name, "Approved name");
     EXPECT_TRUE(star->has_custom_name);
 }
@@ -1291,7 +1304,7 @@ TEST_F(CondensedCatalogTest, ReferenceIdentificationRepairsDisplayOnlyPrimaryIde
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10001\tHD 10001|HIP 100\t10\t0\tG2V\n"
         "2\t* 55 Oph\t* 55 Oph|HIP 101\t20\t0\tG2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(hd->HD, 10001u);
     EXPECT_EQ(hd->HIP, 100u);
     EXPECT_EQ(numbered->FlamsteedNo, 55);
@@ -1311,7 +1324,7 @@ TEST_F(CondensedCatalogTest, DistinctResolvedComponentsKeepTheirOwnIdentityAndPh
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
         "1\tHD 10001\tHD 10001|HIP 100\t0\t0\tG2V\t5\n"
         "2\tHD 10002\tHD 10002|HIP 100\t0\t0\tK2V\t7\n");
-    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    const json report = reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(a->apparent_magnitude, 5);
     EXPECT_DOUBLE_EQ(b->apparent_magnitude, 7);
     EXPECT_STREQ(a->spectral_type, "G2V");
@@ -1330,7 +1343,7 @@ TEST_F(CondensedCatalogTest, SpectralReferencesDoNotReplaceModernClassifications
         "1\tHD 10001\tHD 10001\t0\t0\tG2V\t2026A&A...000....1A\n");
     reference_file("Skiff.tsv", "Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n"
         "HD 10001\tA0\t1900ApJ.....0....1A\t0\t0\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(star->spectral_type, "G2V");
 }
 
@@ -1342,9 +1355,9 @@ TEST_F(CondensedCatalogTest, ReferenceEndpointsComeExclusivelyFromTheManifest)
     }
     std::ofstream manifest("catalogs/urls.dat");
     manifest << "# ignored comment\n"
-        << "other SIMBAD.tsv ignored-source\n"
-        << "reference SIMBAD.tsv configured-source\n"
-        << "reference IAU.iau configured-names\n";
+        << "other ignored.tsv ignored-source\n"
+        << "SIMBAD SIMBAD.tsv configured-source\n"
+        << "IAU IAU.iau configured-names\n";
     manifest.close();
     for (const auto &source : stellar_reference_sources())
     {
@@ -1393,13 +1406,13 @@ TEST_F(CondensedCatalogTest, SbxAlsoResolvesCondensedComponentIdsAndOrbitLinks)
     reference_file("SBX_alias.tsv", "sn\tcatalog\tidentifier\n1\tHD\t10000\n");
     reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade\n"
         "1\t10\t0.2\t2026A&A...000....1A\t1\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
     EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);
     EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 2 * AU);
     b->alienorumid = a->alienorumid + " C";
     b->orbit->period = 20 * oneday;
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(b->orbit->period, 20 * oneday);
 }
 
@@ -1416,7 +1429,7 @@ TEST_F(CondensedCatalogTest, SbxLegacyQualityRunsFromPoorOneToBestFive)
     reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade_legacy\n"
         "1\t10\t0.2\t2000A&A...000....1A\t5\n"
         "1\t20\t0.3\t2026A&A...000....1A\t1\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
     EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);
 }
@@ -1449,7 +1462,7 @@ TEST_F(CondensedCatalogTest, ReferenceBayerIdentityPreservesNumberedGreekVariant
     star->HD = 10000;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10000\tHD 10000|* zet01 Oph\t0\t0\tG2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(star->Bayer, "Zet1Oph");
     EXPECT_EQ(star->BayerGrkno, grkno_from_abbrev("Zet1Oph"));
     EXPECT_NE(star->BayerGrkno, grkno_from_abbrev("Zet Oph"));
@@ -1468,7 +1481,7 @@ TEST_F(CondensedCatalogTest, HistoricalAliasesCannotMoveCanonicalConstellationDe
     star->FlamsteedNo = 55;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10000\tHD 10000|* 55 Oph|* 40 Ser|* alf Ser\t0\t0\tG2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(star->constellation, "Oph");
     EXPECT_STREQ(star->Bayer, "Alp Oph");
     EXPECT_EQ(star->FlamsteedNo, 55);
@@ -1484,7 +1497,7 @@ TEST_F(CondensedCatalogTest, NewGlieseAliasesDoNotDuplicateAnExistingUnrelatedId
     other->HIP = 100;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHIP 100\tHIP 100|GJ 100\t0\t0\tG2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(original->Gliese, "GJ 100");
     EXPECT_STREQ(other->Gliese, "");
 }
@@ -1496,7 +1509,7 @@ TEST_F(CondensedCatalogTest, ComponentQualifiedHipAliasesAreNotBareSystemIds)
     star->HD = 10000;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10000\tHD 10000|HIP 100B\t0\t0\tG2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(star->HIP, 0u);
 }
 
@@ -1516,7 +1529,7 @@ TEST_F(CondensedCatalogTest, ExplicitHrIdentitiesCanDisambiguateSwappedHdCompone
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10001\tHD 10001|HR 10|* gam01 Oph\t0\t0\tG2V\n"
         "2\tHD 10000\tHD 10000|HR 11|* gam02 Oph\t0\t0\tK2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(first->HD, 10001u);
     EXPECT_EQ(second->HD, 10000u);
     EXPECT_STREQ(first->spectral_type, "G2V");
@@ -1538,7 +1551,7 @@ TEST_F(CondensedCatalogTest, SharedSystemAliasesDoNotCopyJointPhotometryOntoBoth
     b->apparent_magnitude = 7;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\totype\tV\n"
         "1\tHD 10000\tHD 10000|HIP 100\t0\t0\tG2V+K2V\t**\t4\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(a->apparent_magnitude, 5);
     EXPECT_DOUBLE_EQ(b->apparent_magnitude, 7);
 }
@@ -1551,7 +1564,7 @@ TEST_F(CondensedCatalogTest, ImpossibleNegativeJohnsonColorsDoNotReplaceMeasured
     star->BV_color = 1.2;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\tB\n"
         "1\tHD 10000\tHD 10000\t0\t0\tK5V\t13\t12\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_DOUBLE_EQ(star->BV_color, 1.2);
 }
 
@@ -1568,7 +1581,7 @@ TEST_F(CondensedCatalogTest, DisplayOnlyPrimaryCanRecoverItsExistingFamilySystem
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
         "1\tHD 10000\tHD 10000\t0\t0\tG2V\t6\n");
     const double original_magnitude = primary->apparent_magnitude;
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(primary->HD, 10000u);
     EXPECT_DOUBLE_EQ(primary->apparent_magnitude, original_magnitude);
 }
@@ -1589,7 +1602,7 @@ TEST_F(CondensedCatalogTest, CachedComponentMembershipPreservesNestedAndOpticalO
     c->orbit->center = b;
     Star *d = make_star("Optical member");
     d->alienorumid = "5y Oph  D";
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     ASSERT_NE(a->multisys, nullptr);
     EXPECT_EQ(a->multisys->get_member('A'), a);
     EXPECT_EQ(a->multisys->get_member('B'), b);
@@ -1623,7 +1636,7 @@ TEST_F(CondensedCatalogTest, TwoLetterGreekAliasesUseCanonicalNumberColumns)
             + "\tHD " + std::to_string(star->HD) + "|* " + source_names[i] + " Oph\t0\t0\tG2V\n";
     }
     reference_file("SIMBAD.tsv", table);
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     for (size_t i = 0; i < stars.size(); i++)
     {
         EXPECT_STREQ(stars[i]->Bayer, expected[i].c_str());
@@ -1641,7 +1654,7 @@ TEST_F(CondensedCatalogTest, ConflictingHrAndHdAloneCannotReassignAStar)
     star->apparent_magnitude = 5;
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
         "1\tHD 10001\tHD 10001|HR 10\t0\t0\tK2V\t1\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(star->HD, 10000u);
     EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5);
     EXPECT_STREQ(star->spectral_type, "G2V");
@@ -1663,7 +1676,7 @@ TEST_F(CondensedCatalogTest, IndependentResolvedObjectsDisproveAStaleHdAssociati
         "2\tHIP 200\tHIP 200\t10\t0\tK2V\n");
     reference_file("Mermilliod.tsv", "SimbadName\tm_LID\tVmag\tB-V\tU-B\n"
         "HD 10000\t\t5\t0.6\t0.1\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(first->HD, 10000u);
     EXPECT_EQ(second->HD, 0u);
     EXPECT_STREQ(second->name, "HIP200");
@@ -1832,7 +1845,7 @@ TEST_F(CondensedCatalogTest, AnUnresolvedFamilyCanDisproveAnUnrelatedSystemIdent
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\totype\n"
         "1\tHD 10000\tHD 10000|HIP 100\t0\t0\tG2V+K2V\t**\n"
         "2\tHIP 200\tHIP 200\t10\t0\tM2V\t*\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(a->HD, 10000u);
     EXPECT_EQ(b->HD, 10000u);
     EXPECT_EQ(other->HD, 0u);
@@ -1877,7 +1890,7 @@ TEST_F(CondensedCatalogTest, UnnumberedAliasesCannotEraseExistingBayerNumbers)
     strcpy(star->constellation, "Oph");
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10000\tHD 10000|* mu. Oph\t0\t0\tG2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_STREQ(star->Bayer, "Mu 1Oph");
     EXPECT_STREQ(star->name, "Mu 1 Ophiuchi");
     EXPECT_EQ(star->BayerGrkno, grkno_from_abbrev("Mu 1Oph"));
@@ -1901,7 +1914,7 @@ TEST_F(CondensedCatalogTest, IdentifierRepairUpdatesInheritedCompanionDisplayNam
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10000\tHD 10000|HIP 100\t10\t0\tG2V\n"
         "2\tHIP 200\tHIP 200\t0\t0\tK2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(primary->HD, 0u);
     EXPECT_STREQ(primary->name, "HIP200");
     EXPECT_STREQ(child->name, "HIP200 D");
@@ -1924,7 +1937,7 @@ TEST_F(CondensedCatalogTest, ResolvedWdsAliasesPreserveSharedHdAndIndependentAst
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
         "1\tHD 10000A\tHD 10000|HIP 100|WDS J00000+0000A\t0\t0\tG2V\n"
         "2\tHD 10000B\tHD 10000B|HIP 200|WDS J00000+0000B\t0\t0\tK2V\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(a->HD, 10000u);
     EXPECT_EQ(b->HD, 10000u);
     ASSERT_NE(a->multisys, nullptr);
@@ -1948,7 +1961,7 @@ TEST_F(CondensedCatalogTest, DisplacedHdIdentityRecoversItsOwnSourceMeasurements
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tplx_value\tplx_err\tpmra\tpmdec\tV\n"
         "1\tHD 10000\tHD 10000|HIP 100|GJ 100\t0\t0\tG2V\t100\t1\t0\t0\t5\n"
         "2\tHD 10001\tHD 10001\t10\t20\tK2V\t2\t0.1\t5\t6\t8\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(a->HIP, 100u);
     EXPECT_EQ(b->HIP, 0u);
     EXPECT_EQ(b->HD, 10001u);
@@ -1963,7 +1976,7 @@ TEST_F(CondensedCatalogTest, DisplacedHdIdentityRecoversItsOwnSourceMeasurements
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tplx_value\tplx_err\n"
         "1\tHD 10000\tHD 10000|HIP 100|GJ 100\t0\t0\tG2V\t100\t1\n"
         "2\tHD 10001\tHD 10001\t10\t20\tK2V\t2\t1\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    reconcile_stellar_sources(cels, "catalogs", false);
     EXPECT_EQ(b->HIP, 100u);
     EXPECT_DOUBLE_EQ(b->right_ascension, 0);
     EXPECT_DOUBLE_EQ(b->declination, 0);

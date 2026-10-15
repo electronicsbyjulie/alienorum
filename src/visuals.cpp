@@ -1519,7 +1519,15 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (use_gpu_disc)
     {
         int r = draw_sphere_gpu(cel, arad);
-        if (!r) return 0;
+        if (!r)
+        {
+            if (use_gpu_ring && (cls == class_planet || cls == class_moon)
+                && ((Planet*)cel)->ring_radius > cel->get_equatorial_radius())
+            {
+                draw_ring_gpu(cel, arad);
+            }
+            return 0;
+        }
         result = r;
     }
     else
@@ -3163,7 +3171,9 @@ bool draw_single_object(int i)
         }
         goto dot_instead;
     }
-    else if (angular_radius[i]*zoom > sphere_rad_threshold)
+    else if (angular_radius[i]*zoom > sphere_rad_threshold
+        || ((cls == class_planet || cls == class_moon)
+            && ((Planet*)cels[i])->ring_radius > cels[i]->get_equatorial_radius()))
     {
         // An eclipsed star loses its glare along with its light: the flare drawn here is the
         // scatter of an overwhelming photosphere in the eye and in the air, and as the moon
@@ -3875,7 +3885,9 @@ void draw_objects()
                     continue;
                 }
             }
-            else if (angular_radius[i]*zoom >= sphere_rad_threshold)
+            else if (angular_radius[i]*zoom >= sphere_rad_threshold
+                || ((cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
+                    && ((Planet*)cels[i])->ring_radius > cels[i]->get_equatorial_radius()))
             {
                 // A large body or nearby planet whose center may be off screen or even behind
                 // the camera plane (cz <= 0) while its surface or horizon is still visible in the view.
@@ -3883,7 +3895,8 @@ void draw_objects()
                 Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
                 double d = camera_space.magnitude();
                 double obj_r = cels[i]->get_equatorial_radius();
-                if (cels[i]->typeclass() == class_planet && ((Planet*)cels[i])->ring_radius > obj_r)
+                if ((cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
+                    && ((Planet*)cels[i])->ring_radius > obj_r)
                 {
                     obj_r = ((Planet*)cels[i])->ring_radius;
                 }
@@ -5128,21 +5141,21 @@ void draw_horizon()
         bool water_favorable = p->get_surface_pressure() >= 150
             && p->estimate_surface_temperature() < 400;
 
-        bool is_vegetation = false;
-        const float is_veg_threshold = 0.35;
-
-        if (p && uses_rocky_map(p->type) && water_favorable && p->has_water && (p->vegetation_r || p->vegetation_g))
+        const auto vegetation_at = [&](double latitude, double longitude)
         {
-            double local_hue = Color::hue_from_rgb(rgb.r, rgb.g, rgb.b),
-                   veg_hue = Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
-            double local_sat = Color::sat_from_rgb(rgb.r, rgb.g, rgb.b),
-                   veg_sat = Color::sat_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
-                        
-            if (fabs(local_hue - veg_hue) < is_veg_threshold
-                && fabs(local_sat - veg_sat) < is_veg_threshold
-               )
-                is_vegetation = true;
-        }
+            if (!p || !map || !uses_rocky_map(p->type) || !water_favorable
+                || !p->has_water || !(p->vegetation_r || p->vegetation_g))
+            {
+                return false;
+            }
+            const RGB3 sample = map->color_at(latitude, longitude);
+            const double local_hue = Color::hue_from_rgb(sample.r, sample.g, sample.b);
+            const double veg_hue = Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
+            const double hue_delta = fabs(local_hue - veg_hue);
+            return fmin(hue_delta, 2.0 * _pi - hue_delta) < 0.35
+                && fabs(Color::sat_from_rgb(sample.r, sample.g, sample.b)
+                    - Color::sat_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b)) < 0.35;
+        };
 
         rgb.r = fmin(255, is_day*rgb.r);
         rgb.g = fmin(255, is_day*rgb.g);
@@ -6160,13 +6173,14 @@ void draw_horizon()
                     if (!p->plant_crown_oblateness) p->plant_crown_oblateness   = PLANT_CROWN_OBLATENESS * presh;
                 }
 
-                double rock_aspect = (is_vegetation && p)
-                    ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
-                    : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
-
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
                 for (const SurfaceScenery &object : scenery)
                 {
+                    const bool is_vegetation = vegetation_at(object.latitude, object.longitude);
+                    const double rock_aspect = (is_vegetation && p)
+                        ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
+                        : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
+
                     const uint32_t rhash = object.seed;
                     const double theta_world = atan2(object.east, object.north);
                     const double dist_m = hypot(object.east, object.north);
@@ -6350,6 +6364,8 @@ void draw_horizon()
                         // * std::clamp(rw - 1.5, 0.0, 1.0);
                     rocks[num_rocks].seed_val = rhash;
                     rocks[num_rocks].base_valid = base_valid;
+                    rocks[num_rocks].vegetation = is_vegetation;
+                    rocks[num_rocks].aspect = rock_aspect;
                     num_rocks++;
                 }
 
@@ -6372,6 +6388,7 @@ void draw_horizon()
                     for (int ri = 0; ri < num_rocks; ri++)
                     {
                         const RockInstance& rk = rocks[ri];
+                        const bool is_vegetation = rk.vegetation;
                         const ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0,
                             static_cast<int>(shadow_alpha * rk.opacity)));
                         if (rk.width < 3.0 || !rk.base_valid)
@@ -6383,7 +6400,7 @@ void draw_horizon()
                         double ry = rk.screen_y;
                         double rw = rk.width;
 
-                        double actual_rock_h = rk.size * rock_aspect;
+                        double actual_rock_h = rk.size * rk.aspect;
                         double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
                         if (!is_vegetation)
                         {
@@ -6480,6 +6497,7 @@ void draw_horizon()
                 for (int ri = 0; ri < num_rocks; ri++)
                 {
                     const RockInstance& rk = rocks[ri];
+                    const bool is_vegetation = rk.vegetation;
                     const int first_vertex = scenery_draw_list->VtxBuffer.Size;
                     double rx = rk.screen_x;
                     double ry = rk.screen_y;

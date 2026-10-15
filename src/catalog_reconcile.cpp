@@ -58,7 +58,7 @@ int main(int argc, char **argv)
                 throw std::runtime_error("No generated input catalog was loaded");
             }
         }
-        const json report = reconcile_stellar_sources(cels, (original / "catalogs/reference").string(), !offline);
+        const json report = reconcile_stellar_sources(cels, (original / "catalogs").string(), !offline);
         std::ofstream provenance(output / "reference_report.json");
         provenance << report.dump(2) << '\n';
         provenance.close();

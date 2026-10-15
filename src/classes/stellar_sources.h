@@ -12,6 +12,7 @@ namespace alienorum
     {
         std::string name;
         std::string url;
+        std::string directory;
         std::string format;
         std::vector<std::string> columns;
     };

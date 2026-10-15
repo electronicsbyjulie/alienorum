@@ -1,16 +1,18 @@
 *** URGENT CORRECTNESS ISSUE *** There aren't supposed to be AlienorumIDs on stars magnitude 10 and above except companions of a primary that is bright enough. The catalog is not complete past magnitude 9.99. - FIXED by jlg 261015.0401
 
-Cumulus clouds are not opaque to own planet's rings.
+Epsilon Eridani is named Ran when seen from outside its local system. This is a regression. Exonames like Ran must be visible **only** within the system itself; from Earth it must show as Epsilon Eridani. The same is true of Alpha Mensae, whose system name has been wrongly applied universally, as well as all other stars affected by this regression (51 Pegasi, Upsilon Andromedae, etc). If it's listed in exoname.dat, it doesn't belong in the main catalog. - FIXED by Codex 2026-10-15. Exclude local stellar names from IAU reconciliation.
 
-Flying through Saturn's rings, they disappear if the planet is behind the camera. This was fixed in an earlier commit, why did it regress? Fix and add a unit test.
+Cumulus clouds are not opaque to own planet's rings. - FIXED by Codex 2026-10-15. Preserve opaque cloud coverage during distant blending.
+
+Flying through Saturn's rings, they disappear if the planet is behind the camera. This was fixed in an earlier commit, why did it regress? Fix and add a unit test. - FIXED by Codex 2026-10-15. Queue rings even when the planet disc is culled.
 
 Rocks in the distance in vm_horizon view fade away, appearing as wireframes with transparent panels. Rocks should be either visible or not visible - all or nothing. - FIXED by jlg 261014.2105
 
-Standing on the edge of a vegetation zone, the viewer is surrounded by rocks or plants, but the instant the viewer crosses the border, all the rocks become plants or vice versa. Whether each item is a rock or a plant should depend on the map pixel at the item's latitude and longitude, not the viewer's.
+Standing on the edge of a vegetation zone, the viewer is surrounded by rocks or plants, but the instant the viewer crosses the border, all the rocks become plants or vice versa. Whether each item is a rock or a plant should depend on the map pixel at the item's latitude and longitude, not the viewer's. - FIXED by Codex 2026-10-15. Classify each scenery object at its fixed surface coordinates.
 
-Rectangle slice effects are still visible on distant cumulus clouds; their tops look flattened until the viewer draws closer and the flatness recedes.
+Rectangle slice effects are still visible on distant cumulus clouds; their tops look flattened until the viewer draws closer and the flatness recedes. - FIXED by Codex 2026-10-15. Search the full ray segment through the cloud volume.
 
-The new catalogs are bizarrely stored in a folder called "reference". That is incorrect. Notice how each preexisting catalog has a folder of its own named after the catalog. These are separate publications with their own readmes so it is not correct to lump them all together in one folder. Separate them out and make sure the code knows where to look (it should automatically find them).
+The new catalogs are bizarrely stored in a folder called "reference". That is incorrect. Notice how each preexisting catalog has a folder of its own named after the catalog. These are separate publications with their own readmes so it is not correct to lump them all together in one folder. Separate them out and make sure the code knows where to look (it should automatically find them). - UPDATED urls.dat to point to the correct folders, however some of the catalogs do not auto download, and the code still looks for them all in reference. - FIXED by Codex 2026-10-15. Discover source folders from the manifest and migrate older cache files.
 
 When viewing from the surface of a planet of a component in a multi star system, the rocks cast shadows relative to the system's primary star (component A) instead of the light center. The two planets of 55 Cnc B are good examples of where this bug occurs. - FIXED by jlg 261015.0310
 

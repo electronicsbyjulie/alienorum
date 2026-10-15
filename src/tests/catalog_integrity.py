@@ -498,7 +498,7 @@ def modern_identity_support(records, directory, report):
         match = re.fullmatch(r'(HD|HIP|HR|\*[A-Z]*)([0-9]+)(.*)', value)
         return match[1] + str(int(match[2])) + match[3] if match else value
 
-    for path in sorted((directory / 'reference').glob('SIMBAD*.tsv')) if targets else []:
+    for path in sorted((directory / 'SIMBAD').glob('SIMBAD*.tsv')) if targets else []:
         with path.open(newline='', encoding='utf-8') as stream:
             for source in csv.DictReader(stream, delimiter='\t'):
                 raw_aliases = source.get('ids', '')
