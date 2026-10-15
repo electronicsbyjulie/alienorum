@@ -1222,8 +1222,21 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         s = nullptr;
         bool is_new = false;
 
-        if (HD && hdcache && hdcache[HD]) s = (Star*)hdcache[HD];
-        else if (HIP && hipcache && hipcache[HIP]) s = (Star*)hipcache[HIP];
+        auto compatible_identity = [&](Star *candidate)
+        {
+            return candidate && (!candidate->HD || !HD || candidate->HD == HD)
+                && (!candidate->HIP || !HIP || candidate->HIP == HIP);
+        };
+        if (HD && hdcache && hdcache[HD] && hdcache[HD]->HD == static_cast<unsigned int>(HD)
+            && compatible_identity(hdcache[HD]))
+        {
+            s = hdcache[HD];
+        }
+        else if (HIP && hipcache && hipcache[HIP] && hipcache[HIP]->HIP == static_cast<unsigned int>(HIP)
+            && compatible_identity(hipcache[HIP]))
+        {
+            s = hipcache[HIP];
+        }
         else if (dmkey.size() && dmcache.count(dmkey))
         {
             // A shared Durchmusterung entry can legitimately belong to two distinct stars; only accept the match if it doesn't contradict the HD/HIP number.
@@ -1257,10 +1270,19 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             is_new = true;
         }
 
-        s->HD = HD;
+        if (HD)
+        {
+            s->HD = HD;
+        }
         s->HIP = HIP;
-        if (HD) hdcache[HD] = s;
-        if (HIP) hipcache[HIP] = s;
+        if (s->HD)
+        {
+            hdcache[s->HD] = s;
+        }
+        if (HIP)
+        {
+            hipcache[HIP] = s;
+        }
 
         // 328-337  A10   ---     CCDM      CCDM identifier                          (H55)
         read_field_onebased(buffer, 328, 337, field);

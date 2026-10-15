@@ -365,6 +365,44 @@ class CatalogIntegrityTest(unittest.TestCase):
             archive.write_bytes(gzip.compress(sun() + row())[:-5])
             self.assertEqual(main([str(archive)]), 2)
 
+    def test_missing_bsc_designation_is_distinct_from_a_contradictory_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'BSC').mkdir()
+            source = bytearray(b' ' * 197)
+            for start, end, value in ((1, 4, '6556'), (26, 31, '159561')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'BSC' / 'catalog').write_bytes(source + b'\n')
+            report = audit_bytes(sun() + row(), root)
+            self.assertEqual(report.errors, 0)
+            self.assert_code(report, 'bsc_bayer_added', 'warning')
+            source[7:11] = b'Bet '
+            source[11:14] = b'Oph'
+            (root / 'BSC' / 'catalog').write_bytes(source + b'\n')
+            self.assert_code(audit_bytes(sun() + row(), root), 'bsc_bayer')
+
+    def test_hip_system_identifiers_can_refer_to_another_member_of_the_same_family(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            source = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (391, 396, '159562')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            path = root / 'Hipparcos' / 'hip_main.dat'
+            path.write_bytes(source + b'\n')
+            family = sun() + row(id='2c Oph', name='Primary', bayer='') + row(
+                id='2c Oph  B', name='Secondary', bayer='', hd='159562', hip='', hr='', parent='2c Oph')
+            self.assert_code(audit_bytes(family, root), 'hip_cross_id', 'warning')
+            source[390:396] = b'888888'
+            path.write_bytes(source + b'\n')
+            self.assert_code(audit_bytes(family, root), 'hip_cross_id')
+
+    def test_component_root_spacing_does_not_create_unrelated_duplicate_ids(self):
+        report = self.audit(row(id='2c Oph', name='Primary', bayer='') + row(
+            id='2c Oph  B', name='Secondary', bayer=''))
+        self.assert_code(report, 'shared_system_identifier', 'warning')
+        self.assertFalse(any(issue.code == 'duplicate_hd' for issue in report.issues))
+
 
 if __name__ == '__main__':
     unittest.main()

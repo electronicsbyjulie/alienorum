@@ -185,6 +185,26 @@ class CondensedCatalogTest : public UniverseFixture
         return read ? line : "";
     }
 
+    void hipparcos_row(unsigned int hip, const std::string &hd)
+    {
+        std::filesystem::create_directories("catalogs/Hipparcos");
+        std::string row(450, ' ');
+        put(row, 9, 14, std::to_string(hip));
+        put(row, 18, 28, "01 00 00.00");
+        put(row, 30, 40, "+60 00 00.0");
+        put(row, 42, 46, "5.00");
+        put(row, 52, 63, "15.00000000");
+        put(row, 65, 76, "60.00000000");
+        put(row, 80, 86, "50.00");
+        put(row, 88, 95, "0.00");
+        put(row, 97, 104, "0.00");
+        put(row, 246, 251, "0.650");
+        put(row, 391, 396, hd);
+        put(row, 436, 447, "G2V");
+        std::ofstream file("catalogs/Hipparcos/hip_main.dat");
+        file << row << '\n';
+    }
+
     void reference_file(const std::string &name, const std::string &text)
     {
         std::filesystem::create_directories("catalogs/reference");
@@ -1187,6 +1207,12 @@ TEST_F(CondensedCatalogTest, Orb6ConvertsRelativeAxesAndEpochsWithoutPhotocentre
     reference_file("ORB6.orb6", row + "\n" + lower_quality + "\n");
     reconcile_stellar_sources(cels, "catalogs/reference", false);
     EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
+    Star *third = make_star("Additional component");
+    third->set_component('C', a);
+    put(row, 81, 92, "20.0");
+    reference_file("ORB6.orb6", row + "\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
 }
 
 TEST_F(CondensedCatalogTest, DebcatConvertsLogarithmsAndTracksComponentAssignment)
@@ -1619,4 +1645,65 @@ TEST_F(CondensedCatalogTest, ConflictingHrAndHdAloneCannotReassignAStar)
     EXPECT_EQ(star->HD, 10000u);
     EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5);
     EXPECT_STREQ(star->spectral_type, "G2V");
+}
+
+TEST_F(CondensedCatalogTest, IndependentResolvedObjectsDisproveAStaleHdAssociation)
+{
+    make_star("Sun");
+    Star *first = make_star("HD10000");
+    first->HD = 10000;
+    first->HIP = 100;
+    Star *second = make_star("HD10000");
+    second->HD = 10000;
+    second->HIP = 200;
+    second->right_ascension = 10 * fiftyseventh;
+    second->apparent_magnitude = 8;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000\tHD 10000|HIP 100\t0\t0\tG2V\n"
+        "2\tHIP 200\tHIP 200\t10\t0\tK2V\n");
+    reference_file("Mermilliod.tsv", "SimbadName\tm_LID\tVmag\tB-V\tU-B\n"
+        "HD 10000\t\t5\t0.6\t0.1\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(first->HD, 10000u);
+    EXPECT_EQ(second->HD, 0u);
+    EXPECT_STREQ(second->name, "HIP200");
+    EXPECT_DOUBLE_EQ(first->apparent_magnitude, 5);
+    EXPECT_DOUBLE_EQ(second->apparent_magnitude, 8);
+}
+
+TEST_F(CondensedCatalogTest, StaleHipAndHdCacheEntriesCannotOverwriteOtherStars)
+{
+    make_star("Sun");
+    Star *other = make_star("Other star");
+    other->HD = 10000;
+    other->HIP = 200;
+    hdcache = new Star*[MAX_HD + 1]();
+    hipcache = new Star*[MAX_HIP + 1]();
+    hdcache[10000] = other;
+    hipcache[100] = hipcache[200] = other;
+    hipparcos_row(100, "10000");
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    ASSERT_NE(hipcache[100], nullptr);
+    EXPECT_NE(hipcache[100], other);
+    EXPECT_EQ(hipcache[100]->HIP, 100u);
+    EXPECT_EQ(other->HIP, 200u);
+    EXPECT_EQ(hipcache[200], other);
+}
+
+TEST_F(CondensedCatalogTest, MissingHipparcosHdDoesNotEraseAKnownIdentifier)
+{
+    make_star("Sun");
+    Star *star = make_star("Known star");
+    star->HD = 10000;
+    star->HIP = 100;
+    hdcache = new Star*[MAX_HD + 1]();
+    hipcache = new Star*[MAX_HIP + 1]();
+    hdcache[10000] = hipcache[100] = star;
+    hipparcos_row(100, "");
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_EQ(hipcache[100], star);
+    EXPECT_EQ(star->HD, 10000u);
+    EXPECT_EQ(hdcache[10000], star);
 }

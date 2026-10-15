@@ -137,7 +137,7 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 35 Python tests and 60 native tests pass; CMake configures
+Checkpoint on 2026-10-14: 38 Python tests and 63 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
@@ -176,3 +176,23 @@ without that index can assign independent IDs to children and are invalid.
 Numbered two-letter Greek abbreviations retain their native three-column prefix;
 SIMBAD's dotted mu/nu/pi spellings are accepted. Conflicting HR/HD identities
 require an independent matching designation before a repair can proceed.
+
+On 2026-10-15, import cache checks also verify that a cached object's current IDs
+agree with the requested IDs. This addresses bright Hipparcos entries overwritten
+through stale Gliese/Hipparcos lookup aliases. An absent Hipparcos HD field keeps
+a known fallback ID. After SIMBAD matching, a stale identifier is removed only
+when another separately resolved unrelated object uniquely claims it; family
+system identifiers remain intact, and an obsolete numeric display label is
+replaced by a surviving valid identifier.
+
+The auditor now treats an omitted BSC Bayer field as a review warning when a
+catalog supplies a designation; contradictory supplied values remain errors.
+A HIP cross-reference to another known member of the same family is a review
+warning. A cross-reference outside that family is an error even for a component.
+Component root spacing is normalized for family comparisons. Regression tests
+cover both valid family sharing and unrelated identifier corruption.
+
+The BSC notes download is configured in `catalogs/urls.dat`. These notes are
+cached alongside the BSC table for reviewing joint photometry and ambiguous
+historical cross-identifications. They are downloaded data, so the existing
+manifest installation rule applies without adding a static release asset.

@@ -165,7 +165,7 @@ def parse_record(raw, line, report):
         else:
             row.component = identity['component'] or ''
             row.constellation = identity['cons']
-            row.root = row.identity.rsplit(' ', 1)[0] if row.component else row.identity
+            row.root = ' '.join((row.identity.rsplit(' ', 1)[0] if row.component else row.identity).split())
     elif row.text('parent'):
         report.add('missing_component_id', row, 'An orbiting component has no stable ID')
     for name, limits in dict(hd=(1, 359083), hip=(1, 120416), hr=(1, 9110), sb9=(1, 9999999),
@@ -512,10 +512,17 @@ def check_sources(records, report, directory):
             expected = parse_bayer(source_bayer) if raw[7:11].strip() else None
             actual = parse_bayer(row.text('bayer')) if row.text('bayer') else None
             if expected != actual and not row.component:
-                report.add('bsc_bayer', row, f'Bayer identity conflicts with BSC: {source_bayer!r}')
+                if expected is None and actual is not None:
+                    report.add('bsc_bayer_added', row, 'Bayer designation is absent from BSC; verify another source', 'warning')
+                else:
+                    report.add('bsc_bayer', row, f'Bayer identity conflicts with BSC: {source_bayer!r}')
             source_flam = raw[4:7].strip()
             if source_flam.isdigit() and row.number('flamsteed') != int(source_flam) and not row.component:
                 report.add('bsc_flamsteed', row, f'Flamsteed number conflicts with BSC: {source_flam}')
+    family_hd = dict()
+    for member in records:
+        if member.root and member.number('hd'):
+            family_hd.setdefault(member.root, set()).add(member.number('hd'))
     hip_path = directory / 'Hipparcos' / 'hip_main.dat'
     source = source_index(hip_path, 8, 14, 'HIP', report)
     if source is not None:
@@ -532,7 +539,8 @@ def check_sources(records, report, directory):
                 continue
             hd = raw[390:396].strip()
             if hd.isdigit() and row.number('hd') and int(hd) != row.number('hd'):
-                report.add('hip_cross_id', row, f'HIP {row.number("hip")} belongs to HD {hd}', 'warning' if row.component else 'error')
+                shared = int(hd) in family_hd.get(row.root, set())
+                report.add('hip_cross_id', row, f'HIP {row.number("hip")} belongs to HD {hd}', 'warning' if shared else 'error')
             ra, dec = raw[51:63].strip(), raw[64:76].strip()
             if NUMBER.fullmatch(ra) and NUMBER.fullmatch(dec):
                 source_position(row, float(ra), float(dec), report, 'Hipparcos')

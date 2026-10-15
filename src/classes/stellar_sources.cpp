@@ -230,6 +230,7 @@ namespace
         std::vector<Star*> stars;
         std::unordered_map<std::string, std::vector<Star*>> aliases;
         std::unordered_map<Star*, std::string> object_ids;
+        std::unordered_map<std::string, std::set<std::string>> identifier_claims;
         std::unordered_map<std::string, std::vector<Star*>> resolved_objects;
         std::unordered_map<std::string, std::string> object_types;
         std::unordered_map<std::string, std::vector<Star*>> spatial;
@@ -826,6 +827,14 @@ namespace
                     source_hd.push_back(strtoul(identified[1].str().c_str(), nullptr, 10));
                 }
             }
+            static const std::regex numeric_hip("^HIP([0-9]+)$");
+            for (const auto &key : keys)
+            {
+                if (aliases.count(key) && (std::regex_match(key, numeric_hd) || std::regex_match(key, numeric_hip)))
+                {
+                    identifier_claims[key].insert(oid);
+                }
+            }
             auto identity_score = [&](Star *star)
             {
                 return (star->HD && keys.count("HD" + std::to_string(star->HD)) ? 4 : 0)
@@ -960,6 +969,111 @@ namespace
                 {
                     adopt(star, "radial_velocity", star->radial_velocity, velocity * 1000,
                         "SIMBAD", row, "m/s");
+                }
+            }
+        }
+
+        void finalize_identifiers()
+        {
+            for (const auto &identified : object_ids)
+            {
+                Star *star = identified.first;
+                std::vector<std::string> removed;
+                for (const std::string &catalog : std::vector<std::string>
+                    {
+                        "HD", "HIP"
+                    })
+                {
+                    const unsigned int id = catalog == "HD" ? star->HD : star->HIP;
+                    const std::string key = catalog + std::to_string(id);
+                    const auto claim = identifier_claims.find(key);
+                    if (!id || claim == identifier_claims.end() || claim->second.size() != 1
+                        || *claim->second.begin() == identified.second)
+                    {
+                        continue;
+                    }
+                    const std::string owner_id = *claim->second.begin();
+                    const auto owners = resolved_objects.find(owner_id);
+                    bool disproved = false;
+                    if (owners != resolved_objects.end())
+                    {
+                        for (Star *owner : owners->second)
+                        {
+                            if (owner != star && !same_family(star, owner)
+                                && separation(star, owner->right_ascension * fiftyseven,
+                                    owner->declination * fiftyseven) > 10)
+                            {
+                                disproved = true;
+                            }
+                        }
+                    }
+                    if (!disproved)
+                    {
+                        continue;
+                    }
+                    removed.push_back(key);
+                    auto &old_alias = aliases[key];
+                    old_alias.erase(std::remove(old_alias.begin(), old_alias.end(), star), old_alias.end());
+                    if (catalog == "HD")
+                    {
+                        if (hdcache && hdcache[id] == star)
+                        {
+                            hdcache[id] = nullptr;
+                        }
+                        star->HD = 0;
+                    }
+                    else
+                    {
+                        if (hipcache && hipcache[id] == star)
+                        {
+                            hipcache[id] = nullptr;
+                        }
+                        star->HIP = 0;
+                    }
+                    json change;
+                    change["star"] = star->name;
+                    change["field"] = catalog;
+                    change["old"] = id;
+                    change["new"] = nullptr;
+                    change["source"] = "SIMBAD";
+                    change["reason"] = "Identifier belongs to a separately resolved unrelated object";
+                    change["owner_oid"] = owner_id;
+                    report["changes"].push_back(change);
+                    Row proof;
+                    proof["oid"] = identified.second;
+                    provenance(star, catalog, "SIMBAD", proof, nullptr);
+                }
+                const std::string display = stellar_identifier_key(star->name);
+                for (const auto &key : removed)
+                {
+                    if (display.rfind(key, 0) != 0)
+                    {
+                        continue;
+                    }
+                    const std::string component = display.substr(key.size());
+                    if (component.size() > 3 || component.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ") != std::string::npos)
+                    {
+                        continue;
+                    }
+                    std::string replacement;
+                    if (star->HD || star->HIP)
+                    {
+                        replacement = star->HD ? "HD" + std::to_string(star->HD) : "HIP" + std::to_string(star->HIP);
+                        if (!component.empty())
+                        {
+                            replacement += " " + component;
+                        }
+                    }
+                    else
+                    {
+                        replacement = trim(star->Gliese);
+                    }
+                    if (!replacement.empty())
+                    {
+                        Row proof;
+                        proof["oid"] = identified.second;
+                        name(star, replacement, "SIMBAD", proof);
+                    }
                 }
             }
         }
@@ -1334,6 +1448,17 @@ namespace
             {
                 return;
             }
+            if (a->orbit && a->orbit->center && a->orbit->center->typeclass() == class_star)
+            {
+                return;
+            }
+            if ((a->multisys && (a->multisys->get_member('A') != a
+                    || a->multisys->get_member('C')
+                    || (a->multisys->get_member('B') && a->multisys->get_member('B') != b)))
+                || (b->multisys && b->multisys != a->multisys))
+            {
+                return;
+            }
             double period = number(row, "period"), axis = number(row, "axis");
             const std::string period_unit = cell(row, "period_unit"), axis_unit = cell(row, "axis_unit");
             if (period_unit == "y")
@@ -1402,9 +1527,12 @@ namespace
             }
             orb6_ranks[b] = rank;
             b->orbit->center = a;
-            if (!a->multisys && !b->multisys)
+            if (!b->multisys)
             {
-                a->set_component('A', a);
+                if (!a->multisys)
+                {
+                    a->set_component('A', a);
+                }
                 b->set_component('B', a);
             }
             adopt(b, "orbital_period", b->orbit->period, period, "ORB6", row, "s");
@@ -1949,6 +2077,10 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
     }
     for (const auto &source : sources)
     {
+        if (source.name == "Mermilliod")
+        {
+            context.finalize_identifiers();
+        }
         const auto path = std::filesystem::path(cache_directory) / (source.name + "." + source.format);
         json status;
         status["name"] = source.name;
