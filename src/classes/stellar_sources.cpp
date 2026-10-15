@@ -2337,10 +2337,24 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
         std::filesystem::create_directories(destination);
         const auto filename = source.name + "." + source.format;
         const auto legacy = std::filesystem::path(cache_directory) / "reference" / filename;
-        if (!std::filesystem::exists(destination / filename) && std::filesystem::exists(legacy))
+        if (legacy != destination / filename && std::filesystem::exists(legacy))
         {
-            std::filesystem::rename(legacy, destination / filename);
+            auto target = destination / filename;
+            if (std::filesystem::exists(target))
+            {
+                target = destination / (filename + ".legacy");
+                for (int version = 1; std::filesystem::exists(target); ++version)
+                {
+                    target = destination / (filename + ".legacy." + std::to_string(version));
+                }
+            }
+            std::filesystem::rename(legacy, target);
         }
+    }
+    const auto legacy_directory = std::filesystem::path(cache_directory) / "reference";
+    if (std::filesystem::exists(legacy_directory) && std::filesystem::is_empty(legacy_directory))
+    {
+        std::filesystem::remove(legacy_directory);
     }
     if (allow_download && !radio_silence)
     {

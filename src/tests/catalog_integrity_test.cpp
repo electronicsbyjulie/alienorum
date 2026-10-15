@@ -2203,3 +2203,20 @@ TEST_F(CondensedCatalogTest, LegacyCompanionSynchronizationPreservesResolvedAstr
     EXPECT_DOUBLE_EQ(b->parallax, a->parallax);
     EXPECT_EQ(b->distance_known, a->distance_known);
 }
+
+TEST_F(CondensedCatalogTest, CacheMigrationRetainsBothPublicationCopies)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
+        "1\tHD 10000\tHD 10000\t0\t0\tG2V\t5.5\n");
+    std::filesystem::create_directories("catalogs/reference");
+    std::ofstream legacy("catalogs/reference/SIMBAD.tsv");
+    legacy << "Older publication cache\n";
+    legacy.close();
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5.5);
+    EXPECT_TRUE(std::filesystem::exists("catalogs/SIMBAD/SIMBAD.tsv.legacy"));
+    EXPECT_FALSE(std::filesystem::exists("catalogs/reference"));
+}
