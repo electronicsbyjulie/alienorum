@@ -71,7 +71,6 @@ int main(int argc, char **argv)
                     ((Star*)cels[i])->reconcile_visual_magnitudes();
                 }
             }
-            cache_cons_lines();
             ConsBins bins = fill_alienorum_ids();
             std::filesystem::current_path(output);
             const int rows = reader.write_condensed_star_cat(bins);

@@ -1112,9 +1112,17 @@ TEST_F(CondensedCatalogTest, ReferenceGaiaRejectsAmbiguousAndPoorAstrometry)
         "---\t---\t---\t---\t---\t---\n"
         "1000\t100\t5\t0.01\t1.0\t1\n"
         "1001\t101\t5\t0.01\t3.0\t1\n"
-        "1002\t102\t5\t0.01\t1.0\t2\n");
-    reconcile_stellar_sources(cels, "catalogs/reference", false);
+        "1002\t102\t5\t0.01\t1.0\t2\n[EOD]\nQUERY_STATUS: OK\n");
+    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    for (const auto &source : report["sources"])
+    {
+        if (source["name"] == "Gaia_DR3")
+        {
+            EXPECT_TRUE(source["valid"].get<bool>());
+        }
+    }
     EXPECT_NEAR(good->distance / parsec, 200, 1e-10);
+    EXPECT_NEAR(good->parallax, 5.0 / 1000 / 3600 * fiftyseventh, 1e-20);
     EXPECT_DOUBLE_EQ(bad->distance, 10 * parsec);
     EXPECT_DOUBLE_EQ(ambiguous->distance, 10 * parsec);
 }
@@ -1208,8 +1216,8 @@ TEST_F(CondensedCatalogTest, SbxDoesNotUseProjectedVelocityAsRelativeOrbitSize)
     b->orbit->semimajor_axis = 2 * AU;
     reference_file("SBX_systems.tsv", "sn\tra\tdec\tcomponent\n1\t0\t0\tAB\n");
     reference_file("SBX_alias.tsv", "sn\tcatalog\tidentifier\n1\tHD\t10000\n");
-    reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade\tK1\tK2\n"
-        "1\t10\t0.2\t2026A&A...000....1A\t1\t25\t30\n");
+    reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade\tK1\tK2\tnote\n"
+        "1\t10\t0.2\t2026A&A...000....1A\t1\t25\t30\t\"first line\nsecond line\"\n");
     reconcile_stellar_sources(cels, "catalogs/reference", false);
     EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
     EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);

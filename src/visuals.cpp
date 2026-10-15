@@ -6343,8 +6343,8 @@ void draw_horizon()
                     rocks[num_rocks].size = rock_size;
                     rocks[num_rocks].lift_px = rock_lift_px;
                     const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
-                    rocks[num_rocks].opacity = fade * fade * (3.0 - 2.0 * fade)
-                        * std::clamp(rw - 1.5, 0.0, 1.0);
+                    rocks[num_rocks].opacity = 1.0; // fade * fade * (3.0 - 2.0 * fade)
+                        // * std::clamp(rw - 1.5, 0.0, 1.0);
                     rocks[num_rocks].seed_val = rhash;
                     rocks[num_rocks].base_valid = base_valid;
                     num_rocks++;
