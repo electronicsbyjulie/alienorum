@@ -1,5 +1,6 @@
 #include <cmath>
 #include <vector>
+#include <unordered_set>
 #include "cons.h"
 
 int num_reg_cons = 0;
@@ -277,6 +278,12 @@ char get_color_code_from_temp(double tempK)
 ConsBins fill_alienorum_ids()
 {
     ConsBins bins;
+    std::unordered_set<Star*> included;
+    auto is_variable = [](const Star *star)
+    {
+        return star->variability_period && !star->is_eclipsing_binary
+            && fabs(star->maxmag - star->minmag) > 0.5;
+    };
 
     // Serpens Caput/Cauda are two disjoint boundary regions (SER1/SER2) but one constellation:
     // unify them under plain "Ser" so alienorumids count through Serpens as a single sequence.
@@ -295,6 +302,10 @@ ConsBins fill_alienorum_ids()
     {
         if (cels[i]->typeclass() != class_star) continue;
         Star* s = (Star*)cels[i];
+        if (!included.insert(s).second)
+        {
+            continue;
+        }
         if (s->declination >= _pi) s->declination -= _pi*2;
 
         if (s->multisys)
@@ -320,8 +331,9 @@ ConsBins fill_alienorum_ids()
 
         if (ser && (cs->abbrev == "Ser1" || cs->abbrev == "Ser2")) cs = ser;
 
-        int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
-        if (m < -30 || m > 50) m = 20;
+        const double magnitude = s->apparent_magnitude;
+        int m = std::isfinite(magnitude) && magnitude > -31 && magnitude < 51
+            ? static_cast<int>(magnitude) : 20;
         char cc = get_color_code_from_temp(s->estimate_temperature());
 
         if (bins.find(cs) != bins.end()
@@ -354,6 +366,21 @@ ConsBins fill_alienorum_ids()
 
     for (const auto& [cs, val1] : bins)
     {
+        // Count V IDs across every magnitude bin while retaining ordinary numbering.
+        std::map<char, int> variable_counts, variable_sequences;
+        for (const auto& [m, val2] : val1)
+        {
+            for (const auto& [cc, stars] : val2)
+            {
+                for (Star *star : stars)
+                {
+                    if (is_variable(star))
+                    {
+                        variable_counts[cc]++;
+                    }
+                }
+            }
+        }
         for (const auto& [m, val2] : val1)
         {
             for (const auto& [cc, val3] : val2)
@@ -362,15 +389,16 @@ ConsBins fill_alienorum_ids()
                 for (i=0; i<n; i++)
                 {
                     Star *s = val3[i];
+                    const bool variable = is_variable(s);
+                    const int sequence = variable ? ++variable_sequences[cc] : i + 1;
+                    const int count = variable ? variable_counts[cc] : n;
                     s->alienorumid =
-                        ((s->variability_period && !s->is_eclipsing_binary && fabs(s->maxmag-s->minmag) > 0.5)
-                            ? std::string("V")
-                            : std::to_string(m))
+                        (variable ? std::string("V") : std::to_string(m))
                         + std::string(1, cc)
                         + std::string(" ")
                         + cs->abbrev
                         + std::string(" ")
-                        + (n>1 ? std::to_string(i+1) : std::string(""))
+                        + (count > 1 ? std::to_string(sequence) : std::string(""))
                         ;
 
                     if (s->multisys)

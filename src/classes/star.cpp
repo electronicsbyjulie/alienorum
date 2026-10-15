@@ -18,7 +18,11 @@ bool show_favestars = false, label_favestars = true;
 // -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().
 std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential)
 {
-    if (!survey[0] || survey[0] == ' ' || !survey[1] || survey[1] == ' ') return std::string();
+    if (!survey || !survey[0] || !survey[1] || !sequential || declination < -90 || declination > 90
+        || (strncmp(survey, "BD", 2) && strncmp(survey, "CD", 2) && strncmp(survey, "CP", 2)))
+    {
+        return std::string();
+    }
     char buf[32];
     snprintf(buf, sizeof(buf), "%c%c%+03d %05u", survey[0], survey[1], declination, sequential);
     return std::string(buf);

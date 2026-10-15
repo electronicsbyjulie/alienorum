@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
+#include <set>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
 #include "universe_fixture.h"
@@ -13,6 +15,7 @@ class CondensedCatalogReader : public CatalogReader
 {
     public:
     using CatalogReader::write_condensed_star_cat_line;
+    using CatalogReader::resolve_or_create_exostar;
 };
 
 class CondensedCatalogTest : public UniverseFixture
@@ -537,4 +540,271 @@ TEST_F(CondensedCatalogTest, HipparcosProperMotionAdvancesTheEpochWithCosDeclina
     const double shift_arcsec = (star->right_ascension * fiftyseven - 15.0) * 3600;
     EXPECT_NEAR(shift_arcsec, 17.5, 0.01);
     EXPECT_NEAR(star->proper_motion_RA * oneyear * fiftyseven * 3600, 2.0, 1e-8);
+}
+
+TEST_F(CondensedCatalogTest, VariableIdsShareOneSequenceAcrossMagnitudeBins)
+{
+    Star *sun = make_star("Sun");
+    sun->apparent_magnitude = -26.72;
+    ConsBoundary boundary;
+    constellations[0].bounds.push_back(boundary);
+    Star *first = make_star("First variable");
+    Star *second = make_star("Second variable");
+    Star *fixed = make_star("Constant star");
+    for (int index = 1; index < ncelobjs; ++index)
+    {
+        Star *star = (Star*)cels[index];
+        strcpy(star->constellation, "Oph");
+        star->temperature = 5778;
+        star->apparent_magnitude = index == 1 ? 4.2 : 5.2;
+    }
+    first->variability_period = second->variability_period = oneday;
+    first->minmag = second->minmag = 4;
+    first->maxmag = second->maxmag = 6;
+    ConsBins bins = fill_alienorum_ids();
+    EXPECT_EQ(first->alienorumid, "Vy Oph 1");
+    EXPECT_EQ(second->alienorumid, "Vy Oph 2");
+    EXPECT_EQ(fixed->alienorumid, "5y Oph 2");
+    EXPECT_EQ(sun->alienorumid, "-26");
+    EXPECT_EQ(bins[&constellations[0]][5]['y'].size(), 2u);
+    const std::string original = first->alienorumid;
+    fill_alienorum_ids();
+    EXPECT_EQ(first->alienorumid, original);
+}
+
+TEST_F(CondensedCatalogTest, CatalogWriterEmitsEachStarOnceAcrossRepeatedFamilies)
+{
+    Star *sun = make_star("Sun");
+    sun->alienorumid = "-26";
+    Star *primary = make_star("Primary");
+    primary->alienorumid = "2y Oph 1";
+    primary->set_component('A', primary);
+    Star *secondary = make_star("Secondary");
+    secondary->set_component('C', primary);
+    secondary->alienorumid = "2y Oph 1 C";
+    ConsBins bins;
+    bins[&constellations[0]][2]['y'].push_back(primary);
+    bins[&constellations[0]][2]['y'].push_back(primary);
+    bins[&constellations[0]][3]['y'].push_back(secondary);
+    CatalogReader reader;
+    EXPECT_EQ(reader.write_condensed_star_cat(bins), 3);
+    std::ifstream file("catalogs/soles_alienorum.dat");
+    std::string line;
+    std::set<std::string> identities;
+    int rows = 0;
+    while (std::getline(file, line))
+    {
+        EXPECT_EQ(line.size(), 455u);
+        EXPECT_TRUE(identities.insert(trim(line.substr(0, 14))).second);
+        rows++;
+    }
+    EXPECT_EQ(rows, 3);
+}
+
+TEST_F(CondensedCatalogTest, UnknownMagnitudesRemainBlankAndReloadAsUnknown)
+{
+    Star *star = make_star("Unknown photometry");
+    star->alienorumid = "2y Oph 1";
+    star->apparent_magnitude = 1e29;
+    star->absolute_magnitude = std::numeric_limits<double>::infinity();
+    std::string encoded = written_row(star);
+    ASSERT_EQ(encoded.size(), 456u);
+    EXPECT_EQ(encoded.substr(76, 6), std::string(6, ' '));
+    EXPECT_EQ(encoded.substr(237, 6), std::string(6, ' '));
+    star->absolute_magnitude = 0;
+    EXPECT_EQ(written_row(star).substr(237, 6), std::string(6, ' '));
+    star->apparent_magnitude = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_EQ(written_row(star).substr(76, 6), std::string(6, ' '));
+    delete_the_universe();
+    std::vector<std::string> rows;
+    rows.push_back(encoded.substr(0, 455));
+    write_rows(rows);
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    Star *restored = (Star*)cels[1];
+    EXPECT_EQ(restored->apparent_magnitude, 1e29);
+    EXPECT_EQ(restored->absolute_magnitude, 1e29);
+}
+
+TEST_F(CondensedCatalogTest, BlankHipparcosVariableNamesPreserveExistingNames)
+{
+    make_star("Sun");
+    Star *first = make_star("HD218999");
+    first->HIP = 100;
+    first->namelen = strlen(first->name);
+    Star *second = make_star("HIP101");
+    second->HIP = 101;
+    std::filesystem::create_directories("catalogs/Hipparcos");
+    std::ofstream("catalogs/Hipparcos/hip_main.dat").close();
+    std::ofstream("catalogs/Hipparcos/h_dm_com.dat").close();
+    std::ofstream("catalogs/Hipparcos/hip_dm_o.dat").close();
+    std::ofstream file("catalogs/Hipparcos/hip_va_1.dat");
+    const int identifiers[] =
+    {
+        100, 101, 102, 120417
+    };
+    for (int hip : identifiers)
+    {
+        std::string row(104, ' ');
+        put(row, 1, 6, std::to_string(hip));
+        put(row, 25, 30, "EA");
+        put(row, 34, 39, "7.620");
+        put(row, 43, 48, "7.670");
+        put(row, 57, 68, "0.67619");
+        if (hip == 101)
+        {
+            put(row, 93, 104, "V123_Oph");
+        }
+        file << row << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    reader.read_Hipparcos_catalog(cels, MAX_CELOBJS);
+    EXPECT_STREQ(first->name, "HD218999");
+    EXPECT_EQ(first->namelen, strlen(first->name));
+    EXPECT_STREQ(second->name, "V123 Oph");
+    EXPECT_TRUE(first->is_eclipsing_binary);
+    EXPECT_NEAR(first->variability_period / oneday, 0.67619, 1e-10);
+}
+
+TEST_F(CondensedCatalogTest, GlieseComponentMarkerAndMissingDmAreNormalizedAtImport)
+{
+    std::filesystem::create_directories("catalogs/Gliese");
+    std::filesystem::create_directories("catalogs/CNS5");
+    std::ofstream("catalogs/CNS5/cns5.dat").close();
+    std::ofstream file("catalogs/Gliese/catalog.dat");
+    for (int index = 0; index < 3; ++index)
+    {
+        std::string row(166, ' ');
+        put(row, 1, 8, index == 0 ? "Sun" : "Wo 1255");
+        if (index > 0)
+        {
+            put(row, 9, 10, index == 1 ? "A" : "-");
+            put(row, 13, 14, "20");
+            put(row, 16, 17, "53");
+            put(row, 19, 20, "03");
+            put(row, 22, 22, "+");
+            put(row, 23, 24, "74");
+            put(row, 26, 29, "51.6");
+        }
+        put(row, 55, 66, "G8V");
+        put(row, 68, 73, index == 0 ? "-26.72" : "7.81");
+        put(row, 76, 80, "0.69");
+        put(row, 109, 114, "33.0");
+        put(row, 122, 126, "5.36");
+        if (index == 2)
+        {
+            put(row, 154, 155, "BD");
+        }
+        file << row << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Gliese_catalog(cels, MAX_CELOBJS), 3);
+    Star *star = (Star*)cels[2];
+    EXPECT_STREQ(star->Gliese, "GJ 1255 D");
+    EXPECT_EQ(star->get_component(), 'D');
+    EXPECT_STREQ(star->Bonn_survey, "");
+    EXPECT_TRUE(dmcache.empty());
+    EXPECT_TRUE(bonn_survey_key("BD", 0, 0).empty());
+    EXPECT_TRUE(bonn_survey_key("BD", 91, 1).empty());
+    EXPECT_TRUE(bonn_survey_key("XX", 0, 1).empty());
+    EXPECT_EQ(bonn_survey_key("BD", -4, 4384), "BD-04 04384");
+}
+
+TEST_F(CondensedCatalogTest, Sb9UnknownPhotometryStaysUnknownAndZeroIsMeasured)
+{
+    make_star("Sun");
+    Star *primary = make_star("HD10000");
+    primary->HD = 10000;
+    primary->absolute_magnitude = -5;
+    std::filesystem::create_directories("catalogs/SB9");
+    std::ofstream("catalogs/SB9/orbits.dat").close();
+    std::ofstream file("catalogs/SB9/main.dat");
+    const char *magnitudes[] =
+    {
+        "-", "0.000", "99.000"
+    };
+    for (int index = 0; index < 3; ++index)
+    {
+        std::string row(132, ' ');
+        put(row, 1, 4, std::to_string(1001 + index));
+        put(row, 36, 42, std::string("A") + static_cast<char>('B' + index));
+        put(row, 52, 57, magnitudes[index]);
+        put(row, 93, 102, "G2V");
+        put(row, 104, 132, "HD 10000");
+        file << row << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    reader.read_SB9_catalog(cels, MAX_CELOBJS);
+    ASSERT_NE(primary->multisys, nullptr);
+    Star *unknown = primary->multisys->get_member('B');
+    Star *zero = primary->multisys->get_member('C');
+    Star *placeholder = primary->multisys->get_member('D');
+    ASSERT_NE(unknown, nullptr);
+    ASSERT_NE(zero, nullptr);
+    ASSERT_NE(placeholder, nullptr);
+    EXPECT_EQ(unknown->apparent_magnitude, 1e29);
+    EXPECT_EQ(unknown->absolute_magnitude, 1e29);
+    EXPECT_DOUBLE_EQ(zero->apparent_magnitude, 0);
+    EXPECT_NEAR(zero->absolute_magnitude, 0, 1e-10);
+    EXPECT_EQ(placeholder->absolute_magnitude, 1e29);
+}
+
+TEST_F(CondensedCatalogTest, NegativeHipparcosFitCannotCreateOrOverwriteAnOrbit)
+{
+    make_star("Sun");
+    Star *primary = make_star("Beta Trianguli");
+    primary->HIP = 10064;
+    std::string row(100, ' ');
+    put(row, 1, 6, "10064");
+    put(row, 8, 17, "31.3870");
+    put(row, 19, 29, "7729.0700");
+    put(row, 31, 38, "-1.56");
+    CatalogReader reader;
+    int offset = ncelobjs;
+    EXPECT_FALSE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(primary->multisys, nullptr);
+    primary->set_component('A', primary);
+    Star *secondary = make_star("Known companion");
+    secondary->make_companion_of(primary, 'B');
+    ASSERT_NE(secondary->orbit, nullptr);
+    secondary->orbit->semimajor_axis = AU;
+    secondary->orbit->period = oneyear;
+    offset = ncelobjs;
+    EXPECT_FALSE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
+    EXPECT_DOUBLE_EQ(secondary->orbit->semimajor_axis, AU);
+    EXPECT_DOUBLE_EQ(secondary->orbit->period, oneyear);
+    EXPECT_EQ(ncelobjs, 3);
+}
+
+TEST_F(CondensedCatalogTest, ExoplanetHostIdentifiersSurviveUnspacedNames)
+{
+    make_star("Sun");
+    hdcache = new Star*[MAX_HD + 1]();
+    hipcache = new Star*[MAX_HIP + 1]();
+    CondensedCatalogReader reader;
+    ExoRow row;
+    row.hostname = "HD110317 A";
+    row.ra = 190;
+    row.dec = -13;
+    row.sy_dist = 80;
+    row.sy_vmag = 5.96;
+    row.st_spectype = "G2V";
+    row.st_mass = 1;
+    row.st_rad = 1;
+    row.st_teff = 5778;
+    bool was_new = false;
+    Star *star = reader.resolve_or_create_exostar(row, false, &was_new);
+    ASSERT_NE(star, nullptr);
+    EXPECT_TRUE(was_new);
+    EXPECT_EQ(star->HD, 110317);
+    EXPECT_EQ(hdcache[110317], star);
+    row.hostname = "HIP102970";
+    star = reader.resolve_or_create_exostar(row, false, &was_new);
+    ASSERT_NE(star, nullptr);
+    EXPECT_EQ(star->HIP, 102970);
+    EXPECT_EQ(hipcache[102970], star);
 }

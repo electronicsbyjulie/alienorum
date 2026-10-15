@@ -68,3 +68,22 @@ are intentionally visible; fixture tests passing does not certify this file as
 clean. See [CATALOG_INTEGRITY.md](CATALOG_INTEGRITY.md) for commands and conventions.
 The full local diagnostic report is `/tmp/soles_integrity_report.json` and can be
 recreated with the documented audit command.
+
+## Generator repairs after the snapshot
+
+The first repair batch addresses variable-ID collisions across magnitude bins,
+duplicate emission of the same star from overlapping family references, blank
+Hipparcos variability names overwriting valid names, unknown photometry becoming
+bare signs or infinity, the GJ 1255 component marker leaking into its name,
+missing Gliese DM values becoming false identities, negative Hipparcos orbital
+fits altering the simulation, and unspaced exoplanet host names losing HD/HIP IDs.
+
+Variable stars now share one sequence per constellation and color. Their IDs can
+change on regeneration; ordinary magnitude-bin numbering is retained. Unknown
+photometry is serialized as blank and reloads as unknown, with measured zero
+kept distinct. Invalid Hipparcos fits are rejected before creating a companion
+or overwriting a valid orbit. Existing generated data was left unchanged.
+
+Regression validation covers these repairs with 22 native tests and 35 Python
+tests. A new live audit after application regeneration will establish the
+remaining data findings; the old counts above describe the original snapshot.

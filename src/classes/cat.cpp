@@ -13,6 +13,7 @@
 #include <ctime>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <string_view>
 #include <string.h>
 #include "cat.h"
@@ -281,6 +282,11 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         //   9- 10  A2     ---     Comp     Components (A,B,C,... )
         read_field_onebased(buffer, 9, 10, field);
         if (field[0] == '1') field[0] = ' ';                // SMH!!!
+        if (field[0] == '-')
+        {
+            // GJ 1255 uses this marker for component D; normalize the name too.
+            field[0] = 'D';
+        }
         std::string comp = trim(field);
         if (comp.size())
         {
@@ -290,7 +296,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             }
 
             build_name += (std::string)" " + comp;
-            if (field[0] == '-') field[0] = 'D';            // GJ 1255 fix
             if (field[0] == 'A') A = s;
             s->set_component(field[0], A);
 
@@ -464,7 +469,17 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->Bonn_survey_sequential = atoi(field);
 
             std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
-            if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
+            if (!dmkey.empty())
+            {
+                if (!dmcache.count(dmkey))
+                {
+                    dmcache[dmkey] = s;
+                }
+            }
+            else
+            {
+                s->Bonn_survey[0] = s->Bonn_survey[1] = 0;
+            }
         }
 
         s->update_location(J2000_TIME_T);
@@ -952,6 +967,20 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
         return false;
     }
 
+    read_field_onebased(buffer, 8, 17, field);
+    const double period_days = atof(field);
+    read_field_onebased(buffer, 31, 38, field);
+    const double angular_axis = atof(field);
+    const double physical_axis = (angular_axis / 206264806) * A->distance;
+    if (!std::isfinite(period_days) || period_days <= 0
+        || !std::isfinite(physical_axis) || physical_axis <= 0)
+    {
+        // Reject an unusable fit before constructing or altering a binary.
+        std::cerr << "Ignoring invalid Hipparcos orbit for HIP" << HIP
+                  << ": period=" << period_days << " days, a0=" << angular_axis << " mas" << std::endl;
+        return false;
+    }
+
     A->set_component('A', A);
 
     s = A->multisys->get_member('B');
@@ -967,16 +996,14 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->epoch = J2000 + (1991.25 - 2000);
 
     //   8- 17  F10.4 d        P        Orbital period                           (DO2)
-    read_field_onebased(buffer, 8, 17, field);
-    s->orbit->period = atof(field) * oneday;
+    s->orbit->period = period_days * oneday;
 
     //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
     read_field_onebased(buffer, 19, 29, field);
     s->orbit->epoch = 2440000 + atof(field);
 
     //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
-    read_field_onebased(buffer, 31, 38, field);
-    s->orbit->semimajor_axis = (atof(field)/206264806) * s->distance;
+    s->orbit->semimajor_axis = physical_axis;
 
     //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
     read_field_onebased(buffer, 40, 45, field);
@@ -1478,7 +1505,10 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //   1-  6  I6    ---   HIP         Identifier (HIP)
         read_field_onebased(buffer, 1, 6, field);
         HIP = atoi(field);
-        if (!HIP) continue;
+        if (!HIP || HIP > MAX_HIP || !hipcache[HIP])
+        {
+            continue;
+        }
         Star *s = hipcache[HIP];
 
         //  25- 30  A6    ---   VarType    *Variability type as in GCVS/NSV
@@ -1505,8 +1535,11 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 93, 104, field);
         std::string sname = trim(field);
         std::replace(sname.begin(), sname.end(), '_', ' ');
-        strcpy(s->name, sname.c_str());
-        s->namelen = strlen(s->name);
+        if (!sname.empty())
+        {
+            strcpy(s->name, sname.c_str());
+            s->namelen = strlen(s->name);
+        }
     }
 
     fclose(fp);
@@ -2520,9 +2553,20 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 
         //  52- 57  F6.3  mag     mag2    ? Magnitude of component 2
         read_field_onebased(buffer, 52, 57, field);
-        if (atof(field)) B->apparent_magnitude = atof(field);
-        double intrinsic_brightness = pow(magnbase, -B->apparent_magnitude) * pow(fmax(AU, B->distance) / parsec / 10, 2);
-        if (B->absolute_magnitude > 1e28) B->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        char *magnitude_end = nullptr;
+        const double component_magnitude = strtod(field, &magnitude_end);
+        if (magnitude_end != field && trim(magnitude_end).empty() && std::isfinite(component_magnitude)
+            && component_magnitude >= -40 && component_magnitude < 99)
+        {
+            B->apparent_magnitude = component_magnitude;
+        }
+        if (B->absolute_magnitude > 1e28 && std::isfinite(B->apparent_magnitude)
+            && B->apparent_magnitude >= -40 && B->apparent_magnitude < 99
+            && std::isfinite(B->distance) && B->distance > 0)
+        {
+            B->absolute_magnitude = B->apparent_magnitude
+                - 5.0 * log10(fmax(AU, B->distance) / parsec / 10.0);
+        }
         if (A && (B->absolute_magnitude < A->absolute_magnitude)) B->absolute_magnitude = A->absolute_magnitude + 1;
 
         //  93-102  A10   ---     Sp2     MK Spectral type component 2
@@ -4981,9 +5025,17 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 10;
     line << std::string(l - line.str().size(), ' ');
 
-    line << ((s->apparent_magnitude >= 0) ? "+" : "-");
-    if (fabs(s->apparent_magnitude) < 10) line << "0";
-    if (s->apparent_magnitude < 99) line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
+    const bool have_magnitude = std::isfinite(s->apparent_magnitude)
+        && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99;
+    if (have_magnitude)
+    {
+        line << ((s->apparent_magnitude >= 0) ? "+" : "-");
+        if (fabs(s->apparent_magnitude) < 10)
+        {
+            line << "0";
+        }
+        line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
+    }
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -5073,14 +5125,21 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 12;
     line << std::string(l - line.str().size(), ' ');
 
-    if (!s->absolute_magnitude)
+    if (!s->absolute_magnitude && have_magnitude && std::isfinite(s->distance) && s->distance > 0)
     {
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
     }
-    line << ((s->absolute_magnitude >= 0) ? "+" : "-");
-    if (fabs(s->absolute_magnitude) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->absolute_magnitude) << std::flush;
+    if (std::isfinite(s->absolute_magnitude) && fabs(s->absolute_magnitude) <= 40
+        && (s->absolute_magnitude != 0 || have_magnitude))
+    {
+        line << ((s->absolute_magnitude >= 0) ? "+" : "-");
+        if (fabs(s->absolute_magnitude) < 10)
+        {
+            line << "0";
+        }
+        line << std::fixed << std::setprecision(2) << fabs(s->absolute_magnitude) << std::flush;
+    }
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -5269,7 +5328,16 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     FILE *fp = fopen(path.c_str(), "w");
     if (fp)
     {
-        write_condensed_star_cat_line(fp, (Star*)cels[0]);
+        std::unordered_set<Star*> emitted;
+        auto write_star = [&](Star *star)
+        {
+            if (star && emitted.insert(star).second)
+            {
+                write_condensed_star_cat_line(fp, star);
+                written++;
+            }
+        };
+        write_star((Star*)cels[0]);
 
         for (const auto& [cs, val1] : cb)
         {
@@ -5285,10 +5353,16 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                             for (c = 'A'; c <= 'Z'; c++)
                             {
                                 Star *B = val3[i]->multisys->get_member(c);
-                                if (B && B->get_component() == c) write_condensed_star_cat_line(fp, B);
+                                if (B && B->get_component() == c)
+                                {
+                                    write_star(B);
+                                }
                             }
                         }
-                        else write_condensed_star_cat_line(fp, val3[i]);
+                        else
+                        {
+                            write_star(val3[i]);
+                        }
                     }
                 }
             }
@@ -5656,7 +5730,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
 
         read_field_onebased(buffer, 77, 82, field);
-        s->apparent_magnitude = atof(field);
+        if (!trim(field).empty())
+        {
+            s->apparent_magnitude = atof(field);
+        }
 
         read_field_onebased(buffer, 84, 98, field);
         str = trim(field);
@@ -5764,7 +5841,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (s->parallax > 0) s->distance_known = true;
 
         read_field_onebased(buffer, 238, 243, field);
-        s->absolute_magnitude = atof(field);
+        s->absolute_magnitude = trim(field).empty() ? 1e29 : atof(field);
 
         read_field_onebased(buffer, 245, 254, field);
         s->mass = atof(field) * solar_mass;
@@ -6303,9 +6380,9 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             strncpy(host_star->Gliese, host_star->name, sizeof(host_star->Gliese) - 1);
             host_star->Gliese[sizeof(host_star->Gliese) - 1] = '\0';
         }
-        else if (name_len >= 3 && strncmp(host_star->name, "HD ", 3) == 0)
+        else if (HD > 0 && HD <= MAX_HD)
         {
-            host_star->HD = atoi(&host_star->name[3]);
+            host_star->HD = HD;
             if (host_star->HD <= MAX_HD)
             {
                 if (hdcache && hdcache[host_star->HD])
@@ -6320,9 +6397,9 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
                 }
             }
         }
-        else if (name_len >= 4 && strncmp(host_star->name, "HIP ", 4) == 0)
+        else if (HIP > 0 && HIP <= MAX_HIP)
         {
-            host_star->HIP = atoi(&host_star->name[4]);
+            host_star->HIP = HIP;
             if (host_star->HIP <= MAX_HIP)
             {
                 if (hipcache && hipcache[host_star->HIP])
