@@ -265,7 +265,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     char field[32];
     int num_read = 0;
     int offset, j;
-    double deg, mnt, sec, ra, dec, ep_y, ra2k, dec2k, pm, pmtheta, absmagn;
+    double deg, mnt, sec, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
 
@@ -589,14 +589,20 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
     ncelobjs = num_read;
     path = "catalogs" _FILESLASH "CNS5" _FILESLASH "cns5.dat";
-    fp = fopen(path.c_str(), "rb");
-    if (!fp)
+    std::ifstream cns5(path);
+    if (!cns5)
     {
         std::cerr << "ERROR: Missing CNS5 catalog." << std::endl;
         return num_read;
     }
-    while (fgets(buffer, 300, fp))
+    std::string cns5_line;
+    while (std::getline(cns5, cns5_line))
     {
+        if (cns5_line.size() < 319)
+        {
+            continue;
+        }
+        const char *buffer = cns5_line.c_str();
         //   6- 11  A6    ---       GJ      Gliese-Jahreiss number (gj_id)
         read_field_onebased(buffer, 6, 11, field);
         float f = atof(field);
@@ -612,48 +618,68 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         // to update a few fields (radial velocity) on stars CNS3 already supplied.
         if (!s) continue;
 
-        //  48- 53  I6    ---       HIP     ?=- Hipparcos identifier (hip_id)
-        read_field_onebased(buffer, 48, 53, field);
-        s->HIP = atoi(field);
-        if (!hipcache[s->HIP]) hipcache[s->HIP] = s;
+        double hip = 0;
+        if (read_catalog_number(buffer, 48, 53, hip) && hip >= 1 && hip <= MAX_HIP && floor(hip) == hip)
+        {
+            if (s->HIP && s->HIP != hip && hipcache[s->HIP] == s)
+            {
+                hipcache[s->HIP] = nullptr;
+            }
+            s->HIP = static_cast<unsigned int>(hip);
+            if (!hipcache[s->HIP])
+            {
+                hipcache[s->HIP] = s;
+            }
+        }
 
-        //  55- 74 F20.16 deg       RAdeg   ?=- Right ascension (J2000) at Ep=Epoch (ra)
-        read_field_onebased(buffer, 55, 74, field);
-        ra = atof(field) * fiftyseventh;
-        //  76- 98 F23.19 deg       DEdeg   ?=- Declination (J2000) at Ep=Epoch (dec)
-        read_field_onebased(buffer, 76, 98, field);
-        dec = atof(field) * fiftyseventh;
-        // 100-108  F9.4  yr        Epoch   [1991.25/2017.97]?=- Reference epoch for coordinates (epoch)
-        read_field_onebased(buffer, 100, 108, field);
-        ep_y = atof(field);
-        convert_to_J2000(ra, dec, ep_y, ra2k, dec2k, false);
-
-        s->right_ascension = ra2k;
-        s->declination = dec2k;
-        s->epoch = J2000;
-
-        // 130-148 F19.15 mas       plx     ?=- Absolute trigonometric parallax (parallax)
-        read_field_onebased(buffer, 130, 148, field);
-        s->parallax = atof(field) * 1e-3;
-        s->distance = parsec / s->parallax;
-        s->parallax *= 2.777777777777e-4 * fiftyseventh;
-        s->distance_known = true;
-        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
-
-        // 184-206 F23.17 mas/yr    pmRA    ?=- Proper motion in right ascension (d(RAcosDE)/dt) (pmra)
-        read_field_onebased(buffer, 184, 206, field);
-        ra = atof(field) * 2.777777777777e-4 * fiftyseventh / oneyear;
-        s->proper_motion_RA = ra * cos(s->declination);
-
-        // 230-252 F23.17 mas/yr    pmDE    ?=- Proper motion in declination (pmdec)
-        read_field_onebased(buffer, 230, 252, field);
-        dec = atof(field) * 2.777777777777e-4 * fiftyseventh / oneyear;
-        s->proper_motion_decl = dec;
-
-        // 297-319 F23.18 km/s      RV      ?=- Spectroscopic radial velocity (rv)
-        read_field_onebased(buffer, 297, 319, field);
-        s->radial_velocity = atof(field) * 1000;
+        // CNS5 uses ICRS coordinates at its stated epoch and tangent motions in mas/year.
+        double ra_degrees = 0, dec_degrees = 0, epoch_year = 0;
+        double pm_ra_mas = 0, pm_dec_mas = 0;
+        const bool have_position = read_catalog_number(buffer, 55, 74, ra_degrees)
+            && read_catalog_number(buffer, 76, 98, dec_degrees)
+            && ra_degrees >= 0 && ra_degrees < 360 && fabs(dec_degrees) <= 90;
+        const bool have_epoch = read_catalog_number(buffer, 100, 108, epoch_year)
+            && epoch_year >= 1800 && epoch_year <= 2100;
+        const bool have_pm_ra = read_catalog_number(buffer, 184, 206, pm_ra_mas);
+        const bool have_pm_dec = read_catalog_number(buffer, 230, 252, pm_dec_mas);
+        const double mas_to_radians = fiftyseventh / 3600000.0;
+        const double source_ra = ra_degrees * fiftyseventh;
+        const double source_dec = dec_degrees * fiftyseventh;
+        if (have_position && have_epoch && (epoch_year == 2000 || (have_pm_ra && have_pm_dec)))
+        {
+            const double elapsed_years = 2000.0 - epoch_year;
+            Point east(-cos(source_ra), 0, -sin(source_ra));
+            Point north(sin(source_ra) * sin(source_dec), cos(source_dec), -cos(source_ra) * sin(source_dec));
+            const Point position = Point::from_ra_dec(source_ra, source_dec, 1.0)
+                + east * (pm_ra_mas * mas_to_radians * elapsed_years)
+                + north * (pm_dec_mas * mas_to_radians * elapsed_years);
+            s->right_ascension = fmod(atan2(-position.x, position.z) + 2 * _pi, 2 * _pi);
+            s->declination = atan2(position.y, hypot(position.x, position.z));
+            s->epoch = J2000;
+        }
+        if (have_pm_ra && have_position)
+        {
+            s->proper_motion_RA = pm_ra_mas * mas_to_radians / oneyear
+                / std::max(1e-12, fabs(cos(source_dec)));
+        }
+        if (have_pm_dec)
+        {
+            s->proper_motion_decl = pm_dec_mas * mas_to_radians / oneyear;
+        }
+        double parallax_mas = 0;
+        if (read_catalog_number(buffer, 130, 148, parallax_mas) && parallax_mas > 0)
+        {
+            s->parallax = parallax_mas * mas_to_radians;
+            s->distance = 1000.0 * parsec / parallax_mas;
+            s->distance_known = true;
+            s->reconcile_visual_magnitudes();
+        }
+        double radial_velocity = 0;
+        if (read_catalog_number(buffer, 297, 319, radial_velocity))
+        {
+            s->radial_velocity = radial_velocity * 1000;
+        }
+        s->update_location(J2000_TIME_T);
     }
 
     return num_read;

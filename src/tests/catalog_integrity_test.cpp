@@ -1707,3 +1707,60 @@ TEST_F(CondensedCatalogTest, MissingHipparcosHdDoesNotEraseAKnownIdentifier)
     EXPECT_EQ(star->HD, 10000u);
     EXPECT_EQ(hdcache[10000], star);
 }
+
+TEST_F(CondensedCatalogTest, Cns5LongRecordsRemainWholeAndUseIcrsTangentMotionUnits)
+{
+    std::filesystem::create_directories("catalogs/Gliese");
+    std::filesystem::create_directories("catalogs/CNS5");
+    std::ofstream gliese("catalogs/Gliese/catalog.dat");
+    for (int index = 0; index < 3; index++)
+    {
+        std::string row(166, ' ');
+        put(row, 1, 8, index == 0 ? "Sun" : (index == 1 ? "Gl  100" : "Gl  200"));
+        if (index)
+        {
+            put(row, 13, 14, "01");
+            put(row, 16, 17, "00");
+            put(row, 19, 20, "00");
+            put(row, 22, 22, "+");
+            put(row, 23, 24, "60");
+            put(row, 26, 29, "00.0");
+        }
+        put(row, 55, 66, "G2V");
+        put(row, 68, 73, index ? "5.00" : "-26.72");
+        put(row, 76, 80, "0.65");
+        put(row, 109, 114, "33.0");
+        put(row, 122, 126, "5.36");
+        gliese << row << '\n';
+    }
+    gliese.close();
+    std::string source(761, ' ');
+    put(source, 6, 11, "100");
+    put(source, 48, 53, "100");
+    put(source, 55, 74, "15.0000000000000000");
+    put(source, 76, 98, "60.0000000000000000000");
+    put(source, 100, 108, "2016.0");
+    put(source, 130, 148, "50.0");
+    put(source, 184, 206, "1000.0");
+    put(source, 230, 252, "0.0");
+    put(source, 297, 319, "12.5");
+    // These payload fields resemble another record only if the 761-byte row is split.
+    put(source, 604, 609, "200");
+    put(source, 646, 651, "200");
+    std::ofstream cns5("catalogs/CNS5/cns5.dat");
+    cns5 << source << '\n';
+    cns5.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Gliese_catalog(cels, MAX_CELOBJS), 3);
+    Star *star = static_cast<Star*>(cels[1]);
+    EXPECT_EQ(star->HIP, 100u);
+    EXPECT_EQ(hipcache[100], star);
+    EXPECT_NEAR(star->right_ascension * fiftyseven, 15.0 - 32.0 / 3600, 1e-5);
+    EXPECT_NEAR(star->declination * fiftyseven, 60.0, 1e-5);
+    EXPECT_NEAR(star->proper_motion_RA, 2.0 / 3600 * fiftyseventh / oneyear, 1e-20);
+    EXPECT_DOUBLE_EQ(star->proper_motion_decl, 0);
+    EXPECT_DOUBLE_EQ(star->distance / parsec, 20);
+    EXPECT_DOUBLE_EQ(star->radial_velocity, 12500);
+    EXPECT_EQ(static_cast<Star*>(cels[2])->HIP, 0u);
+    EXPECT_EQ(hipcache[200], nullptr);
+}

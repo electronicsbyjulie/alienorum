@@ -137,7 +137,7 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 38 Python tests and 63 native tests pass; CMake configures
+Checkpoint on 2026-10-14: 38 Python tests and 64 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
@@ -196,3 +196,14 @@ The BSC notes download is configured in `catalogs/urls.dat`. These notes are
 cached alongside the BSC table for reviewing joint photometry and ambiguous
 historical cross-identifications. They are downloaded data, so the existing
 manifest installation rule applies without adding a static release asset.
+
+The underlying CNS5 corruption was a 300-byte reader splitting 761-byte records.
+It now reads complete lines, rejects truncated records, keeps missing measurements
+unknown, converts milliarcseconds/year correctly, and propagates ICRS coordinates
+from the source epoch to J2000 without applying equinox precession. Tangent RA
+motion is converted to the native angular derivative with the declination cosine.
+A full-width regression embeds a false record-like payload beyond byte 600 and
+verifies that it cannot assign another star's HIP ID. It also checks epoch motion,
+parallax distance and a radial velocity extending past the old buffer limit.
+These repairs require fresh generation; an existing condensed cache retains the
+previously imported values.
