@@ -137,7 +137,7 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 35 Python tests and 50 native tests pass; CMake configures
+Checkpoint on 2026-10-14: 35 Python tests and 57 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
@@ -157,3 +157,14 @@ importers and condensed reader. A regression verifies that a SIMBAD numbered
 variant survives through native name generation, rather than collapsing into its
 unnumbered Greek letter. The isolated preview omits constellation line-graph
 resolution, which has no exported catalog fields.
+
+The first actual refreshed output audited at 213 errors and 17,810 warnings
+(SHA-256 `74b166b1a6fa8ad4878f16e49f2fe3f8e2b474df1f7eb2c89eab12e589b2f5be`).
+That output is a failed comparison, not an approved catalog. The regression pass
+now preserves current constellation designations against historical aliases,
+keeps component-qualified HIP aliases distinct from bare system IDs, rejects new
+Gliese collisions, distinguishes HR identities when HD components were swapped,
+and retains joint photometry separately when a source cannot resolve components.
+A display-only primary may recover its existing family's system identifier
+without copying the family's unresolved photometry onto that component.
+The independent BSC/Hipparcos audit remains unchanged during these repairs.

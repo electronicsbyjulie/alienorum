@@ -1431,3 +1431,114 @@ TEST_F(CondensedCatalogTest, ReferenceBayerIdentityPreservesNumberedGreekVariant
     star->rename_from_Bayer_Flamsteed();
     EXPECT_STREQ(star->name, "Zeta 1 Ophiuchi");
 }
+
+TEST_F(CondensedCatalogTest, HistoricalAliasesCannotMoveCanonicalConstellationDesignations)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    strcpy(star->constellation, "Oph");
+    strcpy(star->Bayer, "Alp Oph");
+    star->FlamsteedNo = 55;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000\tHD 10000|* 55 Oph|* 40 Ser|* alf Ser\t0\t0\tG2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(star->constellation, "Oph");
+    EXPECT_STREQ(star->Bayer, "Alp Oph");
+    EXPECT_EQ(star->FlamsteedNo, 55);
+}
+
+TEST_F(CondensedCatalogTest, NewGlieseAliasesDoNotDuplicateAnExistingUnrelatedIdentity)
+{
+    make_star("Sun");
+    Star *original = make_star("GJ100");
+    strcpy(original->Gliese, "GJ 100");
+    original->right_ascension = fiftyseventh;
+    Star *other = make_star("HIP100");
+    other->HIP = 100;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHIP 100\tHIP 100|GJ 100\t0\t0\tG2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(original->Gliese, "GJ 100");
+    EXPECT_STREQ(other->Gliese, "");
+}
+
+TEST_F(CondensedCatalogTest, ComponentQualifiedHipAliasesAreNotBareSystemIds)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000\tHD 10000|HIP 100B\t0\t0\tG2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(star->HIP, 0u);
+}
+
+TEST_F(CondensedCatalogTest, ExplicitHrIdentitiesCanDisambiguateSwappedHdComponents)
+{
+    make_star("Sun");
+    Star *first = make_star("HD10000");
+    first->HD = 10000;
+    first->HR = 10;
+    Star *second = make_star("HD10001");
+    second->HD = 10001;
+    second->HR = 11;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10001\tHD 10001|HR 10\t0\t0\tG2V\n"
+        "2\tHD 10000\tHD 10000|HR 11\t0\t0\tK2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(first->HD, 10001u);
+    EXPECT_EQ(second->HD, 10000u);
+    EXPECT_STREQ(first->spectral_type, "G2V");
+    EXPECT_STREQ(second->spectral_type, "K2V");
+}
+
+TEST_F(CondensedCatalogTest, SharedSystemAliasesDoNotCopyJointPhotometryOntoBothComponents)
+{
+    make_star("Sun");
+    Star *a = make_star("First");
+    a->HD = 10000;
+    a->HIP = 100;
+    a->set_component('A', a);
+    a->apparent_magnitude = 5;
+    Star *b = make_star("Second");
+    b->HD = 10000;
+    b->HIP = 100;
+    b->make_companion_of(a, 'B');
+    b->apparent_magnitude = 7;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\totype\tV\n"
+        "1\tHD 10000\tHD 10000|HIP 100\t0\t0\tG2V+K2V\t**\t4\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(a->apparent_magnitude, 5);
+    EXPECT_DOUBLE_EQ(b->apparent_magnitude, 7);
+}
+
+TEST_F(CondensedCatalogTest, ImpossibleNegativeJohnsonColorsDoNotReplaceMeasuredColors)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    star->BV_color = 1.2;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\tB\n"
+        "1\tHD 10000\tHD 10000\t0\t0\tK5V\t13\t12\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(star->BV_color, 1.2);
+}
+
+TEST_F(CondensedCatalogTest, DisplayOnlyPrimaryCanRecoverItsExistingFamilySystemId)
+{
+    make_star("Sun");
+    Star *primary = make_star("HD10000 A");
+    primary->set_component('A', primary);
+    Star *secondary = make_star("Resolved member");
+    secondary->HD = 10000;
+    secondary->make_companion_of(primary, 'B');
+    hdcache = new Star*[MAX_HD + 1]();
+    hdcache[10000] = secondary;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
+        "1\tHD 10000\tHD 10000\t0\t0\tG2V\t6\n");
+    const double original_magnitude = primary->apparent_magnitude;
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(primary->HD, 10000u);
+    EXPECT_DOUBLE_EQ(primary->apparent_magnitude, original_magnitude);
+}

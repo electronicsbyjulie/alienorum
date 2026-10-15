@@ -302,6 +302,47 @@ namespace
             }
         }
 
+        bool same_family(Star *first, Star *second)
+        {
+            if (first == second || (first->multisys && first->multisys == second->multisys))
+            {
+                return true;
+            }
+            auto root = [](Star *star)
+            {
+                for (int depth = 0; depth < 32 && star->orbit && star->orbit->center
+                    && star->orbit->center != star && star->orbit->center->typeclass() == class_star; depth++)
+                {
+                    star = static_cast<Star*>(star->orbit->center);
+                }
+                return star;
+            };
+            return root(first) == root(second);
+        }
+
+        std::string bayer_display(const std::string &bayer, const std::string &constellation)
+        {
+            int greek = grkno_from_abbrev(bayer.c_str());
+            if (greek >= 100)
+            {
+                greek = (greek - 100) / 10;
+            }
+            if (greek < 0 || greek >= 24)
+            {
+                return "";
+            }
+            for (const auto &cons : constellations)
+            {
+                if (stellar_identifier_key(cons.abbrev) == stellar_identifier_key(constellation))
+                {
+                    const int number = bayer.size() > 3 ? atoi(bayer.c_str() + 3) : 0;
+                    return Greek_letter[greek] + (number ? " " + std::to_string(number) : "")
+                        + " " + cons.genitive;
+                }
+            }
+            return "";
+        }
+
         void add_alias(const std::string &value, Star *star)
         {
             const std::string key = stellar_identifier_key(value);
@@ -496,13 +537,17 @@ namespace
                 "Nu", "Xi", "Omi", "Pi", "Rho", "Sig", "Tau", "Ups", "Phi", "Chi", "Psi", "Ome"
             };
             const std::regex flam("^\\*([0-9]+)([A-Z][A-Z][A-Z])([A-Z]?)$");
-            const std::regex hd("^HD([0-9]+)[A-Z]?$");
-            const std::regex hip("^HIP([0-9]+)[A-Z]?$");
+            const std::regex hd("^HD([0-9]+)$");
+            const std::regex hip("^HIP([0-9]+)$");
             const std::regex gliese("^GJ([0-9]+(?:\\.[0-9]+)?)([A-Z]{0,3})$");
             std::string gliese_value;
             int gliese_score = -1;
             const std::string original_bayer = star->Bayer;
+            const std::string original_constellation = stellar_identifier_key(star->constellation);
+            const std::string original_bayer_display = bayer_display(original_bayer, star->constellation);
+            const int original_flamsteed = star->FlamsteedNo;
             int bayer_score = -1;
+            int flamsteed_score = -1;
             for (const auto &alias : names)
             {
                 const std::string key = stellar_identifier_key(alias);
@@ -512,7 +557,7 @@ namespace
                     const unsigned long id = strtoul(match[1].str().c_str(), nullptr, 10);
                     if (id > 0 && id <= MAX_HD && !star->HD
                         && (!hdcache || !hdcache[id] || hdcache[id] == star
-                            || (star->multisys && hdcache[id]->multisys == star->multisys)))
+                            || same_family(star, hdcache[id])))
                     {
                         star->HD = id;
                         if (hdcache && !hdcache[id])
@@ -527,7 +572,7 @@ namespace
                     const unsigned long id = strtoul(match[1].str().c_str(), nullptr, 10);
                     if (id > 0 && id <= MAX_HIP && !star->HIP
                         && (!hipcache || !hipcache[id] || hipcache[id] == star
-                            || (star->multisys && hipcache[id]->multisys == star->multisys)))
+                            || same_family(star, hipcache[id])))
                     {
                         star->HIP = id;
                         if (hipcache && !hipcache[id])
@@ -551,10 +596,13 @@ namespace
                 if (std::regex_match(key, match, flam))
                 {
                     const int id = atoi(match[1].str().c_str());
-                    if (id > 0 && id <= 999)
+                    const std::string cons_upper = match[2];
+                    const int score = id == original_flamsteed ? 2 : 0;
+                    if (id > 0 && id <= 999 && score > flamsteed_score
+                        && (original_constellation.empty() || original_constellation == cons_upper))
                     {
+                        flamsteed_score = score;
                         star->FlamsteedNo = id;
-                        const std::string cons_upper = match[2];
                         for (const auto &cons : constellations)
                         {
                             if (stellar_identifier_key(cons.abbrev) == cons_upper)
@@ -587,14 +635,16 @@ namespace
                     }
                     for (const auto &cons : constellations)
                     {
-                        if (stellar_identifier_key(cons.abbrev) != suffix.substr(0, 3))
+                        if (stellar_identifier_key(cons.abbrev) != suffix.substr(0, 3)
+                            || (!original_constellation.empty()
+                                && stellar_identifier_key(cons.abbrev) != original_constellation))
                         {
                             continue;
                         }
                         const int component = end == position ? 0 : atoi(key.substr(position, end - position).c_str());
                         const std::string value = abbreviations[g]
                             + (component ? std::to_string(component) : " ") + cons.abbrev;
-                        const int score = (component ? 8 : 0) + (value == original_bayer ? 2 : 0)
+                        const int score = (component ? 2 : 0) + (value == original_bayer ? 8 : 0)
                             + (suffix.size() == 4 ? 1 : 0);
                         if (value.size() <= 7 && score > bayer_score)
                         {
@@ -609,11 +659,47 @@ namespace
             }
             if (!gliese_value.empty() && gliese_value.size() < sizeof(star->Gliese))
             {
-                strcpy(star->Gliese, gliese_value.c_str());
-                provenance(star, "Gliese", "SIMBAD", row, gliese_value);
+                const std::string key = stellar_identifier_key(gliese_value);
+                const auto owners = aliases.find(key);
+                bool available = true;
+                if (owners != aliases.end())
+                {
+                    for (Star *owner : owners->second)
+                    {
+                        if (owner != star && (!star->multisys || star->multisys != owner->multisys))
+                        {
+                            available = false;
+                        }
+                    }
+                }
+                const std::string current = trim(star->Gliese);
+                const bool display_match = key == stellar_identifier_key(star->name);
+                if (!available && current.empty())
+                {
+                    json conflict;
+                    conflict["star"] = star->name;
+                    conflict["source"] = "SIMBAD";
+                    conflict["reason"] = "Gliese identifier is already attached to another catalog object";
+                    conflict["candidate"] = gliese_value;
+                    report["conflicts"].push_back(conflict);
+                }
+                if (available && (current.empty() || display_match))
+                {
+                    strcpy(star->Gliese, gliese_value.c_str());
+                    provenance(star, "Gliese", "SIMBAD", row, gliese_value);
+                }
             }
-            // Repair explicit numeric display names from the object's own source identity.
+            // Repair explicit display designations while preserving component suffixes.
             const std::string current = trim(star->name);
+            if (!original_bayer_display.empty() && original_bayer != star->Bayer
+                && trim(lop_component(current.c_str())) == original_bayer_display)
+            {
+                const std::string updated = bayer_display(star->Bayer, star->constellation);
+                if (!updated.empty())
+                {
+                    name(star, updated + current.substr(original_bayer_display.size()), "SIMBAD", row);
+                }
+            }
             if (current.rfind("HD", 0) == 0 && star->HD)
             {
                 const char last = current.back();
@@ -627,7 +713,11 @@ namespace
                 {
                     if (cons.abbrev == star->constellation)
                     {
-                        name(star, std::to_string(star->FlamsteedNo) + " " + cons.genitive, "SIMBAD", row);
+                        const char last = current.back();
+                        const std::string component = last >= 'A' && last <= 'Z'
+                            ? " " + std::string(1, last) : "";
+                        name(star, std::to_string(star->FlamsteedNo) + " " + cons.genitive + component,
+                            "SIMBAD", row);
                     }
                 }
             }
@@ -648,7 +738,7 @@ namespace
             {
                 return (star->HD && keys.count("HD" + std::to_string(star->HD)) ? 4 : 0)
                     + (star->HIP && keys.count("HIP" + std::to_string(star->HIP)) ? 3 : 0)
-                    + (star->HR && keys.count("HR" + std::to_string(star->HR)) ? 2 : 0)
+                    + (star->HR && keys.count("HR" + std::to_string(star->HR)) ? 10 : 0)
                     + (keys.count(stellar_identifier_key(star->name)) ? 4 : 0);
             };
             int best_score = 0;
@@ -656,10 +746,42 @@ namespace
             {
                 best_score = std::max(best_score, identity_score(star));
             }
+            size_t equally_ranked = 0;
+            bool resolved_family = false;
+            for (Star *star : matches)
+            {
+                if (identity_score(star) == best_score)
+                {
+                    equally_ranked++;
+                    resolved_family = resolved_family || star->multisys || children.count(star)
+                        || (star->orbit && star->orbit->center);
+                }
+            }
+            if (equally_ranked > 1 && resolved_family)
+            {
+                json conflict;
+                conflict["source"] = "SIMBAD";
+                conflict["oid"] = oid;
+                conflict["reason"] = "Shared system identifiers do not resolve individual stellar components";
+                report["conflicts"].push_back(conflict);
+                return;
+            }
             for (Star *star : matches)
             {
                 if (identity_score(star) < best_score)
                 {
+                    std::string display = stellar_identifier_key(star->name);
+                    const std::string component_display = display;
+                    if (!display.empty() && display.back() == 'A')
+                    {
+                        display.pop_back();
+                    }
+                    if (!star->HD && !star->HIP && !star->HR
+                        && (keys.count(display) || keys.count("*" + display)
+                            || keys.count(component_display) || keys.count("*" + component_display)))
+                    {
+                        designation(star, names, row);
+                    }
                     continue;
                 }
                 if (object_ids.count(star) && object_ids[star] != oid)
@@ -673,11 +795,52 @@ namespace
                 }
                 object_ids[star] = oid;
                 resolved_objects[oid].push_back(star);
-                for (const auto &alias : names)
+                if (star->HR && keys.count("HR" + std::to_string(star->HR)))
                 {
-                    add_alias(alias, star);
+                    std::vector<unsigned long> source_hd;
+                    for (const auto &alias : keys)
+                    {
+                        std::smatch identified;
+                        if (std::regex_match(alias, identified, std::regex("^HD([0-9]+)$")))
+                        {
+                            source_hd.push_back(strtoul(identified[1].str().c_str(), nullptr, 10));
+                        }
+                    }
+                    if (source_hd.size() == 1 && source_hd.front() > 0 && source_hd.front() <= MAX_HD
+                        && star->HD && star->HD != source_hd.front())
+                    {
+                        const std::string previous = "HD" + std::to_string(star->HD);
+                        auto &old_alias = aliases[previous];
+                        old_alias.erase(std::remove(old_alias.begin(), old_alias.end(), star), old_alias.end());
+                        if (hdcache && hdcache[star->HD] == star)
+                        {
+                            hdcache[star->HD] = nullptr;
+                        }
+                        star->HD = source_hd.front();
+                        if (hdcache)
+                        {
+                            hdcache[star->HD] = star;
+                        }
+                        provenance(star, "HD", "SIMBAD", row, star->HD);
+                    }
                 }
                 designation(star, names, row);
+                for (const auto &alias : names)
+                {
+                    const std::string key = stellar_identifier_key(alias);
+                    const auto owners = aliases.find(key);
+                    if (owners == aliases.end() || owners->second.empty()
+                        || std::find(owners->second.begin(), owners->second.end(), star) != owners->second.end())
+                    {
+                        add_alias(alias, star);
+                    }
+                }
+                if (cell(row, "otype") == "**" && (star->multisys || children.count(star)))
+                {
+                    provenance(star, "unresolved_system_measurements", "SIMBAD", row,
+                        json(row));
+                    continue;
+                }
                 const std::string quality = cell(row, "sp_qual");
                 spectrum(star, cell(row, "sp_type"), "SIMBAD", row,
                     quality == "D" || quality == "E" ? 5 : 20);
@@ -686,7 +849,7 @@ namespace
                 {
                     adopt(star, "V", star->apparent_magnitude, v, "SIMBAD", row, "mag");
                 }
-                if (std::isfinite(b) && std::isfinite(v) && fabs(b - v) < 5)
+                if (std::isfinite(b) && std::isfinite(v) && b - v >= -0.5 && b - v < 5)
                 {
                     adopt(star, "B-V", star->BV_color, b - v, "SIMBAD", row, "mag");
                     star->has_catalog_BV = true;
@@ -719,7 +882,7 @@ namespace
             }
             Star *star = matches.front();
             const double bv = number(row, "B-V"), ub = number(row, "U-B"), v = number(row, "Vmag");
-            if (bv > -1 && bv < 5)
+            if (bv >= -0.5 && bv < 5)
             {
                 adopt(star, "B-V", star->BV_color, bv, "Mermilliod", row, "mag", number(row, "e_B-V"));
                 star->has_catalog_BV = true;
