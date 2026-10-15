@@ -300,6 +300,44 @@ namespace
                     children[static_cast<Star*>(star->orbit->center)].push_back(star);
                 }
             }
+            // Rebuild component membership from explicit condensed IDs without changing orbit centers.
+            std::unordered_map<std::string, Star*> by_id;
+            for (Star *star : stars)
+            {
+                if (!star->alienorumid.empty())
+                {
+                    by_id.emplace(trim(star->alienorumid), star);
+                }
+            }
+            for (Star *star : stars)
+            {
+                const std::string &id = star->alienorumid;
+                if (star->multisys || id.size() < 3 || id[id.size() - 2] != ' '
+                    || id.back() < 'B' || id.back() > 'Z')
+                {
+                    continue;
+                }
+                const auto root = by_id.find(trim(id.substr(0, id.size() - 2)));
+                if (root == by_id.end() || root->second == star)
+                {
+                    continue;
+                }
+                Star *primary = root->second;
+                if (primary->multisys && primary->multisys->get_member('A') != primary)
+                {
+                    continue;
+                }
+                if (!primary->multisys)
+                {
+                    primary->multisys = new StarMulti();
+                    primary->multisys->add_member(primary, 'A');
+                }
+                if (!primary->multisys->get_member(id.back()))
+                {
+                    star->multisys = primary->multisys;
+                    star->multisys->add_member(star, id.back());
+                }
+            }
         }
 
         bool same_family(Star *first, Star *second)
@@ -533,8 +571,8 @@ namespace
             };
             static const std::vector<std::string> abbreviations
             {
-                "Alp", "Bet", "Gam", "Del", "Eps", "Zet", "Eta", "The", "Iot", "Kap", "Lam", "Mu",
-                "Nu", "Xi", "Omi", "Pi", "Rho", "Sig", "Tau", "Ups", "Phi", "Chi", "Psi", "Ome"
+                "Alp", "Bet", "Gam", "Del", "Eps", "Zet", "Eta", "The", "Iot", "Kap", "Lam", "Mu ",
+                "Nu ", "Xi ", "Omi", "Pi ", "Rho", "Sig", "Tau", "Ups", "Phi", "Chi", "Psi", "Ome"
             };
             const std::regex flam("^\\*([0-9]+)([A-Z][A-Z][A-Z])([A-Z]?)$");
             const std::regex hd("^HD([0-9]+)$");
@@ -623,7 +661,12 @@ namespace
                     {
                         continue;
                     }
-                    size_t position = 1 + greek[g].size(), end = position;
+                    size_t position = 1 + greek[g].size();
+                    if (position < key.size() && key[position] == '.')
+                    {
+                        position++;
+                    }
+                    size_t end = position;
                     while (end < key.size() && std::isdigit(static_cast<unsigned char>(key[end])))
                     {
                         end++;
@@ -723,6 +766,45 @@ namespace
             }
         }
 
+        bool designation_support(Star *star, const std::set<std::string> &keys)
+        {
+            static const std::vector<std::string> codes
+            {
+                "ALF", "BET", "GAM", "DEL", "EPS", "ZET", "ETA", "THE", "IOT", "KAP", "LAM", "MU",
+                "NU", "KSI", "OMI", "PI", "RHO", "SIG", "TAU", "UPS", "PHI", "KHI", "PSI", "OME"
+            };
+            int greek = grkno_from_abbrev(star->Bayer);
+            const int number = strlen(star->Bayer) > 3 ? atoi(star->Bayer + 3) : 0;
+            if (greek >= 100)
+            {
+                greek = (greek - 100) / 10;
+            }
+            if (greek >= 0 && greek < 24 && strlen(star->constellation))
+            {
+                const std::string suffix = stellar_identifier_key(star->constellation);
+                static const std::vector<std::string> dots
+                {
+                    "", "."
+                };
+                for (const std::string &dot : dots)
+                {
+                    const std::string prefix = "*" + codes[greek] + dot;
+                    const std::string component = number ? std::to_string(number) : "";
+                    if (keys.count(prefix + component + suffix)
+                        || (number && keys.count(prefix + "0" + component + suffix)))
+                    {
+                        return true;
+                    }
+                }
+            }
+            if (star->FlamsteedNo > 0 && strlen(star->constellation))
+            {
+                return keys.count("*" + std::to_string(star->FlamsteedNo)
+                    + stellar_identifier_key(star->constellation));
+            }
+            return false;
+        }
+
         void simbad(const Row &row)
         {
             const auto names = identifiers(cell(row, "ids"));
@@ -734,11 +816,22 @@ namespace
             {
                 keys.insert(stellar_identifier_key(alias));
             }
+            std::vector<unsigned long> source_hd;
+            static const std::regex numeric_hd("^HD([0-9]+)$");
+            for (const auto &alias : keys)
+            {
+                std::smatch identified;
+                if (std::regex_match(alias, identified, numeric_hd))
+                {
+                    source_hd.push_back(strtoul(identified[1].str().c_str(), nullptr, 10));
+                }
+            }
             auto identity_score = [&](Star *star)
             {
                 return (star->HD && keys.count("HD" + std::to_string(star->HD)) ? 4 : 0)
                     + (star->HIP && keys.count("HIP" + std::to_string(star->HIP)) ? 3 : 0)
-                    + (star->HR && keys.count("HR" + std::to_string(star->HR)) ? 10 : 0)
+                    + (star->HR && keys.count("HR" + std::to_string(star->HR)) ? 2 : 0)
+                    + (designation_support(star, keys) ? 12 : 0)
                     + (keys.count(stellar_identifier_key(star->name)) ? 4 : 0);
             };
             int best_score = 0;
@@ -784,6 +877,17 @@ namespace
                     }
                     continue;
                 }
+                if (star->HD && !source_hd.empty() && !keys.count("HD" + std::to_string(star->HD))
+                    && !designation_support(star, keys))
+                {
+                    json conflict;
+                    conflict["star"] = star->name;
+                    conflict["source"] = "SIMBAD";
+                    conflict["oid"] = oid;
+                    conflict["reason"] = "Catalog identifiers disagree without an independent matching designation";
+                    report["conflicts"].push_back(conflict);
+                    continue;
+                }
                 if (object_ids.count(star) && object_ids[star] != oid)
                 {
                     json conflict;
@@ -795,17 +899,9 @@ namespace
                 }
                 object_ids[star] = oid;
                 resolved_objects[oid].push_back(star);
-                if (star->HR && keys.count("HR" + std::to_string(star->HR)))
+                if (star->HR && keys.count("HR" + std::to_string(star->HR))
+                    && designation_support(star, keys))
                 {
-                    std::vector<unsigned long> source_hd;
-                    for (const auto &alias : keys)
-                    {
-                        std::smatch identified;
-                        if (std::regex_match(alias, identified, std::regex("^HD([0-9]+)$")))
-                        {
-                            source_hd.push_back(strtoul(identified[1].str().c_str(), nullptr, 10));
-                        }
-                    }
                     if (source_hd.size() == 1 && source_hd.front() > 0 && source_hd.front() <= MAX_HD
                         && star->HD && star->HD != source_hd.front())
                     {
@@ -1080,7 +1176,17 @@ namespace
                 {
                     return nullptr;
                 }
-                return primary->multisys->get_member('B');
+                Star *secondary = primary->multisys->get_member('B');
+                if (secondary && !primary->alienorumid.empty() && !secondary->alienorumid.empty())
+                {
+                    const std::string &id = secondary->alienorumid;
+                    if (id.size() < 3 || id.back() != 'B' || id[id.size() - 2] != ' '
+                        || trim(id.substr(0, id.size() - 2)) != trim(primary->alienorumid))
+                    {
+                        return nullptr;
+                    }
+                }
+                return secondary;
             }
             // Condensed catalogs retain orbit links and component IDs without a StarMulti index.
             const auto found = children.find(primary);

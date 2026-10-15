@@ -1480,12 +1480,16 @@ TEST_F(CondensedCatalogTest, ExplicitHrIdentitiesCanDisambiguateSwappedHdCompone
     Star *first = make_star("HD10000");
     first->HD = 10000;
     first->HR = 10;
+    strcpy(first->Bayer, "Gam1Oph");
+    strcpy(first->constellation, "Oph");
     Star *second = make_star("HD10001");
     second->HD = 10001;
     second->HR = 11;
+    strcpy(second->Bayer, "Gam2Oph");
+    strcpy(second->constellation, "Oph");
     reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
-        "1\tHD 10001\tHD 10001|HR 10\t0\t0\tG2V\n"
-        "2\tHD 10000\tHD 10000|HR 11\t0\t0\tK2V\n");
+        "1\tHD 10001\tHD 10001|HR 10|* gam01 Oph\t0\t0\tG2V\n"
+        "2\tHD 10000\tHD 10000|HR 11|* gam02 Oph\t0\t0\tK2V\n");
     reconcile_stellar_sources(cels, "catalogs/reference", false);
     EXPECT_EQ(first->HD, 10001u);
     EXPECT_EQ(second->HD, 10000u);
@@ -1541,4 +1545,78 @@ TEST_F(CondensedCatalogTest, DisplayOnlyPrimaryCanRecoverItsExistingFamilySystem
     reconcile_stellar_sources(cels, "catalogs/reference", false);
     EXPECT_EQ(primary->HD, 10000u);
     EXPECT_DOUBLE_EQ(primary->apparent_magnitude, original_magnitude);
+}
+
+TEST_F(CondensedCatalogTest, CachedComponentMembershipPreservesNestedAndOpticalOrbitState)
+{
+    make_star("Sun");
+    Star *a = make_star("Primary");
+    a->alienorumid = "5y Oph";
+    Star *b = make_star("Secondary");
+    b->alienorumid = "5y Oph  B";
+    b->orbit = new Orbit();
+    b->orbit->center = a;
+    b->orbit->semimajor_axis = 2 * AU;
+    Star *c = make_star("Nested component");
+    c->alienorumid = "5y Oph  C";
+    c->orbit = new Orbit();
+    c->orbit->center = b;
+    Star *d = make_star("Optical member");
+    d->alienorumid = "5y Oph  D";
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    ASSERT_NE(a->multisys, nullptr);
+    EXPECT_EQ(a->multisys->get_member('A'), a);
+    EXPECT_EQ(a->multisys->get_member('B'), b);
+    EXPECT_EQ(a->multisys->get_member('C'), c);
+    EXPECT_EQ(a->multisys->get_member('D'), d);
+    EXPECT_EQ(b->orbit->center, a);
+    EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 2 * AU);
+    EXPECT_EQ(c->orbit->center, b);
+    EXPECT_EQ(d->orbit, nullptr);
+}
+
+TEST_F(CondensedCatalogTest, TwoLetterGreekAliasesUseCanonicalNumberColumns)
+{
+    make_star("Sun");
+    const std::vector<std::string> source_names
+    {
+        "mu.01", "nu.01", "ksi01", "pi.01"
+    };
+    const std::vector<std::string> expected
+    {
+        "Mu 1Oph", "Nu 1Oph", "Xi 1Oph", "Pi 1Oph"
+    };
+    std::string table = "oid\tmain_id\tids\tra\tdec\tsp_type\n";
+    std::vector<Star*> stars;
+    for (size_t i = 0; i < source_names.size(); i++)
+    {
+        Star *star = make_star(("HD" + std::to_string(10000 + i)).c_str());
+        star->HD = 10000 + i;
+        stars.push_back(star);
+        table += std::to_string(i + 1) + "\tHD " + std::to_string(star->HD)
+            + "\tHD " + std::to_string(star->HD) + "|* " + source_names[i] + " Oph\t0\t0\tG2V\n";
+    }
+    reference_file("SIMBAD.tsv", table);
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    for (size_t i = 0; i < stars.size(); i++)
+    {
+        EXPECT_STREQ(stars[i]->Bayer, expected[i].c_str());
+        EXPECT_EQ(stars[i]->BayerGrkno, grkno_from_abbrev(expected[i].c_str()));
+        EXPECT_EQ(stars[i]->Bayer[3], '1');
+    }
+}
+
+TEST_F(CondensedCatalogTest, ConflictingHrAndHdAloneCannotReassignAStar)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    star->HR = 10;
+    star->apparent_magnitude = 5;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
+        "1\tHD 10001\tHD 10001|HR 10\t0\t0\tK2V\t1\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(star->HD, 10000u);
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5);
+    EXPECT_STREQ(star->spectral_type, "G2V");
 }

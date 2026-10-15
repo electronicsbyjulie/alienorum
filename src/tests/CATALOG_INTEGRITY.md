@@ -137,7 +137,7 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 35 Python tests and 57 native tests pass; CMake configures
+Checkpoint on 2026-10-14: 35 Python tests and 60 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
@@ -168,3 +168,11 @@ and retains joint photometry separately when a source cannot resolve components.
 A display-only primary may recover its existing family's system identifier
 without copying the family's unresolved photometry onto that component.
 The independent BSC/Hipparcos audit remains unchanged during these repairs.
+
+A condensed preview must restore component membership before source matching and
+ID assignment. Membership is reconstructed from explicit IDs without changing
+nested orbit centers or creating physical orbits for optical members. Previews
+without that index can assign independent IDs to children and are invalid.
+Numbered two-letter Greek abbreviations retain their native three-column prefix;
+SIMBAD's dotted mu/nu/pi spellings are accepted. Conflicting HR/HD identities
+require an independent matching designation before a repair can proceed.
