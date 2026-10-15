@@ -671,7 +671,7 @@ def main(argv=None):
     print(f'{report.rows} rows; {report.errors} errors; {len(report.issues) - report.errors} review warnings')
     for (severity, code), count in sorted(report.counts().items()):
         print(f'{severity:7} {code:28} {count}')
-        for issue in [item for item in report.issues if item.severity == severity and item.code == code][:3]:
+        for issue in [item for item in report.issues if item.severity == severity and item.code == code][:25]:
             print(f'  line {issue.line}: {issue.identity}: {issue.detail}')
     if args.report:
         try:

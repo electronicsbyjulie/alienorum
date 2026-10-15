@@ -5508,7 +5508,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                             write_star(val3[i]);
                         }
 
-                        if (frand(0,1) < 0.001)
+                        if (frand(0,1) < 0.1)
                         {
                             std::stringstream lmss;
                             lmss << "Saving " << val3[i]->alienorumid << " to condensed star catalog...";

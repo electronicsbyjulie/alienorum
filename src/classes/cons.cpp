@@ -383,6 +383,12 @@ ConsBins fill_alienorum_ids()
         }
         for (const auto& [m, val2] : val1)
         {
+            // IMPORTANT:
+            // THE INTERNAL CATALOG IS NOT COMPLETE FROM MAGNITUDE 10.0 ONWARD.
+            // CREATING ALIENORUMIDS FOR STARS WHOSE SYSTEM PRIMARY IS OF MAG >= 10 IS A SEVERE CORRECTNESS ERROR AND A REGRESSION.
+            // LEAVE THOSE ALIENORUMIDS BLANK.
+            // Later we will incorporate Gaia to get the catalog complete to a higher magnitude.
+            if (m >= 10) continue;
             for (const auto& [cc, val3] : val2)
             {
                 n = val3.size();
