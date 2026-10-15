@@ -520,7 +520,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             read_field_onebased(buffer, 159, 166, field);
             s->Bonn_survey_sequential = atoi(field);
 
-            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
+            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential, s->Bonn_survey_sign);
             if (!dmkey.empty())
             {
                 if (!dmcache.count(dmkey))
@@ -752,7 +752,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         dm_decl = atoi(field);
         read_field_onebased(buffer, 20, 25, field);
         dm_seq = atoi(field);
-        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq);
+        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq, dm_sign);
 
         HDfound = false;
         if (HD)
@@ -1173,7 +1173,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         Star *dms = (Star*)cels[j];
         if (dms->Bonn_survey[0])
         {
-            std::string k = bonn_survey_key(dms->Bonn_survey, dms->Bonn_survey_declination, dms->Bonn_survey_sequential);
+            std::string k = bonn_survey_key(dms->Bonn_survey, dms->Bonn_survey_declination, dms->Bonn_survey_sequential, dms->Bonn_survey_sign);
             if (k.size() && !dmcache.count(k)) dmcache[k] = dms;
         }
     }
@@ -1243,7 +1243,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             read_field_onebased(buffer, 402, 407, field);
             dm_seq = atoi(field);
         }
-        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq);
+        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq, dm_sign);
 
         s = nullptr;
         bool is_new = false;
@@ -5427,7 +5427,9 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 
     if (s->Bonn_survey[0])
     {
-        line << ((s->Bonn_survey_declination >= 0) ? "+" : "-");
+        const bool negative_zone = s->Bonn_survey_declination < 0
+            || (s->Bonn_survey_declination == 0 && s->Bonn_survey_sign == '-');
+        line << (negative_zone ? "-" : "+");
         if (abs(s->Bonn_survey_declination) < 10) line << "0";
         line << abs(s->Bonn_survey_declination) << std::flush;
     }
@@ -6083,7 +6085,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             read_field_onebased(buffer, 447, 452, field);
             s->Bonn_survey_sequential = atoi(field);
 
-            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
+            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential, s->Bonn_survey_sign);
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 

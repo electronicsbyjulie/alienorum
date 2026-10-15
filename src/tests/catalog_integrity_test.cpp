@@ -1764,3 +1764,76 @@ TEST_F(CondensedCatalogTest, Cns5LongRecordsRemainWholeAndUseIcrsTangentMotionUn
     EXPECT_EQ(static_cast<Star*>(cels[2])->HIP, 0u);
     EXPECT_EQ(hipcache[200], nullptr);
 }
+
+TEST_F(CondensedCatalogTest, PositiveAndNegativeZeroDmZonesRemainDistinctAcrossSerialization)
+{
+    EXPECT_EQ(bonn_survey_key("BD", 0, 3300, '-'), "BD-00 03300");
+    EXPECT_EQ(bonn_survey_key("BD", 0, 3300, '+'), "BD+00 03300");
+    std::string negative = primary_row();
+    put(negative, 442, 445, "-00");
+    put(negative, 447, 452, "3300");
+    std::string positive = negative;
+    put(positive, 1, 14, "2c Oph 2");
+    put(positive, 114, 119, "159562");
+    put(positive, 121, 126, "86033");
+    put(positive, 442, 445, "+00");
+    write_rows({negative, positive});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    Star *first = static_cast<Star*>(cels[1]);
+    Star *second = static_cast<Star*>(cels[2]);
+    EXPECT_EQ(dmcache.at("BD-00 03300"), first);
+    EXPECT_EQ(dmcache.at("BD+00 03300"), second);
+    EXPECT_EQ(written_row(first).substr(441, 4), "-00 ");
+    EXPECT_EQ(written_row(second).substr(441, 4), "+00 ");
+}
+
+TEST_F(CondensedCatalogTest, HipparcosDmFallbackCannotMergeOppositeZeroZones)
+{
+    make_star("Sun");
+    Star *negative = make_star("Negative-zone star");
+    negative->HD = 158614;
+    strcpy(negative->Bonn_survey, "BD");
+    negative->Bonn_survey_declination = 0;
+    negative->Bonn_survey_sign = '-';
+    negative->Bonn_survey_sequential = 3300;
+    dmcache[bonn_survey_key("BD", 0, 3300, '-')] = negative;
+    hipparcos_row(100, "");
+    std::ifstream input("catalogs/Hipparcos/hip_main.dat");
+    std::string row;
+    std::getline(input, row);
+    input.close();
+    put(row, 398, 407, "B+00 3300");
+    std::ofstream output("catalogs/Hipparcos/hip_main.dat");
+    output << row << '\n';
+    output.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_NE(hipcache[100], negative);
+    EXPECT_EQ(negative->HIP, 0u);
+    EXPECT_EQ(hipcache[100]->HIP, 100u);
+}
+
+TEST_F(CondensedCatalogTest, AnUnresolvedFamilyCanDisproveAnUnrelatedSystemIdentifier)
+{
+    make_star("Sun");
+    Star *a = make_star("Primary");
+    a->HD = 10000;
+    a->HIP = 100;
+    a->set_component('A', a);
+    Star *b = make_star("Secondary");
+    b->HD = 10000;
+    b->HIP = 100;
+    b->make_companion_of(a, 'B');
+    Star *other = make_star("Unrelated object");
+    other->HD = 10000;
+    other->HIP = 200;
+    other->right_ascension = 10 * fiftyseventh;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\totype\n"
+        "1\tHD 10000\tHD 10000|HIP 100\t0\t0\tG2V+K2V\t**\n"
+        "2\tHIP 200\tHIP 200\t10\t0\tM2V\t*\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(a->HD, 10000u);
+    EXPECT_EQ(b->HD, 10000u);
+    EXPECT_EQ(other->HD, 0u);
+}

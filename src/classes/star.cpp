@@ -16,7 +16,7 @@ bool show_favestars = false, label_favestars = true;
 
 // Canonical key for a Durchmusterung designation, e.g. survey="BD", declination=-2, sequential=5958
 // -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().
-std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential)
+std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential, char zero_zone_sign)
 {
     if (!survey || !survey[0] || !survey[1] || !sequential || declination < -90 || declination > 90
         || (strncmp(survey, "BD", 2) && strncmp(survey, "CD", 2) && strncmp(survey, "CP", 2)))
@@ -24,7 +24,9 @@ std::string bonn_survey_key(const char* survey, int declination, unsigned int se
         return std::string();
     }
     char buf[32];
-    snprintf(buf, sizeof(buf), "%c%c%+03d %05u", survey[0], survey[1], declination, sequential);
+    const char sign = declination < 0 || (declination == 0 && zero_zone_sign == '-') ? '-' : '+';
+    snprintf(buf, sizeof(buf), "%c%c%c%02u %05u", survey[0], survey[1], sign,
+        static_cast<unsigned int>(abs(declination)), sequential);
     return std::string(buf);
 }
 

@@ -179,6 +179,6 @@ extern alienorum::Star **hdcache, **hipcache;
 extern std::map<std::string, alienorum::Star*> dmcache;
 extern std::vector<Star*> favestars;
 extern bool show_favestars, label_favestars;
-std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential);
+std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential, char zero_zone_sign = '+');
 
 #endif

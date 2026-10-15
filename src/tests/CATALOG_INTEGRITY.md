@@ -137,7 +137,7 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 38 Python tests and 64 native tests pass; CMake configures
+Checkpoint on 2026-10-14: 38 Python tests and 67 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
@@ -207,3 +207,10 @@ verifies that it cannot assign another star's HIP ID. It also checks epoch motio
 parallax distance and a radial velocity extending past the old buffer limit.
 These repairs require fresh generation; an existing condensed cache retains the
 previously imported values.
+
+Durchmusterung zones retain their explicit sign at zero declination. `BD-00` and
+`BD+00` now have separate lookup keys, survive native serialization, and cannot
+merge through the Hipparcos fallback matcher. The same handling applies to CD
+and CP zones. This addresses two bright missing entries independently of the
+CNS5 record-width issue. An unresolved family may own a shared system identifier
+for contradiction checks without supplying individual component photometry.

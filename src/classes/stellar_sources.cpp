@@ -291,7 +291,7 @@ namespace
                     add_alias("HR " + std::to_string(star->HR), star);
                 }
                 add_alias(bonn_survey_key(star->Bonn_survey, star->Bonn_survey_declination,
-                    star->Bonn_survey_sequential), star);
+                    star->Bonn_survey_sequential, star->Bonn_survey_sign), star);
                 spatial[spatial_key(star->right_ascension * fiftyseven, star->declination * fiftyseven)].push_back(star);
             }
             for (Star *star : stars)
@@ -861,6 +861,28 @@ namespace
             }
             if (equally_ranked > 1 && resolved_family)
             {
+                Star *family_owner = nullptr;
+                bool one_family = true;
+                for (Star *candidate : matches)
+                {
+                    if (identity_score(candidate) != best_score)
+                    {
+                        continue;
+                    }
+                    if (!family_owner)
+                    {
+                        family_owner = candidate;
+                    }
+                    else if (!same_family(family_owner, candidate))
+                    {
+                        one_family = false;
+                    }
+                }
+                if (one_family && family_owner)
+                {
+                    // An unresolved system can own an ID without supplying component photometry.
+                    resolved_objects[oid].push_back(family_owner);
+                }
                 json conflict;
                 conflict["source"] = "SIMBAD";
                 conflict["oid"] = oid;
