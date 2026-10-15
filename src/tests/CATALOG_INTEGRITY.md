@@ -335,3 +335,9 @@ arcseconds. A corroborated disagreement remains a visible review warning;
 missing evidence, contradictory designations, displaced coordinates and ambiguous
 source objects retain hard errors. Internal duplicate-ID checks are unchanged.
 Forty Python regressions and 74 native regressions pass at this checkpoint.
+
+The importer also creates single-member A groups for some independently imported
+components. Source-proven A/B links now consolidate those single-member groups,
+while rejecting groups with other members or existing physical orbit centers.
+The shared-HD regression exercises this legacy topology. The displaced-identity
+regression also verifies that an imprecise replacement parallax blocks movement.

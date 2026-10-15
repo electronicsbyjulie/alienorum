@@ -1915,6 +1915,8 @@ TEST_F(CondensedCatalogTest, ResolvedWdsAliasesPreserveSharedHdAndIndependentAst
     Star *a = make_star("HD10000");
     Star *b = make_star("HD10000");
     a->HD = b->HD = 10000;
+    a->set_component('A', a);
+    b->set_component('A', b);
     a->HIP = 100;
     b->HIP = 200;
     a->distance = 10 * parsec;

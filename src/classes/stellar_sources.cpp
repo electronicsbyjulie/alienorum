@@ -1081,13 +1081,23 @@ namespace
                     continue;
                 }
                 Star *a = *first->second.begin(), *b = *second->second.begin();
-                if (a == b || a->multisys || b->multisys || a->orbit || b->orbit
+                if (a == b || (a->multisys && (a->multisys->num_members() != 1
+                        || a->multisys->get_member('A') != a))
+                    || (b->multisys && (b->multisys->num_members() != 1
+                        || b->multisys->get_member('A') != b))
+                    || (a->orbit && a->orbit->center) || (b->orbit && b->orbit->center)
                     || a->user_added || b->user_added || a->user_edited || b->user_edited
                     || object_ids[a] == object_ids[b])
                 {
                     continue;
                 }
-                StarMulti *family = new StarMulti();
+                StarMulti *family = a->multisys ? a->multisys : new StarMulti();
+                if (b->multisys)
+                {
+                    StarMulti *previous = b->multisys;
+                    previous->unlink();
+                    delete previous;
+                }
                 family->add_member(a, 'A');
                 family->add_member(b, 'B');
                 provenance(a, "component_family", "SIMBAD", Row(), entry.first + "A");
