@@ -237,6 +237,7 @@ namespace
         std::map<std::string, Row> sbx_systems;
         std::map<std::string, std::vector<Star*>> sbx_members;
         std::map<std::string, std::pair<int, std::string>> sbx_ranks;
+        std::unordered_map<Star*, std::pair<int, int>> orb6_ranks;
         std::unordered_map<Star*, std::pair<int, std::string>> spectral_ranks;
 
         static std::string spatial_key(double ra, double dec)
@@ -946,13 +947,14 @@ namespace
             {
                 return;
             }
-            const double grade = number(row, "grade");
+            // SB8 grades run from 1 (poor) to 5 (best), opposite to ORB6.
+            // SBX's separate grade column has no published numeric scale.
             const double legacy_grade = number(row, "grade_legacy");
-            if ((std::isfinite(grade) && grade > 3) || (std::isfinite(legacy_grade) && legacy_grade > 3))
+            if (std::isfinite(legacy_grade) && (legacy_grade < 3 || legacy_grade > 5))
             {
                 return;
             }
-            const auto rank = std::make_pair(std::isfinite(grade) ? -int(grade) : -3, cell(row, "bibcode"));
+            const auto rank = std::make_pair(std::isfinite(legacy_grade) ? int(legacy_grade) : 3, cell(row, "bibcode"));
             if (sbx_ranks.count(sn) && sbx_ranks[sn] > rank)
             {
                 return;
@@ -1111,6 +1113,16 @@ namespace
             {
                 return;
             }
+            std::smatch year_match;
+            const std::string citation = cell(row, "bibcode");
+            const std::regex year_pattern("(18|19|20)[0-9]{2}");
+            const int year = std::regex_search(citation, year_match, year_pattern)
+                ? atoi(year_match.str().c_str()) : 0;
+            const auto rank = std::make_pair(-int(grade), year);
+            if (orb6_ranks.count(b) && orb6_ranks[b] > rank)
+            {
+                return;
+            }
             if (b->orbit && b->orbit->center && b->orbit->center != a)
             {
                 return;
@@ -1119,6 +1131,7 @@ namespace
             {
                 b->orbit = new Orbit();
             }
+            orb6_ranks[b] = rank;
             b->orbit->center = a;
             if (!a->multisys && !b->multisys)
             {

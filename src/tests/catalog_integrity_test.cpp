@@ -1361,3 +1361,42 @@ TEST_F(CondensedCatalogTest, SbxAlsoResolvesCondensedComponentIdsAndOrbitLinks)
     reconcile_stellar_sources(cels, "catalogs/reference", false);
     EXPECT_DOUBLE_EQ(b->orbit->period, 20 * oneday);
 }
+
+TEST_F(CondensedCatalogTest, SbxLegacyQualityRunsFromPoorOneToBestFive)
+{
+    make_star("Sun");
+    Star *a = make_star("HD10000");
+    a->HD = 10000;
+    a->set_component('A', a);
+    Star *b = make_star("HD10000 B");
+    b->make_companion_of(a, 'B');
+    reference_file("SBX_systems.tsv", "sn\tra\tdec\tcomponent\n1\t0\t0\tAB\n");
+    reference_file("SBX_alias.tsv", "sn\tcatalog\tidentifier\n1\tHD\t10000\n");
+    reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade_legacy\n"
+        "1\t10\t0.2\t2000A&A...000....1A\t5\n"
+        "1\t20\t0.3\t2026A&A...000....1A\t1\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
+    EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);
+}
+
+TEST_F(CondensedCatalogTest, CatalogWriteFailurePreservesPreviousCompleteFile)
+{
+    make_star("Sun");
+    Star *star = make_star("Invalid output");
+    star->temperature = 10000000;
+    std::ofstream previous("catalogs/soles_alienorum.dat");
+    previous << "previous complete catalog\n";
+    previous.close();
+    ConsBins bins;
+    bins[&constellations[0]][5]['y'].push_back(star);
+    CatalogReader reader;
+    EXPECT_THROW(reader.write_condensed_star_cat(bins), std::runtime_error);
+    std::ifstream preserved("catalogs/soles_alienorum.dat");
+    const std::string text((std::istreambuf_iterator<char>(preserved)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(text, "previous complete catalog\n");
+    EXPECT_FALSE(std::filesystem::exists("catalogs/soles_alienorum.dat.tmp"));
+    std::filesystem::remove("catalogs/soles_alienorum.dat");
+    EXPECT_THROW(reader.write_condensed_star_cat(bins), std::runtime_error);
+    EXPECT_FALSE(std::filesystem::exists("catalogs/soles_alienorum.dat"));
+}

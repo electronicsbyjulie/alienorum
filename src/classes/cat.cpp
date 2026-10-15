@@ -5413,8 +5413,13 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     int i, n, written = 0;
     char c;
     std::string path = get_condensed_starcat_name();
-    FILE *fp = fopen(path.c_str(), "w");
-    if (fp)
+    const std::string temporary = path + ".tmp";
+    FILE *fp = fopen(temporary.c_str(), "w");
+    if (!fp)
+    {
+        throw std::runtime_error("Cannot open catalog output: " + temporary);
+    }
+    try
     {
         std::unordered_set<Star*> emitted;
         auto write_star = [&](Star *star)
@@ -5456,7 +5461,24 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
             }
         }
 
-        fclose(fp);
+        const bool output_error = ferror(fp);
+        const int close_status = fclose(fp);
+        fp = nullptr;
+        if (output_error || close_status != 0)
+        {
+            throw std::runtime_error("Cannot finish catalog output: " + temporary);
+        }
+        std::filesystem::rename(temporary, path);
+    }
+    catch (...)
+    {
+        if (fp)
+        {
+            fclose(fp);
+        }
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        throw;
     }
 
     return written;
