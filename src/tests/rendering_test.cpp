@@ -201,7 +201,9 @@ class RenderingRegressionTest : public UniverseFixture
         {
             refraction[i] = -half_pi + i * _pi / 1024;
         }
-        CloudSkyGpuInput input = {};
+        CloudSkyGpuInput input =
+        {
+        };
         input.camera[1] = elevation;
         input.camera[2] = field_scale;
         input.camera[3] = field_scale * 108.0 / 192;
@@ -232,7 +234,9 @@ TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)
     saturn->volumetric_mean_radius = 58232000;
     saturn->ring_radius = 1.3678e8;
     saturn->tmprel = Point(0, 0, -1e8);
-    double bloom[2] = {};
+    double bloom[2] =
+    {
+    };
     set(bloomrad_cache, static_cast<double*>(bloom));
     const double angular_size = asin(saturn->volumetric_mean_radius / saturn->tmprel.magnitude());
     EXPECT_EQ(draw_sphere_gpu(saturn, angular_size), 0);
