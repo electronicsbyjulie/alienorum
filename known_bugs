@@ -1,9 +1,11 @@
 Cumulus clouds are not opaque to own planet's rings.
 
-Flying through Saturn's rings, they disappear if the planet is behind the camera. This was fixed in an earlier commit, why did it regress?
+Flying through Saturn's rings, they disappear if the planet is behind the camera. This was fixed in an earlier commit, why did it regress? Fix and add a unit test.
 
 Rocks in the distance in vm_horizon view fade away, appearing as wireframes with transparent panels. Rocks should be either visible or not visible - all or nothing. - FIXED by jlg 261014.2105
 
 Standing on the edge of a vegetation zone, the viewer is surrounded by rocks or plants, but the instant the viewer crosses the border, all the rocks become plants or vice versa. Whether each item is a rock or a plant should depend on the map pixel at the item's latitude and longitude, not the viewer's.
 
 Rectangle slice effects are still visible on distant cumulus clouds; their tops look flattened until the viewer draws closer and the flatness recedes.
+
+The new catalogs are bizarrely stored in a folder called "reference". That is incorrect. Notice how each preexisting catalog has a folder of its own named after the catalog. These are separate publications with their own readmes so it is not correct to lump them all together in one folder. Separate them out and make sure the code knows where to look (it should automatically find them).
