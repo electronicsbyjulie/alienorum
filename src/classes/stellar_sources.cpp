@@ -908,6 +908,30 @@ namespace
             }
         }
 
+        Star *simple_secondary(Star *primary)
+        {
+            if (primary->multisys)
+            {
+                if (primary->multisys->get_member('A') != primary || primary->multisys->get_member('C'))
+                {
+                    return nullptr;
+                }
+                return primary->multisys->get_member('B');
+            }
+            // Condensed catalogs retain orbit links and component IDs without a StarMulti index.
+            const auto found = children.find(primary);
+            if (found == children.end() || found->second.size() != 1)
+            {
+                return nullptr;
+            }
+            Star *secondary = found->second.front();
+            if (secondary->alienorumid != primary->alienorumid + " B" || children.count(secondary))
+            {
+                return nullptr;
+            }
+            return secondary;
+        }
+
         void sbx_orbit(const Row &row)
         {
             const std::string sn = cell(row, "sn");
@@ -935,12 +959,11 @@ namespace
             }
             Star *a = found->second.front();
             const std::string component = cell(system->second, "component");
-            if ((!component.empty() && component != "AB" && component != "A,B") || !a->multisys
-                || a->multisys->get_member('A') != a || a->multisys->get_member('C'))
+            if (!component.empty() && component != "AB" && component != "A,B")
             {
                 return;
             }
-            Star *b = a->multisys->get_member('B');
+            Star *b = simple_secondary(a);
             if (!b || !b->orbit || b->orbit->center != a)
             {
                 return;
@@ -975,11 +998,7 @@ namespace
                 return;
             }
             Star *a = matches.front();
-            if (!a->multisys || a->multisys->get_member('A') != a || a->multisys->get_member('C'))
-            {
-                return;
-            }
-            Star *b = a->multisys->get_member('B');
+            Star *b = simple_secondary(a);
             if (!b)
             {
                 return;

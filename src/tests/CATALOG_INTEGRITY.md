@@ -90,3 +90,56 @@ SAO, Tycho, Gaia, CCDM and other identities absent from this condensed file cann
 be checked from its rows. The current source comparison covers BSC and Hipparcos,
 not every upstream catalog. No runtime assets or installer dependencies are
 introduced by these tests.
+
+## Field-specific source reconciliation
+
+The generator reads reference endpoints exclusively from the `reference` rows in
+`catalogs/urls.dat`. These rows include complete TAP queries; code contains no
+endpoint fallbacks. The reference client owns these downloads so its concurrency,
+timeouts, and parser validation apply consistently. Downloads are cached under
+`catalogs/reference`; a normal cached catalog load performs no reference requests.
+The existing installer already includes `catalogs/urls.dat`. Reference caches and
+provenance reports are downloaded or generated, rather than release assets.
+
+| Source | Adopted fields and constraints |
+| --- | --- |
+| SIMBAD | Alias-based identity with coordinate checks; names, designations, classifications, UBV fluxes, missing radial velocities; independent resolved components remain distinct |
+| Mermilliod | Measured Johnson V, B-V and U-B, including measured zero colors; component and variability checks |
+| Skiff | Spectroscopic classifications with bibliography and quality ranking; older classifications cannot replace higher-ranked modern ones |
+| Gaia DR3 | Hipparcos crossmatch, positive precise parallax, RUWE and match-ambiguity filters, epoch propagation, optional GSPPhot model temperature with explicit model provenance |
+| WDS | Existing component identification and visual companion magnitudes; nonvisual passbands and uncertain observations rejected; optical pairs do not acquire physical orbits |
+| SBX | Existing simple binary periods, eccentricities and primary-to-secondary periapsis conversion; projected velocities never become a relative semimajor axis |
+| DEBCat | Logarithmic mass, radius and temperature converted into application units; ambiguous component 1/2 assignments retained for review |
+| ORB6 | Existing resolved binaries, grades 1–3, source units and epoch conversion; photocentric orbits excluded |
+| IAU | Approved proper names resolved through explicit identifiers |
+| VSX | V-band variability bounds and periods; no conversion of another passband into Johnson V |
+
+Hipparcos, BSC, GCVS and the other original importers remain the initial sources.
+Reference measurements run after the main-sequence heuristic during a fresh
+catalog build. Cached catalogs with a generated provenance sidecar retain their
+adopted fields across subsequent legacy override loading.
+
+To reconcile a separate preview from an existing complete condensed catalog:
+
+```sh
+make -j2 bin/catalog_reconcile
+bin/catalog_reconcile /tmp/alienorum_reference_preview --offline
+python3 -B src/tests/catalog_integrity.py \
+    /tmp/alienorum_reference_preview/catalogs/soles_alienorum.dat \
+    --sources catalogs --report /tmp/alienorum_reference_audit.json
+```
+
+Omit `--offline` to fetch absent reference caches. `--download-only` fetches sources
+without loading stars. The preview refuses the repository's input directory and
+writes its catalog and full per-field provenance into its output directory.
+It overlays the existing generated catalog; it does not recreate omissions from
+all original input catalogs. A fresh application build remains the full
+regeneration path. Scientific disagreement warnings can persist after adopting
+newer data, since the independent audit still compares BSC and Hipparcos values.
+
+Checkpoint on 2026-10-14: 35 Python tests and 47 native tests pass; CMake configures
+successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
+rounding/variability serialization. The latest complete input audit had 131,533
+rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
+working catalog is absent during regeneration; partial preview files are not
+valid comparison inputs.

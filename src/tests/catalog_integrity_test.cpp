@@ -1336,3 +1336,28 @@ TEST_F(CondensedCatalogTest, VariabilityAndRotationFormattingRespectFixedColumns
     EXPECT_EQ(row.substr(404, 6), "+10.00");
     EXPECT_EQ(row.substr(411, 6), "+10.00");
 }
+
+TEST_F(CondensedCatalogTest, SbxAlsoResolvesCondensedComponentIdsAndOrbitLinks)
+{
+    make_star("Sun");
+    Star *a = make_star("HD10000");
+    a->HD = 10000;
+    a->alienorumid = "5y Oph 1";
+    Star *b = make_star("HD10000 B");
+    b->alienorumid = a->alienorumid + " B";
+    b->orbit = new Orbit();
+    b->orbit->center = a;
+    b->orbit->semimajor_axis = 2 * AU;
+    reference_file("SBX_systems.tsv", "sn\tra\tdec\tcomponent\n1\t0\t0\tAB\n");
+    reference_file("SBX_alias.tsv", "sn\tcatalog\tidentifier\n1\tHD\t10000\n");
+    reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade\n"
+        "1\t10\t0.2\t2026A&A...000....1A\t1\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
+    EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);
+    EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 2 * AU);
+    b->alienorumid = a->alienorumid + " C";
+    b->orbit->period = 20 * oneday;
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(b->orbit->period, 20 * oneday);
+}
