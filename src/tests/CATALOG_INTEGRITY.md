@@ -273,7 +273,7 @@ Both files were checked with the same independent auditor and BSC/Hipparcos inpu
 | Distance-modulus discrepancies | 0 | 0 |
 | Orbital Kepler warnings | 424 | 425 |
 
-All 23 reference tables parse successfully and match 118,765 objects. The source
+All 23 reference tables parse successfully and match 118,764 objects. The source
 pass removes 65 stale HD assignments using separately resolved object identities.
 Those removals do not delete the underlying stars. The earlier failed refreshed
 cache (213 errors, 17,810 warnings) remains separate from this comparison.
