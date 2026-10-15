@@ -767,6 +767,12 @@ TEST_F(CondensedCatalogTest, NegativeHipparcosFitCannotCreateOrOverwriteAnOrbit)
     EXPECT_FALSE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
     EXPECT_EQ(ncelobjs, 2);
     EXPECT_EQ(primary->multisys, nullptr);
+    put(row, 8, 17, "1e308");
+    put(row, 31, 38, "1.56");
+    EXPECT_FALSE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
+    EXPECT_EQ(primary->multisys, nullptr);
+    put(row, 8, 17, "31.3870");
+    put(row, 31, 38, "-1.56");
     primary->set_component('A', primary);
     Star *secondary = make_star("Known companion");
     secondary->make_companion_of(primary, 'B');
@@ -807,4 +813,37 @@ TEST_F(CondensedCatalogTest, ExoplanetHostIdentifiersSurviveUnspacedNames)
     ASSERT_NE(star, nullptr);
     EXPECT_EQ(star->HIP, 102970);
     EXPECT_EQ(hipcache[102970], star);
+}
+
+TEST_F(CondensedCatalogTest, SourceNamedOrbitCompanionRetainsItsOwnHdIdentifier)
+{
+    make_star("Sun");
+    Star *primary = make_star("HD10000");
+    primary->HD = 10000;
+    hdcache = new Star*[MAX_HD + 1]();
+    hdcache[10000] = primary;
+    std::string row(260, ' ');
+    put(row, 1, 23, "HD10000");
+    put(row, 25, 47, "HD10001");
+    put(row, 49, 63, "365.25d");
+    put(row, 101, 111, "1AU");
+    put(row, 113, 123, "0.1");
+    put(row, 161, 175, "G2V");
+    put(row, 177, 191, "5.0");
+    put(row, 193, 203, "1.0");
+    put(row, 205, 215, "1.0");
+    put(row, 229, 238, "5778");
+    std::ofstream file("catalogs/star_orbits.dat");
+    file << row << '\n';
+    file.close();
+    CatalogReader reader;
+    reader.read_star_orbits_dat(cels);
+    ASSERT_NE(hdcache[10001], nullptr);
+    Star *secondary = hdcache[10001];
+    EXPECT_EQ(secondary->HD, 10001);
+    EXPECT_STREQ(secondary->name, "HD10001");
+    ASSERT_NE(secondary->orbit, nullptr);
+    EXPECT_EQ(secondary->orbit->center, primary);
+    EXPECT_EQ(hdcache[10000], primary);
+    EXPECT_EQ(std::stoi(written_row(secondary).substr(113, 6)), 10001);
 }

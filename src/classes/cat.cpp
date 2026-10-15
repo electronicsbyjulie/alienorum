@@ -29,6 +29,32 @@
 
 namespace fs = std::filesystem;
 
+static unsigned int explicit_stellar_identifier(const std::string &name, const char *prefix, unsigned int maximum)
+{
+    const size_t prefix_length = strlen(prefix);
+    if (name.compare(0, prefix_length, prefix) != 0)
+    {
+        return 0;
+    }
+    const char *number = name.c_str() + prefix_length;
+    while (*number == ' ')
+    {
+        number++;
+    }
+    if (*number < '0' || *number > '9')
+    {
+        return 0;
+    }
+    char *end = nullptr;
+    const unsigned long value = strtoul(number, &end, 10);
+    const std::string suffix = trim(end);
+    if (!suffix.empty() && (suffix.size() != 1 || suffix[0] < 'A' || suffix[0] > 'Z'))
+    {
+        return 0;
+    }
+    return value > 0 && value <= maximum ? static_cast<unsigned int>(value) : 0;
+}
+
 // True for the GCVS eclipsing-binary codes E, EA, EB, EW and their subtypes, in any position of a
 // compound type. ELL is ellipsoidal and EP a planetary transit, so neither answers true.
 static bool is_eclipsing_type(const char *gcvs_vartype)
@@ -969,10 +995,11 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
 
     read_field_onebased(buffer, 8, 17, field);
     const double period_days = atof(field);
+    const double period_seconds = period_days * oneday;
     read_field_onebased(buffer, 31, 38, field);
     const double angular_axis = atof(field);
     const double physical_axis = (angular_axis / 206264806) * A->distance;
-    if (!std::isfinite(period_days) || period_days <= 0
+    if (!std::isfinite(period_seconds) || period_seconds <= 0 || angular_axis <= 0 || A->distance <= 0
         || !std::isfinite(physical_axis) || physical_axis <= 0)
     {
         // Reject an unusable fit before constructing or altering a binary.
@@ -996,7 +1023,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->epoch = J2000 + (1991.25 - 2000);
 
     //   8- 17  F10.4 d        P        Orbital period                           (DO2)
-    s->orbit->period = period_days * oneday;
+    s->orbit->period = period_seconds;
 
     //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
     read_field_onebased(buffer, 19, 29, field);
@@ -4514,6 +4541,20 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             strcpy(s->name, bdyname.c_str());
             s->namelen = strlen(s->name);
             s->has_custom_name = true;
+            if (s_is_new)
+            {
+                // A source-supplied HD/HIP name is also an explicit identifier.
+                s->HD = explicit_stellar_identifier(bdyname, "HD", MAX_HD);
+                s->HIP = explicit_stellar_identifier(bdyname, "HIP", MAX_HIP);
+                if (s->HD && hdcache && !hdcache[s->HD])
+                {
+                    hdcache[s->HD] = s;
+                }
+                if (s->HIP && hipcache && !hipcache[s->HIP])
+                {
+                    hipcache[s->HIP] = s;
+                }
+            }
             s->distance_known = true;
             read_field_onebased(buffer, 161, 175, field);
             strcpy(s->spectral_type, trim(field).c_str());
