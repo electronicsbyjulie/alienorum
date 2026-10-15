@@ -600,7 +600,8 @@ def modern_measurement_support(records, directory, report):
                 aliases = source.get('ids', '').split('|')
                 for record in candidates(aliases, source.get('ra'), source.get('dec')):
                     citation = source.get('sp_bibcode', '').strip()
-                    if citation[:4].isdigit() and int(citation[:4]) >= 1997:
+                    if (citation[:4].isdigit() and (int(citation[:4]) >= 1997
+                            or source.get('sp_qual', '').strip() in ('A', 'B', 'C'))):
                         confirm(record, 'spectral', source.get('sp_type', ''), 'SIMBAD', citation)
                     confirm(record, 'magnitude', source.get('V'), 'SIMBAD')
                     try:
@@ -618,7 +619,8 @@ def modern_measurement_support(records, directory, report):
                 for record in candidates([source.get(name, '')], source.get(ra), source.get(dec)):
                     if label == 'Skiff':
                         citation = source.get('Bibcode', '').strip()
-                        if citation[:4].isdigit() and int(citation[:4]) >= 1997:
+                        if (citation[:4].isdigit() and (int(citation[:4]) >= 1997
+                                or source.get('n_SpType', '').strip() == '+')):
                             confirm(record, 'spectral', source.get('SpType', ''), label, citation)
                     elif source.get('m_LID', '').strip() in ('', '1', 'A'):
                         confirm(record, 'bv', source.get('B-V'), label)

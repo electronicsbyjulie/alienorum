@@ -2160,3 +2160,43 @@ TEST_F(CondensedCatalogTest, NewIauNamesDoNotReplaceGlobalBayerDesignations)
     EXPECT_STREQ(star->name, "Alpha Mensae");
     EXPECT_EQ(star->local_name, "Hoerikwaggo");
 }
+
+TEST_F(CondensedCatalogTest, ExistingLocalNamesAreRemovedFromGlobalCatalogNames)
+{
+    make_star("Sun");
+    Star *star = make_star("Ran");
+    star->HD = 22049;
+    star->has_custom_name = true;
+    std::ofstream names("exoname.dat");
+    names << "HD22049" << std::string(33, ' ') << "Ran\n";
+    names.close();
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_STREQ(star->name, "HD22049");
+    EXPECT_EQ(star->local_name, "Ran");
+    EXPECT_EQ(trim(written_row(star).substr(15, 39)), "HD22049");
+}
+
+TEST_F(CondensedCatalogTest, LegacyCompanionSynchronizationPreservesResolvedAstrometry)
+{
+    make_star("Sun");
+    Star *a = make_star("GJ 1 A");
+    Star *b = make_star("GJ 1 B");
+    strcpy(a->Gliese, "GJ 1 A");
+    strcpy(b->Gliese, "GJ 1 B");
+    a->HIP = 100;
+    b->HIP = 101;
+    a->distance = 10 * parsec;
+    a->parallax = arcsecond / 10;
+    b->distance = 11 * parsec;
+    b->parallax = arcsecond / 11;
+    b->right_ascension = 1;
+    Gliese_doubles_fix();
+    EXPECT_DOUBLE_EQ(b->distance, 11 * parsec);
+    EXPECT_DOUBLE_EQ(b->parallax, arcsecond / 11);
+    EXPECT_DOUBLE_EQ(b->right_ascension, 1);
+    b->HIP = 0;
+    Gliese_doubles_fix();
+    EXPECT_DOUBLE_EQ(b->distance, a->distance);
+    EXPECT_DOUBLE_EQ(b->parallax, a->parallax);
+    EXPECT_EQ(b->distance_known, a->distance_known);
+}

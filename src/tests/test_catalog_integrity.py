@@ -50,7 +50,7 @@ class CatalogIntegrityTest(unittest.TestCase):
         if severity:
             self.assertTrue(all(issue.severity == severity for issue in matches))
 
-    def test_modern_measurements_require_identifiers_position_and_recent_spectra(self):
+    def test_modern_measurements_require_identifiers_position_and_documented_spectra(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'Hipparcos').mkdir()
@@ -76,6 +76,11 @@ class CatalogIntegrityTest(unittest.TestCase):
                     self.assert_code(report, code, 'warning')
             path.write_text(header + evidence.replace('2020A&A', '1960A&A'))
             self.assert_code(audit_bytes(sun() + row(), root), 'source_spectral_class', 'warning')
+            quality_header = header.rstrip('\n') + '\tsp_qual\n'
+            quality_evidence = evidence.replace('2020A&A', '1960A&A').rstrip('\n') + '\tA\n'
+            path.write_text(quality_header + quality_evidence)
+            report = audit_bytes(sun() + row(), root)
+            self.assertFalse(any(issue.code == 'source_spectral_class' for issue in report.issues))
 
     def test_faint_system_catalog_links_preserve_names_without_alienorum_ids(self):
         primary = row(id='', name='Long faint primary name', hd='10000', hip='100', hr='',

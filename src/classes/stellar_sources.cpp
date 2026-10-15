@@ -277,6 +277,15 @@ namespace
                 }
                 Star *star = static_cast<Star*>(input[i]);
                 stars.push_back(star);
+                if (local_names.count(lop_component(star->name)) != 0)
+                {
+                    add_alias(star->name, star);
+                    star->local_name = star->name;
+                    star->has_custom_name = false;
+                    star->name[0] = 0;
+                    star->assign_identifier_name();
+                    star->namelen = strlen(star->name);
+                }
                 if (!star->has_custom_name && ((star->BayerGrkno >= 0 && star->Bayer[0]) || star->FlamsteedNo > 0))
                 {
                     designated_stars.insert(star);

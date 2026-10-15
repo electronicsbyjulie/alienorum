@@ -1464,9 +1464,16 @@ void Gliese_doubles_fix()
                 name2[n] = 0;
                 if (!strcmp(name1, name2) || lop_component(s1->Gliese) == lop_component(s2->Gliese))
                 {
+                    // Separate Hipparcos entries carry resolved astrometry.
+                    if (s2->HIP && s2->HIP != s1->HIP)
+                    {
+                        continue;
+                    }
                     s2->right_ascension = s1->right_ascension;
                     s2->declination = s1->declination;
                     s2->distance = s1->distance;
+                    s2->parallax = s1->parallax;
+                    s2->distance_known = s1->distance_known;
                     s2->proper_motion_RA = s1->proper_motion_RA;
                     s2->proper_motion_decl = s1->proper_motion_decl;
                     s2->radial_velocity = s1->radial_velocity;

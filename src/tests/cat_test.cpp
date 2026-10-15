@@ -647,16 +647,13 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
         if (cels[i]->type == star)
         {
             Star* s = (Star*)cels[i];
-            if (s->alienorumid == "3b Tau 2")
+            if (s->HD == 23850 && (!s->get_component() || s->get_component() == 'A'))
             {
                 atlas = s;
             }
-            if (s->alienorumid == "3b Tau 2 B")
-            {
-                atlas_b = s;
-            }
         }
     }
+    atlas_b = atlas && atlas->multisys ? atlas->multisys->get_member('B') : nullptr;
     ASSERT_NE(atlas, nullptr);
     ASSERT_NE(atlas_b, nullptr);
 
