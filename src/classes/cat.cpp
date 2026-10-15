@@ -5507,6 +5507,15 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                         {
                             write_star(val3[i]);
                         }
+
+                        if (frand(0,1) < 0.001)
+                        {
+                            std::stringstream lmss;
+                            lmss << "Saving " << val3[i]->alienorumid << " to condensed star catalog...";
+                            mtx.lock();
+                            loading_msg = lmss.str();
+                            mtx.unlock();
+                        }
                     }
                 }
             }
@@ -5520,6 +5529,11 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
             throw std::runtime_error("Cannot finish catalog output: " + temporary);
         }
         std::filesystem::rename(temporary, path);
+
+        #ifndef _WIN32
+        // TODO: This command will only execute on Linux - maybe not a problem if only the author ever issues new internal catalogs.
+        system("gzip -k catalogs/soles_alienorum.dat");
+        #endif
     }
     catch (...)
     {
