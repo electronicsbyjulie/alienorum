@@ -327,3 +327,11 @@ only when a separately resolved nearby catalog object owns its duplicated HIP,
 the HD source identity is unique, and the replacement parallax passes an error
 filter. Both objects survive. Native regressions cover this repair and visual
 family persistence; 74 native tests pass at this checkpoint.
+
+The independent auditor now consults downloaded resolved SIMBAD records for
+legacy cross-identification conflicts. It requires one unique source object,
+matching HD plus the relevant HR/HIP/designation, and agreement within two
+arcseconds. A corroborated disagreement remains a visible review warning;
+missing evidence, contradictory designations, displaced coordinates and ambiguous
+source objects retain hard errors. Internal duplicate-ID checks are unchanged.
+Forty Python regressions and 74 native regressions pass at this checkpoint.

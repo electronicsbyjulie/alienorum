@@ -404,5 +404,47 @@ class CatalogIntegrityTest(unittest.TestCase):
         self.assertFalse(any(issue.code == 'duplicate_hd' for issue in report.issues))
 
 
+    def test_modern_identity_can_corroborate_a_conflicting_legacy_mapping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'BSC').mkdir()
+            source = bytearray(b' ' * 197)
+            for start, end, value in ((1, 4, '6556'), (5, 7, '54'), (8, 11, 'Alp '), (12, 14, 'Oph'), (26, 31, '1')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'BSC/catalog').write_bytes(source + b'\n')
+            (root / 'reference').mkdir()
+            modern = root / 'reference/SIMBAD.tsv'
+            header = 'oid\tids\tra\tdec\totype\n'
+            identity = '1\tHD 159561|HR 6556|HIP 86032|* alf Oph|* 55 Oph\t263.77958333333333\t12.67138888888889\t*\n'
+            modern.write_text(header + identity)
+            (root / 'Hipparcos').mkdir()
+            hip = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (391, 396, '1')):
+                hip[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos/hip_main.dat').write_bytes(hip + b'\n')
+            report = audit_bytes(sun() + row(flamsteed='55'), root)
+            self.assertEqual(report.errors, 0)
+            self.assertEqual(sum(issue.code == 'reference_identity_disagreement' for issue in report.issues), 3)
+            self.assert_code(audit_bytes(sun() + row(hd='2', flamsteed='55'), root), 'bsc_cross_id')
+            modern.write_text(header + identity.replace('263.77958333333333', '10'))
+            self.assert_code(audit_bytes(sun() + row(flamsteed='55'), root), 'bsc_cross_id')
+            modern.write_text(header + identity + identity.replace('1\tHD', '2\tHD'))
+            self.assert_code(audit_bytes(sun() + row(flamsteed='55'), root), 'bsc_cross_id')
+
+    def test_modern_identity_requires_matching_designation_and_catalog_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'BSC').mkdir()
+            source = bytearray(b' ' * 197)
+            for start, end, value in ((1, 4, '6556'), (8, 11, 'Alp '), (12, 14, 'Oph'), (26, 31, '1')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'BSC/catalog').write_bytes(source + b'\n')
+            (root / 'reference').mkdir()
+            modern = root / 'reference/SIMBAD.tsv'
+            for aliases in ('HD 159561|HR 6556|* bet Oph', 'HD 159561|HR 6557|* alf Oph'):
+                modern.write_text('oid\tids\tra\tdec\totype\n1\t' + aliases + '\t263.77958333333333\t12.67138888888889\t*\n')
+                self.assert_code(audit_bytes(sun() + row(), root), 'bsc_cross_id')
+
+
 if __name__ == '__main__':
     unittest.main()

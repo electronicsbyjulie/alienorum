@@ -2,6 +2,7 @@
 """Independent, read-only audit of the fixed-column condensed stellar catalog."""
 import argparse
 from collections import Counter
+import csv
 from dataclasses import dataclass, field
 import gzip
 import hashlib
@@ -484,10 +485,76 @@ def source_index(path, start, end, label, report):
     return source
 
 
+def modern_identity_support(records, directory, report):
+    targets = dict()
+    for record in records:
+        targets.setdefault(int(record.number('hd')), []).append(record)
+    supported = dict()
+    greek_codes = 'ALF BET GAM DEL EPS ZET ETA THE IOT KAP LAM MU NU KSI OMI PI RHO SIG TAU UPS PHI KHI PSI OME'.split()
+
+    def key(value):
+        value = re.sub(r'\s+', '', value).upper().replace('.', '')
+        match = re.fullmatch(r'(HD|HIP|HR|\*[A-Z]*)([0-9]+)(.*)', value)
+        return match[1] + str(int(match[2])) + match[3] if match else value
+
+    for path in sorted((directory / 'reference').glob('SIMBAD*.tsv')) if targets else []:
+        with path.open(newline='', encoding='utf-8') as stream:
+            for source in csv.DictReader(stream, delimiter='\t'):
+                if source.get('otype') == '**' or not source.get('oid'):
+                    continue
+                aliases = {key(value) for value in source.get('ids', '').split('|')}
+                ids = {int(value[2:]) for value in aliases if re.fullmatch(r'HD[0-9]+', value)}
+                for hd in ids & targets.keys():
+                    try:
+                        ra, dec = float(source['ra']), float(source['dec'])
+                    except (ValueError, KeyError):
+                        continue
+                    for record in targets[hd]:
+                        if not math.isfinite(ra) or not math.isfinite(dec) or separation_arcsec(record.ra, record.dec, ra, dec) > 2:
+                            continue
+                        hr = bool(record.number('hr') and 'HR' + str(int(record.number('hr'))) in aliases)
+                        hip = bool(record.number('hip') and 'HIP' + str(int(record.number('hip'))) in aliases)
+                        bayer = parse_bayer(record.text('bayer'))
+                        designated = bool(bayer and '*' + greek_codes[bayer[0]] + bayer[1] + bayer[2].upper() in aliases)
+                        fields = set()
+                        if hr and (not bayer or designated):
+                            fields.add('bsc_cross_id')
+                        if hip or (hr and designated and not any(re.fullmatch(r'HIP[0-9]+', value) for value in aliases)):
+                            fields.add('hip_cross_id')
+                        if (hr or hip) and record.number('flamsteed') and key('*' + str(int(record.number('flamsteed'))) + record.constellation) in aliases:
+                            fields.add('bsc_flamsteed')
+                        if fields:
+                            supported.setdefault(record.line, dict())[source['oid']] = fields
+        report.sources.append(str(path))
+    return {line: next(iter(objects.values())) for line, objects in supported.items() if len(objects) == 1}
+
+
 def check_sources(records, report, directory):
     directory = Path(directory)
     bsc_path = directory / 'BSC' / 'catalog'
-    source = source_index(bsc_path, 0, 4, 'HR', report)
+    bsc = source_index(bsc_path, 0, 4, 'HR', report)
+    hip = source_index(directory / 'Hipparcos' / 'hip_main.dat', 8, 14, 'HIP', report)
+    candidates = []
+    for record in records:
+        if not record.number('hd'):
+            continue
+        bright = (bsc or dict()).get(record.number('hr'), '')
+        astrometric = (hip or dict()).get(record.number('hip'), '')
+        if ((bright and (bright[25:31].strip() != str(int(record.number('hd')))
+                or (bright[4:7].strip().isdigit() and int(bright[4:7]) != record.number('flamsteed'))))
+                or (astrometric and astrometric[390:396].strip().isdigit()
+                    and int(astrometric[390:396]) != record.number('hd'))):
+            candidates.append(record)
+    modern = modern_identity_support(candidates, directory, report)
+
+    def identity_issue(code, record, detail, severity='error'):
+        if code in modern.get(record.line, set()):
+            report.add('reference_identity_disagreement', record,
+                       detail + '; an independent resolved SIMBAD identity and position support the exported value', 'warning')
+        else:
+            report.add(code, record, detail, severity)
+
+    source = bsc
     if source is not None:
         covered_hr = {row.number('hr') for row in records}
         covered_hd = {row.number('hd') for row in records}
@@ -502,7 +569,7 @@ def check_sources(records, report, directory):
                 continue
             hd = raw[25:31].strip()
             if hd.isdigit() and row.number('hd') and int(hd) != row.number('hd'):
-                report.add('bsc_cross_id', row, f'HR {row.number("hr")} belongs to HD {hd} in BSC')
+                identity_issue('bsc_cross_id', row, f'HR {row.number("hr")} belongs to HD {hd} in BSC')
             parts = (raw[75:77], raw[77:79], raw[79:83], raw[84:86], raw[86:88], raw[88:90])
             if all(NUMBER.fullmatch(v.strip()) for v in parts):
                 hh, mm, ss, dd, dm, ds = map(float, parts)
@@ -518,13 +585,12 @@ def check_sources(records, report, directory):
                     report.add('bsc_bayer', row, f'Bayer identity conflicts with BSC: {source_bayer!r}')
             source_flam = raw[4:7].strip()
             if source_flam.isdigit() and row.number('flamsteed') != int(source_flam) and not row.component:
-                report.add('bsc_flamsteed', row, f'Flamsteed number conflicts with BSC: {source_flam}')
+                identity_issue('bsc_flamsteed', row, f'Flamsteed number conflicts with BSC: {source_flam}')
     family_hd = dict()
     for member in records:
         if member.root and member.number('hd'):
             family_hd.setdefault(member.root, set()).add(member.number('hd'))
-    hip_path = directory / 'Hipparcos' / 'hip_main.dat'
-    source = source_index(hip_path, 8, 14, 'HIP', report)
+    source = hip
     if source is not None:
         covered_hip = {row.number('hip') for row in records}
         covered_hd = {row.number('hd') for row in records}
@@ -540,7 +606,7 @@ def check_sources(records, report, directory):
             hd = raw[390:396].strip()
             if hd.isdigit() and row.number('hd') and int(hd) != row.number('hd'):
                 shared = int(hd) in family_hd.get(row.root, set())
-                report.add('hip_cross_id', row, f'HIP {row.number("hip")} belongs to HD {hd}', 'warning' if shared else 'error')
+                identity_issue('hip_cross_id', row, f'HIP {row.number("hip")} belongs to HD {hd}', 'warning' if shared else 'error')
             ra, dec = raw[51:63].strip(), raw[64:76].strip()
             if NUMBER.fullmatch(ra) and NUMBER.fullmatch(dec):
                 source_position(row, float(ra), float(dec), report, 'Hipparcos')
