@@ -745,19 +745,20 @@ bool Rotation::from_json(json j)
 // T0 and T are in Julian years from J2000.0
 void get_Earth_precession_angles(double T0, double T, double& zeta, double& z, double& theta)
 {
+    const double t0 = T0 * 0.01;
     double t = (T - T0) * 0.01;
 
     // convert coefficients to radians
-    zeta  = ((2306.2181 + 1.39656 * T0 - 0.000139 * T0 * T0) * t
-            + (0.30188 - 0.000344 * T0) * t * t
+    zeta  = ((2306.2181 + 1.39656 * t0 - 0.000139 * t0 * t0) * t
+            + (0.30188 - 0.000344 * t0) * t * t
             + 0.017998 * t * t * t) * arcsecond;
 
-    z     = ((2306.2181 + 1.39656 * T0 - 0.000139 * T0 * T0) * t
-            + (1.09468 + 0.00066 * T0) * t * t
+    z     = ((2306.2181 + 1.39656 * t0 - 0.000139 * t0 * t0) * t
+            + (1.09468 + 0.000066 * t0) * t * t
             + 0.018203 * t * t * t) * arcsecond;
 
-    theta = ((2004.3109 - 0.8533 * T0 - 0.000217 * T0 * T0) * t
-            - (0.42665 + 0.000217 * T0) * t * t
+    theta = ((2004.3109 - 0.8533 * t0 - 0.000217 * t0 * t0) * t
+            - (0.42665 + 0.000217 * t0) * t * t
             - 0.041833 * t * t * t) * arcsecond;
 }
 
@@ -777,9 +778,14 @@ Point apply_precession_rotation(const Point& vec, double zeta, double z, double 
     double r32 = -std::sin(zeta) * std::sin(theta);
     double r33 = std::cos(theta);
 
-    return Point(   r11 * vec.x + r12 * vec.y + r13 * vec.z,
-                    r21 * vec.x + r22 * vec.y + r23 * vec.z,
-                    r31 * vec.x + r32 * vec.y + r33 * vec.z);
+    // Native axes are (-Y, Z, X) relative to equatorial Cartesian axes.
+    const double X = vec.z;
+    const double Y = -vec.x;
+    const double Z = vec.y;
+    const double rotated_X = r11 * X + r12 * Y + r13 * Z;
+    const double rotated_Y = r21 * X + r22 * Y + r23 * Z;
+    const double rotated_Z = r31 * X + r32 * Y + r33 * Z;
+    return Point(-rotated_Y, rotated_Z, rotated_X);
 }
 
 // Main conversion function
@@ -798,7 +804,7 @@ void convert_to_J2000(const double RA_radians, const double Decl_radians, double
     }
     else
     {
-        // Convert Julian year (J1991.25) to Julian Centuries relative to J2000
+        // Convert a Julian year to years relative to J2000
         T0 = (input_year - 2000.0);
     }
 
@@ -810,6 +816,6 @@ void convert_to_J2000(const double RA_radians, const double Decl_radians, double
     Point initial_vector = Point::from_ra_dec(RA_radians, Decl_radians, light_year, 0);
     Point final_vector = apply_precession_rotation(initial_vector, zeta, z, theta);
 
-    RA_J2000 = std::fmod(find_angle(final_vector.z, -final_vector.x), _pi*2);
-    Decl_J2000 = find_angle(sqrt(final_vector.x*final_vector.x+final_vector.z*final_vector.z), final_vector.y);
+    RA_J2000 = std::fmod(std::atan2(-final_vector.x, final_vector.z) + _pi * 2, _pi * 2);
+    Decl_J2000 = std::atan2(final_vector.y, std::hypot(final_vector.x, final_vector.z));
 }

@@ -139,6 +139,8 @@ std::ostream& operator<<(std::ostream& os, const Rotation& r);
 std::ostream& operator<<(std::ostream& os, const ImVec2& v);
 bool operator==(const Point&, const Point&);
 
+void get_Earth_precession_angles(double T0, double T, double &zeta, double &z, double &theta);
+Point apply_precession_rotation(const Point &vec, double zeta, double z, double theta);
 void convert_to_J2000(const double RA_radians, const double Decl_radians, double input_year, double &RA_J2000, double &Decl_J2000, bool is_besselian);
 
 extern Point center, xaxis, yaxis, zaxis;

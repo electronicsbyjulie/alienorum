@@ -1837,3 +1837,32 @@ TEST_F(CondensedCatalogTest, AnUnresolvedFamilyCanDisproveAnUnrelatedSystemIdent
     EXPECT_EQ(b->HD, 10000u);
     EXPECT_EQ(other->HD, 0u);
 }
+
+TEST(CatalogPrecessionTest, AnglesMatchErfaPrec76ReferenceEpochs)
+{
+    double zeta, z, theta;
+    get_Earth_precession_angles((33282.0 - 51544.5) / 365.25,
+        (51544.0 - 51544.5) / 365.25, zeta, z, theta);
+    EXPECT_NEAR(zeta, 0.5588961642000161243e-2, 1e-12);
+    EXPECT_NEAR(z, 0.5589922365870680624e-2, 1e-12);
+    EXPECT_NEAR(theta, 0.4858945471687296760e-2, 1e-12);
+}
+
+TEST(CatalogPrecessionTest, NativeAxesMatchErfaPmat76ReferenceMatrix)
+{
+    double zeta, z, theta;
+    get_Earth_precession_angles(0, (50123.9999 - 51544.5) / 365.25,
+        zeta, z, theta);
+    const Point x = apply_precession_rotation(Point(0, 0, 1), zeta, z, theta);
+    EXPECT_NEAR(x.x, 0.8696632209485112192e-3, 1e-14);
+    EXPECT_NEAR(x.y, -0.3779153474950335077e-3, 1e-14);
+    EXPECT_NEAR(x.z, 0.9999995504328350733, 1e-12);
+    const Point y = apply_precession_rotation(Point(-1, 0, 0), zeta, z, theta);
+    EXPECT_NEAR(y.x, -0.9999996218428560614, 1e-12);
+    EXPECT_NEAR(y.y, -0.1643306746147366896e-6, 1e-14);
+    EXPECT_NEAR(y.z, 0.8696632209480960785e-3, 1e-14);
+    const Point north = apply_precession_rotation(Point(0, 1, 0), zeta, z, theta);
+    EXPECT_NEAR(north.x, 0.1643284776111886407e-6, 1e-14);
+    EXPECT_NEAR(north.y, 0.9999999285899790119, 1e-12);
+    EXPECT_NEAR(north.z, 0.3779153474959888345e-3, 1e-14);
+}
