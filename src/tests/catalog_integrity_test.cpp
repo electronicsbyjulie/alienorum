@@ -847,3 +847,186 @@ TEST_F(CondensedCatalogTest, SourceNamedOrbitCompanionRetainsItsOwnHdIdentifier)
     EXPECT_EQ(hdcache[10000], primary);
     EXPECT_EQ(std::stoi(written_row(secondary).substr(113, 6)), 10001);
 }
+
+TEST_F(CondensedCatalogTest, MagnitudesFollowFinalDistanceAndPreserveApparentZero)
+{
+    Star *star = make_star();
+    star->distance = 100 * parsec;
+    star->apparent_magnitude = 0;
+    star->absolute_magnitude = 12;
+    EXPECT_TRUE(star->reconcile_visual_magnitudes());
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 0);
+    EXPECT_NEAR(star->absolute_magnitude, -5, 1e-12);
+    EXPECT_FALSE(star->reconcile_visual_magnitudes());
+    star->distance = 10 * parsec;
+    EXPECT_TRUE(star->reconcile_visual_magnitudes());
+    EXPECT_DOUBLE_EQ(star->absolute_magnitude, 0);
+}
+
+TEST_F(CondensedCatalogTest, AbsentApparentMagnitudeIsDerivedFromAbsoluteZero)
+{
+    Star *star = make_star();
+    star->distance = 100 * parsec;
+    star->absolute_magnitude = 0;
+    EXPECT_TRUE(star->reconcile_visual_magnitudes());
+    EXPECT_NEAR(star->apparent_magnitude, 5, 1e-12);
+    EXPECT_DOUBLE_EQ(star->absolute_magnitude, 0);
+    EXPECT_FALSE(star->reconcile_visual_magnitudes());
+}
+
+TEST_F(CondensedCatalogTest, InvalidDistanceOrUnknownPhotometryIsNotInvented)
+{
+    Star *star = make_star();
+    star->apparent_magnitude = 4;
+    star->distance = 0;
+    EXPECT_FALSE(star->reconcile_visual_magnitudes());
+    star->distance = -parsec;
+    EXPECT_FALSE(star->reconcile_visual_magnitudes());
+    star->distance = std::numeric_limits<double>::infinity();
+    EXPECT_FALSE(star->reconcile_visual_magnitudes());
+    star->distance = 10 * parsec;
+    star->apparent_magnitude = star->absolute_magnitude = 1e29;
+    EXPECT_FALSE(star->reconcile_visual_magnitudes());
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 1e29);
+    EXPECT_DOUBLE_EQ(star->absolute_magnitude, 1e29);
+}
+
+TEST_F(CondensedCatalogTest, OrbitOverridesPreserveAbsentFieldsAndObservedZeroColors)
+{
+    make_star("Sun");
+    Star *primary = make_star("HD10000");
+    Star *secondary = make_star("HD10001");
+    primary->HD = 10000;
+    secondary->HD = 10001;
+    hdcache = new Star*[MAX_HD + 1]();
+    hdcache[10000] = primary;
+    hdcache[10001] = secondary;
+    secondary->BV_color = secondary->UB_color = 0;
+    secondary->has_catalog_BV = secondary->has_catalog_UB = true;
+    const double mass = secondary->mass;
+    const double radius = secondary->volumetric_mean_radius;
+    std::string row(260, ' ');
+    put(row, 1, 23, "HD10000");
+    put(row, 25, 47, "HD10001");
+    put(row, 49, 63, "365.25d");
+    put(row, 101, 111, "1AU");
+    put(row, 177, 191, "0.0");
+    put(row, 229, 238, "3054");
+    std::ofstream file("catalogs/star_orbits.dat");
+    file << row << '\n';
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 1);
+    EXPECT_STREQ(secondary->spectral_type, "G2V");
+    EXPECT_DOUBLE_EQ(secondary->mass, mass);
+    EXPECT_DOUBLE_EQ(secondary->volumetric_mean_radius, radius);
+    EXPECT_DOUBLE_EQ(secondary->absolute_magnitude, 0);
+    EXPECT_DOUBLE_EQ(secondary->temperature, 3054);
+    EXPECT_DOUBLE_EQ(secondary->BV_color, 0);
+    EXPECT_DOUBLE_EQ(secondary->UB_color, 0);
+    const std::string encoded = written_row(secondary);
+    EXPECT_EQ(encoded.substr(99, 6), "+00.00");
+    EXPECT_EQ(encoded.substr(106, 6), "+00.00");
+}
+
+TEST_F(CondensedCatalogTest, InvalidOrbitParametersDoNotReplacePhysicalMeasurements)
+{
+    make_star("Sun");
+    Star *primary = make_star("HD10000");
+    Star *secondary = make_star("HD10001");
+    primary->HD = 10000;
+    secondary->HD = 10001;
+    hdcache = new Star*[MAX_HD + 1]();
+    hdcache[10000] = primary;
+    hdcache[10001] = secondary;
+    secondary->BV_color = 0.49;
+    secondary->UB_color = 0.08;
+    const double mass = secondary->mass;
+    const double radius = secondary->volumetric_mean_radius;
+    const double temperature = secondary->temperature;
+    std::string row(260, ' ');
+    put(row, 1, 23, "HD10000");
+    put(row, 25, 47, "HD10001");
+    put(row, 49, 63, "365.25d");
+    put(row, 101, 111, "1AU");
+    put(row, 193, 203, "nan");
+    put(row, 205, 215, "-1");
+    put(row, 229, 238, "inf");
+    std::ofstream file("catalogs/star_orbits.dat");
+    file << row << '\n';
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 1);
+    EXPECT_DOUBLE_EQ(secondary->mass, mass);
+    EXPECT_DOUBLE_EQ(secondary->volumetric_mean_radius, radius);
+    EXPECT_DOUBLE_EQ(secondary->temperature, temperature);
+    EXPECT_DOUBLE_EQ(secondary->BV_color, 0.49);
+    EXPECT_DOUBLE_EQ(secondary->UB_color, 0.08);
+}
+
+TEST_F(CondensedCatalogTest, CondensedZeroColorsSurviveTemperatureOverrideAndWriting)
+{
+    std::string row = primary_row();
+    put(row, 100, 105, "+00.00");
+    put(row, 107, 112, "+00.00");
+    std::vector<std::string> rows;
+    rows.push_back(row);
+    write_rows(rows);
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    Star *star = (Star*)cels[1];
+    EXPECT_TRUE(star->has_catalog_BV);
+    EXPECT_TRUE(star->has_catalog_UB);
+    const std::string encoded = written_row(star);
+    EXPECT_EQ(encoded.substr(99, 6), "+00.00");
+    EXPECT_EQ(encoded.substr(106, 6), "+00.00");
+}
+
+TEST_F(CondensedCatalogTest, GaiaDistanceUpdateRetainsUnknownCompanionBrightness)
+{
+    make_star("Sun");
+    Star *primary = make_star("HIP100");
+    primary->HIP = 100;
+    strcpy(primary->spectral_type, "DA");
+    primary->absolute_magnitude = 12;
+    primary->set_component('A', primary);
+    Star *secondary = make_star("HIP100 B");
+    secondary->make_companion_of(primary, 'B');
+    secondary->absolute_magnitude = 13;
+    Star *third = make_star("HIP100 C");
+    third->make_companion_of(primary, 'C');
+    third->apparent_magnitude = 0;
+    std::filesystem::create_directories("catalogs/GAIA");
+    std::ofstream file("catalogs/GAIA/catalog.dat");
+    file << "100|123456|0|0|0|0|0|10|0|0|0\n";
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.apply_gaia_astrometry(cels), 1);
+    EXPECT_NEAR(primary->distance / parsec, 100, 1e-12);
+    EXPECT_DOUBLE_EQ(primary->absolute_magnitude, 12);
+    EXPECT_DOUBLE_EQ(secondary->absolute_magnitude, 13);
+    EXPECT_DOUBLE_EQ(secondary->apparent_magnitude, 1e29);
+    EXPECT_NEAR(third->absolute_magnitude, -5, 1e-12);
+    EXPECT_TRUE(secondary->reconcile_visual_magnitudes());
+    EXPECT_NEAR(secondary->apparent_magnitude, 18, 1e-12);
+}
+
+TEST_F(CondensedCatalogTest, HipparcosOrbitFitPreservesExistingApparentMagnitude)
+{
+    make_star("Sun");
+    Star *primary = make_star("HIP100");
+    primary->HIP = 100;
+    primary->set_component('A', primary);
+    Star *secondary = make_star("HIP100 B");
+    secondary->make_companion_of(primary, 'B');
+    secondary->apparent_magnitude = 0;
+    std::string row(100, ' ');
+    put(row, 1, 6, "100");
+    put(row, 8, 17, "31.3870");
+    put(row, 19, 29, "7729.0700");
+    put(row, 31, 38, "1.56");
+    CatalogReader reader;
+    int offset = ncelobjs;
+    ASSERT_TRUE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
+    EXPECT_DOUBLE_EQ(secondary->apparent_magnitude, 0);
+}

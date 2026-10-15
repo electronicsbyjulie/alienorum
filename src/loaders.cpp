@@ -1335,6 +1335,14 @@ void load_stuff()
     cache_cons_lines();
     if (!file_exists(ihcfn.c_str()))
     {
+        // Reconcile photometry after all overrides and adopted distances are final.
+        for (int i = 1; cels[i]; i++)
+        {
+            if (cels[i]->typeclass() == class_star)
+            {
+                ((Star*)cels[i])->reconcile_visual_magnitudes();
+            }
+        }
         ConsBins cb = fill_alienorum_ids();
         cr.write_condensed_star_cat(cb);
     }

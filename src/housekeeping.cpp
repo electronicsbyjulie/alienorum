@@ -685,7 +685,7 @@ void set_center_objects()
                 s->cenobj = s;
             }
 
-            if (!s->BV_color && !s->UB_color)
+            if (!s->has_catalog_BV && !s->has_catalog_UB && !s->BV_color && !s->UB_color)
             {
                 s->estimate_BV();
                 s->estimate_UB();

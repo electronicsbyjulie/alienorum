@@ -91,6 +91,35 @@ StarMulti::~StarMulti()
     if (members) delete[] members;
 }
 
+bool Star::reconcile_visual_magnitudes()
+{
+    if (!std::isfinite(distance) || distance <= 0)
+    {
+        return false;
+    }
+    const double modulus = 5.0 * log10(distance / (10.0 * parsec));
+    if (std::isfinite(apparent_magnitude) && apparent_magnitude >= -40 && apparent_magnitude < 99)
+    {
+        const double absolute = apparent_magnitude - modulus;
+        if (absolute == absolute_magnitude)
+        {
+            return false;
+        }
+        absolute_magnitude = absolute;
+        return true;
+    }
+    if (std::isfinite(absolute_magnitude) && fabs(absolute_magnitude) <= 40)
+    {
+        const double apparent = absolute_magnitude + modulus;
+        if (std::isfinite(apparent) && apparent >= -40 && apparent < 99)
+        {
+            apparent_magnitude = apparent;
+            return true;
+        }
+    }
+    return false;
+}
+
 void Star::update_location(double tmnow)
 {
     double elapsed, l_dist=0;
@@ -1187,6 +1216,8 @@ json Star::to_json()
     towrite["radial_velocity"] = radial_velocity;
     towrite["apparent_magnitude"] = apparent_magnitude;
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
+    towrite["has_catalog_BV"] = has_catalog_BV;
+    towrite["has_catalog_UB"] = has_catalog_UB;
     towrite["spectral_type"] = spectral_type;
     towrite["Bayer"] = Bayer;
     towrite["Flamsteed"] = Flamsteed;
@@ -1226,6 +1257,14 @@ bool Star::from_json(json j)
     try { j.at("has_planets").get_to(has_planets); } catch (...) { ; }
     try { j.at("has_hz_planets").get_to(has_hz_planets); } catch (...) { ; }
     try { j.at("parallax").get_to(parallax); parallax *= fiftyseventh / 3600000; } catch (...) { ; }
+    if (j.contains("has_catalog_BV"))
+    {
+        j.at("has_catalog_BV").get_to(has_catalog_BV);
+    }
+    if (j.contains("has_catalog_UB"))
+    {
+        j.at("has_catalog_UB").get_to(has_catalog_UB);
+    }
     try
     {
         std::string str;

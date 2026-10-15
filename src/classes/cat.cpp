@@ -29,6 +29,25 @@
 
 namespace fs = std::filesystem;
 
+static bool read_catalog_number(const char *row, int first, int last, double &value)
+{
+    char field[32];
+    alienorum::CatalogReader::read_field_onebased(row, first, last, field);
+    const std::string text = trim(field);
+    if (text.empty())
+    {
+        return false;
+    }
+    char *end = nullptr;
+    const double parsed = strtod(text.c_str(), &end);
+    if (end == text.c_str() || *end || !std::isfinite(parsed))
+    {
+        return false;
+    }
+    value = parsed;
+    return true;
+}
+
 static unsigned int explicit_stellar_identifier(const std::string &name, const char *prefix, unsigned int maximum)
 {
     const size_t prefix_length = strlen(prefix);
@@ -428,10 +447,12 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         //  76- 80  F5.2   mag     B-V      ? color
         read_field_onebased(buffer, 76, 80, field);
         s->BV_color = atof(field);
+        s->has_catalog_BV = !trim(field).empty();
 
         //  83- 87  F5.2   mag     U-B      ? color
         read_field_onebased(buffer, 83, 87, field);
         s->UB_color = atof(field);
+        s->has_catalog_UB = !trim(field).empty();
 
         //  90- 94  F5.2   mag     R-I      ? color
         read_field_onebased(buffer, 90, 94, field);
@@ -860,10 +881,12 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         //  110-114  F5.2   mag     B-V      ? B-V color in the UBV system
         read_field_onebased(buffer, 110, 114, field);
         s->BV_color = atof(field);
+        s->has_catalog_BV = !trim(field).empty();
 
         //  116-120  F5.2   mag     U-B      ? U-B color in the UBV system
         read_field_onebased(buffer, 116, 120, field);
         s->UB_color = atof(field);
+        s->has_catalog_UB = !trim(field).empty();
 
         //  122-126  F5.2   mag     R-I      ? R-I   in system specified by n_R-I
         read_field_onebased(buffer, 122, 126, field);
@@ -1076,7 +1099,6 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->equinox = 0;
 
     s->distance_known = true;
-    s->apparent_magnitude = 11;         // placeholder
     if (s->absolute_magnitude > 1e28)
     {
         s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
@@ -1360,7 +1382,11 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
         f = atof(field);
-        if (f || trim(field).size()) s->BV_color = f;
+        if (!trim(field).empty())
+        {
+            s->BV_color = f;
+            s->has_catalog_BV = true;
+        }
 
         // 436-447  A12   ---     SpType    Spectral type
         read_field_onebased(buffer, 436, 447, field);
@@ -1815,6 +1841,7 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
         s->BV_color = atof(field);
+        s->has_catalog_BV = !trim(field).empty();
 
         s->update_location(simnow);
         s->mass = s->estimate_mass();
@@ -2109,12 +2136,20 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
         //  82- 87  F6.3   mag     B-V     [-0.7/2]? B-V color index in the UBV system
         read_field_onebased(buffer, 82, 87, field);
         f = atof(field);
-        if (f) s->BV_color = f;
+        if (!trim(field).empty())
+        {
+            s->BV_color = f;
+            s->has_catalog_BV = true;
+        }
 
         //  92- 97  F6.3   mag     U-B     [-9.9/1.4]? U-B color index in the UBV system
         read_field_onebased(buffer, 92, 97, field);
         f = atof(field);
-        if (f) s->UB_color = f;
+        if (!trim(field).empty() && f != -9.9)
+        {
+            s->UB_color = f;
+            s->has_catalog_UB = true;
+        }
 
         // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
         read_field_onebased(buffer, 146, 150, field);
@@ -2124,8 +2159,14 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
         // 153-155  I3     kK      Teff    [10/170]? Effective temperature
         read_field_onebased(buffer, 153, 155, field);
         double T = atof(field);
-        if (T && !s->BV_color) s->estimate_BV(T);
-        if (T && !s->UB_color) s->estimate_UB(T);
+        if (T && !s->has_catalog_BV && !s->BV_color)
+        {
+            s->estimate_BV(T * 1000);
+        }
+        if (T && !s->has_catalog_UB && !s->UB_color)
+        {
+            s->estimate_UB(T * 1000);
+        }
 
         // 162-167  F6.4 arcsec/yr pm      [0/7]? Total proper motion
         read_field_onebased(buffer, 162, 167, field);
@@ -4534,6 +4575,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             if (!s)
             {
                 s = new Star();
+                s->absolute_magnitude = 1e29;
                 append_cel(s);
                 s_is_new = true;
             }
@@ -4557,59 +4599,52 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             }
             s->distance_known = true;
             read_field_onebased(buffer, 161, 175, field);
-            strcpy(s->spectral_type, trim(field).c_str());
-            read_field_onebased(buffer, 177, 191, field);
-            f = atof(field);
-            if (f || (field[0] == '0')) s->absolute_magnitude = f;
-            double msun=0, rsun=0, lum=0, tempK=0;
-            if (bs > 193)
+            const std::string spectral = trim(field);
+            if (!spectral.empty())
             {
-                read_field_onebased(buffer, 193, 203, field);
-                msun = atof(field);
+                strcpy(s->spectral_type, spectral.c_str());
+            }
+            if (read_catalog_number(buffer, 177, 191, f) && fabs(f) <= 40)
+            {
+                s->absolute_magnitude = f;
+            }
+            const bool have_absolute = std::isfinite(s->absolute_magnitude)
+                && fabs(s->absolute_magnitude) <= 40;
+            double msun=0, rsun=0, lum=0, tempK=0;
+            if (read_catalog_number(buffer, 193, 203, f) && f > 0)
+            {
+                msun = f;
                 s->mass = msun * solar_mass;
             }
-            if (bs > 205)
+            if (read_catalog_number(buffer, 205, 215, f) && f > 0)
             {
-                read_field_onebased(buffer, 205, 215, field);
-                rsun = atof(field);
+                rsun = f;
                 s->volumetric_mean_radius = rsun * solar_radius;
-                assert(!isinf(s->volumetric_mean_radius));
             }
-            if (bs > 217)
+            if (read_catalog_number(buffer, 217, 227, f) && f > 0)
             {
-                read_field_onebased(buffer, 217, 227, field);
-                lum = atof(field);
-                if (!s->absolute_magnitude)
+                lum = f;
+                if (!have_absolute)
                 {
-                    // The unconditional "= 11" used to run whether or not lum was actually given,
-                    // discarding the just-computed magnitude for every star that did carry one
-                    // (57 lines in this catalog, including Proxima Centauri: 4.5 magnitudes too
-                    // bright at a flat 11 instead of its real ~15.6). 11 is meant only as the
-                    // fallback guess for a star with no luminosity column at all.
-                    if (lum)
-                    {
-                        double magshift = log(lum)/log(magnbase);
-                        s->absolute_magnitude = 4.85 - magshift;
-                    }
-                    else s->absolute_magnitude = 11;
+                    s->absolute_magnitude = 4.85 - log(lum)/log(magnbase);
                 }
             }
-            if (bs > 229)
+            if (read_catalog_number(buffer, 229, 238, f) && f > 0)
             {
-                read_field_onebased(buffer, 229, 238, field);
-                tempK = atof(field);
-                // if (A->HD == 47152) std::cout << s->name << " tempK=" << tempK << std::endl;
-                if (tempK)
+                tempK = f;
+                s->temperature = tempK;
+                // A temperature estimate fills absent colors without replacing observations.
+                if (!s->has_catalog_BV && !s->BV_color)
                 {
-                    // BV_color has to be set from the real temperature before estimate_luminosity()
-                    // reads it: that call looks up the main-sequence entry via
-                    // get_mseqidx_from_BV(BV_color), and a newly-made star's BV_color is still its
-                    // construction default of 0 -- the B-V of an A0V star -- until estimate_BV()
-                    // runs. Called in the old order, a cool star (e.g. an M dwarf at ~3500K) got
-                    // priced as an A0V (38 Lsun instead of ~0.03), several magnitudes too bright.
                     s->estimate_BV(tempK);
+                }
+                if (!s->has_catalog_UB && !s->UB_color)
+                {
                     s->estimate_UB(tempK);
-                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
+                }
+                if (!have_absolute && !lum && s->volumetric_mean_radius > 0)
+                {
+                    s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
                 }
             }
 
@@ -4653,7 +4688,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                     {
                         if (!msun ) s->mass = Star::interpolate_mseq_mass(mseqi) * solar_mass;
                         if (!rsun ) s->volumetric_mean_radius = Star::interpolate_mseq_rad(mseqi) * solar_radius;
-                        if (!lum  )
+                        if (!have_absolute && !lum && !tempK)
                         {
                             double llum = Star::interpolate_mseq_lum(mseqi);
                             double magshift = log(llum)/log(magnbase);
@@ -5084,14 +5119,20 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 16;
     line << std::string(l - line.str().size(), ' ');
 
-    if (!s->BV_color) s->estimate_BV(s->estimate_temperature());
+    if (!s->has_catalog_BV && !s->BV_color)
+    {
+        s->estimate_BV(s->estimate_temperature());
+    }
     line << ((s->BV_color >= 0) ? "+" : "-");
     if (fabs(s->BV_color) < 10) line << "0";
     line << std::fixed << std::setprecision(2) << fabs(s->BV_color) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
-    if (!s->UB_color) s->estimate_BV(s->estimate_temperature());
+    if (!s->has_catalog_UB && !s->UB_color)
+    {
+        s->estimate_UB(s->estimate_temperature());
+    }
     line << ((s->UB_color >= 0) ? "+" : "-");
     if (fabs(s->UB_color) < 10) line << "0";
     line << std::fixed << std::setprecision(2) << fabs(s->UB_color) << std::flush;
@@ -5600,8 +5641,10 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
 
         s->update_location(simnow);
 
-        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10.0, 2);
-        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        if (std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99)
+        {
+            s->absolute_magnitude = s->apparent_magnitude - 5.0 * log10(s->distance / (10.0 * parsec));
+        }
 
         if (s->is_main_sequence())
         {
@@ -5673,10 +5716,10 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
                     B->distance_known = true;
                     B->parallax = s->parallax;
                     B->update_location(simnow);
-                    if (B->apparent_magnitude)
+                    if (std::isfinite(B->apparent_magnitude) && B->apparent_magnitude >= -40
+                        && B->apparent_magnitude < 99)
                     {
-                        double b_intrinsic = pow(magnbase, -B->apparent_magnitude) * pow(fmax(AU, B->distance) / parsec / 10.0, 2);
-                        B->absolute_magnitude = -log(b_intrinsic) * invlogmagnbase;
+                        B->absolute_magnitude = B->apparent_magnitude - 5.0 * log10(B->distance / (10.0 * parsec));
                     }
                 }
             }
@@ -5782,9 +5825,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 100, 105, field);
         s->BV_color = atof(field);
+        s->has_catalog_BV = !trim(field).empty();
 
         read_field_onebased(buffer, 107, 112, field);
         s->UB_color = atof(field);
+        s->has_catalog_UB = !trim(field).empty();
 
 
         read_field_onebased(buffer, 114, 119, field);

@@ -19,6 +19,8 @@ namespace alienorum
         double radial_velocity = 0;                 // meters / second
         double apparent_magnitude = 1e29;           // visual/550nm
         double parallax = 0;                        // radians
+        bool has_catalog_BV = false;
+        bool has_catalog_UB = false;
 
         double minmag = 0;                          // apparent V mag
         double maxmag = 0;                          // apparent V mag
@@ -84,6 +86,7 @@ namespace alienorum
         double estimate_temperature();              // Based on BV color
         double estimate_luminosity(double tempK);   // Based on radius and supplied temperature. Returns output scaled to absolute magnitude zero.
         double estimate_mass();
+        bool reconcile_visual_magnitudes();
         void estimate_BV();                         // Blackbody value from estimated temperature from MK spectral type
         void estimate_UB();                         // "
         void estimate_BV(double tempK);             // Blackbody value from known temperature

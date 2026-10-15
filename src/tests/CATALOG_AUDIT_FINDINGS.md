@@ -89,3 +89,39 @@ or overwriting a valid orbit. Existing generated data was left unchanged.
 Regression validation covers these repairs with 23 native tests and 35 Python
 tests. A new live audit after application regeneration will establish the
 remaining data findings; the old counts above describe the original snapshot.
+
+## Photometry and override repair batch
+
+The subsequent application-generated snapshot contains 131,533 rows, 23 hard
+errors, and 1,491 review warnings. It has 47 distance-modulus warnings, 232
+distance/parallax warnings, and one Hipparcos B-V discrepancy. Its SHA-256 is
+`e90836199f828d8a4bd310678e45b73df39370b6047de2e3bcb2498c41f85fa4`.
+The local report is `/tmp/soles_before_photometry.json`.
+
+The generator now reconciles visual magnitudes after overrides, Gaia updates,
+and the main-sequence audit, before assigning IDs and emitting the catalog.
+An available apparent magnitude and the final adopted distance determine the
+absolute magnitude. If apparent magnitude is absent, an adopted absolute
+magnitude and distance determine it. Hipparcos orbital fits no longer assign a
+fixed apparent magnitude of 11 or replace existing apparent photometry.
+Gaia updates preserve adopted absolute magnitudes when apparent photometry is
+absent, and handle measured apparent magnitude zero correctly.
+
+Orbit overrides preserve blank spectral, mass, and radius fields; reject
+nonfinite or malformed physical values; retain supplied temperatures; and use
+temperature-derived colors only for absent colors. Catalog color-presence flags
+preserve measured zero values across import, cache writing, and JSON storage.
+Explicit absolute magnitude zero is valid and is protected from luminosity and
+main-sequence fallback estimates. The condensed writer now uses the U-B
+estimator for absent U-B instead of modifying B-V a second time.
+
+This batch addresses override precedence using existing sources. New external
+reference imports and field-level citation/uncertainty storage remain separate
+work. Nonblank override classifications still retain their existing priority;
+the incorrect Gamma 1 Delphini classification and physical override warrant
+source review even after its observed B-V is preserved.
+
+Validation passes 31 native catalog tests and 35 independent Python tests.
+The working generated catalog was left untouched. These are pre-regeneration
+counts; a fresh application-generated catalog is required for an observed
+before/after audit comparison.
