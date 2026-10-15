@@ -600,7 +600,7 @@ namespace
                         {
                             bayer_score = score;
                             strcpy(star->Bayer, value.c_str());
-                            star->BayerGrkno = g;
+                            star->BayerGrkno = grkno_from_abbrev(value.c_str());
                             strcpy(star->constellation, cons.abbrev.c_str());
                             provenance(star, "Bayer", "SIMBAD", row, value);
                         }

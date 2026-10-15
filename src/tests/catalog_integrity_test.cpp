@@ -1415,3 +1415,19 @@ TEST_F(CondensedCatalogTest, CatalogWriteFailurePreservesPreviousCompleteFile)
     EXPECT_THROW(reader.write_condensed_star_cat(bins), std::runtime_error);
     EXPECT_FALSE(std::filesystem::exists("catalogs/soles_alienorum.dat"));
 }
+
+TEST_F(CondensedCatalogTest, ReferenceBayerIdentityPreservesNumberedGreekVariants)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000\tHD 10000|* zet01 Oph\t0\t0\tG2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(star->Bayer, "Zet1Oph");
+    EXPECT_EQ(star->BayerGrkno, grkno_from_abbrev("Zet1Oph"));
+    EXPECT_NE(star->BayerGrkno, grkno_from_abbrev("Zet Oph"));
+    star->has_custom_name = false;
+    star->rename_from_Bayer_Flamsteed();
+    EXPECT_STREQ(star->name, "Zeta 1 Ophiuchi");
+}
