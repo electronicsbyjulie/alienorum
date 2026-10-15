@@ -300,7 +300,7 @@ ConsBins fill_alienorum_ids()
     int i, j, n;
     for (i=0; cels[i]; i++)
     {
-        if (cels[i]->typeclass() != class_star) continue;
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
         Star* s = (Star*)cels[i];
         if (!included.insert(s).second)
         {

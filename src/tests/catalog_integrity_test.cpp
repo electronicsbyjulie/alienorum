@@ -184,6 +184,13 @@ class CondensedCatalogTest : public UniverseFixture
         std::fclose(file);
         return read ? line : "";
     }
+
+    void reference_file(const std::string &name, const std::string &text)
+    {
+        std::filesystem::create_directories("catalogs/reference");
+        std::ofstream file(std::string("catalogs/reference/") + name);
+        file << text;
+    }
 };
 
 TEST_F(CondensedCatalogTest, IndependentFixturePreservesEveryIdentityAndPhotometricField)
@@ -1062,4 +1069,155 @@ TEST_F(CondensedCatalogTest, HipparcosOrbitFitPreservesExistingApparentMagnitude
     int offset = ncelobjs;
     ASSERT_TRUE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
     EXPECT_DOUBLE_EQ(secondary->apparent_magnitude, 0);
+}
+
+TEST_F(CondensedCatalogTest, ReferenceSourcesCorrectSpectraAndPreserveMeasuredUbv)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10001");
+    star->HD = 10001;
+    star->HIP = 100;
+    star->right_ascension = 311 * fiftyseventh;
+    star->declination = 16 * fiftyseventh;
+    strcpy(star->spectral_type, "A2Ia");
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tV\tB\tU\n"
+        "1\tHD 10001\tHD 10001|HIP 100\t311\t16\tF8V\t5.14\t5.63\t5.71\n");
+    reference_file("Mermilliod.tsv", "SimbadName\tm_LID\tVmag\tB-V\tU-B\n"
+        "HD 010001\t\t5.14\t0.49\t0.08\n");
+    reference_file("Skiff.tsv", "Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n"
+        "HD 10001\tF7V\t2026A&A...000....1A\t311\t16\n");
+    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(star->spectral_type, "F7V");
+    EXPECT_NEAR(star->BV_color, 0.49, 1e-12);
+    EXPECT_NEAR(star->UB_color, 0.08, 1e-12);
+    EXPECT_TRUE(star->has_catalog_BV);
+    EXPECT_TRUE(star->has_catalog_UB);
+    EXPECT_EQ(report["matched_objects"], 1);
+    const auto &fields = report["provenance"][std::to_string(star->seqno)]["fields"];
+    EXPECT_EQ(fields["B-V"]["source"], "Mermilliod");
+    EXPECT_EQ(fields["spectral_type"]["source"], "Skiff");
+}
+
+TEST_F(CondensedCatalogTest, ReferenceGaiaRejectsAmbiguousAndPoorAstrometry)
+{
+    make_star("Sun");
+    Star *good = make_star("HIP100");
+    Star *bad = make_star("HIP101");
+    Star *ambiguous = make_star("HIP102");
+    good->HIP = 100;
+    bad->HIP = 101;
+    ambiguous->HIP = 102;
+    reference_file("Gaia_DR3.tsv", "# Tab Separated Table\nQUERY_STATUS: OK\n"
+        "source_id\thip\tparallax\tparallax_error\truwe\tnumber_of_neighbours\n"
+        "---\t---\t---\t---\t---\t---\n"
+        "1000\t100\t5\t0.01\t1.0\t1\n"
+        "1001\t101\t5\t0.01\t3.0\t1\n"
+        "1002\t102\t5\t0.01\t1.0\t2\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_NEAR(good->distance / parsec, 200, 1e-10);
+    EXPECT_DOUBLE_EQ(bad->distance, 10 * parsec);
+    EXPECT_DOUBLE_EQ(ambiguous->distance, 10 * parsec);
+}
+
+TEST_F(CondensedCatalogTest, WdsUsesResolvedVisualPhotometryAndRejectsInfrared)
+{
+    make_star("Sun");
+    Star *a = make_star("WDS J00001+0001A");
+    Star *b = make_star("WDS J00001+0001B");
+    b->apparent_magnitude = 11;
+    reference_file("WDS.tsv", "WDS\tComp\tmag1\tmag2\tsep2\tpa2\tRAJ2000\tDEJ2000\tNotes\n"
+        "00001+0001\tAB\t1\t2\t1\t90\t0\t0\tK\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(b->apparent_magnitude, 11);
+    EXPECT_EQ(b->orbit, nullptr);
+    reference_file("WDS.tsv", "WDS\tComp\tmag1\tmag2\tsep2\tpa2\tRAJ2000\tDEJ2000\tNotes\n"
+        "00001+0001\tAB\t1\t2\t1\t90\t0\t0\tS\n");
+    const json report = reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(b->apparent_magnitude, 2);
+    EXPECT_EQ(b->orbit, nullptr);
+    EXPECT_FALSE(report["conflicts"].empty());
+    EXPECT_EQ(a->orbit, nullptr);
+}
+
+TEST_F(CondensedCatalogTest, Orb6ConvertsRelativeAxesAndEpochsWithoutPhotocentreFits)
+{
+    make_star("Sun");
+    Star *a = make_star("WDS J00003-4417A");
+    Star *b = make_star("WDS J00003-4417B");
+    std::string row(264, ' ');
+    put(row, 1, 18, "000019.10-441726.0");
+    put(row, 20, 29, "00003-4417");
+    put(row, 31, 45, "I 1477");
+    put(row, 81, 92, "10.0");
+    put(row, 93, 93, "y");
+    put(row, 105, 114, "1000");
+    put(row, 115, 115, "m");
+    put(row, 124, 132, "45");
+    put(row, 142, 150, "120");
+    put(row, 160, 174, "50000");
+    put(row, 175, 175, "d");
+    put(row, 187, 195, "0.25");
+    put(row, 204, 212, "90");
+    put(row, 234, 234, "9");
+    put(row, 238, 245, "Ref2026a");
+    reference_file("ORB6.orb6", row + "\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(b->orbit, nullptr);
+    put(row, 234, 234, "2");
+    reference_file("ORB6.orb6", row + "\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    ASSERT_NE(b->orbit, nullptr);
+    EXPECT_EQ(b->orbit->center, a);
+    EXPECT_NEAR(b->orbit->period / oneyear, 10, 1e-12);
+    EXPECT_NEAR(b->orbit->semimajor_axis / AU, 10, 1e-8);
+    EXPECT_DOUBLE_EQ(b->orbit->epoch, 2450000);
+    EXPECT_NEAR(b->orbit->heliocentric_inclination * fiftyseven, 45, 1e-10);
+}
+
+TEST_F(CondensedCatalogTest, DebcatConvertsLogarithmsAndTracksComponentAssignment)
+{
+    make_star("Sun");
+    Star *a = make_star("Test Pair", 2.2 * solar_mass);
+    a->set_component('A', a);
+    Star *b = make_star("Test Pair B", 1.1 * solar_mass);
+    b->make_companion_of(a, 'B');
+    reference_file("DEBCat.debcat", "# System logM1 logM2 logR1 logR2 logT1 logT2\n"
+        "Test_Pair 0.30103 0.0 0.30103 0.0 3.7 3.6\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_NEAR(a->mass / solar_mass, 2, 1e-7);
+    EXPECT_DOUBLE_EQ(b->mass / solar_mass, 1);
+    EXPECT_NEAR(a->volumetric_mean_radius / solar_radius, 2, 1e-7);
+    EXPECT_NEAR(b->temperature, pow(10.0, 3.6), 1e-8);
+}
+
+TEST_F(CondensedCatalogTest, SbxDoesNotUseProjectedVelocityAsRelativeOrbitSize)
+{
+    make_star("Sun");
+    Star *a = make_star("HD10000");
+    a->HD = 10000;
+    a->set_component('A', a);
+    Star *b = make_star("HD10000 B");
+    b->make_companion_of(a, 'B');
+    b->orbit->semimajor_axis = 2 * AU;
+    reference_file("SBX_systems.tsv", "sn\tra\tdec\tcomponent\n1\t0\t0\tAB\n");
+    reference_file("SBX_alias.tsv", "sn\tcatalog\tidentifier\n1\tHD\t10000\n");
+    reference_file("SBX_orbits.tsv", "sn\tperiod\teccentricity\tbibcode\tgrade\tK1\tK2\n"
+        "1\t10\t0.2\t2026A&A...000....1A\t1\t25\t30\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_DOUBLE_EQ(b->orbit->period, 10 * oneday);
+    EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.2);
+    EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 2 * AU);
+}
+
+TEST_F(CondensedCatalogTest, IauNamesResolveThroughExplicitIdentifiers)
+{
+    make_star("Sun");
+    Star *star = make_star("Old proper name");
+    star->HIP = 100;
+    reference_file("IAU.iau", "<table><thead><tr><th>proper names</th><th>HIP</th>"
+        "<th>Designation</th></tr></thead><tbody><tr><td>Approved name</td>"
+        "<td>100</td><td>HIP 100</td></tr></tbody></table>");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(star->name, "Approved name");
+    EXPECT_TRUE(star->has_custom_name);
 }

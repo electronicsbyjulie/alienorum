@@ -2,6 +2,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "classes/cons.h"
+#include "classes/stellar_sources.h"
 #include <cstdlib>
 #include <unordered_map>
 #include <string_view>
@@ -1327,7 +1328,15 @@ void load_stuff()
     mtx.lock();
     loading_msg = "Auditing main sequence stars...";
     mtx.unlock();
-    Star::audit_and_correct_main_sequence_stars(cels);
+    json reference_report;
+    if (!file_exists(ihcfn.c_str()))
+    {
+        Star::audit_and_correct_main_sequence_stars(cels);
+        mtx.lock();
+        loading_msg = "Reconciling stellar reference sources...";
+        mtx.unlock();
+        reference_report = reconcile_stellar_sources(cels, "catalogs" _FILESLASH "reference");
+    }
 
     mtx.lock();
     loading_msg = "Assigning constellations...";
@@ -1345,6 +1354,8 @@ void load_stuff()
         }
         ConsBins cb = fill_alienorum_ids();
         cr.write_condensed_star_cat(cb);
+        std::ofstream provenance("catalogs" _FILESLASH "soles_alienorum.provenance.json");
+        provenance << reference_report.dump(2) << '\n';
     }
 
     bv_correction = log(blackbody_flux(sun_temp, V_band) / blackbody_flux(sun_temp, B_band)) * invlogmagnbase - cels[0]->BV_color;

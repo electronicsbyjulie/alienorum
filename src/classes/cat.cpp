@@ -4437,6 +4437,9 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) return 0;
 
+    const bool preserve_references = file_exists(get_condensed_starcat_name().c_str())
+        && file_exists("catalogs" _FILESLASH "soles_alienorum.provenance.json");
+
     Star *A, *s;
     std::string str;
     int l;
@@ -4547,6 +4550,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
 
         if (bdystr[0] == '(') continue;
+
+        if (preserve_references)
+        {
+            // Rotation and disk metadata above still apply; vetted stellar fields and orbits stay intact.
+            continue;
+        }
 
         if (!A)
         {
@@ -5106,11 +5115,8 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     if (have_magnitude)
     {
         line << ((s->apparent_magnitude >= 0) ? "+" : "-");
-        if (fabs(s->apparent_magnitude) < 10)
-        {
-            line << "0";
-        }
-        line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
+        line << std::fixed << std::setprecision(2) << std::setw(5) << std::setfill('0')
+            << fabs(s->apparent_magnitude) << std::setfill(' ') << std::flush;
     }
     l += 7;
     line << std::string(l - line.str().size(), ' ');
@@ -5124,8 +5130,8 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         s->estimate_BV(s->estimate_temperature());
     }
     line << ((s->BV_color >= 0) ? "+" : "-");
-    if (fabs(s->BV_color) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->BV_color) << std::flush;
+    line << std::fixed << std::setprecision(2) << std::setw(5) << std::setfill('0')
+        << fabs(s->BV_color) << std::setfill(' ') << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -5134,8 +5140,8 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         s->estimate_UB(s->estimate_temperature());
     }
     line << ((s->UB_color >= 0) ? "+" : "-");
-    if (fabs(s->UB_color) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->UB_color) << std::flush;
+    line << std::fixed << std::setprecision(2) << std::setw(5) << std::setfill('0')
+        << fabs(s->UB_color) << std::setfill(' ') << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
@@ -5216,11 +5222,8 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         && (s->absolute_magnitude != 0 || have_magnitude))
     {
         line << ((s->absolute_magnitude >= 0) ? "+" : "-");
-        if (fabs(s->absolute_magnitude) < 10)
-        {
-            line << "0";
-        }
-        line << std::fixed << std::setprecision(2) << fabs(s->absolute_magnitude) << std::flush;
+        line << std::fixed << std::setprecision(2) << std::setw(5) << std::setfill('0')
+            << fabs(s->absolute_magnitude) << std::setfill(' ') << std::flush;
     }
     l += 7;
     line << std::string(l - line.str().size(), ' ');
@@ -5413,7 +5416,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
         std::unordered_set<Star*> emitted;
         auto write_star = [&](Star *star)
         {
-            if (star && emitted.insert(star).second)
+            if (star && !star->deleted && emitted.insert(star).second)
             {
                 write_condensed_star_cat_line(fp, star);
                 written++;
