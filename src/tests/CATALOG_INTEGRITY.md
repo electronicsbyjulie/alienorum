@@ -140,8 +140,8 @@ newer data, since the independent audit still compares BSC and Hipparcos values.
 Regression checkpoint on 2026-10-15: 38 Python tests and 71 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
-rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
-working catalog is absent during regeneration; partial preview files are not
+rows, 24 errors and 1,437 warnings. That initial comparison predated the source
+integration and importer repairs described below. Partial preview files are not
 valid comparison inputs.
 
 Commit `18472af` makes catalog writes transactional: a field overflow or output
@@ -226,3 +226,89 @@ This preserves cases such as Mu 1 Chamaeleontis and Alpha 1 Crucis when a source
 lists only the aggregate designation. Identifier repairs also rename inherited
 component labels within the same family, while preserving independent component
 identifiers and custom labels. Dedicated regressions cover both cases.
+
+## Full-generation comparison method
+
+The final comparison uses an isolated headless invocation of the raw stellar
+import sequence, with exoplanets and satellites omitted. It runs the same Gliese,
+BSC, Hipparcos, GCVS, Uranometria, CCDM, SB9, manual-override, orbit-center, legacy
+Gaia and stellar-heuristic stages as the fresh application path. Baseline and
+reconciled outputs both receive final photometric consistency and native ID
+assignment before serialization. All output files are under `/tmp`; the working
+`catalogs/soles_alienorum.dat` remains unchanged.
+
+The condensed overlay command is useful for inspecting source matches, but the
+runtime reader supplies estimated masses, radii and rotation values for blank
+fields. Those defaults can create additional Kepler diagnostics on export. Use a
+fresh raw-source generation for scientific before/after comparisons, rather than
+interpreting those overlay diagnostics as changes from adopted orbital data.
+
+All three previously missing bright Hipparcos entries (36322, 73722 and 100894)
+survive the repaired import chain with their own identities. The positive-zero
+DM entries do not inherit HD identities from negative-zero-zone stars.
+
+## Measured results on 2026-10-15
+
+The final source-enabled output contains 131,550 rows and has SHA-256
+`29514132bd6d4a2e685051ab29c01819bb077e6bec28c31f3c807850be26b858`.
+The comparable fresh legacy baseline, using the repaired importers but without
+the new reference pass, has SHA-256
+`f1572fcc9471befef87d14202f131f0bfe3b044f1ae5b914e32506321de2abd9`.
+Both files were checked with the same independent auditor and BSC/Hipparcos inputs.
+
+| Check | Fresh legacy baseline | With reference sources |
+| --- | ---: | ---: |
+| Rows | 131,550 | 131,550 |
+| Hard errors | 64 | 11 |
+| Review warnings | 1,350 | 12,670 |
+| Unrelated duplicate HD | 60 | 5 |
+| Unrelated duplicate HIP | 1 | 1 |
+| Contradictory HD display names | 1 | 0 |
+| Contradictory numbered display names | 1 | 0 |
+| Hipparcos spectral-family differences | 4 | 8,731 |
+| Hipparcos magnitude differences | 325 | 1,612 |
+| Hipparcos B-V differences | 1 | 1,177 |
+| Source-position differences | 27 | 14 |
+| Distance/parallax differences | 232 | 232 |
+| Distance-modulus discrepancies | 0 | 0 |
+| Orbital Kepler warnings | 424 | 425 |
+
+All 23 reference tables parse successfully and match 118,765 objects. The source
+pass removes 65 stale HD assignments using separately resolved object identities.
+Those removals do not delete the underlying stars. The earlier failed refreshed
+cache (213 errors, 17,810 warnings) remains separate from this comparison.
+The working generated catalog retains its original SHA-256
+`74b166b1a6fa8ad4878f16e49f2fe3f8e2b474df1f7eb2c89eab12e589b2f5be`.
+
+This is not a clean audit, and the warning-reduction target is not met. Of the
+12,670 warnings, 11,520 compare adopted spectral families, V magnitudes or B-V
+colors with older Hipparcos values. Those disagreements remain visible; adopting
+a newer source does not prove that every discrepancy is correct. The cached Gaia
+table supplies astrometry but lacks the optional GSPPhot temperature columns, so
+this run makes no claim of adopting those model temperatures. Twelve rows differ
+by more than 5 percent in distance versus inverse parallax; the other 220 such
+warnings are smaller discrepancies above the auditor's 0.2 percent tolerance.
+
+The remaining hard errors are retained for further source reconciliation:
+
+| Category | Count | Cases |
+| --- | ---: | --- |
+| Unrelated duplicate HD | 5 | 61907, 174152, 206151, 154907, 185344; component records still lack a shared native family identity |
+| Duplicate HIP | 1 | 90265 appears on both GJ 4057 / HD 336196 and an HD 336187 row |
+| BSC cross-identification | 2 | Gamma Arietis: HR 545/546 and HD 11502/11503 assignments differ between sources |
+| Hipparcos cross-identification | 2 | Gamma Arietis and HIP 90265 |
+| BSC Flamsteed designation | 1 | HD 166464: SIMBAD supplies 1 Sgr while BSC supplies 11 Sgr |
+
+The HIP 90265 case also contains copied coordinates on the extra HD 336187 row.
+A repair must retain the two real objects and restore their independent
+astrometry. Shared or component-qualified identifiers are not sufficient grounds
+to delete a star, fabricate a physical orbit, or silence an audit failure.
+The full read-only diagnostics are `/tmp/soles_reference_final.json`; final source
+provenance is `/tmp/alienorum_reference_final/reference_report.json`.
+
+Validation at commit `967fdc4`: 38 Python tests and 71 native tests pass, including
+transactional writes, fixed-width formatting, identity guards, long CNS5 rows,
+negative-zero DM zones, numbered aliases, inherited component labels and the
+independent ERFA precession vectors. Rebuild and freshly regenerate through the
+application to replace the working catalog; loading its old condensed cache does
+not apply these importer repairs.
