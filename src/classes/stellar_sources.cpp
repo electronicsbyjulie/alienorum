@@ -686,6 +686,11 @@ namespace
                             continue;
                         }
                         const int component = end == position ? 0 : atoi(key.substr(position, end - position).c_str());
+                        if (!component && original_bayer.size() > 3
+                            && std::isdigit(static_cast<unsigned char>(original_bayer[3])))
+                        {
+                            continue;
+                        }
                         const std::string value = abbreviations[g]
                             + (component ? std::to_string(component) : " ") + cons.abbrev;
                         const int score = (component ? 2 : 0) + (value == original_bayer ? 8 : 0)
@@ -1095,6 +1100,18 @@ namespace
                         Row proof;
                         proof["oid"] = identified.second;
                         name(star, replacement, "SIMBAD", proof);
+                        if (star->multisys && star->multisys->get_member('A') == star)
+                        {
+                            for (char letter = 'B'; letter <= 'Z'; letter++)
+                            {
+                                Star *child = star->multisys->get_member(letter);
+                                if (child && !child->HD && !child->HIP
+                                    && stellar_identifier_key(child->name) == key + std::string(1, letter))
+                                {
+                                    name(child, replacement + " " + letter, "SIMBAD", proof);
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1866,3 +1866,45 @@ TEST(CatalogPrecessionTest, NativeAxesMatchErfaPmat76ReferenceMatrix)
     EXPECT_NEAR(north.y, 0.9999999285899790119, 1e-12);
     EXPECT_NEAR(north.z, 0.3779153474959888345e-3, 1e-14);
 }
+
+TEST_F(CondensedCatalogTest, UnnumberedAliasesCannotEraseExistingBayerNumbers)
+{
+    make_star("Sun");
+    Star *star = make_star("Mu 1 Ophiuchi");
+    star->HD = 10000;
+    strcpy(star->Bayer, "Mu 1Oph");
+    star->BayerGrkno = grkno_from_abbrev(star->Bayer);
+    strcpy(star->constellation, "Oph");
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000\tHD 10000|* mu. Oph\t0\t0\tG2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_STREQ(star->Bayer, "Mu 1Oph");
+    EXPECT_STREQ(star->name, "Mu 1 Ophiuchi");
+    EXPECT_EQ(star->BayerGrkno, grkno_from_abbrev("Mu 1Oph"));
+}
+
+TEST_F(CondensedCatalogTest, IdentifierRepairUpdatesInheritedCompanionDisplayNames)
+{
+    make_star("Sun");
+    Star *primary = make_star("HD10000");
+    primary->HD = 10000;
+    primary->HIP = 200;
+    primary->set_component('A', primary);
+    Star *child = make_star("HD10000 D");
+    child->make_companion_of(primary, 'D');
+    Star *custom = make_star("Custom companion");
+    custom->make_companion_of(primary, 'C');
+    Star *owner = make_star("Independent owner");
+    owner->HD = 10000;
+    owner->HIP = 100;
+    owner->right_ascension = 10 * fiftyseventh;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000\tHD 10000|HIP 100\t10\t0\tG2V\n"
+        "2\tHIP 200\tHIP 200\t0\t0\tK2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(primary->HD, 0u);
+    EXPECT_STREQ(primary->name, "HIP200");
+    EXPECT_STREQ(child->name, "HIP200 D");
+    EXPECT_STREQ(custom->name, "Custom companion");
+    EXPECT_EQ(child->orbit->center, primary);
+}

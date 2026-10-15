@@ -137,7 +137,7 @@ all original input catalogs. A fresh application build remains the full
 regeneration path. Scientific disagreement warnings can persist after adopting
 newer data, since the independent audit still compares BSC and Hipparcos values.
 
-Checkpoint on 2026-10-14: 38 Python tests and 69 native tests pass; CMake configures
+Regression checkpoint on 2026-10-15: 38 Python tests and 71 native tests pass; CMake configures
 successfully. Commit `277efff` centralizes endpoints and corrects fixed-column
 rounding/variability serialization. The latest complete input audit had 131,533
 rows, 24 errors and 1,437 warnings. A new comparison remains pending while the
@@ -220,3 +220,9 @@ corrects the z-angle quadratic coefficient, and maps the equatorial rotation int
 the application's (-Y, Z, X) axes. Independent ERFA Prec76 epoch-angle and Pmat76
 matrix vectors verify all three axes. This corrects older B1950 input positions;
 it does not implement a full FK4-to-FK5 transformation or remove FK4 E-terms.
+
+An unnumbered SIMBAD alias cannot erase an existing numbered Bayer designation.
+This preserves cases such as Mu 1 Chamaeleontis and Alpha 1 Crucis when a source
+lists only the aggregate designation. Identifier repairs also rename inherited
+component labels within the same family, while preserving independent component
+identifiers and custom labels. Dedicated regressions cover both cases.
