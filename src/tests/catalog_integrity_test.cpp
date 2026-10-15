@@ -1956,6 +1956,15 @@ TEST_F(CondensedCatalogTest, DisplacedHdIdentityRecoversItsOwnSourceMeasurements
     EXPECT_DOUBLE_EQ(b->apparent_magnitude, 8);
     EXPECT_FALSE(a->deleted);
     EXPECT_FALSE(b->deleted);
+    b->HIP = 100;
+    b->right_ascension = b->declination = 0;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tplx_value\tplx_err\n"
+        "1\tHD 10000\tHD 10000|HIP 100|GJ 100\t0\t0\tG2V\t100\t1\n"
+        "2\tHD 10001\tHD 10001\t10\t20\tK2V\t2\t1\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(b->HIP, 100u);
+    EXPECT_DOUBLE_EQ(b->right_ascension, 0);
+    EXPECT_DOUBLE_EQ(b->declination, 0);
 }
 
 TEST_F(CondensedCatalogTest, CachedVisualComponentsRetainFamilyWithoutPhysicalOrbit)

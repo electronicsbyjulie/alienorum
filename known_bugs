@@ -9,3 +9,6 @@ Standing on the edge of a vegetation zone, the viewer is surrounded by rocks or 
 Rectangle slice effects are still visible on distant cumulus clouds; their tops look flattened until the viewer draws closer and the flatness recedes.
 
 The new catalogs are bizarrely stored in a folder called "reference". That is incorrect. Notice how each preexisting catalog has a folder of its own named after the catalog. These are separate publications with their own readmes so it is not correct to lump them all together in one folder. Separate them out and make sure the code knows where to look (it should automatically find them).
+
+When viewing from the surface of a planet of a component in a multi star system, the rocks cast shadows relative to the system's primary star (component A) instead of the light center. The two planets of 55 Cnc B are good examples of where this bug occurs. - FIXED by jlg 261015.0310
+

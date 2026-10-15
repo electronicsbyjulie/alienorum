@@ -5890,7 +5890,10 @@ void draw_horizon()
             bool is_moon = !is_icy && !is_venus && !is_mars && !is_lava && p && uses_rocky_map(p->type)
                 && (P_surf <= 50.0);
 
-            CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
+            // DO NOT USE mycenobj or cels[anything]->cenobj to find light center!
+            // Center object and light center ARE NOT NECESSARILY the same object!
+            // For example on the planets of 55 Cancri B, light center IS NOT cenobj and the resulting shadows would be wrong.
+            CelestialObject *sun_obj = (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
             double sun_elev = sun_obj ? sun_obj->Decl_as_radians(here) : 0.0;
             double sun_az_world = azimuth;
             if (sun_obj)
