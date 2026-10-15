@@ -248,7 +248,10 @@ def check_photometry(row, report):
     if m is not None and bright is not None and faint is not None and not bright - 0.5 <= m <= faint + 0.5:
         report.add('variable_magnitude', row, 'Apparent magnitude lies outside its variability range', 'warning')
     spectral = row.text('spectral').replace(' ', '')
-    if spectral and not SPECTRAL.match(spectral):
+    if spectral.startswith('(') and spectral.endswith(')'):
+        spectral = spectral[1:-1]
+    descriptive = spectral.lower() in ('pec', 'pec(nova)', '+em')
+    if spectral and not descriptive and not SPECTRAL.match(spectral):
         report.add('spectral_syntax', row, f'Unrecognized spectral prefix {spectral!r}', 'warning')
     bv = row.number('bv')
     if spectral and bv is not None and '+' not in spectral and not any(marker in spectral.lower() for marker in ('pec', 'sd', 'p:', 'e:')):

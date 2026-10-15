@@ -478,6 +478,13 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             s->distance_known = true;
         }
 
+        if (num_read && s->parallax > 0)
+        {
+            s->distance = parsec * arcsecond / s->parallax;
+            s->distance_known = true;
+            s->reconcile_visual_magnitudes();
+        }
+
         // Sun is distance zero.
         if (!s->right_ascension && !s->declination)
         {

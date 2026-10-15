@@ -354,5 +354,6 @@ catalog-tests: $(BIN)/catalog_integrity_test
 	python3 -B -m unittest discover -s src/tests -p test_catalog_integrity.py
 	$(BIN)/catalog_integrity_test
 
+CATALOG_AUDIT_FLAGS ?=
 catalog-audit:
-	python3 -B src/tests/catalog_integrity.py catalogs/soles_alienorum.dat --sources catalogs
+	python3 -B src/tests/catalog_integrity.py catalogs/soles_alienorum.dat --sources catalogs $(CATALOG_AUDIT_FLAGS)

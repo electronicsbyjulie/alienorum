@@ -777,6 +777,9 @@ TEST_F(CondensedCatalogTest, GlieseComponentMarkerAndMissingDmAreNormalizedAtImp
     ASSERT_EQ(reader.read_Gliese_catalog(cels, MAX_CELOBJS), 3);
     Star *star = (Star*)cels[2];
     EXPECT_STREQ(star->Gliese, "GJ 1255 D");
+    EXPECT_NEAR(star->distance / parsec, 1000.0 / 33.0, 1e-10);
+    EXPECT_NEAR(star->absolute_magnitude,
+        star->apparent_magnitude - 5.0 * log10(star->distance / (10.0 * parsec)), 1e-10);
     EXPECT_EQ(star->get_component(), 'D');
     EXPECT_STREQ(star->Bonn_survey, "");
     EXPECT_TRUE(dmcache.empty());

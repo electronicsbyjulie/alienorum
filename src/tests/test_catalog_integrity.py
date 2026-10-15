@@ -50,6 +50,12 @@ class CatalogIntegrityTest(unittest.TestCase):
         if severity:
             self.assertTrue(all(issue.severity == severity for issue in matches))
 
+    def test_published_spectral_descriptors_and_parenthesized_classes_are_valid(self):
+        for spectral in ('(F2)', '(F8IV)', 'pec', 'pec(NOVA)', '+em'):
+            report = self.audit(row(spectral=spectral))
+            self.assertFalse(any(issue.code == 'spectral_syntax' for issue in report.issues), spectral)
+        self.assert_code(self.audit(row(spectral='?unknown')), 'spectral_syntax', 'warning')
+
     def test_added_bayer_designations_require_independent_catalog_and_position_support(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
