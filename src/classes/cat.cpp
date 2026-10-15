@@ -18,6 +18,7 @@
 #include <string.h>
 #include "cat.h"
 #include "serial.h"
+#include "stellar_sources.h"
 #include "cons.h"
 #include "shore.h"
 #include "../globals.h"
@@ -6174,6 +6175,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             loading_msg = std::string("Verifying ") + s->alienorumid + std::string("...");
         }
     }
+
+    restore_stellar_component_membership(cels);
 
     return num_read;
 }

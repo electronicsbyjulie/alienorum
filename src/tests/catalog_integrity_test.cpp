@@ -1908,3 +1908,72 @@ TEST_F(CondensedCatalogTest, IdentifierRepairUpdatesInheritedCompanionDisplayNam
     EXPECT_STREQ(custom->name, "Custom companion");
     EXPECT_EQ(child->orbit->center, primary);
 }
+
+TEST_F(CondensedCatalogTest, ResolvedWdsAliasesPreserveSharedHdAndIndependentAstrometry)
+{
+    make_star("Sun");
+    Star *a = make_star("HD10000");
+    Star *b = make_star("HD10000");
+    a->HD = b->HD = 10000;
+    a->HIP = 100;
+    b->HIP = 200;
+    a->distance = 10 * parsec;
+    b->distance = 20 * parsec;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\n"
+        "1\tHD 10000A\tHD 10000|HIP 100|WDS J00000+0000A\t0\t0\tG2V\n"
+        "2\tHD 10000B\tHD 10000B|HIP 200|WDS J00000+0000B\t0\t0\tK2V\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(a->HD, 10000u);
+    EXPECT_EQ(b->HD, 10000u);
+    ASSERT_NE(a->multisys, nullptr);
+    EXPECT_EQ(a->multisys, b->multisys);
+    EXPECT_EQ(b->get_component(), 'B');
+    EXPECT_EQ(a->orbit, nullptr);
+    EXPECT_EQ(b->orbit, nullptr);
+    EXPECT_DOUBLE_EQ(b->distance, 20 * parsec);
+    EXPECT_FALSE(a->deleted);
+    EXPECT_FALSE(b->deleted);
+}
+
+TEST_F(CondensedCatalogTest, DisplacedHdIdentityRecoversItsOwnSourceMeasurements)
+{
+    make_star("Sun");
+    Star *a = make_star("GJ 100");
+    Star *b = make_star("HD10001");
+    a->HD = 10000;
+    b->HD = 10001;
+    a->HIP = b->HIP = 100;
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tplx_value\tplx_err\tpmra\tpmdec\tV\n"
+        "1\tHD 10000\tHD 10000|HIP 100|GJ 100\t0\t0\tG2V\t100\t1\t0\t0\t5\n"
+        "2\tHD 10001\tHD 10001\t10\t20\tK2V\t2\t0.1\t5\t6\t8\n");
+    reconcile_stellar_sources(cels, "catalogs/reference", false);
+    EXPECT_EQ(a->HIP, 100u);
+    EXPECT_EQ(b->HIP, 0u);
+    EXPECT_EQ(b->HD, 10001u);
+    EXPECT_NEAR(b->right_ascension, 10 * fiftyseventh, 1e-12);
+    EXPECT_NEAR(b->declination, 20 * fiftyseventh, 1e-12);
+    EXPECT_NEAR(b->distance / parsec, 500, 1e-10);
+    EXPECT_DOUBLE_EQ(b->apparent_magnitude, 8);
+    EXPECT_FALSE(a->deleted);
+    EXPECT_FALSE(b->deleted);
+}
+
+TEST_F(CondensedCatalogTest, CachedVisualComponentsRetainFamilyWithoutPhysicalOrbit)
+{
+    std::string a = primary_row();
+    std::string b = primary_row();
+    put(b, 1, 14, "2c Oph 1 B");
+    put(b, 16, 54, "Secondary");
+    put(b, 114, 119, "159562");
+    put(b, 121, 126, "86033");
+    put(b, 287, 300, "");
+    write_rows({a, b});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    Star *first = static_cast<Star*>(cels[1]);
+    Star *second = static_cast<Star*>(cels[2]);
+    ASSERT_NE(first->multisys, nullptr);
+    EXPECT_EQ(first->multisys, second->multisys);
+    EXPECT_EQ(second->get_component(), 'B');
+    EXPECT_EQ(second->orbit, nullptr);
+}

@@ -233,6 +233,8 @@ namespace
         std::unordered_map<std::string, std::set<std::string>> identifier_claims;
         std::unordered_map<std::string, std::vector<Star*>> resolved_objects;
         std::unordered_map<std::string, std::string> object_types;
+        std::map<std::string, std::map<char, std::set<Star*>>> component_groups;
+        std::map<std::string, Row> displaced_hd_rows;
         std::unordered_map<std::string, std::vector<Star*>> spatial;
         std::unordered_map<Star*, std::vector<Star*>> children;
         std::map<std::string, Row> sbx_systems;
@@ -301,44 +303,7 @@ namespace
                     children[static_cast<Star*>(star->orbit->center)].push_back(star);
                 }
             }
-            // Rebuild component membership from explicit condensed IDs without changing orbit centers.
-            std::unordered_map<std::string, Star*> by_id;
-            for (Star *star : stars)
-            {
-                if (!star->alienorumid.empty())
-                {
-                    by_id.emplace(trim(star->alienorumid), star);
-                }
-            }
-            for (Star *star : stars)
-            {
-                const std::string &id = star->alienorumid;
-                if (star->multisys || id.size() < 3 || id[id.size() - 2] != ' '
-                    || id.back() < 'B' || id.back() > 'Z')
-                {
-                    continue;
-                }
-                const auto root = by_id.find(trim(id.substr(0, id.size() - 2)));
-                if (root == by_id.end() || root->second == star)
-                {
-                    continue;
-                }
-                Star *primary = root->second;
-                if (primary->multisys && primary->multisys->get_member('A') != primary)
-                {
-                    continue;
-                }
-                if (!primary->multisys)
-                {
-                    primary->multisys = new StarMulti();
-                    primary->multisys->add_member(primary, 'A');
-                }
-                if (!primary->multisys->get_member(id.back()))
-                {
-                    star->multisys = primary->multisys;
-                    star->multisys->add_member(star, id.back());
-                }
-            }
+            restore_stellar_component_membership(input);
         }
 
         bool same_family(Star *first, Star *second)
@@ -840,6 +805,20 @@ namespace
                     identifier_claims[key].insert(oid);
                 }
             }
+            for (const auto &key : keys)
+            {
+                const auto owners = aliases.find(key);
+                if (std::regex_match(key, numeric_hd) && owners != aliases.end() && owners->second.size() == 1)
+                {
+                    Star *candidate = owners->second.front();
+                    if (candidate->HIP && !keys.count("HIP" + std::to_string(candidate->HIP))
+                        && std::isfinite(number(row, "ra")) && std::isfinite(number(row, "dec"))
+                        && separation(candidate, number(row, "ra"), number(row, "dec")) > 10)
+                    {
+                        displaced_hd_rows[key] = row;
+                    }
+                }
+            }
             auto identity_score = [&](Star *star)
             {
                 return (star->HD && keys.count("HD" + std::to_string(star->HD)) ? 4 : 0)
@@ -935,6 +914,15 @@ namespace
                 }
                 object_ids[star] = oid;
                 resolved_objects[oid].push_back(star);
+                static const std::regex wds_component("^WDSJ([0-9]{5}[+-][0-9]{4})([AB])$");
+                for (const auto &key : keys)
+                {
+                    std::smatch component;
+                    if (std::regex_match(key, component, wds_component))
+                    {
+                        component_groups[component[1].str()][component[2].str()[0]].insert(star);
+                    }
+                }
                 if (star->HR && keys.count("HR" + std::to_string(star->HR))
                     && designation_support(star, keys))
                 {
@@ -997,6 +985,113 @@ namespace
                     adopt(star, "radial_velocity", star->radial_velocity, velocity * 1000,
                         "SIMBAD", row, "m/s");
                 }
+            }
+        }
+
+        void restore_displaced_identities()
+        {
+            for (const auto &entry : displaced_hd_rows)
+            {
+                const auto owners = aliases.find(entry.first);
+                const auto claims = identifier_claims.find(entry.first);
+                const Row &row = entry.second;
+                if (owners == aliases.end() || owners->second.size() != 1
+                    || claims == identifier_claims.end() || claims->second.size() != 1)
+                {
+                    continue;
+                }
+                Star *star = owners->second.front();
+                if (!star->HIP || star->multisys || star->orbit || star->user_added || star->user_edited)
+                {
+                    continue;
+                }
+                const std::string hip = "HIP" + std::to_string(star->HIP);
+                const auto hip_claim = identifier_claims.find(hip);
+                if (hip_claim == identifier_claims.end() || hip_claim->second.size() != 1
+                    || *hip_claim->second.begin() == cell(row, "oid"))
+                {
+                    continue;
+                }
+                const auto resolved = resolved_objects.find(*hip_claim->second.begin());
+                Star *owner = nullptr;
+                if (resolved != resolved_objects.end())
+                {
+                    for (Star *candidate : resolved->second)
+                    {
+                        if (candidate != star && candidate->HIP == star->HIP && candidate->HD
+                            && candidate->HD != star->HD && !same_family(candidate, star)
+                            && separation(star, candidate->right_ascension * fiftyseven,
+                                candidate->declination * fiftyseven) < 1)
+                        {
+                            owner = candidate;
+                        }
+                    }
+                }
+                const double plx = number(row, "plx_value"), error = number(row, "plx_err");
+                if (!owner || !(plx > 0 && error > 0 && error / plx < 0.2))
+                {
+                    continue;
+                }
+                auto &old_alias = aliases[hip];
+                old_alias.erase(std::remove(old_alias.begin(), old_alias.end(), star), old_alias.end());
+                if (hipcache && hipcache[star->HIP] == star)
+                {
+                    hipcache[star->HIP] = owner;
+                }
+                star->HIP = 0;
+                provenance(star, "HIP", "SIMBAD", row, nullptr);
+                adopt(star, "RA_J2000", star->right_ascension, number(row, "ra") * fiftyseventh,
+                    "SIMBAD_identity_repair", row, "rad");
+                adopt(star, "Dec_J2000", star->declination, number(row, "dec") * fiftyseventh,
+                    "SIMBAD_identity_repair", row, "rad");
+                adopt(star, "parallax", star->parallax, plx / 1000 * arcsecond,
+                    "SIMBAD_identity_repair", row, "rad", error / 1000 * arcsecond);
+                adopt(star, "distance", star->distance, 1000 / plx * parsec,
+                    "SIMBAD_identity_repair", row, "m");
+                star->distance_known = true;
+                const double pmra = number(row, "pmra"), pmdec = number(row, "pmdec");
+                if (std::isfinite(pmra) && std::isfinite(pmdec))
+                {
+                    adopt(star, "proper_motion_RA", star->proper_motion_RA,
+                        pmra / 1000 * arcsecond / oneyear / std::max(1e-12, fabs(cos(star->declination))),
+                        "SIMBAD_identity_repair", row, "rad/s");
+                    adopt(star, "proper_motion_dec", star->proper_motion_decl,
+                        pmdec / 1000 * arcsecond / oneyear, "SIMBAD_identity_repair", row, "rad/s");
+                }
+                const double rv = number(row, "rvz_radvel");
+                if (std::isfinite(rv))
+                {
+                    adopt(star, "radial_velocity", star->radial_velocity, rv * 1000,
+                        "SIMBAD_identity_repair", row, "m/s");
+                }
+                object_ids.erase(star);
+                simbad(row);
+                star->update_location(J2000_TIME_T);
+            }
+        }
+
+        void restore_component_groups()
+        {
+            for (const auto &entry : component_groups)
+            {
+                const auto first = entry.second.find('A'), second = entry.second.find('B');
+                if (first == entry.second.end() || second == entry.second.end()
+                    || first->second.size() != 1 || second->second.size() != 1)
+                {
+                    continue;
+                }
+                Star *a = *first->second.begin(), *b = *second->second.begin();
+                if (a == b || a->multisys || b->multisys || a->orbit || b->orbit
+                    || a->user_added || b->user_added || a->user_edited || b->user_edited
+                    || object_ids[a] == object_ids[b])
+                {
+                    continue;
+                }
+                StarMulti *family = new StarMulti();
+                family->add_member(a, 'A');
+                family->add_member(b, 'B');
+                provenance(a, "component_family", "SIMBAD", Row(), entry.first + "A");
+                provenance(b, "component_family", "SIMBAD", Row(), entry.first + "B");
             }
         }
 
@@ -1970,6 +2065,56 @@ std::string alienorum::stellar_identifier_key(const std::string &identifier)
     return key;
 }
 
+void alienorum::restore_stellar_component_membership(CelestialObject **objects)
+{
+    std::vector<Star*> stars;
+    for (int i = 1; objects[i]; i++)
+    {
+        if (!objects[i]->deleted && objects[i]->typeclass() == class_star)
+        {
+            stars.push_back(static_cast<Star*>(objects[i]));
+        }
+    }
+    // Rebuild component membership from explicit condensed IDs without changing orbit centers.
+    std::unordered_map<std::string, Star*> by_id;
+    for (Star *star : stars)
+    {
+        if (!star->alienorumid.empty())
+        {
+            by_id.emplace(trim(star->alienorumid), star);
+        }
+    }
+    for (Star *star : stars)
+    {
+        const std::string &id = star->alienorumid;
+        if (star->multisys || id.size() < 3 || id[id.size() - 2] != ' '
+            || id.back() < 'B' || id.back() > 'Z')
+        {
+            continue;
+        }
+        const auto root = by_id.find(trim(id.substr(0, id.size() - 2)));
+        if (root == by_id.end() || root->second == star)
+        {
+            continue;
+        }
+        Star *primary = root->second;
+        if (primary->multisys && primary->multisys->get_member('A') != primary)
+        {
+            continue;
+        }
+        if (!primary->multisys)
+        {
+            primary->multisys = new StarMulti();
+            primary->multisys->add_member(primary, 'A');
+        }
+        if (!primary->multisys->get_member(id.back()))
+        {
+            star->multisys = primary->multisys;
+            star->multisys->add_member(star, id.back());
+        }
+    }
+}
+
 std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
 {
     std::vector<StellarReferenceSource> sources;
@@ -1989,6 +2134,10 @@ std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
                 "oid", "main_id", "ids", "ra", "dec", "sp_type"
             });
     }
+    add("SIMBAD_HIP", std::vector<std::string>
+        {
+            "oid", "main_id", "ids", "ra", "dec", "sp_type"
+        });
     add("Mermilliod",
         std::vector<std::string>
         {
@@ -2118,6 +2267,8 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
     {
         if (source.name == "Mermilliod")
         {
+            context.restore_displaced_identities();
+            context.restore_component_groups();
             context.finalize_identifiers();
         }
         const auto path = std::filesystem::path(cache_directory) / (source.name + "." + source.format);

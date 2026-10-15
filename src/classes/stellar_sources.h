@@ -16,6 +16,7 @@ namespace alienorum
         std::vector<std::string> columns;
     };
 
+    void restore_stellar_component_membership(CelestialObject **objects);
     std::vector<StellarReferenceSource> stellar_reference_sources();
     std::string stellar_identifier_key(const std::string &identifier);
     std::vector<std::string> stellar_table_fields(const std::string &line, char delimiter = '\t');

@@ -312,3 +312,18 @@ negative-zero DM zones, numbered aliases, inherited component labels and the
 independent ERFA precession vectors. Rebuild and freshly regenerate through the
 application to replace the working catalog; loading its old condensed cache does
 not apply these importer repairs.
+
+## Zero-error repair checkpoint
+
+The source pass now collects explicit resolved WDS A/B aliases into visual
+families before removing stale identifiers. Shared HD numbers remain attached to
+both members, independent HIP numbers and distances survive, and no physical
+orbit is created. Cached component IDs restore the same membership on reload.
+A supplemental SIMBAD Hipparcos query in `catalogs/urls.dat` covers missing V
+photometry and faint members excluded from the magnitude-limited pages.
+
+A displaced HD record can recover its independent source position and astrometry
+only when a separately resolved nearby catalog object owns its duplicated HIP,
+the HD source identity is unique, and the replacement parallax passes an error
+filter. Both objects survive. Native regressions cover this repair and visual
+family persistence; 74 native tests pass at this checkpoint.
