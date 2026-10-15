@@ -35,6 +35,8 @@ TEST(SurfaceSceneryTest, WalkingPreservesObjectsAcrossCellAndFaceBoundaries)
             }
             ++shared;
             EXPECT_EQ(object.seed, found->second.seed);
+            EXPECT_DOUBLE_EQ(object.latitude, found->second.latitude);
+            EXPECT_DOUBLE_EQ(object.longitude, found->second.longitude);
             EXPECT_NEAR(object.east, found->second.east - 1.0, 1.0e-6);
             EXPECT_NEAR(object.north, found->second.north, 1.0e-8);
         }
@@ -68,6 +70,8 @@ TEST(SurfaceSceneryTest, LatitudeMovementAndPolesStayContinuous)
             {
                 ++shared;
                 EXPECT_EQ(object.seed, found->second.seed);
+            EXPECT_DOUBLE_EQ(object.latitude, found->second.latitude);
+            EXPECT_DOUBLE_EQ(object.longitude, found->second.longitude);
                 EXPECT_NEAR(object.east, found->second.east, 1.0e-6);
                 EXPECT_NEAR(object.north, found->second.north - 1.0, 1.0e-6);
             }

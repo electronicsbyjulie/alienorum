@@ -412,8 +412,8 @@ class CatalogIntegrityTest(unittest.TestCase):
             for start, end, value in ((1, 4, '6556'), (5, 7, '54'), (8, 11, 'Alp '), (12, 14, 'Oph'), (26, 31, '1')):
                 source[start - 1:end] = value.encode().ljust(end - start + 1)
             (root / 'BSC/catalog').write_bytes(source + b'\n')
-            (root / 'reference').mkdir()
-            modern = root / 'reference/SIMBAD.tsv'
+            (root / 'SIMBAD').mkdir()
+            modern = root / 'SIMBAD/SIMBAD.tsv'
             header = 'oid\tids\tra\tdec\totype\n'
             identity = '1\tHD 159561|HR 6556|HIP 86032|* alf Oph|* 55 Oph\t263.77958333333333\t12.67138888888889\t*\n'
             modern.write_text(header + identity)
@@ -439,8 +439,8 @@ class CatalogIntegrityTest(unittest.TestCase):
             for start, end, value in ((1, 4, '6556'), (8, 11, 'Alp '), (12, 14, 'Oph'), (26, 31, '1')):
                 source[start - 1:end] = value.encode().ljust(end - start + 1)
             (root / 'BSC/catalog').write_bytes(source + b'\n')
-            (root / 'reference').mkdir()
-            modern = root / 'reference/SIMBAD.tsv'
+            (root / 'SIMBAD').mkdir()
+            modern = root / 'SIMBAD/SIMBAD.tsv'
             for aliases in ('HD 159561|HR 6556|* bet Oph', 'HD 159561|HR 6557|* alf Oph'):
                 modern.write_text('oid\tids\tra\tdec\totype\n1\t' + aliases + '\t263.77958333333333\t12.67138888888889\t*\n')
                 self.assert_code(audit_bytes(sun() + row(), root), 'bsc_cross_id')

@@ -49,6 +49,7 @@ class CondensedCatalogReader : public CatalogReader
     public:
     using CatalogReader::write_condensed_star_cat_line;
     using CatalogReader::resolve_or_create_exostar;
+    using CatalogReader::apply_exoplanet_names;
 };
 
 class CondensedCatalogTest : public UniverseFixture
@@ -2000,4 +2001,113 @@ TEST_F(CondensedCatalogTest, CachedVisualComponentsRetainFamilyWithoutPhysicalOr
     EXPECT_EQ(first->multisys, second->multisys);
     EXPECT_EQ(second->get_component(), 'B');
     EXPECT_EQ(second->orbit, nullptr);
+}
+
+TEST_F(CondensedCatalogTest, ExoplanetHostNamesStayLocalDuringIauReconciliation)
+{
+    make_star("Sun");
+    const char *designations[] =
+    {
+        "Epsilon Eridani", "51 Pegasi", "Upsilon Andromedae", "Alpha Mensae"
+    };
+    const char *local[] =
+    {
+        "Ran", "Helvetios", "Titawin", "Koora"
+    };
+    const int hd[] =
+    {
+        22049, 217014, 9826, 43834
+    };
+    hdcache = new Star*[MAX_HD + 1]();
+    std::ofstream names("exoname.dat");
+    std::string table = "<table><tr><th>proper names</th><th>HIP</th><th>Designation</th></tr>";
+    for (int index = 0; index < 4; ++index)
+    {
+        Star *star = make_star(designations[index]);
+        star->HD = hd[index];
+        hdcache[hd[index]] = star;
+        star->HIP = 100 + index;
+        const std::string identifier = "HD" + std::to_string(hd[index]);
+        names << identifier << std::string(40 - identifier.size(), ' ')
+            << local[index] << std::string(24 - strlen(local[index]), ' ') << '\n';
+        table += "<tr><td>" + std::string(local[index]) + "</td><td>"
+            + std::to_string(star->HIP) + "</td><td>HIP " + std::to_string(star->HIP) + "</td></tr>";
+    }
+    names.close();
+    reference_file("IAU.iau", table + "</table>");
+    CondensedCatalogReader reader;
+    reader.apply_exoplanet_names(std::map<int, std::vector<int>>());
+    reconcile_stellar_sources(cels, "catalogs", false);
+    for (int index = 0; index < 4; ++index)
+    {
+        Star *star = static_cast<Star*>(cels[index + 1]);
+        EXPECT_STREQ(star->name, designations[index]);
+        EXPECT_EQ(star->local_name, local[index]);
+        EXPECT_EQ(trim(written_row(star).substr(15, 39)), designations[index]);
+    }
+}
+
+TEST_F(CondensedCatalogTest, SourceDownloadsFollowManifestPublicationFolders)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    const auto endpoint = directory / "endpoint.tsv";
+    std::ofstream remote(endpoint);
+    remote << "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
+        << "1\tHD 10000\tHD 10000\t0\t0\tG2V\t5.25\n";
+    remote.close();
+    std::ofstream manifest("catalogs/urls.dat");
+    manifest << "Publication SIMBAD.tsv file://" << endpoint.string() << '\n';
+    manifest.close();
+    const bool saved_silence = radio_silence;
+    radio_silence = false;
+    reconcile_stellar_sources(cels, "catalogs", true);
+    radio_silence = saved_silence;
+    EXPECT_TRUE(std::filesystem::exists("catalogs/Publication/SIMBAD.tsv"));
+    EXPECT_FALSE(std::filesystem::exists("catalogs/reference/SIMBAD.tsv"));
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5.25);
+}
+
+TEST_F(CondensedCatalogTest, OlderSourceCachesMoveIntoTheirPublicationFolders)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    std::filesystem::create_directories("catalogs/reference");
+    std::ofstream legacy("catalogs/reference/SIMBAD.tsv");
+    legacy << "oid\tmain_id\tids\tra\tdec\tsp_type\tV\n"
+        << "1\tHD 10000\tHD 10000\t0\t0\tG2V\t5.5\n";
+    legacy.close();
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_TRUE(std::filesystem::exists("catalogs/SIMBAD/SIMBAD.tsv"));
+    EXPECT_FALSE(std::filesystem::exists("catalogs/reference/SIMBAD.tsv"));
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 5.5);
+}
+
+TEST_F(CondensedCatalogTest, CatalogIdsStopAtTenExceptForBrightSystemCompanions)
+{
+    make_star("Sun")->apparent_magnitude = -26.72;
+    constellations[0].bounds.emplace_back();
+    Star *bright = make_star("Bright primary");
+    Star *faint = make_star("Faint standalone");
+    Star *boundary = make_star("Boundary standalone");
+    Star *companion = make_star("Faint companion");
+    for (int index = 1; index < ncelobjs; ++index)
+    {
+        Star *star = static_cast<Star*>(cels[index]);
+        strcpy(star->constellation, "Oph");
+        star->temperature = 5778;
+    }
+    bright->apparent_magnitude = 9.99;
+    faint->apparent_magnitude = 12.5;
+    boundary->apparent_magnitude = 10;
+    companion->apparent_magnitude = 15;
+    bright->set_component('A', bright);
+    companion->set_component('B', bright);
+    fill_alienorum_ids();
+    EXPECT_FALSE(bright->alienorumid.empty());
+    EXPECT_TRUE(faint->alienorumid.empty());
+    EXPECT_TRUE(boundary->alienorumid.empty());
+    EXPECT_EQ(companion->alienorumid, bright->alienorumid + " B");
 }

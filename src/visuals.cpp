@@ -6366,6 +6366,8 @@ void draw_horizon()
                     rocks[num_rocks].base_valid = base_valid;
                     rocks[num_rocks].vegetation = is_vegetation;
                     rocks[num_rocks].aspect = rock_aspect;
+                    rocks[num_rocks].surface_color = surf_map
+                        ? surf_map->color_at(object.latitude, object.longitude) : RGB3(160, 120, 80);
                     num_rocks++;
                 }
 
@@ -6498,6 +6500,7 @@ void draw_horizon()
                 {
                     const RockInstance& rk = rocks[ri];
                     const bool is_vegetation = rk.vegetation;
+                    const RGB3 base_map_rgb = rk.surface_color;
                     const int first_vertex = scenery_draw_list->VtxBuffer.Size;
                     double rx = rk.screen_x;
                     double ry = rk.screen_y;

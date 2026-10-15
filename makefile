@@ -43,7 +43,7 @@ TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
 			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/catalog_integrity_test.cpp
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/catalog_integrity_test.cpp $(TESTS_DIR)/rendering_test.cpp
 
 BIN = bin
 OBJ = obj
@@ -281,6 +281,9 @@ $(OBJINT)/clouds_gpu.o: src/classes/clouds_gpu.cpp
 $(OBJINT)/sunclock_gpu.o: src/sunclock_gpu.cpp
 	$(CPP) src/sunclock_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/sunclock_gpu.o
 
+
+$(BIN)/rendering_test: $(OBJS) $(TESTS_DIR)/rendering_test.cpp $(TESTS_DIR)/universe_fixture.h
+	$(CPP) $(TESTS_DIR)/rendering_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/rendering_test
 
 $(BIN)/catalog_integrity_test: $(OBJS) $(TESTS_DIR)/catalog_integrity_test.cpp
 	$(CPP) $(TESTS_DIR)/catalog_integrity_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/catalog_integrity_test
