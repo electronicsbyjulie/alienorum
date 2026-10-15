@@ -50,6 +50,40 @@ class CatalogIntegrityTest(unittest.TestCase):
         if severity:
             self.assertTrue(all(issue.severity == severity for issue in matches))
 
+    def test_added_bayer_designations_require_independent_catalog_and_position_support(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'BSC').mkdir()
+            (root / 'SIMBAD').mkdir()
+            source = bytearray(b' ' * 197)
+            for start, end, value in ((1, 4, '6556'), (26, 31, '159561')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'BSC/catalog').write_bytes(source + b'\n')
+            header = 'oid\tids\tra\tdec\totype\n'
+            identity = '1\tHD 159561|HR 6556|HIP 86032|* alf Oph\t263.77958333333333\t12.67138888888889\t*\n'
+            path = root / 'SIMBAD/SIMBAD.tsv'
+            path.write_text(header + identity)
+            report = audit_bytes(sun() + row(), root)
+            self.assertFalse(any(issue.code == 'bsc_bayer_added' for issue in report.issues))
+            self.assertTrue(any(proof['field'] == 'bayer' for proof in report.verifications))
+            path.write_text(header + identity.replace('* alf Oph', '* bet Oph'))
+            self.assert_code(audit_bytes(sun() + row(), root), 'bsc_bayer_added', 'warning')
+
+    def test_shared_hipparcos_entries_do_not_describe_individual_companions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            source = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (42, 46, '2.08'),
+                                      (246, 251, '0.15'), (436, 447, 'A5III')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos/hip_main.dat').write_bytes(source + b'\n')
+            secondary = companion(hip='86032', magnitude='12.00', bv='1.5', spectral='M3V')
+            report = audit_bytes(sun() + row() + secondary, root)
+            self.assertFalse(any(issue.code in ('hip_magnitude', 'hip_bv', 'source_spectral_class')
+                                 for issue in report.issues))
+            self.assertTrue(any(proof['field'] == 'unresolved_system_entry' for proof in report.verifications))
+
     def test_modern_measurements_require_identifiers_position_and_documented_spectra(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

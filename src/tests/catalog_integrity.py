@@ -538,6 +538,8 @@ def modern_identity_support(records, directory, report):
                         fields = set()
                         if hr and (not bayer or designated):
                             fields.add('bsc_cross_id')
+                        if designated and (hr or hip):
+                            fields.add('bsc_bayer_added')
                         if hip or (hr and designated and not any(re.fullmatch(r'HIP[0-9]+', value) for value in aliases)):
                             fields.add('hip_cross_id')
                         if (hr or hip) and record.number('flamsteed') and key('*' + str(int(record.number('flamsteed'))) + record.constellation) in aliases:
@@ -641,6 +643,7 @@ def check_sources(records, report, directory):
         bright = (bsc or dict()).get(record.number('hr'), '')
         astrometric = (hip or dict()).get(record.number('hip'), '')
         if ((bright and (bright[25:31].strip() != str(int(record.number('hd')))
+                or (not bright[7:11].strip() and record.text('bayer'))
                 or (bright[4:7].strip().isdigit() and int(bright[4:7]) != record.number('flamsteed'))))
                 or (astrometric and astrometric[390:396].strip().isdigit()
                     and int(astrometric[390:396]) != record.number('hd'))):
@@ -701,13 +704,17 @@ def check_sources(records, report, directory):
             actual = parse_bayer(row.text('bayer')) if row.text('bayer') else None
             if expected != actual and not row.component:
                 if expected is None and actual is not None:
-                    report.add('bsc_bayer_added', row, 'Bayer designation is absent from BSC; verify another source', 'warning')
+                    if 'bsc_bayer_added' in modern.get(row.line, set()):
+                        report.verifications.append(dict(line=row.line, field='bayer', source='SIMBAD'))
+                    else:
+                        report.add('bsc_bayer_added', row, 'Bayer designation is absent from BSC; verify another source', 'warning')
                 else:
                     report.add('bsc_bayer', row, f'Bayer identity conflicts with BSC: {source_bayer!r}')
             source_flam = raw[4:7].strip()
             if source_flam.isdigit() and row.number('flamsteed') != int(source_flam) and not row.component:
                 identity_issue('bsc_flamsteed', row, f'Flamsteed number conflicts with BSC: {source_flam}')
     family_hd = dict()
+    family_hip = Counter((member.root, member.number('hip')) for member in records if member.number('hip'))
     for member in records:
         if member.root and member.number('hd'):
             family_hd.setdefault(member.root, set()).add(member.number('hd'))
@@ -728,6 +735,9 @@ def check_sources(records, report, directory):
             if hd.isdigit() and row.number('hd') and int(hd) != row.number('hd'):
                 shared = int(hd) in family_hd.get(row.root, set())
                 identity_issue('hip_cross_id', row, f'HIP {row.number("hip")} belongs to HD {hd}', 'warning' if shared else 'error')
+            if row.component and family_hip[(row.root, row.number('hip'))] > 1:
+                report.verifications.append(dict(line=row.line, field='unresolved_system_entry', source='Hipparcos'))
+                continue
             ra, dec = raw[51:63].strip(), raw[64:76].strip()
             if NUMBER.fullmatch(ra) and NUMBER.fullmatch(dec):
                 source_position(row, float(ra), float(dec), report, 'Hipparcos')
