@@ -5251,12 +5251,26 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                             }
                         }
                         else write_condensed_star_cat_line(fp, val3[i]);
+
+                        if (frand(0,1) < 0.1)
+                        {
+                            std::stringstream lmss;
+                            lmss << "Saving " << val3[i]->alienorumid << " to condensed star catalog...";
+                            mtx.lock();
+                            loading_msg = lmss.str();
+                            mtx.unlock();
+                        }
                     }
                 }
             }
         }
 
         fclose(fp);
+
+        #ifndef _WIN32
+        // TODO: This command will only execute on Linux - maybe not a problem if only the author ever issues new internal catalogs.
+        system("gzip -k catalogs/soles_alienorum.dat");
+        #endif
     }
 
     return written;
