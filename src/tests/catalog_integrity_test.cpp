@@ -1208,6 +1208,87 @@ TEST_F(CondensedCatalogTest, SelfReferentialOrbitOverridesDoNotCreateAnotherComp
     EXPECT_EQ(a->multisys->get_member('C'), nullptr);
 }
 
+TEST_F(CondensedCatalogTest, AuthoredOrbitEstimatesKeepTheirUnitsAndEstimateStatus)
+{
+    make_star("Sun");
+    Star *a = make_star("HD10000");
+    Star *b = make_star("HD10001");
+    a->HD = 10000;
+    b->HD = 10001;
+    hdcache = new Star*[MAX_HD + 1]();
+    hdcache[10000] = a;
+    hdcache[10001] = b;
+    std::string source(260, ' ');
+    put(source, 1, 23, "HD10000");
+    put(source, 25, 47, "HD10001");
+    put(source, 49, 63, "100y?");
+    put(source, 101, 111, "1AU?");
+    put(source, 193, 203, "1");
+    std::ofstream file("catalogs/star_orbits.dat");
+    file << source << '\n';
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 1);
+    EXPECT_DOUBLE_EQ(b->orbit->period, 100 * oneyear);
+    EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, AU);
+    EXPECT_TRUE(b->orbit->estimated_period);
+    EXPECT_TRUE(b->orbit->estimated_axis);
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_NEAR(b->orbit->period / oneyear, 1 / sqrt(2.0), 0.001);
+    put(source, 49, 63, "10d");
+    put(source, 101, 111, "?");
+    std::ofstream missing_axis("catalogs/star_orbits.dat");
+    missing_axis << source << '\n';
+    missing_axis.close();
+    b->orbit->semimajor_axis = 0;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 1);
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_FALSE(b->orbit->estimated_period);
+    EXPECT_TRUE(b->orbit->estimated_axis);
+    EXPECT_GT(b->orbit->semimajor_axis, 0);
+    EXPECT_LT(b->orbit->semimajor_axis, AU);
+}
+
+TEST_F(CondensedCatalogTest, PublishedAlgolAnd99HerculisOrbitsRetainTheirPhysicalScale)
+{
+    make_star("Sun");
+    Star *algol = make_star("Algol", 3.17 * solar_mass);
+    algol->distance = 28.8 * parsec;
+    Star *her = make_star("HD165908", 1.14 * solar_mass);
+    her->HD = 165908;
+    her->distance = 15.64 * parsec;
+    hdcache = new Star*[MAX_HD + 1]();
+    hdcache[165908] = her;
+    std::ifstream published(original_directory / "catalogs/star_orbits.dat");
+    ASSERT_TRUE(published.good());
+    std::ofstream file("catalogs/star_orbits.dat");
+    std::string line;
+    while (std::getline(published, line))
+    {
+        if (line.rfind("Algol ", 0) == 0 || line.rfind("HD165908 ", 0) == 0)
+        {
+            file << line << '\n';
+        }
+    }
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    ASSERT_NE(algol->multisys, nullptr);
+    Star *b = algol->multisys->get_member('B');
+    Star *c = algol->multisys->get_member('C');
+    ASSERT_NE(b, nullptr);
+    ASSERT_NE(c, nullptr);
+    EXPECT_NEAR(b->orbit->period / oneday, 2.867328, 1e-5);
+    EXPECT_NEAR(b->orbit->semimajor_axis / AU, 0.062, 0.001);
+    EXPECT_NEAR(c->orbit->period / oneday, 680.168, 0.001);
+    EXPECT_NEAR(c->orbit->semimajor_axis / AU, 2.69, 0.02);
+    ASSERT_NE(her->multisys, nullptr);
+    Star *secondary = her->multisys->get_member('B');
+    ASSERT_NE(secondary, nullptr);
+    EXPECT_NEAR(secondary->orbit->period / oneyear, 56.3, 0.01);
+    EXPECT_NEAR(secondary->orbit->semimajor_axis / AU, 16.6, 0.1);
+}
+
 TEST_F(CondensedCatalogTest, InvalidOrbitParametersDoNotReplacePhysicalMeasurements)
 {
     make_star("Sun");

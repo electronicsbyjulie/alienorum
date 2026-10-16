@@ -43,6 +43,8 @@ Generated periods use total system mass:
 
 After source reconciliation, estimated periods are recomputed from the final axis and masses. If a measured period instead supplies an estimated axis, the axis is recomputed from that period and the masses. Published periods and axes are not changed merely to satisfy the Kepler check. The estimate flags survive condensed-catalog and JSON round trips.
 
+Question marks in authored orbit fields mark estimates and are removed before parsing unit suffixes. A lone question mark denotes an unmeasured value. The Algol angular axes follow Baron et al. (2012), and the 99 Herculis period and angular axis follow Kennedy et al. (2012). Mizar's unmeasured wide period is inferred from its estimated separation and system masses.
+
 ## Photometry and identity
 
 Photometric provenance records passband, component scope, uncertainty when available, and supplied reference epochs. VSX amplitudes are converted to magnitude ranges; limits and mixed passbands are not treated as exact V ranges. Estimated color outliers remain visible in audit diagnostics.
@@ -56,3 +58,5 @@ Final numbering consolidates unambiguous family links while preserving orbit cen
 - [VSX field definitions](https://cdsarc.cds.unistra.fr/viz-bin/ReadMe/B/vsx?format=html&tex=true)
 - [Spectroscopic binary catalog fields](https://cdsarc.cds.unistra.fr/viz-bin/ReadMe/B/sb9?format=html&tex=true)
 - [Gaia DR3 binary modeling](https://gea.esac.esa.int/archive/documentation/GDR3/Data_analysis/chap_cu4nss/sec_cu4nss_astrobin/ssec_cu4nss_astrobin_properties.html)
+- [Algol interferometry, Baron et al. (2012)](https://arxiv.org/abs/1205.0754)
+- [99 Herculis, Kennedy et al. (2012)](https://arxiv.org/abs/1201.1911)

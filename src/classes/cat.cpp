@@ -4949,16 +4949,31 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         read_field_onebased(buffer, 49, 63, field);
         str = trim(field);
+        const bool period_estimate = str.find('?') != std::string::npos;
+        str.erase(std::remove(str.begin(), str.end(), '?'), str.end());
         last = '\0';
         l = str.size();
         if (l) last = str.c_str()[l-1];
-        if (last == 'y') f = atof(field) * oneyear;
-        else if (last == 'd') f = atof(field) * oneday;
-        else f = atof(field);
+        if (last == 'y')
+        {
+            f = atof(str.c_str()) * oneyear;
+        }
+        else if (last == 'd')
+        {
+            f = atof(str.c_str()) * oneday;
+        }
+        else
+        {
+            f = atof(str.c_str());
+        }
         if (f > 0 && s->orbit)
         {
             s->orbit->period = f;
-            s->orbit->estimated_period = false;
+            s->orbit->estimated_period = period_estimate;
+        }
+        else if (period_estimate && s->orbit)
+        {
+            s->orbit->estimated_period = true;
         }
 
         read_field_onebased(buffer, 89, 99, field);
@@ -4967,17 +4982,32 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         read_field_onebased(buffer, 101, 111, field);
         str = trim(field);
+        const bool axis_estimate = str.find('?') != std::string::npos;
+        str.erase(std::remove(str.begin(), str.end(), '?'), str.end());
         nxtlast = last = '\0';
         l = str.size();
         if (l) last = str.c_str()[l-1];
         if (l>1) nxtlast = str.c_str()[l-2];
-        if (nxtlast == 'A' && last == 'U') f = atof(field) * AU;
-        else if (last == 's') f = atof(field) * (AU / parsec) * A->distance;
-        else f = atof(field);
+        if (nxtlast == 'A' && last == 'U')
+        {
+            f = atof(str.c_str()) * AU;
+        }
+        else if (last == 's')
+        {
+            f = atof(str.c_str()) * (AU / parsec) * A->distance;
+        }
+        else
+        {
+            f = atof(str.c_str());
+        }
         if (f > 0 && s->orbit)
         {
             s->orbit->semimajor_axis = f;
-            s->orbit->estimated_axis = str.find('?') != std::string::npos;
+            s->orbit->estimated_axis = axis_estimate;
+        }
+        else if (s->orbit && (axis_estimate || s->orbit->semimajor_axis <= 0))
+        {
+            s->orbit->estimated_axis = true;
         }
 
         read_field_onebased(buffer, 113, 123, field);

@@ -79,8 +79,9 @@ HD218396                (cometary disk)                         051         039
 HD20807                 HD20766                 5.36e+12?       281         065.5       ?           5.610e+14?  ?                               2013.
 
 # https://en.wikipedia.org/wiki/Algol
-Algol                   Algol B                 247737.1        043.43      098.70      000.00      3.337e+12   .0          316.57              2025.00274      K0IV            +2.9            0.70        3.48         6.92        4500
-Algol                   Algol C                 5.87665e+7      132.66      083.66      310.02      1.4502e+14  .227        000.0000000         1987.35831      F1V             +2.3            1.76        1.73        10.0         7500
+# Relative angular axes: Baron et al. (2012), https://arxiv.org/abs/1205.0754
+Algol                   Algol B                 247737.1        043.43      098.70      000.00      0.00215s    .0          316.57              2025.00274      K0IV            +2.9            0.70        3.48         6.92        4500
+Algol                   Algol C                 5.87665e+7      132.66      083.66      310.02      0.09343s    .227        000.0000000         1987.35831      F1V             +2.3            1.76        1.73        10.0         7500
 
 # https://doi.org/10.1093%2Fmnras%2Fstv511
 HD20794                 (dust disk)                             004.        050.                    3.7e+12
@@ -160,7 +161,9 @@ HD170073                HD170073 B              1.2e+8          179.9       107.
 HD156266                (companion orbit)                       220.5       065.1
 HD26722                 (companion orbit)                       052.9       128.6
 HD212404                (companion orbit)                       113.5       161.4
-HD116656                HD116657                2.4e+14?        106?        060?        ?           5.23e+13                                                                                    1.85        1.8         13.7         8280
+# https://en.wikipedia.org/wiki/Mizar
+# The wide orbit is unmeasured; projected separation and inferred period are estimates.
+HD116656                HD116657                ?               106?        060?        ?           5.23e13?                                                                                    1.85        1.8         13.7         8280
 HD116656                Mizar C                 1.77454e+6      106.0       060.5       105.27      3.57e+10    .5415       0                   2008.19316716                                   2.2381      2.4         33.3         9000
 HD116657                Mizar D                 1.5125e+7       106?        060?        353.1       8.4840e+10?                                                                                 0.25        ?            ?              ?
 HD94601                 HD94602                                                                     7.97e+13
@@ -189,7 +192,9 @@ HD19994                 (companion orbit)                       191.496     108.
 HD164669                HD164668                3.5e+11                                             1.3e+14
 HD183912                (companion orbit)                                   156
 HD220278                (companion orbit)                       276.3       077.6
-HD165908                HD165908 B              178e+9          041         039         116         2.37e+12    .766        0                   1997.62                                         0.46        0.67        0.19         4449
+# https://en.wikipedia.org/wiki/99_Herculis
+# Kennedy et al. (2012), https://arxiv.org/abs/1201.1911 : 56.3 years, 1.06 arcsec.
+HD165908                HD165908 B              56.3y           041         039         116         1.06s       .766        0                   1997.62                                         0.46        0.67        0.19         4449
 HD48189                 (companion orbit)                       091.6       093.9
 HD152404                (companion orbit)                       048         115
 HD114378                HD114379                8.16365e+8      012.2272    090.0501    100.563     1.7087e+12  .510        0                   2015.09229                                      1.087                   1.75         6378

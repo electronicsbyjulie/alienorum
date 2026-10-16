@@ -2640,7 +2640,8 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
                 orbit->photocentric_angular_axis, "rad");
         }
         if (star->deleted || !orbit || (!orbit->estimated_axis && !orbit->estimated_period) || !orbit->center
-            || orbit->center->typeclass() != class_star || !(orbit->semimajor_axis > 0)
+            || orbit->center->typeclass() != class_star
+            || (orbit->estimated_period ? !(orbit->semimajor_axis > 0) : !(orbit->period > 0))
             || !(star->mass > 0 && orbit->center->mass > 0))
         {
             continue;
