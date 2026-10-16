@@ -403,7 +403,9 @@ def check_relationships(records, report):
                 # indexes systems, so sharing it alone never establishes a duplicate.
                 if key == 'sb9' or related(first, row):
                     if key in ('hd', 'hip', 'hr'):
-                        report.add('shared_system_identifier', row, f'{key}={value} also identifies a linked component', 'warning', first)
+                        report.verifications.append(dict(line=row.line, field='shared_system_identifier',
+                                                         source='catalog_family', catalog=key, value=value,
+                                                         related_line=first.line))
                 else:
                     severity = 'warning' if key in ('dm', 'name', 'gould', 'bayer') else 'error'
                     report.add('duplicate_' + key, row, f'{key}={value!r} is shared by unrelated rows', severity, first)
@@ -553,35 +555,54 @@ def modern_identity_support(records, directory, report):
     return {line: next(iter(objects.values())) for line, objects in supported.items() if len(objects) == 1}
 
 
+def measurement_identifier(value):
+    value = re.sub(r'\s+', '', value).upper()
+    match = re.fullmatch(r'(HD|HIP|HR)0*([1-9]\d*)([A-Z]?)', value)
+    if match:
+        return match[1], str(int(match[2])) + match[3]
+    match = re.fullmatch(r'(BD|CD|CP)([+-])(\d{1,2})0*(\d+)([A-Z]?)', value)
+    if match:
+        return match[1], match[2] + match[3].zfill(2) + ':' + str(int(match[4])) + match[5]
+    match = re.fullmatch(r'(?:GJ|GL)0*([1-9]\d*(?:\.\d+)?)([A-Z]{0,3})', value)
+    if match:
+        return 'GJ', match[1] + match[2]
+    return None
+
+
 def modern_measurement_support(records, directory, report):
     targets = dict()
     for record in records:
-        for catalog, field in (('HD', 'hd'), ('HIP', 'hip')):
+        for catalog, field in (('HD', 'hd'), ('HIP', 'hip'), ('HR', 'hr')):
             if record.number(field):
-                targets.setdefault((catalog, int(record.number(field))), []).append(record)
+                targets.setdefault((catalog, str(int(record.number(field)))), set()).add(record.line)
+        aliases = [record.name, record.text('gliese')]
+        if record.text('dm_survey'):
+            aliases.append(record.text('dm_survey') + record.text('dm_zone') + ' '
+                           + record.text('dm_number'))
+        for alias in aliases:
+            key = measurement_identifier(alias)
+            if key:
+                targets.setdefault(key, set()).add(record.line)
+    by_line = dict((record.line, record) for record in records)
     supported = dict()
-    identifier = re.compile(r'^(HD|HIP)\s*0*([0-9]+)$')
 
     def candidates(aliases, ra, dec):
-        found = dict()
-        keys = set()
-        for alias in aliases:
-            match = identifier.fullmatch(alias.strip())
-            if match:
-                keys.add((match[1], int(match[2])))
-                for record in targets.get((match[1], int(match[2])), ()):
-                    found[record.line] = record
+        keys = set(filter(None, (measurement_identifier(alias) for alias in aliases)))
+        found = set()
+        for key in keys:
+            found.update(targets.get(key, ()))
         try:
             ra, dec = float(ra), float(dec)
         except (ValueError, TypeError):
             return []
         if not math.isfinite(ra) or not math.isfinite(dec):
             return []
-        return [record for record in found.values()
-                if separation_arcsec(record.ra, record.dec, ra, dec) <= 2
-                and all(not record.number(field) or not any(key[0] == catalog for key in keys)
-                        or (catalog, int(record.number(field))) in keys
-                        for catalog, field in (('HD', 'hd'), ('HIP', 'hip')))]
+        matches = [by_line[line] for line in found
+                   if separation_arcsec(by_line[line].ra, by_line[line].dec, ra, dec) <= 2
+                   and all(not by_line[line].number(field) or not any(key[0] == catalog for key in keys)
+                           or (catalog, str(int(by_line[line].number(field)))) in keys
+                           for catalog, field in (('HD', 'hd'), ('HIP', 'hip'), ('HR', 'hr')))]
+        return matches if len(matches) == 1 else []
 
     def confirm(record, field, value, label, citation=''):
         if field == 'spectral':
@@ -604,6 +625,10 @@ def modern_measurement_support(records, directory, report):
                     continue
                 aliases = source.get('ids', '').split('|')
                 for record in candidates(aliases, source.get('ra'), source.get('dec')):
+                    for alias in aliases:
+                        key = measurement_identifier(alias)
+                        if key:
+                            targets.setdefault(key, set()).add(record.line)
                     citation = source.get('sp_bibcode', '').strip()
                     if (citation[:4].isdigit() and (int(citation[:4]) >= 1997
                             or source.get('sp_qual', '').strip() in ('A', 'B', 'C'))):
@@ -676,8 +701,8 @@ def check_sources(records, report, directory):
 
     def identity_issue(code, record, detail, severity='error'):
         if code in modern.get(record.line, set()):
-            report.add('reference_identity_disagreement', record,
-                       detail + '; an independent resolved SIMBAD identity and position support the exported value', 'warning')
+            report.verifications.append(dict(line=record.line, field='reference_identity_disagreement',
+                                             source='SIMBAD', check=code, detail=detail))
         else:
             report.add(code, record, detail, severity)
 

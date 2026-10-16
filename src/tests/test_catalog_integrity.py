@@ -132,6 +132,42 @@ class CatalogIntegrityTest(unittest.TestCase):
         self.assertFalse(any(issue.code in ('hip_name', 'hd_name', 'orphan_component',
                                            'coincident_stars') for issue in report.issues))
 
+    def test_spectral_sources_resolve_dm_aliases_without_positional_guessing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            (root / 'Skiff').mkdir()
+            legacy = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (436, 447, 'G2V')):
+                legacy[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos/hip_main.dat').write_bytes(legacy + b'\n')
+            header = 'Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n'
+            evidence = 'BD+04 00123\tA5III\t2020A&A...000....1A\t263.77958333333333\t12.67138888888889\n'
+            path = root / 'Skiff/Skiff.tsv'
+            star = row(dm_survey='BD', dm_zone='+04', dm_number='123')
+            path.write_text(header + evidence)
+            report = audit_bytes(sun() + star, root)
+            self.assertFalse(any(issue.code == 'source_spectral_class' for issue in report.issues))
+            self.assertTrue(any(proof['source'] == 'Skiff' for proof in report.verifications))
+            for changed in (evidence.replace('00123', '00124'), evidence.replace('263.77958333333333', '10')):
+                path.write_text(header + changed)
+                self.assert_code(audit_bytes(sun() + star, root), 'source_spectral_class', 'warning')
+
+    def test_ambiguous_component_spectra_do_not_verify_individual_members(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            (root / 'SIMBAD').mkdir()
+            legacy = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (436, 447, 'G2V')):
+                legacy[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos/hip_main.dat').write_bytes(legacy + b'\n')
+            (root / 'SIMBAD/SIMBAD.tsv').write_text(
+                'oid\totype\tids\tra\tdec\tsp_type\tsp_bibcode\n'
+                '1\t*\tHD 159561\t263.77958333333333\t12.67138888888889\tA5III\t2020A&A...000....1A\n')
+            report = audit_bytes(sun() + row() + companion(hd='159561', hip='86032'), root)
+            self.assert_code(report, 'source_spectral_class', 'warning')
+
     def test_valid_catalog_and_unknown_optional_fields(self):
         report = self.audit(row(), companion(), row(id='', name='HIP 100', hip='100', hd='', hr='',
                           bayer='', spectral='', magnitude='', bv='', ub='', mass='', radius='',
@@ -222,7 +258,8 @@ class CatalogIntegrityTest(unittest.TestCase):
                 self.assert_code(self.audit(row(**original), row(**values)), 'duplicate_' + key)
         linked = self.audit(row(), companion(hd='159561', hip='86032', hr='6556'))
         self.assertEqual(linked.errors, 0)
-        self.assert_code(linked, 'shared_system_identifier', 'warning')
+        self.assertEqual(sum(proof['field'] == 'shared_system_identifier' for proof in linked.verifications), 3)
+        self.assertFalse(any(issue.code == 'shared_system_identifier' for issue in linked.issues))
 
     def test_shared_sb9_is_a_system_identifier(self):
         report = self.audit(row(sb9='100'), row(id='3c Oph 2', name='Other', hd='1', hip='1', hr='', bayer='', sb9='100'))
@@ -484,7 +521,7 @@ class CatalogIntegrityTest(unittest.TestCase):
     def test_component_root_spacing_does_not_create_unrelated_duplicate_ids(self):
         report = self.audit(row(id='2c Oph', name='Primary', bayer='') + row(
             id='2c Oph  B', name='Secondary', bayer=''))
-        self.assert_code(report, 'shared_system_identifier', 'warning')
+        self.assertEqual(sum(proof['field'] == 'shared_system_identifier' for proof in report.verifications), 3)
         self.assertFalse(any(issue.code == 'duplicate_hd' for issue in report.issues))
 
 
@@ -508,7 +545,7 @@ class CatalogIntegrityTest(unittest.TestCase):
             (root / 'Hipparcos/hip_main.dat').write_bytes(hip + b'\n')
             report = audit_bytes(sun() + row(flamsteed='55'), root)
             self.assertEqual(report.errors, 0)
-            self.assertEqual(sum(issue.code == 'reference_identity_disagreement' for issue in report.issues), 3)
+            self.assertEqual(sum(proof['field'] == 'reference_identity_disagreement' for proof in report.verifications), 3)
             self.assert_code(audit_bytes(sun() + row(hd='2', flamsteed='55'), root), 'bsc_cross_id')
             modern.write_text(header + identity.replace('263.77958333333333', '10'))
             self.assert_code(audit_bytes(sun() + row(flamsteed='55'), root), 'bsc_cross_id')
