@@ -48,6 +48,7 @@ TEST(StellarSourceTableTest, OrbitSerializationPreservesEstimatedAndProjectedAxe
 {
     Orbit orbit;
     orbit.estimated_axis = true;
+    orbit.estimated_period = true;
     orbit.projected_axis = 0.02 * AU;
     orbit.photocentric_angular_axis = 0.01 * arcsecond;
     orbit.semimajor_axis = AU;
@@ -55,14 +56,17 @@ TEST(StellarSourceTableTest, OrbitSerializationPreservesEstimatedAndProjectedAxe
     Orbit restored;
     ASSERT_TRUE(restored.from_json(encoded));
     EXPECT_TRUE(restored.estimated_axis);
+    EXPECT_TRUE(restored.estimated_period);
     EXPECT_DOUBLE_EQ(restored.projected_axis, orbit.projected_axis);
     EXPECT_DOUBLE_EQ(restored.photocentric_angular_axis, orbit.photocentric_angular_axis);
     EXPECT_DOUBLE_EQ(restored.semimajor_axis, AU);
     encoded.erase("estimated_axis");
+    encoded.erase("estimated_period");
     encoded.erase("projected_axis");
     Orbit legacy;
     ASSERT_TRUE(legacy.from_json(encoded));
     EXPECT_FALSE(legacy.estimated_axis);
+    EXPECT_FALSE(legacy.estimated_period);
     EXPECT_DOUBLE_EQ(legacy.projected_axis, 0);
 }
 
@@ -884,6 +888,26 @@ TEST_F(CondensedCatalogTest, Sb9ProjectedAxesStaySeparateFromRelativeAxisEstimat
     EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 30 * AU);
 }
 
+TEST_F(CondensedCatalogTest, GeneratedPeriodsUseTotalMassAndFollowUpdatedGeometry)
+{
+    make_star("Sun");
+    Star *a = make_star("Primary", 4 * solar_mass);
+    Star *b = make_star("Secondary", 5 * solar_mass);
+    b->orbit = new Orbit();
+    b->orbit->center = a;
+    b->orbit->semimajor_axis = AU;
+    b->update_location(J2000_TIME_T);
+    EXPECT_TRUE(b->orbit->estimated_period);
+    EXPECT_NEAR(b->orbit->period / oneyear, 1.0 / 3, 0.001);
+    b->orbit->semimajor_axis = 8 * AU;
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_NEAR(b->orbit->period / oneyear, sqrt(512.0 / 9), 0.001);
+    b->orbit->estimated_period = false;
+    b->orbit->period = oneyear;
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_DOUBLE_EQ(b->orbit->period, oneyear);
+}
+
 TEST_F(CondensedCatalogTest, NegativeHipparcosFitCannotCreateOrOverwriteAnOrbit)
 {
     make_star("Sun");
@@ -1242,7 +1266,7 @@ TEST_F(CondensedCatalogTest, CondensedColorsRetainTheirMeasuredOrEstimatedStatus
     std::string source = primary_row();
     put(source, 338, 338, "E");
     put(source, 339, 339, "E");
-    write_rows({source});
+    write_rows(std::vector<std::string>(1, source));
     CatalogReader reader;
     ASSERT_EQ(reader.read_condensed_star_cat(), 2);
     Star *star = static_cast<Star*>(cels[1]);
@@ -2362,12 +2386,18 @@ TEST_F(CondensedCatalogTest, EstimatedOrbitalAxesRetainTheirStatusAfterReload)
     put(b, 302, 312, "365.25");
     put(b, 315, 326, "1");
     put(b, 336, 336, "E");
-    write_rows({primary_row(), b});
+    put(b, 337, 337, "E");
+    std::vector<std::string> rows;
+    rows.push_back(primary_row());
+    rows.push_back(b);
+    write_rows(rows);
     CatalogReader reader;
     ASSERT_EQ(reader.read_condensed_star_cat(), 3);
     Star *secondary = static_cast<Star*>(cels[2]);
     ASSERT_NE(secondary->orbit, nullptr);
     EXPECT_TRUE(secondary->orbit->estimated_axis);
+    EXPECT_TRUE(secondary->orbit->estimated_period);
+    EXPECT_EQ(written_row(secondary)[336], 'E');
     EXPECT_EQ(written_row(secondary)[335], 'E');
     secondary->orbit->estimated_axis = false;
     EXPECT_EQ(written_row(secondary)[335], ' ');
@@ -2554,6 +2584,66 @@ TEST_F(CondensedCatalogTest, FinalNumberingRestoresAnUnambiguousOrphanOrbitLink)
     EXPECT_EQ(c->alienorumid, lop_component(a->alienorumid.c_str()) + " C");
     EXPECT_EQ(c->orbit->center, a);
     EXPECT_DOUBLE_EQ(c->orbit->period, 10 * oneyear);
+}
+
+TEST_F(CondensedCatalogTest, FinalNumberingJoinsNestedFamiliesWithoutChangingTheirOrbitCenters)
+{
+    make_star("Sun")->apparent_magnitude = -26.72;
+    constellations[0].bounds.emplace_back();
+    Star *a = make_star("Primary");
+    Star *b = make_star("Secondary B");
+    Star *c = make_star("Secondary C");
+    strcpy(a->constellation, "Oph");
+    a->temperature = 5778;
+    a->apparent_magnitude = 5;
+    b->apparent_magnitude = 6;
+    c->apparent_magnitude = 8;
+    b->set_component('A', b);
+    c->set_component('C', b);
+    b->orbit = new Orbit();
+    b->orbit->center = a;
+    fill_alienorum_ids();
+    EXPECT_EQ(b->multisys, a->multisys);
+    EXPECT_EQ(c->multisys, a->multisys);
+    EXPECT_EQ(b->alienorumid, lop_component(a->alienorumid.c_str()) + " B");
+    EXPECT_EQ(c->alienorumid, lop_component(a->alienorumid.c_str()) + " C");
+    EXPECT_EQ(b->orbit->center, a);
+    EXPECT_EQ(c->orbit->center, b);
+}
+
+TEST_F(CondensedCatalogTest, FaintVisualFamiliesRoundTripWithoutPhysicalOrbits)
+{
+    Star *sun = make_star("Sun");
+    sun->alienorumid = "-26";
+    Star *a = make_star("HD10000");
+    Star *b = make_star("HD10001");
+    a->HD = 10000;
+    b->HD = 10001;
+    a->apparent_magnitude = 12;
+    b->apparent_magnitude = 9;
+    a->right_ascension = b->right_ascension = 1;
+    a->declination = b->declination = 0.3;
+    a->multisys = new StarMulti();
+    a->multisys->add_member(a, 'A');
+    a->multisys->add_member(b, 'B');
+    const std::string encoded = written_row(b);
+    EXPECT_EQ(encoded[334], 'V');
+    EXPECT_EQ(encoded[339], 'B');
+    EXPECT_EQ(trim(encoded.substr(286, 14)), "HD10000");
+    std::ofstream file("catalogs/soles_alienorum.dat");
+    file << written_row(sun) << written_row(a) << encoded;
+    file.close();
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    a = static_cast<Star*>(cels[1]);
+    b = static_cast<Star*>(cels[2]);
+    EXPECT_TRUE(a->alienorumid.empty());
+    EXPECT_TRUE(b->alienorumid.empty());
+    EXPECT_EQ(a->multisys, b->multisys);
+    EXPECT_EQ(b->get_component(), 'B');
+    EXPECT_EQ(a->orbit, nullptr);
+    EXPECT_EQ(b->orbit, nullptr);
 }
 
 TEST_F(CondensedCatalogTest, FaintSystemsRoundTripTheirOrbitsWithoutAlienorumIds)

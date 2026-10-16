@@ -1589,7 +1589,8 @@ namespace
                 report["conflicts"].push_back(conflict);
                 return;
             }
-            if (b->orbit->period > 0 && b->orbit->semimajor_axis > 0 && !b->orbit->estimated_axis)
+            if (b->orbit->period > 0 && b->orbit->semimajor_axis > 0
+                && !b->orbit->estimated_axis && !b->orbit->estimated_period)
             {
                 const double ratio = period * oneday / b->orbit->period;
                 if (ratio < 0.95 || ratio > 1.05)
@@ -1610,6 +1611,7 @@ namespace
             }
             sbx_ranks[sn] = rank;
             adopt(b, "orbital_period", b->orbit->period, period * oneday, "SBX", row, "s", number(row, "period_error") * oneday);
+            b->orbit->estimated_period = false;
             adopt(b, "orbital_eccentricity", b->orbit->eccentricity, eccentricity, "SBX", row);
             b->orbit->compute_semimajor_axis(b->mass);
             b->orbit->estimated_axis = true;
@@ -1794,6 +1796,7 @@ namespace
                 b->set_component('B', a);
             }
             adopt(b, "orbital_period", b->orbit->period, period, "ORB6", row, "s");
+            b->orbit->estimated_period = false;
             adopt(b, "orbital_axis", b->orbit->semimajor_axis, axis, "ORB6", row, "m");
             b->orbit->estimated_axis = false;
             adopt(b, "orbital_eccentricity", b->orbit->eccentricity, eccentricity, "ORB6", row);
@@ -2635,25 +2638,40 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
             context.provenance(star, "photocentric_angular_axis", "Hipparcos", Row(),
                 orbit->photocentric_angular_axis, "rad");
         }
-        if (star->deleted || !orbit || !orbit->estimated_axis || !orbit->center
-            || orbit->center->typeclass() != class_star || !(orbit->period > 0)
+        if (star->deleted || !orbit || (!orbit->estimated_axis && !orbit->estimated_period) || !orbit->center
+            || orbit->center->typeclass() != class_star || !(orbit->semimajor_axis > 0)
             || !(star->mass > 0 && orbit->center->mass > 0))
         {
             continue;
         }
-        orbit->compute_semimajor_axis(star->mass);
         Row evidence;
         if (star->SB9)
         {
             evidence["sn"] = std::to_string(star->SB9);
         }
-        context.provenance(star, "orbital_axis", "Kepler_mass_estimate", evidence,
-            orbit->semimajor_axis, "m");
-        auto &axis = report["provenance"][std::to_string(star->seqno)]["fields"]["orbital_axis"];
-        axis["estimated"] = true;
-        axis["primary_mass_kg"] = orbit->center->mass / 1000;
-        axis["secondary_mass_kg"] = star->mass / 1000;
-        axis["period_seconds"] = orbit->period;
+        if (orbit->estimated_period)
+        {
+            orbit->compute_period(star->mass);
+            context.provenance(star, "orbital_period", "Kepler_axis_estimate", evidence, orbit->period, "s");
+            if (orbit->estimated_axis)
+            {
+                context.provenance(star, "orbital_axis", "rendering_geometry_estimate", evidence,
+                    orbit->semimajor_axis, "m");
+            }
+        }
+        else if (orbit->period > 0)
+        {
+            orbit->compute_semimajor_axis(star->mass);
+            context.provenance(star, "orbital_axis", "Kepler_mass_estimate", evidence,
+                orbit->semimajor_axis, "m");
+        }
+        auto &estimate = report["provenance"][std::to_string(star->seqno)]["fields"]
+            [orbit->estimated_period ? "orbital_period" : "orbital_axis"];
+        estimate["estimated"] = true;
+        estimate["primary_mass_kg"] = orbit->center->mass / 1000;
+        estimate["secondary_mass_kg"] = star->mass / 1000;
+        estimate["period_seconds"] = orbit->period;
+        estimate["relative_axis_m"] = orbit->semimajor_axis;
         if (orbit->projected_axis > 0)
         {
             context.provenance(star, "projected_orbital_axis", "SB9", evidence, orbit->projected_axis, "m");

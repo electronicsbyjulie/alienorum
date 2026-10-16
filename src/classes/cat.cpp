@@ -1062,7 +1062,8 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
             && ((secondary->HIP && secondary->HIP != A->HIP) || (secondary->HD && secondary->HD != A->HD));
         if (A->multisys->get_member('A') != A || resolved_secondary
             || (secondary && secondary->orbit && secondary->orbit->period > 0
-                && secondary->orbit->semimajor_axis > 0 && !secondary->orbit->estimated_axis))
+                && secondary->orbit->semimajor_axis > 0 && !secondary->orbit->estimated_axis
+                && !secondary->orbit->estimated_period))
         {
             std::cerr << "Retaining resolved or nested system instead of assigning a photocenter fit to HIP"
                 << HIP << std::endl;
@@ -1101,6 +1102,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
 
     //   8- 17  F10.4 d        P        Orbital period                           (DO2)
     s->orbit->period = period_seconds;
+    s->orbit->estimated_period = false;
 
     //  19- 29  F11.4 d        T       *Time of periastron passage (JD-2440000)  (DO3)
     read_field_onebased(buffer, 19, 29, field);
@@ -2530,9 +2532,11 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
         // Estimate the semimajor axis
         double sma = asep * A->distance / 206264.806;
-        if (s->orbit && !(s->orbit->period > 0 && s->orbit->semimajor_axis > 0))
+        if (s->orbit && !(s->orbit->period > 0 && s->orbit->semimajor_axis > 0
+                && !s->orbit->estimated_axis && !s->orbit->estimated_period))
         {
             s->orbit->semimajor_axis = sma;
+            s->orbit->estimated_axis = true;
         }
 
         // Figure the absolute magnitude
@@ -2802,7 +2806,8 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         if (found < 0) continue;
         B = (Star*)cels[found];
 
-        if (B->orbit->period > 0 && B->orbit->semimajor_axis > 0 && !B->orbit->estimated_axis)
+        if (B->orbit->period > 0 && B->orbit->semimajor_axis > 0
+            && !B->orbit->estimated_axis && !B->orbit->estimated_period)
         {
             continue;
         }
@@ -2810,6 +2815,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         //   8- 23  F16.9 d       Per     [0.05,116675] Period
         read_field_onebased(buffer, 8, 23, field);
         B->orbit->period = atof(field)*oneday;
+        B->orbit->estimated_period = false;
 
         //  42- 57  F16.8 d       T0      ? Periastron time (JD)
         read_field_onebased(buffer, 42, 57, field);
@@ -4949,7 +4955,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (last == 'y') f = atof(field) * oneyear;
         else if (last == 'd') f = atof(field) * oneday;
         else f = atof(field);
-        if (f && s->orbit) s->orbit->period = f;
+        if (f > 0 && s->orbit)
+        {
+            s->orbit->period = f;
+            s->orbit->estimated_period = false;
+        }
 
         read_field_onebased(buffer, 89, 99, field);
         f = atof(field) * fiftyseventh;
@@ -5461,9 +5471,23 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 11;
     pad(l);
 
-    if (s->orbit && s->orbit->center)
+    Star *catalog_parent = nullptr;
+    const bool physical_link = s->orbit && s->orbit->center;
+    if (physical_link)
     {
-        const std::string parent = stellar_catalog_link(static_cast<Star*>(s->orbit->center));
+        catalog_parent = static_cast<Star*>(s->orbit->center);
+    }
+    else if (s->multisys)
+    {
+        Star *primary = s->multisys->get_member('A');
+        if (primary != s)
+        {
+            catalog_parent = primary;
+        }
+    }
+    if (catalog_parent)
+    {
+        const std::string parent = stellar_catalog_link(catalog_parent);
         if (parent.empty())
         {
             throw std::runtime_error("No catalog link for parent of " + std::string(s->name));
@@ -5482,15 +5506,17 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     pad(l);
 
     if (s->orbit && s->orbit->eccentricity) line << std::fixed << std::setprecision(5) << (s->orbit->eccentricity);
-    l += 8;
+    l += 7;
     pad(l);
-    if (s->orbit && s->orbit->estimated_axis)
-    {
-        line << "E";
-    }
+    line << (catalog_parent && !physical_link ? "V" : " ");
+    l += 1;
+    pad(l);
+    line << (s->orbit && s->orbit->estimated_axis ? "E" : " ")
+        << (s->orbit && s->orbit->estimated_period ? "E" : " ");
     l += 2;
     pad(l);
     line << (s->has_catalog_BV ? " " : "E") << (s->has_catalog_UB ? " " : "E");
+    line << (s->get_component() ? s->get_component() : ' ');
     l += 3;
     pad(l);
 
@@ -5712,6 +5738,13 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
+    struct VisualLink
+    {
+        Star *star = nullptr;
+        std::string parent;
+        char component = 0;
+    };
+    std::vector<VisualLink> visual_links;
     int num_read = 0, i, j;
     char buffer[1024];
     char field[64];
@@ -5918,8 +5951,22 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         str = trim(field);
         if (str.size())
         {
-            s->orbit = new Orbit();
-            s->orbit->center_name = str;
+            const std::string parent_name = str;
+            read_field_onebased(buffer, 335, 335, field);
+            if (field[0] == 'V')
+            {
+                VisualLink link;
+                link.star = s;
+                link.parent = parent_name;
+                read_field_onebased(buffer, 340, 340, field);
+                link.component = field[0];
+                visual_links.push_back(link);
+            }
+            else
+            {
+                s->orbit = new Orbit();
+                s->orbit->center_name = parent_name;
+            }
         }
 
         read_field_onebased(buffer, 302, 312, field);
@@ -5935,6 +5982,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (s->orbit)
         {
             s->orbit->estimated_axis = field[0] == 'E';
+        }
+        read_field_onebased(buffer, 337, 337, field);
+        if (s->orbit)
+        {
+            s->orbit->estimated_period = field[0] == 'E';
         }
         read_field_onebased(buffer, 338, 338, field);
         s->has_catalog_BV = s->has_catalog_BV && field[0] != 'E';
@@ -6078,6 +6130,45 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         }
     }
 
+    std::unordered_map<std::string, Star*> family_links;
+    for (i = 1; cels[i]; ++i)
+    {
+        if (cels[i]->typeclass() != class_star || cels[i]->deleted)
+        {
+            continue;
+        }
+        Star *star = static_cast<Star*>(cels[i]);
+        const std::string key = stellar_catalog_link(star);
+        const auto existing = family_links.find(key);
+        if (existing == family_links.end())
+        {
+            family_links[key] = star;
+        }
+        else if (existing->second != star)
+        {
+            existing->second = nullptr;
+        }
+    }
+    for (const VisualLink &link : visual_links)
+    {
+        const auto found = family_links.find(link.parent);
+        if (found == family_links.end() || !found->second || found->second == link.star
+            || link.component < 'B' || link.component > 'Z')
+        {
+            continue;
+        }
+        Star *parent = found->second;
+        if (!parent->multisys)
+        {
+            parent->multisys = new StarMulti();
+            parent->multisys->add_member(parent, 'A');
+        }
+        Star *occupied = parent->multisys->get_member(link.component);
+        if (!occupied || occupied == link.star)
+        {
+            parent->multisys->add_member(link.star, link.component);
+        }
+    }
     restore_stellar_component_membership(cels);
 
     return num_read;

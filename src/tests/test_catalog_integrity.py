@@ -62,6 +62,26 @@ class CatalogIntegrityTest(unittest.TestCase):
         self.assertTrue(any('estimated' in issue.detail for issue in report.issues if issue.code == 'color_outlier'))
         self.assert_code(self.audit(row(bv_estimate='X')), 'flag')
 
+    def test_faint_visual_family_links_preserve_membership_without_an_orbit(self):
+        primary = row(id='', name='HD10000', hd='10000', hip='', hr='', bayer='', magnitude='12')
+        secondary = row(id='', name='HD10001', hd='10001', hip='', hr='', bayer='', magnitude='9',
+                        parent='HD10000', family_relation='V', component_tag='B')
+        report = self.audit(primary, secondary)
+        self.assertEqual(report.errors, 0, report.issues)
+        self.assertFalse(any(issue.code in ('bright_missing_id', 'coincident_stars', 'missing_component_id')
+                             for issue in report.issues))
+        invalid = row(id='', parent='HD10000', family_relation='V', component_tag='B', period='1')
+        self.assert_code(self.audit(primary, invalid), 'visual_family_orbit')
+
+    def test_an_unresolved_system_name_can_use_its_resolved_members_identifier(self):
+        primary = row(id='3c Oph 2', name='HD10000 C', hd='', hip='', hr='', bayer='')
+        secondary = row(id='3c Oph 2 D', name='HD10000 D', hd='10000', hip='', hr='', bayer='',
+                        parent='3c Oph 2', family_relation='V', component_tag='D')
+        report = self.audit(primary, secondary)
+        self.assertFalse(any(issue.code == 'hd_name' for issue in report.issues))
+        wrong = row(id='3c Oph 2', name='HD10001 C', hd='', hip='', hr='', bayer='')
+        self.assert_code(self.audit(wrong, secondary), 'hd_name')
+
     def test_added_bayer_designations_require_independent_catalog_and_position_support(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

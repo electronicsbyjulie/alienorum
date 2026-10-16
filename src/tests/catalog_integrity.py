@@ -24,7 +24,8 @@ FIELDS = dict(
     distance=(224, 235), absolute=(238, 243), mass=(245, 254),
     radius=(257, 266), temperature=(268, 274), rotation=(276, 285),
     parent=(287, 300), period=(302, 312), axis=(315, 326),
-    eccentricity=(328, 334), axis_estimate=(336, 336), bv_estimate=(338, 338), ub_estimate=(339, 339),
+    eccentricity=(328, 334), family_relation=(335, 335), axis_estimate=(336, 336), period_estimate=(337, 337),
+    bv_estimate=(338, 338), ub_estimate=(339, 339), component_tag=(340, 340),
     periapsis=(341, 348), anomaly=(350, 357),
     orbit_epoch=(359, 373), inclination=(374, 381), node=(383, 390),
     variability=(392, 403), bright=(405, 410), faint=(412, 417),
@@ -190,7 +191,8 @@ def parse_record(raw, line, report):
         if value is not None and value > 1e15:
             report.add('physical_overflow', row, f'{name}={value} exceeds the generous physical envelope')
     for name, choices in dict(eclipsing=('', 'E'), custom=('', 'Y'), axis_estimate=('', 'E'),
-                              bv_estimate=('', 'E'), ub_estimate=('', 'E'),
+                              period_estimate=('', 'E'), bv_estimate=('', 'E'), ub_estimate=('', 'E'),
+                              family_relation=('', 'V'), component_tag=('',) + tuple('ABCDEFGHIJKLMNOPQRSTUVWXYZ'),
                               dm_survey=('', 'BD', 'CD', 'CP')).items():
         if row.text(name) not in choices:
             report.add('flag', row, f'Invalid {name} flag {row.text(name)!r}')
@@ -201,6 +203,11 @@ def parse_record(raw, line, report):
     elif zone is not None or row.number('dm_number') is not None:
         report.add('durchmusterung', row, 'Durchmusterung values have no survey prefix')
     gliese = row.text('gliese')
+    if row.text('family_relation') == 'V':
+        if not row.text('parent') or row.text('component_tag') not in tuple('BCDEFGHIJKLMNOPQRSTUVWXYZ'):
+            report.add('visual_family_link', row, 'Visual membership requires a parent and a component tag')
+        if any(row.number(key) is not None for key in ('period', 'axis', 'eccentricity', 'inclination', 'node', 'orbit_epoch')):
+            report.add('visual_family_orbit', row, 'Visual membership contains physical orbital elements')
     if gliese and not GLIESE.fullmatch(gliese) and not (row.identity == '-26' and gliese in ('Sun', 'Sol')):
         report.add('gliese_syntax', row, f'Malformed Gliese identity {gliese!r}')
     return row
@@ -352,8 +359,8 @@ def check_relationships(records, report):
                 link = row.text('gliese')
             if link:
                 identities.setdefault(link, row)
-            if row.text('parent') and re.fullmatch(r'.+ [B-Z]', row.name):
-                row.component = row.name[-1]
+            if row.text('parent'):
+                row.component = row.text('component_tag') or (row.name[-1] if re.fullmatch(r'.+ [B-Z]', row.name) else '')
     # Iterative traversal handles long chains without recursion limits.
     for row in records:
         current, chain, seen = row, [], set()
@@ -426,6 +433,10 @@ def check_relationships(records, report):
                 report.add('coincident_stars', row, 'Same rounded coordinates in unrelated systems; possible duplicate or unresolved pair', 'warning', first)
         else:
             positions[position] = row
+    family_hd = dict()
+    for member in records:
+        if member.number('hd'):
+            family_hd.setdefault(member.root, set()).add(member.number('hd'))
     for row in records:
         designation = parse_bayer(row.text('bayer')) if row.text('bayer') else None
         if row.text('bayer') and designation is None:
@@ -450,7 +461,10 @@ def check_relationships(records, report):
                 report.add('name_component', row, 'Display-name component conflicts with Alienorum ID')
         if re.fullmatch(r'HD\s*\d+(?:\s+[A-Z])?', row.name):
             hd = int(re.search(r'\d+', row.name)[0])
-            if hd not in ancestor_values(row, identities, 'hd'):
+            allowed = ancestor_values(row, identities, 'hd')
+            if not row.number('hd'):
+                allowed.update(family_hd.get(row.root, ()))
+            if hd not in allowed:
                 report.add('hd_name', row, 'HD display name conflicts with its own or primary identifier')
         if re.fullmatch(r'HIP\s*\d+(?:\s+[A-Z])?', row.name):
             hip = int(re.search(r'\d+', row.name)[0])

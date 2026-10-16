@@ -928,10 +928,17 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
             }
         }
 
-        if (!orbit->semimajor_axis) orbit->semimajor_axis = location.distance_to(orbit->center->location);
-        if (!orbit->semimajor_axis) orbit->semimajor_axis = AU * 10;
-
-        orbit->period = oneyear * sqrt(pow(orbit->semimajor_axis/AU, 3)) / (orbit->center->mass / solar_mass);
+        if (!orbit->semimajor_axis)
+        {
+            orbit->semimajor_axis = location.distance_to(orbit->center->location);
+            if (!orbit->semimajor_axis)
+            {
+                orbit->semimajor_axis = AU * 10;
+            }
+            orbit->estimated_axis = true;
+        }
+        orbit->compute_period(mass);
+        orbit->estimated_period = true;
         // std::cout << name << " estimated orbit period=" << (orbit->period / oneday) << " days." << std::endl;
     }
 
@@ -1101,6 +1108,7 @@ json Orbit::to_json()
         {"laplace", laplace.to_json()}
     };
     result["estimated_axis"] = estimated_axis;
+    result["estimated_period"] = estimated_period;
     result["projected_axis"] = projected_axis;
     result["photocentric_angular_axis"] = photocentric_angular_axis;
     return result;
@@ -1108,6 +1116,10 @@ json Orbit::to_json()
 
 bool Orbit::from_json(json j)
 {
+    if (j.contains("estimated_period") && j["estimated_period"].is_boolean())
+    {
+        estimated_period = j["estimated_period"].get<bool>();
+    }
     if (j.contains("estimated_axis") && j["estimated_axis"].is_boolean())
     {
         estimated_axis = j["estimated_axis"].get<bool>();

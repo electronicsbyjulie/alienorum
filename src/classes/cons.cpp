@@ -1,4 +1,5 @@
 #include <cmath>
+#include <algorithm>
 #include <vector>
 #include <unordered_set>
 #include "cons.h"
@@ -298,19 +299,8 @@ ConsBins fill_alienorum_ids()
             continue;
         }
         Star *parent = static_cast<Star*>(star->orbit->center);
-        if (parent == star || !live_stars.count(parent) || (star->multisys
-                && (star->multisys == parent->multisys || star->multisys->get_member('A')
-                    || star->multisys->num_members() > 1)))
-        {
-            continue;
-        }
-        char component = star->get_component();
-        const std::string name = trim(star->name);
-        if (!component && name.size() > 2 && name[name.size() - 2] == ' ')
-        {
-            component = name.back();
-        }
-        if (component < 'B' || component > 'Z')
+        if (parent == star || !live_stars.count(parent)
+            || (star->multisys && star->multisys == parent->multisys))
         {
             continue;
         }
@@ -319,15 +309,77 @@ ConsBins fill_alienorum_ids()
             parent->multisys = new StarMulti();
             parent->multisys->add_member(parent, 'A');
         }
-        Star *occupied = parent->multisys->get_member(component);
-        if (!occupied || occupied == star)
+        if (!parent->multisys->get_member('A'))
         {
-            StarMulti *previous = star->multisys;
-            parent->multisys->add_member(star, component);
-            if (previous && previous != parent->multisys && previous->num_members() == 0)
+            parent->multisys->add_member(parent, 'A');
+        }
+        StarMulti *previous = star->multisys;
+        std::vector<Star*> members;
+        members.push_back(star);
+        if (previous)
+        {
+            for (char component = 'A'; component <= 'Z'; ++component)
             {
-                delete previous;
+                Star *member = previous->get_member(component);
+                if (member && member != star && live_stars.count(member))
+                {
+                    members.push_back(member);
+                }
             }
+        }
+        auto named_component = [](Star *member)
+        {
+            const std::string name = trim(member->name);
+            return name.size() > 2 && name[name.size() - 2] == ' '
+                && name.back() >= 'A' && name.back() <= 'Z' ? name.back() : char(0);
+        };
+        std::stable_sort(members.begin(), members.end(), [&](Star *first, Star *second)
+        {
+            return bool(named_component(first)) > bool(named_component(second));
+        });
+        std::map<char, Star*> slots;
+        for (char component = 'A'; component <= 'Z'; ++component)
+        {
+            slots[component] = parent->multisys->get_member(component);
+        }
+        std::vector<std::pair<Star*, char>> assignments;
+        bool compatible = true;
+        for (Star *member : members)
+        {
+            const char fixed = named_component(member);
+            char component = fixed ? fixed : member->get_component();
+            if (component < 'B' || component > 'Z' || (slots[component] && slots[component] != member))
+            {
+                if (fixed)
+                {
+                    compatible = false;
+                    break;
+                }
+                component = 'B';
+                while (component <= 'Z' && slots[component] && slots[component] != member)
+                {
+                    ++component;
+                }
+            }
+            if (component > 'Z')
+            {
+                compatible = false;
+                break;
+            }
+            slots[component] = member;
+            assignments.emplace_back(member, component);
+        }
+        if (!compatible)
+        {
+            continue;
+        }
+        for (const auto &assignment : assignments)
+        {
+            parent->multisys->add_member(assignment.first, assignment.second);
+        }
+        if (previous && previous != parent->multisys && previous->num_members() == 0)
+        {
+            delete previous;
         }
     }
     std::unordered_set<Star*> included;
