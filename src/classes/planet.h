@@ -50,6 +50,7 @@ namespace alienorum
         int vegetation_r=0, vegetation_g=0, vegetation_b=0;
         double plant_trunk_height = 0, plant_trunk_width = 0, plant_crown_size = 0, plant_crown_oblateness = 0;
         float has_water;
+        bool raincheck = false;
 
         void setup_atm_ring_props();
         void apply_cosmic_shoreline();

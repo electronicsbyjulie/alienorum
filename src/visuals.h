@@ -80,6 +80,9 @@ struct RockInstance
     double opacity;
     uint32_t seed_val;
     bool base_valid;
+    bool vegetation;
+    double aspect;
+    alienorum::RGB3 surface_color;
 };
 
 void draw_ra_dec_lines();
