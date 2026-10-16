@@ -136,6 +136,7 @@ void main()
     float blend = deck + (1.0 - deck) * unresolved;
     float alpha = mix(coverage, 1.0, deck);
     float shade = 1.0;
+    float puff_weight = 0.0;
     float warm_weight = 1.0;
     // Even a fully blended cloud-map pixel may have a nearer cumulus lobe.
     // Overcast is deliberately exempt: it is a continuous opaque deck.
@@ -256,16 +257,6 @@ void main()
                 }
             }
         }
-        // The cloud map describes the layer at the shell intersection (entry=0).
-        // A lobe hit with negative entry is in front of that layer and must
-        // not take its color or distant-cloud LOD blend. The shell layer
-        // remains in front of lobes whose first hit has positive entry.
-        bool foreground_cumulus = nearest < 0.0;
-        if (foreground_cumulus)
-        {
-            deck = 0.0;
-            blend = 0.0;
-        }
         // Longitude follows the wind; latitude runs across it. Using a
         // circular longitude pair keeps the strands continuous at the map seam.
         // A tangent flow avoids the rounded patches produced when the old
@@ -289,15 +280,20 @@ void main()
         float feather = strands * (0.48 + 0.52 * fibers) + 0.22 * fibers;
         float cirrus = 0.42 * veil * feather
             * smoothstep(0.0, 0.12, coverage) * (1.0 - smoothstep(0.55, 0.80, coverage));
-        float cirrus_alpha = cirrus * (1.0 - solid);
-        float combined_alpha = solid + cirrus_alpha;
-        // Resolved opaque lobes retain their opacity during the distant veil blend.
-        alpha = solid + (1.0 - solid) * mix(cirrus, coverage, blend);
+        // The map is the unresolved bank behind the resolved lobes. Preserve
+        // that background at soft lobe edges instead of exposing clear sky.
+        // The shell is an approximation of the same cloud mass, so it must
+        // not cut a lobe silhouette at its nominal intersection distance.
+        float bank_alpha = mix(cirrus, alpha, blend);
+        float background_alpha = (1.0 - solid) * bank_alpha;
+        alpha = solid + background_alpha;
+        puff_weight = solid / max(1e-5, alpha);
         // Cirrus catches the warm light throughout; cumulus only on undersides.
-        warm_weight = mix((solid * underside + cirrus_alpha) / max(1e-5, combined_alpha), 1.0, blend);
+        warm_weight = (solid * underside + background_alpha) / max(1e-5, alpha);
     }
     vec3 color = rgb * uLight[0].x * (160.0 / 255.0) * deck
-        + vec3(uLight[0].y * shade * (1.0 - deck));
+        + vec3(uLight[0].y * (1.0 - deck));
+    color = mix(color, vec3(uLight[0].y * shade), puff_weight);
     float warmth = 0.85 * uLight[1].y * warm_weight;
     float glow_light = max(0.18, max(color.r, max(color.g, color.b)));
     color = mix(color, vec3(1.0, 0.45, 0.15) * glow_light, warmth);

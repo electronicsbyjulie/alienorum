@@ -1,3 +1,1 @@
 
-When view_mode == vm_horizon, cumulus clouds are drawn overtop of distant cloud banks instead of blending with them.
-

@@ -43,7 +43,7 @@ TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
 			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp 
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp
 
 BIN = bin
 OBJ = obj
@@ -324,6 +324,9 @@ $(BIN)/housekeeping_test: $(OBJS) $(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR
 
 $(BIN)/sound_test: $(OBJS) $(TESTS_DIR)/sound_test.cpp $(CLASSES_DIR)/sound.h $(CLASSES_DIR)/sound.cpp
 	$(CPP) $(TESTS_DIR)/sound_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/sound_test
+
+$(BIN)/rendering_test: $(OBJS) $(TESTS_DIR)/rendering_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/clouds_gpu.h
+	$(CPP) $(TESTS_DIR)/rendering_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/rendering_test
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
 $(BIN)/alienorum: $(OBJS) src/alienorum.cpp

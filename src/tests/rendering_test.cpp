@@ -260,6 +260,17 @@ TEST_F(RenderingRegressionTest, CumulusInteriorsRemainOpaqueDuringDistanceBlendi
     EXPECT_GT(opaque, 1000);
 }
 
+TEST_F(RenderingRegressionTest, CumulusEdgesPreserveAnOpaqueCloudBank)
+{
+    const auto pixels = clouds(255, 0.7, 1.0);
+    // Every ray is above the horizon and the bank is opaque. Soft puff
+    // silhouettes must retain that background throughout their transition.
+    for (int i = 0; i < 192 * 108; ++i)
+    {
+        EXPECT_GE(pixels[i * 4 + 3], 254) << "pixel=" << i;
+    }
+}
+
 TEST_F(RenderingRegressionTest, DistantCloudLobesExtendBeyondTheShellSearchCell)
 {
     const auto pixels = clouds(77, 0.03, 0.125);
