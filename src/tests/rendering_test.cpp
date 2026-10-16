@@ -27,6 +27,7 @@ struct CloudTestView
     bool isolated = false;
     double cloud_latitude = 0;
     double cloud_longitude = 0;
+    double horizon_angle = -0.0001;
 };
 
 class SceneryTestMap : public Map
@@ -59,6 +60,9 @@ class RenderingRegressionTest : public UniverseFixture
     inline static SDL_GLContext graphics = nullptr;
     std::vector<std::function<void()>> restore;
     GLuint cloud_texture = 0;
+    // Real maps carry global generations, even when GL reuses a texture name.
+    inline static unsigned int cloud_epoch_sequence = 0;
+    unsigned int cloud_epoch = ++cloud_epoch_sequence;
     int render_width = 192, render_height = 108;
 
     static void SetUpTestSuite()
@@ -263,13 +267,13 @@ class RenderingRegressionTest : public UniverseFixture
         input.world[0] = view.observer;
         input.world[1] = view.shell;
         input.world[2] = (view.shell - view.observer) * (view.shell + view.observer);
-        input.world[3] = -0.0001;
+        input.world[3] = sin(view.horizon_angle);
         input.light[0] = 1;
         input.light[1] = 0.6;
         input.light[2] = view.overcast ? 1 : 0;
         input.light[8] = view.wind;
         input.texture = cloud_texture;
-        input.revision = coverage + (view.patterned ? 256 : 0) + (view.isolated ? 512 : 0);
+        input.revision = cloud_epoch * 1024 + coverage + (view.patterned ? 256 : 0) + (view.isolated ? 512 : 0);
         input.refraction = refraction;
         input.geometry_mode = view.mode;
         EXPECT_TRUE(queue_cloud_sky_gpu(input));
@@ -345,14 +349,14 @@ TEST_F(RenderingRegressionTest, CumulusEdgesPreserveAnOpaqueCloudBank)
     }
 }
 
-TEST_F(RenderingRegressionTest, DistantCloudLobesExtendBeyondTheShellSearchCell)
+TEST_F(RenderingRegressionTest, DistantCloudClusterOutsideTheLimitLeavesOnlyTheBank)
 {
     const auto pixels = clouds(77, 0.03, 0.125);
-    // This lobe crosses a latitude search-cell border at a shallow viewing angle.
-    // The former single-shell neighborhood clips the entire strip to alpha < 100.
+    // This strip formerly sampled a partial out-of-range cluster at a latitude
+    // cell border. Whole-cluster rejection leaves only the unresolved bank.
     for (int x = 36; x <= 42; ++x)
     {
-        EXPECT_GT(pixels[(107 * 192 + x) * 4 + 3], 220) << "x=" << x;
+        EXPECT_LT(pixels[(107 * 192 + x) * 4 + 3], 100) << "x=" << x;
     }
 }
 
@@ -413,6 +417,70 @@ TEST_F(RenderingRegressionTest, CloudGeometrySurvivesLookingUpFromInsideACluster
     }
     EXPECT_GT(opaque, 100);
     SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, CloudDistanceLimitAcceptsOrRejectsTheWholeCluster)
+{
+    CloudTestView view;
+    const float step = 2.8f / float(view.shell);
+    const float band = floorf(float(half_pi) / step) + 3;
+    const float clat = -float(half_pi) + (band + 0.5f) * step;
+    const float cells = roundf(float(2 * _pi) * float(view.shell) * cosf(clat) / 2.8f);
+    const float clon = -float(_pi) + (floorf(cells * 0.5f) + 0.5f) * (float(2 * _pi) / cells);
+    view.isolated = true;
+    view.cloud_latitude = clat;
+    view.cloud_longitude = clon;
+    view.longitude = clon;
+    view.latitude = clat - 9.85 / view.shell;
+    compare_clouds(255, 0.1, 0.15, view);
+    const auto near_pixels = clouds(255, 0.1, 0.15, view);
+    int beyond_shell_limit = 0;
+    for (int y = 0; y < render_height; ++y)
+    {
+        const double v = (2.0 * (y + 0.5) / render_height - 1) * 0.15 * render_height / render_width;
+        for (int x = 0; x < render_width; ++x)
+        {
+            const double u = (2.0 * (x + 0.5) / render_width - 1) * 0.15;
+            const double ray_y = (v * cos(0.1) + sin(0.1)) / sqrt(1 + u * u + v * v);
+            const double along = view.observer * ray_y;
+            const double delta = (view.shell - view.observer) * (view.shell + view.observer);
+            const double distance = delta / (sqrt(along * along + delta) + along);
+            beyond_shell_limit += distance > 10.0 && near_pixels[(y * render_width + x) * 4 + 3] > 250;
+        }
+    }
+    EXPECT_GT(beyond_shell_limit, 100);
+    view.latitude = clat - 10.3 / view.shell;
+    compare_clouds(255, 0.1, 0.15, view);
+    const auto far_pixels = clouds(255, 0.1, 0.15, view);
+    int opaque = 0;
+    for (size_t i = 0; i < far_pixels.size() / 4; ++i)
+    {
+        opaque += far_pixels[i * 4 + 3] > 250;
+    }
+    // The isolated map texel may still appear in the distant bank, but none
+    // of the out-of-range cluster's much larger procedural lobes may remain.
+    EXPECT_LT(opaque, 100);
+}
+
+TEST_F(RenderingRegressionTest, CloudBankMeetsTheApparentGroundHorizonWithRefraction)
+{
+    CloudTestView view;
+    view.overcast = true;
+    const double horizons[] =
+    {
+        -0.0001, 0.06
+    };
+    for (double horizon : horizons)
+    {
+        view.horizon_angle = horizon;
+        view.bend = 0;
+        const auto straight = clouds(255, horizon, 0.125, view);
+        view.bend = 0.03;
+        const auto refracted = clouds(255, horizon, 0.125, view);
+        EXPECT_TRUE(straight == refracted);
+        EXPECT_GE(refracted[(57 * render_width + render_width / 2) * 4 + 3], 254);
+        EXPECT_EQ(refracted[(50 * render_width + render_width / 2) * 4 + 3], 0);
+    }
 }
 
 TEST_F(RenderingRegressionTest, CloudGeometryCacheTracksSurfaceTravelAndMapChanges)

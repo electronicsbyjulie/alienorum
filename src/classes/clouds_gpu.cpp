@@ -89,6 +89,7 @@ void main()
     vec3 ray = normalize(vec3(xy.x * cos(az) + forward * sin(az),
         xy.y * cos(alt) + sin(alt), forward * cos(az) - xy.x * sin(az)));
     float h = atan(ray.y, length(ray.xz));
+    float apparent_y = ray.y;
     // The inverse curve is cached as a linear texture: one fetch per pixel.
     float true_h = texture(uRefraction, vec2((h + HALF_PI) / PI * (1024.0 / 1025.0)
         + 0.5 / 1025.0, 0.5)).r;
@@ -98,7 +99,9 @@ void main()
     float observer = uWorld[0].x;
     float shell = uWorld[0].y;
     float delta = uWorld[0].z;
-    if (delta > 0.0 && ray.y < uWorld[0].w)
+    // Ground uses an apparent horizon, including its atmospheric bowl lift.
+    // Refraction changes the cloud lookup ray, not this screen-space boundary.
+    if (delta > 0.0 && apparent_y < uWorld[0].w)
     {
         discard;
     }
@@ -154,6 +157,11 @@ void main()
         vec3 tangent_north = cross(normal, tangent_east);
         vec3 r = vec3(dot(direction, tangent_east), dot(direction, tangent_north), dot(direction, normal));
         float step = 2.8 / shell;
+        const float max_cumulus_distance = 10.0;
+        float solid = 0.0;
+        float nearest = 1e30;
+        float underside = 0.0;
+#ifdef CLOUD_REFERENCE
         // Search the entire cloud volume along the ray. A neighborhood at the
         // shell crossing alone cuts off lobes that extend across cell borders.
         float outer = shell + 1.35;
@@ -175,28 +183,15 @@ void main()
             }
         }
 
-        // Limit procedural cumulus to nearby clouds.
-        float max_cumulus_distance = 10;
-        segment_end = min(segment_end, max_cumulus_distance);
-
-        float solid = 0.0;
-        float nearest = 1e30;
-        float underside = 0.0;
+        // Centers decide eligibility. Search past that radius to include every
+        // lobe of an eligible cluster, without slicing its outer silhouette.
+        segment_end = min(segment_end, max_cumulus_distance + 1.35);
         int probes = segment_end > segment_start
             ? max(1, int(ceil((segment_end - segment_start) / 1.4)))
             : -1;
+#endif
 #ifndef CLOUD_REFERENCE
-        // A cluster occurs once per tile. Probe membership preserves the
-        // reference search range without repeating its cluster/lobe work.
-        int bands[9];
-        float longitudes[9];
-        for (int probe = 0; probe <= probes; ++probe)
-        {
-            float travel = mix(segment_start, segment_end, float(probe) / float(probes));
-            vec3 search = up * observer + travel * direction;
-            bands[probe] = int(floor((atan(search.z, length(search.xy)) + HALF_PI) / step));
-            longitudes[probe] = atan(search.y, search.x);
-        }
+        // Every cluster occurs once per tile and is accepted as a whole.
         ivec2 tile = ivec2(gl_FragCoord.xy - uWorld[1].zw) / 32;
         int tile_row = tile.y * uTileColumns + tile.x;
         int count = int(texelFetch(uTiles, ivec2(0, tile_row), 0).r);
@@ -208,20 +203,8 @@ void main()
             {
                 continue;
             }
-            vec3 cell = texelFetch(uGeometry, ivec2(1, cluster), 0).xyz;
-            bool visited = false;
-            for (int probe = 0; probe <= probes; ++probe)
-            {
-                float column = floor((longitudes[probe] + PI) / (TWO_PI / cell.z));
-                float gap = mod(cell.y - column + cell.z, cell.z);
-                if (abs(float(bands[probe]) - cell.x) <= 1.0
-                    && (gap <= 1.0 || gap >= cell.z - 1.0))
-                {
-                    visited = true;
-                    break;
-                }
-            }
-            if (!visited)
+            vec3 eye_offset = cached_center.xyz - up * observer;
+            if (dot(eye_offset, eye_offset) > max_cumulus_distance * max_cumulus_distance)
             {
                 continue;
             }
@@ -285,6 +268,11 @@ void main()
                 {
                     float clon = -PI + (mod(column + float(col), cells) + 0.5) * lon_step;
                     vec3 center = shell * vec3(cos(clat) * cos(clon), cos(clat) * sin(clon), sin(clat));
+                    vec3 eye_offset = center - up * observer;
+                    if (dot(eye_offset, eye_offset) > max_cumulus_distance * max_cumulus_distance)
+                    {
+                        continue;
+                    }
                     // Reject the whole cluster before noise and six lobe tests.
                     vec3 offset = center - hit;
                     float projection = dot(offset, direction);
@@ -897,8 +885,8 @@ void main()
         s_cells.clear();
         const double latitude = std::atan2(anchor[2], std::hypot(anchor[0], anchor[1]));
         const double longitude = std::atan2(anchor[1], anchor[0]);
-        // Probe travel is capped at 10; neighboring cells extend by under 7.
-        // A radius of 22 also covers two units of observer travel and rounding.
+        // Eligible centers lie within 10 units of the observer. This patch
+        // also covers shell height, two units of travel, and polar neighbors.
         const double angle = 2 * std::asin(std::min(1.0, 22.0 / (2 * shell)));
         const float step = 2.8f / shell;
         const float half_pi = 1.570796326794897f;
