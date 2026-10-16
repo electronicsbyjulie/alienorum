@@ -76,6 +76,7 @@ void main()
     float az = uCamera[0].x;
     float alt = uCamera[0].y;
     vec2 xy = vXY * uCamera[0].zw;
+    float dev_dial = uLight[1].x;                       // Leave this here in case we find more constants to adjust later.
     float forward = cos(alt) - xy.y * sin(alt);
     vec3 ray = normalize(vec3(xy.x * cos(az) + forward * sin(az),
         xy.y * cos(alt) + sin(alt), forward * cos(az) - xy.x * sin(az)));
@@ -136,7 +137,9 @@ void main()
     float alpha = mix(coverage, 1.0, deck);
     float shade = 1.0;
     float warm_weight = 1.0;
-    if (blend < 0.999)
+    // Even a fully blended cloud-map pixel may have a nearer cumulus lobe.
+    // Overcast is deliberately exempt: it is a continuous opaque deck.
+    if (blend < 0.999 || uLight[0].z < 0.5)
     {
         vec3 tangent_east = vec3(-sin(lon), cos(lon), 0.0);
         vec3 tangent_north = cross(normal, tangent_east);
@@ -162,10 +165,17 @@ void main()
                 segment_end = -along - inner_root;
             }
         }
+
+        // Limit procedural cumulus to nearby clouds.
+        float max_cumulus_distance = 10;
+        segment_end = min(segment_end, max_cumulus_distance);
+
         float solid = 0.0;
         float nearest = 1e30;
         float underside = 0.0;
-        int probes = max(1, int(ceil((segment_end - segment_start) / 1.4)));
+        int probes = segment_end > segment_start
+            ? max(1, int(ceil((segment_end - segment_start) / 1.4)))
+            : -1;
         for (int probe = 0; probe <= probes; ++probe)
         {
             float travel = mix(segment_start, segment_end, float(probe) / float(probes));
@@ -246,6 +256,16 @@ void main()
                 }
             }
         }
+        // The cloud map describes the layer at the shell intersection (entry=0).
+        // A lobe hit with negative entry is in front of that layer and must
+        // not take its color or distant-cloud LOD blend. The shell layer
+        // remains in front of lobes whose first hit has positive entry.
+        bool foreground_cumulus = nearest < 0.0;
+        if (foreground_cumulus)
+        {
+            deck = 0.0;
+            blend = 0.0;
+        }
         // Longitude follows the wind; latitude runs across it. Using a
         // circular longitude pair keeps the strands continuous at the map seam.
         // A tangent flow avoids the rounded patches produced when the old
@@ -253,7 +273,6 @@ void main()
         vec2 flow = shell * vec2(sin(lon), cos(lon));
         float bend = 0.35 * noise(hit * 0.65 + vec3(17.0));
         float crosswind = lat * shell + bend;
-        float dev_dial = uLight[1].x;                       // Leave this here in case we find more constants to adjust later.
         // A planet-fixed gradient field at the original cloud-mass frequency.
         // Logarithmic scaling keeps the factor in [5, 50], favoring lower values.
         float wisp_field = clamp(0.5 + 0.5 * wisp_perlin(hit*0.1 + vec3(83.0, 127.0, 191.0)), 0.0, 1.0);
