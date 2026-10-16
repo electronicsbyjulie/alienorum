@@ -56,6 +56,12 @@ class CatalogIntegrityTest(unittest.TestCase):
             self.assertFalse(any(issue.code == 'spectral_syntax' for issue in report.issues), spectral)
         self.assert_code(self.audit(row(spectral='?unknown')), 'spectral_syntax', 'warning')
 
+    def test_estimated_colors_stay_visible_in_outlier_diagnostics(self):
+        report = self.audit(row(bv='6.72', bv_estimate='E', ub_estimate='E'))
+        self.assert_code(report, 'color_outlier', 'warning')
+        self.assertTrue(any('estimated' in issue.detail for issue in report.issues if issue.code == 'color_outlier'))
+        self.assert_code(self.audit(row(bv_estimate='X')), 'flag')
+
     def test_added_bayer_designations_require_independent_catalog_and_position_support(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

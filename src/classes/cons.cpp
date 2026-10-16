@@ -278,6 +278,58 @@ char get_color_code_from_temp(double tempK)
 ConsBins fill_alienorum_ids()
 {
     ConsBins bins;
+    std::unordered_set<Star*> live_stars;
+    std::vector<Star*> ordered_stars;
+    for (int index = 1; cels[index]; ++index)
+    {
+        if (!cels[index]->deleted && cels[index]->typeclass() == class_star)
+        {
+            Star *star = static_cast<Star*>(cels[index]);
+            if (live_stars.insert(star).second)
+            {
+                ordered_stars.push_back(star);
+            }
+        }
+    }
+    for (Star *star : ordered_stars)
+    {
+        if (!star->orbit || !star->orbit->center || star->orbit->center->typeclass() != class_star)
+        {
+            continue;
+        }
+        Star *parent = static_cast<Star*>(star->orbit->center);
+        if (parent == star || !live_stars.count(parent) || (star->multisys
+                && (star->multisys == parent->multisys || star->multisys->get_member('A')
+                    || star->multisys->num_members() > 1)))
+        {
+            continue;
+        }
+        char component = star->get_component();
+        const std::string name = trim(star->name);
+        if (!component && name.size() > 2 && name[name.size() - 2] == ' ')
+        {
+            component = name.back();
+        }
+        if (component < 'B' || component > 'Z')
+        {
+            continue;
+        }
+        if (!parent->multisys)
+        {
+            parent->multisys = new StarMulti();
+            parent->multisys->add_member(parent, 'A');
+        }
+        Star *occupied = parent->multisys->get_member(component);
+        if (!occupied || occupied == star)
+        {
+            StarMulti *previous = star->multisys;
+            parent->multisys->add_member(star, component);
+            if (previous && previous != parent->multisys && previous->num_members() == 0)
+            {
+                delete previous;
+            }
+        }
+    }
     std::unordered_set<Star*> included;
     auto is_variable = [](const Star *star)
     {

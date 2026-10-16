@@ -1083,6 +1083,46 @@ TEST_F(CondensedCatalogTest, CompanionLinkingPreservesResolvedComponentAstrometr
     EXPECT_EQ(b->orbit->center, a);
 }
 
+TEST_F(CondensedCatalogTest, CcdmLinksResolvedIdentitiesWithoutReplacingTheirPositionsOrInventingOrbits)
+{
+    make_star("Sun");
+    Star *a = make_star("Primary A");
+    Star *b = make_star("Secondary B");
+    a->HIP = 100;
+    b->HIP = 101;
+    a->HD = 10000;
+    b->HD = 10001;
+    a->parallax = b->parallax = 0.1 * arcsecond;
+    b->right_ascension = 1;
+    b->declination = 0.5;
+    hipcache = new Star*[MAX_HIP + 1]();
+    hipcache[100] = a;
+    hipcache[101] = b;
+    std::filesystem::create_directories("catalogs/CCDM");
+    std::ofstream file("catalogs/CCDM/ccdm.dat");
+    for (int index = 0; index < 2; ++index)
+    {
+        std::string source(132, ' ');
+        put(source, 2, 11, "00000+0000");
+        put(source, 12, 12, "A");
+        put(source, 13, 13, index ? "B" : "A");
+        put(source, 47, 49, "90");
+        put(source, 50, 55, index ? "1000.0" : "0");
+        put(source, 99, 104, index ? "10001" : "10000");
+        put(source, 127, 132, index ? "101" : "100");
+        file << source << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_CCDM_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_EQ(ncelobjs, 3);
+    EXPECT_EQ(b->multisys, a->multisys);
+    EXPECT_EQ(b->get_component(), 'B');
+    EXPECT_DOUBLE_EQ(b->right_ascension, 1);
+    EXPECT_DOUBLE_EQ(b->declination, 0.5);
+    EXPECT_EQ(b->orbit, nullptr);
+}
+
 TEST_F(CondensedCatalogTest, OrbitOverridesResolveAnExplicitGlieseCompanionBeforeNameFallback)
 {
     make_star("Sun");
@@ -1090,6 +1130,8 @@ TEST_F(CondensedCatalogTest, OrbitOverridesResolveAnExplicitGlieseCompanionBefor
     Star *b = make_star("Resolved companion");
     strcpy(a->Gliese, "GJ 100 A");
     strcpy(b->Gliese, "GJ 100 B");
+    a->has_disk = true;
+    a->disk_inner_edge_sma = 10 * AU;
     std::string source(260, ' ');
     put(source, 1, 23, "GJ 100");
     put(source, 25, 47, "GJ 100 B");
@@ -1108,6 +1150,7 @@ TEST_F(CondensedCatalogTest, OrbitOverridesResolveAnExplicitGlieseCompanionBefor
     EXPECT_EQ(b->orbit->center, a);
     EXPECT_NEAR(b->orbit->epoch, J2000 + 8.125 * (oneyear / oneday), 1e-8);
     EXPECT_FALSE(b->orbit->estimated_axis);
+    EXPECT_DOUBLE_EQ(a->disk_inner_edge_sma, 10 * AU);
     EXPECT_EQ(a->get_component(), 'A');
     EXPECT_EQ(b->get_component(), 'B');
     EXPECT_EQ(ncelobjs, 3);
@@ -1194,6 +1237,22 @@ TEST_F(CondensedCatalogTest, CondensedZeroColorsSurviveTemperatureOverrideAndWri
     EXPECT_EQ(encoded.substr(106, 6), "+00.00");
 }
 
+TEST_F(CondensedCatalogTest, CondensedColorsRetainTheirMeasuredOrEstimatedStatus)
+{
+    std::string source = primary_row();
+    put(source, 338, 338, "E");
+    put(source, 339, 339, "E");
+    write_rows({source});
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    Star *star = static_cast<Star*>(cels[1]);
+    EXPECT_FALSE(star->has_catalog_BV);
+    EXPECT_FALSE(star->has_catalog_UB);
+    EXPECT_EQ(written_row(star).substr(337, 2), "EE");
+    star->has_catalog_BV = star->has_catalog_UB = true;
+    EXPECT_EQ(written_row(star).substr(337, 2), "  ");
+}
+
 TEST_F(CondensedCatalogTest, GaiaDistanceUpdateRetainsUnknownCompanionBrightness)
 {
     make_star("Sun");
@@ -1243,6 +1302,34 @@ TEST_F(CondensedCatalogTest, HipparcosOrbitFitPreservesExistingApparentMagnitude
     EXPECT_NEAR(secondary->orbit->photocentric_angular_axis, 1.56 / 1000 * arcsecond, 1e-20);
     EXPECT_NEAR(pow(secondary->orbit->semimajor_axis / AU, 3)
         / pow(secondary->orbit->period / oneyear, 2), (primary->mass + secondary->mass) / solar_mass, 0.001);
+}
+
+TEST_F(CondensedCatalogTest, PhotocenterFitsDoNotReplaceResolvedOrNestedComponentOrbits)
+{
+    make_star("Sun");
+    Star *a = make_star("Primary");
+    Star *b = make_star("Resolved secondary");
+    a->HIP = 100;
+    b->HIP = 101;
+    b->parallax = 0.1 * arcsecond;
+    a->set_component('A', a);
+    b->make_companion_of(a, 'B');
+    b->orbit->period = 100 * oneyear;
+    b->orbit->semimajor_axis = 30 * AU;
+    std::string source(100, ' ');
+    put(source, 1, 6, "100");
+    put(source, 8, 17, "10");
+    put(source, 31, 38, "1.56");
+    CatalogReader reader;
+    int offset = ncelobjs;
+    EXPECT_FALSE(reader.load_Hipparcos_orbit_line(source.c_str(), cels, MAX_CELOBJS, offset));
+    EXPECT_DOUBLE_EQ(b->orbit->period, 100 * oneyear);
+    EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 30 * AU);
+    put(source, 1, 6, "101");
+    EXPECT_FALSE(reader.load_Hipparcos_orbit_line(source.c_str(), cels, MAX_CELOBJS, offset));
+    EXPECT_EQ(a->get_component(), 'A');
+    EXPECT_EQ(b->get_component(), 'B');
+    EXPECT_EQ(ncelobjs, 3);
 }
 
 TEST_F(CondensedCatalogTest, ReferenceSourcesCorrectSpectraAndPreserveMeasuredUbv)
@@ -1557,6 +1644,26 @@ TEST_F(CondensedCatalogTest, DocumentedSpectralQualityOutranksUnratedHistoricalS
     EXPECT_STREQ(star->spectral_type, "K2V");
 }
 
+TEST_F(CondensedCatalogTest, UnchangedHipparcosSpectraSurviveOlderUnratedReplacements)
+{
+    make_star("Sun");
+    Star *star = make_star("HD10000");
+    star->HD = 10000;
+    star->HIP = 100;
+    hipparcos_row(100, "10000");
+    reference_file("SIMBAD.tsv", "oid\tmain_id\tids\tra\tdec\tsp_type\tsp_qual\tsp_bibcode\n"
+        "1\tHD10000\tHD10000|HIP100\t0\t0\tA0\tD\t2020A&A...000....1A\n");
+    reference_file("Skiff.tsv", "Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n"
+        "HD10000\tF0\t1950ApJ.....0....1A\t0\t0\n");
+    const json report = reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_STREQ(star->spectral_type, "G2V");
+    EXPECT_EQ(report["provenance"][std::to_string(star->seqno)]["fields"]["spectral_type"]["source"], "Hipparcos");
+    reference_file("Skiff.tsv", "Name\tSpType\tBibcode\tRAJ2000\tDEJ2000\n"
+        "HD10000\tF5V\t2020ApJ.....0....1A\t0\t0\n");
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_STREQ(star->spectral_type, "F5V");
+}
+
 TEST_F(CondensedCatalogTest, ReferenceEndpointsComeExclusivelyFromTheManifest)
 {
     for (const auto &source : stellar_reference_sources())
@@ -1667,6 +1774,13 @@ TEST_F(CondensedCatalogTest, SbxRetainsACompleteVisualOrbitWhenPeriodsConflict)
     EXPECT_DOUBLE_EQ(b->orbit->eccentricity, 0.6);
     EXPECT_DOUBLE_EQ(b->orbit->epoch, 2450000);
     ASSERT_FALSE(report["conflicts"].empty());
+    a->HIP = 100;
+    b->HIP = 101;
+    b->parallax = 0.1 * arcsecond;
+    b->orbit->period = 0;
+    reconcile_stellar_sources(cels, "catalogs", false);
+    EXPECT_DOUBLE_EQ(b->orbit->period, 0);
+    EXPECT_DOUBLE_EQ(b->orbit->semimajor_axis, 30 * AU);
 }
 
 TEST_F(CondensedCatalogTest, CatalogWriteFailurePreservesPreviousCompleteFile)
@@ -2416,6 +2530,30 @@ TEST_F(CondensedCatalogTest, AVisualComponentWithoutAPrimaryKeepsAnIndependentCa
     EXPECT_EQ(c->orbit, nullptr);
     EXPECT_EQ(b->get_component(), 'B');
     EXPECT_EQ(c->get_component(), 'C');
+}
+
+TEST_F(CondensedCatalogTest, FinalNumberingRestoresAnUnambiguousOrphanOrbitLink)
+{
+    make_star("Sun")->apparent_magnitude = -26.72;
+    constellations[0].bounds.emplace_back();
+    Star *a = make_star("Primary");
+    Star *c = make_star("Secondary C");
+    strcpy(a->constellation, "Oph");
+    a->temperature = 5778;
+    a->apparent_magnitude = 5;
+    c->apparent_magnitude = 9;
+    c->multisys = new StarMulti();
+    c->multisys->add_member(c, 'C');
+    c->orbit = new Orbit();
+    c->orbit->center = a;
+    c->orbit->period = 10 * oneyear;
+    c->orbit->semimajor_axis = 5 * AU;
+    fill_alienorum_ids();
+    EXPECT_EQ(c->multisys, a->multisys);
+    EXPECT_EQ(c->get_component(), 'C');
+    EXPECT_EQ(c->alienorumid, lop_component(a->alienorumid.c_str()) + " C");
+    EXPECT_EQ(c->orbit->center, a);
+    EXPECT_DOUBLE_EQ(c->orbit->period, 10 * oneyear);
 }
 
 TEST_F(CondensedCatalogTest, FaintSystemsRoundTripTheirOrbitsWithoutAlienorumIds)

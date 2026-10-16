@@ -352,6 +352,44 @@ namespace
             return root(first) == root(second);
         }
 
+        void retain_hipparcos_spectral_baselines(const std::filesystem::path &directory)
+        {
+            std::ifstream file(directory / "Hipparcos" / "hip_main.dat");
+            std::string line;
+            auto normalized = [](std::string value)
+            {
+                value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char c)
+                {
+                    return std::isspace(c);
+                }), value.end());
+                return lowercase(value);
+            };
+            while (std::getline(file, line))
+            {
+                if (line.size() < 447)
+                {
+                    continue;
+                }
+                const unsigned int hip = atoi(line.substr(8, 6).c_str());
+                const auto owners = aliases.find("HIP" + std::to_string(hip));
+                if (!hip || owners == aliases.end() || owners->second.size() != 1)
+                {
+                    continue;
+                }
+                Star *star = owners->second.front();
+                const unsigned int hd = atoi(line.substr(390, 6).c_str());
+                const std::string spectral = trim(line.substr(435, 12));
+                if ((hd && star->HD && hd != star->HD) || !valid_spectral(spectral)
+                    || normalized(spectral) != normalized(star->spectral_type))
+                {
+                    continue;
+                }
+                // Protect an unchanged published classification from older, unrated replacements.
+                spectral_ranks[star] = std::make_pair(20, "1997");
+                provenance(star, "spectral_type", "Hipparcos", Row(), star->spectral_type);
+            }
+        }
+
         std::string bayer_display(const std::string &bayer, const std::string &constellation)
         {
             int greek = grkno_from_abbrev(bayer.c_str());
@@ -470,7 +508,7 @@ namespace
             }
             for (const std::string &key : std::vector<std::string>
                 {
-                    "oid", "bibcode", "sp_bibcode", "recno", "name", "simbadname", "wds", "sn", "source_id"
+                    "oid", "bibcode", "sp_bibcode", "sp_qual", "n_sptype", "recno", "name", "simbadname", "wds", "sn", "source_id"
                 })
             {
                 const std::string text = cell(row, key);
@@ -1541,6 +1579,16 @@ namespace
             {
                 return;
             }
+            if (b->distance_known && b->parallax > 0
+                && ((b->HIP && b->HIP != a->HIP) || (b->HD && b->HD != a->HD)))
+            {
+                json conflict;
+                conflict["star"] = b->name;
+                conflict["source"] = "SBX";
+                conflict["reason"] = "A primary-only spectroscopic cross-reference does not identify the resolved secondary";
+                report["conflicts"].push_back(conflict);
+                return;
+            }
             if (b->orbit->period > 0 && b->orbit->semimajor_axis > 0 && !b->orbit->estimated_axis)
             {
                 const double ratio = period * oneday / b->orbit->period;
@@ -2416,6 +2464,7 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
     std::filesystem::create_directories(cache_directory);
     Context context(objects, report);
     const auto sources = stellar_reference_sources();
+    context.retain_hipparcos_spectral_baselines(cache_directory);
     for (const auto &source : sources)
     {
         const auto destination = std::filesystem::path(cache_directory) / source.directory;

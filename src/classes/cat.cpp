@@ -1055,6 +1055,21 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
         return false;
     }
 
+    if (A->multisys)
+    {
+        Star *secondary = A->multisys->get_member('B');
+        const bool resolved_secondary = secondary && secondary->distance_known && secondary->parallax > 0
+            && ((secondary->HIP && secondary->HIP != A->HIP) || (secondary->HD && secondary->HD != A->HD));
+        if (A->multisys->get_member('A') != A || resolved_secondary
+            || (secondary && secondary->orbit && secondary->orbit->period > 0
+                && secondary->orbit->semimajor_axis > 0 && !secondary->orbit->estimated_axis))
+        {
+            std::cerr << "Retaining resolved or nested system instead of assigning a photocenter fit to HIP"
+                << HIP << std::endl;
+            return false;
+        }
+    }
+
     read_field_onebased(buffer, 8, 17, field);
     const double period_days = atof(field);
     const double period_seconds = period_days * oneday;
@@ -2406,7 +2421,16 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         if (!A->multisys) A->set_component('A', A);
         A = A->multisys->get_member(refcomp);
         if (!A) continue;
-        s = A->multisys->get_member(conccomp);
+        Star *member = A->multisys->get_member(conccomp);
+        if (s && member && s != member)
+        {
+            // An explicit catalog identity conflicts with the occupied component slot.
+            continue;
+        }
+        if (!s)
+        {
+            s = member;
+        }
 
         if (!s)
         {
@@ -2420,7 +2444,23 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
             continue;
 #endif
         }
-        if (s != A) s->make_companion_of(A, conccomp);
+        const bool resolved_astrometry = s->distance_known && s->parallax > 0
+            && ((s->HIP && s->HIP != A->HIP) || (s->HD && s->HD != A->HD));
+        if (s != A)
+        {
+            if (resolved_astrometry)
+            {
+                if (s->multisys && s->multisys != A->multisys && s->multisys->num_members() > 1)
+                {
+                    continue;
+                }
+                A->multisys->add_member(s, conccomp);
+            }
+            else
+            {
+                s->make_companion_of(A, conccomp);
+            }
+        }
 
         if (A->HD == 20766)                            // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
         {
@@ -2479,16 +2519,21 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         rho /= (3600 * fiftyseven);
 
         // Fill in positional parameters based on angular separation
-        s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
-        s->declination = A->declination + rho * cos(theta);
-
-        s->location = A->location;                      // Copies local system reference frame
-        s->epoch = J2000;
-        s->update_location(J2000_TIME_T);
+        if (!resolved_astrometry)
+        {
+            s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
+            s->declination = A->declination + rho * cos(theta);
+            s->location = A->location;
+            s->epoch = J2000;
+            s->update_location(J2000_TIME_T);
+        }
 
         // Estimate the semimajor axis
         double sma = asep * A->distance / 206264.806;
-        s->orbit->semimajor_axis = sma;
+        if (s->orbit && !(s->orbit->period > 0 && s->orbit->semimajor_axis > 0))
+        {
+            s->orbit->semimajor_axis = sma;
+        }
 
         // Figure the absolute magnitude
         if (s->distance_known)
@@ -2517,6 +2562,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
                       + std::string(" objects from Catalogue of the Components of Double and Multiple Stars...");
         mtx.unlock();
     }
+    fclose(fp);
     return num_read;
 }
 
@@ -2663,6 +2709,13 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         if (!A) continue;
         if (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")) B = nullptr;
         else B = A->multisys->get_member(comp[0]);
+
+        if (B && B->distance_known && B->parallax > 0
+            && ((B->HIP && B->HIP != A->HIP) || (B->HD && B->HD != A->HD)))
+        {
+            // The primary's spectroscopic identifier does not identify this resolved companion.
+            continue;
+        }
 
         if (!B)
         {
@@ -4619,7 +4672,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A->has_disk = A->known_poles;
             s = A;
         }
-        if (A->has_disk)
+        if (A->has_disk && s == A)
         {
             A->disk_heliocen_inclination = inclination;
             A->disk_heliocen_node = ascending_node;
@@ -5435,7 +5488,10 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     {
         line << "E";
     }
-    l += 5;
+    l += 2;
+    pad(l);
+    line << (s->has_catalog_BV ? " " : "E") << (s->has_catalog_UB ? " " : "E");
+    l += 3;
     pad(l);
 
     if (s->orbit && s->orbit->arg_periapsis)
@@ -5880,6 +5936,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         {
             s->orbit->estimated_axis = field[0] == 'E';
         }
+        read_field_onebased(buffer, 338, 338, field);
+        s->has_catalog_BV = s->has_catalog_BV && field[0] != 'E';
+        read_field_onebased(buffer, 339, 339, field);
+        s->has_catalog_UB = s->has_catalog_UB && field[0] != 'E';
 
         read_field_onebased(buffer, 341, 348, field);
         if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;

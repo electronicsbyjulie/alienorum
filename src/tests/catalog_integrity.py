@@ -24,7 +24,8 @@ FIELDS = dict(
     distance=(224, 235), absolute=(238, 243), mass=(245, 254),
     radius=(257, 266), temperature=(268, 274), rotation=(276, 285),
     parent=(287, 300), period=(302, 312), axis=(315, 326),
-    eccentricity=(328, 334), axis_estimate=(336, 336), periapsis=(341, 348), anomaly=(350, 357),
+    eccentricity=(328, 334), axis_estimate=(336, 336), bv_estimate=(338, 338), ub_estimate=(339, 339),
+    periapsis=(341, 348), anomaly=(350, 357),
     orbit_epoch=(359, 373), inclination=(374, 381), node=(383, 390),
     variability=(392, 403), bright=(405, 410), faint=(412, 417),
     bright_epoch=(419, 435), eclipsing=(437, 437), dm_survey=(439, 440),
@@ -189,6 +190,7 @@ def parse_record(raw, line, report):
         if value is not None and value > 1e15:
             report.add('physical_overflow', row, f'{name}={value} exceeds the generous physical envelope')
     for name, choices in dict(eclipsing=('', 'E'), custom=('', 'Y'), axis_estimate=('', 'E'),
+                              bv_estimate=('', 'E'), ub_estimate=('', 'E'),
                               dm_survey=('', 'BD', 'CD', 'CP')).items():
         if row.text(name) not in choices:
             report.add('flag', row, f'Invalid {name} flag {row.text(name)!r}')
@@ -259,7 +261,8 @@ def check_photometry(row, report):
         if (spectral[0] in 'OB' and bv > 1.5) or (spectral[0] in 'MLT' and bv < 0.0):
             report.add('spectral_color', row, f'{spectral} with B-V={bv:g}; review extinction, blends, or classification', 'warning')
     if bv is not None and not -0.6 <= bv <= 6:
-        report.add('color_outlier', row, f'Unusual B-V={bv:g}', 'warning')
+        origin = 'estimated' if row.text('bv_estimate') else 'measured'
+        report.add('color_outlier', row, f'Unusual {origin} B-V={bv:g}', 'warning')
     velocity = row.number('velocity')
     if velocity is not None and abs(velocity) >= 299792458:
         report.add('radial_velocity', row, 'Radial velocity reaches or exceeds light speed')
