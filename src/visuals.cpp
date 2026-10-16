@@ -4844,15 +4844,35 @@ static void draw_planetary_rain(Planet *p)
         return;
     }
 
+    // Must have water.
     if (p->has_water < 0.05)
     {
         return;
     }
 
-    // Must be a non-gaseous, non-lava celestial body
-    if (uses_gaseous_map(p->type) || p->type == lavaworld)
+    if (!p->raincheck)
     {
-        return;
+        // Cannot be too hot for water. Cache this block.
+        p->raincheck = true;
+        double T = p->estimate_surface_temperature();
+        if (T < water_freezing || T >= 647) return;
+
+        const double pressure = p->get_surface_pressure();
+        const double inverse_boil = 1.0 / (water_freezing + 100.0)
+            - (8.314 / 40660.0) * std::log(pressure / 1.0e5);
+
+        const double boiling_temp = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
+        if (T > 0.9 * boiling_temp)
+        {
+            p->has_water = 0;
+            return;
+        }
+
+        // Must be a non-gaseous, non-lava celestial body
+        if (uses_gaseous_map(p->type) || p->type == lavaworld)
+        {
+            return;
+        }
     }
 
     // Clouds must be enabled and complete cloud map available
@@ -7898,6 +7918,7 @@ void draw_cloudy_sky()
     double atm_pressure = (whereami >= 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type)) ? ((Planet*)cels[whereami])->get_surface_pressure() : 0;
     double zenith_rad = find_3D_angle(sun_obj->viewrel, yaxis, center);
     double atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad) * 3;
+    if (p->overcast) atm_yellowing = false;
 
     CloudSkyGpuInput in = {};
     in.camera[0] = (float)azimuth;
