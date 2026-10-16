@@ -74,6 +74,15 @@ class CatalogIntegrityTest(unittest.TestCase):
             self.assertTrue(any(proof['field'] == 'bayer' for proof in report.verifications))
             path.write_text(header + identity.replace('* alf Oph', '* bet Oph'))
             self.assert_code(audit_bytes(sun() + row(), root), 'bsc_bayer_added', 'warning')
+            path.write_text(header + identity.replace('* alf Oph', '* alf Oph A'))
+            report = audit_bytes(sun() + row(), root)
+            self.assertFalse(any(issue.code == 'bsc_bayer_added' for issue in report.issues))
+            path.write_text(header + identity.replace('* alf Oph', '* alf Oph B'))
+            self.assert_code(audit_bytes(sun() + row(), root), 'bsc_bayer_added', 'warning')
+            path.write_text(header + identity.replace('\t*\n', '\t**\n'))
+            report = audit_bytes(sun() + row(), root)
+            self.assertFalse(any(issue.code == 'bsc_bayer_added' for issue in report.issues))
+            self.assertTrue(any(proof['field'] == 'bayer' for proof in report.verifications))
 
     def test_shared_hipparcos_entries_do_not_describe_individual_companions(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -403,7 +412,22 @@ class CatalogIntegrityTest(unittest.TestCase):
             self.assert_code(audit_bytes(sun() + row(ra='17:36:07.1'), root), 'source_position', 'warning')
             self.assert_code(audit_bytes(sun() + row(spectral='K5III'), root), 'source_spectral_class', 'warning')
             report = audit_bytes(sun() + row(ra='17:36:07.1', pm_ra='1e-11'), root)
-            self.assertFalse(any(issue.code == 'source_position' for issue in report.issues))
+            self.assert_code(report, 'source_position', 'warning')
+
+    def test_source_positions_use_the_actual_epoch_and_tangent_proper_motion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Hipparcos').mkdir()
+            source = bytearray(b' ' * 450)
+            for start, end, value in ((9, 14, '86032'), (52, 63, '10.00000000'),
+                                      (65, 76, '0.00000000'), (88, 95, '20000'), (97, 104, '0')):
+                source[start - 1:end] = value.encode().ljust(end - start + 1)
+            (root / 'Hipparcos/hip_main.dat').write_bytes(source + b'\n')
+            star = row(ra='00:40:11.7', dec='+00:00:00', pm_ra='3.0726e-12')
+            self.assertFalse(any(issue.code == 'source_position' for issue in audit_bytes(sun() + star, root).issues))
+            # A large motion cannot excuse a discrepancy at the same comparison epoch.
+            wrong = row(ra='00:42:00.0', dec='+00:00:00', pm_ra='3.0726e-12')
+            self.assert_code(audit_bytes(sun() + wrong, root), 'source_position', 'warning')
 
     def test_close_pairs_are_reviewed_across_ra_wrap_and_at_poles(self):
         first = row(ra='23:59:59.9', dec='+00:00:00')

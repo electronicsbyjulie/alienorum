@@ -24,7 +24,7 @@ FIELDS = dict(
     distance=(224, 235), absolute=(238, 243), mass=(245, 254),
     radius=(257, 266), temperature=(268, 274), rotation=(276, 285),
     parent=(287, 300), period=(302, 312), axis=(315, 326),
-    eccentricity=(328, 334), periapsis=(341, 348), anomaly=(350, 357),
+    eccentricity=(328, 334), axis_estimate=(336, 336), periapsis=(341, 348), anomaly=(350, 357),
     orbit_epoch=(359, 373), inclination=(374, 381), node=(383, 390),
     variability=(392, 403), bright=(405, 410), faint=(412, 417),
     bright_epoch=(419, 435), eclipsing=(437, 437), dm_survey=(439, 440),
@@ -188,7 +188,8 @@ def parse_record(raw, line, report):
             report.add('negative_physical_value', row, f'{name}={value}')
         if value is not None and value > 1e15:
             report.add('physical_overflow', row, f'{name}={value} exceeds the generous physical envelope')
-    for name, choices in dict(eclipsing=('', 'E'), custom=('', 'Y'), dm_survey=('', 'BD', 'CD', 'CP')).items():
+    for name, choices in dict(eclipsing=('', 'E'), custom=('', 'Y'), axis_estimate=('', 'E'),
+                              dm_survey=('', 'BD', 'CD', 'CP')).items():
         if row.text(name) not in choices:
             report.add('flag', row, f'Invalid {name} flag {row.text(name)!r}')
     zone = row.number('dm_zone')
@@ -480,10 +481,17 @@ def check_relationships(records, report):
     return identities
 
 
-def source_position(row, ra, dec, report, label):
-    drift = math.hypot(row.number('pm_ra') or 0, row.number('pm_dec') or 0) * (100 * 365.25 * 86400) / RAD_PER_ARCSEC
+def source_position(row, ra, dec, report, label, epoch=2000.0, pm_ra=0.0, pm_dec=0.0):
+    # Source tangent motions are in mas/year, including cos(delta) in RA.
+    if epoch != 2000.0:
+        r, d = math.radians(ra), math.radians(dec)
+        elapsed = (2000.0 - epoch) * RAD_PER_ARCSEC / 1000
+        x = math.cos(d) * math.cos(r) + elapsed * (-pm_ra * math.sin(r) - pm_dec * math.cos(r) * math.sin(d))
+        y = math.cos(d) * math.sin(r) + elapsed * (pm_ra * math.cos(r) - pm_dec * math.sin(r) * math.sin(d))
+        z = math.sin(d) + elapsed * pm_dec * math.cos(d)
+        ra, dec = math.degrees(math.atan2(y, x)) % 360, math.degrees(math.atan2(z, math.hypot(x, y)))
     separation = separation_arcsec(row.ra, row.dec, ra, dec)
-    if separation > max(60.0, drift + 30.0):
+    if separation > 60.0:
         report.add('source_position', row, f'{label} coordinates differ by {separation:.1f} arcsec (epoch/proper-motion review)', 'warning')
 
 
@@ -524,7 +532,7 @@ def modern_identity_support(records, directory, report):
         with path.open(newline='', encoding='utf-8') as stream:
             for source in csv.DictReader(stream, delimiter='\t'):
                 raw_aliases = source.get('ids', '')
-                if source.get('otype') == '**' or not source.get('oid') or not target_hd.search(raw_aliases):
+                if not source.get('oid') or not target_hd.search(raw_aliases):
                     continue
                 aliases = {key(value) for value in raw_aliases.split('|')}
                 ids = {int(value[2:]) for value in aliases if re.fullmatch(r'HD[0-9]+', value)}
@@ -539,7 +547,9 @@ def modern_identity_support(records, directory, report):
                         hr = bool(record.number('hr') and 'HR' + str(int(record.number('hr'))) in aliases)
                         hip = bool(record.number('hip') and 'HIP' + str(int(record.number('hip'))) in aliases)
                         bayer = parse_bayer(record.text('bayer'))
-                        designated = bool(bayer and '*' + greek_codes[bayer[0]] + bayer[1] + bayer[2].upper() in aliases)
+                        bayer_key = '*' + greek_codes[bayer[0]] + bayer[1] + bayer[2].upper() if bayer else ''
+                        designated = bool(bayer and (bayer_key + (record.component or 'A') in aliases
+                                                     or (not record.component and bayer_key in aliases)))
                         fields = set()
                         if hr and (not bayer or designated):
                             fields.add('bsc_cross_id')
@@ -549,6 +559,9 @@ def modern_identity_support(records, directory, report):
                             fields.add('hip_cross_id')
                         if (hr or hip) and record.number('flamsteed') and key('*' + str(int(record.number('flamsteed'))) + record.constellation) in aliases:
                             fields.add('bsc_flamsteed')
+                        if source.get('otype', '').strip() == '**':
+                            # A system designation can name its primary without resolving component measurements.
+                            fields.intersection_update(('bsc_bayer_added',))
                         if fields:
                             supported.setdefault(record.line, dict())[source['oid']] = fields
         report.sources.append(str(path))
@@ -768,7 +781,10 @@ def check_sources(records, report, directory):
                 continue
             ra, dec = raw[51:63].strip(), raw[64:76].strip()
             if NUMBER.fullmatch(ra) and NUMBER.fullmatch(dec):
-                source_position(row, float(ra), float(dec), report, 'Hipparcos')
+                pmra, pmdec = raw[87:95].strip(), raw[96:104].strip()
+                source_position(row, float(ra), float(dec), report, 'Hipparcos', 1991.25,
+                                float(pmra) if NUMBER.fullmatch(pmra) else 0,
+                                float(pmdec) if NUMBER.fullmatch(pmdec) else 0)
             spectral = raw[435:447].strip()
             own_spectral = row.text('spectral').strip()
             if (spectral and own_spectral and spectral[0] in 'OBAFGKM' and own_spectral[0] in 'OBAFGKM'

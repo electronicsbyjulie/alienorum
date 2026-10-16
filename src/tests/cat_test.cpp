@@ -1,6 +1,10 @@
 #include <cstring>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
+#include "../classes/stellar_sources.h"
 #include "../loaders.h"
 #include "../globals.h"
 #include "universe_fixture.h"
@@ -571,10 +575,12 @@ TEST_F(CatalogParsingTest, BackgroundAstorbLoaderLoadsAndLinks)
     EXPECT_TRUE(found_ceres);
 }
 
-TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass)
+TEST_F(CatalogParsingTest, ApplyGaiaAstrometryPreservesPublishedSpectralClasses)
 {
-    CatalogReader cr;
-    CelestialObject* test_cels[3] = { nullptr, nullptr, nullptr };
+    CelestialObject* test_cels[4] =
+    {
+        cels[0], nullptr, nullptr, nullptr
+    };
 
     Star* s1 = new Star();
     s1->HIP = 1;
@@ -582,7 +588,7 @@ TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass
     s1->apparent_magnitude = 9.0;
     strcpy(s1->spectral_type, "F5V");
     s1->distance = 100.0 * parsec;
-    test_cels[0] = s1;
+    test_cels[1] = s1;
 
     Star* s2 = new Star();
     s2->HIP = 8;
@@ -590,18 +596,26 @@ TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass
     s2->apparent_magnitude = 4.0;
     strcpy(s2->spectral_type, "G2V");
     s2->distance = 10.0 * parsec;
-    test_cels[1] = s2;
+    test_cels[2] = s2;
 
-    int updated = cr.apply_gaia_astrometry(test_cels);
+    const auto directory = std::filesystem::temp_directory_path()
+        / ("alienorum_gaia_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(directory / "GAIA");
+    std::ofstream source(directory / "GAIA/Gaia_DR3.tsv");
+    source << "source_id\thip\tparallax\tparallax_error\truwe\tnumber_of_neighbours\n"
+        << "1001\t1\t5\t0.01\t1.0\t1\n"
+        << "1008\t8\t1.5\t0.01\t1.0\t1\n";
+    source.close();
+    int updated = apply_gaia_reference_astrometry(test_cels, directory.string());
     EXPECT_EQ(updated, 2);
 
-    double expected_dist_pc = 1000.0 / 5.4151;
-    EXPECT_NEAR(s1->distance / parsec, expected_dist_pc, 0.5);
+    EXPECT_GT(s1->distance / parsec, 100);
     EXPECT_TRUE(s1->distance_known);
     EXPECT_GT(s1->absolute_magnitude, 0.0);
 
-    // s2 (HIP 8) is at ~657 pc, M_V = -5.09 -> promoted to Supergiant Class I
-    EXPECT_STREQ(s2->spectral_type, "G2I");
+    EXPECT_STREQ(s1->spectral_type, "F5V");
+    EXPECT_STREQ(s2->spectral_type, "G2V");
+    std::filesystem::remove_all(directory);
 
     delete s1;
     delete s2;

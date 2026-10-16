@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <math.h>
 #include <cstdio>
+#include <set>
 #include "cons.h"
 #include "planet.h"
 
@@ -1326,10 +1327,17 @@ bool Star::from_json(json j)
 
 void Star::make_companion_of(Star *A, char comp)
 {
-    right_ascension = A->right_ascension;
-    declination = A->declination;
-    parallax = A->parallax;
-    distance = A->distance;
+    const bool resolved_astrometry = distance_known && parallax > 0
+        && ((HIP && HIP != A->HIP) || (HD && HD != A->HD));
+    if (!resolved_astrometry)
+    {
+        right_ascension = A->right_ascension;
+        declination = A->declination;
+        parallax = A->parallax;
+        distance = A->distance;
+        proper_motion_RA = A->proper_motion_RA;
+        proper_motion_decl = A->proper_motion_decl;
+    }
     location = A->location;
     if (!has_custom_name)
     {
@@ -1341,8 +1349,6 @@ void Star::make_companion_of(Star *A, char comp)
             strcpy(name, (base + std::string(" ") + std::string(1, comp)).c_str());
     }
     CCDM = A->CCDM;
-    proper_motion_RA = A->proper_motion_RA;
-    proper_motion_decl = A->proper_motion_decl;
     visible_area = A->visible_area;
     type = star;
 
@@ -1491,6 +1497,24 @@ void StarMulti::add_member(Star *s, char comp)
     if (comp < 'A' || comp > 'Z') throw 0xbadc0de;
 
     int cidx = comp - 'A';
+    if (s->multisys && s->multisys != this)
+    {
+        StarMulti *previous = s->multisys;
+        for (int index = 0; index < previous->allocated; ++index)
+        {
+            if (previous->members[index] == s)
+            {
+                previous->members[index] = nullptr;
+            }
+        }
+    }
+    for (int index = 0; index < allocated; ++index)
+    {
+        if (members[index] == s && index != cidx)
+        {
+            members[index] = nullptr;
+        }
+    }
     if (!members || cidx >= allocated)
     {
         char toalloc = std::max(2, cidx+1);
@@ -1504,6 +1528,11 @@ void StarMulti::add_member(Star *s, char comp)
         }
         members = new_members;
         allocated = toalloc;
+    }
+    Star *previous = members[cidx];
+    if (previous && previous != s && previous->multisys == this)
+    {
+        previous->multisys = nullptr;
     }
     members[cidx] = s;
     s->multisys = this;
@@ -1560,6 +1589,10 @@ void StarMulti::unlink()
 #define _debug_merge 0
 void alienorum::StarMulti::merge(StarMulti *other)
 {
+    if (other == this)
+    {
+        return;
+    }
     int toalloc = std::max(2, allocated + other->allocated);
     Star** new_members = new Star*[toalloc];
     memset(new_members, 0, sizeof(Star*)*toalloc);
@@ -1568,10 +1601,15 @@ void alienorum::StarMulti::merge(StarMulti *other)
     std::cout << "Merge StarMulti objects: " << std::endl;
     #endif
     int i, j=0;
+    std::set<Star*> inserted;
     if (members)
     {
-        for (i=0; i<allocated; i++) if (members[i])
+        for (i = 0; i < allocated; i++)
         {
+            if (!members[i] || !inserted.insert(members[i]).second)
+            {
+                continue;
+            }
             #if _debug_merge
             std::cout << "(1) -> " << members[i]->name << std::endl;
             #endif
@@ -1581,8 +1619,12 @@ void alienorum::StarMulti::merge(StarMulti *other)
     }
     if (other->members)
     {
-        for (i=0; i<other->allocated; i++) if (other->members[i])
+        for (i = 0; i < other->allocated; i++)
         {
+            if (!other->members[i] || !inserted.insert(other->members[i]).second)
+            {
+                continue;
+            }
             #if _debug_merge
             std::cout << "(2) -> " << other->members[i]->name << std::endl;
             #endif

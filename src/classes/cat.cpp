@@ -2743,6 +2743,11 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         if (found < 0) continue;
         B = (Star*)cels[found];
 
+        if (B->orbit->period > 0 && B->orbit->semimajor_axis > 0 && !B->orbit->estimated_axis)
+        {
+            continue;
+        }
+
         //   8- 23  F16.9 d       Per     [0.05,116675] Period
         read_field_onebased(buffer, 8, 23, field);
         B->orbit->period = atof(field)*oneday;
@@ -2766,7 +2771,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         // 124-133  F10.5 km/s    K1      ? Velocity amplitude of primary
         read_field_onebased(buffer, 124, 133, field);
         f = atof(field);
-        B->orbit->semimajor_axis = (13751000 / oneday)              // convert to m/s
+        B->orbit->projected_axis = (13751000 / oneday)              // convert to m/s
                                    * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
                                    * f
                                    * B->orbit->period;
@@ -2776,10 +2781,15 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         // 148-157  E10.5 km/s    K2      ? Velocity amplitude of secondary
         read_field_onebased(buffer, 148, 157, field);
         f = atof(field);
-        B->orbit->semimajor_axis += (13751000 / oneday)             // convert to m/s
+        B->orbit->projected_axis += (13751000 / oneday)             // convert to m/s
                                     * sqrt(1.0 - B->orbit->eccentricity*B->orbit->eccentricity)
                                     * f
                                     * B->orbit->period;
+
+        // The radial velocities supply a*sin(i), not the true relative axis.
+        // Use a mass-based estimate for rendering until a visual solution is available.
+        B->orbit->compute_semimajor_axis(B->mass);
+        B->orbit->estimated_axis = true;
 
         num_read++;
         if (offset >= (max-1))
@@ -4521,6 +4531,33 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         {
             A = (Star*)cels[sioxt];
         }
+        const std::string center_key = stellar_identifier_key(cenname);
+        if (center_key.rfind("GJ", 0) == 0)
+        {
+            Star *resolved = nullptr;
+            for (int index = 1; cels[index]; ++index)
+            {
+                if (cels[index]->deleted || cels[index]->typeclass() != class_star)
+                {
+                    continue;
+                }
+                Star *candidate = static_cast<Star*>(cels[index]);
+                const std::string key = stellar_identifier_key(candidate->Gliese);
+                if (key == center_key || key == center_key + "A")
+                {
+                    if (resolved)
+                    {
+                        resolved = nullptr;
+                        break;
+                    }
+                    resolved = candidate;
+                }
+            }
+            if (resolved)
+            {
+                A = resolved;
+            }
+        }
 
         if (!A)
         {
@@ -4624,18 +4661,42 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             continue;
         }
 
-        if (!s && A->multisys)
-        {
-            char comp = bdystr[strlen(bdystr)-1];
-            if (comp > 'A' && comp <= 'Z') s = A->multisys->get_member(comp);
-        }
         if (!s)
         {
-            sioxt = find_object(bdystr, true);
-            if (sioxt >= 0)
+            const std::string key = stellar_identifier_key(bdyname);
+            for (int index = 1; cels[index]; ++index)
             {
-                s = (Star*)cels[sioxt];
+                if (cels[index]->deleted || cels[index]->typeclass() != class_star || cels[index] == A)
+                {
+                    continue;
+                }
+                Star *candidate = static_cast<Star*>(cels[index]);
+                if (stellar_identifier_key(candidate->name) == key || stellar_identifier_key(candidate->Gliese) == key)
+                {
+                    s = candidate;
+                    break;
+                }
             }
+            if (!s && A->multisys && !bdyname.empty())
+            {
+                const char component = bdyname.back();
+                if (component > 'A' && component <= 'Z')
+                {
+                    s = A->multisys->get_member(component);
+                }
+            }
+            if (!s)
+            {
+                sioxt = find_object(bdystr, true);
+                if (sioxt >= 0 && cels[sioxt] != A)
+                {
+                    s = static_cast<Star*>(cels[sioxt]);
+                }
+            }
+        }
+        if (s == A)
+        {
+            s = nullptr;
         }
 
         bool s_is_new = false;
@@ -5357,7 +5418,13 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     pad(l);
 
     if (s->orbit && s->orbit->eccentricity) line << std::fixed << std::setprecision(5) << (s->orbit->eccentricity);
-    l += 13;
+    l += 8;
+    pad(l);
+    if (s->orbit && s->orbit->estimated_axis)
+    {
+        line << "E";
+    }
+    l += 5;
     pad(l);
 
     if (s->orbit && s->orbit->arg_periapsis)
@@ -5566,281 +5633,9 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 
 int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
 {
-    if (!cels)
-    {
-        return 0;
-    }
-
-    std::string path = "catalogs" _FILESLASH "GAIA" _FILESLASH "catalog.dat";
-    std::string gzpath = "catalogs" _FILESLASH "GAIA" _FILESLASH "catalog.dat.gz";
-
-    if (!file_exists(path.c_str()))
-    {
-        if (file_exists(gzpath.c_str()))
-        {
-            extract_archive(gzpath.c_str());
-        }
-        else if (file_exists(("catalogs" _FILESLASH "GAIA" _FILESLASH "hgca_edr3.dat.gz")))
-        {
-            extract_archive("catalogs" _FILESLASH "GAIA" _FILESLASH "hgca_edr3.dat.gz");
-        }
-    }
-
-    if (!file_exists(path.c_str()))
-    {
-        path = "catalogs" _FILESLASH "GAIA" _FILESLASH "hgca_edr3.dat";
-    }
-
-    FILE* fp = fopen(path.c_str(), "r");
-    if (!fp)
-    {
-        std::cerr << "Notice: Gaia astrometry catalog not available (" << path << ")." << std::endl;
-        return 0;
-    }
-
-    struct GaiaAstRecord
-    {
-        uint64_t source_id = 0;
-        float plx_mas = 0.0f;
-        float pm_ra = 0.0f;
-        float pm_dec = 0.0f;
-        float rv_kms = 0.0f;
-        bool has_rv = false;
-        bool valid = false;
-    };
-
-    std::vector<GaiaAstRecord> gaia_table(MAX_HIP + 1);
-
-    char buffer[1024];
-    while (fgets(buffer, sizeof(buffer), fp))
-    {
-        if (buffer[0] == '#' || buffer[0] == '\n' || buffer[0] == '\r')
-        {
-            continue;
-        }
-
-        char* token = buffer;
-        char* next = nullptr;
-        int field_idx = 0;
-        int hip = 0;
-        uint64_t src_id = 0;
-        float plx = 0.0f;
-        float pmra = 0.0f;
-        float pmde = 0.0f;
-        float rv = 0.0f;
-        bool has_rv_val = false;
-
-        while (token && *token)
-        {
-            next = strchr(token, '|');
-            if (next)
-            {
-                *next = '\0';
-                next++;
-            }
-
-            while (*token == ' ' || *token == '\t')
-            {
-                token++;
-            }
-            int len = strlen(token);
-            while (len > 0 && (token[len - 1] == ' ' || token[len - 1] == '\t' || token[len - 1] == '\n' || token[len - 1] == '\r'))
-            {
-                token[--len] = '\0';
-            }
-
-            if (field_idx == 0)
-            {
-                hip = atoi(token);
-            }
-            else if (field_idx == 1)
-            {
-                if (len > 0)
-                {
-                    src_id = strtoull(token, nullptr, 10);
-                }
-            }
-            else if (field_idx == 4)
-            {
-                if (len > 0)
-                {
-                    rv = (float)atof(token);
-                    has_rv_val = true;
-                }
-            }
-            else if (field_idx == 7)
-            {
-                if (len > 0)
-                {
-                    plx = (float)atof(token);
-                }
-            }
-            else if (field_idx == 9)
-            {
-                if (len > 0)
-                {
-                    pmra = (float)atof(token);
-                }
-            }
-            else if (field_idx == 10)
-            {
-                if (len > 0)
-                {
-                    pmde = (float)atof(token);
-                }
-                break;
-            }
-
-            field_idx++;
-            token = next;
-        }
-
-        if (hip > 0 && hip <= MAX_HIP && plx > 0.0f)
-        {
-            gaia_table[hip].source_id = src_id;
-            gaia_table[hip].plx_mas = plx;
-            gaia_table[hip].pm_ra = pmra;
-            gaia_table[hip].pm_dec = pmde;
-            gaia_table[hip].rv_kms = rv;
-            gaia_table[hip].has_rv = has_rv_val;
-            gaia_table[hip].valid = true;
-        }
-    }
-    fclose(fp);
-
-    int updated_count = 0;
-    int reclassified_count = 0;
-
-    for (int i = 0; cels[i]; i++)
-    {
-        if (cels[i]->typeclass() != class_star)
-        {
-            continue;
-        }
-
-        Star* s = (Star*)cels[i];
-        if (s->HIP <= 0 || s->HIP > MAX_HIP || !gaia_table[s->HIP].valid)
-        {
-            continue;
-        }
-
-        const auto& rec = gaia_table[s->HIP];
-        double plx_mas = rec.plx_mas;
-        if (plx_mas <= 0.0)
-        {
-            continue;
-        }
-
-        double new_dist_pc = 1000.0 / plx_mas;
-        s->parallax = (plx_mas / 1000.0) / 3600.0 * fiftyseventh;
-        s->distance = new_dist_pc * parsec;
-        s->distance_known = true;
-
-        if (rec.pm_ra != 0.0f || rec.pm_dec != 0.0f)
-        {
-            s->proper_motion_RA = (rec.pm_ra / 1000.0) / 3600.0 / oneyear * fiftyseventh;
-            s->proper_motion_decl = (rec.pm_dec / 1000.0) / 3600.0 / oneyear * fiftyseventh;
-        }
-
-        if (rec.has_rv && s->radial_velocity == 0)
-        {
-            s->radial_velocity = rec.rv_kms * 1000.0;
-        }
-
-        s->update_location(simnow);
-
-        if (std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99)
-        {
-            s->absolute_magnitude = s->apparent_magnitude - 5.0 * log10(s->distance / (10.0 * parsec));
-        }
-
-        if (s->is_main_sequence())
-        {
-            double exp_mag = 4.83;
-            double msqi = Star::get_mseqidx_from_sptyp(s->spectral_type);
-            if (msqi >= mseqmin && msqi <= mseqmax)
-            {
-                exp_mag = Star::interpolate_mseq_lum(msqi);
-            }
-
-            bool is_verified_dwarf = (s->volumetric_mean_radius > 0 && s->volumetric_mean_radius < 1.2 * solar_radius)
-                                  || (s->mass > 0 && s->mass < 0.6 * solar_mass)
-                                  || (s->spectral_type[0] == 'M')
-                                  || (s->spectral_type[0] == 'd' && s->spectral_type[1] == 'M');
-
-            if (!is_verified_dwarf && (exp_mag - s->absolute_magnitude >= 1.5))
-            {
-                const char* new_class = "IV";
-                if (s->absolute_magnitude <= -5.0)
-                {
-                    new_class = "I";
-                }
-                else if (s->absolute_magnitude <= 0.0)
-                {
-                    new_class = "II";
-                }
-                else if (s->absolute_magnitude <= 2.5)
-                {
-                    new_class = "III";
-                }
-
-                for (int k = 0; s->spectral_type[k]; k++)
-                {
-                    if (s->spectral_type[k] == 'V')
-                    {
-                        bool prev_I = (k > 0 && s->spectral_type[k - 1] == 'I');
-                        bool next_I = (s->spectral_type[k + 1] == 'I');
-                        if (!prev_I && !next_I)
-                        {
-                            char remainder[32] = {0};
-                            strncpy(remainder, &s->spectral_type[k + 1], sizeof(remainder) - 1);
-                            s->spectral_type[k] = '\0';
-                            std::string new_sp = std::string(s->spectral_type) + new_class + remainder;
-                            strncpy(s->spectral_type, new_sp.c_str(), sizeof(s->spectral_type) - 1);
-                            s->spectral_type[sizeof(s->spectral_type) - 1] = '\0';
-                            reclassified_count++;
-                            break;
-                        }
-                    }
-                }
-
-                double T = s->estimate_temperature();
-                if (T > 0)
-                {
-                    double lum = pow(magnbase, -(s->absolute_magnitude - 4.83));
-                    s->volumetric_mean_radius = sqrt(lum) * pow(sun_temp / T, 2.0) * solar_radius;
-                }
-            }
-        }
-
-        if (s->multisys)
-        {
-            for (char c = 'B'; c <= 'Z'; c++)
-            {
-                Star* B = s->multisys->get_member(c);
-                if (B && B != s)
-                {
-                    B->distance = s->distance;
-                    B->distance_known = true;
-                    B->parallax = s->parallax;
-                    B->update_location(simnow);
-                    if (std::isfinite(B->apparent_magnitude) && B->apparent_magnitude >= -40
-                        && B->apparent_magnitude < 99)
-                    {
-                        B->absolute_magnitude = B->apparent_magnitude - 5.0 * log10(B->distance / (10.0 * parsec));
-                    }
-                }
-            }
-        }
-
-        updated_count++;
-    }
-
-    std::cout << "Applied Gaia DR3 astrometry: updated " << updated_count
-              << " star distances, corrected " << reclassified_count
-              << " spectral luminosity classes." << std::endl;
-
-    return updated_count;
+    const int updated = apply_gaia_reference_astrometry(cels, "catalogs");
+    std::cout << "Applied quality-checked Gaia DR3 astrometry to " << updated << " stars." << std::endl;
+    return updated;
 }
 
 std::string alienorum::CatalogReader::get_condensed_starcat_name()
@@ -6068,6 +5863,12 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 328, 334, field);
         if (s->orbit) s->orbit->eccentricity = atof(field);
+
+        read_field_onebased(buffer, 336, 336, field);
+        if (s->orbit)
+        {
+            s->orbit->estimated_axis = field[0] == 'E';
+        }
 
         read_field_onebased(buffer, 341, 348, field);
         if (s->orbit) s->orbit->arg_periapsis = atof(field) * fiftyseventh;

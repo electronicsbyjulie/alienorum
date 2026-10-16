@@ -454,6 +454,20 @@ namespace
             entry["source"] = source;
             entry["value"] = value;
             entry["unit"] = unit;
+            if (field == "V" || field == "B-V" || field == "U-B" || field == "bright" || field == "faint")
+            {
+                entry["passband"] = field == "B-V" ? "B,V" : (field == "U-B" ? "U,B" : "V");
+                entry["scope"] = star->get_component() ? "component" : "catalog_object";
+                if (star->get_component())
+                {
+                    entry["component"] = std::string(1, star->get_component());
+                }
+                if (!cell(row, "Epoch").empty())
+                {
+                    entry["reference_epoch_HJD"] = cell(row, "Epoch");
+                    entry["epoch_semantics"] = "maximum_or_minimum";
+                }
+            }
             for (const std::string &key : std::vector<std::string>
                 {
                     "oid", "bibcode", "sp_bibcode", "recno", "name", "simbadname", "wds", "sn", "source_id"
@@ -991,7 +1005,8 @@ namespace
                 }
                 const std::string quality = cell(row, "sp_qual");
                 spectrum(star, cell(row, "sp_type"), "SIMBAD", row,
-                    quality == "D" || quality == "E" ? 5 : 20);
+                    quality == "A" || quality == "B" || quality == "C" ? 25
+                        : (quality == "D" || quality == "E" ? 5 : 20));
                 const double v = number(row, "V"), b = number(row, "B"), u = number(row, "U");
                 if (v >= -40 && v < 99)
                 {
@@ -1292,19 +1307,19 @@ namespace
                 cell(row, "n_SpType") == "+" ? 30 : 20);
         }
 
-        void gaia(const Row &row)
+        bool gaia(const Row &row)
         {
             const double plx = number(row, "parallax"), error = number(row, "parallax_error");
             const double quality = number(row, "ruwe");
             if (!(plx > 0) || !(error > 0) || error / plx > 0.2 || !(quality > 0 && quality <= 1.4)
                 || number(row, "number_of_neighbours") != 1)
             {
-                return;
+                return false;
             }
             auto matches = match(identifiers("HIP " + cell(row, "hip")));
             if (matches.size() != 1)
             {
-                return;
+                return false;
             }
             Star *star = matches.front();
             adopt(star, "parallax", star->parallax, plx / 1000 / 3600 * fiftyseventh,
@@ -1359,6 +1374,7 @@ namespace
                 adopt(star, "temperature", star->temperature, temperature, "Gaia_DR3_GSPPhot_model", row,
                     "K", (high - low) / 2);
             }
+            return true;
         }
 
         std::pair<Star*, Star*> pair(const std::string &wds, const std::string &components,
@@ -1525,9 +1541,31 @@ namespace
             {
                 return;
             }
+            if (b->orbit->period > 0 && b->orbit->semimajor_axis > 0 && !b->orbit->estimated_axis)
+            {
+                const double ratio = period * oneday / b->orbit->period;
+                if (ratio < 0.95 || ratio > 1.05)
+                {
+                    json conflict;
+                    conflict["star"] = b->name;
+                    conflict["source"] = "SBX";
+                    conflict["reason"] = "Spectroscopic period conflicts with the existing relative orbit";
+                    conflict["candidate_period_days"] = period;
+                    report["conflicts"].push_back(conflict);
+                }
+                // Keep the complete relative solution, including its epoch and orientation.
+                return;
+            }
+            if (!(a->mass > 0 && b->mass > 0))
+            {
+                return;
+            }
             sbx_ranks[sn] = rank;
             adopt(b, "orbital_period", b->orbit->period, period * oneday, "SBX", row, "s", number(row, "period_error") * oneday);
             adopt(b, "orbital_eccentricity", b->orbit->eccentricity, eccentricity, "SBX", row);
+            b->orbit->compute_semimajor_axis(b->mass);
+            b->orbit->estimated_axis = true;
+            provenance(b, "orbital_axis", "Kepler_mass_estimate", row, b->orbit->semimajor_axis, "m");
             const double omega = number(row, "periastron_argument");
             if (std::isfinite(omega))
             {
@@ -1709,6 +1747,7 @@ namespace
             }
             adopt(b, "orbital_period", b->orbit->period, period, "ORB6", row, "s");
             adopt(b, "orbital_axis", b->orbit->semimajor_axis, axis, "ORB6", row, "m");
+            b->orbit->estimated_axis = false;
             adopt(b, "orbital_eccentricity", b->orbit->eccentricity, eccentricity, "ORB6", row);
             adopt(b, "orbital_inclination", b->orbit->heliocentric_inclination,
                 inclination * fiftyseventh, "ORB6", row, "rad");
@@ -1772,7 +1811,9 @@ namespace
         {
             if (cell(row, "n_max") != "V" || cell(row, "n_min") != "V"
                 || !cell(row, "u_max").empty() || !cell(row, "u_min").empty()
-                || !cell(row, "f_min").empty())
+                || !cell(row, "l_max").empty() || !cell(row, "l_min").empty()
+                || (!cell(row, "f_min").empty() && cell(row, "f_min") != "Y")
+                || cell(row, "V") == "2" || cell(row, "V") == "3")
             {
                 return;
             }
@@ -1782,7 +1823,12 @@ namespace
                 return;
             }
             Star *star = matches.front();
-            const double bright = number(row, "max"), faint = number(row, "min");
+            const double bright = number(row, "max"), minimum = number(row, "min");
+            const double faint = cell(row, "f_min") == "Y" && minimum >= 0 ? bright + minimum : minimum;
+            if (cell(row, "f_min") == "Y" && !(minimum >= 0))
+            {
+                return;
+            }
             if (bright > -40 && faint < 99 && bright <= faint)
             {
                 adopt(star, "bright", star->minmag, bright, "VSX", row, "mag V");
@@ -2314,6 +2360,45 @@ std::vector<StellarReferenceSource> alienorum::stellar_reference_sources()
     return sources;
 }
 
+int alienorum::apply_gaia_reference_astrometry(CelestialObject **objects, const std::string &cache_directory)
+{
+    if (!objects || !objects[0])
+    {
+        return 0;
+    }
+    json report;
+    report["changes"] = json::array();
+    report["conflicts"] = json::array();
+    report["provenance"] = json::object();
+    Context context(objects, report);
+    int updated = 0;
+    for (const auto &source : stellar_reference_sources())
+    {
+        if (source.name != "Gaia_DR3")
+        {
+            continue;
+        }
+        const auto path = std::filesystem::path(cache_directory) / source.directory / "Gaia_DR3.tsv";
+        if (!std::filesystem::exists(path))
+        {
+            return 0;
+        }
+        read_table(path, source, [&](const Row &row)
+        {
+            updated += context.gaia(row) ? 1 : 0;
+        });
+    }
+    for (Star *star : context.stars)
+    {
+        if (report["provenance"].contains(std::to_string(star->seqno))
+            && star->apparent_magnitude >= -40 && star->apparent_magnitude < 99)
+        {
+            star->reconcile_visual_magnitudes();
+        }
+    }
+    return updated;
+}
+
 json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::string &cache_directory,
     bool allow_download)
 {
@@ -2493,6 +2578,33 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
         report["sources"].push_back(status);
     }
     context.merge_duplicates();
+    for (Star *star : context.stars)
+    {
+        Orbit *orbit = star->orbit;
+        if (star->deleted || !orbit || !orbit->estimated_axis || !orbit->center
+            || orbit->center->typeclass() != class_star || !(orbit->period > 0)
+            || !(star->mass > 0 && orbit->center->mass > 0))
+        {
+            continue;
+        }
+        orbit->compute_semimajor_axis(star->mass);
+        Row evidence;
+        if (star->SB9)
+        {
+            evidence["sn"] = std::to_string(star->SB9);
+        }
+        context.provenance(star, "orbital_axis", "Kepler_mass_estimate", evidence,
+            orbit->semimajor_axis, "m");
+        auto &axis = report["provenance"][std::to_string(star->seqno)]["fields"]["orbital_axis"];
+        axis["estimated"] = true;
+        axis["primary_mass_kg"] = orbit->center->mass / 1000;
+        axis["secondary_mass_kg"] = star->mass / 1000;
+        axis["period_seconds"] = orbit->period;
+        if (orbit->projected_axis > 0)
+        {
+            context.provenance(star, "projected_orbital_axis", "SB9", evidence, orbit->projected_axis, "m");
+        }
+    }
     report["matched_objects"] = context.object_ids.size();
     bool complete = true;
     for (const auto &source : report["sources"])
