@@ -1082,7 +1082,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
         s->absolute_magnitude = 1e29;
     }
     s->make_companion_of(A, 'B');
-    s->epoch = J2000 + (1991.25 - 2000);
+    s->epoch = J2000;
 
     //   8- 17  F10.4 d        P        Orbital period                           (DO2)
     s->orbit->period = period_seconds;
@@ -1092,7 +1092,8 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->orbit->epoch = 2440000 + atof(field);
 
     //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
-    s->orbit->semimajor_axis = physical_axis;
+    s->orbit->photocentric_angular_axis = angular_axis / 1000 * arcsecond;
+    s->orbit->estimated_axis = true;
 
     //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
     read_field_onebased(buffer, 40, 45, field);
@@ -1142,6 +1143,11 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     {
         s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
     }
+    if (!(s->mass > 0))
+    {
+        s->estimate_mass();
+    }
+    s->orbit->compute_semimajor_axis(s->mass);
 
     return true;
 }
@@ -4696,7 +4702,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
         if (s == A)
         {
-            s = nullptr;
+            std::cerr << "Ignoring self-referential stellar orbit: " << cenname << " / " << bdyname << std::endl;
+            continue;
         }
 
         bool s_is_new = false;
@@ -4904,7 +4911,11 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (nxtlast == 'A' && last == 'U') f = atof(field) * AU;
         else if (last == 's') f = atof(field) * (AU / parsec) * A->distance;
         else f = atof(field);
-        if (f && s->orbit) s->orbit->semimajor_axis = f;
+        if (f > 0 && s->orbit)
+        {
+            s->orbit->semimajor_axis = f;
+            s->orbit->estimated_axis = str.find('?') != std::string::npos;
+        }
 
         read_field_onebased(buffer, 113, 123, field);
         f = atof(field);
@@ -4920,7 +4931,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (l)
         {
             if (str.c_str()[0] == 'J' && str.c_str()[1] == 'D') f = atof(&field[2]);
-            else f = (atof(field)-2000) * oneyear + J2000;
+            else f = (atof(field)-2000) * (oneyear / oneday) + J2000;
             if (f && s->orbit) s->orbit->epoch = f;
         }
 

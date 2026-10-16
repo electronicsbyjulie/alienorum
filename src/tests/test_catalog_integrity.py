@@ -130,6 +130,12 @@ class CatalogIntegrityTest(unittest.TestCase):
             path.write_text(quality_header + quality_evidence)
             report = audit_bytes(sun() + row(), root)
             self.assertFalse(any(issue.code == 'source_spectral_class' for issue in report.issues))
+            path.write_text(quality_header + quality_evidence.replace('1960A&A...000....1A', ''))
+            report = audit_bytes(sun() + row(), root)
+            self.assertFalse(any(issue.code == 'source_spectral_class' for issue in report.issues))
+            self.assertTrue(any(proof.get('quality') == 'A' for proof in report.verifications))
+            path.write_text(quality_header + quality_evidence.replace('1960A&A...000....1A', '').replace('\tA\n', '\tD\n'))
+            self.assert_code(audit_bytes(sun() + row(), root), 'source_spectral_class', 'warning')
 
     def test_faint_system_catalog_links_preserve_names_without_alienorum_ids(self):
         primary = row(id='', name='Long faint primary name', hd='10000', hip='100', hr='',

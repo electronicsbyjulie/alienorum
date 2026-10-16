@@ -2581,6 +2581,11 @@ json alienorum::reconcile_stellar_sources(CelestialObject **objects, const std::
     for (Star *star : context.stars)
     {
         Orbit *orbit = star->orbit;
+        if (!star->deleted && orbit && orbit->photocentric_angular_axis > 0)
+        {
+            context.provenance(star, "photocentric_angular_axis", "Hipparcos", Row(),
+                orbit->photocentric_angular_axis, "rad");
+        }
         if (star->deleted || !orbit || !orbit->estimated_axis || !orbit->center
             || orbit->center->typeclass() != class_star || !(orbit->period > 0)
             || !(star->mass > 0 && orbit->center->mass > 0))

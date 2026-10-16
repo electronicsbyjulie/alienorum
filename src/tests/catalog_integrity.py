@@ -549,7 +549,7 @@ def modern_identity_support(records, directory, report):
                         bayer = parse_bayer(record.text('bayer'))
                         bayer_key = '*' + greek_codes[bayer[0]] + bayer[1] + bayer[2].upper() if bayer else ''
                         designated = bool(bayer and (bayer_key + (record.component or 'A') in aliases
-                                                     or (not record.component and bayer_key in aliases)))
+                                                     or bayer_key in aliases))
                         fields = set()
                         if hr and (not bayer or designated):
                             fields.add('bsc_cross_id')
@@ -617,7 +617,7 @@ def modern_measurement_support(records, directory, report):
                            for catalog, field in (('HD', 'hd'), ('HIP', 'hip'), ('HR', 'hr')))]
         return matches if len(matches) == 1 else []
 
-    def confirm(record, field, value, label, citation=''):
+    def confirm(record, field, value, label, citation='', quality=''):
         if field == 'spectral':
             matches = re.sub(r'\s+', '', record.text(field)) == re.sub(r'\s+', '', value)
         else:
@@ -627,6 +627,8 @@ def modern_measurement_support(records, directory, report):
                 matches = False
         if matches:
             supported[(record.line, field)] = dict(source=label, citation=citation)
+            if quality:
+                supported[(record.line, field)]['quality'] = quality
 
     paths = sorted((directory / 'SIMBAD').glob('SIMBAD*.tsv')) if targets else []
     for path in paths:
@@ -643,9 +645,10 @@ def modern_measurement_support(records, directory, report):
                         if key:
                             targets.setdefault(key, set()).add(record.line)
                     citation = source.get('sp_bibcode', '').strip()
-                    if (citation[:4].isdigit() and (int(citation[:4]) >= 1997
-                            or source.get('sp_qual', '').strip() in ('A', 'B', 'C'))):
-                        confirm(record, 'spectral', source.get('sp_type', ''), 'SIMBAD', citation)
+                    quality = source.get('sp_qual', '').strip()
+                    if ((citation[:4].isdigit() and int(citation[:4]) >= 1997)
+                            or quality in ('A', 'B', 'C')):
+                        confirm(record, 'spectral', source.get('sp_type', ''), 'SIMBAD', citation, quality)
                     confirm(record, 'magnitude', source.get('V'), 'SIMBAD')
                     try:
                         confirm(record, 'bv', float(source['B']) - float(source['V']), 'SIMBAD')

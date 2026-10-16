@@ -407,7 +407,7 @@ ConsBins fill_alienorum_ids()
                         + (count > 1 ? std::to_string(sequence) : std::string(""))
                         ;
 
-                    if (s->multisys)
+                    if (s->multisys && s->multisys->get_member('A') == s)
                     {
                         char comp;
                         for (comp = 'B'; comp <= 'Z'; comp++)

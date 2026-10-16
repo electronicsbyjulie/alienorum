@@ -1083,7 +1083,7 @@ json Orbit::to_json()
 {
     std::string cenname;
     if (center) cenname = center->name;
-    return
+    json result =
     {
         {"center_name", cenname},
         {"ascending_node", ascending_node*fiftyseven},
@@ -1100,10 +1100,26 @@ json Orbit::to_json()
         {"T_periapsis", T_periapsis},
         {"laplace", laplace.to_json()}
     };
+    result["estimated_axis"] = estimated_axis;
+    result["projected_axis"] = projected_axis;
+    result["photocentric_angular_axis"] = photocentric_angular_axis;
+    return result;
 }
 
 bool Orbit::from_json(json j)
 {
+    if (j.contains("estimated_axis") && j["estimated_axis"].is_boolean())
+    {
+        estimated_axis = j["estimated_axis"].get<bool>();
+    }
+    if (j.contains("projected_axis") && j["projected_axis"].is_number())
+    {
+        projected_axis = j["projected_axis"].get<double>();
+    }
+    if (j.contains("photocentric_angular_axis") && j["photocentric_angular_axis"].is_number())
+    {
+        photocentric_angular_axis = j["photocentric_angular_axis"].get<double>();
+    }
     try { j.at("center_name").get_to(center_name); } catch (...) { ; }
     try { j.at("ascending_node").get_to(ascending_node); ascending_node *= fiftyseventh; } catch (...) { ; }
     try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }

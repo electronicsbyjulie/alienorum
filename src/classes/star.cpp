@@ -51,7 +51,7 @@ void Star::set_component(char comp, Star* compA)
     multisys = compA->multisys;
     multisys->add_member(this, comp);
 
-    if (comp > 'A')
+    if (comp > 'A' && compA != this)
     {
         if (compA->orbit && compA->orbit->center == this)
         {
@@ -62,7 +62,7 @@ void Star::set_component(char comp, Star* compA)
         if (!orbit) orbit = new Orbit();
         orbit->center = compA;
     }
-    else
+    else if (comp == 'A')
     {
         if (orbit) delete orbit;
         orbit = nullptr;

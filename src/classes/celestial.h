@@ -88,6 +88,7 @@ namespace alienorum
         double eccentricity = 0;
         double arg_periapsis = 0;                   // RADIANS!
         double projected_axis = 0;                 // Spectroscopic a*sin(i), in meters.
+        double photocentric_angular_axis = 0;      // Measured photocenter orbit, in radians.
         bool estimated_axis = false;               // Relative axis inferred from period and stellar masses.
 
         double prec_node = 0;                       // radians/second
