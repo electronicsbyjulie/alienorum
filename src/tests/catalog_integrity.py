@@ -48,6 +48,8 @@ CONSTELLATIONS = dict(zip(
 # The historical spelling in this catalog is accepted alongside the standard one.
 GENITIVE_ALIASES = dict(CMa=('Canes Majoris',), CMi=('Canes Minoris',))
 GREEK = tuple('Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Nu Xi Omicron Pi Rho Sigma Tau Upsilon Phi Chi Psi Omega'.split())
+GREEK_NAMES = frozenset(GREEK)
+UPPER_CONSTELLATIONS = frozenset(name.upper() for name in CONSTELLATIONS)
 ABBREVIATIONS = tuple('Alp Bet Gam Del Eps Zet Eta The Iot Kap Lam Mu Nu Xi Omi Pi Rho Sig Tau Ups Phi Chi Psi Ome'.split())
 BAYER = re.compile(r'(Alp|Bet|Gam|Del|Eps|Zet|Eta|The|Iot|Kap|Lam|Mu|Nu|Xi|Omi|Pi|Rho|Sig|Tau|Ups|Phi|Chi|Psi|Ome)\s*([1-9]?)\s*([A-Za-z]{3})\Z')
 ID = re.compile(r'(?P<bin>-?\d{1,2}[bcwyor]|V[bcwyor])\s+(?P<cons>[A-Za-z]{3})(?:\s+(?P<sequence>[1-9]\d*))?(?:\s+(?P<component>[A-Z]))?\Z')
@@ -586,6 +588,10 @@ def modern_identity_support(records, directory, report):
 
 
 def measurement_identifier(value):
+    designation = greek_name(value) if value.strip().partition(' ')[0] in GREEK_NAMES else None
+    if designation:
+        letter, number, constellation, component = designation
+        return 'BAYER', str(letter) + ':' + number + ':' + constellation.upper() + component
     value = re.sub(r'\s+', '', value).upper()
     match = re.fullmatch(r'(HD|HIP|HR)0*([1-9]\d*)([A-Z]?)', value)
     if match:
@@ -596,6 +602,14 @@ def measurement_identifier(value):
     match = re.fullmatch(r'(?:GJ|GL)0*([1-9]\d*(?:\.\d+)?)([A-Z]{0,3})', value)
     if match:
         return 'GJ', match[1] + match[2]
+    match = re.fullmatch(r'\*?(ALF|ALP|BET|GAM|DEL|EPS|ZET|ETA|THE|IOT|KAP|LAM|MU|NU|KSI|XI|OMI|PI|RHO|SIG|TAU|UPS|PHI|KHI|CHI|PSI|OME)\.?0*([1-9]?)([A-Z]{3})([A-Z]?)', value)
+    if match and match[3] in UPPER_CONSTELLATIONS:
+        code = dict(ALF='Alp', KSI='Xi', KHI='Chi').get(match[1], match[1].title())
+        if code in ABBREVIATIONS:
+            return 'BAYER', str(ABBREVIATIONS.index(code)) + ':' + match[2] + ':' + match[3] + match[4]
+    match = re.fullmatch(r'(?:V\*)?([A-Z]{1,2}|V[1-9]\d*)([A-Z]{3})', value)
+    if match and match[2] in UPPER_CONSTELLATIONS:
+        return 'VARIABLE', match[1] + match[2]
     return None
 
 
@@ -605,7 +619,7 @@ def modern_measurement_support(records, directory, report):
         for catalog, field in (('HD', 'hd'), ('HIP', 'hip'), ('HR', 'hr')):
             if record.number(field):
                 targets.setdefault((catalog, str(int(record.number(field)))), set()).add(record.line)
-        aliases = [record.name, record.text('gliese')]
+        aliases = [record.name, record.text('gliese'), record.text('bayer')]
         if record.text('dm_survey'):
             aliases.append(record.text('dm_survey') + record.text('dm_zone') + ' '
                            + record.text('dm_number'))

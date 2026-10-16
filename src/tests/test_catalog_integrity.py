@@ -193,6 +193,11 @@ class CatalogIntegrityTest(unittest.TestCase):
             for changed in (evidence.replace('00123', '00124'), evidence.replace('263.77958333333333', '10')):
                 path.write_text(header + changed)
                 self.assert_code(audit_bytes(sun() + star, root), 'source_spectral_class', 'warning')
+            path.write_text(header + evidence.replace('BD+04 00123', '* alf Oph'))
+            report = audit_bytes(sun() + star, root)
+            self.assertFalse(any(issue.code == 'source_spectral_class' for issue in report.issues))
+            path.write_text(header + evidence.replace('BD+04 00123', '* bet Oph'))
+            self.assert_code(audit_bytes(sun() + star, root), 'source_spectral_class', 'warning')
 
     def test_ambiguous_component_spectra_do_not_verify_individual_members(self):
         with tempfile.TemporaryDirectory() as directory:
