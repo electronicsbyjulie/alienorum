@@ -12,7 +12,7 @@
 #define panel_tilt 2
 
 // Terrain rock field tuning parameters
-#define ROCK_COUNT              512     // Number of rocks in the field
+#define ROCK_COUNT              256     // Number of rocks in the field
 #define ROCK_MIN_DIST           1.2     // Minimum rock distance from viewer (meters)
 #define ROCK_MAX_DIST           100     // Maximum rock distance from viewer (meters)
 #define ROCK_MIN_SIZE           0.06    // Minimum rock width (meters)

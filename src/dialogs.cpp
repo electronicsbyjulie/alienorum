@@ -17,6 +17,7 @@
 #include "inputs.h"
 #include "loaders.h"
 #include "housekeeping.h"
+#include "classes/clouds_gpu.h"
 #include <cstdint>
 #include <algorithm>
 
@@ -465,6 +466,23 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     if (show_dev_dial)
     {
         ImGui::Text("Dev Dial: %.5f", dev_dial);
+        if (view_mode == vm_horizon)
+        {
+            const auto &cloud = cloud_sky_gpu_stats();
+            if (cloud.timers_available)
+            {
+                ImGui::Text("Cloud GPU: %.2f ms; composite %.2f ms", cloud.render_ms, cloud.composite_ms);
+                ImGui::Text("Cloud geometry build: %.2f ms; tiles CPU %.2f ms", cloud.geometry_ms, cloud.tile_cpu_ms);
+            }
+            else
+            {
+                ImGui::TextUnformatted("Cloud GPU timers unavailable");
+            }
+            ImGui::Text("Cloud clusters: %u; per tile %.1f mean, %u max", cloud.clusters,
+                cloud.mean_tile_clusters, cloud.max_tile_clusters);
+            ImGui::Text("Cloud builds: %u geometry, %u image; %u image hits",
+                cloud.geometry_builds, cloud.image_builds, cloud.image_hits);
+        }
     }
 
     ImGui::Separator();

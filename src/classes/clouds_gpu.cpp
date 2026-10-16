@@ -2,6 +2,11 @@
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <array>
+#include <vector>
+#include <string>
+#include <chrono>
+#include <cstdint>
 #include "SDL.h"
 #include "clouds_gpu.h"
 #include "imgui.h"
@@ -29,6 +34,9 @@ uniform mat4 uWorld;
 uniform mat4 uLight;
 uniform sampler2D uCloudMap;
 uniform sampler2D uRefraction;
+uniform sampler2D uGeometry;
+uniform sampler2D uTiles;
+uniform int uTileColumns;
 const float PI = 3.141592653589793;
 const float HALF_PI = 1.570796326794897;
 const float TWO_PI = 6.283185307179586;
@@ -177,6 +185,85 @@ void main()
         int probes = segment_end > segment_start
             ? max(1, int(ceil((segment_end - segment_start) / 1.4)))
             : -1;
+#ifndef CLOUD_REFERENCE
+        // A cluster occurs once per tile. Probe membership preserves the
+        // reference search range without repeating its cluster/lobe work.
+        int bands[9];
+        float longitudes[9];
+        for (int probe = 0; probe <= probes; ++probe)
+        {
+            float travel = mix(segment_start, segment_end, float(probe) / float(probes));
+            vec3 search = up * observer + travel * direction;
+            bands[probe] = int(floor((atan(search.z, length(search.xy)) + HALF_PI) / step));
+            longitudes[probe] = atan(search.y, search.x);
+        }
+        ivec2 tile = ivec2(gl_FragCoord.xy - uWorld[1].zw) / 32;
+        int tile_row = tile.y * uTileColumns + tile.x;
+        int count = int(texelFetch(uTiles, ivec2(0, tile_row), 0).r);
+        for (int candidate = 1; candidate <= count; ++candidate)
+        {
+            int cluster = int(texelFetch(uTiles, ivec2(candidate, tile_row), 0).r);
+            vec4 cached_center = texelFetch(uGeometry, ivec2(0, cluster), 0);
+            if (cached_center.w < 0.5)
+            {
+                continue;
+            }
+            vec3 cell = texelFetch(uGeometry, ivec2(1, cluster), 0).xyz;
+            bool visited = false;
+            for (int probe = 0; probe <= probes; ++probe)
+            {
+                float column = floor((longitudes[probe] + PI) / (TWO_PI / cell.z));
+                float gap = mod(cell.y - column + cell.z, cell.z);
+                if (abs(float(bands[probe]) - cell.x) <= 1.0
+                    && (gap <= 1.0 || gap >= cell.z - 1.0))
+                {
+                    visited = true;
+                    break;
+                }
+            }
+            if (!visited)
+            {
+                continue;
+            }
+            vec3 offset = cached_center.xyz - hit;
+            float projection = dot(offset, direction);
+            float miss = max(0.0, dot(offset, offset) - projection * projection);
+            if (miss > 1.35 * 1.35)
+            {
+                continue;
+            }
+            vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
+            for (int puff = 0; puff < 6; ++puff)
+            {
+                vec4 shape = texelFetch(uGeometry, ivec2(2 + puff * 2, cluster), 0);
+                float vv = texelFetch(uGeometry, ivec2(3 + puff * 2, cluster), 0).r;
+                vec3 p = base + shape.xyz;
+                vec3 axes = vec3(shape.w, shape.w, vv);
+                vec3 rr = r / axes;
+                vec3 pp = p / axes;
+                float aa = dot(rr, rr);
+                float bb = dot(pp, rr);
+                float cc = dot(pp, pp) - 1.0;
+                float disc = bb * bb - aa * cc;
+                float edge = max(1e-5, footprint * 1.5);
+                if (disc >= 0.0)
+                {
+                    float entry = (bb - sqrt(disc)) / aa;
+                    if (entry > -distance)
+                    {
+                        solid = max(solid, smoothstep(0.0, edge, disc / aa));
+                        if (entry < nearest)
+                        {
+                            nearest = entry;
+                            vec3 surface = normalize((entry * r - p) / (axes * axes));
+                            shade = clamp(0.78 + 0.22 * surface.z, 0.56, 1.0);
+                            underside = smoothstep(0.0, 0.75, -surface.z);
+                        }
+                    }
+                }
+            }
+        }
+#else
         for (int probe = 0; probe <= probes; ++probe)
         {
             float travel = mix(segment_start, segment_end, float(probe) / float(probes));
@@ -257,6 +344,7 @@ void main()
                 }
             }
         }
+#endif
         // Longitude follows the wind; latitude runs across it. Using a
         // circular longitude pair keeps the strands continuous at the map seam.
         // A tangent flow avoids the rounded patches produced when the old
@@ -321,10 +409,12 @@ void main()
         float camera[16], world[16], light[16];
         GLuint texture;
         unsigned int revision;
+        CloudGeometryMode geometry_mode;
     };
     static CloudSkyGpuParams s_pool[4];
     static int s_pool_index = 0;
     static GLuint s_program = 0, s_vao = 0, s_vbo = 0, s_ebo = 0, s_refraction = 0;
+    static GLuint s_reference_program = 0;
     static bool s_attempted = false;
     static float s_table[1025];
     static GLint s_aPosLoc = -1, s_aXYLoc = -1;
@@ -351,6 +441,114 @@ void main()
     static bool s_cache_valid = false;
     static bool s_inverse_valid = false;
     static CloudSkyGpuParams s_cached_params = {};
+    static CloudSkyGpuStats s_stats;
+    static GLuint s_geometry_program = 0, s_geometry_texture = 0;
+    static GLuint s_cell_texture = 0, s_tile_texture = 0, s_geometry_framebuffer = 0;
+    static GLint s_geometry_pos = -1, s_geometry_xy = -1;
+    static CloudSkyGpuParams s_geometry_params =
+    {
+    };
+    static bool s_geometry_valid = false;
+    static double s_refraction_span = 0;
+    using Vec3 = std::array<double, 3>;
+    struct CloudCell
+    {
+        std::array<float, 4> grid;
+        Vec3 center;
+    };
+    static std::vector<CloudCell> s_cells;
+    static Vec3 s_geometry_anchor;
+    using GenQueriesFn = void (APIENTRY *)(GLsizei, GLuint*);
+    using BeginQueryFn = void (APIENTRY *)(GLenum, GLuint);
+    using EndQueryFn = void (APIENTRY *)(GLenum);
+    using GetQueryivFn = void (APIENTRY *)(GLenum, GLenum, GLint*);
+    using GetQueryObjectivFn = void (APIENTRY *)(GLuint, GLenum, GLint*);
+    using GetQueryObject64Fn = void (APIENTRY *)(GLuint, GLenum, std::uint64_t*);
+    static GenQueriesFn s_gen_queries = nullptr;
+    static BeginQueryFn s_begin_query = nullptr;
+    static EndQueryFn s_end_query = nullptr;
+    static GetQueryivFn s_get_query = nullptr;
+    static GetQueryObjectivFn s_query_available = nullptr;
+    static GetQueryObject64Fn s_query_result = nullptr;
+    struct CloudTimer
+    {
+        GLuint id = 0;
+        bool pending = false;
+        int stage = 0;
+        std::uint64_t sequence = 0;
+    };
+    static CloudTimer s_timers[12];
+    static std::uint64_t s_timer_sequence = 0;
+    static std::uint64_t s_completed_sequence[3] =
+    {
+    };
+
+    const CloudSkyGpuStats &cloud_sky_gpu_stats()
+    {
+        return s_stats;
+    }
+
+    static CloudTimer *begin_cloud_timer(int stage)
+    {
+        if (!s_stats.timers_available)
+        {
+            return nullptr;
+        }
+        GLint active = 0;
+        s_get_query(0x88BF /* GL_TIME_ELAPSED */, 0x8865 /* GL_CURRENT_QUERY */, &active);
+        if (active != 0)
+        {
+            return nullptr;
+        }
+        CloudTimer *free_timer = nullptr;
+        for (auto &timer : s_timers)
+        {
+            if (timer.pending)
+            {
+                GLint ready = 0;
+                s_query_available(timer.id, 0x8867 /* GL_QUERY_RESULT_AVAILABLE */, &ready);
+                if (ready)
+                {
+                    std::uint64_t ns = 0;
+                    s_query_result(timer.id, 0x8866 /* GL_QUERY_RESULT */, &ns);
+                    if (timer.sequence > s_completed_sequence[timer.stage])
+                    {
+                        double &value = timer.stage == 0 ? s_stats.geometry_ms
+                            : (timer.stage == 1 ? s_stats.render_ms : s_stats.composite_ms);
+                        value = ns * 1e-6;
+                        s_completed_sequence[timer.stage] = timer.sequence;
+                    }
+                    timer.pending = false;
+                }
+            }
+            if (!timer.pending && !free_timer)
+            {
+                free_timer = &timer;
+            }
+        }
+        // Skip a sample if the GPU is still processing every query slot.
+        if (free_timer)
+        {
+            if (!free_timer->id)
+            {
+                s_gen_queries(1, &free_timer->id);
+            }
+            free_timer->stage = stage;
+            free_timer->sequence = ++s_timer_sequence;
+            s_begin_query(0x88BF /* GL_TIME_ELAPSED */, free_timer->id);
+        }
+        return free_timer;
+    }
+
+    static void end_cloud_timer(CloudTimer *timer)
+    {
+        if (timer)
+        {
+            s_end_query(0x88BF /* GL_TIME_ELAPSED */);
+            timer->pending = true;
+        }
+    }
+
     static GLuint compile_shader(GLenum type, const char *src)
     {
         GLuint sh = glCreateShader(type);
@@ -407,6 +605,30 @@ void main()
             glGetProgramInfoLog(s_program, sizeof(log), nullptr, log);
             std::cerr << "Cloud sky shader link error: " << log << std::endl;
         }
+        std::string reference_source(kCloudFragmentShaderSrc);
+        reference_source.insert(reference_source.find('\n', 1) + 1, "#define CLOUD_REFERENCE 1\n");
+        GLuint reference_fs = compile_shader(GL_FRAGMENT_SHADER, reference_source.c_str());
+        if (reference_fs)
+        {
+            s_reference_program = glCreateProgram();
+            glAttachShader(s_reference_program, vs);
+            glAttachShader(s_reference_program, reference_fs);
+            glLinkProgram(s_reference_program);
+            GLint reference_ok = 0;
+            glGetProgramiv(s_reference_program, GL_LINK_STATUS, &reference_ok);
+            if (!reference_ok)
+            {
+                glDeleteProgram(s_reference_program);
+                s_reference_program = 0;
+            }
+            else
+            {
+                glUseProgram(s_reference_program);
+                glUniform1i(glGetUniformLocation(s_reference_program, "uCloudMap"), 0);
+                glUniform1i(glGetUniformLocation(s_reference_program, "uRefraction"), 1);
+            }
+            glDeleteShader(reference_fs);
+        }
         glDeleteShader(vs);
         glDeleteShader(fs);
 
@@ -429,6 +651,8 @@ void main()
         glUseProgram(s_program);
         glUniform1i(s_uCloudMapLoc, 0);
         glUniform1i(s_uRefractionLoc, 1);
+        glUniform1i(glGetUniformLocation(s_program, "uGeometry"), 2);
+        glUniform1i(glGetUniformLocation(s_program, "uTiles"), 3);
 
         glGenVertexArrays(1, &s_vao);
         glGenBuffers(1, &s_vbo);
@@ -445,7 +669,10 @@ void main()
         glEnableVertexAttribArray(s_aXYLoc);
         glVertexAttribPointer(s_aXYLoc, 2, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * 2));
 
-        const unsigned short indices[6] = { 0, 1, 2, 0, 2, 3 };
+        const unsigned short indices[6] =
+        {
+            0, 1, 2, 0, 2, 3
+        };
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s_ebo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STREAM_DRAW);
 
@@ -484,6 +711,98 @@ void main()
         s_bind_framebuffer = (BindFramebufferFn)SDL_GL_GetProcAddress("glBindFramebuffer");
         s_framebuffer_texture = (FramebufferTextureFn)SDL_GL_GetProcAddress("glFramebufferTexture2D");
         s_check_framebuffer = (CheckFramebufferFn)SDL_GL_GetProcAddress("glCheckFramebufferStatus");
+        if (s_gen_framebuffers && s_bind_framebuffer && s_framebuffer_texture && s_check_framebuffer)
+        {
+            // Generate the exact GLSL shapes once per local patch. Keeping the
+            // hash and noise on the GPU avoids CPU/GPU rounding changing clouds.
+            std::string geometry_source(kCloudFragmentShaderSrc);
+            geometry_source.resize(geometry_source.find("\nvoid main()"));
+            geometry_source += R"GLSL(
+uniform sampler2D uClusterCells;
+void main()
+{
+    int field = int(gl_FragCoord.x);
+    vec3 cell = texelFetch(uClusterCells, ivec2(0, int(gl_FragCoord.y)), 0).xyz;
+    float step = 2.8 / uWorld[0].y;
+    float clat = -HALF_PI + (cell.x + 0.5) * step;
+    float clon = -PI + (cell.y + 0.5) * (TWO_PI / cell.z);
+    vec3 center = uWorld[0].y * vec3(cos(clat) * cos(clon), cos(clat) * sin(clon), sin(clat));
+    vec2 uv = vec2(clon / TWO_PI + 0.5, 0.5 - clat / PI);
+    float coverage = dot(textureLod(uCloudMap, uv + uLight[2].xy, 0.0).rgb, vec3(0.29, 0.53, 0.18));
+    float mass = clamp(0.5 + noise(center * 0.37), 0.0, 1.0);
+    if (field == 0)
+    {
+        FragColor = vec4(center, coverage > 0.0 && mass <= min(1.0, coverage * 1.8) ? 1.0 : 0.0);
+    }
+    else if (field == 1)
+    {
+        FragColor = vec4(cell, 0.0);
+    }
+    else
+    {
+        int puff = (field - 2) / 2;
+        float size = 0.65 + 0.45 * mass;
+        float angle = float(puff) * 2.39996323 + mass * 6.0;
+        float radius = puff == 0 ? 0.0 : 0.43 * size;
+        vec3 p = vec3(radius * cos(angle), radius * sin(angle),
+            puff == 0 ? -0.18 : 0.05 + 0.16 * sin(angle * 1.7));
+        float hh = (puff == 0 ? 0.85 : 0.46) * size;
+        float vv = (puff == 0 ? 0.16 : 0.38) * size;
+        FragColor = (field & 1) == 0 ? vec4(p, hh) : vec4(vv, 0.0, 0.0, 0.0);
+    }
+}
+)GLSL";
+            GLuint geometry_vs = compile_shader(GL_VERTEX_SHADER, kCloudVertexShaderSrc);
+            GLuint geometry_fs = compile_shader(GL_FRAGMENT_SHADER, geometry_source.c_str());
+            if (geometry_vs && geometry_fs)
+            {
+                s_geometry_program = glCreateProgram();
+                glAttachShader(s_geometry_program, geometry_vs);
+                glAttachShader(s_geometry_program, geometry_fs);
+                glLinkProgram(s_geometry_program);
+                glGetProgramiv(s_geometry_program, GL_LINK_STATUS, &ok);
+                if (!ok)
+                {
+                    glDeleteProgram(s_geometry_program);
+                    s_geometry_program = 0;
+                }
+                else
+                {
+                    s_geometry_pos = glGetAttribLocation(s_geometry_program, "aPos");
+                    // Geometry generation uses gl_FragCoord rather than vXY.
+                    s_geometry_xy = glGetAttribLocation(s_geometry_program, "aXY");
+                    glUseProgram(s_geometry_program);
+                    glUniform1i(glGetUniformLocation(s_geometry_program, "uCloudMap"), 0);
+                    glUniform1i(glGetUniformLocation(s_geometry_program, "uClusterCells"), 2);
+                }
+            }
+            if (geometry_vs)
+            {
+                glDeleteShader(geometry_vs);
+            }
+            if (geometry_fs)
+            {
+                glDeleteShader(geometry_fs);
+            }
+        }
+        GLint major = 0, minor = 0;
+        glGetIntegerv(GL_MAJOR_VERSION, &major);
+        glGetIntegerv(GL_MINOR_VERSION, &minor);
+        if (major > 3 || (major == 3 && minor >= 3) || SDL_GL_ExtensionSupported("GL_ARB_timer_query"))
+        {
+            s_gen_queries = (GenQueriesFn)SDL_GL_GetProcAddress("glGenQueries");
+            s_begin_query = (BeginQueryFn)SDL_GL_GetProcAddress("glBeginQuery");
+            s_end_query = (EndQueryFn)SDL_GL_GetProcAddress("glEndQuery");
+            s_get_query = (GetQueryivFn)SDL_GL_GetProcAddress("glGetQueryiv");
+            s_query_available = (GetQueryObjectivFn)SDL_GL_GetProcAddress("glGetQueryObjectiv");
+            s_query_result = (GetQueryObject64Fn)SDL_GL_GetProcAddress("glGetQueryObjectui64v");
+            if (s_gen_queries && s_begin_query && s_end_query && s_get_query && s_query_available && s_query_result)
+            {
+                GLint bits = 0;
+                s_get_query(0x88BF /* GL_TIME_ELAPSED */, 0x8864 /* GL_QUERY_COUNTER_BITS */, &bits);
+                s_stats.timers_available = bits > 0;
+            }
+        }
         glBindVertexArray(0);
     }
 
@@ -494,8 +813,11 @@ void main()
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(p.verts), p.verts);
         glEnableVertexAttribArray(pos);
         glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, nullptr);
-        glEnableVertexAttribArray(xy);
-        glVertexAttribPointer(xy, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(sizeof(float) * 2));
+        if (xy >= 0)
+        {
+            glEnableVertexAttribArray(xy);
+            glVertexAttribPointer(xy, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (void*)(sizeof(float) * 2));
+        }
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
     }
 
@@ -503,6 +825,7 @@ void main()
     {
         if (!s_cache_valid || width != s_output_width || height != s_output_height
             || p.texture != s_cached_params.texture || p.revision != s_cached_params.revision
+            || p.geometry_mode != s_cached_params.geometry_mode
             || std::memcmp(p.camera, s_cached_params.camera, sizeof(p.camera)) != 0
             || std::memcmp(p.world, s_cached_params.world, sizeof(p.world)) != 0)
         {
@@ -517,6 +840,271 @@ void main()
                 return false;
             }
         }
+        return true;
+    }
+
+    static double dot3(const Vec3 &a, const Vec3 &b)
+    {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+
+    static Vec3 difference(const Vec3 &a, const Vec3 &b)
+    {
+        return
+        {
+            a[0] - b[0], a[1] - b[1], a[2] - b[2]
+        };
+    }
+
+    static void float_texture(GLuint &texture, int width, int height, const float *data, bool scalar = false)
+    {
+        if (!texture)
+        {
+            glGenTextures(1, &texture);
+        }
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, scalar ? 0x822E /* GL_R32F */ : 0x8814 /* GL_RGBA32F */,
+            width, height, 0, scalar ? 0x1903 /* GL_RED */ : GL_RGBA, GL_FLOAT, data);
+    }
+
+    static bool prepare_geometry(const CloudSkyGpuParams &p)
+    {
+        if (!s_geometry_program || p.geometry_mode == CloudGeometryMode::reference || p.world[1] < 50
+            || p.light[2] > 0.5f)
+        {
+            return false;
+        }
+        constexpr double pi = 3.141592653589793;
+        const float shell = p.world[1];
+        const Vec3 anchor =
+        {
+            p.camera[12] * shell, p.camera[13] * shell, p.camera[14] * shell
+        };
+        const Vec3 shift = difference(anchor, s_geometry_anchor);
+        if (s_geometry_valid && dot3(shift, shift) <= 4.0
+            && shell == s_geometry_params.world[1] && p.texture == s_geometry_params.texture
+            && p.revision == s_geometry_params.revision
+            && p.light[8] == s_geometry_params.light[8] && p.light[9] == s_geometry_params.light[9])
+        {
+            return true;
+        }
+        s_geometry_valid = false;
+        s_cells.clear();
+        const double latitude = std::atan2(anchor[2], std::hypot(anchor[0], anchor[1]));
+        const double longitude = std::atan2(anchor[1], anchor[0]);
+        // Probe travel is capped at 10; neighboring cells extend by under 7.
+        // A radius of 22 also covers two units of observer travel and rounding.
+        const double angle = 2 * std::asin(std::min(1.0, 22.0 / (2 * shell)));
+        const float step = 2.8f / shell;
+        const float half_pi = 1.570796326794897f;
+        const float two_pi = 6.283185307179586f;
+        const float float_pi = 3.141592653589793f;
+        const int first = std::max(0, (int)std::floor((latitude - angle + half_pi) / step) - 1);
+        const int last = (int)std::floor((std::min(pi * 0.5, latitude + angle) + half_pi) / step) + 1;
+        for (int band = first; band <= last; ++band)
+        {
+            const float clat = -half_pi + (float(band) + 0.5f) * step;
+            if (std::fabs(clat) >= half_pi)
+            {
+                continue;
+            }
+            const float cells = std::max(1.0f, std::round(two_pi * shell * std::cos(clat) / 2.8f));
+            const float lon_step = two_pi / cells;
+            const double denom = std::cos(latitude) * std::cos(clat);
+            const double bound = (std::cos(angle) - std::sin(latitude) * std::sin(clat)) / std::max(1e-15, denom);
+            const double span = std::acos(std::clamp(bound, -1.0, 1.0));
+            const int middle = (int)std::floor((longitude + float_pi) / lon_step);
+            const int extent = (int)std::ceil(span / lon_step) + 2;
+            const int count = std::min((int)cells, extent * 2 + 1);
+            for (int i = 0; i < count; ++i)
+            {
+                const int column = ((middle - extent + i) % (int)cells + (int)cells) % (int)cells;
+                const float clon = -float_pi + (float(column) + 0.5f) * lon_step;
+                CloudCell cell;
+                cell.grid =
+                {
+                    float(band), float(column), cells, 0.0f
+                };
+                cell.center =
+                {
+                    shell * std::cos(clat) * std::cos(clon),
+                    shell * std::cos(clat) * std::sin(clon), shell * std::sin(clat)
+                };
+                s_cells.push_back(cell);
+            }
+        }
+        GLint max_texture = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture);
+        if (s_cells.empty() || s_cells.size() + 1 > (size_t)max_texture)
+        {
+            return false;
+        }
+        std::vector<float> grid;
+        for (const auto &cell : s_cells)
+        {
+            grid.insert(grid.end(), cell.grid.begin(), cell.grid.end());
+        }
+        CloudTimer *timer = begin_cloud_timer(0);
+        glActiveTexture(GL_TEXTURE0 + 2);
+        float_texture(s_cell_texture, 1, (int)s_cells.size(), grid.data());
+        glActiveTexture(GL_TEXTURE0 + 3);
+        float_texture(s_geometry_texture, 14, (int)s_cells.size(), nullptr);
+        if (!s_geometry_framebuffer)
+        {
+            s_gen_framebuffers(1, &s_geometry_framebuffer);
+        }
+        s_bind_framebuffer(kFramebuffer, s_geometry_framebuffer);
+        s_framebuffer_texture(kFramebuffer, kColorAttachment, GL_TEXTURE_2D, s_geometry_texture, 0);
+        const bool complete = s_check_framebuffer(kFramebuffer) == kFramebufferComplete;
+        if (complete)
+        {
+            glViewport(0, 0, 14, (int)s_cells.size());
+            glDisable(GL_BLEND);
+            glUseProgram(s_geometry_program);
+            glUniformMatrix4fv(glGetUniformLocation(s_geometry_program, "uWorld"), 1, GL_FALSE, p.world);
+            glUniformMatrix4fv(glGetUniformLocation(s_geometry_program, "uLight"), 1, GL_FALSE, p.light);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, p.texture);
+            draw_quad(p, s_geometry_pos, s_geometry_xy);
+            s_geometry_anchor = anchor;
+            s_geometry_params = p;
+            s_geometry_valid = true;
+            ++s_stats.geometry_builds;
+            s_stats.clusters = (unsigned int)s_cells.size();
+        }
+        end_cloud_timer(timer);
+        return complete;
+    }
+
+    static Vec3 camera_ray(const CloudSkyGpuParams &p, double x, double y)
+    {
+        const double az = p.camera[0], alt = p.camera[1];
+        x *= p.camera[2];
+        y *= p.camera[3];
+        const double forward = std::cos(alt) - y * std::sin(alt);
+        Vec3 ray =
+        {
+            x * std::cos(az) + forward * std::sin(az),
+            y * std::cos(alt) + std::sin(alt),
+            forward * std::cos(az) - x * std::sin(az)
+        };
+        const double norm = std::sqrt(dot3(ray, ray));
+        for (auto &component : ray)
+        {
+            component /= norm;
+        }
+        Vec3 world =
+        {
+        };
+        for (int i = 0; i < 3; ++i)
+        {
+            world[i] = p.camera[4 + i] * ray[0] + p.camera[8 + i] * ray[2] + p.camera[12 + i] * ray[1];
+        }
+        return world;
+    }
+
+    static bool prepare_tiles(const CloudSkyGpuParams &p, int width, int height)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        const int columns = (width + 31) / 32, rows = (height + 31) / 32;
+        const int stride = (int)s_cells.size() + 1;
+        GLint max_texture = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture);
+        if (rows * columns > max_texture)
+        {
+            return false;
+        }
+        std::vector<float> tiles((size_t)stride * columns * rows, 0.0f);
+        const Vec3 eye =
+        {
+            p.camera[12] * p.world[0], p.camera[13] * p.world[0], p.camera[14] * p.world[0]
+        };
+        struct ClusterCone
+        {
+            Vec3 axis;
+            double angle, sine, cosine;
+        };
+        std::vector<ClusterCone> cluster_cones;
+        for (const auto &cell : s_cells)
+        {
+            ClusterCone cone;
+            cone.axis = difference(cell.center, eye);
+            const double distance = std::sqrt(dot3(cone.axis, cone.axis));
+            const double radius = 1.40 + p.world[1] * 2e-6;
+            cone.sine = std::min(1.0, radius / std::max(1e-15, distance));
+            cone.cosine = std::sqrt(std::max(0.0, 1.0 - cone.sine * cone.sine));
+            cone.angle = std::asin(cone.sine);
+            for (auto &component : cone.axis)
+            {
+                component /= std::max(1e-15, distance);
+            }
+            cluster_cones.push_back(cone);
+        }
+        unsigned int total = 0, maximum = 0;
+        for (int ty = 0; ty < rows; ++ty)
+        {
+            const double bottom = 2.0 * (ty * 32) / height - 1;
+            const double top = 2.0 * std::min(height, (ty + 1) * 32) / height - 1;
+            for (int tx = 0; tx < columns; ++tx)
+            {
+                const double left = 2.0 * (tx * 32) / width - 1;
+                const double right = 2.0 * std::min(width, (tx + 1) * 32) / width - 1;
+                const Vec3 axis = camera_ray(p, (left + right) * 0.5, (bottom + top) * 0.5);
+                double cone = 0;
+                const double xs[2] =
+                {
+                    left, right
+                };
+                const double ys[2] =
+                {
+                    bottom, top
+                };
+                for (double x : xs)
+                {
+                    for (double y : ys)
+                    {
+                        cone = std::max(cone, std::acos(std::clamp(dot3(axis, camera_ray(p, x, y)), -1.0, 1.0)));
+                    }
+                }
+                // Every refracted ray lies inside the perspective tile cone
+                // plus the largest angular shift in the inverse curve.
+                cone += s_refraction_span + 0.0001;
+                if (cone >= 1.570796326794897)
+                {
+                    // A cone wider than a hemisphere is not convex; retain all
+                    // clusters rather than relying only on its corner rays.
+                    cone = 3.141592653589793;
+                }
+                const double cosine = std::cos(cone), sine = std::sin(cone);
+                const size_t base = (size_t)(ty * columns + tx) * stride;
+                unsigned int count = 0;
+                for (size_t cluster = 0; cluster < s_cells.size(); ++cluster)
+                {
+                    // Bounds include the whole sphere, even across the camera
+                    // plane or with the observer inside it. No center culling.
+                    const auto &cluster_cone = cluster_cones[cluster];
+                    if (p.geometry_mode == CloudGeometryMode::all_clusters || cluster_cone.sine >= 1.0
+                        || cone + cluster_cone.angle >= 3.141592653589793
+                        || dot3(axis, cluster_cone.axis) >= cosine * cluster_cone.cosine - sine * cluster_cone.sine)
+                    {
+                        tiles[base + (++count)] = (float)cluster;
+                    }
+                }
+                tiles[base] = (float)count;
+                total += count;
+                maximum = std::max(maximum, count);
+            }
+        }
+        glActiveTexture(GL_TEXTURE0 + 3);
+        float_texture(s_tile_texture, stride, rows * columns, tiles.data(), true);
+        s_stats.max_tile_clusters = maximum;
+        s_stats.mean_tile_clusters = double(total) / (rows * columns);
+        s_stats.tile_cpu_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         return true;
     }
 
@@ -573,12 +1161,20 @@ void main()
         const bool cached = prepare_cache(viewport[2], viewport[3]);
         if (!cached || !cache_matches(p, viewport[2], viewport[3]))
         {
+            const int render_width = cached ? s_cache_width : viewport[2];
+            const int render_height = cached ? s_cache_height : viewport[3];
+            const bool geometry = prepare_geometry(p) && prepare_tiles(p, render_width, render_height);
+            s_stats.geometry_cached = geometry;
+            ++s_stats.image_builds;
             float world[16];
             std::memcpy(world, p.world, sizeof(world));
             world[4] = cached ? (float)s_cache_width / viewport[2] : 1.0f;
             world[5] = cached ? (float)s_cache_height / viewport[3] : 1.0f;
+            world[6] = cached ? 0.0f : (float)viewport[0];
+            world[7] = cached ? 0.0f : (float)viewport[1];
             if (cached)
             {
+                s_bind_framebuffer(kFramebuffer, s_cache_framebuffer);
                 glViewport(0, 0, s_cache_width, s_cache_height);
                 glDisable(GL_BLEND);
                 // Discarded ground pixels must replace any previous cloud layer.
@@ -594,16 +1190,29 @@ void main()
                 glEnable(GL_BLEND);
                 glBlendEquation(GL_FUNC_ADD);
                 glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
             }
-            glUseProgram(s_program);
-            glUniformMatrix4fv(s_uCameraLoc, 1, GL_FALSE, p.camera);
-            glUniformMatrix4fv(s_uWorldLoc, 1, GL_FALSE, world);
-            glUniformMatrix4fv(s_uLightLoc, 1, GL_FALSE, p.light);
+            const GLuint program = geometry ? s_program : s_reference_program;
+            glUseProgram(program);
+            if (geometry)
+            {
+                glUniform1i(glGetUniformLocation(program, "uTileColumns"), (render_width + 31) / 32);
+            }
+            glUniformMatrix4fv(geometry ? s_uCameraLoc : glGetUniformLocation(program, "uCamera"), 1, GL_FALSE, p.camera);
+            glUniformMatrix4fv(geometry ? s_uWorldLoc : glGetUniformLocation(program, "uWorld"), 1, GL_FALSE, world);
+            glUniformMatrix4fv(geometry ? s_uLightLoc : glGetUniformLocation(program, "uLight"), 1, GL_FALSE, p.light);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, p.texture);
             glActiveTexture(GL_TEXTURE0 + 1);
             glBindTexture(GL_TEXTURE_2D, s_refraction);
-            draw_quad(p, s_aPosLoc, s_aXYLoc);
+            glActiveTexture(GL_TEXTURE0 + 2);
+            glBindTexture(GL_TEXTURE_2D, s_geometry_texture);
+            glActiveTexture(GL_TEXTURE0 + 3);
+            glBindTexture(GL_TEXTURE_2D, s_tile_texture);
+            CloudTimer *timer = begin_cloud_timer(1);
+            draw_quad(p, geometry ? s_aPosLoc : glGetAttribLocation(program, "aPos"),
+                geometry ? s_aXYLoc : glGetAttribLocation(program, "aXY"));
+            end_cloud_timer(timer);
             if (cached)
             {
                 s_cached_params = p;
@@ -611,6 +1220,10 @@ void main()
                 s_output_height = viewport[3];
                 s_cache_valid = true;
             }
+        }
+        else
+        {
+            ++s_stats.image_hits;
         }
         if (cached)
         {
@@ -622,8 +1235,16 @@ void main()
             glUseProgram(s_composite);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, s_cache_texture);
+            CloudTimer *timer = begin_cloud_timer(2);
             draw_quad(p, s_composite_pos, s_composite_xy);
+            end_cloud_timer(timer);
         }
+        // Extra texture units belong to this callback; clear them before ImGui
+        // restores its own program, unit zero, and vertex state.
+        glActiveTexture(GL_TEXTURE0 + 2);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(0);
     }
@@ -631,7 +1252,7 @@ void main()
     bool queue_cloud_sky_gpu(const CloudSkyGpuInput &in)
     {
         ensure_gl_objects();
-        if (!s_program || !in.texture)
+        if (!s_program || !s_reference_program || !in.texture)
         {
             return false;
         }
@@ -641,6 +1262,7 @@ void main()
             float inverse[1025];
             int index = 0;
             constexpr double pi = 3.141592653589793;
+            s_refraction_span = 0;
             for (int i = 0; i <= 1024; ++i)
             {
                 const double altitude = -pi * 0.5 + i * pi / 1024.0;
@@ -651,6 +1273,7 @@ void main()
                 const double interval = in.refraction[index + 1] - in.refraction[index];
                 const double fraction = std::clamp((altitude - in.refraction[index]) / std::max(1e-7, interval), 0.0, 1.0);
                 inverse[i] = (float)(-pi * 0.5 + (index + fraction) * pi / 1024.0);
+                s_refraction_span = std::max(s_refraction_span, std::fabs(inverse[i] - altitude));
             }
             s_inverse_valid = true;
             s_cache_valid = false;
@@ -682,6 +1305,7 @@ void main()
         std::memcpy(p->light, in.light, sizeof(p->light));
         p->texture = in.texture;
         p->revision = in.revision;
+        p->geometry_mode = in.geometry_mode;
         ImDrawList *dl = ImGui::GetBackgroundDrawList();
         dl->AddCallback(render_cloud_sky_gpu, p);
         dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
