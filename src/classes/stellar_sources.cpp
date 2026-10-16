@@ -2262,11 +2262,12 @@ void alienorum::restore_stellar_component_membership(CelestialObject **objects)
         Star *primary = static_cast<Star*>(star->orbit->center);
         if (!primary->multisys)
         {
-            primary->set_component('A', primary);
+            primary->multisys = new StarMulti();
+            primary->multisys->add_member(primary, 'A');
         }
         if (!primary->multisys->get_member(name.back()))
         {
-            star->set_component(name.back(), primary);
+            primary->multisys->add_member(star, name.back());
         }
     }
     // Rebuild component membership from explicit condensed IDs without changing orbit centers.

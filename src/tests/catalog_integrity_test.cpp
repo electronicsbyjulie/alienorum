@@ -2524,6 +2524,8 @@ TEST_F(CondensedCatalogTest, CatalogIdsStopAtTenExceptForBrightSystemCompanions)
     bright->apparent_magnitude = 9.99;
     faint->apparent_magnitude = 12.5;
     boundary->apparent_magnitude = 10;
+    faint->alienorumid = "5y Oph 3";
+    boundary->alienorumid = "6y Oph 4";
     companion->apparent_magnitude = 15;
     bright->set_component('A', bright);
     companion->set_component('B', bright);
@@ -2532,9 +2534,13 @@ TEST_F(CondensedCatalogTest, CatalogIdsStopAtTenExceptForBrightSystemCompanions)
     EXPECT_TRUE(faint->alienorumid.empty());
     EXPECT_TRUE(boundary->alienorumid.empty());
     EXPECT_EQ(companion->alienorumid, bright->alienorumid + " B");
+    bright->apparent_magnitude = 12.5;
+    fill_alienorum_ids();
+    EXPECT_TRUE(bright->alienorumid.empty());
+    EXPECT_TRUE(companion->alienorumid.empty());
 }
 
-TEST_F(CondensedCatalogTest, AVisualComponentWithoutAPrimaryKeepsAnIndependentCatalogId)
+TEST_F(CondensedCatalogTest, AVisualFamilyWithoutAPrimaryUsesItsBrightestMemberAsAnchor)
 {
     make_star("Sun")->apparent_magnitude = -26.72;
     constellations[0].bounds.emplace_back();
@@ -2555,10 +2561,10 @@ TEST_F(CondensedCatalogTest, AVisualComponentWithoutAPrimaryKeepsAnIndependentCa
     c->apparent_magnitude = 6;
     fill_alienorum_ids();
     EXPECT_EQ(b->alienorumid, "5y Oph ");
-    EXPECT_EQ(c->alienorumid, "6y Oph ");
+    EXPECT_EQ(c->alienorumid, "5y Oph  C");
     EXPECT_EQ(b->orbit, nullptr);
     EXPECT_EQ(c->orbit, nullptr);
-    EXPECT_EQ(b->get_component(), 'B');
+    EXPECT_EQ(b->get_component(), 'A');
     EXPECT_EQ(c->get_component(), 'C');
 }
 
@@ -2609,6 +2615,47 @@ TEST_F(CondensedCatalogTest, FinalNumberingJoinsNestedFamiliesWithoutChangingThe
     EXPECT_EQ(c->alienorumid, lop_component(a->alienorumid.c_str()) + " C");
     EXPECT_EQ(b->orbit->center, a);
     EXPECT_EQ(c->orbit->center, b);
+}
+
+TEST_F(CondensedCatalogTest, FaintCompanionRestorationPreservesTheMiddleStarsOwnOrbit)
+{
+    std::string a = primary_row();
+    put(a, 1, 14, "");
+    put(a, 16, 54, "HD10000 A");
+    put(a, 77, 82, "12");
+    put(a, 114, 119, "10000");
+    put(a, 121, 126, "");
+    put(a, 128, 132, "");
+    std::string b = a;
+    put(b, 1, 14, "5y Oph 1");
+    put(b, 16, 54, "HD10000 B");
+    put(b, 77, 82, "5");
+    put(b, 114, 119, "");
+    put(b, 287, 300, "HD10000 A");
+    put(b, 302, 312, "365.25");
+    put(b, 315, 326, "1");
+    std::string c = b;
+    put(c, 1, 14, "");
+    put(c, 16, 54, "HD10000 C");
+    put(c, 77, 82, "14");
+    put(c, 287, 300, "5y Oph 1");
+    std::vector<std::string> rows;
+    rows.push_back(a);
+    rows.push_back(b);
+    rows.push_back(c);
+    write_rows(rows);
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 4);
+    Star *primary = static_cast<Star*>(cels[1]);
+    Star *middle = static_cast<Star*>(cels[2]);
+    Star *outer = static_cast<Star*>(cels[3]);
+    ASSERT_NE(middle->orbit, nullptr);
+    EXPECT_EQ(middle->orbit->center, primary);
+    EXPECT_EQ(outer->orbit->center, middle);
+    fill_alienorum_ids();
+    EXPECT_TRUE(primary->alienorumid.empty());
+    EXPECT_TRUE(middle->alienorumid.empty());
+    EXPECT_TRUE(outer->alienorumid.empty());
 }
 
 TEST_F(CondensedCatalogTest, FaintVisualFamiliesRoundTripWithoutPhysicalOrbits)

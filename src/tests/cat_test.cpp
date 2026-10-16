@@ -635,10 +635,11 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
         if (cels[i]->type == star)
         {
             Star *s = (Star*)cels[i];
+            const bool family_primary = !s->multisys || s->multisys->get_member('A') == s;
             if (s->alienorumid.empty())
             {
                 blank_count++;
-                if (!s->orbit && !s->variability_period && s->apparent_magnitude > 0.0)
+                if (!s->orbit && family_primary && !s->variability_period && s->apparent_magnitude > 0.0)
                 {
                     EXPECT_GE(s->apparent_magnitude, 10.0 - 0.001);
                 }
@@ -646,7 +647,10 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
             else
             {
                 populated_count++;
-                // Faint standalone rows can retain stable IDs from earlier builds.
+                if (family_primary && !s->orbit)
+                {
+                    EXPECT_LT(s->apparent_magnitude, 10.005);
+                }
             }
         }
     }

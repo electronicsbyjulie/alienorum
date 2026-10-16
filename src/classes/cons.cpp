@@ -286,10 +286,48 @@ ConsBins fill_alienorum_ids()
         if (!cels[index]->deleted && cels[index]->typeclass() == class_star)
         {
             Star *star = static_cast<Star*>(cels[index]);
+            star->alienorumid.clear();
             if (live_stars.insert(star).second)
             {
                 ordered_stars.push_back(star);
             }
+        }
+    }
+    std::unordered_set<StarMulti*> anchored;
+    for (Star *star : ordered_stars)
+    {
+        StarMulti *family = star->multisys;
+        if (!family || family->get_member('A') || !anchored.insert(family).second)
+        {
+            continue;
+        }
+        std::unordered_set<Star*> members;
+        for (char component = 'B'; component <= 'Z'; ++component)
+        {
+            Star *member = family->get_member(component);
+            if (member && live_stars.count(member))
+            {
+                members.insert(member);
+            }
+        }
+        Star *anchor = nullptr;
+        for (char component = 'B'; component <= 'Z'; ++component)
+        {
+            Star *member = family->get_member(component);
+            if (!member || !members.count(member) || (member->orbit && member->orbit->center
+                    && member->orbit->center->typeclass() == class_star
+                    && members.count(static_cast<Star*>(member->orbit->center))))
+            {
+                continue;
+            }
+            if (!anchor || member->apparent_magnitude < anchor->apparent_magnitude)
+            {
+                anchor = member;
+            }
+        }
+        if (anchor)
+        {
+            family->add_member(anchor, 'A');
         }
     }
     for (Star *star : ordered_stars)
