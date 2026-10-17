@@ -5142,7 +5142,7 @@ void draw_horizon()
         if (!cel) return;
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
-        bool gaseous = uses_gaseous_map(p->type);
+        bool gaseous = uses_gaseous_map(cel->type);
     
         spawn_texture_load(cel);
 
@@ -5158,7 +5158,7 @@ void draw_horizon()
         Map *map = gaseous ? cel->cloud_map : cel->surf_map;
         RGB3 rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3(0, 8, 24);
 
-        bool water_favorable = p->get_surface_pressure() >= 150
+        bool water_favorable = p && p->get_surface_pressure() >= 150
             && p->estimate_surface_temperature() < 400;
 
         const auto vegetation_at = [&](double latitude, double longitude)
@@ -5177,16 +5177,67 @@ void draw_horizon()
                     - Color::sat_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b)) < 0.35;
         };
 
+        const bool ocean_world = p && (p->type == waterworld || p->type == hycean);
+        const bool surface_water = ocean_world || (p && uses_rocky_map(p->type) && p->has_water && map);
+        const auto water_at = [&](double latitude, double longitude)
+        {
+            if (ocean_world)
+            {
+                return true;
+            }
+            if (!surface_water)
+            {
+                return false;
+            }
+            const RGB3 sample = map->color_at(latitude, longitude);
+            return sample.b > 0.8 * sample.r && fmax(sample.b, sample.g) > 1.333 * sample.r
+                && !vegetation_at(latitude, longitude);
+        };
+
+        double surface_radius = cel->get_equatorial_radius();
+        if (surface_radius <= 0)
+        {
+            surface_radius = cel->volumetric_mean_radius;
+        }
+        if (surface_radius <= 0)
+        {
+            surface_radius = earth_radius;
+        }
+        const double surface_eye = fmax(0.01, viewer_eye_height);
+        const double surface_lift = p && !gaseous ? p->atmospheric_horizon_lift() : 0.0;
+        const double surface_range = sqrt(2.0 * surface_radius * surface_eye)
+            + surface_radius * fmax(0.0, sin(surface_lift));
+        const auto surface_coord = [&](double distance, double bearing)
+        {
+            const double arc = distance / surface_radius;
+            const double sin_lat = fmax(-1.0, fmin(1.0, sin(viewer_lat) * cos(arc)
+                + cos(viewer_lat) * sin(arc) * cos(bearing)));
+            const double latitude = asin(sin_lat);
+            const double longitude = viewer_lon + atan2(sin(bearing) * sin(arc) * cos(viewer_lat),
+                cos(arc) - sin(viewer_lat) * sin_lat);
+            return std::make_pair(latitude, longitude);
+        };
+        // Invert the same curved, refracted ground plane used by the scenery.
+        const auto ground_coord = [&](double screen_x, double screen_y)
+        {
+            const double x = (screen_x - dispcx) / (zoom * dispcx);
+            const double y = (dispcy - screen_y) / (zoom * dispcx);
+            const double north = cos(altitude) - y * sin(altitude);
+            const double up = y * cos(altitude) + sin(altitude);
+            const double slope = -up / fmax(1e-12, hypot(x, north));
+            const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
+            const double discriminant = slope * slope - 4.0 * curvature * surface_eye;
+            double distance = surface_range;
+            if (discriminant >= 0 && slope + sqrt(discriminant) > 0)
+            {
+                distance = fmin(surface_range, 2.0 * surface_eye / (slope + sqrt(discriminant)));
+            }
+            return surface_coord(distance, azimuth + atan2(x, north));
+        };
+
         rgb.r = fmin(255, is_day*rgb.r);
         rgb.g = fmin(255, is_day*rgb.g);
         rgb.b = fmin(255, is_day*rgb.b);
-
-        bool is_water = (p && (p->type == waterworld || p->type == hycean))
-            || (uses_rocky_map(p->type)
-                // && water_favorable
-                && p->has_water
-                && (rgb.b > 0.8 * rgb.r)
-                && (fmax(rgb.b, rgb.g) > 1.333 * rgb.r));                // this is admittedly a hare-brained kludge but it should work 99.9% of the time.
 
         if (p && p->type == lavaworld && p->night_map)
         {
@@ -5198,7 +5249,7 @@ void draw_horizon()
         }
 
         double hzheight[hznodes];
-        if (show_terrain && !gaseous && !is_water)
+        if (show_terrain && !gaseous && !ocean_world)
         {
             // The raw noise shape and distant bump relief depend only on where the viewer is standing,
             // so they are cached and regenerated when viewer_lat/viewer_lon/whereami/eye_height changes.
@@ -5308,6 +5359,14 @@ void draw_horizon()
                 double bump_px = cached_bump_relief[j] * dispcx * zoom;
                 double proc_px = terrain_height * (cached_raw_noise[j] - cached_raw_min) * 2.5;
                 hzheight[j] = hz_dy[j] - (bump_px + proc_px);
+                if (surface_water)
+                {
+                    const auto coord = surface_coord(surface_range, 2.0 * _pi * j / hznodes);
+                    if (water_at(coord.first, coord.second))
+                    {
+                        hzheight[j] = hz_dy[j];
+                    }
+                }
             }
         }
         else
@@ -5562,7 +5621,76 @@ void draw_horizon()
         }
         #endif
 
-        if (is_water && !faded)
+        if (surface_water && !faded)
+        {
+            ImDrawList *ground = ImGui::GetBackgroundDrawList();
+            const auto ground_color = [&](double x, double y)
+            {
+                const auto coord = ground_coord(x, y);
+                const RGB3 sample = map ? map->color_at(coord.first, coord.second) : RGB3(0, 8, 24);
+                return rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
+                    fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
+                    dragging ? (192 - 128 * is_day) : 255));
+            };
+            // Subdivide map boundaries while drawing uniform regions as large patches.
+            const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
+            {
+                double horizon_min = 1e9, horizon_max = -1e9;
+                for (int x = left; x < right; ++x)
+                {
+                    horizon_min = fmin(horizon_min, min_hz_y_at_x[x]);
+                    horizon_max = fmax(horizon_max, min_hz_y_at_x[x]);
+                }
+                if (bottom <= horizon_min)
+                {
+                    return;
+                }
+                const ImU32 color = ground_color((left + right) * 0.5, (top + bottom) * 0.5);
+                const bool small = right - left <= 2 && bottom - top <= 2;
+                const bool uniform = top >= horizon_max
+                    && color == ground_color(left + 0.5, top + 0.5)
+                    && color == ground_color(right - 0.5, top + 0.5)
+                    && color == ground_color(left + 0.5, bottom - 0.5)
+                    && color == ground_color(right - 0.5, bottom - 0.5);
+                if (small || uniform)
+                {
+                    const double clipped_top = fmax(top, horizon_max);
+                    if (clipped_top < bottom)
+                    {
+                        ground->AddRectFilled(ImVec2(left, clipped_top), ImVec2(right, bottom), color);
+                    }
+                    return;
+                }
+                const int mid_x = (left + right) / 2;
+                const int mid_y = (top + bottom) / 2;
+                if (right - left > 2 && bottom - top > 2)
+                {
+                    self(self, left, top, mid_x, mid_y);
+                    self(self, mid_x, top, right, mid_y);
+                    self(self, left, mid_y, mid_x, bottom);
+                    self(self, mid_x, mid_y, right, bottom);
+                }
+                else if (right - left > 2)
+                {
+                    self(self, left, top, mid_x, bottom);
+                    self(self, mid_x, top, right, bottom);
+                }
+                else
+                {
+                    self(self, left, top, right, mid_y);
+                    self(self, left, mid_y, right, bottom);
+                }
+            };
+            for (int x = 0; x < screen_w; x += 32)
+            {
+                for (int y = 0; y < dispcy * 2.0; y += 32)
+                {
+                    patch(patch, x, y, std::min(screen_w, x + 32), std::min((int)(dispcy * 2.0), y + 32));
+                }
+            }
+        }
+
+        if (surface_water && !faded)
         {
             double wave_t = ImGui::GetTime();
             std::vector<GlintSource> glint_sources;
@@ -5693,29 +5821,6 @@ void draw_horizon()
                 R_planet = earth_radius;
             }
 
-            double D_shore = -1.0;
-            if (p && p->surf_map)
-            {
-                double test_dists[5] = { 400.0, 1000.0, 2200.0, 4500.0, 9000.0 };
-                for (int td = 0; td < 5; td++)
-                {
-                    double s = test_dists[td];
-                    double delta_sigma = s / R_planet;
-                    double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(azimuth);
-                    sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
-                    double phi = asin(sin_phi);
-                    double d_lon = atan2(sin(azimuth) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
-                    double lam = viewer_lon + d_lon;
-                    RGB3 sc = p->surf_map->color_at(phi, lam);
-                    bool sc_is_water = (sc.b > 0.8 * sc.r) && (fmax(sc.b, sc.g) > 1.333 * sc.r);
-                    if (!sc_is_water)
-                    {
-                        D_shore = s;
-                        break;
-                    }
-                }
-            }
-
             double horizon_lift_rad = 0;
             if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
             {
@@ -5729,28 +5834,7 @@ void draw_horizon()
             double delta_horizon = -net_horizon_angle;
             double delta_near = atan(h_eye / WAVE_NEAR_DIST);
 
-            double s_horizon = sqrt(2.0 * R_planet * h_eye);
-            if (horizon_lift_rad > 0.0)
-            {
-                s_horizon += R_planet * sin(horizon_lift_rad);
-            }
-
             double delta_far = delta_horizon;
-            double s_max = (s_horizon > 0.0) ? fmin(10000.0, s_horizon) : 5000.0;
-            if (D_shore > 0.0)
-            {
-                double delta_shore = atan(h_eye / D_shore) + (D_shore / (2.0 * R_planet));
-                if (s_horizon > 0.0)
-                {
-                    delta_shore -= (D_shore / s_horizon) * horizon_lift_rad;
-                }
-                if (delta_shore > delta_horizon)
-                {
-                    delta_far = delta_shore;
-                    s_max = D_shore;
-                }
-            }
-
             if (delta_far >= delta_near)
             {
                 delta_far = delta_near - 0.001;
@@ -5759,10 +5843,16 @@ void draw_horizon()
             int num_wave_rows = WAVE_NUM_ROWS;
             for (int wr_i = 1; wr_i <= num_wave_rows; wr_i++)
             {
-                double u = (num_wave_rows > 1) ? ((double)(wr_i - 1) / (double)(num_wave_rows - 1) + WAVE_PERSPECTIVE_OFFSET) : 1.0;
+                double u = (num_wave_rows > 1)
+                    ? (wr_i - 1.0 + WAVE_PERSPECTIVE_OFFSET) / (num_wave_rows - 1.0 + WAVE_PERSPECTIVE_OFFSET)
+                    : 1.0;
                 double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
                 double delta = delta_far + (delta_near - delta_far) * blend;
-                double dist_m = WAVE_NEAR_DIST + (s_max - WAVE_NEAR_DIST) * (u * u);
+                const double slope = tan(delta);
+                const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
+                const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
+                const double dist_m = slope + root > 0
+                    ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
 
                 int num_steps = WAVE_STEPS_PER_ROW;
                 double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
@@ -5815,16 +5905,30 @@ void draw_horizon()
                         wy = min_hz_y_at_x[ix_lookup];
                     }
 
+                    const auto coord = ground_coord(wx, wy);
+                    if (!water_at(coord.first, coord.second))
+                    {
+                        has_prev = false;
+                        continue;
+                    }
+                    const RGB3 wave_rgb = map ? map->color_at(coord.first, coord.second) : RGB3(0, 8, 24);
+
                     ImVec2 cur_pt(wx, wy);
 
                     // When light sources are low on the horizon, expand glint reflections
                     double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
                     if (has_prev && wave_val > min_crest)
                     {
+                        const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
+                        if (!water_at(midpoint.first, midpoint.second))
+                        {
+                            has_prev = false;
+                            continue;
+                        }
                         double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
-                        int cr = fmin(255.0, rgb.r * 0.5 + 40.0 * crest_fac);
-                        int cg = fmin(255.0, rgb.g * 0.7 + 60.0 * crest_fac);
-                        int cb = fmin(255.0, rgb.b * 0.95 + 75.0 * crest_fac);
+                        int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
+                        int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
+                        int cb = fmin(255.0, is_day * wave_rgb.b * 0.95 + 75.0 * crest_fac);
                         int ca = (int)(90.0 + 130.0 * crest_fac);
 
                         if (!glint_sources.empty())
@@ -5866,47 +5970,8 @@ void draw_horizon()
                 }
             }
 
-            if (D_shore > 0.0)
-            {
-                double dep_ang_shore = atan(h_eye / D_shore) + (D_shore / (2.0 * R_planet));
-                if (s_horizon > 0.0)
-                {
-                    dep_ang_shore -= (D_shore / s_horizon) * horizon_lift_rad;
-                }
-                Point pt_shore = rotate3D(zaxis, center, xaxis, dep_ang_shore);
-                pt_shore = rotate3D(pt_shore, center, yaxis, azimuth);
-                Cartesian2D cart_shore(pt_shore, azimuth, altitude, zoom);
-
-                /*if (cart_shore.x > -1e10)
-                {
-                    double y_shore = cart_shore.y * dispcx + dispcy;
-                    if (y_shore >= 0 && y_shore < dispcy * 2)
-                    {
-                        double surf_pulse = sin(2.2 * wave_t);
-                        double swash_amp = fmax(2.0, fmin(12.0, (0.5 / D_shore) * dispcx * zoom));
-                        double y_foam = y_shore + surf_pulse * swash_amp;
-
-                        int foam_alpha = (int)(130.0 + 90.0 * (0.5 + 0.5 * surf_pulse));
-                        ImU32 foam_col = rgba_apply_redlight(IM_COL32(235, 245, 255, foam_alpha));
-
-                        double foam_step = 14.0;
-                        int f_steps = (int)(dispcx * 2 / foam_step) + 1;
-                        for (int fs = 0; fs < f_steps; fs++)
-                        {
-                            double fx0 = fs * foam_step;
-                            double fx1 = fmin(dispcx * 2, (fs + 1) * foam_step);
-                            double w_wobble0 = 2.0 * sin(fx0 * 0.04 + wave_t * 2.8);
-                            double w_wobble1 = 2.0 * sin(fx1 * 0.04 + wave_t * 2.8);
-                            ImGui::GetBackgroundDrawList()->AddLine(
-                                ImVec2(fx0, y_foam + w_wobble0),
-                                ImVec2(fx1, y_foam + w_wobble1),
-                                foam_col, 2.5f);
-                        }
-                    }
-                }*/
-            }
         }
-        else if (!is_water && !gaseous && !faded)
+        if (!ocean_world && !gaseous && !faded)
         {
             Map *surf_map = cel->surf_map;
             RGB3 base_map_rgb = surf_map ? surf_map->color_at(viewer_lat, viewer_lon) : RGB3(160, 120, 80);
@@ -6196,6 +6261,10 @@ void draw_horizon()
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
                 for (const SurfaceScenery &object : scenery)
                 {
+                    if (water_at(object.latitude, object.longitude))
+                    {
+                        continue;
+                    }
                     const bool is_vegetation = vegetation_at(object.latitude, object.longitude);
                     const double rock_aspect = (is_vegetation && p)
                         ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)

@@ -33,7 +33,7 @@ struct CloudTestView
 class SceneryTestMap : public Map
 {
     public:
-    explicit SceneryTestMap(bool vegetation = false)
+    explicit SceneryTestMap(bool vegetation = false, bool sea = false)
     {
         image_width = image_height = 2;
         allocated = 4;
@@ -45,9 +45,9 @@ class SceneryTestMap : public Map
         for (int i = 0; i < 4; ++i)
         {
             const bool plant = vegetation && i % 2 == 1;
-            red_data[i] = plant ? 80 : 160;
-            green_data[i] = plant ? 140 : 120;
-            blue_data[i] = plant ? 30 : 80;
+            red_data[i] = plant ? 80 : (sea ? 20 : 160);
+            green_data[i] = plant ? 140 : (sea ? 100 : 120);
+            blue_data[i] = plant ? 30 : (sea ? 160 : 80);
         }
         touch_gen();
     }
@@ -64,6 +64,7 @@ class RenderingRegressionTest : public UniverseFixture
     inline static unsigned int cloud_epoch_sequence = 0;
     unsigned int cloud_epoch = ++cloud_epoch_sequence;
     int render_width = 192, render_height = 108;
+    std::vector<double> surface_magnitudes;
 
     static void SetUpTestSuite()
     {
@@ -156,6 +157,8 @@ class RenderingRegressionTest : public UniverseFixture
 
     Planet *surface(bool vegetation = false)
     {
+        surface_magnitudes.assign(3, 999.0);
+        set(vmag_cache, surface_magnitudes.data());
         Star *primary = make_star("55 Cnc A");
         primary->location.local_position = primary->tmprel = Point(1e11, 1e11, 1e11);
         Star *host = make_star("55 Cnc B", 0.2 * solar_mass);
@@ -626,4 +629,101 @@ TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsAMixedScenery
     EXPECT_GT(before, 0);
     EXPECT_GT(after, 0);
     EXPECT_NEAR(before, after, std::max(before, after) * 0.2);
+}
+
+TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
+{
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new SceneryTestMap(true, true);
+    set(show_terrain, false);
+    set(altitude, -0.4);
+    for (double offset : {-0.05, 0.05})
+    {
+        viewer_lon = offset / world->get_equatorial_radius();
+        find_horizon();
+        draw_horizon();
+        int crests = 0;
+        float crest_right = 0;
+        for (const auto &vertex : ImGui::GetBackgroundDrawList()->VtxBuffer)
+        {
+            const int alpha = vertex.col >> IM_COL32_A_SHIFT;
+            if (alpha > 0 && alpha < 255)
+            {
+                ++crests;
+                crest_right = std::max(crest_right, vertex.pos.x);
+            }
+        }
+        EXPECT_GT(crests, 20);
+        EXPECT_LT(crest_right, dispcx + 5.0);
+        const auto pixels = render();
+        int sea = 0, land = 0;
+        for (int y = 0; y < render_height / 3; ++y)
+        {
+            for (int x = 0; x < render_width; ++x)
+            {
+                const int index = (y * render_width + x) * 4;
+                if (x < render_width / 3 && pixels[index] == 20
+                    && pixels[index + 1] == 100 && pixels[index + 2] == 160)
+                {
+                    ++sea;
+                }
+                if (x > render_width * 2 / 3 && pixels[index] == 80
+                    && pixels[index + 1] == 140 && pixels[index + 2] == 30)
+                {
+                    ++land;
+                }
+            }
+        }
+        EXPECT_GT(sea, 100);
+        EXPECT_GT(land, 100);
+        ImGui::NewFrame();
+    }
+}
+
+TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
+{
+    Planet *world = surface(true);
+    cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
+    delete world->surf_map;
+    world->surf_map = new SceneryTestMap(false, true);
+    const auto vertices = scenery();
+    ASSERT_GT(vertices.size(), 100u);
+    int scenery_vertices = 0;
+    for (const auto &vertex : vertices)
+    {
+        const unsigned int alpha = vertex.col >> IM_COL32_A_SHIFT;
+        if (alpha == 255)
+        {
+            scenery_vertices += vertex.col != IM_COL32(20, 100, 160, 255);
+        }
+    }
+    EXPECT_EQ(scenery_vertices, 0);
+}
+
+TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
+{
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new SceneryTestMap(true, true);
+    set(dispcx, 960.0);
+    set(dispcy, 540.0);
+    ImGui::GetIO().DisplaySize = ImVec2(1920, 1080);
+    const auto vertices = scenery();
+    int plants = 0;
+    ASSERT_GT(vertices.size(), 100u);
+    for (const auto &vertex : vertices)
+    {
+        EXPECT_TRUE(std::isfinite(vertex.pos.x));
+        EXPECT_TRUE(std::isfinite(vertex.pos.y));
+        const int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
+        const int green = (vertex.col >> IM_COL32_G_SHIFT) & 255;
+        const int blue = (vertex.col >> IM_COL32_B_SHIFT) & 255;
+        if ((vertex.col >> IM_COL32_A_SHIFT) == 255 && green > red * 1.4
+            && blue < red * 0.8 && vertex.col != IM_COL32(80, 140, 30, 255))
+        {
+            ++plants;
+        }
+    }
+    EXPECT_GT(plants, 0);
 }
