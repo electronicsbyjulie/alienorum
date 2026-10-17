@@ -4838,6 +4838,7 @@ struct GlintSource
 };
 
 #if planetary_rain
+static CloudRainCover overhead_rain_cover;
 double norm_cloud, min_rain_intensity = 0.0, max_rain_intensity = 0;
 double rain_intensity = 0, rainint_lat = -1e3, rainint_lon = -1e5, drainint;
 static void draw_planetary_rain(Planet *p)
@@ -4880,6 +4881,11 @@ static void draw_planetary_rain(Planet *p)
 
     // Clouds must be enabled and complete cloud map available
     if (!show_clouds || !p->cloud_map || !p->cloud_map->is_complete())
+    {
+        return;
+    }
+
+    if (!overhead_rain_cover.permits_rain())
     {
         return;
     }
@@ -8062,6 +8068,9 @@ static void draw_lavaworld_rock_clouds(Planet *p)
 
 void draw_cloudy_sky()
 {
+    #if planetary_rain
+    overhead_rain_cover = CloudRainCover();
+    #endif
     if (!show_clouds)
     {
         return;
@@ -8218,5 +8227,11 @@ void draw_cloudy_sky()
     in.texture = gputex_for(cel->cloud_map);
     in.revision = cel->cloud_map->gen;
     in.refraction = refraction;
-    queue_cloud_sky_gpu(in);
+    in.sample_overhead = show_terrain && p->has_water >= 0.05 && p->type != lavaworld;
+    if (queue_cloud_sky_gpu(in))
+    {
+        #if planetary_rain
+        overhead_rain_cover = cloud_rain_cover();
+        #endif
+    }
 }

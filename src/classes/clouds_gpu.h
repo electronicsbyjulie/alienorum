@@ -37,9 +37,23 @@ namespace alienorum
         const float *refraction;
         // Reference modes support image comparisons without changing cloud shapes.
         CloudGeometryMode geometry_mode = CloudGeometryMode::accelerated;
+        bool sample_overhead = false;
+    };
+
+    struct CloudRainCover
+    {
+        bool valid = false;
+        float cumulus = 0;
+        float heavy_haze = 0;
+
+        bool permits_rain() const
+        {
+            return valid && (cumulus > 0.05f || heavy_haze > 0.1f);
+        }
     };
 
     bool queue_cloud_sky_gpu(const CloudSkyGpuInput &in);
     const CloudSkyGpuStats &cloud_sky_gpu_stats();
+    const CloudRainCover &cloud_rain_cover();
 }
 #endif

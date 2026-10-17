@@ -26,6 +26,8 @@ struct CloudTestView
     bool patterned = false;
     bool overcast = false;
     bool isolated = false;
+    bool sample_overhead = false;
+    bool dark = false;
     double cloud_latitude = 0;
     double cloud_longitude = 0;
     double horizon_angle = -0.0001;
@@ -324,14 +326,15 @@ class RenderingRegressionTest : public UniverseFixture
         input.world[1] = view.shell;
         input.world[2] = (view.shell - view.observer) * (view.shell + view.observer);
         input.world[3] = sin(view.horizon_angle);
-        input.light[0] = 1;
-        input.light[1] = 0.6;
+        input.light[0] = view.dark ? 0 : 1;
+        input.light[1] = view.dark ? 0 : 0.6;
         input.light[2] = view.overcast ? 1 : 0;
         input.light[8] = view.wind;
         input.texture = cloud_texture;
         input.revision = cloud_epoch * 1024 + coverage + (view.patterned ? 256 : 0) + (view.isolated ? 512 : 0);
         input.refraction = refraction;
         input.geometry_mode = view.mode;
+        input.sample_overhead = view.sample_overhead;
         EXPECT_TRUE(queue_cloud_sky_gpu(input));
         auto pixels = render();
         ImGui::NewFrame();
@@ -806,4 +809,71 @@ TEST_F(RenderingRegressionTest, MountainsSampleDifferentBiomesAlongTheirDepthAbo
     }
     EXPECT_GT(mixed_columns, 0);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, RainRequiresOverheadCumulusOrHeavyHaze)
+{
+    CloudTestView view;
+    view.sample_overhead = true;
+    clouds(0, half_pi, 0.001, view);
+    ASSERT_TRUE(cloud_rain_cover().valid);
+    EXPECT_FALSE(cloud_rain_cover().permits_rain());
+
+    clouds(210, half_pi, 0.001, view);
+    EXPECT_GT(cloud_rain_cover().heavy_haze, 0.1f);
+    EXPECT_TRUE(cloud_rain_cover().permits_rain());
+
+    view.overcast = true;
+    clouds(0, half_pi, 0.001, view);
+    EXPECT_EQ(cloud_rain_cover().heavy_haze, 1.0f);
+    EXPECT_TRUE(cloud_rain_cover().permits_rain());
+
+    view.observer = view.shell + 2;
+    clouds(255, half_pi, 0.001, view);
+    EXPECT_FALSE(cloud_rain_cover().permits_rain());
+
+    view.sample_overhead = false;
+    clouds(255, half_pi, 0.001, view);
+    EXPECT_FALSE(cloud_rain_cover().valid);
+}
+
+TEST_F(RenderingRegressionTest, RainProbeMatchesVisibleCumulusAndClearGapsIndependentOfCameraAndLighting)
+{
+    CloudTestView view;
+    view.sample_overhead = true;
+    bool found_cumulus = false, found_gap = false;
+    double cumulus_latitude = 0;
+    for (int step = 0; step < 40 && !(found_cumulus && found_gap); ++step)
+    {
+        view.latitude = 0.2 + step * 0.003;
+        const auto pixels = clouds(128, half_pi, 0.001, view);
+        const auto cover = cloud_rain_cover();
+        ASSERT_TRUE(cover.valid);
+        const int alpha = pixels[((render_height / 2) * render_width + render_width / 2) * 4 + 3];
+        if (cover.cumulus > 0.9f)
+        {
+            EXPECT_GT(alpha, 240);
+            EXPECT_TRUE(cover.permits_rain());
+            found_cumulus = true;
+            cumulus_latitude = view.latitude;
+        }
+        if (cover.cumulus < 0.01f)
+        {
+            EXPECT_LT(alpha, 240);
+            EXPECT_FALSE(cover.permits_rain());
+            found_gap = true;
+        }
+    }
+    ASSERT_TRUE(found_cumulus);
+    ASSERT_TRUE(found_gap);
+    view.latitude = cumulus_latitude;
+    view.azimuth = 1.2;
+    clouds(128, 0.0, 0.5, view);
+    const auto daytime = cloud_rain_cover();
+    EXPECT_TRUE(daytime.permits_rain());
+    view.dark = true;
+    clouds(128, -0.1, 0.5, view);
+    EXPECT_EQ(cloud_rain_cover().cumulus, daytime.cumulus);
+    EXPECT_EQ(cloud_rain_cover().heavy_haze, daytime.heavy_haze);
+    EXPECT_TRUE(cloud_rain_cover().permits_rain());
 }

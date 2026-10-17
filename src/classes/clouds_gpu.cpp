@@ -88,6 +88,9 @@ void main()
     float forward = cos(alt) - xy.y * sin(alt);
     vec3 ray = normalize(vec3(xy.x * cos(az) + forward * sin(az),
         xy.y * cos(alt) + sin(alt), forward * cos(az) - xy.x * sin(az)));
+#ifdef CLOUD_RAIN_PROBE
+    ray = vec3(0.0, 1.0, 0.0);
+#endif
     float h = atan(ray.y, length(ray.xz));
     float apparent_y = ray.y;
     // The inverse curve is cached as a linear texture: one fetch per pixel.
@@ -149,6 +152,7 @@ void main()
     float shade = 1.0;
     float puff_weight = 0.0;
     float warm_weight = 1.0;
+    float rain_cumulus = 0.0;
     // Even a fully blended cloud-map pixel may have a nearer cumulus lobe.
     // Overcast is deliberately exempt: it is a continuous opaque deck.
     if (blend < 0.999 || uLight[0].z < 0.5)
@@ -363,10 +367,15 @@ void main()
         float bank_alpha = mix(cirrus, alpha, blend);
         float background_alpha = (1.0 - solid) * bank_alpha;
         alpha = solid + background_alpha;
+        rain_cumulus = solid;
         puff_weight = solid / max(1e-5, alpha);
         // Cirrus catches the warm light throughout; cumulus only on undersides.
         warm_weight = (solid * underside + background_alpha) / max(1e-5, alpha);
     }
+#ifdef CLOUD_RAIN_PROBE
+    FragColor = vec4(rain_cumulus, deck, 0.0, 1.0);
+    return;
+#endif
     vec3 color = rgb * uLight[0].x * (160.0 / 255.0) * deck
         + vec3(uLight[0].y * (1.0 - deck));
     color = mix(color, vec3(uLight[0].y * shade), puff_weight);
@@ -403,6 +412,10 @@ void main()
     static int s_pool_index = 0;
     static GLuint s_program = 0, s_vao = 0, s_vbo = 0, s_ebo = 0, s_refraction = 0;
     static GLuint s_reference_program = 0;
+    static GLuint s_rain_program = 0, s_rain_texture = 0, s_rain_framebuffer = 0;
+    static CloudRainCover s_rain_cover;
+    static bool s_rain_cached = false;
+    static CloudSkyGpuParams s_rain_params;
     static bool s_attempted = false;
     static float s_table[1025];
     static GLint s_aPosLoc = -1, s_aXYLoc = -1;
@@ -616,6 +629,24 @@ void main()
                 glUniform1i(glGetUniformLocation(s_reference_program, "uRefraction"), 1);
             }
             glDeleteShader(reference_fs);
+        }
+        std::string rain_source(reference_source);
+        rain_source.insert(rain_source.find('\n', 1) + 1, "#define CLOUD_RAIN_PROBE 1\n");
+        GLuint rain_fs = compile_shader(GL_FRAGMENT_SHADER, rain_source.c_str());
+        if (rain_fs)
+        {
+            s_rain_program = glCreateProgram();
+            glAttachShader(s_rain_program, vs);
+            glAttachShader(s_rain_program, rain_fs);
+            glLinkProgram(s_rain_program);
+            GLint rain_ok = 0;
+            glGetProgramiv(s_rain_program, GL_LINK_STATUS, &rain_ok);
+            if (!rain_ok)
+            {
+                glDeleteProgram(s_rain_program);
+                s_rain_program = 0;
+            }
+            glDeleteShader(rain_fs);
         }
         glDeleteShader(vs);
         glDeleteShader(fs);
@@ -1237,6 +1268,126 @@ void main()
         glBindVertexArray(0);
     }
 
+    const CloudRainCover &cloud_rain_cover()
+    {
+        return s_rain_cover;
+    }
+
+    static void sample_rain_cover(const CloudSkyGpuParams &p)
+    {
+        using GetFloatvFn = void (APIENTRY *)(GLenum, GLfloat*);
+        using GetBooleanvFn = void (APIENTRY *)(GLenum, GLboolean*);
+        using ColorMaskFn = void (APIENTRY *)(GLboolean, GLboolean, GLboolean, GLboolean);
+        static const auto get_float = (GetFloatvFn)SDL_GL_GetProcAddress("glGetFloatv");
+        static const auto get_boolean = (GetBooleanvFn)SDL_GL_GetProcAddress("glGetBooleanv");
+        static const auto color_mask_fn = (ColorMaskFn)SDL_GL_GetProcAddress("glColorMask");
+        if (!s_rain_program || !s_bind_framebuffer || !s_gen_framebuffers
+            || !s_framebuffer_texture || !s_check_framebuffer || !get_float || !get_boolean || !color_mask_fn)
+        {
+            s_rain_cover = CloudRainCover();
+            return;
+        }
+        if (s_rain_cached && p.texture == s_rain_params.texture && p.revision == s_rain_params.revision
+            && std::memcmp(p.camera + 4, s_rain_params.camera + 4, 12 * sizeof(float)) == 0
+            && std::memcmp(p.world, s_rain_params.world, 4 * sizeof(float)) == 0
+            && p.light[2] == s_rain_params.light[2]
+            && p.light[8] == s_rain_params.light[8] && p.light[9] == s_rain_params.light[9])
+        {
+            return;
+        }
+        GLint framebuffer, viewport[4], program, vao, buffer, active, textures[2], pack_row;
+        GLfloat clear[4];
+        GLboolean color_mask[4];
+        glGetIntegerv(kFramebufferBinding, &framebuffer);
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &active);
+        glGetIntegerv(0x0D02 /* GL_PACK_ROW_LENGTH */, &pack_row);
+        get_float(0x0C22 /* GL_COLOR_CLEAR_VALUE */, clear);
+        get_boolean(0x0C23 /* GL_COLOR_WRITEMASK */, color_mask);
+        const bool blend = glIsEnabled(GL_BLEND), scissor = glIsEnabled(GL_SCISSOR_TEST);
+        const bool depth = glIsEnabled(GL_DEPTH_TEST), cull = glIsEnabled(GL_CULL_FACE);
+        for (int unit = 0; unit < 2; ++unit)
+        {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &textures[unit]);
+        }
+        glActiveTexture(GL_TEXTURE0);
+        if (!s_rain_texture)
+        {
+            glGenTextures(1, &s_rain_texture);
+            s_gen_framebuffers(1, &s_rain_framebuffer);
+            glBindTexture(GL_TEXTURE_2D, s_rain_texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, 0x8814 /* GL_RGBA32F */, 1, 1, 0, GL_RGBA, GL_FLOAT, nullptr);
+        }
+        s_bind_framebuffer(kFramebuffer, s_rain_framebuffer);
+        s_framebuffer_texture(kFramebuffer, kColorAttachment, GL_TEXTURE_2D, s_rain_texture, 0);
+        s_rain_cover = CloudRainCover();
+        if (s_check_framebuffer(kFramebuffer) == kFramebufferComplete)
+        {
+            glViewport(0, 0, 1, 1);
+            glDisable(GL_BLEND);
+            glDisable(GL_SCISSOR_TEST);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            color_mask_fn(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glUseProgram(s_rain_program);
+            glUniformMatrix4fv(glGetUniformLocation(s_rain_program, "uCamera"), 1, GL_FALSE, p.camera);
+            glUniformMatrix4fv(glGetUniformLocation(s_rain_program, "uWorld"), 1, GL_FALSE, p.world);
+            glUniformMatrix4fv(glGetUniformLocation(s_rain_program, "uLight"), 1, GL_FALSE, p.light);
+            glUniform1i(glGetUniformLocation(s_rain_program, "uCloudMap"), 0);
+            glUniform1i(glGetUniformLocation(s_rain_program, "uRefraction"), 1);
+            glBindTexture(GL_TEXTURE_2D, p.texture);
+            glActiveTexture(GL_TEXTURE0 + 1);
+            glBindTexture(GL_TEXTURE_2D, s_refraction);
+            draw_quad(p, glGetAttribLocation(s_rain_program, "aPos"), glGetAttribLocation(s_rain_program, "aXY"));
+            float cover[4] = {};
+            glPixelStorei(0x0D02 /* GL_PACK_ROW_LENGTH */, 0);
+            glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, cover);
+            s_rain_cover.valid = true;
+            s_rain_cover.cumulus = cover[0];
+            s_rain_cover.heavy_haze = cover[1];
+            s_rain_params = p;
+            s_rain_cached = true;
+        }
+        s_bind_framebuffer(kFramebuffer, static_cast<GLuint>(framebuffer));
+        glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        glUseProgram(static_cast<GLuint>(program));
+        glBindVertexArray(static_cast<GLuint>(vao));
+        glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer));
+        for (int unit = 0; unit < 2; ++unit)
+        {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(textures[unit]));
+        }
+        glActiveTexture(static_cast<GLenum>(active));
+        glPixelStorei(0x0D02 /* GL_PACK_ROW_LENGTH */, pack_row);
+        glClearColor(clear[0], clear[1], clear[2], clear[3]);
+        color_mask_fn(color_mask[0], color_mask[1], color_mask[2], color_mask[3]);
+        if (blend)
+        {
+            glEnable(GL_BLEND);
+        }
+        if (scissor)
+        {
+            glEnable(GL_SCISSOR_TEST);
+        }
+        if (depth)
+        {
+            glEnable(GL_DEPTH_TEST);
+        }
+        if (cull)
+        {
+            glEnable(GL_CULL_FACE);
+        }
+    }
+
     bool queue_cloud_sky_gpu(const CloudSkyGpuInput &in)
     {
         ensure_gl_objects();
@@ -1294,6 +1445,15 @@ void main()
         p->texture = in.texture;
         p->revision = in.revision;
         p->geometry_mode = in.geometry_mode;
+        if (in.sample_overhead)
+        {
+            sample_rain_cover(*p);
+        }
+        else
+        {
+            s_rain_cover = CloudRainCover();
+            s_rain_cached = false;
+        }
         ImDrawList *dl = ImGui::GetBackgroundDrawList();
         dl->AddCallback(render_cloud_sky_gpu, p);
         dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
