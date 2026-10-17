@@ -337,58 +337,79 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     return result;
 }
 
+bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allobjs)
+{
+    Star *s;
+
+    std::string key = "";
+    key = std::string(cel->name);
+    CelestialObject *cursor = cel;
+    int depth = 0;
+    while (cursor->orbit && cursor->orbit->center && depth++ < 100)
+    {
+        cursor = cursor->orbit->center;
+        key = std::string(cursor->name) + std::string(".") + key;
+    }
+
+    const char* l = key.c_str();
+
+    switch (cel->typeclass())
+    {
+        case class_galaxy:
+        allobjs[l] = ((Galaxy*)cel)->to_json();
+        break;
+
+        case class_star:
+        s = (Star*)cel;
+        s->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
+        allobjs[l] = s->to_json();
+        break;
+
+        case class_planet:
+        allobjs[l] = ((Planet*)cel)->to_json();
+        break;
+
+        case class_moon:
+        allobjs[l] = ((Moon*)cel)->to_json();
+        break;
+
+        case class_comet:
+        allobjs[l] = ((Comet*)cel)->to_json();
+        break;
+
+        case class_satellite:
+        allobjs[l] = ((Satellite*)cel)->to_json();
+        break;
+
+        default:
+        std::cerr << "Attempted to save CelestialObject " << cel->name << " of blank or unknown type class." << std::endl;
+    }
+
+    return true;
+}
+
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 {
     try
     {
         int i;
-        Star *s;
         json allobjs;
         for (i=0; cels[i]; i++)
         {
             if (cels[i]->deleted) continue;
-            std::string key = "";
-            key = std::string(cels[i]->name);
-            CelestialObject *cursor = cels[i];
-            int depth = 0;
-            while (cursor->orbit && cursor->orbit->center && depth++ < 100)
-            {
-                cursor = cursor->orbit->center;
-                key = std::string(cursor->name) + std::string(".") + key;
-            }
-
-            const char* l = key.c_str();
             if (oe && !cels[i]->user_edited) continue;
-            switch (cels[i]->typeclass())
+
+            save_one(fs, cels[i], allobjs);
+            if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
             {
-                case class_galaxy:
-                allobjs[l] = ((Galaxy*)cels[i])->to_json();
-                break;
-
-                case class_star:
-                s = (Star*)cels[i];
-                s->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
-                allobjs[l] = s->to_json();
-                break;
-
-                case class_planet:
-                allobjs[l] = ((Planet*)cels[i])->to_json();
-                break;
-
-                case class_moon:
-                allobjs[l] = ((Moon*)cels[i])->to_json();
-                break;
-
-                case class_comet:
-                allobjs[l] = ((Comet*)cels[i])->to_json();
-                break;
-
-                case class_satellite:
-                allobjs[l] = ((Satellite*)cels[i])->to_json();
-                break;
-
-                default:
-                std::cerr << "Attempted to save CelestialObject " << cels[i]->name << " of blank or unknown type class." << std::endl;
+                CelestialObject *cen = cels[i]->orbit->center;
+                while (1)
+                {
+                    save_one(fs, cen, allobjs);
+                    if (!cen->orbit) break;
+                    if (!cen->orbit->center) break;
+                    cen = cen->orbit->center;
+                }
             }
         }
 

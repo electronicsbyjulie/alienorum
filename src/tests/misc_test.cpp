@@ -3,10 +3,115 @@
 #include "../classes/misc.h"
 #include "../classes/point.h"
 #include "../classes/surfacescatter.h"
+#include "../classes/surfacebiomes.h"
 #include <unordered_map>
 #include <unordered_set>
 
 using namespace alienorum;
+
+TEST(SurfaceBiomesTest, WindingBordersAreRepeatableAndVaryAlongTheCoast)
+{
+    SurfaceBiomes field(42);
+    const double radius = 6371000.0;
+    double minimum = 1000, maximum = -1000;
+    double prior = 0;
+    for (int north = -200; north <= 200; north += 5)
+    {
+        double west = -100, east = 100;
+        for (int step = 0; step < 30; ++step)
+        {
+            const double middle = (west + east) * 0.5;
+            const auto coord = field.coordinates(radius, north / radius, middle / radius);
+            if (coord.second < 0)
+            {
+                west = middle;
+            }
+            else
+            {
+                east = middle;
+            }
+        }
+        const double crossing = (west + east) * 0.5;
+        minimum = std::min(minimum, crossing);
+        maximum = std::max(maximum, crossing);
+        if (north > -200)
+        {
+            EXPECT_LT(fabs(crossing - prior), 5.0);
+        }
+        prior = crossing;
+        const auto first = field.coordinates(radius, north / radius, crossing / radius);
+        const auto again = field.coordinates(radius, north / radius, crossing / radius);
+        EXPECT_EQ(first.first, again.first);
+        EXPECT_EQ(first.second, again.second);
+    }
+    EXPECT_GT(maximum - minimum, 5.0);
+}
+
+TEST(SurfaceBiomesTest, DisplacementHasNoDateLineOrPolarSeam)
+{
+    SurfaceBiomes field(42);
+    const double radius = 6371000.0;
+    const auto west = field.coordinates(radius, 0.4, -_pi);
+    const auto east = field.coordinates(radius, 0.4, _pi);
+    EXPECT_NEAR(west.first, east.first, 1e-12);
+    EXPECT_NEAR(remainder(west.second - east.second, 2.0 * _pi), 0, 1e-12);
+    const auto pole_a = field.coordinates(radius, half_pi, 0);
+    const auto pole_b = field.coordinates(radius, half_pi, 2.0);
+    EXPECT_NEAR(pole_a.first, pole_b.first, 1e-12);
+    EXPECT_NEAR(pole_a.second, pole_b.second, 1e-9);
+    const auto before = field.coordinates(radius, 0.4, 0.5);
+    field.set_world(43);
+    const auto other = field.coordinates(radius, 0.4, 0.5);
+    EXPECT_GT(hypot(before.first - other.first, before.second - other.second), 1e-8);
+    field.set_world(42);
+    const auto restored = field.coordinates(radius, 0.4, 0.5);
+    EXPECT_EQ(before, restored);
+}
+
+TEST(SurfaceBiomesTest, StrengthScalesGeographicDisplacement)
+{
+    SurfaceBiomes field(42);
+    const double radius = 6371000.0;
+    const double latitude = 0.4, longitude = 0.5;
+    const auto off = field.coordinates(radius, latitude, longitude, 0.0);
+    EXPECT_EQ(off, std::make_pair(latitude, longitude));
+    const auto normal = field.coordinates(radius, latitude, longitude);
+    EXPECT_EQ(normal, field.coordinates(radius, latitude, longitude, 1.0));
+    const auto triple = field.coordinates(radius, latitude, longitude, 3.0);
+    const double normal_north = radius * (normal.first - latitude);
+    const double normal_east = radius * cos(latitude) * (normal.second - longitude);
+    EXPECT_GT(hypot(normal_north, normal_east), 1.0);
+    EXPECT_NEAR(radius * (triple.first - latitude), normal_north * 3.0, 0.001);
+    EXPECT_NEAR(radius * cos(latitude) * (triple.second - longitude), normal_east * 3.0, 0.001);
+}
+
+TEST(SurfaceBiomesTest, CoastalReliefRisesGentlyFromSeaAcrossTheCircularSeam)
+{
+    std::vector<double> relief(720, 1000.0);
+    std::vector<bool> water(720, false);
+    water[0] = true;
+    const double spacing = 2.0;
+    const double incline = 4.0 * _pi / 180.0;
+    taper_coastal_relief(relief, water, spacing, incline);
+    EXPECT_EQ(relief[0], 0.0);
+    for (int i = 1; i < 360; ++i)
+    {
+        const double gradient = (relief[i] - relief[i - 1]) / spacing;
+        EXPECT_GE(gradient, tan(2.0 * _pi / 180.0));
+        EXPECT_LE(gradient, tan(6.0 * _pi / 180.0));
+        EXPECT_NEAR(relief[i], relief[720 - i], 1e-12);
+    }
+    std::fill(water.begin(), water.end(), false);
+    const auto inland = relief;
+    taper_coastal_relief(relief, water, spacing, incline);
+    EXPECT_EQ(relief, inland);
+    std::fill(water.begin(), water.end(), true);
+    taper_coastal_relief(relief, water, spacing, incline);
+    for (double height : relief)
+    {
+        EXPECT_EQ(height, 0.0);
+    }
+}
 
 TEST(SurfaceSceneryTest, WalkingPreservesObjectsAcrossCellAndFaceBoundaries)
 {

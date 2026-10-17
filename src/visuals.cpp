@@ -9,6 +9,7 @@
 #include "classes/clouds_gpu.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
+#include "classes/surfacebiomes.h"
 
 using namespace alienorum;
 
@@ -5156,25 +5157,53 @@ void draw_horizon()
         }
 
         Map *map = gaseous ? cel->cloud_map : cel->surf_map;
-        RGB3 rgb = map ? map->color_at(viewer_lat, viewer_lon) : RGB3(0, 8, 24);
+        double surface_radius = cel->get_equatorial_radius();
+        if (surface_radius <= 0)
+        {
+            surface_radius = cel->volumetric_mean_radius;
+        }
+        if (surface_radius <= 0)
+        {
+            surface_radius = earth_radius;
+        }
+        static SurfaceBiomes biome_field;
+        biome_field.set_world(static_cast<uint32_t>(whereami));
+        const auto surface_sample = [&](double latitude, double longitude)
+        {
+            if (!map)
+            {
+                return RGB3(0, 8, 24);
+            }
+            if (uses_rocky_map(cel->type))
+            {
+                const auto coord = biome_field.coordinates(surface_radius, latitude, longitude, shore_displacement);
+                return map->color_at(coord.first, coord.second);
+            }
+            return map->color_at(latitude, longitude);
+        };
+        RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
 
         bool water_favorable = p && p->get_surface_pressure() >= 150
             && p->estimate_surface_temperature() < 400;
 
-        const auto vegetation_at = [&](double latitude, double longitude)
+        const auto vegetation_color = [&](const RGB3 &sample)
         {
             if (!p || !map || !uses_rocky_map(p->type) || !water_favorable
                 || !p->has_water || !(p->vegetation_r || p->vegetation_g))
             {
                 return false;
             }
-            const RGB3 sample = map->color_at(latitude, longitude);
             const double local_hue = Color::hue_from_rgb(sample.r, sample.g, sample.b);
             const double veg_hue = Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
             const double hue_delta = fabs(local_hue - veg_hue);
             return fmin(hue_delta, 2.0 * _pi - hue_delta) < 0.35
                 && fabs(Color::sat_from_rgb(sample.r, sample.g, sample.b)
                     - Color::sat_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b)) < 0.35;
+        };
+
+        const auto vegetation_at = [&](double latitude, double longitude)
+        {
+            return vegetation_color(surface_sample(latitude, longitude));
         };
 
         const bool ocean_world = p && (p->type == waterworld || p->type == hycean);
@@ -5189,20 +5218,11 @@ void draw_horizon()
             {
                 return false;
             }
-            const RGB3 sample = map->color_at(latitude, longitude);
+            const RGB3 sample = surface_sample(latitude, longitude);
             return sample.b > 0.8 * sample.r && fmax(sample.b, sample.g) > 1.333 * sample.r
-                && !vegetation_at(latitude, longitude);
+                && !vegetation_color(sample);
         };
 
-        double surface_radius = cel->get_equatorial_radius();
-        if (surface_radius <= 0)
-        {
-            surface_radius = cel->volumetric_mean_radius;
-        }
-        if (surface_radius <= 0)
-        {
-            surface_radius = earth_radius;
-        }
         const double surface_eye = fmax(0.01, viewer_eye_height);
         const double surface_lift = p && !gaseous ? p->atmospheric_horizon_lift() : 0.0;
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye)
@@ -5354,18 +5374,27 @@ void draw_horizon()
             }
 
             double terrain_height = dispcx * 0.08 * zoom;
+            std::vector<double> coastal_relief(hznodes);
+            std::vector<bool> coastal_water(hznodes, false);
             for (j = 0; j < hznodes; j++)
             {
                 double bump_px = cached_bump_relief[j] * dispcx * zoom;
                 double proc_px = terrain_height * (cached_raw_noise[j] - cached_raw_min) * 2.5;
                 hzheight[j] = hz_dy[j] - (bump_px + proc_px);
+                coastal_relief[j] = (bump_px + proc_px) * surface_range / (dispcx * zoom);
                 if (surface_water)
                 {
                     const auto coord = surface_coord(surface_range, 2.0 * _pi * j / hznodes);
-                    if (water_at(coord.first, coord.second))
-                    {
-                        hzheight[j] = hz_dy[j];
-                    }
+                    coastal_water[j] = water_at(coord.first, coord.second);
+                }
+            }
+            if (surface_water)
+            {
+                const double ring_spacing = surface_radius * sin(surface_range / surface_radius) * 2.0 * _pi / hznodes;
+                taper_coastal_relief(coastal_relief, coastal_water, ring_spacing, 4.0 * _pi / 180.0);
+                for (j = 0; j < hznodes; ++j)
+                {
+                    hzheight[j] = hz_dy[j] - coastal_relief[j] * dispcx * zoom / surface_range;
                 }
             }
         }
@@ -5621,13 +5650,13 @@ void draw_horizon()
         }
         #endif
 
-        if (surface_water && !faded)
+        if (!faded && (surface_water || (map && uses_rocky_map(cel->type) && cel->type != lavaworld)))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
             const auto ground_color = [&](double x, double y)
             {
                 const auto coord = ground_coord(x, y);
-                const RGB3 sample = map ? map->color_at(coord.first, coord.second) : RGB3(0, 8, 24);
+                const RGB3 sample = surface_sample(coord.first, coord.second);
                 return rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
                     fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
                     dragging ? (192 - 128 * is_day) : 255));
@@ -5646,7 +5675,7 @@ void draw_horizon()
                     return;
                 }
                 const ImU32 color = ground_color((left + right) * 0.5, (top + bottom) * 0.5);
-                const bool small = right - left <= 2 && bottom - top <= 2;
+                const bool small = right - left <= 1 && bottom - top <= 1;
                 const bool uniform = top >= horizon_max
                     && color == ground_color(left + 0.5, top + 0.5)
                     && color == ground_color(right - 0.5, top + 0.5)
@@ -5663,14 +5692,14 @@ void draw_horizon()
                 }
                 const int mid_x = (left + right) / 2;
                 const int mid_y = (top + bottom) / 2;
-                if (right - left > 2 && bottom - top > 2)
+                if (right - left > 1 && bottom - top > 1)
                 {
                     self(self, left, top, mid_x, mid_y);
                     self(self, mid_x, top, right, mid_y);
                     self(self, left, mid_y, mid_x, bottom);
                     self(self, mid_x, mid_y, right, bottom);
                 }
-                else if (right - left > 2)
+                else if (right - left > 1)
                 {
                     self(self, left, top, mid_x, bottom);
                     self(self, mid_x, top, right, bottom);
@@ -5911,7 +5940,7 @@ void draw_horizon()
                         has_prev = false;
                         continue;
                     }
-                    const RGB3 wave_rgb = map ? map->color_at(coord.first, coord.second) : RGB3(0, 8, 24);
+                    const RGB3 wave_rgb = surface_sample(coord.first, coord.second);
 
                     ImVec2 cur_pt(wx, wy);
 
@@ -5973,8 +6002,7 @@ void draw_horizon()
         }
         if (!ocean_world && !gaseous && !faded)
         {
-            Map *surf_map = cel->surf_map;
-            RGB3 base_map_rgb = surf_map ? surf_map->color_at(viewer_lat, viewer_lon) : RGB3(160, 120, 80);
+            RGB3 base_map_rgb = surface_sample(viewer_lat, viewer_lon);
             double P_surf = p ? p->get_surface_pressure() : 0.0;
             double T_surf = p ? p->estimate_surface_temperature() : 0.0;
 
@@ -6455,8 +6483,7 @@ void draw_horizon()
                     rocks[num_rocks].base_valid = base_valid;
                     rocks[num_rocks].vegetation = is_vegetation;
                     rocks[num_rocks].aspect = rock_aspect;
-                    rocks[num_rocks].surface_color = surf_map
-                        ? surf_map->color_at(object.latitude, object.longitude) : RGB3(160, 120, 80);
+                    rocks[num_rocks].surface_color = surface_sample(object.latitude, object.longitude);
                     num_rocks++;
                 }
 

@@ -60,6 +60,9 @@
 #define cumulus_day_exponent 0.666
 #define cumulus_day_maximum 0.71
 
+// Shoreline and other surface boundary params
+#define shore_displacement 8.0
+
 struct RockInstance
 {
     double dist;

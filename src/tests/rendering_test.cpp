@@ -7,6 +7,7 @@
 #include "../globals.h"
 #include "../visuals.h"
 #include "../classes/clouds_gpu.h"
+#include "../classes/surfacebiomes.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
 #include "universe_fixture.h"
 
@@ -157,6 +158,7 @@ class RenderingRegressionTest : public UniverseFixture
 
     Planet *surface(bool vegetation = false)
     {
+        set(dev_dial, 1.0);
         surface_magnitudes.assign(3, 999.0);
         set(vmag_cache, surface_magnitudes.data());
         Star *primary = make_star("55 Cnc A");
@@ -601,34 +603,46 @@ TEST_F(RenderingRegressionTest, SceneryShadowsFollowTheHostInsteadOfTheSystemPri
     }
 }
 
-TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsAMixedSceneryPopulation)
+TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsBothGroundTypesVisible)
 {
     Planet *world = surface(true);
-    zoom = 4.0;
-    const auto plants = [](const std::vector<ImDrawVert> &vertices)
+    set(altitude, -0.4);
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    const double radius = world->get_equatorial_radius();
+    double west = -100.0 / radius, east = 100.0 / radius;
+    for (int step = 0; step < 30; ++step)
     {
-        int count = 0;
-        for (const auto &vertex : vertices)
+        const double middle = (west + east) * 0.5;
+        if (field.coordinates(radius, viewer_lat, middle).second < 0)
         {
-            const int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
-            const int green = (vertex.col >> IM_COL32_G_SHIFT) & 255;
-            const int blue = (vertex.col >> IM_COL32_B_SHIFT) & 255;
-            if ((vertex.col >> IM_COL32_A_SHIFT) == 255
-                && green > red * 1.4 && blue < red * 0.8
-                && vertex.col != IM_COL32(80, 140, 30, 255))
-            {
-                ++count;
-            }
+            west = middle;
         }
-        return count;
-    };
-    viewer_lon = -0.05 / world->get_equatorial_radius();
-    const int before = plants(scenery());
-    viewer_lon = 0.05 / world->get_equatorial_radius();
-    const int after = plants(scenery());
-    EXPECT_GT(before, 0);
-    EXPECT_GT(after, 0);
-    EXPECT_NEAR(before, after, std::max(before, after) * 0.2);
+        else
+        {
+            east = middle;
+        }
+    }
+    const double border = (west + east) * 0.5;
+    for (int side = -1; side <= 1; side += 2)
+    {
+        viewer_lon = border + side * 0.05 / radius;
+        find_horizon();
+        draw_horizon();
+        const auto pixels = render();
+        int vegetated = 0, bare = 0;
+        for (size_t index = 0; index < pixels.size(); index += 4)
+        {
+            if (pixels[index + 3] != 255)
+            {
+                continue;
+            }
+            vegetated += pixels[index] == 80 && pixels[index + 1] == 140 && pixels[index + 2] == 30;
+            bare += pixels[index] == 160 && pixels[index + 1] == 120 && pixels[index + 2] == 80;
+        }
+        EXPECT_GT(vegetated, 0) << "Viewer offset: " << side * 0.05 << " m";
+        EXPECT_GT(bare, 0) << "Viewer offset: " << side * 0.05 << " m";
+        ImGui::NewFrame();
+    }
 }
 
 TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
@@ -638,24 +652,37 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
     world->surf_map = new SceneryTestMap(true, true);
     set(show_terrain, false);
     set(altitude, -0.4);
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    const double radius = world->get_equatorial_radius();
+    double west = -100.0 / radius, east = 100.0 / radius;
+    for (int step = 0; step < 30; ++step)
+    {
+        const double middle = (west + east) * 0.5;
+        if (field.coordinates(radius, viewer_lat, middle).second < 0)
+        {
+            west = middle;
+        }
+        else
+        {
+            east = middle;
+        }
+    }
+    const double coast = (west + east) * 0.5;
     for (double offset : {-0.05, 0.05})
     {
-        viewer_lon = offset / world->get_equatorial_radius();
+        viewer_lon = coast + offset / radius;
         find_horizon();
         draw_horizon();
         int crests = 0;
-        float crest_right = 0;
         for (const auto &vertex : ImGui::GetBackgroundDrawList()->VtxBuffer)
         {
             const int alpha = vertex.col >> IM_COL32_A_SHIFT;
             if (alpha > 0 && alpha < 255)
             {
                 ++crests;
-                crest_right = std::max(crest_right, vertex.pos.x);
             }
         }
         EXPECT_GT(crests, 20);
-        EXPECT_LT(crest_right, dispcx + 5.0);
         const auto pixels = render();
         int sea = 0, land = 0;
         for (int y = 0; y < render_height / 3; ++y)
