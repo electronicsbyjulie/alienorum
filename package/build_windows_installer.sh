@@ -20,6 +20,12 @@ fi
 
 VCPKG_TRIPLET=x64-mingw-static
 
+# The fixed host supplement is installed by CMake and must ship with every release.
+if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
+    echo "Missing catalog: catalogs/exoplanet_host_positions.dat" >&2
+    exit 1
+fi
+
 # Starter texture set for the installer: exactly the files git already tracks under
 # maps/ (i.e. the bodies whose planets.json entry has no live download URL, or has one
 # commented out with '#'). Regenerated every run so it can never silently go stale or

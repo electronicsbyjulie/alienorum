@@ -99,6 +99,10 @@ namespace alienorum
         static ExoRow exorow_from_json(const json& row, bool* ok);
         static void exorow_write_line(FILE* fp, const ExoRow& row);
         static bool exorow_read_line(FILE* fp, ExoRow& row);
+        static bool exorow_has_position(const ExoRow& row);
+        static std::map<std::string, ExoRow> read_exoplanet_host_positions(const char* path);
+        static bool apply_exoplanet_host_position(ExoRow& row, const std::map<std::string, ExoRow>& positions);
+        static bool accept_exoplanet_source(json& row, bool from_nasa);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
     };

@@ -151,6 +151,7 @@ if(WIN32)
 	# they MUST also be added to the CMake/vcpkg installation rules here so they are bundled
 	# in the release installer.
 	install(FILES
+		catalogs/exoplanet_host_positions.dat
 		catalogs/star_orbits.dat
 		catalogs/planets.json
 		catalogs/asteroids.json

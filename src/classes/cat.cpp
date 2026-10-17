@@ -6127,6 +6127,113 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     return true;
 }
 
+bool CatalogReader::exorow_has_position(const ExoRow& row)
+{
+    return std::isfinite(row.ra) && row.ra >= 0 && row.ra < 360 &&
+           std::isfinite(row.dec) && row.dec >= -90 && row.dec <= 90 &&
+           std::isfinite(row.sy_dist) && row.sy_dist > 0;
+}
+
+std::map<std::string, ExoRow> CatalogReader::read_exoplanet_host_positions(const char* path)
+{
+    std::map<std::string, ExoRow> positions;
+    std::ifstream input(path);
+    if (!input)
+    {
+        std::cerr << "WARNING: Cannot open exoplanet host positions: " << path << std::endl;
+        return positions;
+    }
+
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (line.empty() || line[0] == '#')
+        {
+            continue;
+        }
+        std::istringstream fields(line);
+        ExoRow position;
+        std::getline(fields, position.hostname, '|');
+        auto read_number = [&fields]() -> double
+        {
+            std::string value;
+            std::getline(fields, value, '|');
+            std::istringstream number(value);
+            double result = NAN;
+            if (!(number >> result))
+            {
+                return NAN;
+            }
+            number >> std::ws;
+            return number.eof() ? result : NAN;
+        };
+        position.ra = read_number();
+        position.dec = read_number();
+        position.sy_dist = read_number();
+        // Optional stellar fields follow the distance interval and Gaia identifier.
+        std::string unused;
+        for (int i = 0; i < 3; ++i)
+        {
+            std::getline(fields, unused, '|');
+        }
+        position.sy_vmag = read_number();
+        std::getline(fields, position.st_spectype, '|');
+        position.st_teff = read_number();
+        position.st_rad = read_number();
+        if (position.hostname.empty() || !exorow_has_position(position))
+        {
+            std::cerr << "WARNING: Invalid exoplanet host position: " << position.hostname << std::endl;
+            continue;
+        }
+        positions.emplace(position.hostname, position);
+    }
+    return positions;
+}
+
+bool CatalogReader::apply_exoplanet_host_position(ExoRow& row, const std::map<std::string, ExoRow>& positions)
+{
+    if (exorow_has_position(row))
+    {
+        return false;
+    }
+    auto match = positions.find(row.hostname);
+    if (match == positions.end())
+    {
+        return false;
+    }
+    // Keep coordinates and distance together from the same identified source.
+    row.ra = match->second.ra;
+    row.dec = match->second.dec;
+    row.sy_dist = match->second.sy_dist;
+    return true;
+}
+
+bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
+{
+    std::string host = row.value("hostname", "");
+    std::string normalized;
+    for (unsigned char c : host)
+    {
+        if (c != ' ' && c != '-')
+        {
+            normalized += std::tolower(c);
+        }
+    }
+    if (normalized == "koi5" || normalized == "koi5a" ||
+        normalized == "toi1241" || normalized == "toi1241a" || normalized == "kic8554498")
+    {
+        // EU's seven-day KOI-5 b is NASA's false-positive KOI-5.02.
+        // Accept planets in this system only from NASA's confirmed-planet feed.
+        if (!from_nasa || row.value("koi_disposition", "") == "FALSE POSITIVE")
+        {
+            return false;
+        }
+        row["hostname"] = "KOI-5";
+        row["source_catalog"] = "NASA";
+    }
+    return true;
+}
+
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new)
 {
     *was_new = false;
@@ -6269,10 +6376,6 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
                     host_star = hdcache[host_star->HD];
                     star_exists = true;
                 }
-                else if (hdcache)
-                {
-                    hdcache[host_star->HD] = host_star;
-                }
             }
         }
         else if (name_len >= 4 && strncmp(host_star->name, "HIP ", 4) == 0)
@@ -6285,10 +6388,6 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
                     delete host_star;
                     host_star = hipcache[host_star->HIP];
                     star_exists = true;
-                }
-                else if (hipcache)
-                {
-                    hipcache[host_star->HIP] = host_star;
                 }
             }
         }
@@ -6329,7 +6428,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         }
 
         // Position and distance
-        if (sy_dist && (ra || dec))
+        if (exorow_has_position(row))
         {
             host_star->distance = sy_dist;
             host_star->right_ascension = ra;
@@ -6419,6 +6518,15 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         if (!star_exists)
         {
             append_cel(host_star);
+            // Publish lookup pointers only after position validation succeeds.
+            if (host_star->HD > 0 && host_star->HD <= MAX_HD && hdcache)
+            {
+                hdcache[host_star->HD] = host_star;
+            }
+            if (host_star->HIP > 0 && host_star->HIP <= MAX_HIP && hipcache)
+            {
+                hipcache[host_star->HIP] = host_star;
+            }
         }
         *was_new = !star_exists;
     }
@@ -7152,6 +7260,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     const char* exocache = "catalogs/exoplanets.json";
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
+    const char* position_catalog = "catalogs/exoplanet_host_positions.dat";
+    const auto host_positions = read_exoplanet_host_positions(position_catalog);
 
     std::stringstream lmss;
     lmss << "Loading exoplanets from unified TAP sources...";
@@ -7164,12 +7274,17 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     {
         do_download = false;
     }
+    if (radio_silence)
+    {
+        do_download = false;
+    }
 
-    // A derived cache (.dat) is valid only if it exists, the json cache exists,
-    // and the .dat file is not older than the json cache.
+    // Derived caches also expire when the fixed host supplement changes.
     bool derived_cache_valid = file_exists(derived_cache) &&
                                file_exists(exocache) &&
-                               (file_age(derived_cache) <= file_age(exocache) + 60);
+                               (file_age(derived_cache) <= file_age(exocache) + 60) &&
+                               (!file_exists(position_catalog) ||
+                                fs::last_write_time(derived_cache) >= fs::last_write_time(position_catalog));
 
     if (!do_download && derived_cache_valid)
     {
@@ -7386,9 +7501,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             std::unordered_map<std::string, json> merged_planets;
 
             // Unified processing pipeline
-            auto register_planet = [&](const json& item)
+            auto register_planet = [&](const json& item, bool from_nasa)
             {
                 json litem = item;
+                if (!accept_exoplanet_source(litem, from_nasa))
+                {
+                    return;
+                }
                 std::string pl_name = litem.value("pl_name", "");
                 if (pl_name.empty()) return;
                 char cinit = pl_name.c_str()[0];
@@ -7634,7 +7753,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                                 obj[key] = row_array[i];
                             }
                         }
-                        register_planet(obj);
+                        register_planet(obj, false);
                     }
                 }
             }
@@ -7654,7 +7773,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                             std::string hd = item["hd_name"];
                             if (hd == "HD 160691") continue;
                         }
-                        register_planet(item);
+                        register_planet(item, true);
                     }
                 }
             }
@@ -7700,6 +7819,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         fs >> planets_array;
         fs.close();
         size_t prev_size = planets_array.size();
+        planets_array.erase(std::remove_if(planets_array.begin(), planets_array.end(), [](json& row)
+        {
+            // Purge old EU entries from the persisted unified JSON as well.
+            return !accept_exoplanet_source(row, row.value("source_catalog", "") == "NASA");
+        }), planets_array.end());
         dedup_planets(planets_array);
         if (planets_array.size() < prev_size)
         {
@@ -7725,6 +7849,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     std::string last_hostname;
     size_t total_p = planets_array.size();
     size_t cur_p = 0;
+    std::vector<ExoRow> deferred_hosts;
+    std::map<std::string, bool> catalog_hosts;
 
     for (const auto& jrow : planets_array)
     {
@@ -7761,6 +7887,17 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
 
         if (!strcasecmp(row.pl_name.c_str(), "eps Ind Bb")) continue;
+
+        catalog_hosts[row.hostname] = true;
+        if (!exorow_has_position(row) && host_positions.count(row.hostname))
+        {
+            if (stars_only)
+            {
+                deferred_hosts.push_back(row);
+                continue;
+            }
+            apply_exoplanet_host_position(row, host_positions);
+        }
 
         Star* host_star = nullptr;
         bool was_new = false;
@@ -7808,6 +7945,35 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             mtx.lock();
             loading_msg = lmss.str();
             mtx.unlock();
+        }
+    }
+
+    // A host can remain valid after its reported planet was rejected.
+    if (stars_only)
+    {
+        for (const auto& entry : host_positions)
+        {
+            if (!catalog_hosts.count(entry.first))
+            {
+                deferred_hosts.push_back(entry.second);
+            }
+        }
+    }
+
+    // Recover identified hosts after the ordinary star pass, before committing its cache.
+    for (ExoRow& row : deferred_hosts)
+    {
+        if (abort_load || ncelobjs >= MAX_CELOBJS)
+        {
+            break;
+        }
+        apply_exoplanet_host_position(row, host_positions);
+        bool was_new = false;
+        Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+        if (host_star && was_new && cachefp)
+        {
+            exorow_write_line(cachefp, row);
+            rows_written++;
         }
     }
 

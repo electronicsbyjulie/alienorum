@@ -1,4 +1,6 @@
 #include <cstring>
+#include <chrono>
+#include <filesystem>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
 #include "../loaders.h"
@@ -194,7 +196,120 @@ class TestCatalogReader : public CatalogReader
 {
 public:
     using CatalogReader::resolve_or_create_exostar;
+    using CatalogReader::exorow_has_position;
+    using CatalogReader::read_exoplanet_host_positions;
+    using CatalogReader::apply_exoplanet_host_position;
+    using CatalogReader::exorow_read_line;
+    using CatalogReader::exorow_write_line;
+    using CatalogReader::accept_exoplanet_source;
 };
+
+TEST_F(CatalogParsingTest, Koi5UsesNasaWhileOtherHostsRetainEuData)
+{
+    json eu = json::object();
+    eu["hostname"] = "KOI-5";
+    eu["pl_name"] = "KOI-5 b";
+    eu["pl_orbper"] = 7.05186;
+    eu["sy_vmag"] = 10.5;
+    EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(eu, false));
+
+    json nasa = eu;
+    nasa["hostname"] = "KOI-5 A";
+    nasa["pl_orbper"] = 4.780327581;
+    nasa["sy_vmag"] = 11.713;
+    EXPECT_TRUE(TestCatalogReader::accept_exoplanet_source(nasa, true));
+    EXPECT_EQ(nasa["hostname"], "KOI-5");
+    EXPECT_EQ(nasa["source_catalog"], "NASA");
+    EXPECT_EQ(nasa["pl_orbper"], 4.780327581);
+    nasa["koi_disposition"] = "FALSE POSITIVE";
+    EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(nasa, true));
+
+    eu["hostname"] = "TOI-1241";
+    EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(eu, false));
+    eu["hostname"] = "KOI-55";
+    EXPECT_TRUE(TestCatalogReader::accept_exoplanet_source(eu, false));
+    EXPECT_EQ(eu["sy_vmag"], 10.5);
+}
+
+TEST_F(CatalogParsingTest, HostPositionSupplementRecoversAndCachesAnIdentifiedStar)
+{
+    auto positions = TestCatalogReader::read_exoplanet_host_positions("catalogs/exoplanet_host_positions.dat");
+    ASSERT_EQ(positions.size(), 52u);
+
+    const ExoRow& component_a = positions.at("2MASS J18452562+4339300");
+    EXPECT_NEAR(component_a.ra, 281.3566609376, 1e-9);
+    EXPECT_NEAR(component_a.dec, 43.6584094391, 1e-9);
+    EXPECT_NEAR(component_a.sy_dist, 331.56723, 1e-5);
+
+    ExoRow row;
+    row.hostname = "CoRoT-33";
+    row.pl_name = "CoRoT-33 b";
+    row.ra = 279.641666678;
+    row.dec = 5.624722241;
+    ASSERT_TRUE(TestCatalogReader::apply_exoplanet_host_position(row, positions));
+    EXPECT_NEAR(row.sy_dist, 651.35693, 1e-5);
+    EXPECT_NEAR(row.ra, 279.6413, 0.001);
+    EXPECT_NEAR(row.dec, 5.6247, 0.001);
+
+    TestCatalogReader reader;
+    bool was_new = false;
+    Star* host = reader.resolve_or_create_exostar(row, false, &was_new);
+    ASSERT_NE(host, nullptr);
+    EXPECT_TRUE(was_new);
+    EXPECT_TRUE(host->distance_known);
+    EXPECT_NEAR(host->distance / parsec, row.sy_dist, 1e-5);
+    EXPECT_NEAR(host->right_ascension, row.ra * fiftyseventh, 1e-12);
+    EXPECT_NEAR(host->declination, row.dec * fiftyseventh, 1e-12);
+
+    FILE* cache = tmpfile();
+    ASSERT_NE(cache, nullptr);
+    TestCatalogReader::exorow_write_line(cache, row);
+    rewind(cache);
+    ExoRow restored;
+    bool read = TestCatalogReader::exorow_read_line(cache, restored);
+    fclose(cache);
+    ASSERT_TRUE(read);
+    EXPECT_EQ(restored.hostname, row.hostname);
+    EXPECT_TRUE(TestCatalogReader::exorow_has_position(restored));
+    EXPECT_NEAR(restored.sy_dist, row.sy_dist, 1e-4);
+
+    row.sy_dist = 700;
+    EXPECT_FALSE(TestCatalogReader::apply_exoplanet_host_position(row, positions));
+    EXPECT_EQ(row.sy_dist, 700);
+    row.hostname = "Unidentified host";
+    row.sy_dist = NAN;
+    EXPECT_FALSE(TestCatalogReader::apply_exoplanet_host_position(row, positions));
+    EXPECT_TRUE(std::isnan(row.sy_dist));
+}
+
+TEST_F(CatalogParsingTest, HostPositionSupplementRejectsInvalidMeasurements)
+{
+    auto path = std::filesystem::temp_directory_path() / "alienorum_host_positions_test.dat";
+    {
+        std::ofstream file(path);
+        file << "# Test measurements\n"
+             << "Valid origin|0|0|12\n"
+             << "Invalid distance|1|2|-3\n"
+             << "Invalid RA|360|2|3\n"
+             << "Invalid Dec|1|91|3\n"
+             << "Malformed value|1x|2|3\n"
+             << "Missing value|1|2|\n";
+    }
+    auto positions = TestCatalogReader::read_exoplanet_host_positions(path.string().c_str());
+    std::filesystem::remove(path);
+    ASSERT_EQ(positions.size(), 1u);
+    ExoRow row;
+    row.hostname = "Valid origin";
+    ASSERT_TRUE(TestCatalogReader::apply_exoplanet_host_position(row, positions));
+    EXPECT_TRUE(TestCatalogReader::exorow_has_position(row));
+    bool was_new = false;
+    TestCatalogReader reader;
+    Star* host = reader.resolve_or_create_exostar(row, false, &was_new);
+    ASSERT_NE(host, nullptr);
+    EXPECT_TRUE(host->distance_known);
+    EXPECT_EQ(host->right_ascension, 0);
+    EXPECT_EQ(host->declination, 0);
+}
 
 TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStars)
 {
@@ -294,6 +409,39 @@ TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStar
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, RejectedHostsDoNotLeaveDeletedPointersInCatalogLookups)
+{
+    if (!hdcache)
+    {
+        hdcache = new Star*[MAX_HD + 1]();
+    }
+    if (!hipcache)
+    {
+        hipcache = new Star*[MAX_HIP + 1]();
+    }
+    auto check_rejection = [&](const char* name, Star** cache)
+    {
+        Star* original = cache[99999];
+        cache[99999] = nullptr;
+        ExoRow row;
+        row.hostname = name;
+        row.ra = 10;
+        row.dec = 20;
+        bool was_new = false;
+        TestCatalogReader reader;
+        EXPECT_EQ(reader.resolve_or_create_exostar(row, false, &was_new), nullptr);
+        EXPECT_EQ(cache[99999], nullptr);
+        row.sy_dist = 10;
+        Star* recovered = reader.resolve_or_create_exostar(row, false, &was_new);
+        EXPECT_NE(recovered, nullptr);
+        EXPECT_EQ(cache[99999], recovered);
+        EXPECT_TRUE(was_new);
+        cache[99999] = original;
+    };
+    check_rejection("HD 99999", hdcache);
+    check_rejection("HIP 99999", hipcache);
+}
+
 TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
 {
     CatalogReader cr;
@@ -307,10 +455,72 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
     star_epseri->HD = 22049;
     hdcache[22049] = star_epseri;
 
+    // Force the refresh path, then exercise the resulting cache on the second pass.
+    auto supplement_time = std::filesystem::last_write_time("catalogs/exoplanet_host_positions.dat");
+    const char* cache_paths[] =
+    {
+        "catalogs/exoplanets_stars.dat", "catalogs/exoplanets_planets.dat"
+    };
+    for (const char* path : cache_paths)
+    {
+        if (std::filesystem::exists(path))
+        {
+            std::filesystem::last_write_time(path, supplement_time - std::chrono::seconds(1));
+        }
+    }
+
     cr.load_exoplanets_from_tap(true);
+    auto positions = TestCatalogReader::read_exoplanet_host_positions("catalogs/exoplanet_host_positions.dat");
+    ASSERT_EQ(positions.size(), 52u);
+    std::map<std::string, ExoRow> cached_hosts;
+    FILE* star_cache = fopen("catalogs/exoplanets_stars.dat", "rb");
+    ASSERT_NE(star_cache, nullptr);
+    ExoRow cached_row;
+    while (TestCatalogReader::exorow_read_line(star_cache, cached_row))
+    {
+        cached_hosts[cached_row.hostname] = cached_row;
+    }
+    fclose(star_cache);
+    ASSERT_TRUE(cached_hosts.count("KOI-5"));
+    EXPECT_TRUE(cached_hosts.at("KOI-5").pl_name.empty());
+    EXPECT_NEAR(cached_hosts.at("KOI-5").sy_vmag, 11.713, 1e-5);
+    for (const auto& entry : positions)
+    {
+        SCOPED_TRACE(entry.first);
+        ASSERT_TRUE(cached_hosts.count(entry.first));
+        EXPECT_NEAR(cached_hosts[entry.first].sy_dist, entry.second.sy_dist, 1e-3);
+        Star* recovered = nullptr;
+        for (int i = 0; i < ncelobjs; ++i)
+        {
+            if (cels[i]->typeclass() == class_star && entry.first == cels[i]->name)
+            {
+                recovered = static_cast<Star*>(cels[i]);
+                break;
+            }
+        }
+        ASSERT_NE(recovered, nullptr);
+        EXPECT_TRUE(recovered->distance_known);
+        EXPECT_NEAR(recovered->distance / parsec, entry.second.sy_dist, 1e-3);
+    }
+    int star_count = ncelobjs;
+    cr.load_exoplanets_from_tap(true);
+    EXPECT_EQ(ncelobjs, star_count);
     cr.read_star_orbits_dat(cels);
     unsigned int nexo = cr.load_exoplanets_from_tap();
     EXPECT_GT(nexo, 5000u);
+    json unified;
+    std::ifstream("catalogs/exoplanets.json") >> unified;
+    for (const auto& row : unified)
+    {
+        if (row.value("hostname", "") == "KOI-5")
+        {
+            EXPECT_EQ(row.value("source_catalog", ""), "NASA");
+        }
+    }
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        EXPECT_STRNE(cels[i]->name, "KOI-5 b");
+    }
 
     int idx_e = find_object("PDS 70 e", false);
     EXPECT_GE(idx_e, 0);
