@@ -378,6 +378,8 @@ HD129247                HD129246                125.04y         176.63      125.
 HD150680                Zet Her B               34.45y          050         131         111         1.33s       .46         0                   1967.7                                          0.98        0.915       0.62         5300
 HD34029                 GJ 194 B                104.02128d      040.522     137.156     342.6       0.74272AU   .00089      0                   JD2448147.6                                     2.4828      8.83        72.7         5730
 GJ 195                  GJ 195 B                300y            288         052         088         40AU        .75         0                   2220                                            0.53
+HD14802                 Kap For B               25.81y          139.8       050.4       266.3       11.8AU      .339        0                   1988.89         M0V                             0.53
+Kap For B               Kap For C               3.666d                                              0.0473AU    0                                               M0V                             0.53
 
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
