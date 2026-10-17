@@ -4,10 +4,44 @@
 #include "../classes/point.h"
 #include "../classes/surfacescatter.h"
 #include "../classes/surfacebiomes.h"
+#include "../classes/horizonterrain.h"
 #include <unordered_map>
 #include <unordered_set>
 
 using namespace alienorum;
+
+TEST(HorizonTerrainTest, PixelDepthVariesAcrossASlopeAndOccludesFartherFaces)
+{
+    HorizonTerrainRaster raster;
+    raster.reset(8, 8);
+    ProjectedTerrainVertex a, b, c;
+    a.x = 0;
+    a.y = 0;
+    a.inverse_depth = 0.01;
+    a.distance_over_depth = 10;
+    b = a;
+    b.x = 8;
+    c = a;
+    c.y = 8;
+    c.inverse_depth = 0.005;
+    raster.triangle(a, b, c);
+    const double upper = raster.distance_at(0.5, 0.5);
+    const double lower = raster.distance_at(0.5, 6.5);
+    EXPECT_NEAR(upper, 10.0 / (0.01 * 15.0 / 16.0 + 0.005 / 16.0), 0.001);
+    EXPECT_GT(lower, upper);
+    EXPECT_EQ(raster.top_at(0), 0);
+    EXPECT_FALSE(std::isfinite(raster.distance_at(7.5, 7.5)));
+    a.inverse_depth *= 0.5;
+    b.inverse_depth *= 0.5;
+    c.inverse_depth *= 0.5;
+    raster.triangle(a, b, c);
+    EXPECT_EQ(raster.distance_at(0.5, 0.5), upper);
+    a.inverse_depth *= 4;
+    b.inverse_depth *= 4;
+    c.inverse_depth *= 4;
+    raster.triangle(a, b, c);
+    EXPECT_NEAR(raster.distance_at(0.5, 0.5), upper * 0.5, 0.001);
+}
 
 TEST(SurfaceBiomesTest, WindingBordersAreRepeatableAndVaryAlongTheCoast)
 {

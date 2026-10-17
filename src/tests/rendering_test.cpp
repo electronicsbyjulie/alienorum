@@ -54,6 +54,30 @@ class SceneryTestMap : public Map
     }
 };
 
+class MountainBandsTestMap : public Map
+{
+    public:
+    MountainBandsTestMap()
+    {
+        image_width = 2;
+        image_height = 32768;
+        allocated = image_width * image_height;
+        lat_scale = (image_height - 1) / _pi;
+        lon_scale = 1.0 / _pi;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        for (unsigned long i = 0; i < allocated; ++i)
+        {
+            const bool stripe = (i / image_width / 2) % 2 == 0;
+            red_data[i] = stripe ? 160 : 110;
+            green_data[i] = stripe ? 120 : 100;
+            blue_data[i] = 80;
+        }
+        touch_gen();
+    }
+};
+
 class RenderingRegressionTest : public UniverseFixture
 {
     protected:
@@ -192,6 +216,33 @@ class RenderingRegressionTest : public UniverseFixture
         set(here.local_position, Point(0, 0, 0));
         set(altitude, -0.15);
         return world;
+    }
+
+    double biome_border(Planet *world)
+    {
+        SurfaceBiomes field(static_cast<uint32_t>(whereami));
+        const double radius = world->get_equatorial_radius();
+        double west = -1024.0 / radius, east = 1024.0 / radius;
+        for (int step = 0; step < 40; ++step)
+        {
+            const double middle = (west + east) * 0.5;
+            if (field.coordinates(radius, viewer_lat, middle, shore_displacement).second < 0)
+            {
+                west = middle;
+            }
+            else
+            {
+                east = middle;
+            }
+        }
+        const double border = (west + east) * 0.5;
+        const double step = 0.25 / radius;
+        const double north = field.coordinates(radius, viewer_lat + step, border, shore_displacement).second
+            - field.coordinates(radius, viewer_lat - step, border, shore_displacement).second;
+        const double eastward = field.coordinates(radius, viewer_lat, border + step, shore_displacement).second
+            - field.coordinates(radius, viewer_lat, border - step, shore_displacement).second;
+        set(azimuth, atan2(-north, eastward));
+        return border;
     }
 
     std::vector<ImDrawVert> scenery()
@@ -607,22 +658,8 @@ TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsBothGroundTyp
 {
     Planet *world = surface(true);
     set(altitude, -0.4);
-    SurfaceBiomes field(static_cast<uint32_t>(whereami));
     const double radius = world->get_equatorial_radius();
-    double west = -100.0 / radius, east = 100.0 / radius;
-    for (int step = 0; step < 30; ++step)
-    {
-        const double middle = (west + east) * 0.5;
-        if (field.coordinates(radius, viewer_lat, middle).second < 0)
-        {
-            west = middle;
-        }
-        else
-        {
-            east = middle;
-        }
-    }
-    const double border = (west + east) * 0.5;
+    const double border = biome_border(world);
     for (int side = -1; side <= 1; side += 2)
     {
         viewer_lon = border + side * 0.05 / radius;
@@ -652,22 +689,8 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
     world->surf_map = new SceneryTestMap(true, true);
     set(show_terrain, false);
     set(altitude, -0.4);
-    SurfaceBiomes field(static_cast<uint32_t>(whereami));
     const double radius = world->get_equatorial_radius();
-    double west = -100.0 / radius, east = 100.0 / radius;
-    for (int step = 0; step < 30; ++step)
-    {
-        const double middle = (west + east) * 0.5;
-        if (field.coordinates(radius, viewer_lat, middle).second < 0)
-        {
-            west = middle;
-        }
-        else
-        {
-            east = middle;
-        }
-    }
-    const double coast = (west + east) * 0.5;
+    const double coast = biome_border(world);
     for (double offset : {-0.05, 0.05})
     {
         viewer_lon = coast + offset / radius;
@@ -753,4 +776,34 @@ TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
         }
     }
     EXPECT_GT(plants, 0);
+}
+
+TEST_F(RenderingRegressionTest, MountainsSampleDifferentBiomesAlongTheirDepthAboveTheSeaHorizon)
+{
+    Planet *world = surface();
+    delete world->surf_map;
+    world->surf_map = new MountainBandsTestMap();
+    world->has_water = 0;
+    set(zoom, 20.0);
+    set(altitude, 0.005);
+    find_horizon();
+    draw_horizon();
+    const auto pixels = render();
+    const double radius = world->get_equatorial_radius();
+    const double dip = acos(radius / (radius + viewer_eye_height));
+    const int sea_horizon = static_cast<int>(dispcy + dispcx * zoom * tan(altitude + dip));
+    int mixed_columns = 0;
+    for (int x = 80; x < 112; ++x)
+    {
+        bool first = false, second = false;
+        for (int y = 0; y < std::min(render_height, sea_horizon - 1); ++y)
+        {
+            const int index = ((render_height - y - 1) * render_width + x) * 4;
+            first = first || (pixels[index] == 160 && pixels[index + 1] == 120 && pixels[index + 2] == 80);
+            second = second || (pixels[index] == 110 && pixels[index + 1] == 100 && pixels[index + 2] == 80);
+        }
+        mixed_columns += first && second;
+    }
+    EXPECT_GT(mixed_columns, 0);
+    ImGui::NewFrame();
 }

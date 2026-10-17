@@ -10,6 +10,8 @@
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 #include "classes/surfacebiomes.h"
+#include "classes/horizonterrain.h"
+#include <tuple>
 
 using namespace alienorum;
 
@@ -5227,6 +5229,9 @@ void draw_horizon()
         const double surface_lift = p && !gaseous ? p->atmospheric_horizon_lift() : 0.0;
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye)
             + surface_radius * fmax(0.0, sin(surface_lift));
+        const bool terrain_mesh = show_terrain && map && uses_rocky_map(cel->type)
+            && !ocean_world && cel->type != lavaworld;
+        HorizonTerrainRaster terrain_raster;
         const auto surface_coord = [&](double distance, double bearing)
         {
             const double arc = distance / surface_radius;
@@ -5237,8 +5242,8 @@ void draw_horizon()
                 cos(arc) - sin(viewer_lat) * sin_lat);
             return std::make_pair(latitude, longitude);
         };
-        // Invert the same curved, refracted ground plane used by the scenery.
-        const auto ground_coord = [&](double screen_x, double screen_y)
+        // The sea stays on the curved base surface; raised terrain has its own depth.
+        const auto base_distance = [&](double screen_x, double screen_y)
         {
             const double x = (screen_x - dispcx) / (zoom * dispcx);
             const double y = (dispcy - screen_y) / (zoom * dispcx);
@@ -5247,11 +5252,27 @@ void draw_horizon()
             const double slope = -up / fmax(1e-12, hypot(x, north));
             const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
             const double discriminant = slope * slope - 4.0 * curvature * surface_eye;
-            double distance = surface_range;
             if (discriminant >= 0 && slope + sqrt(discriminant) > 0)
             {
-                distance = fmin(surface_range, 2.0 * surface_eye / (slope + sqrt(discriminant)));
+                const double distance = 2.0 * surface_eye / (slope + sqrt(discriminant));
+                if (distance <= surface_range)
+                {
+                    return distance;
+                }
             }
+            return std::numeric_limits<double>::infinity();
+        };
+        const auto visible_distance = [&](double screen_x, double screen_y)
+        {
+            return std::min(base_distance(screen_x, screen_y), terrain_raster.distance_at(screen_x, screen_y));
+        };
+        const auto ground_coord = [&](double screen_x, double screen_y)
+        {
+            const double x = (screen_x - dispcx) / (zoom * dispcx);
+            const double y = (dispcy - screen_y) / (zoom * dispcx);
+            const double north = cos(altitude) - y * sin(altitude);
+            const double depth = visible_distance(screen_x, screen_y);
+            const double distance = std::isfinite(depth) ? depth : surface_range;
             return surface_coord(distance, azimuth + atan2(x, north));
         };
 
@@ -5269,7 +5290,7 @@ void draw_horizon()
         }
 
         double hzheight[hznodes];
-        if (show_terrain && !gaseous && !ocean_world)
+        if (show_terrain && !gaseous && !ocean_world && !terrain_mesh)
         {
             // The raw noise shape and distant bump relief depend only on where the viewer is standing,
             // so they are cached and regenerated when viewer_lat/viewer_lon/whereami/eye_height changes.
@@ -5568,6 +5589,134 @@ void draw_horizon()
             }
         }
 
+        if (terrain_mesh)
+        {
+            constexpr int terrain_columns = 512;
+            constexpr int terrain_rows = 40;
+            static std::vector<HorizonTerrainVertex> mesh;
+            auto mesh_key = std::make_tuple(whereami, viewer_lat, viewer_lon, surface_eye, surface_radius,
+                surface_lift, map->gen, p ? p->has_water : 0.0f, water_favorable,
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement);
+            static decltype(mesh_key) saved_mesh_key;
+            static bool mesh_valid = false;
+            if (!mesh_valid || saved_mesh_key != mesh_key)
+            {
+                PerlinNoise relief_noise(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
+                const double near_range = fmin(fmax(150.0, surface_range * 0.15), surface_radius * 0.01);
+                const double far_range = fmin(fmax(60000.0, surface_range * 8.0), surface_radius * 0.15);
+                const double base_elevation = map->has_bump_data()
+                    ? map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
+                mesh.resize(terrain_rows * terrain_columns);
+                std::vector<double> row_relief(terrain_columns);
+                std::vector<bool> row_water(terrain_columns);
+                for (int row = 0; row < terrain_rows; ++row)
+                {
+                    const double distance = near_range * pow(far_range / near_range,
+                        static_cast<double>(row) / (terrain_rows - 1));
+                    const double rise = std::clamp((distance - near_range) / (1.5 * surface_range), 0.0, 1.0);
+                    const double ramp = rise * rise * (3.0 - 2.0 * rise);
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        const double bearing = 2.0 * _pi * column / terrain_columns;
+                        const auto coord = surface_coord(distance, bearing);
+                        const double nx = surface_radius * cos(coord.first) * cos(coord.second) / 50000.0;
+                        const double ny = surface_radius * cos(coord.first) * sin(coord.second) / 50000.0;
+                        const double nz = surface_radius * sin(coord.first) / 50000.0;
+                        double total = 0, weight = 0, amplitude = 1, frequency = 1;
+                        for (int octave = 0; octave < 12; ++octave)
+                        {
+                            total += relief_noise.noise(nx * frequency, ny * frequency, nz * frequency) * amplitude;
+                            weight += amplitude;
+                            amplitude *= 0.8559;
+                            frequency *= 1.29;
+                        }
+                        const double procedural = surface_range * 0.2 * fmax(0.0, 0.15 + 0.5 * total / weight);
+                        const double bump = map->has_bump_data()
+                            ? fmax(0.0, map->elevation_at_bilinear(coord.first, coord.second) - base_elevation) : 0.0;
+                        row_relief[column] = (procedural + bump) * ramp;
+                        row_water[column] = water_at(coord.first, coord.second);
+                        HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
+                        vertex.distance = distance;
+                        vertex.bearing = bearing;
+                    }
+                    if (surface_water)
+                    {
+                        const double spacing = surface_radius * sin(distance / surface_radius) * 2.0 * _pi / terrain_columns;
+                        taper_coastal_relief(row_relief, row_water, spacing, 4.0 * _pi / 180.0);
+                    }
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        mesh[row * terrain_columns + column].elevation = row_relief[column];
+                    }
+                }
+                // Bound radial slopes as well as slopes around each coastal ring.
+                const double coastal_slope = tan(4.0 * _pi / 180.0);
+                for (int row = 1; row < terrain_rows; ++row)
+                {
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
+                        const HorizonTerrainVertex &prior = mesh[(row - 1) * terrain_columns + column];
+                        vertex.elevation = fmin(vertex.elevation, prior.elevation
+                            + (vertex.distance - prior.distance) * coastal_slope);
+                    }
+                }
+                for (int row = terrain_rows - 2; row >= 0; --row)
+                {
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
+                        const HorizonTerrainVertex &next = mesh[(row + 1) * terrain_columns + column];
+                        vertex.elevation = fmin(vertex.elevation, next.elevation
+                            + (next.distance - vertex.distance) * coastal_slope);
+                    }
+                }
+                saved_mesh_key = mesh_key;
+                mesh_valid = true;
+            }
+
+            terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0));
+            std::vector<ProjectedTerrainVertex> projected(mesh.size());
+            const double cos_alt = cos(altitude), sin_alt = sin(altitude);
+            for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
+            {
+                const HorizonTerrainVertex &source = mesh[vertex];
+                const double bearing = source.bearing - azimuth;
+                const double x = source.distance * sin(bearing);
+                const double north = source.distance * cos(bearing);
+                const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                const double up = source.elevation - surface_eye
+                    - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                const double depth = up * sin_alt + north * cos_alt;
+                if (depth > 0.1)
+                {
+                    ProjectedTerrainVertex &target = projected[vertex];
+                    target.x = dispcx + x / depth * zoom * dispcx;
+                    target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
+                    target.inverse_depth = 1.0 / depth;
+                    target.distance_over_depth = source.distance / depth;
+                }
+            }
+            for (int row = 0; row < terrain_rows - 1; ++row)
+            {
+                for (int column = 0; column < terrain_columns; ++column)
+                {
+                    const int next = (column + 1) % terrain_columns;
+                    const auto &a = projected[row * terrain_columns + column];
+                    const auto &b = projected[row * terrain_columns + next];
+                    const auto &c = projected[(row + 1) * terrain_columns + column];
+                    const auto &d = projected[(row + 1) * terrain_columns + next];
+                    terrain_raster.triangle(a, b, c);
+                    terrain_raster.triangle(b, d, c);
+                }
+            }
+            for (int x = 0; x < screen_w; ++x)
+            {
+                min_hz_y_at_x[x] = fmin(min_hz_y_at_x[x], terrain_raster.top_at(x));
+                min_hz_y = fmin(min_hz_y, min_hz_y_at_x[x]);
+            }
+        }
+
         #if lavaworld_heat_shimmer
         if (show_terrain)
         {
@@ -5655,6 +5804,10 @@ void draw_horizon()
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
             const auto ground_color = [&](double x, double y)
             {
+                if (terrain_mesh && !std::isfinite(visible_distance(x, y)))
+                {
+                    return static_cast<ImU32>(0);
+                }
                 const auto coord = ground_coord(x, y);
                 const RGB3 sample = surface_sample(coord.first, coord.second);
                 return rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
