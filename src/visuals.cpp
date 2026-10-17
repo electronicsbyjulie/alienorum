@@ -5595,6 +5595,9 @@ void draw_horizon()
             }
         }
 
+        #if distant_biome_pixel_sampling
+        const std::vector<double> base_horizon_y_at_x = min_hz_y_at_x;
+        #endif
         if (terrain_mesh)
         {
             constexpr int terrain_columns = 512;
@@ -5833,8 +5836,51 @@ void draw_horizon()
                 {
                     return;
                 }
-                const ImU32 color = ground_color((left + right) * 0.5, (top + bottom) * 0.5);
                 const bool small = right - left <= 1 && bottom - top <= 1;
+                bool pixel_sampling = false;
+                #if distant_biome_pixel_sampling
+                if (!small)
+                {
+                    // Include raised terrain and ground beyond a quarter of the horizon range.
+                    // Checking each column catches a horizon crossing inside a tile.
+                    const double far_start = surface_range * 0.25;
+                    for (int x = left; x < right; ++x)
+                    {
+                        if (top < base_horizon_y_at_x[x] + 32.0
+                            || base_distance(x + 0.5, top + 0.5) >= far_start
+                            || base_distance(x + 0.5, bottom - 0.5) >= far_start)
+                        {
+                            pixel_sampling = true;
+                            break;
+                        }
+                    }
+                }
+                #endif
+                if (pixel_sampling)
+                {
+                    // Sample every pixel, then merge equal colors into horizontal runs.
+                    for (int y = top; y < bottom; ++y)
+                    {
+                        int run_left = left;
+                        ImU32 previous = 0;
+                        for (int x = left; x <= right; ++x)
+                        {
+                            const ImU32 current = x < right && y + 0.5 >= min_hz_y_at_x[x]
+                                ? ground_color(x + 0.5, y + 0.5) : 0;
+                            if (current != previous)
+                            {
+                                if (previous & IM_COL32_A_MASK)
+                                {
+                                    ground->AddRectFilled(ImVec2(run_left, y), ImVec2(x, y + 1), previous);
+                                }
+                                run_left = x;
+                                previous = current;
+                            }
+                        }
+                    }
+                    return;
+                }
+                const ImU32 color = ground_color((left + right) * 0.5, (top + bottom) * 0.5);
                 const bool uniform = top >= horizon_max
                     && color == ground_color(left + 0.5, top + 0.5)
                     && color == ground_color(right - 0.5, top + 0.5)

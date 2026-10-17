@@ -48,7 +48,7 @@ namespace alienorum
 
         bool permits_rain() const
         {
-            return valid && (cumulus > 0.05f || heavy_haze > 0.1f);
+            return valid && (cumulus > 0.05f || heavy_haze > 0.71);
         }
     };
 

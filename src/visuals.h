@@ -62,6 +62,9 @@
 
 // Shoreline and other surface boundary params
 #define shore_displacement 8.0
+#ifndef distant_biome_pixel_sampling
+#define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
+#endif
 
 struct RockInstance
 {

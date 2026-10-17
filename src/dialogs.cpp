@@ -2807,7 +2807,7 @@ void draw_system_explorer(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
-bool onlysun = false, onlyplt = false, onlyknp = false;
+bool onlysun = false, onlyplt = false, onlyhz = false, onlyknp = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
 int neighbly = 25, lneighbly = 0, minpl = 1;
@@ -2816,18 +2816,21 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     if (!cels[1]) return;
     ImGui::Begin("Stellar Neighborhood", &neighborhood, 0);
 
-    ImGui::Checkbox("Only Sunlike##", &onlysun);
+    ImGui::Checkbox("Sunlike##", &onlysun);
     ImGui::SameLine();
-    ImGui::Checkbox(onlyplt ? "Must have at least##neighb_must_have_planets" : "Must have planets##neighb_must_have_planets", &onlyplt);
+    ImGui::Checkbox("Planets##neighb_must_have_planets", &onlyplt);
     if (minpl < 1) minpl = 1;
-    if (onlyplt)
+    if (onlyplt && !onlyhz)
     {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(81);
         ImGui::InputInt("##neighb_minpl", &minpl, 1);
         ImGui::SameLine();
-        ImGui::Text("planet%s", (minpl==1) ? "" : "s");
     }
+    ImGui::SameLine();
+    ImGui::Checkbox("in HZ##neighb_must_have_planets", &onlyhz);
+    if (onlyhz) onlyplt = true;
+
     ImGui::SameLine();
     ImGui::Checkbox("Known Poles##", &onlyknp);
     ImGui::SameLine();
@@ -2895,7 +2898,11 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             i = neighb_celids[j];
             Star *s = (Star*)cels[i];
             if (onlysun && !s->is_sunlike()) continue;
-            if (onlyplt && (s->has_planets < minpl)) continue;
+            if (onlyhz)
+            {
+                if (!s->has_hz_planets) continue;
+            }
+            else if (onlyplt && (s->has_planets < minpl)) continue;
             if (onlyknp && !s->known_poles) continue;
 
             stringstream line;
