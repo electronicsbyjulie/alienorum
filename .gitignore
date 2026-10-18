@@ -1,4 +1,5 @@
 bin
+bin-asan
 build
 build-win
 obj
@@ -25,3 +26,9 @@ exocons.dat
 catalogs/cross_ref/
 tools/generate_crossref
 .aider*
+refs
+behavior
+src/include/EasyBMP
+src/tests/__pycache__
+summary
+views

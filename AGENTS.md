@@ -14,3 +14,7 @@
 - The `refs` folder contains scientific publications that may be protected by copyright. Don't commit anything from this folder into Git.
 - If doing research for a task and you use information from a published article, drop that article's PDF in this folder if you have access.
 
+## When Testing Loading the App
+- If you are not testing anything dependent on exoplanets, you may run the app with the `noexo` CLI arg. That will defer the exoplanet load until/unless press F2, resulting in a significantly faster load time (about a minute of savings).
+- If you are not testing anything dependent on artificial satellites, you may run the app with the `nosat` CLI arg. That will save about 15-20 seconds of load time by skipping satellites altogether, however that feature will be completely unavailable until the app is restarted.
+- The `noexo` and `nosat` args may be combined for maximum loading efficiency.
