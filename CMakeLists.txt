@@ -161,6 +161,7 @@ if(WIN32)
 		catalogs/Milky_Way.dat
 		catalogs/WD_colors.dat
 		catalogs/WD_hydrogen_grid.dat
+		catalogs/WD_limb_profiles.dat
 		DESTINATION catalogs)
 	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
 

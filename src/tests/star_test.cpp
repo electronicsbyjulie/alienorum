@@ -9,9 +9,75 @@
 #include "../classes/planet.h"
 #include "../classes/star.h" 
 #include "../classes/wdcolor.h"
+#include "../classes/wdlimb.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(WdLimbTest, ReconstructedProfilesPreserveIntegratedHue)
+{
+    std::ifstream input("catalogs/WD_limb_profiles.dat");
+    ASSERT_TRUE(input.good());
+    std::string line;
+    int count = 0;
+    while (std::getline(input, line))
+    {
+        if (line.empty() || line[0] == '#') continue;
+        const std::string id = line.substr(0, line.find(' '));
+        Star s;
+        if (id.compare(0, 2, "DA") == 0)
+        {
+            strcpy(s.spectral_type, "DA");
+            s.temperature = std::stod(id.substr(2));
+        }
+        else s.gaia_wd_name = id;
+        Color average;
+        ASSERT_TRUE(s.resolve_wd_color(average)) << id;
+        float profile[16];
+        ASSERT_TRUE(wd_limb_profile(&s, profile)) << id;
+        Color integral;
+        for (int i = 0; i < 8192; ++i)
+        {
+            const double mu = (i + 0.5) / 8192;
+            Color value = wd_limb_linear(profile, average, mu);
+            EXPECT_GE(std::min({value.red, value.green, value.blue}), 0);
+            EXPECT_LE(std::max({value.red, value.green, value.blue}), 1.002);
+            integral.red += value.red * 2 * mu / 8192;
+            integral.green += value.green * 2 * mu / 8192;
+            integral.blue += value.blue * 2 * mu / 8192;
+        }
+        integral.normalize(1);
+        average.normalize(1);
+        EXPECT_NEAR(integral.red, average.red, 2e-5) << id;
+        EXPECT_NEAR(integral.green, average.green, 2e-5) << id;
+        EXPECT_NEAR(integral.blue, average.blue, 2e-5) << id;
+        ++count;
+    }
+    EXPECT_EQ(count, 12);
+}
+
+TEST(WdLimbTest, GreenWhiteDwarfHasAGreenCenterAndWarmOuterLimb)
+{
+    Star s;
+    s.gaia_wd_name = "WDJ133001.17+643523.69";
+    Color average;
+    ASSERT_TRUE(s.resolve_wd_color(average));
+    float profile[16];
+    ASSERT_TRUE(wd_limb_profile(&s, profile));
+    Color center = wd_limb_linear(profile, average, 1);
+    Color rim = wd_limb_linear(profile, average, 0.02);
+    RGB3 rgb = wd_srgb_from_linear(center);
+    // The embedded Figure B11 image has center RGB (217,255,180); its prose says (208,255,180).
+    EXPECT_NEAR(rgb.r, 217, 2);
+    EXPECT_NEAR(rgb.g, 255, 1);
+    EXPECT_NEAR(rgb.b, 180, 2);
+    EXPECT_GT(rim.red / rim.green, center.red / center.green);
+    EXPECT_GT(rim.red, rim.green);
+    strcpy(s.spectral_type, "DQ");
+    s.gaia_wd_name.clear();
+    EXPECT_FALSE(wd_limb_profile(&s, profile));
+    EXPECT_EQ(profile[15], 0);
+}
 
 TEST(WdAtmosphereTest, GravityGridPreservesThePaperReferenceAndBounds)
 {

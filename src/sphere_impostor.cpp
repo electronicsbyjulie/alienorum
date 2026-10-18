@@ -79,6 +79,7 @@ namespace alienorum
         GLuint bump_tex;
         float bump_strength;
         float limba, limbb;
+        float wd_limb[16];
         // Eclipse casters, laid out as the 16 floats of a column-major mat4 uniform: column i
         // (floats 4i..4i+3) is one caster's xyz offset from this object's own center plus its
         // radius, all scaled by 1/d exactly like ccx/radx above. An unused column is all zeros,
@@ -230,6 +231,7 @@ namespace alienorum
         "in float vOriginShiftFlag;\n"
         "out vec4 FragColor;\n"
         "uniform sampler2D uDayMap;\n"
+        "uniform mat4 uWdLimb;\n"
         "uniform sampler2D uNightMap;\n"
         "uniform sampler2D uBumpMap;\n"
         // Eclipse casters -- one per column: xyz = the caster's center relative to this object's
@@ -681,6 +683,17 @@ namespace alienorum
         // that light); the light refracted into an umbra does not, since it arrives already
         // stamped with the color of the air it came through, which is what umbraTint carries.
         "    vec3 albedo = (vHasTex > 0.5) ? textureGrad(uDayMap, uv, dUVdx, dUVdy).rgb : vColor.rgb;\n"
+        "    if (vFlags.x > 0.5 && uWdLimb[3].w > 0.0)\n"
+        "    {\n"
+        "        float m = clamp(mu, 0.0, 1.0);\n"
+        "        float root = sqrt(m);\n"
+        "        vec4 terms = vec4(1.0-root, 1.0-m, 1.0-m*root, 1.0-m*m);\n"
+        "        vec3 shape = max(vec3(0.0), vec3(1.0-dot(uWdLimb[0],terms), 1.0-dot(uWdLimb[1],terms), 1.0-dot(uWdLimb[2],terms)));\n"
+        "        vec3 linear = mix(albedo/12.92, pow((albedo+0.055)/1.055,vec3(2.4)), step(vec3(0.04045),albedo));\n"
+        "        linear = clamp(linear*shape*uWdLimb[3].xyz*uWdLimb[3].w, 0.0, 1.0);\n"
+        "        albedo = mix(12.92*linear, 1.055*pow(linear,vec3(1.0/2.4))-0.055, step(vec3(0.0031308),linear));\n"
+        "        isDay = 1.0;\n"
+        "    }\n"
         "    vec3 baseColor = albedo * vTint;\n"
         "    vec3 outColor = (vFlags.z > 0.5)\n"
         "        ? isDay*baseColor + (1.0 - isDay)*textureGrad(uNightMap, uv, dUVdx, dUVdy).rgb\n"
@@ -779,6 +792,7 @@ namespace alienorum
     // SphereImpostorParams::casters).
     static const int kFloatsPerVertex = 46;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
+    static GLint s_uWdLimbLoc = -1;
 
     static void ensure_gl_objects()
     {
@@ -823,6 +837,7 @@ namespace alienorum
         s_uAtmLoc      = glGetUniformLocation(s_program, "uAtm");
         s_uSphRingXMapLoc = glGetUniformLocation(s_program, "uSphRingXMap");
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
+        s_uWdLimbLoc   = glGetUniformLocation(s_program, "uWdLimb");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
         s_uBumpMapLoc  = glGetUniformLocation(s_program, "uBumpMap");
 
@@ -964,6 +979,7 @@ namespace alienorum
         glUniformMatrix4fv(s_uRingLoc, 1, GL_FALSE, p->ring);   // same "re-set every draw" reason
         glUniformMatrix4fv(s_uCasterAtmLoc, 1, GL_FALSE, p->caster_atm);
         glUniformMatrix4fv(s_uAtmLoc, 1, GL_FALSE, p->atm);
+        glUniformMatrix4fv(s_uWdLimbLoc, 1, GL_FALSE, p->wd_limb);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->tex);
         glActiveTexture(GL_TEXTURE0 + 1);   // GL_TEXTURE1/2/3 aren't in this stripped loader's
@@ -1185,6 +1201,7 @@ namespace alienorum
         p->bump_strength = (float)in.bump_strength;
         p->limba = (float)in.limb_a;
         p->limbb = (float)in.limb_b;
+        std::copy(in.wd_limb, in.wd_limb + 16, p->wd_limb);
 
         // Eclipse casters, scaled by the same 1/d as the center and radii above so the shader
         // can compare them against a surface point directly. Columns past num_casters stay zero

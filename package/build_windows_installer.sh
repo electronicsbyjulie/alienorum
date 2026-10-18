@@ -33,6 +33,10 @@ if [ ! -s catalogs/WD_hydrogen_grid.dat ]; then
     echo "Missing catalog: catalogs/WD_hydrogen_grid.dat" >&2
     exit 1
 fi
+if [ ! -s catalogs/WD_limb_profiles.dat ]; then
+    echo "Missing catalog: catalogs/WD_limb_profiles.dat" >&2
+    exit 1
+fi
 
 # Starter texture set for the installer: exactly the files git already tracks under
 # maps/ (i.e. the bodies whose planets.json entry has no live download URL, or has one

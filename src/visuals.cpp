@@ -12,6 +12,7 @@
 #include "classes/surfacebiomes.h"
 #include "classes/horizonterrain.h"
 #include "classes/wdcolor.h"
+#include "classes/wdlimb.h"
 #include <tuple>
 
 using namespace alienorum;
@@ -946,6 +947,14 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
+    if (self_luminous && cls == class_star && wd_limb_profile((Star*)cel, in.wd_limb))
+    {
+        Color filter = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
+        filter.normalize(1);
+        in.daylight_tint[0] = pow(filter.red, 1.0 / 3);
+        in.daylight_tint[1] = pow(filter.green, 1.0 / 3);
+        in.daylight_tint[2] = pow(filter.blue, 1.0 / 3);
+    }
     in.night_illum = night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
     // The band of lit air on this world's own limb. Its height is the world's own pressure
@@ -1510,10 +1519,20 @@ int draw_sphere(CelestialObject* cel, double arad)
     ImU32 imcol;
 
     double cpu_limb_a = 0, cpu_limb_b = 0;
+    float cpu_wd_limb[16] = {};
+    const RGB3 wd_base_rgb = rgb;
     if (self_luminous)
     {
         if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
         else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
+        if (cls == class_star && wd_limb_profile((Star*)cel, cpu_wd_limb))
+        {
+            daylight = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
+            daylight.normalize(1);
+            daylight.red = pow(daylight.red, 1.0 / 3);
+            daylight.green = pow(daylight.green, 1.0 / 3);
+            daylight.blue = pow(daylight.blue, 1.0 / 3);
+        }
     }
 
     auto sphere_began = std::chrono::high_resolution_clock::now();
@@ -1662,7 +1681,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 // was here tumbled to zero at the star's limb and that's not what we want.
                                 cos_vtheta = fmax(0.0, cos(vtheta));
                                 double om = 1.0 - cos_vtheta;
-                                is_day = fmax(0.0, fmin(1.0, 1.0 - cpu_limb_a*om - cpu_limb_b*om*om));
+                                is_day = cpu_wd_limb[15] > 0 ? 1 : fmax(0.0, fmin(1.0, 1.0 - cpu_limb_a*om - cpu_limb_b*om*om));
                             }
                             else
                             {
@@ -1689,6 +1708,13 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 interpolate_angles(lon, tdlon[l-1]),
                                 interpolate_angles(tdlon[m-1], tdlon[m]));
                             if (map && is_day && worth_using_map) rgb = map->color_at(maplat, maplon-_pi);
+                            if (cpu_wd_limb[15] > 0)
+                            {
+                                RGB3 surface = (map && worth_using_map) ? rgb : wd_base_rgb;
+                                Color linear = wd_linear_from_srgb((uint32_t(surface.r) << 16) |
+                                    (uint32_t(surface.g) << 8) | surface.b);
+                                rgb = wd_srgb_from_linear(wd_limb_linear(cpu_wd_limb, linear, cos_vtheta));
+                            }
 
                             if (view_mode == vm_skymap)
                             {

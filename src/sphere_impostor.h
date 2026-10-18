@@ -42,6 +42,7 @@ namespace alienorum
         bool self_luminous;
 
         double limb_a, limb_b;
+        float wd_limb[16] = {};
 
         int num_casters;
         EclipseCaster casters[max_eclipse_casters];
