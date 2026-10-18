@@ -13,6 +13,26 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(WdAtmosphereTest, GravityGridPreservesThePaperReferenceAndBounds)
+{
+    Color base;
+    ASSERT_TRUE(wd_atmosphere_color(10000, WdAtmosphere::Hydrogen, base));
+    Color at_eight = base;
+    ASSERT_TRUE(wd_hydrogen_gravity_color(10000, 8, at_eight));
+    EXPECT_NEAR(at_eight.red, base.red, 1e-12);
+    EXPECT_NEAR(at_eight.green, base.green, 1e-12);
+    EXPECT_NEAR(at_eight.blue, base.blue, 1e-12);
+    Color at_low = base, at_high = base, intermediate = base;
+    ASSERT_TRUE(wd_hydrogen_gravity_color(10000, 7, at_low));
+    ASSERT_TRUE(wd_hydrogen_gravity_color(10000, 9, at_high));
+    ASSERT_TRUE(wd_hydrogen_gravity_color(11000, 8.25, intermediate));
+    EXPECT_GT(fabs(at_low.red - at_high.red), 1e-5);
+    EXPECT_TRUE(std::isfinite(intermediate.red + intermediate.green + intermediate.blue));
+    EXPECT_FALSE(wd_hydrogen_gravity_color(5999, 8, intermediate));
+    EXPECT_FALSE(wd_hydrogen_gravity_color(10000, 6.9, intermediate));
+    EXPECT_FALSE(wd_hydrogen_gravity_color(40001, 8, intermediate));
+}
+
 TEST(StarTest, StalePublishedWdColorsRefreshAfterCacheReload)
 {
     Star s;

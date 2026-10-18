@@ -160,6 +160,7 @@ if(WIN32)
 		catalogs/urls.dat
 		catalogs/Milky_Way.dat
 		catalogs/WD_colors.dat
+		catalogs/WD_hydrogen_grid.dat
 		DESTINATION catalogs)
 	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
 

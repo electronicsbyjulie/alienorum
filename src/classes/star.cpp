@@ -324,9 +324,15 @@ bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
         return false;
     }
     if (!wd_atmosphere_color(temperature, atmosphere, linear_rgb)) return false;
+    bool gravity_adjusted = false;
+    if (atmosphere == WdAtmosphere::Hydrogen && mass > 0 && volumetric_mean_radius > 0)
+    {
+        const double logg = log10(100 * G * mass / (volumetric_mean_radius * volumetric_mean_radius));
+        gravity_adjusted = wd_hydrogen_gravity_color(temperature, logg, linear_rgb);
+    }
     if (source)
     {
-        *source = atmosphere == WdAtmosphere::Hydrogen
+        *source = gravity_adjusted ? "HollandsC1_KoesterSVO_gravity_ratio_approx" : atmosphere == WdAtmosphere::Hydrogen
             ? "Hollands2026_C1_H_logg8_approx" : "Hollands2026_C2_He_logg8_approx";
     }
     // Derived colors stay separate from published records. Recompute the small interpolation
@@ -1464,7 +1470,7 @@ json Star::to_json()
         towrite["wd_color_profile"] =
         {
             {"available", available}, {"source", source},
-            {"temperature_source", wd_temperature_source}, {"model_revision", 1},
+            {"temperature_source", wd_temperature_source}, {"model_revision", 2},
             {"method", !available ? "legacy_BV" : source.find("approx") != std::string::npos
                 ? "atmosphere_approximation" : source.find("observed_spectrum") != std::string::npos
                 ? "published_spectrum" : "published_model"}
