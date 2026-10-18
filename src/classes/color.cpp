@@ -11,6 +11,7 @@
 #include "nlohmann/json.hpp"
 #include "imgui/imgui.h"
 #include "star.h"
+#include "wdcolor.h"
 
 using namespace alienorum;
 
@@ -52,9 +53,17 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR)
 Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
 {
     Color photometric = color_from_magnitude_indices(Vmag, fallback_BV);
-    if (!star || star->WD.empty() || !star->apply_published_wd_color()) return photometric;
-
-    Color published(star->wd_color_red, star->wd_color_green, star->wd_color_blue);
+    Color linear;
+    if (!star || !star->resolve_wd_color(linear)) return photometric;
+    const double yellowing = fallback_BV - star->BV_color;
+    linear.red *= std::pow(magnbase, yellowing);
+    linear.blue *= std::pow(magnbase, -yellowing);
+    linear.normalize(1);
+    // Adapt the paper's sRGB to the renderer's existing power-gamma color domain.
+    // At the default gamma the final encoding reproduces the published sRGB hue.
+    Color published(std::pow(wd_srgb_encode(linear.red), default_gamma),
+        std::pow(wd_srgb_encode(linear.green), default_gamma),
+        std::pow(wd_srgb_encode(linear.blue), default_gamma));
     const double source_luminance = published.luminance();
     if (!(source_luminance > 0)) return photometric;
     const double scale = photometric.luminance() / source_luminance;

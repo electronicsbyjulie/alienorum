@@ -5,9 +5,114 @@
 #include "../classes/galaxy.h"
 #include "../classes/planet.h"
 #include "../classes/star.h" 
+#include "../classes/wdcolor.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(WdAtmosphereTest, PublishedNodesRoundTripAndMatchPaperExamples)
+{
+    for (const auto atmosphere : {WdAtmosphere::Hydrogen, WdAtmosphere::Helium})
+    {
+        const auto *first = atmosphere == WdAtmosphere::Hydrogen
+            ? std::begin(wd_hydrogen_track) : std::begin(wd_helium_track);
+        const auto *last = atmosphere == WdAtmosphere::Hydrogen
+            ? std::end(wd_hydrogen_track) : std::end(wd_helium_track);
+        for (auto node = first; node != last; ++node)
+        {
+            Color linear;
+            ASSERT_TRUE(wd_atmosphere_color(node->temperature, atmosphere, linear));
+            RGB3 rgb = wd_srgb_from_linear(linear);
+            EXPECT_EQ((uint32_t(rgb.r) << 16) | (uint32_t(rgb.g) << 8) | rgb.b, node->srgb);
+        }
+    }
+    Color hydrogen, helium;
+    ASSERT_TRUE(wd_atmosphere_color(10000, WdAtmosphere::Hydrogen, hydrogen));
+    ASSERT_TRUE(wd_atmosphere_color(10000, WdAtmosphere::Helium, helium));
+    RGB3 h = wd_srgb_from_linear(hydrogen), he = wd_srgb_from_linear(helium);
+    EXPECT_EQ(h.r, 0xc9);
+    EXPECT_EQ(h.g, 0xda);
+    EXPECT_EQ(h.b, 0xff);
+    EXPECT_EQ(he.r, 0xc7);
+    EXPECT_EQ(he.g, 0xd6);
+    EXPECT_EQ(he.b, 0xff);
+}
+
+TEST(WdAtmosphereTest, InterpolatesLinearLightAndRejectsUnsupportedInputs)
+{
+    Color linear;
+    ASSERT_TRUE(wd_atmosphere_color(5125, WdAtmosphere::Hydrogen, linear));
+    EXPECT_NEAR(linear.green, (wd_srgb_decode(230.0 / 255) + wd_srgb_decode(235.0 / 255)) / 2, 1e-12);
+    EXPECT_NEAR(linear.blue, (wd_srgb_decode(195.0 / 255) + wd_srgb_decode(212.0 / 255)) / 2, 1e-12);
+    EXPECT_DOUBLE_EQ(linear.red, 1);
+    EXPECT_TRUE(wd_atmosphere_color(3000, WdAtmosphere::Hydrogen, linear));
+    EXPECT_TRUE(wd_atmosphere_color(140000, WdAtmosphere::Hydrogen, linear));
+    EXPECT_TRUE(wd_atmosphere_color(3000, WdAtmosphere::Helium, linear));
+    EXPECT_TRUE(wd_atmosphere_color(40000, WdAtmosphere::Helium, linear));
+    EXPECT_FALSE(wd_atmosphere_color(2999, WdAtmosphere::Hydrogen, linear));
+    EXPECT_FALSE(wd_atmosphere_color(140001, WdAtmosphere::Hydrogen, linear));
+    EXPECT_FALSE(wd_atmosphere_color(40001, WdAtmosphere::Helium, linear));
+    EXPECT_FALSE(wd_atmosphere_color(0, WdAtmosphere::Helium, linear));
+    EXPECT_FALSE(wd_atmosphere_color(std::numeric_limits<double>::quiet_NaN(), WdAtmosphere::Hydrogen, linear));
+    EXPECT_FALSE(wd_atmosphere_color(std::numeric_limits<double>::infinity(), WdAtmosphere::Hydrogen, linear));
+}
+
+TEST(StarTest, WdModelsFollowAtmosphereAndTemperatureWithoutChangingPhotometry)
+{
+    Star s;
+    strcpy(s.spectral_type, "DA2");
+    s.temperature = 10000;
+    s.BV_color = 0;
+    s.apparent_magnitude = 12;
+    s.distance = 10 * parsec;
+    Color linear;
+    std::string source;
+    ASSERT_TRUE(s.resolve_wd_color(linear, &source));
+    EXPECT_EQ(source, "Hollands2026_C1_H_logg8_approx");
+    EXPECT_EQ(wd_srgb_from_linear(linear).r, 0xc9);
+    EXPECT_FALSE(s.wd_color_valid);
+    s.temperature = 6000;
+    strcpy(s.spectral_type, "DB4");
+    ASSERT_TRUE(s.resolve_wd_color(linear, &source));
+    EXPECT_EQ(source, "Hollands2026_C2_He_logg8_approx");
+    EXPECT_EQ(wd_srgb_from_linear(linear).g, 0xf8);
+    Star restored;
+    ASSERT_TRUE(restored.from_json(s.to_json()));
+    Color reloaded;
+    ASSERT_TRUE(restored.resolve_wd_color(reloaded, &source));
+    EXPECT_DOUBLE_EQ(linear.red, reloaded.red);
+    EXPECT_DOUBLE_EQ(linear.green, reloaded.green);
+    EXPECT_DOUBLE_EQ(linear.blue, reloaded.blue);
+    EXPECT_DOUBLE_EQ(s.BV_color, 0);
+    EXPECT_DOUBLE_EQ(s.apparent_magnitude, 12);
+    EXPECT_DOUBLE_EQ(s.distance, 10 * parsec);
+    EXPECT_EQ(stellar_regime(&s), regime_degenerate);
+    strcpy(s.spectral_type, "DAZ5");
+    EXPECT_TRUE(s.resolve_wd_color(linear));
+    for (const char *type : {"DQ", "DZ", "DC", "DO", "DAB", "DBA", "DAH", "DA?", "DA+DA", "G2V"})
+    {
+        strcpy(s.spectral_type, type);
+        EXPECT_FALSE(s.resolve_wd_color(linear, &source)) << type;
+        EXPECT_TRUE(source.empty());
+    }
+}
+
+TEST(StarTest, PublishedWdColorsOverrideAtmosphereModels)
+{
+    Star s;
+    s.WD = "WD1328+648";
+    s.gaia_wd_name = "WDJ133001.17+643523.69";
+    strcpy(s.spectral_type, "DA2");
+    s.temperature = 10000;
+    Color linear;
+    std::string source;
+    ASSERT_TRUE(s.resolve_wd_color(linear, &source));
+    EXPECT_EQ(source, "C5_fitted_model");
+    RGB3 rgb = wd_srgb_from_linear(linear);
+    EXPECT_EQ(rgb.r, 0xdd);
+    EXPECT_EQ(rgb.g, 0xff);
+    EXPECT_EQ(rgb.b, 0xb8);
+}
 
 TEST(StarTest, WdIdentifiersAcceptBothDeclinationPrecisions)
 {

@@ -9,6 +9,7 @@
 #include <mutex>
 #include "cons.h"
 #include "planet.h"
+#include "wdcolor.h"
 
 using namespace alienorum;
 
@@ -118,7 +119,7 @@ std::string alienorum::wd_identifier_key(const std::string &identifier)
 bool Star::apply_published_wd_color()
 {
     if (wd_color_valid) return true;
-    if (WD.empty()) return false;
+    if (WD.empty() && gaia_wd_name.empty()) return false;
 
     static std::map<std::string, std::string> colors;
     static bool loaded = false;
@@ -161,6 +162,42 @@ bool Star::apply_published_wd_color()
     wd_color_green = (rgb >> 8) & 0xff;
     wd_color_blue = rgb & 0xff;
     wd_color_valid = true;
+    return true;
+}
+
+bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
+{
+    if (source) source->clear();
+    if (apply_published_wd_color())
+    {
+        linear_rgb = wd_linear_from_srgb((uint32_t(wd_color_red) << 16) |
+            (uint32_t(wd_color_green) << 8) | wd_color_blue);
+        if (source) *source = wd_color_source;
+        return true;
+    }
+
+    WdAtmosphere atmosphere;
+    if (spectral_type[0] != 'D') return false;
+    if (spectral_type[1] == 'A') atmosphere = WdAtmosphere::Hydrogen;
+    else if (spectral_type[1] == 'B') atmosphere = WdAtmosphere::Helium;
+    else return false;
+    // Mixed, magnetic, uncertain and peculiar spectra lack a suitable pure-atmosphere fit.
+    // Ordinary DAZ stars may use the hydrogen approximation; broad DZ opacity cannot.
+    for (size_t i = 2; spectral_type[i]; i++)
+    {
+        const char c = spectral_type[i];
+        if ((c >= '0' && c <= '9') || c == '.') continue;
+        if (c == 'Z' && atmosphere == WdAtmosphere::Hydrogen) continue;
+        return false;
+    }
+    if (!wd_atmosphere_color(temperature, atmosphere, linear_rgb)) return false;
+    if (source)
+    {
+        *source = atmosphere == WdAtmosphere::Hydrogen
+            ? "Hollands2026_C1_H_logg8_approx" : "Hollands2026_C2_He_logg8_approx";
+    }
+    // Derived colors stay separate from published records. Recompute the small interpolation
+    // from the saved temperature and spectral type so edits and cache reloads cannot stale it.
     return true;
 }
 
@@ -577,7 +614,7 @@ void Star::limb_darkening_coefficients(double &a, double &b)
 alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 {
     if (!cel || cel->typeclass() != class_star) return regime_none;
-    if (!static_cast<Star*>(cel)->WD.empty()) return regime_degenerate;
+    if (!static_cast<Star*>(cel)->WD.empty() || static_cast<Star*>(cel)->spectral_type[0] == 'D') return regime_degenerate;
 
     // Neither estimate_temperature() nor the main-sequence table it relies on: we
     // invert the blackbody relation, or use the catalog temperature when available.

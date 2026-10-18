@@ -2,9 +2,65 @@
 #include <nlohmann/json.hpp>
 #include <random>
 #include "../classes/color.h"
+#include "../classes/star.h"
+#include "../classes/wdcolor.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(ColorTest, WdRenderingPreservesPaperHueAndMagnitudeScaling)
+{
+    struct RestoreDisplay
+    {
+        double gamma = global_inverse_gamma;
+        bool redlight = redlight_mode;
+        ~RestoreDisplay()
+        {
+            global_inverse_gamma = gamma;
+            redlight_mode = redlight;
+        }
+    } restore;
+    global_inverse_gamma = 1.0 / default_gamma;
+    redlight_mode = false;
+    Star s;
+    strcpy(s.spectral_type, "DA2");
+    s.temperature = 10000;
+    s.BV_color = 0;
+    Color rendered = Color::color_from_star(4.2, &s, s.BV_color);
+    Color old = Color::color_from_magnitude_indices(4.2, s.BV_color);
+    EXPECT_NEAR(rendered.luminance(), old.luminance(), old.luminance() * 1e-12);
+    RGB3 rgb = Color::rgb_from_color(rendered, -1);
+    EXPECT_NEAR(rgb.r, 0xc9, 1);
+    EXPECT_NEAR(rgb.g, 0xda, 1);
+    EXPECT_NEAR(rgb.b, 0xff, 1);
+    s.WD = "WD1328+648";
+    s.gaia_wd_name = "WDJ133001.17+643523.69";
+    rendered = Color::color_from_star(4.2, &s, s.BV_color);
+    rgb = Color::rgb_from_color(rendered, -1);
+    EXPECT_NEAR(rgb.r, 0xdd, 1);
+    EXPECT_NEAR(rgb.g, 0xff, 1);
+    EXPECT_NEAR(rgb.b, 0xb8, 1);
+    const Color reddened = Color::color_from_star(4.2, &s, s.BV_color + 0.5);
+    EXPECT_GT(reddened.red / reddened.green, rendered.red / rendered.green);
+    EXPECT_LT(reddened.blue / reddened.green, rendered.blue / rendered.green);
+    EXPECT_DOUBLE_EQ(s.BV_color, 0);
+}
+
+TEST(ColorTest, UnsupportedStarsKeepTheirExistingColorConversion)
+{
+    Star s;
+    s.temperature = 6000;
+    s.BV_color = 0.6;
+    for (const char *type : {"G2V", "DQ", "DZ", "DC"})
+    {
+        strcpy(s.spectral_type, type);
+        Color before = Color::color_from_magnitude_indices(5, s.BV_color);
+        Color after = Color::color_from_star(5, &s, s.BV_color);
+        EXPECT_DOUBLE_EQ(after.red, before.red);
+        EXPECT_DOUBLE_EQ(after.green, before.green);
+        EXPECT_DOUBLE_EQ(after.blue, before.blue);
+    }
+}
 
 // =====================================================================
 // RGB3 Tests

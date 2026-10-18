@@ -14,6 +14,7 @@
 #include "celestial.h"
 #include "shore.h"
 #include "lavafissures.h"
+#include "wdcolor.h"
 
 using namespace alienorum;
 
@@ -3712,7 +3713,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
     std::vector<double> spot_radius;
     bool fully_convective, convective_envelope, spotted, granulated, polar_regime, has_faculae;
     Star *star = static_cast<Star*>(cel);
-    const bool has_published_wd_color = !star->WD.empty() && star->apply_published_wd_color();
+    Color wd_linear;
+    const bool has_wd_color = star->resolve_wd_color(wd_linear);
     int num_groups, num_spots;
     Color ref_col;
     Map *fac = nullptr;
@@ -3856,8 +3858,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
         };
 
         bv_at_teff = bv_of(T_eff);
-        ref_col = has_published_wd_color
-            ? Color(star->wd_color_red, star->wd_color_green, star->wd_color_blue)
+        ref_col = has_wd_color
+            ? wd_linear
             : Color::color_from_magnitude_indices(0, cel->BV_color);
         ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
         inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
@@ -3936,11 +3938,10 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
             double lum = pow(T_local / T_eff, 1.6);
             RGB3 rgb;
-            if (has_published_wd_color)
+            if (has_wd_color)
             {
-                rgb = RGB3((unsigned char)fmin(255.0, star->wd_color_red * lum),
-                    (unsigned char)fmin(255.0, star->wd_color_green * lum),
-                    (unsigned char)fmin(255.0, star->wd_color_blue * lum));
+                rgb = wd_srgb_from_linear(Color(wd_linear.red * lum,
+                    wd_linear.green * lum, wd_linear.blue * lum));
             }
             else
             {

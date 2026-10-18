@@ -1,0 +1,11 @@
+# Hollands et al. (2026), Any colour you like: the diverse chromaticities of white dwarfs.
+# Legacy WD alias, full WDJ identifier, published disc-averaged sRGB, table and method.
+WD0039+3035 WDJ003908.38+303539.76 #CBF6FF C3_observed_spectrum
+WD0136+2004 WDJ013655.67+200429.88 #E3D1FF C4_observed_spectrum
+WD1011+2845 WDJ101141.58+284559.07 #FF8775 C4_observed_spectrum
+WD0744+4649 WDJ074414.64+464912.63 #F6FFA3 C5_fitted_model
+WD0851+1543 WDJ085100.24+154302.04 #F1FFF8 C5_fitted_model
+WD1330+6435 WDJ133001.17+643523.69 #DDFFB8 C5_fitted_model
+WD2356-2054 WDJ235645.10-205449.94 #70B4FF C5_fitted_model
+WD0415-0739 WDJ041521.80-073929.20 #AECAFF C6_DA_model
+WD0645-1643 WDJ064509.30-164300.72 #A4C1FF C6_DA_model

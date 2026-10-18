@@ -120,6 +120,7 @@ namespace alienorum
 
         double estimate_radius(bool skip_mainseq = true);
         bool apply_published_wd_color();
+        bool resolve_wd_color(Color &linear_rgb, std::string *source = nullptr);
 
         static double temperature_from_BV(double BV);
         static double degenerate_radius(double mass_grams);         // meters. Grams in, like every other mass here.
