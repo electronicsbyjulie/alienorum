@@ -87,6 +87,36 @@ static bool looks_like_Gould(const char* s)
 
 int find_object(const char* search_term, bool os, double ml, int levreq)
 {
+    std::string gaia_term;
+    if (strlen(search_term) >= 3 && !strncasecmp(search_term, "WD", 2))
+    {
+        for (const char *p = search_term; *p; p++)
+        {
+            if (*p > ' ')
+            {
+                gaia_term += (*p >= 'a' && *p <= 'z') ? *p - 'a' + 'A' : *p;
+            }
+        }
+    }
+    if (gaia_term.compare(0, 3, "WDJ") == 0 &&
+        gaia_term.find_first_not_of("0123456789+-.", 3) == std::string::npos)
+    {
+        for (int index = 0; cels[index]; index++)
+        {
+            if (cels[index]->typeclass() != class_star)
+            {
+                continue;
+            }
+            const std::string &name = static_cast<Star*>(cels[index])->gaia_wd_name;
+            const size_t sign = name.find_first_of("+-");
+            if (name == gaia_term || (sign != std::string::npos &&
+                name.substr(0, 7) + name.substr(sign, 5) == gaia_term))
+            {
+                return index;
+            }
+        }
+        return -1;
+    }
     if (strlen(search_term) >= 3 && !strncasecmp(search_term, "WD", 2))
     {
         std::string id;

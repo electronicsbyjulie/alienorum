@@ -179,6 +179,10 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     strcpy(spectrum_only->spectral_type, "DQ6");
     spectrum_only->apparent_magnitude = 1e29;
     spectrum_only->absolute_magnitude = INFINITY;
+    Star *known_id = make_star("Known WD identity");
+    known_id->WD = "WD1700+100";
+    strcpy(known_id->spectral_type, "DA3");
+    const double known_ra = known_id->right_ascension;
     const auto row = [](const char *id)
     {
         std::string line(250, ' ');
@@ -240,6 +244,19 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     std::string unidentified_light = row("1300+100");
     unidentified_light.replace(12, 17, 17, ' ');
     rows.push_back(unidentified_light);
+    // McCook-Sion WD1328+648 is Gaia WDJ133001.17+643523.69. The older
+    // catalog has only SDSS photometry, so Gaia supplies its distance and estimated V.
+    std::string gaia_only = row("1328+648");
+    gaia_only.replace(30, 3, "DZ:");
+    rows.push_back(gaia_only);
+    rows.push_back(row("1410+100"));
+    rows.push_back(row("1510+100"));
+    rows.push_back(row("1610+100"));
+    rows.push_back(row("1610+100.1"));
+    std::string known_record = row("1700+100");
+    known_record.replace(72, 6, "15.000");
+    known_record.replace(199, 7, " 0.0500");
+    rows.push_back(known_record);
     std::ofstream source("catalogs/WD/catalog.dat");
     for (const auto &line : rows)
     {
@@ -248,15 +265,43 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     source << "malformed\n";
     source.close();
     std::ofstream names("catalogs/WD/names.dat");
-    names << alias("Unknown alias", "1001+100") << '\n';
+    names << alias("HD00099990 B", "1001+100") << '\n';
     names << alias("HD99990", "1000+100") << '\n'; // System alias must not replace its normal primary.
     names << alias("Spectrum only", "1300+100") << '\n';
+    names << alias("1330011+643523", "1328+648") << '\n';
+    names << alias("1410010+100000", "1410+100") << '\n';
+    names << alias("1510010+100000", "1510+100") << '\n';
+    names << alias("1610010+100000", "1610+100") << '\n';
+    names << alias("1610010+100000", "1610+100.1") << '\n';
     names.close();
-    std::ofstream supplemental("catalogs/WD_names.dat");
-    supplemental << alias("Corrected alias", "1001+100") << " HD00099990 B\n";
-    supplemental.close();
+    std::ofstream gaia_file("catalogs/WD/gaia_edr3.tsv");
+    gaia_file << "WDJname\tGaiaEDR3\tPlx\te_Plx\tpmRA\tpmDE\tGmag\tBPmag\tRPmag\n";
+    gaia_file << "WDJ133001.17+643523.69\t1666074615061406336\t11.5812\t0.7812\t-110.630\t-23.300\t20.6447\t21.2053\t19.8128\n";
+    gaia_file << "WDJ141001.00+100000.00\t1001\t-2\t0.1\t0\t0\t15\t15.2\t14.8\n";
+    gaia_file << "WDJ141001.01+100000.00\t1002\t2\t1\t0\t0\t15\t15.2\t14.8\n";
+    gaia_file << "WDJ151001.00+100000.00\t2001\t10\t0.1\t0\t0\t15\t15.2\t14.8\n";
+    gaia_file << "WDJ151001.01+100000.00\t2002\t10\t0.1\t0\t0\t15\t15.2\t14.8\n";
+    gaia_file << "WDJ161001.00+100000.00\t3001\t10\t0.1\t0\t0\t15\t15.2\t14.8\n";
+    gaia_file.close();
     CatalogReader reader;
-    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 5);
+    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 7);
+    EXPECT_EQ(find_object("WD1700+100", true), known_id->seqno);
+    EXPECT_DOUBLE_EQ(known_id->right_ascension, known_ra);
+    const int gaia_star_index = find_object("WD J1330+6435", true);
+    ASSERT_GE(gaia_star_index, 0);
+    Star *gaia_star = static_cast<Star*>(cels[gaia_star_index]);
+    EXPECT_EQ(gaia_star->WD, "WD1328+648");
+    EXPECT_EQ(gaia_star->gaia_source_id, 1666074615061406336ULL);
+    EXPECT_NEAR(gaia_star->distance / parsec, 1000 / 11.5812, 1e-9);
+    EXPECT_DOUBLE_EQ(gaia_star->gaia_g_magnitude, 20.6447);
+    EXPECT_TRUE(gaia_star->apparent_magnitude_estimated);
+    EXPECT_GT(gaia_star->apparent_magnitude, gaia_star->gaia_g_magnitude);
+    EXPECT_EQ(gaia_star->HIP, 0u);
+    EXPECT_NEAR(gaia_star->proper_motion_RA * cos(gaia_star->declination) * oneyear * fiftyseven * 3600 * 1000, -110.630, 1e-9);
+    EXPECT_EQ(find_object("WD1410+100", true), -1);
+    EXPECT_EQ(find_object("WD1510+100", true), -1);
+    EXPECT_EQ(find_object("WD1610+100", true), -1);
+    EXPECT_EQ(find_object("WD1610+100.1", true), -1);
     EXPECT_TRUE(std::isinf(spectrum_only->absolute_magnitude));
     EXPECT_STREQ(primary->spectral_type, "G2V");
     EXPECT_TRUE(primary->WD.empty());
@@ -291,7 +336,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
         source << line << '\n';
     }
     source.close();
-    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 5);
+    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 7);
     EXPECT_TRUE(std::isinf(spectrum_only->absolute_magnitude));
     EXPECT_EQ(ncelobjs, before_count);
     EXPECT_DOUBLE_EQ(added->apparent_magnitude, 14);
@@ -303,6 +348,11 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     json_copy.from_json(added->to_json());
     EXPECT_EQ(json_copy.WD, added->WD);
     EXPECT_DOUBLE_EQ(json_copy.volumetric_mean_radius, added->volumetric_mean_radius);
+    json_copy.from_json(gaia_star->to_json());
+    EXPECT_EQ(json_copy.gaia_source_id, gaia_star->gaia_source_id);
+    EXPECT_EQ(json_copy.gaia_wd_name, gaia_star->gaia_wd_name);
+    EXPECT_DOUBLE_EQ(json_copy.gaia_g_magnitude, gaia_star->gaia_g_magnitude);
+    EXPECT_TRUE(json_copy.apparent_magnitude_estimated);
     struct Writer : CatalogReader
     {
         using CatalogReader::write_condensed_star_cat_line;
@@ -313,10 +363,19 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     FILE *cache = fopen("catalogs/soles_alienorum.dat", "w");
     ASSERT_NE(cache, nullptr);
     writer.write_condensed_star_cat_line(cache, added);
+    gaia_star->alienorumid = "Gaia fixture";
+    writer.write_condensed_star_cat_line(cache, gaia_star);
     fclose(cache);
     delete_the_universe();
     make_star("Sol");
-    ASSERT_EQ(reader.read_condensed_star_cat(), 1);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    const int gaia_reload = find_object("WD J1330+6435", true);
+    ASSERT_GE(gaia_reload, 0);
+    Star *cached_gaia = static_cast<Star*>(cels[gaia_reload]);
+    EXPECT_EQ(cached_gaia->gaia_source_id, 1666074615061406336ULL);
+    EXPECT_NEAR(cached_gaia->distance / parsec, 1000 / 11.5812, 0.005);
+    EXPECT_NEAR(cached_gaia->gaia_g_magnitude, 20.6447, 1e-9);
+    EXPECT_TRUE(cached_gaia->apparent_magnitude_estimated);
     const int reloaded = find_object("WD1000+100", true);
     ASSERT_GE(reloaded, 0);
     EXPECT_NEAR(cels[reloaded]->volumetric_mean_radius, radius, radius * 0.0001);

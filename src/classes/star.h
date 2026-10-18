@@ -37,6 +37,10 @@ namespace alienorum
         char constellation[4] = {0,0,0,0};
         char Gouldcons[4] = {0,0,0,0};
         std::string CCDM, WD;
+        std::string gaia_wd_name;
+        uint64_t gaia_source_id = 0;
+        double gaia_g_magnitude = 1e29;
+        bool apparent_magnitude_estimated = false;
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;
         char get_component();

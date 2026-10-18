@@ -577,6 +577,14 @@ void load_catalogs()
         mtx.unlock();
         ihsc = cr.read_condensed_star_cat();
     }
+    else
+    {
+        // VERY IMPORTANT: When regenerating the in-house catalog, leave out the exoplanet load.
+        // Reason being, some exoplanets orbit stars not in the in-house catalog, and we add those
+        // stars after the catalog load. If we then allow the exoplanet stars into the in-house
+        // catalog generation, bad things happen including field length overflows.
+        noexo = true;
+    }
 
     // TODO: Read data from more star catalogs.
     if (load_aborted()) return;
@@ -1322,7 +1330,7 @@ void load_stuff()
         mtx.lock();
         loading_msg = "Loading White Dwarfs Catalog...";
         mtx.unlock();
-        cr.read_WD_catalog(cels, MAX_CELOBJS);
+        cr.read_WD_catalog(cels, MAX_CELOBJS, true);
     }
 
     mtx.lock();

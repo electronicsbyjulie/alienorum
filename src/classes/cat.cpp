@@ -1873,6 +1873,260 @@ namespace
         double ra = NAN, dec = NAN;
     };
 
+    struct WdGaiaRow
+    {
+        std::string name;
+        uint64_t source = 0;
+        double ra = NAN, dec = NAN, parallax = NAN, error = NAN;
+        double pmra = NAN, pmdec = NAN, g = NAN, bp = NAN, rp = NAN;
+    };
+
+    bool wd_j2000_coordinates(std::string name, double &ra, double &dec)
+    {
+        if (name.compare(0, 3, "WDJ") == 0)
+        {
+            name.erase(0, 3);
+        }
+        else if (!name.empty() && name[0] == 'J')
+        {
+            name.erase(0, 1);
+        }
+        const size_t sign = name.find_first_of("+-", 4);
+        if (sign == std::string::npos || sign < 6 || name.size() - sign < 7 ||
+            name.find_first_not_of("0123456789.+-") != std::string::npos)
+        {
+            return false;
+        }
+        try
+        {
+            const auto seconds = [](const std::string &text)
+            {
+                const double value = std::stod(text);
+                return text.find('.') == std::string::npos ? value / pow(10, static_cast<int>(text.size()) - 2) : value;
+            };
+            const int h = std::stoi(name.substr(0, 2)), m = std::stoi(name.substr(2, 2));
+            const int d = std::stoi(name.substr(sign + 1, 2)), dm = std::stoi(name.substr(sign + 3, 2));
+            const double sec = seconds(name.substr(4, sign - 4)), ds = seconds(name.substr(sign + 5));
+            if (h >= 24 || m >= 60 || sec >= 60 || d > 90 || dm >= 60 || ds >= 60)
+            {
+                return false;
+            }
+            ra = (h + m / 60.0 + sec / 3600) * 15 * fiftyseventh;
+            dec = (d + dm / 60.0 + ds / 3600) * fiftyseventh * (name[sign] == '-' ? -1 : 1);
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
+    using WdGaiaIndex = std::unordered_map<int, std::vector<WdGaiaRow>>;
+
+    int wd_gaia_cell(double ra, double dec)
+    {
+        const int x = static_cast<int>(floor(ra * fiftyseven)) % 360;
+        const int y = std::clamp(static_cast<int>(floor(dec * fiftyseven + 90)), 0, 179);
+        return y * 360 + (x + 360) % 360;
+    }
+
+    WdGaiaIndex wd_read_gaia(const std::string &path)
+    {
+        std::ifstream input(path);
+        std::string line;
+        WdGaiaIndex index;
+        bool header = false;
+        while (std::getline(input, line))
+        {
+            if (line.empty() || line[0] == '#')
+            {
+                continue;
+            }
+            std::vector<std::string> fields;
+            std::istringstream row(line);
+            std::string field;
+            while (std::getline(row, field, '\t'))
+            {
+                fields.push_back(trim(field));
+            }
+            if (fields.size() != 9)
+            {
+                continue;
+            }
+            if (fields[0] == "WDJname")
+            {
+                header = fields[1] == "GaiaEDR3" && fields[2] == "Plx" && fields[3] == "e_Plx" &&
+                    fields[4] == "pmRA" && fields[5] == "pmDE" && fields[6] == "Gmag" &&
+                    fields[7] == "BPmag" && fields[8] == "RPmag";
+                continue;
+            }
+            WdGaiaRow r;
+            if (!header || fields[0].compare(0, 3, "WDJ") != 0 ||
+                !wd_j2000_coordinates(fields[0], r.ra, r.dec))
+            {
+                continue;
+            }
+            const auto number = [&](size_t column)
+            {
+                return wd_number(fields[column], 1, fields[column].size());
+            };
+            char *end = nullptr;
+            r.source = std::strtoull(fields[1].c_str(), &end, 10);
+            r.parallax = number(2);
+            r.error = number(3);
+            if (!r.source || !end || *end || !(r.parallax > 0) || !(r.error > 0) || r.parallax / r.error < 5)
+            {
+                continue;
+            }
+            r.name = fields[0];
+            r.pmra = number(4);
+            r.pmdec = number(5);
+            r.g = number(6);
+            r.bp = number(7);
+            r.rp = number(8);
+            index[wd_gaia_cell(r.ra, r.dec)].push_back(std::move(r));
+        }
+        return index;
+    }
+
+    WdGaiaIndex wd_load_gaia(const std::string &root, bool fetch)
+    {
+        const std::string path = root + "gaia_edr3.tsv";
+        if (file_exists(path.c_str()))
+        {
+            return wd_read_gaia(path);
+        }
+        if (!fetch || radio_silence || abort_load)
+        {
+            return WdGaiaIndex();
+        }
+        // Compact projection of the complete Gaia WD candidate catalog; match only WD source
+        // records, rather than adding the candidate population itself. Positions in WDJname
+        // are already at epoch J2000. See CDS J/MNRAS/508/3877, note G1.
+        const char *url = "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?"
+            "-source=J%2FMNRAS%2F508%2F3877%2Fmaincat&"
+            "-out=WDJname,GaiaEDR3,Plx,e_Plx,pmRA,pmDE,Gmag,BPmag,RPmag&"
+            "-out.max=unlimited&Plx=%3E0";
+        const std::string temporary = path + ".tmp";
+        FILE *output = fopen(temporary.c_str(), "wb");
+        CURL *curl = curl_easy_init();
+        if (!output || !curl)
+        {
+            if (output)
+            {
+                fclose(output);
+            }
+            if (curl)
+            {
+                curl_easy_cleanup(curl);
+            }
+            return WdGaiaIndex();
+        }
+        std::cout << "Downloading Gaia white dwarf astrometry..." << std::endl;
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, output);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char *data, size_t size, size_t count, void *context) -> size_t
+        {
+            return fwrite(data, size, count, static_cast<FILE*>(context)) * size;
+        });
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, +[](void *, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int
+        {
+            return abort_load ? 1 : 0;
+        });
+        const CURLcode result = curl_easy_perform(curl);
+        const bool written = fclose(output) == 0;
+        curl_easy_cleanup(curl);
+        WdGaiaIndex index;
+        if (result == CURLE_OK && written)
+        {
+            index = wd_read_gaia(temporary);
+        }
+        std::error_code error;
+        if (index.empty())
+        {
+            std::filesystem::remove(temporary, error);
+            std::cerr << "Gaia WD download unavailable; retaining the original WD measurements." << std::endl;
+        }
+        else
+        {
+            std::filesystem::rename(temporary, path, error);
+        }
+        return index;
+    }
+
+    const WdGaiaRow *wd_gaia_match(const WdGaiaIndex &index, const WdRecord &record, double ra, double dec)
+    {
+        double radius = 30.0 / 3600 * fiftyseventh;
+        for (const std::string &alias : record.aliases)
+        {
+            if (wd_j2000_coordinates(alias, ra, dec))
+            {
+                radius = 3.0 / 3600 * fiftyseventh;
+                break;
+            }
+        }
+        if (!std::isfinite(ra) || !std::isfinite(dec))
+        {
+            return nullptr;
+        }
+        const int cell = wd_gaia_cell(ra, dec), y = cell / 360, x = cell % 360;
+        const int width = std::min(180, static_cast<int>(ceil(1 / fmax(0.0001, cos(dec)))));
+        const WdGaiaRow *match = nullptr;
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            if (y + dy < 0 || y + dy > 179)
+            {
+                continue;
+            }
+            for (int dx = -width; dx <= width; dx++)
+            {
+                const auto found = index.find((y + dy) * 360 + (x + dx + 360) % 360);
+                if (found == index.end())
+                {
+                    continue;
+                }
+                for (const WdGaiaRow &candidate : found->second)
+                {
+                    const double a = sin((candidate.dec - dec) / 2);
+                    const double b = sin((candidate.ra - ra) / 2);
+                    const double separation = 2 * asin(sqrt(std::clamp(a * a + cos(dec) * cos(candidate.dec) * b * b, 0.0, 1.0)));
+                    if (separation <= radius)
+                    {
+                        if (match && match->source != candidate.source)
+                        {
+                            return nullptr;
+                        }
+                        match = &candidate;
+                    }
+                }
+            }
+        }
+        return match;
+    }
+
+    void wd_source_coordinates(const WdRecord &r, double &ra, double &dec, double &pmra, double &pmdec)
+    {
+        if (std::isfinite(r.ra))
+        {
+            const double pm = std::isfinite(r.motion.value) ? r.motion.value * fiftyseventh / 3600 : 0;
+            const double angle = r.angle.value * fiftyseventh;
+            const double dra = pm ? pm * sin(angle) / fmax(1e-6, cos(r.dec)) : 0;
+            const double ddec = pm ? pm * cos(angle) : 0;
+            // Source positions are at B1950; propagate motion before precessing the frame.
+            const double years = (J2000 - 2433282.42345905) * oneday / oneyear;
+            convert_to_J2000(r.ra + dra * years, r.dec + ddec * years, 1950, ra, dec, true);
+            double next_ra, next_dec;
+            convert_to_J2000(r.ra + dra * (years + 1), r.dec + ddec * (years + 1), 1950, next_ra, next_dec, true);
+            pmra = std::remainder(next_ra - ra, 2 * _pi) / oneyear;
+            pmdec = (next_dec - dec) / oneyear;
+        }
+    }
+
     bool wd_observed_magnitude(double value)
     {
         return std::isfinite(value) && value >= -40 && value < 99;
@@ -1886,7 +2140,7 @@ namespace
     }
 }
 
-int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max)
+int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max, bool fetch_gaia)
 {
     const std::string root = "catalogs" _FILESLASH "WD" _FILESLASH;
     const char *files[] =
@@ -2001,20 +2255,30 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             found->second.aliases.push_back(wd_field(line, 1, 14));
         }
     }
-    // Existing project cross-identifications include HD component aliases absent from CDS.
-    std::ifstream supplemental("catalogs" _FILESLASH "WD_names.dat");
-    while (std::getline(supplemental, line))
+    const WdGaiaIndex gaia_index = wd_load_gaia(root, fetch_gaia);
+    std::map<std::string, const WdGaiaRow*> gaia_matches;
+    std::unordered_map<uint64_t, int> gaia_uses;
+    for (const auto &entry : records)
     {
-        const auto found = records.find("WD" + wd_field(line, 17, 26));
-        if (found != records.end())
+        const WdRecord &r = entry.second;
+        double ra = NAN, dec = NAN, pmra = 0, pmdec = 0;
+        wd_source_coordinates(r, ra, dec, pmra, pmdec);
+        const WdGaiaRow *match = wd_gaia_match(gaia_index, r, ra, dec);
+        if (match)
         {
-            found->second.aliases.push_back(wd_field(line, 1, 14));
-            if (line.size() > 26)
-            {
-                found->second.aliases.push_back(trim(line.substr(26)));
-            }
+            gaia_matches[r.id] = match;
+            gaia_uses[match->source]++;
         }
     }
+    int unique_gaia = 0;
+    for (const auto &entry : gaia_uses)
+    {
+        if (entry.second == 1)
+        {
+            unique_gaia++;
+        }
+    }
+    std::cout << "Gaia WD cross-match: " << unique_gaia << " unique matches." << std::endl;
 
     std::unordered_map<std::string, std::vector<Star*>> identities;
     std::vector<Star*> existing_wd;
@@ -2086,19 +2350,33 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
     {
         WdRecord &r = entry.second;
         double ra = NAN, dec = NAN, pmra = 0, pmdec = 0;
-        if (std::isfinite(r.ra))
+        wd_source_coordinates(r, ra, dec, pmra, pmdec);
+        const auto gaia_entry = gaia_matches.find(r.id);
+        const WdGaiaRow *gaia = gaia_entry == gaia_matches.end() ? nullptr : gaia_entry->second;
+        if (gaia && gaia_uses[gaia->source] != 1)
         {
-            const double pm = std::isfinite(r.motion.value) ? r.motion.value * fiftyseventh / 3600 : 0;
-            const double angle = r.angle.value * fiftyseventh;
-            const double dra = pm ? pm * sin(angle) / fmax(1e-6, cos(r.dec)) : 0;
-            const double ddec = pm ? pm * cos(angle) : 0;
-            // Source positions are at B1950; propagate motion before precessing the frame.
-            const double years = (J2000 - 2433282.42345905) * oneday / oneyear;
-            convert_to_J2000(r.ra + dra * years, r.dec + ddec * years, 1950, ra, dec, true);
-            double next_ra, next_dec;
-            convert_to_J2000(r.ra + dra * (years + 1), r.dec + ddec * (years + 1), 1950, next_ra, next_dec, true);
-            pmra = std::remainder(next_ra - ra, 2 * _pi) / oneyear;
-            pmdec = (next_dec - dec) / oneyear;
+            gaia = nullptr;
+        }
+        bool visual_estimated = false;
+        if (gaia)
+        {
+            ra = gaia->ra;
+            dec = gaia->dec;
+            if (std::isfinite(gaia->pmra) && std::isfinite(gaia->pmdec))
+            {
+                pmra = gaia->pmra / (1000 * 3600) * fiftyseventh / oneyear / fmax(1e-6, cos(dec));
+                pmdec = gaia->pmdec / (1000 * 3600) * fiftyseventh / oneyear;
+            }
+            r.parallax.offer(gaia->parallax / 1000, 1 + gaia->parallax / gaia->error);
+            const double color = gaia->bp - gaia->rp;
+            if (!wd_observed_magnitude(r.visual.value) && wd_observed_magnitude(gaia->g) && color > -0.5 && color < 5)
+            {
+                // ESA EDR3 documentation, table 5.7: G-V as a function of BP-RP.
+                // This is an estimated V magnitude, never a measured V or an unlabelled G.
+                const double g_minus_v = -0.02704 + 0.01424 * color - 0.2156 * color * color + 0.01426 * color * color * color;
+                r.visual.offer(gaia->g - g_minus_v, 0);
+                visual_estimated = true;
+            }
         }
         const auto nearby = [&](Star *s)
         {
@@ -2121,7 +2399,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             for (Star *s : found->second)
             {
                 // A system identifier can denote the luminous primary rather than the WD.
-                if (wd_candidate(s) && nearby(s) &&
+                const bool same_wd = wd_key(s->WD) == wd_key(r.id) || wd_key(s->name) == wd_key(r.id);
+                if (wd_candidate(s) && (same_wd || nearby(s)) &&
                     (s->WD.empty() || wd_key(s->WD) == wd_key(r.id)) &&
                     std::find(matches.begin(), matches.end(), s) == matches.end())
                 {
@@ -2199,6 +2478,12 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             updated++;
         }
         s->WD = r.id;
+        if (gaia)
+        {
+            s->gaia_wd_name = gaia->name;
+            s->gaia_source_id = gaia->source;
+            s->gaia_g_magnitude = gaia->g;
+        }
         if (fresh || !s->spectral_type[0])
         {
             snprintf(s->spectral_type, sizeof(s->spectral_type), "%s", r.spectral.empty() ? "D" : r.spectral.c_str());
@@ -2212,6 +2497,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         if (!wd_observed_magnitude(s->apparent_magnitude) && wd_observed_magnitude(r.visual.value))
         {
             s->apparent_magnitude = r.visual.value;
+            s->apparent_magnitude_estimated = visual_estimated;
         }
         if ((fresh || !std::isfinite(s->absolute_magnitude) || s->absolute_magnitude >= 99) &&
             (wd_observed_magnitude(s->apparent_magnitude) || wd_observed_magnitude(r.absolute.value)))
@@ -2222,6 +2508,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         if (fresh && !wd_observed_magnitude(s->apparent_magnitude))
         {
             s->apparent_magnitude = s->absolute_magnitude + 5 * log10(s->distance / (10 * parsec));
+            s->apparent_magnitude_estimated = true;
         }
         if (fresh)
         {
@@ -5435,6 +5722,9 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     line << s->WD;
     l += 13;
     line << std::string(l - line.str().size(), ' ');
+    line << '\t' << std::quoted(s->gaia_wd_name) << ' ' << s->gaia_source_id << ' '
+         << std::scientific << std::setprecision(10) << s->gaia_g_magnitude << ' '
+         << s->apparent_magnitude_estimated;
 
     // std::cout << line << std::endl;
     line << std::string("\n");
@@ -5867,6 +6157,12 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 456, 467, field);
         s->WD = trim(field);
+        if (strlen(buffer) > 468)
+        {
+            std::istringstream metadata(buffer + 468);
+            metadata >> std::quoted(s->gaia_wd_name) >> s->gaia_source_id
+                     >> s->gaia_g_magnitude >> s->apparent_magnitude_estimated;
+        }
 
         read_field_onebased(buffer, 100, 105, field);
         s->BV_color = atof(field);

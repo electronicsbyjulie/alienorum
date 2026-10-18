@@ -51,7 +51,7 @@ namespace alienorum
         bool load_Hipparcos_orbit_line(const char* buffer, CelestialObject** cels, int max, int& offset);
         int read_Tycho_catalog(CelestialObject** cels, int max);
         int read_Uranometria_catalog(CelestialObject** cels, int max);
-        int read_WD_catalog(CelestialObject** cels, int max);
+        int read_WD_catalog(CelestialObject** cels, int max, bool fetch_gaia = false);
         int read_GCVS_catalog(CelestialObject** cels);          // Variability only; adds no stars, so no max.
 
         // Galaxies. UNGC first, its distances being individually measured; RC3 has only radial

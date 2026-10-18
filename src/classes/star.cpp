@@ -1217,6 +1217,10 @@ json Star::to_json()
     towrite["SB9"] = SB9;
     towrite["CCDM"] = CCDM;
     towrite["WD"] = WD;
+    towrite["gaia_wd_name"] = gaia_wd_name;
+    towrite["gaia_source_id"] = gaia_source_id;
+    towrite["gaia_g_magnitude"] = gaia_g_magnitude;
+    towrite["apparent_magnitude_estimated"] = apparent_magnitude_estimated;
     towrite["Bonn_survey"] = Bonn_survey;
     towrite["Bonn_survey_sign"] = std::string(1, Bonn_survey_sign);
     towrite["Bonn_survey_declination"] = Bonn_survey_declination;
@@ -1280,6 +1284,22 @@ bool Star::from_json(json j)
     catch (...)
     {
         ;
+    }
+    if (j.contains("gaia_wd_name") && j["gaia_wd_name"].is_string())
+    {
+        j["gaia_wd_name"].get_to(gaia_wd_name);
+    }
+    if (j.contains("gaia_source_id") && j["gaia_source_id"].is_number_unsigned())
+    {
+        j["gaia_source_id"].get_to(gaia_source_id);
+    }
+    if (j.contains("gaia_g_magnitude") && j["gaia_g_magnitude"].is_number())
+    {
+        j["gaia_g_magnitude"].get_to(gaia_g_magnitude);
+    }
+    if (j.contains("apparent_magnitude_estimated") && j["apparent_magnitude_estimated"].is_boolean())
+    {
+        j["apparent_magnitude_estimated"].get_to(apparent_magnitude_estimated);
     }
     try
     {
