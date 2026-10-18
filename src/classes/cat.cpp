@@ -2527,6 +2527,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         {
             s->temperature = r.temperature.value > 0 ? r.temperature.value :
                 (std::isfinite(r.bv.value) ? Star::temperature_from_BV(r.bv.value) : 10000);
+            s->wd_temperature_source = r.temperature.value > 0 ? "catalog" :
+                (std::isfinite(r.bv.value) ? "BV" : "assumed");
         }
         if (fresh && !std::isfinite(r.bv.value))
         {
@@ -5727,7 +5729,8 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
          << std::scientific << std::setprecision(10) << s->gaia_g_magnitude << ' '
          << s->apparent_magnitude_estimated << ' ' << s->wd_color_valid << ' '
          << (unsigned int)s->wd_color_red << ' ' << (unsigned int)s->wd_color_green << ' '
-         << (unsigned int)s->wd_color_blue << ' ' << std::quoted(s->wd_color_source);
+         << (unsigned int)s->wd_color_blue << ' ' << std::quoted(s->wd_color_source)
+         << " WDC1 " << std::quoted(s->wd_temperature_source) << ' ' << s->wd_color_revision;
 
     // std::cout << line << std::endl;
     line << std::string("\n");
@@ -6172,6 +6175,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 s->wd_color_red = std::min(255u, red);
                 s->wd_color_green = std::min(255u, green);
                 s->wd_color_blue = std::min(255u, blue);
+                std::string version;
+                if (metadata >> version && version == "WDC1")
+                {
+                    metadata >> std::quoted(s->wd_temperature_source) >> s->wd_color_revision;
+                }
             }
             else
             {

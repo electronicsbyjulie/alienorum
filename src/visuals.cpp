@@ -11,6 +11,7 @@
 #include "classes/surfacescatter.h"
 #include "classes/surfacebiomes.h"
 #include "classes/horizonterrain.h"
+#include "classes/wdcolor.h"
 #include <tuple>
 
 using namespace alienorum;
@@ -916,7 +917,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad) * 3;
     }
 
-    Color daylight = Color::color_from_magnitude_indices(0, lightcen->BV_color + atm_yellowing);
+    Color daylight = lightcen->typeclass() == class_star
+        ? Color::color_from_star(0, (Star*)lightcen, lightcen->BV_color + atm_yellowing)
+        : Color::color_from_magnitude_indices(0, lightcen->BV_color + atm_yellowing);
     double dmax = fmax(fmax(daylight.red, daylight.green), daylight.blue);
     if (dmax > 0)
     {
@@ -3805,7 +3808,9 @@ void draw_objects()
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
-        Color col = Color::color_from_magnitude_indices(fmin(vmag_cache[i] + 5, -4), cels[i]->BV_color);
+        Color col = cels[i]->typeclass() == class_star
+            ? Color::color_from_star(fmin(vmag_cache[i] + 5, -4), (Star*)cels[i], cels[i]->BV_color)
+            : Color::color_from_magnitude_indices(fmin(vmag_cache[i] + 5, -4), cels[i]->BV_color);
         RGB3 rgb = Color::rgb_from_color(col, 1);
         if (whtbkgd) rgb.invert_luminance();
         ImU32 imcol = (i==selected) ? rgba_apply_redlight(global_style.selected_orbit_color) : rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 64));
@@ -4378,6 +4383,13 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     if (cls == class_star)
     {
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
+        Color wd_linear;
+        if (((Star*)obj)->resolve_wd_color(wd_linear))
+        {
+            wd_linear.normalize(1);
+            RGB3 wd_rgb = wd_srgb_from_linear(wd_linear);
+            objcol = Color(wd_rgb.r, wd_rgb.g, wd_rgb.b);
+        }
         objcol.normalize(255);
         ImU32 obj32 = rgba_apply_redlight(IM_COL32((int)objcol.red, (int)objcol.green, (int)objcol.blue, 255));
         ImGui::GetBackgroundDrawList()->AddCircleFilled(objdxy, 10, obj32);
@@ -6068,7 +6080,9 @@ void draw_horizon()
                 }
 
                 cel_obj_class obj_cls = cels[ci]->typeclass();
-                Color objcol = Color::color_from_magnitude_indices(0, cels[ci]->BV_color + ((obj_cls == class_star) ? 0 : planet_bv_correction));
+                Color objcol = obj_cls == class_star
+                    ? Color::color_from_star(0, (Star*)cels[ci], cels[ci]->BV_color)
+                    : Color::color_from_magnitude_indices(0, cels[ci]->BV_color + planet_bv_correction);
                 double max_comp = fmax(objcol.red, fmax(objcol.green, objcol.blue));
                 double br = (max_comp > 0.0) ? (objcol.red / max_comp) : 1.0;
                 double bg = (max_comp > 0.0) ? (objcol.green / max_comp) : 1.0;

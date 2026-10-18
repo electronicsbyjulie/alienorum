@@ -118,6 +118,7 @@ std::string alienorum::wd_identifier_key(const std::string &identifier)
 
 namespace
 {
+    uint64_t published_wd_revision = 0;
     struct PublishedWdColor
     {
         std::string label, gaia, source;
@@ -144,8 +145,17 @@ namespace
             std::vector<PublishedWdColor> result;
             std::ifstream input("catalogs/WD_colors.dat");
             std::string line;
+            uint64_t revision = 14695981039346656037ULL;
             while (std::getline(input, line))
             {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                for (unsigned char c : line)
+                {
+                    revision ^= c;
+                    revision *= 1099511628211ULL;
+                }
+                revision ^= '\n';
+                revision *= 1099511628211ULL;
                 if (line.empty() || line[0] == '#') continue;
                 PublishedWdColor entry;
                 std::string hex, alias;
@@ -165,10 +175,17 @@ namespace
                 }
                 result.push_back(entry);
             }
+            published_wd_revision = revision;
             return result;
         }();
         return entries;
     }
+}
+
+uint64_t alienorum::wd_color_data_revision()
+{
+    published_wd_colors();
+    return published_wd_revision;
 }
 
 std::string alienorum::wd_color_gaia_identifier(const std::string &identifier)
@@ -261,7 +278,10 @@ int alienorum::associate_wd_color_identifiers(CelestialObject **objects)
 
 bool Star::apply_published_wd_color()
 {
-    if (wd_color_valid) return true;
+    if (WD.empty() && gaia_wd_name.empty()) return false;
+    const uint64_t revision = wd_color_data_revision();
+    if (wd_color_valid && wd_color_revision == revision) return true;
+    wd_color_valid = false;
     const std::string target = !gaia_wd_name.empty() ? gaia_wd_name : wd_color_gaia_identifier(WD);
     for (const auto &entry : published_wd_colors())
     {
@@ -271,6 +291,7 @@ bool Star::apply_published_wd_color()
         wd_color_green = (entry.rgb >> 8) & 0xff;
         wd_color_blue = entry.rgb & 0xff;
         wd_color_source = entry.source;
+        wd_color_revision = revision;
         wd_color_valid = true;
         return true;
     }
@@ -1435,6 +1456,21 @@ void Star::gotta_be_named_something()
 json Star::to_json()
 {
     json towrite = CelestialObject::to_json();
+    if (!WD.empty() || !gaia_wd_name.empty() || spectral_type[0] == 'D')
+    {
+        Color linear;
+        std::string source;
+        const bool available = resolve_wd_color(linear, &source);
+        towrite["wd_color_profile"] =
+        {
+            {"available", available}, {"source", source},
+            {"temperature_source", wd_temperature_source}, {"model_revision", 1},
+            {"method", !available ? "legacy_BV" : source.find("approx") != std::string::npos
+                ? "atmosphere_approximation" : source.find("observed_spectrum") != std::string::npos
+                ? "published_spectrum" : "published_model"}
+        };
+        if (available) towrite["wd_color_profile"]["linear_rgb"] = {linear.red, linear.green, linear.blue};
+    }
 
     towrite["proper_motion_RA"] = proper_motion_RA*fiftyseven*oneyear;
     towrite["proper_motion_decl"] = proper_motion_decl*fiftyseven*oneyear;
@@ -1460,6 +1496,8 @@ json Star::to_json()
     towrite["gaia_g_magnitude"] = gaia_g_magnitude;
     towrite["apparent_magnitude_estimated"] = apparent_magnitude_estimated;
     towrite["wd_color_valid"] = wd_color_valid;
+    towrite["wd_color_revision"] = wd_color_revision;
+    towrite["wd_temperature_source"] = wd_temperature_source;
     if (wd_color_valid)
     {
         towrite["wd_color_rgb"] = {wd_color_red, wd_color_green, wd_color_blue};
@@ -1548,6 +1586,16 @@ bool Star::from_json(json j)
     if (j.contains("wd_color_valid") && j["wd_color_valid"].is_boolean())
     {
         j["wd_color_valid"].get_to(wd_color_valid);
+    }
+    wd_color_revision = 0;
+    wd_temperature_source = "unspecified";
+    if (j.contains("wd_color_revision") && j["wd_color_revision"].is_number_unsigned())
+    {
+        j["wd_color_revision"].get_to(wd_color_revision);
+    }
+    if (j.contains("wd_temperature_source") && j["wd_temperature_source"].is_string())
+    {
+        j["wd_temperature_source"].get_to(wd_temperature_source);
     }
     if (wd_color_valid && j.contains("wd_color_rgb") && j["wd_color_rgb"].is_array() && j["wd_color_rgb"].size() == 3)
     {

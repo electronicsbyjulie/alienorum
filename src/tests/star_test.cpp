@@ -13,6 +13,56 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(StarTest, StalePublishedWdColorsRefreshAfterCacheReload)
+{
+    Star s;
+    s.WD = "WD1328+648";
+    s.gaia_wd_name = "WDJ133001.17+643523.69";
+    s.wd_color_valid = true;
+    s.wd_color_blue = 255;
+    s.wd_color_source = "obsolete";
+    ASSERT_TRUE(s.apply_published_wd_color());
+    EXPECT_EQ(s.wd_color_green, 255);
+    EXPECT_EQ(s.wd_color_blue, 184);
+    EXPECT_EQ(s.wd_color_revision, wd_color_data_revision());
+    EXPECT_NE(s.wd_color_revision, 0u);
+    s.wd_temperature_source = "assumed";
+    json cache = s.to_json();
+    EXPECT_EQ(cache["wd_color_profile"]["method"], "published_model");
+    EXPECT_EQ(cache["wd_color_profile"]["temperature_source"], "assumed");
+    Star restored;
+    ASSERT_TRUE(restored.from_json(cache));
+    EXPECT_EQ(restored.wd_color_revision, s.wd_color_revision);
+    EXPECT_EQ(restored.wd_temperature_source, "assumed");
+    cache.erase("wd_color_revision");
+    cache.erase("wd_temperature_source");
+    cache["wd_color_rgb"] = {0, 0, 255};
+    ASSERT_TRUE(restored.from_json(cache));
+    EXPECT_EQ(restored.wd_temperature_source, "unspecified");
+    ASSERT_TRUE(restored.apply_published_wd_color());
+    EXPECT_EQ(restored.wd_color_red, 221);
+    EXPECT_EQ(restored.wd_color_green, 255);
+    EXPECT_EQ(restored.wd_color_blue, 184);
+}
+
+TEST(StarTest, WdColorDiagnosticsDistinguishModelsAndUnsupportedAtmospheres)
+{
+    Star s;
+    strcpy(s.spectral_type, "DA2");
+    s.temperature = 10000;
+    s.wd_temperature_source = "BV";
+    json data = s.to_json();
+    EXPECT_EQ(data["wd_color_profile"]["method"], "atmosphere_approximation");
+    EXPECT_EQ(data["wd_color_profile"]["temperature_source"], "BV");
+    EXPECT_TRUE(data["wd_color_profile"]["available"].get<bool>());
+    EXPECT_EQ(data["wd_color_profile"]["linear_rgb"].size(), 3u);
+    strcpy(s.spectral_type, "DQ");
+    data = s.to_json();
+    EXPECT_EQ(data["wd_color_profile"]["method"], "legacy_BV");
+    EXPECT_FALSE(data["wd_color_profile"]["available"].get<bool>());
+    EXPECT_FALSE(data["wd_color_profile"].contains("linear_rgb"));
+}
+
 TEST(StarTest, PublishedWdCatalogCoversEveryIndividualStarTable)
 {
     std::ifstream input("catalogs/WD_colors.dat");

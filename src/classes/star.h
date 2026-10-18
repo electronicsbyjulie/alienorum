@@ -44,6 +44,8 @@ namespace alienorum
         bool wd_color_valid = false;
         unsigned char wd_color_red = 0, wd_color_green = 0, wd_color_blue = 0;
         std::string wd_color_source;
+        uint64_t wd_color_revision = 0;
+        std::string wd_temperature_source = "unspecified";
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;
         char get_component();
@@ -155,6 +157,7 @@ namespace alienorum
     stellar_regime_t stellar_regime(CelestialObject *cel);
     std::string wd_identifier_key(const std::string &identifier);
     std::string wd_color_gaia_identifier(const std::string &identifier);
+    uint64_t wd_color_data_revision();
     int associate_wd_color_identifiers(CelestialObject **objects);
 
     class StarMulti

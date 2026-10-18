@@ -292,6 +292,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     ASSERT_GE(gaia_star_index, 0);
     Star *gaia_star = static_cast<Star*>(cels[gaia_star_index]);
     EXPECT_EQ(gaia_star->WD, "WD1328+648");
+    EXPECT_EQ(gaia_star->wd_temperature_source, "assumed");
     EXPECT_EQ(gaia_star->gaia_source_id, 1666074615061406336ULL);
     EXPECT_NEAR(gaia_star->distance / parsec, 1000 / 11.5812, 1e-9);
     EXPECT_DOUBLE_EQ(gaia_star->gaia_g_magnitude, 20.6447);
@@ -318,6 +319,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     ASSERT_GE(index, 0);
     Star *added = static_cast<Star*>(cels[index]);
     EXPECT_NEAR(added->distance / parsec, 20, 1e-10);
+    EXPECT_EQ(added->wd_temperature_source, "catalog");
     EXPECT_DOUBLE_EQ(added->temperature, 25000);
     EXPECT_DOUBLE_EQ(added->radial_velocity, 20000);
     EXPECT_DOUBLE_EQ(added->BV_color, 0);
@@ -369,6 +371,8 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     ASSERT_NE(cache, nullptr);
     writer.write_condensed_star_cat_line(cache, added);
     gaia_star->alienorumid = "Gaia fixture";
+    const uint64_t color_revision = wd_color_data_revision();
+    gaia_star->wd_color_revision = color_revision;
     writer.write_condensed_star_cat_line(cache, gaia_star);
     fclose(cache);
     delete_the_universe();
@@ -381,10 +385,13 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     EXPECT_NEAR(cached_gaia->distance / parsec, 1000 / 11.5812, 0.005);
     EXPECT_NEAR(cached_gaia->gaia_g_magnitude, 20.6447, 1e-9);
     EXPECT_TRUE(cached_gaia->apparent_magnitude_estimated);
+    EXPECT_EQ(cached_gaia->wd_temperature_source, "assumed");
+    EXPECT_EQ(cached_gaia->wd_color_revision, color_revision);
     const int reloaded = find_object("WD1000+100", true);
     ASSERT_GE(reloaded, 0);
     EXPECT_NEAR(cels[reloaded]->volumetric_mean_radius, radius, radius * 0.0001);
     EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[reloaded])->temperature, 25000);
+    EXPECT_EQ(static_cast<Star*>(cels[reloaded])->wd_temperature_source, "catalog");
     EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[reloaded])->BV_color, 0);
     Color model_after;
     ASSERT_TRUE(static_cast<Star*>(cels[reloaded])->resolve_wd_color(model_after, &model_source));
