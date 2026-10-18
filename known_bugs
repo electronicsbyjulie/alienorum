@@ -1,1 +1,9 @@
+Xi Ursae Majoris B is labeled by its HD number instead of its Bayer designation; it is labeled HD98230 instead of Xi UMa B. The name field, which labels use, should always follow a consistent hierarchy: starname.dat entry > Bayer > Flamsteed > Gliese > Gould > HD > HIP > other.
 
+When viewed from outside a star system, the label for that star system should always be the primary component's name, for example Xi Ursae Majoris not Xi UMa B or HD98230, no matter which component is brightest.
+
+Dependent on the showfails boolean, output names of systems during program load where the primary star is not the intrinsically brightest star of the system, so that these can be checked manually. Internally, we lean toward designating the most massive member as the primary, and there are systems that legitimately have a companion star as the brightest.
+
+Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
+
+Application is sometimes throwing a segfault on exit.
