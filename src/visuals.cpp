@@ -4143,6 +4143,7 @@ void draw_system_view()
                     (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
             llbl.text = dispname;
             labels2draw.push_back(llbl);
+
             #else
             ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(fmax(0, s->drawnx - lsz.x/2), dy),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(
@@ -4194,6 +4195,18 @@ void draw_system_view()
                         (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
                 llbl.text = dispname;
                 labels2draw.push_back(llbl);
+
+                if (p->is_in_con_HZ())
+                {
+                    std::string hz = "Habitable Zone";
+                    llbl.pos.y += lsz.y + 5;
+                    lsz = ImGui::CalcTextSize(hz.c_str());
+                    llbl.pos.x = p->drawnx - lsz.x/2;
+                    llbl.color = Color::ensure_wcag_contrast(IM_COL32(0, 255, 0, 128), whtbkgd, 4.5, -1, true);
+                    llbl.text = hz;
+                    labels2draw.push_back(llbl);
+                }
+
                 #else
                 ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(p->drawnx - lsz.x/2, dy),
                     rgba_apply_redlight(Color::ensure_wcag_contrast(
@@ -4229,6 +4242,7 @@ void draw_system_view()
                         (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
                 llbl.text = dispname;
                 labels2draw.push_back(llbl);
+
                 #else
                 ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(csel->drawnx - lsz.x/2, dy),
                     rgba_apply_redlight(Color::ensure_wcag_contrast(
