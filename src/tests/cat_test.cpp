@@ -88,9 +88,16 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     std::ofstream file("catalogs/star_orbits.dat");
     file << row("HD99990", "HD99991", "2.5d", "0.2AU", "JD2451544.512345") << '\n';
     file << row("HD99991", "Orbit Test C", "12.75y", "0.04s", "2026.123456") << '\n';
+    std::string hot = row("HD99990", "Hot Test D", "195.458d", "1.55AU", "JD2449983.23");
+    hot.replace(160, 15, 15, ' ');
+    hot.replace(192, 3, "9.3");
+    hot.replace(204, 3, "5.8");
+    hot.replace(216, 11, 11, ' ');
+    hot.replace(228, 4, "22750");
+    file << hot << '\n';
     file.close();
     CatalogReader reader;
-    ASSERT_EQ(reader.read_star_orbits_dat(cels), 2);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
     Star *secondary = hdcache[99991];
     ASSERT_NE(secondary, nullptr);
     ASSERT_NE(secondary->orbit, nullptr);
@@ -109,6 +116,14 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     EXPECT_NEAR(child->orbit->epoch, J2000 + (2026.123456 - 2000) * (oneyear / oneday), 1e-8);
     EXPECT_EQ(secondary->get_component(), 'B');
     EXPECT_EQ(child->get_component(), 'C');
+    const int hot_index = find_object("Hot Test D", true);
+    ASSERT_GE(hot_index, 0);
+    Star *hot_star = static_cast<Star*>(cels[hot_index]);
+    const double luminosity = Star::interpolate_mseq_lum(Star::get_mseqidx_from_BV(hot_star->BV_color));
+    const double expected_magnitude = 4.85 - log(luminosity) * invlogmagnbase;
+    EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
     delete_the_universe();
 }
 

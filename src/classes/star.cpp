@@ -354,7 +354,7 @@ double Star::estimate_luminosity(double tempK)
             return interpolate_mseq_lum(msqi);
     }
 
-    return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4) * pow(magnbase, -4.85);
+    return std::pow(volumetric_mean_radius/solar_radius, 2) * std::pow(tempK/sun_temp, 4);
 }
 
 void Star::estimate_BV()

@@ -9,6 +9,19 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(StarTest, LuminosityEstimateUsesSolarUnitsAcrossBothPaths)
+{
+    Star::load_main_seq_dat();
+    Star s;
+    const double index = Star::get_mseqidx_from_temp(sun_temp);
+    s.BV_color = Star::interpolate_mseq_BV(index);
+    s.volumetric_mean_radius = solar_radius;
+    const double expected = Star::interpolate_mseq_lum(Star::get_mseqidx_from_BV(s.BV_color));
+    EXPECT_NEAR(s.estimate_luminosity(sun_temp), expected, 1e-9);
+    s.volumetric_mean_radius = 0.01 * solar_radius;
+    EXPECT_NEAR(s.estimate_luminosity(sun_temp), 0.0001, 1e-12);
+}
+
 TEST(StarTest, RadiusEstimateUsesLuminosityAndTemperature)
 {
     Star s;

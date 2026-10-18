@@ -4520,7 +4520,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                     // priced as an A0V (38 Lsun instead of ~0.03), several magnitudes too bright.
                     s->estimate_BV(tempK);
                     s->estimate_UB(tempK);
-                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = -log(s->estimate_luminosity(tempK))/log(magnbase);
+                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = 4.85 - log(s->estimate_luminosity(tempK))/log(magnbase);
                 }
             }
 
