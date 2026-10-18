@@ -96,6 +96,8 @@ bool save_snapshot_png(const std::string& filename, int width, int height)
 {
     if (width <= 0 || height <= 0) return false;
 
+    establish_project_root();
+
     std::vector<unsigned char> pixels(width * height * 3);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
@@ -305,6 +307,10 @@ int main (int argc, char** argv)
         else if (!strcmp(argv[l], "nosats") || !strcmp(argv[l], "nosat"))
         {
             nosats = true;
+        }
+        else if (!strcmp(argv[l], "orbfails"))
+        {
+            showfails = true;
         }
         else if (!strcmp(argv[l], "F1")) push_fkey(1);
         else if (!strcmp(argv[l], "F2")) push_fkey(2);

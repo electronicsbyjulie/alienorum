@@ -89,6 +89,8 @@ bool hide_mouse = true;
 bool label_galaxies = true;
 bool show_galaxy_band = true;
 bool shortnames = false;
+bool showfails = false;
+int numfails = 0;
 double myeq = 0;
 
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.

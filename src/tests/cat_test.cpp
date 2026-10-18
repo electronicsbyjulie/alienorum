@@ -1,6 +1,8 @@
 #include <cstring>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <vector>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
 #include "../loaders.h"
@@ -27,6 +29,86 @@ class CatalogParsingTest : public UniverseFixture
         make_star("Sol");
     }
 };
+
+TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
+{
+    Star::load_main_seq_dat();
+    std::vector<Star*> test_cache(MAX_HD + 1, nullptr);
+    struct RestoreContext
+    {
+        std::filesystem::path directory;
+        std::filesystem::path temporary;
+        Star **cache;
+
+        ~RestoreContext()
+        {
+            hdcache = cache;
+            std::filesystem::current_path(directory);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreContext restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_orbit_test_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache
+    };
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    hdcache = test_cache.data();
+    Star *primary = make_star("Orbit Test A");
+    primary->HD = 99990;
+    hdcache[99990] = primary;
+
+    const auto row = [](const char *center, const char *member, const char *period,
+                        const char *axis, const char *epoch)
+    {
+        std::string line(238, ' ');
+        line.replace(0, strlen(center), center);
+        line.replace(24, strlen(member), member);
+        line.replace(48, strlen(period), period);
+        line.replace(64, 2, "45");
+        line.replace(76, 2, "60");
+        line.replace(88, 3, "120");
+        line.replace(100, strlen(axis), axis);
+        line.replace(112, 3, "0.2");
+        line.replace(124, 1, "0");
+        line.replace(144, strlen(epoch), epoch);
+        line.replace(160, 3, "M0V");
+        line.replace(192, 3, "0.6");
+        line.replace(204, 3, "0.6");
+        line.replace(216, 4, "0.08");
+        line.replace(228, 4, "3800");
+        return line;
+    };
+    std::ofstream file("catalogs/star_orbits.dat");
+    file << row("HD99990", "HD99991", "2.5d", "0.2AU", "JD2451544.512345") << '\n';
+    file << row("HD99991", "Orbit Test C", "12.75y", "0.04s", "2026.123456") << '\n';
+    file.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 2);
+    Star *secondary = hdcache[99991];
+    ASSERT_NE(secondary, nullptr);
+    ASSERT_NE(secondary->orbit, nullptr);
+    EXPECT_EQ(secondary->orbit->center, primary);
+    EXPECT_EQ(secondary->HD, 99991u);
+    EXPECT_NEAR(secondary->orbit->epoch, 2451544.512345, 1e-8);
+    EXPECT_DOUBLE_EQ(secondary->orbit->period, 2.5 * oneday);
+    EXPECT_DOUBLE_EQ(secondary->orbit->semimajor_axis, 0.2 * AU);
+    const int child_index = find_object("Orbit Test C", true);
+    ASSERT_GE(child_index, 0);
+    Star *child = static_cast<Star*>(cels[child_index]);
+    ASSERT_NE(child->orbit, nullptr);
+    EXPECT_EQ(child->orbit->center, secondary);
+    EXPECT_DOUBLE_EQ(child->orbit->period, 12.75 * oneyear);
+    EXPECT_NEAR(child->orbit->semimajor_axis, 0.04 * (AU / parsec) * secondary->distance, 1e-4);
+    EXPECT_NEAR(child->orbit->epoch, J2000 + (2026.123456 - 2000) * (oneyear / oneday), 1e-8);
+    EXPECT_EQ(secondary->get_component(), 'B');
+    EXPECT_EQ(child->get_component(), 'C');
+    delete_the_universe();
+}
 
 // Line 1 of catalogs/astorb/astorb.dat: (1) Ceres.
 static const char astorb_ceres[] =

@@ -4301,6 +4301,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     int l;
     char last = 0, nxtlast = 0;
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
+    numfails = 0;
 
     while (fgets(buffer, 1020, fp))
     {
@@ -4409,7 +4410,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (!A)
         {
-            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": center not found." << std::endl;
+            if (showfails) std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": center not found." << std::endl;
+            numfails++;
             continue;
         }
 
@@ -4440,6 +4442,19 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
             strcpy(s->name, bdyname.c_str());
             s->namelen = strlen(s->name);
+            if (s_is_new && bdyname.rfind("HD", 0) == 0)
+            {
+                char *number_end = nullptr;
+                const unsigned long hd = strtoul(bdystr + 2, &number_end, 10);
+                if (hd > 0 && hd <= MAX_HD && number_end && *number_end == '\0')
+                {
+                    s->HD = hd;
+                    if (hdcache)
+                    {
+                        hdcache[hd] = s;
+                    }
+                }
+            }
             s->has_custom_name = true;
             s->distance_known = true;
             read_field_onebased(buffer, 161, 175, field);
@@ -4564,7 +4579,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
         else if (!s || s == A)
         {
-            std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": member not found and insufficient data to construct new." << std::endl;
+            if (showfails) std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": member not found and insufficient data to construct new." << std::endl;
+            numfails++;
             continue;
         }
 
@@ -4634,13 +4650,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         f = atof(field) * fiftyseventh;
         if (f && s->orbit) s->orbit->mean_anomaly = f;
 
-        read_field_onebased(buffer, 145, 155, field);
+        read_field_onebased(buffer, 145, 160, field);
         str = trim(field);
         l = str.size();
         if (l)
         {
             if (str.c_str()[0] == 'J' && str.c_str()[1] == 'D') f = atof(&field[2]);
-            else f = (atof(field)-2000) * oneyear + J2000;
+            else f = (atof(field)-2000) * (oneyear / oneday) + J2000;
             if (f && s->orbit) s->orbit->epoch = f;
         }
 
@@ -4664,6 +4680,10 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         num_read++;
     }
+
+    if (numfails && !showfails) std::cout << "There were " << numfails
+        << " star orbits that could not be applied. To se them, re-run Alienorum with the `orbfails` command like argument."
+        << std::endl;
 
     return num_read;
 }
