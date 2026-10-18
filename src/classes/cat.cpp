@@ -5662,7 +5662,16 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
 
         read_field_onebased(buffer, 77, 82, field);
-        s->apparent_magnitude = atof(field);
+        str = trim(field);
+        char *magnitude_end = nullptr;
+        const double apparent = std::strtod(str.c_str(), &magnitude_end);
+        // The writer represents an unknown magnitude with a sign and otherwise blank digits.
+        // Keep Star's unknown-value default unless the field contains a complete finite number.
+        if (magnitude_end != str.c_str() && *magnitude_end == '\0' &&
+            std::isfinite(apparent) && apparent >= -40 && apparent < 99)
+        {
+            s->apparent_magnitude = apparent;
+        }
 
         read_field_onebased(buffer, 84, 98, field);
         str = trim(field);

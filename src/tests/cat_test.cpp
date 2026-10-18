@@ -1,4 +1,5 @@
 #include <cstring>
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -7,6 +8,7 @@
 #include "../classes/cat.h"
 #include "../loaders.h"
 #include "../globals.h"
+#include "../housekeeping.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -107,6 +109,140 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     EXPECT_NEAR(child->orbit->epoch, J2000 + (2026.123456 - 2000) * (oneyear / oneday), 1e-8);
     EXPECT_EQ(secondary->get_component(), 'B');
     EXPECT_EQ(child->get_component(), 'C');
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, MissingCompanionMagnitudesSurviveLoadingAndBrightnessCorrection)
+{
+    Star::load_main_seq_dat();
+    std::vector<Star*> test_hd(MAX_HD + 1, nullptr);
+    std::vector<Star*> test_hip(MAX_HIP + 1, nullptr);
+    struct RestoreContext
+    {
+        std::filesystem::path directory;
+        std::filesystem::path temporary;
+        Star **hd;
+        Star **hip;
+
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            std::filesystem::current_path(directory);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreContext restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_missing_magnitude_test_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache,
+        hipcache
+    };
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    hdcache = test_hd.data();
+    hipcache = test_hip.data();
+    struct RoundtripReader : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    };
+    RoundtripReader reader;
+    Star primary;
+    strcpy(primary.name, "Catalog primary");
+    strcpy(primary.spectral_type, "G2V");
+    primary.alienorumid = "Fixture A";
+    primary.HD = 99990;
+    primary.distance = 20 * parsec;
+    primary.apparent_magnitude = 5;
+    primary.absolute_magnitude = 5 - 5 * log10(2);
+    primary.right_ascension = 1;
+    primary.declination = 0.2;
+    FILE *file = fopen("catalogs/soles_alienorum.dat", "w");
+    ASSERT_NE(file, nullptr);
+    reader.write_condensed_star_cat_line(file, &primary);
+    const auto write_companion = [&](const char *id, const char *name, unsigned int hd,
+                                     double apparent, double absolute)
+    {
+        Star companion;
+        strcpy(companion.name, name);
+        strcpy(companion.spectral_type, "M3V");
+        companion.alienorumid = id;
+        companion.HD = hd;
+        companion.distance = 200 * parsec;
+        companion.right_ascension = 1;
+        companion.declination = 0.2;
+        companion.apparent_magnitude = apparent;
+        companion.absolute_magnitude = absolute;
+        companion.orbit = new Orbit();
+        companion.orbit->center = &primary;
+        companion.orbit->period = oneyear;
+        companion.orbit->semimajor_axis = AU;
+        reader.write_condensed_star_cat_line(file, &companion);
+    };
+    write_companion("Fixture B", "Unknown magnitude B", 99991, 1e29, 12);
+    write_companion("Fixture C", "Unknown magnitude C", 99992, 1e29, 15);
+    write_companion("Fixture D", "Measured zero D", 99993, 0, 12);
+    fclose(file);
+    std::vector<std::string> rows;
+    std::ifstream input("catalogs/soles_alienorum.dat");
+    std::string row;
+    while (std::getline(input, row))
+    {
+        rows.push_back(row);
+    }
+    input.close();
+    ASSERT_EQ(rows.size(), 4u);
+    ASSERT_EQ(rows[1].substr(76, 6), "+     ");
+    ASSERT_EQ(rows[3].substr(76, 6), "+00.00");
+    rows[2].replace(76, 6, "      ");
+    std::ofstream legacy("catalogs/soles_alienorum.dat");
+    for (const auto &record : rows)
+    {
+        legacy << record << '\n';
+    }
+    legacy.close();
+
+    // Exercise the real writer, both missing-field formats, the loader, and the correction pass.
+    for (int pass = 0; pass < 2; pass++)
+    {
+        Star *sun = static_cast<Star*>(cels[0]);
+        sun->distance = 0;
+        sun->update_location(simnow);
+        ASSERT_EQ(reader.read_condensed_star_cat(), 4);
+        Star *unknown_b = hdcache[99991];
+        Star *unknown_c = hdcache[99992];
+        Star *measured_zero = hdcache[99993];
+        ASSERT_NE(unknown_b, nullptr);
+        ASSERT_NE(unknown_c, nullptr);
+        ASSERT_NE(measured_zero, nullptr);
+        EXPECT_DOUBLE_EQ(unknown_b->apparent_magnitude, 1e29);
+        EXPECT_DOUBLE_EQ(unknown_c->apparent_magnitude, 1e29);
+        EXPECT_DOUBLE_EQ(measured_zero->apparent_magnitude, 0);
+        set_center_objects();
+        set_center_objects();
+        EXPECT_DOUBLE_EQ(unknown_b->absolute_magnitude, 12);
+        EXPECT_DOUBLE_EQ(unknown_c->absolute_magnitude, 15);
+        EXPECT_GT(unknown_b->viewer_magnitude(sun->location), 10);
+        EXPECT_GT(unknown_c->viewer_magnitude(sun->location), 10);
+        EXPECT_NEAR(measured_zero->viewer_magnitude(sun->location), 0, 1e-5);
+        if (pass == 0)
+        {
+            FILE *roundtrip = fopen("catalogs/soles_alienorum.dat", "w");
+            ASSERT_NE(roundtrip, nullptr);
+            for (unsigned int hd = 99990; hd <= 99993; hd++)
+            {
+                reader.write_condensed_star_cat_line(roundtrip, hdcache[hd]);
+            }
+            fclose(roundtrip);
+            delete_the_universe();
+            std::fill(test_hd.begin(), test_hd.end(), nullptr);
+            std::fill(test_hip.begin(), test_hip.end(), nullptr);
+            make_star("Sol");
+        }
+    }
     delete_the_universe();
 }
 
