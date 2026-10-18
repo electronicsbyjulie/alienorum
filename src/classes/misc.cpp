@@ -3,6 +3,7 @@
 #include <string>
 #include <chrono>
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <math.h>
 #include <cmath>
@@ -391,9 +392,15 @@ int grkno_from_abbrev(const char *abbrev)
         else if (c == 'S') result = 22;
     }
 
-    if (result >= 0 && strlen(abbrev) > 3)
+    if (result >= 0)
     {
-        int n = abbrev[3] - '0';
+        const size_t length = strlen(abbrev);
+        size_t digit = (result == 11 || result == 12 || result == 13 || result == 15) ? 2 : 3;
+        while (digit < length && std::isspace((unsigned char)abbrev[digit]))
+        {
+            digit++;
+        }
+        const int n = digit < length ? abbrev[digit] - '0' : 0;
         if (n >= 1 && n <= 9)
         {
             result = 100 + 10*result + n;

@@ -219,6 +219,121 @@ TEST_F(CatalogParsingTest, TaurusPathUsesXiAndSurvivesRebuildingConstellations)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, HipparcosCombinedLightPreservesResolvedCompanionMagnitude)
+{
+    Star::load_main_seq_dat();
+    std::ifstream source("catalogs/Hipparcos/hip_main.dat");
+    std::string row;
+    while (std::getline(source, row))
+    {
+        if (row.size() >= 396 && trim(row.substr(8, 6)) == "88404")
+        {
+            break;
+        }
+    }
+    ASSERT_GE(row.size(), 396u);
+    ASSERT_EQ(trim(row.substr(8, 6)), "88404");
+    std::vector<Star*> test_hd(MAX_HD + 1, nullptr);
+    std::vector<Star*> test_hip(MAX_HIP + 1, nullptr);
+    struct RestoreContext
+    {
+        std::filesystem::path directory;
+        std::filesystem::path temporary;
+        Star **hd;
+        Star **hip;
+        decltype(dmcache) dm;
+
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            dmcache = std::move(dm);
+            std::filesystem::current_path(directory);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreContext restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_companion_test_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache,
+        hipcache,
+        std::move(dmcache)
+    };
+    dmcache.clear();
+    std::filesystem::create_directories(restore.temporary / "catalogs/Hipparcos");
+    std::ofstream file(restore.temporary / "catalogs/Hipparcos/hip_main.dat");
+    file << row << '\n';
+    file.close();
+    std::filesystem::current_path(restore.temporary);
+    hdcache = test_hd.data();
+    hipcache = test_hip.data();
+    Star *primary = make_star("Tau Ophiuchi");
+    primary->HD = 164765;
+    primary->distance = 56.234 * light_year;
+    Star *companion = make_star("Tau Ophiuchi B");
+    companion->HD = 164764;
+    companion->HR = 6733;
+    companion->make_companion_of(primary, 'B');
+    companion->apparent_magnitude = 5.94;
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_DOUBLE_EQ(companion->apparent_magnitude, 5.94);
+    companion->apparent_magnitude = 0;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_DOUBLE_EQ(companion->apparent_magnitude, 0);
+    companion->apparent_magnitude = 1e29;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_DOUBLE_EQ(companion->apparent_magnitude, 4.77);
+    // A multi-component entry can also carry resolved photometry; only H43 marks combined light.
+    row[272] = ' ';
+    std::ofstream resolved("catalogs/Hipparcos/hip_main.dat");
+    resolved << row << '\n';
+    resolved.close();
+    companion->apparent_magnitude = 5.94;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_DOUBLE_EQ(companion->apparent_magnitude, 4.77);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, CachedTauOphiuchiBMatchesResolvedBSCPhotometry)
+{
+    std::ifstream bsc("catalogs/BSC/catalog");
+    std::string row;
+    double resolved_magnitude = 1e29;
+    while (std::getline(bsc, row))
+    {
+        if (row.size() >= 107 && trim(row.substr(25, 6)) == "164764")
+        {
+            resolved_magnitude = std::stod(row.substr(102, 5));
+            break;
+        }
+    }
+    ASSERT_DOUBLE_EQ(resolved_magnitude, 5.94);
+    std::ifstream cached("catalogs/soles_alienorum.dat");
+    bool found = false;
+    double companion_absolute = 1e29;
+    double primary_distance = 0;
+    while (std::getline(cached, row))
+    {
+        if (row.size() >= 243 && trim(row.substr(113, 6)) == "164765")
+        {
+            primary_distance = std::stod(row.substr(223, 12)) * light_year;
+        }
+        if (row.size() >= 119 && trim(row.substr(113, 6)) == "164764")
+        {
+            EXPECT_DOUBLE_EQ(std::stod(row.substr(76, 6)), resolved_magnitude);
+            companion_absolute = std::stod(row.substr(237, 6));
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+    ASSERT_GT(primary_distance, 0);
+    EXPECT_NEAR(companion_absolute + 5 * log10(primary_distance / (10 * parsec)), resolved_magnitude, 0.011);
+}
+
 // Line 1 of catalogs/astorb/astorb.dat: (1) Ceres.
 static const char astorb_ceres[] =
     "     1 Ceres              L.H. Wasserman   3.53  0.15 0.72 848.4 G?      0   0   0   0   0"

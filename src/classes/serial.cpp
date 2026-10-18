@@ -30,7 +30,7 @@ static bool looks_like_Bayer(const char* s)
         {
             continue;
         }
-        int j = prefix;
+        int j = skip_ws(s, prefix);
         if (s[j] >= '1' && s[j] <= '9')
         {
             j++;

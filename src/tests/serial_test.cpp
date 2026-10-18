@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <gtest/gtest.h>
 #include "../classes/cons.h"
+#include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -437,6 +438,97 @@ TEST_F(FindObjectTest, MissingBayerIdentityDoesNotSelectAnotherGreekLetter)
     constellations.push_back(tau);
     EXPECT_EQ(find_object("Xi  Tau", true), -1);
     EXPECT_EQ(find_object("Xi Tau", true), -1);
+    constellations = std::move(saved_constellations);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, NumberedBayerNamesAcceptCatalogAndCompactSpacing)
+{
+    auto saved_constellations = std::move(constellations);
+    constellations.clear();
+    Constellation tau;
+    tau.name = "Taurus";
+    tau.abbrev = "Tau";
+    for (int letter = 0; letter < 24; letter++)
+    {
+        for (int number = 1; number <= 9; number++)
+        {
+            Star *s = make_star(("Identifier " + std::to_string(letter) + " " + std::to_string(number)).c_str());
+            strcpy(s->constellation, "Tau");
+            s->BayerGrkno = 100 + 10 * letter + number;
+            tau.Bayer_stars[s->BayerGrkno] = s;
+        }
+    }
+    constellations.push_back(tau);
+    for (int pass = 0; pass < 2; pass++)
+    {
+        for (int letter = 0; letter < 24; letter++)
+        {
+            const std::string prefix = Greek_letter[letter].substr(0, 3);
+            for (int number = 1; number <= 9; number++)
+            {
+                const std::string digit = std::to_string(number);
+                const int expected = letter * 9 + number - 1;
+                EXPECT_EQ(find_object((prefix + digit + " Tau").c_str(), true), expected);
+                EXPECT_EQ(find_object((prefix + " " + digit + "Tau").c_str(), true), expected);
+                EXPECT_EQ(find_object((prefix + " " + digit + " Tau").c_str(), true), expected);
+            }
+        }
+        // Reloaded constellation definitions have no populated lookup maps.
+        constellations[0].Bayer_stars.clear();
+    }
+    constellations = std::move(saved_constellations);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, ExplicitConstellationEndpointsResolveBelowTheDisplayLimit)
+{
+    auto saved_constellations = std::move(constellations);
+    constellations.clear();
+    Constellation cha;
+    cha.name = "Chamaeleon";
+    cha.abbrev = "Cha";
+    cha.vantage_name = "Sun";
+    Star *mu1 = make_star("Mu 1 Chamaeleontis");
+    strcpy(mu1->constellation, "Cha");
+    strcpy(mu1->Bayer, "Mu 1Cha");
+    mu1->BayerGrkno = 211;
+    mu1->apparent_magnitude = 5.53;
+    Star *mu2 = make_star("Mu 2 Chamaeleontis");
+    strcpy(mu2->constellation, "Cha");
+    strcpy(mu2->Bayer, "Mu 2Cha");
+    mu2->BayerGrkno = 212;
+    mu2->apparent_magnitude = 6.60;
+    Star *faint = make_star("Faint endpoint");
+    strcpy(faint->constellation, "Cha");
+    strcpy(faint->Flamsteed, "100 Cha");
+    faint->FlamsteedNo = 100;
+    faint->apparent_magnitude = 8;
+    ConsLine first;
+    first.starnamea = "Mu1 Cha";
+    first.starnameb = "Mu2 Cha";
+    cha.lines.push_back(first);
+    ConsLine second;
+    second.starnamea = "Mu2 Cha";
+    second.starnameb = "100 Cha";
+    cha.lines.push_back(second);
+    constellations.push_back(cha);
+
+    // Rebuilt definitions have empty Greek-letter lookup maps.
+    EXPECT_EQ(find_object("Mu2 Cha", true, 6.5, 1), -1);
+    cache_cons_lines();
+    EXPECT_EQ(constellations[0].lines[0].a, mu1);
+    EXPECT_EQ(constellations[0].lines[0].b, mu2);
+    EXPECT_EQ(constellations[0].lines[1].a, mu2);
+    EXPECT_EQ(constellations[0].lines[1].b, faint);
+
+    // Exercise the local constellation index as well as the general lookup fallback.
+    constellation_index["Cha"].push_back(mu1);
+    constellation_index["Cha"].push_back(mu2);
+    constellation_index["Cha"].push_back(faint);
+    cache_cons_lines();
+    EXPECT_EQ(constellations[0].lines[0].b, mu2);
+    EXPECT_EQ(constellations[0].lines[1].b, faint);
     constellations = std::move(saved_constellations);
     delete_the_universe();
 }

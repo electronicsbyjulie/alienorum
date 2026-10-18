@@ -13,6 +13,53 @@ using namespace alienorum;
 
 class HousekeepingTest : public UniverseFixture {};
 
+TEST_F(HousekeepingTest, CompanionBrightnessUsesSystemDistance)
+{
+    Star *sun = make_star("Sol");
+    sun->distance = 0;
+    Star *primary = make_star("Tau Ophiuchi");
+    primary->distance = 56.234 * light_year;
+    primary->apparent_magnitude = 5.24;
+    primary->absolute_magnitude = 4.06;
+    Star *companion = make_star("Tau Ophiuchi B");
+    strcpy(companion->spectral_type, "F5III+...");
+    companion->distance = 179.32 * light_year;
+    companion->apparent_magnitude = 5.94;
+    companion->absolute_magnitude = 1.07;
+    companion->orbit = new Orbit();
+    companion->orbit->center = primary;
+    companion->orbit->period = 8191.47 * oneday;
+    companion->orbit->semimajor_axis = 10 * AU;
+
+    set_center_objects();
+    EXPECT_NEAR(companion->viewer_magnitude(sun->location), 5.94, 1e-5);
+    EXPECT_EQ(companion->cenobj, primary);
+    EXPECT_DOUBLE_EQ(primary->absolute_magnitude, 4.06);
+    set_center_objects();
+    EXPECT_NEAR(companion->viewer_magnitude(sun->location), 5.94, 1e-5);
+
+    const double reference_magnitude = companion->absolute_magnitude;
+    const double original_time = simnow;
+    primary->radial_velocity = 40000;
+    simnow += 1000 * oneyear;
+    set_center_objects();
+    EXPECT_DOUBLE_EQ(companion->absolute_magnitude, reference_magnitude);
+    simnow = original_time;
+    primary->radial_velocity = 0;
+
+    // A measured companion can be brighter than its primary; zero is also a valid magnitude.
+    companion->apparent_magnitude = 0;
+    set_center_objects();
+    EXPECT_NEAR(companion->viewer_magnitude(sun->location), 0, 1e-5);
+
+    // A companion with only a published intrinsic luminosity keeps that luminosity.
+    companion->apparent_magnitude = 1e29;
+    companion->absolute_magnitude = 2;
+    set_center_objects();
+    EXPECT_DOUBLE_EQ(companion->absolute_magnitude, 2);
+    delete_the_universe();
+}
+
 TEST_F(HousekeepingTest, BuildsTheFirstLetterIndex)
 {
     Star* sun = make_star("Sol");

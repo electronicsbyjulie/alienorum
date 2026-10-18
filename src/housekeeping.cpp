@@ -642,9 +642,19 @@ void set_center_objects()
 
         if (cels[i]->type == star)
         {
-            if (cels[i]->orbit && cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude)
-                cels[i]->absolute_magnitude = cels[i]->cenobj->absolute_magnitude + 1;
-            ((Star*)cels[i])->update_location(simnow);
+            Star *s = (Star*)cels[i];
+            s->update_location(simnow);
+            if (s->orbit && s->orbit->center && s->orbit->center->typeclass() == class_star &&
+                std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99)
+            {
+                // Bound companions use the adopted system distance, rather than an independent
+                // catalog parallax. Keep the reference distance fixed when simulation time moves.
+                const double observed_distance = s->cenobj->distance;
+                if (std::isfinite(observed_distance) && observed_distance > 0)
+                {
+                    s->absolute_magnitude = s->apparent_magnitude - 5.0 * log10(observed_distance / (10.0 * parsec));
+                }
+            }
         }
         else if (cels[i]->orbit)
         {

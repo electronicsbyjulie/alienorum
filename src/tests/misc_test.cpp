@@ -448,6 +448,13 @@ TEST(GreekTest, BayerComponentsAndShortNamesAreSafe)
     EXPECT_EQ(grkno_from_abbrev("Mu"), 11);
     EXPECT_EQ(grkno_from_abbrev("Pi"), 15);
     EXPECT_EQ(grkno_from_abbrev("Xi"), 13);
+    EXPECT_EQ(grkno_from_abbrev("Mu1 Cha"), 211);
+    EXPECT_EQ(grkno_from_abbrev("Mu 1Cha"), 211);
+    EXPECT_EQ(grkno_from_abbrev("Mu2 Cha"), 212);
+    EXPECT_EQ(grkno_from_abbrev("Pi4 Ori"), 254);
+    EXPECT_EQ(grkno_from_abbrev("Pi 4Ori"), 254);
+    EXPECT_EQ(grkno_from_abbrev("Pi5 Ori"), 255);
+    EXPECT_EQ(grkno_from_abbrev("Pi 5Ori"), 255);
     EXPECT_EQ(grkno_from_abbrev("Alp Oph"), 0);
 }
 

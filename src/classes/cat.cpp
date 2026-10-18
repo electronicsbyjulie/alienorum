@@ -1269,7 +1269,17 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         f = atof(field);
         if (trim(field).size())
         {
-            s->apparent_magnitude = f;
+            char combined_flag[2];
+            read_field_onebased(buffer, 273, 273, combined_flag);
+            const bool combined_magnitude = combined_flag[0] == '*';
+            const bool resolved_magnitude = !is_new && s->HR > 0 && s->get_component() &&
+                std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99;
+            // H43 marks combined photometry. Combined AB light must not replace
+            // a component magnitude already supplied by the Bright Star Catalogue.
+            if (!combined_magnitude || !resolved_magnitude)
+            {
+                s->apparent_magnitude = f;
+            }
             double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
             s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
         }

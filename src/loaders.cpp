@@ -1062,8 +1062,6 @@ void cache_cons_lines()
             }
         }
 
-        double mag_limit = (i == 34) ? 7.5 : 6.5;
-
         mtx.lock();
         loading_msg = std::string("Assigning ") + constellations[i].name + std::string("...");
         mtx.unlock();
@@ -1076,10 +1074,6 @@ void cache_cons_lines()
             for (CelestialObject* co : cstars)
             {
                 Star* s = (Star*)co;
-                if (s->apparent_magnitude > mag_limit)
-                {
-                    continue;
-                }
                 if (s->Bayer[0])
                 {
                     cons_stars.emplace(s->Bayer, s->seqno);
@@ -1111,7 +1105,8 @@ void cache_cons_lines()
             }
 
             // Constellation endpoints are identifiers; a similar name is a different star.
-            int found = find_object(starname.c_str(), true, mag_limit, 1);
+            // Explicitly named endpoints are independent of the display magnitude limit.
+            int found = find_object(starname.c_str(), true, 9e29, 1);
             resolved_cache.emplace(starname, found);
             return found;
         };
@@ -1338,6 +1333,9 @@ void load_stuff()
     cache_cons_lines();
     if (!file_exists(ihcfn.c_str()))
     {
+        // Gaia and the stellar audit can change luminosities after the initial orbit linking.
+        // Reconcile companion photometry at the adopted system distance before saving the cache.
+        set_center_objects();
         ConsBins cb = fill_alienorum_ids();
         cr.write_condensed_star_cat(cb);
     }
