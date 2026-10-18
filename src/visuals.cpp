@@ -7816,7 +7816,7 @@ void draw_cons_lines()
         return c.vantage.distance_to(active_vantage_pt) < light_year * 0.1;
     };
 
-    for (i = 0; i < n; i++)
+    if (active_vantage_found && active_vantage_pt.distance_to(here) < light_year*10) for (i = 0; i < n; i++)
     {
         if (!belongs_to_active_vantage(constellations[i]))
         {
