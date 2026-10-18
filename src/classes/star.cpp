@@ -116,53 +116,165 @@ std::string alienorum::wd_identifier_key(const std::string &identifier)
     return key;
 }
 
+namespace
+{
+    struct PublishedWdColor
+    {
+        std::string label, gaia, source;
+        std::vector<std::string> aliases;
+        uint32_t rgb;
+        bool selectable = true;
+    };
+
+    std::string wd_alias_key(const std::string &identifier)
+    {
+        std::string key = wd_identifier_key(identifier);
+        if (!key.empty()) return key;
+        for (unsigned char c : identifier)
+        {
+            if (c > ' ') key += (c >= 'a' && c <= 'z') ? c - 'a' + 'A' : c;
+        }
+        return key;
+    }
+
+    const std::vector<PublishedWdColor> &published_wd_colors()
+    {
+        static const auto entries = []()
+        {
+            std::vector<PublishedWdColor> result;
+            std::ifstream input("catalogs/WD_colors.dat");
+            std::string line;
+            while (std::getline(input, line))
+            {
+                if (line.empty() || line[0] == '#') continue;
+                PublishedWdColor entry;
+                std::string hex, alias;
+                std::istringstream row(line);
+                if (!(row >> entry.label >> entry.gaia >> hex >> entry.source)) continue;
+                if (hex.size() != 7 || hex[0] != '#') continue;
+                char *end = nullptr;
+                entry.rgb = std::strtoul(hex.c_str() + 1, &end, 16);
+                if (!end || *end) continue;
+                while (row >> alias)
+                {
+                    if (alias == "alternative" || alias.compare(0, 21, "unresolved_component=") == 0)
+                    {
+                        entry.selectable = false;
+                    }
+                    else entry.aliases.push_back(alias);
+                }
+                result.push_back(entry);
+            }
+            return result;
+        }();
+        return entries;
+    }
+}
+
+std::string alienorum::wd_color_gaia_identifier(const std::string &identifier)
+{
+    if (identifier.empty()) return "";
+    const std::string key = wd_alias_key(identifier);
+    std::string result;
+    for (const auto &entry : published_wd_colors())
+    {
+        if (!entry.selectable) continue;
+        bool matches = key == wd_alias_key(entry.label) || key == wd_alias_key(entry.gaia);
+        for (const auto &alias : entry.aliases) matches |= key == wd_alias_key(alias);
+        if (!matches) continue;
+        if (!result.empty() && result != entry.gaia) return "";
+        result = entry.gaia;
+    }
+    return result;
+}
+
+int alienorum::associate_wd_color_identifiers(CelestialObject **objects)
+{
+    int linked = 0, unmatched = 0, conflicts = 0;
+    if (!objects) return linked;
+    std::map<std::string, std::vector<Star*>> identities;
+    for (const auto &entry : published_wd_colors())
+    {
+        if (!entry.selectable) continue;
+        identities[wd_alias_key(entry.gaia)];
+        for (const auto &alias : entry.aliases) identities[wd_alias_key(alias)];
+    }
+    for (int i = 0; objects[i]; ++i)
+    {
+        if (objects[i]->typeclass() != class_star) continue;
+        Star *s = static_cast<Star*>(objects[i]);
+        for (const std::string &id : {s->gaia_wd_name, s->WD, std::string(s->Gliese), std::string(s->name)})
+        {
+            const auto found = identities.find(wd_alias_key(id));
+            if (found != identities.end() &&
+                std::find(found->second.begin(), found->second.end(), s) == found->second.end())
+            {
+                found->second.push_back(s);
+            }
+        }
+    }
+    for (const auto &entry : published_wd_colors())
+    {
+        if (!entry.selectable) continue;
+        Star *match = nullptr;
+        bool ambiguous = false;
+        int best_rank = 0;
+        const auto consider = [&](const std::string &alias, bool exact_gaia)
+        {
+            for (Star *s : identities[wd_alias_key(alias)])
+            {
+                int rank = exact_gaia ? 3 : 1;
+                const std::string key = wd_alias_key(alias);
+                const char component = s->get_component();
+                if (!exact_gaia && component && !key.empty() && key.back() == component &&
+                    (key == wd_alias_key(s->Gliese) || key == wd_alias_key(s->name))) rank = 2;
+                if (rank > best_rank)
+                {
+                    best_rank = rank;
+                    match = s;
+                    ambiguous = false;
+                }
+                else if (rank == best_rank && match != s) ambiguous = true;
+            }
+        };
+        // Prefer an exact Gaia identity or explicitly identified binary component over a
+        // duplicate isolated catalog entry. Do not merge objects or move their coordinates.
+        consider(entry.gaia, true);
+        for (const auto &alias : entry.aliases) consider(alias, false);
+        if (ambiguous || !match || (!match->gaia_wd_name.empty() && match->gaia_wd_name != entry.gaia))
+        {
+            if (ambiguous || match)
+            {
+                ++conflicts;
+                std::cout << "WD color identity conflict: " << entry.gaia << std::endl;
+            }
+            else ++unmatched;
+            continue;
+        }
+        match->gaia_wd_name = entry.gaia;
+        match->wd_color_valid = false;
+        if (match->apply_published_wd_color()) ++linked;
+    }
+    std::cout << "WD colors: " << linked << " linked, " << unmatched << " absent, " << conflicts << " conflicts." << std::endl;
+    return linked;
+}
+
 bool Star::apply_published_wd_color()
 {
     if (wd_color_valid) return true;
-    if (WD.empty() && gaia_wd_name.empty()) return false;
-
-    static std::map<std::string, std::string> colors;
-    static bool loaded = false;
-    static std::mutex color_mutex;
-    std::lock_guard<std::mutex> lock(color_mutex);
-    if (!loaded)
+    const std::string target = !gaia_wd_name.empty() ? gaia_wd_name : wd_color_gaia_identifier(WD);
+    for (const auto &entry : published_wd_colors())
     {
-        std::ifstream input("catalogs/WD_colors.dat");
-        std::string line;
-        while (std::getline(input, line))
-        {
-            if (line.empty() || line[0] == '#') continue;
-            std::istringstream row(line);
-            std::string id, alias, hex, source;
-            if (row >> id >> alias >> hex >> source)
-            {
-                const std::string id_key = wd_identifier_key(id);
-                const std::string alias_key = wd_identifier_key(alias);
-                if (!id_key.empty()) colors[id_key] = hex + " " + source;
-                if (!alias_key.empty()) colors[alias_key] = hex + " " + source;
-            }
-        }
-        loaded = true;
+        if (!entry.selectable) continue;
+        if (entry.gaia != target) continue;
+        wd_color_red = (entry.rgb >> 16) & 0xff;
+        wd_color_green = (entry.rgb >> 8) & 0xff;
+        wd_color_blue = entry.rgb & 0xff;
+        wd_color_source = entry.source;
+        wd_color_valid = true;
+        return true;
     }
-
-    auto found = colors.find(wd_identifier_key(WD));
-    if (found == colors.end() && !gaia_wd_name.empty())
-    {
-        found = colors.find(wd_identifier_key(gaia_wd_name));
-    }
-    if (found == colors.end()) return false;
-
-    std::istringstream value(found->second);
-    std::string hex;
-    if (!(value >> hex >> wd_color_source) || hex.size() != 7 || hex[0] != '#') return false;
-    char *end = nullptr;
-    const unsigned long rgb = std::strtoul(hex.c_str() + 1, &end, 16);
-    if (!end || *end) return false;
-    wd_color_red = (rgb >> 16) & 0xff;
-    wd_color_green = (rgb >> 8) & 0xff;
-    wd_color_blue = rgb & 0xff;
-    wd_color_valid = true;
-    return true;
+    return false;
 }
 
 bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
@@ -614,7 +726,8 @@ void Star::limb_darkening_coefficients(double &a, double &b)
 alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 {
     if (!cel || cel->typeclass() != class_star) return regime_none;
-    if (!static_cast<Star*>(cel)->WD.empty() || static_cast<Star*>(cel)->spectral_type[0] == 'D') return regime_degenerate;
+    if (!static_cast<Star*>(cel)->WD.empty() || !static_cast<Star*>(cel)->gaia_wd_name.empty() ||
+        static_cast<Star*>(cel)->spectral_type[0] == 'D') return regime_degenerate;
 
     // Neither estimate_temperature() nor the main-sequence table it relies on: we
     // invert the blackbody relation, or use the catalog temperature when available.

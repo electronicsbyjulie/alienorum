@@ -359,6 +359,10 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
         using CatalogReader::write_condensed_star_cat_line;
     };
     Writer writer;
+    Color model_before;
+    std::string model_source;
+    ASSERT_TRUE(added->resolve_wd_color(model_before, &model_source));
+    EXPECT_EQ(model_source, "Hollands2026_C1_H_logg8_approx");
     added->alienorumid = "WD fixture";
     const double radius = added->volumetric_mean_radius;
     FILE *cache = fopen("catalogs/soles_alienorum.dat", "w");
@@ -382,6 +386,11 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     EXPECT_NEAR(cels[reloaded]->volumetric_mean_radius, radius, radius * 0.0001);
     EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[reloaded])->temperature, 25000);
     EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[reloaded])->BV_color, 0);
+    Color model_after;
+    ASSERT_TRUE(static_cast<Star*>(cels[reloaded])->resolve_wd_color(model_after, &model_source));
+    EXPECT_DOUBLE_EQ(model_after.red, model_before.red);
+    EXPECT_DOUBLE_EQ(model_after.green, model_before.green);
+    EXPECT_DOUBLE_EQ(model_after.blue, model_before.blue);
     delete_the_universe();
 }
 

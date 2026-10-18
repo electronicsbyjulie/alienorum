@@ -1,5 +1,8 @@
 #include <cstring>
 #include <limits>
+#include <fstream>
+#include <sstream>
+#include <set>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp> 
 #include "../classes/galaxy.h"
@@ -9,6 +12,53 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(StarTest, PublishedWdCatalogCoversEveryIndividualStarTable)
+{
+    std::ifstream input("catalogs/WD_colors.dat");
+    ASSERT_TRUE(input.good());
+    int counts[7] = {}, alternatives = 0, components = 0, selectable = 0;
+    std::set<std::string> identities;
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream row(line);
+        std::string label, gaia, hex, source;
+        ASSERT_TRUE(bool(row >> label >> gaia >> hex >> source));
+        ASSERT_GE(source.size(), 2u);
+        ASSERT_GE(source[1], '3');
+        ASSERT_LE(source[1], '6');
+        ++counts[source[1] - '0'];
+        identities.insert(gaia);
+        if (line.find("unresolved_component=") != std::string::npos)
+        {
+            ++components;
+            EXPECT_TRUE(wd_color_gaia_identifier(label).empty());
+            continue;
+        }
+        if (line.find(" alternative") != std::string::npos)
+        {
+            ++alternatives;
+            continue;
+        }
+        ++selectable;
+        Star s;
+        s.gaia_wd_name = gaia;
+        ASSERT_TRUE(s.apply_published_wd_color()) << gaia;
+        const unsigned expected = std::stoul(hex.substr(1), nullptr, 16);
+        EXPECT_EQ((unsigned(s.wd_color_red) << 16) | (unsigned(s.wd_color_green) << 8) | s.wd_color_blue, expected);
+        EXPECT_EQ(s.wd_color_source, source);
+    }
+    EXPECT_EQ(counts[3], 15);
+    EXPECT_EQ(counts[4], 36);
+    EXPECT_EQ(counts[5], 36);
+    EXPECT_EQ(counts[6], 152);
+    EXPECT_EQ(identities.size(), 236u);
+    EXPECT_EQ(selectable, 235);
+    EXPECT_EQ(alternatives, 2);
+    EXPECT_EQ(components, 2);
+}
 
 TEST(WdAtmosphereTest, PublishedNodesRoundTripAndMatchPaperExamples)
 {
@@ -36,6 +86,18 @@ TEST(WdAtmosphereTest, PublishedNodesRoundTripAndMatchPaperExamples)
     EXPECT_EQ(he.r, 0xc7);
     EXPECT_EQ(he.g, 0xd6);
     EXPECT_EQ(he.b, 0xff);
+}
+
+TEST(WdAtmosphereTest, SrgbTransferIncludesTheLinearToe)
+{
+    EXPECT_NEAR(wd_srgb_decode(0.02), 0.0015479876160990713, 1e-15);
+    EXPECT_NEAR(wd_srgb_decode(0.5), 0.21404114048223255, 1e-15);
+    EXPECT_NEAR(wd_srgb_encode(0.001), 0.01292, 1e-15);
+    for (int channel = 0; channel <= 255; ++channel)
+    {
+        const double value = channel / 255.0;
+        EXPECT_NEAR(wd_srgb_encode(wd_srgb_decode(value)), value, 1e-12);
+    }
 }
 
 TEST(WdAtmosphereTest, InterpolatesLinearLightAndRejectsUnsupportedInputs)

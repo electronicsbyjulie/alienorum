@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include <random>
+#include <cstring>
 #include "../classes/color.h"
 #include "../classes/star.h"
 #include "../classes/wdcolor.h"

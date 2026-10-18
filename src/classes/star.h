@@ -154,6 +154,8 @@ namespace alienorum
 
     stellar_regime_t stellar_regime(CelestialObject *cel);
     std::string wd_identifier_key(const std::string &identifier);
+    std::string wd_color_gaia_identifier(const std::string &identifier);
+    int associate_wd_color_identifiers(CelestialObject **objects);
 
     class StarMulti
     {

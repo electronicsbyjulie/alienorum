@@ -391,6 +391,105 @@ TEST_F(SerializationTest, OnlyEditedWritesOnlyTheEditedObjects)
 
 class FindObjectTest : public UniverseFixture {};
 
+TEST_F(FindObjectTest, PublishedWdAliasesAttachToExistingCatalogStars)
+{
+    Star *eri_primary = make_star("GJ 166 A");
+    strcpy(eri_primary->Gliese, "GJ 166 A");
+    Star *sirius = make_star("Sirius");
+    strcpy(sirius->Gliese, "GJ 244 A");
+    const char *aliases[] = {"WD0848+159", "WD1328+648", "WD2354-211", "WD0413-077", ""};
+    const char *queries[] = {"WD0851+1543", "WD1330+6435", "WD2356-2054", "WD0415-0739", "WD0645-1643"};
+    const char *gaia[] = {"WDJ085100.24+154302.04", "WDJ133001.17+643523.69", "WDJ235645.10-205449.94",
+        "WDJ041521.80-073929.20", "WDJ064509.30-164300.72"};
+    const unsigned int colors[] = {0xf1fff8, 0xddffb8, 0x70b4ff, 0xaecaff, 0xa4c1ff};
+    std::vector<Star*> targets;
+    for (int i = 0; i < 5; ++i)
+    {
+        Star *s = make_star(("Catalog WD " + std::to_string(i)).c_str());
+        s->WD = aliases[i];
+        s->apparent_magnitude = 11 + i;
+        s->right_ascension = 0.5 + i;
+        targets.push_back(s);
+    }
+    strcpy(targets[3]->Gliese, "GJ 166 B");
+    strcpy(targets[4]->Gliese, "GJ 244 B");
+    eri_primary->set_component('A', eri_primary);
+    targets[3]->set_component('B', eri_primary);
+    sirius->set_component('A', sirius);
+    targets[4]->set_component('B', sirius);
+    Orbit *orbit = targets[4]->orbit;
+    ASSERT_EQ(associate_wd_color_identifiers(cels), 5);
+    EXPECT_EQ(associate_wd_color_identifiers(cels), 5);
+    for (int i = 0; i < 5; ++i)
+    {
+        Star *s = targets[i];
+        EXPECT_EQ(find_object(queries[i], true), s->seqno);
+        EXPECT_EQ(find_object(gaia[i], true), s->seqno);
+        if (*aliases[i]) EXPECT_EQ(find_object(aliases[i], true), s->seqno);
+        EXPECT_TRUE(s->wd_color_valid);
+        EXPECT_EQ((unsigned(s->wd_color_red) << 16) | (unsigned(s->wd_color_green) << 8) | s->wd_color_blue, colors[i]);
+        EXPECT_DOUBLE_EQ(s->apparent_magnitude, 11 + i);
+        EXPECT_DOUBLE_EQ(s->right_ascension, 0.5 + i);
+        Star copy;
+        ASSERT_TRUE(copy.from_json(s->to_json()));
+        EXPECT_EQ(copy.gaia_wd_name, gaia[i]);
+        EXPECT_TRUE(copy.wd_color_valid);
+    }
+    EXPECT_EQ(targets[4]->orbit, orbit);
+    EXPECT_EQ(targets[4]->orbit->center, sirius);
+    EXPECT_FALSE(sirius->wd_color_valid);
+    EXPECT_TRUE(sirius->gaia_wd_name.empty());
+    EXPECT_FALSE(eri_primary->wd_color_valid);
+    EXPECT_EQ(find_object("WD0039+3035", true), -1);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, PublishedWdAssociationsRejectConflictingComponents)
+{
+    Star *first = make_star("First component");
+    strcpy(first->Gliese, "GJ 166 B");
+    Star *second = make_star("Other component");
+    second->WD = "WD0413-077";
+    EXPECT_EQ(associate_wd_color_identifiers(cels), 0);
+    EXPECT_TRUE(first->gaia_wd_name.empty());
+    EXPECT_TRUE(second->gaia_wd_name.empty());
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, PublishedWdAssociationsPreferExactGaiaOverAnIsolatedDuplicate)
+{
+    Star *gaia = make_star("Gaia WD");
+    gaia->WD = "WD2359-434";
+    gaia->gaia_wd_name = "WDJ000210.72-430955.39";
+    Star *duplicate = make_star("GJ 915");
+    strcpy(duplicate->Gliese, "GJ 915");
+    EXPECT_EQ(associate_wd_color_identifiers(cels), 1);
+    EXPECT_EQ(find_object("WD0002-4309", true), gaia->seqno);
+    EXPECT_TRUE(gaia->wd_color_valid);
+    EXPECT_FALSE(duplicate->wd_color_valid);
+    EXPECT_TRUE(duplicate->gaia_wd_name.empty());
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, PublishedWdAssociationsPreserveAnExplicitBinaryComponent)
+{
+    Star *primary = make_star("GJ 288 A");
+    Star *component = make_star("GJ 288 B");
+    strcpy(component->Gliese, "GJ 288 B");
+    primary->set_component('A', primary);
+    component->set_component('B', primary);
+    Star *duplicate = make_star("WD0743-336");
+    duplicate->WD = "WD0743-336";
+    Orbit *orbit = component->orbit;
+    EXPECT_EQ(associate_wd_color_identifiers(cels), 1);
+    EXPECT_EQ(find_object("WD0745-3355", true), component->seqno);
+    EXPECT_TRUE(component->wd_color_valid);
+    EXPECT_EQ(component->orbit, orbit);
+    EXPECT_EQ(component->orbit->center, primary);
+    EXPECT_TRUE(duplicate->gaia_wd_name.empty());
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, WdSearchAcceptsBothDeclinationPrecisions)
 {
     Star *short_id = make_star("Truncated WD");

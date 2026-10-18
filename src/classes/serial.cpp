@@ -98,6 +98,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
             }
         }
     }
+    const std::string color_identity = wd_color_gaia_identifier(gaia_term);
+    if (!color_identity.empty()) gaia_term = color_identity;
     if (gaia_term.compare(0, 3, "WDJ") == 0 &&
         gaia_term.find_first_not_of("0123456789+-.", 3) == std::string::npos)
     {

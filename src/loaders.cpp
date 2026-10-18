@@ -1301,16 +1301,6 @@ void load_stuff()
         return;
     }
 
-    for (const std::string& favename : lfaves)
-    {
-        int i = find_object(favename.c_str(), true);
-        if (i >= 0 && cels[i]->typeclass() == class_star)
-        {
-            favestars.push_back((Star*)cels[i]);
-            ((Star*)cels[i])->is_faved = true;
-        }
-    }
-
     std::string ihcfn = cr.get_condensed_starcat_name();
     if (!file_exists(ihcfn.c_str()))
     {
@@ -1331,6 +1321,18 @@ void load_stuff()
         loading_msg = "Loading White Dwarfs Catalog...";
         mtx.unlock();
         cr.read_WD_catalog(cels, MAX_CELOBJS, true);
+    }
+
+    associate_wd_color_identifiers(cels);
+
+    for (const std::string& favename : lfaves)
+    {
+        int i = find_object(favename.c_str(), true);
+        if (i >= 0 && cels[i]->typeclass() == class_star)
+        {
+            favestars.push_back((Star*)cels[i]);
+            ((Star*)cels[i])->is_faved = true;
+        }
     }
 
     mtx.lock();
