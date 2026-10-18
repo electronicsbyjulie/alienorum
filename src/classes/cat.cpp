@@ -4339,6 +4339,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         read_field_onebased(buffer, 77, 87, field);
         double inclination = atof(field) * fiftyseventh;
+        if (!inclination) inclination = _pi/2;
 
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
