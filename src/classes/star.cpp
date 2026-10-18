@@ -746,6 +746,10 @@ bool Star::is_hot_ob_star() const
 
 bool Star::is_main_sequence() const
 {
+    if (!WD.empty())
+    {
+        return false;
+    }
     if (!spectral_type[0])
     {
         return false;
@@ -1212,6 +1216,7 @@ json Star::to_json()
     towrite["SAO"] = SAO;
     towrite["SB9"] = SB9;
     towrite["CCDM"] = CCDM;
+    towrite["WD"] = WD;
     towrite["Bonn_survey"] = Bonn_survey;
     towrite["Bonn_survey_sign"] = std::string(1, Bonn_survey_sign);
     towrite["Bonn_survey_declination"] = Bonn_survey_declination;
@@ -1268,6 +1273,14 @@ bool Star::from_json(json j)
     try { j.at("SAO").get_to(SAO); } catch (...) { ; }
     try { j.at("SB9").get_to(SB9); } catch (...) { ; }
     try { j.at("CCDM").get_to(CCDM); } catch (...) { ; }
+    try
+    {
+        j.at("WD").get_to(WD);
+    }
+    catch (...)
+    {
+        ;
+    }
     try
     {
         std::string str;

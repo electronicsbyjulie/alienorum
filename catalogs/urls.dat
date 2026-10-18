@@ -11,7 +11,8 @@ GAIA            catalog.dat.gz              https://cdsarc.cds.unistra.fr/ftp/J/
 GCVS            gcvs_cat.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/gcvs_cat.dat.gz
 GCVS            crossid.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/crossid.dat
 GOSSS           main.dat                    ftp://cdsarc.cds.unistra.fr/cats/III/274/main.dat
-#WD                  https://cdsarc.cds.unistra.fr/viz-bin/nph-Cat/tar.gz?B/wd
+WD              catalog.dat.gz              https://cdsarc.cds.unistra.fr/ftp/B/wd/catalog.dat.gz
+WD              names.dat.gz                https://cdsarc.cds.unistra.fr/ftp/B/wd/names.dat.gz
 
 # multi star systems
 CCDM            ccdm.dat.gz                 ftp://cdsarc.cds.unistra.fr/cats/I/274/ccdm.dat.gz

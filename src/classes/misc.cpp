@@ -1052,6 +1052,12 @@ bool extract_archive(const char* filename)
         }
 
         std::filesystem::path entry_path(raw_entry_path);
+        if (archive_format(a) == ARCHIVE_FORMAT_RAW)
+        {
+            // A raw gzip stream may have no embedded filename, or an obsolete one.
+            entry_path = std::filesystem::path(filename).filename();
+            entry_path.replace_extension();
+        }
         if (entry_path.is_absolute())
         {
             entry_path = entry_path.relative_path();

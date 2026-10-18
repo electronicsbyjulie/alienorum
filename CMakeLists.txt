@@ -157,6 +157,7 @@ if(WIN32)
 		catalogs/asteroids.json
 		catalogs/soles_alienorum.dat
 		catalogs/mainseq.dat
+		catalogs/WD_names.dat
 		catalogs/urls.dat
 		catalogs/Milky_Way.dat
 		DESTINATION catalogs)

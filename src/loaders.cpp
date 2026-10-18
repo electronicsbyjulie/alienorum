@@ -729,16 +729,6 @@ void load_catalogs()
         int nUra = cr.read_Uranometria_catalog(cels, MAX_CELOBJS);
         cout << "Read " << nUra << " objects." << endl << flush;
     }
-    if (0) // have_WD && !ihsc)
-    {
-        mtx.lock();
-        loading_msg = std::string("Loading White Dwarfs Catalog...");
-        mtx.unlock();
-        cout << "Reading White Dwarfs catalog..." << endl << flush;
-        int nWD = cr.read_WD_catalog(cels, MAX_CELOBJS);
-        cout << "Read " << nWD << " objects." << endl << flush;
-        Gliese_doubles_fix();
-    }
 
     if (load_aborted()) return;
     mtx.lock();
@@ -1326,6 +1316,14 @@ void load_stuff()
     loading_msg = "Auditing main sequence stars...";
     mtx.unlock();
     Star::audit_and_correct_main_sequence_stars(cels);
+
+    if (have_WD && !file_exists(ihcfn.c_str()) && !magnitude_test)
+    {
+        mtx.lock();
+        loading_msg = "Loading White Dwarfs Catalog...";
+        mtx.unlock();
+        cr.read_WD_catalog(cels, MAX_CELOBJS);
+    }
 
     mtx.lock();
     loading_msg = "Assigning constellations...";

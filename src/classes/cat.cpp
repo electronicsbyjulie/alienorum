@@ -7,6 +7,7 @@
 #include <sstream>
 #include <cstring>
 #include <cstdlib>
+#include <cctype>
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
@@ -1801,296 +1802,472 @@ int alienorum::CatalogReader::read_Uranometria_catalog(CelestialObject **cels, i
     return num_read;
 }
 
-int alienorum::CatalogReader::read_WD_catalog(CelestialObject **cels, int max)
+namespace
 {
-    std::string namespath = "catalogs" _FILESLASH "WD" _FILESLASH "names.dat";
-    std::string catpath = "catalogs" _FILESLASH "WD" _FILESLASH "catalog.dat";
-    char buffer[1024];
-    char field[32];
-    int i, num_read = 0;
-    double deg, mnt, sec, pm, pmtheta, vmag, absmag;
-    std::map<std::string, Star*> exist_stars, comp_of_exist;
-    std::map<std::string, char> comp;
-    Star *s, *A;
-
-    FILE* fp = fopen(catpath.c_str(), "rb");
-
-    if (!fp)
+    std::string wd_key(std::string text)
     {
-        std::string gzpath = catpath + ".gz";
-        if (file_exists(gzpath.c_str()))
+        std::string key;
+        for (unsigned char c : text)
         {
-            extract_archive(gzpath.c_str());
-            fp = fopen(catpath.c_str(), "rb");
+            if (c > ' ')
+            {
+                key += static_cast<char>(std::toupper(c));
+            }
+        }
+        if (key.compare(0, 6, "GLIESE") == 0)
+        {
+            key.replace(0, 6, "GJ");
+        }
+        else if (key.compare(0, 2, "GL") == 0)
+        {
+            key.replace(0, 2, "GJ");
+        }
+        if (key.compare(0, 2, "GJ") == 0 || key.compare(0, 2, "HD") == 0 ||
+            key.compare(0, 3, "HIP") == 0)
+        {
+            const size_t first = key.compare(0, 3, "HIP") == 0 ? 3 : 2;
+            while (first + 1 < key.size() && key[first] == '0' &&
+                key[first + 1] >= '0' && key[first + 1] <= '9')
+            {
+                key.erase(first, 1);
+            }
+        }
+        return key;
+    }
+
+    std::string wd_field(const std::string &line, size_t first, size_t last)
+    {
+        return first <= line.size() ? trim(line.substr(first - 1, last - first + 1)) : "";
+    }
+
+    double wd_number(const std::string &line, size_t first, size_t last)
+    {
+        const std::string text = wd_field(line, first, last);
+        char *end = nullptr;
+        const double value = std::strtod(text.c_str(), &end);
+        return end != text.c_str() && *end == '\0' && std::isfinite(value) ? value : NAN;
+    }
+
+    struct WdMeasurement
+    {
+        double value = NAN;
+        double quality = -1;
+
+        void offer(double candidate, double rank)
+        {
+            // Equal-quality measurements use a stable numeric tie-break, independent of row order.
+            if (std::isfinite(candidate) && (rank > quality ||
+                (rank == quality && (!std::isfinite(value) || candidate < value))))
+            {
+                value = candidate;
+                quality = rank;
+            }
+        }
+    };
+
+    struct WdRecord
+    {
+        std::string id, spectral;
+        std::vector<std::string> aliases;
+        WdMeasurement visual, absolute, bv, ub, temperature, parallax, velocity, motion, angle;
+        double ra = NAN, dec = NAN;
+    };
+
+    bool wd_observed_magnitude(double value)
+    {
+        return std::isfinite(value) && value >= -40 && value < 99;
+    }
+
+    bool wd_candidate(const Star *s)
+    {
+        return !s->WD.empty() || s->spectral_type[0] == 'D' ||
+            (!s->spectral_type[0] && s->volumetric_mean_radius > 0 &&
+             s->volumetric_mean_radius < 0.05 * solar_radius);
+    }
+}
+
+int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max)
+{
+    const std::string root = "catalogs" _FILESLASH "WD" _FILESLASH;
+    const char *files[] =
+    {
+        "catalog.dat", "names.dat"
+    };
+    for (const char *name : files)
+    {
+        const std::string path = root + name;
+        if (!file_exists(path.c_str()) && file_exists((path + ".gz").c_str()))
+        {
+            extract_archive((path + ".gz").c_str());
+        }
+    }
+    std::ifstream catalog(root + "catalog.dat");
+    std::ifstream names(root + "names.dat");
+    if (!catalog || !names || !objects || max < 2)
+    {
+        return 0;
+    }
+    std::map<std::string, WdRecord> records;
+    std::string line;
+    while (std::getline(catalog, line))
+    {
+        const std::string number = wd_field(line, 2, 11);
+        if ((number.size() != 8 && number.size() != 10) ||
+            (number[4] != '+' && number[4] != '-') ||
+            number.find_first_not_of("0123456789+.-") != std::string::npos)
+        {
+            continue;
+        }
+        const std::string id = "WD" + number;
+        WdRecord &r = records[id];
+        r.id = id;
+        const std::string spectral = wd_field(line, 31, 40);
+        if (!spectral.empty() && (r.spectral.empty() || spectral < r.spectral))
+        {
+            r.spectral = spectral;
+        }
+        const double h = wd_number(line, 13, 14), m = wd_number(line, 16, 17);
+        const double sec = wd_number(line, 19, 20), d = wd_number(line, 23, 24);
+        const double dm = wd_number(line, 26, 29);
+        if (h >= 0 && h < 24 && m >= 0 && m < 60 && sec >= 0 && sec <= 60 &&
+            d >= 0 && d <= 90 && dm >= 0 && dm < 60)
+        {
+            const double ra = (h + m / 60 + sec / 3600) * 15 * fiftyseventh;
+            const double dec = (d + dm / 60) * fiftyseventh * (wd_field(line, 22, 22) == "-" ? -1 : 1);
+            if (!std::isfinite(r.ra) || ra < r.ra || (ra == r.ra && dec < r.dec))
+            {
+                r.ra = ra;
+                r.dec = dec;
+            }
+        }
+        const std::string band = wd_field(line, 80, 81);
+        const double quality = wd_field(line, 79, 79).empty() ? 2 : 1;
+        if (band.empty() || band == "v")
+        {
+            const double v = wd_number(line, 73, 78);
+            if (wd_observed_magnitude(v))
+            {
+                r.visual.offer(v, quality);
+            }
+        }
+        r.visual.offer(wd_number(line, 104, 108), 0);
+        const double bv = wd_number(line, 82, 87), ub = wd_number(line, 92, 97);
+        if (bv >= -0.7 && bv <= 2)
+        {
+            r.bv.offer(bv, wd_field(line, 88, 88).empty() ? 2 : 1);
+        }
+        if (ub >= -2.5 && ub <= 1.4)
+        {
+            r.ub.offer(ub, wd_field(line, 98, 98).empty() ? 2 : 1);
+        }
+        const double absolute = wd_number(line, 146, 150);
+        if (spectral.compare(0, 2, "DO") == 0)
+        {
+            r.temperature.offer(absolute * 1000, 0);
+        }
+        else if (wd_field(line, 151, 151) != "B" && absolute >= -5 && absolute <= 30)
+        {
+            r.absolute.offer(absolute, wd_field(line, 151, 151).empty() ? 2 : 1);
+        }
+        const double temperature = wd_number(line, 153, 155) * 1000;
+        if (temperature > 0 && temperature <= 200000)
+        {
+            r.temperature.offer(temperature, 2);
+        }
+        const double plx = wd_number(line, 200, 206), error = wd_number(line, 207, 210);
+        if (plx > 0)
+        {
+            r.parallax.offer(plx, error > 0 ? 1 + plx * 1000 / error : 0);
+        }
+        r.velocity.offer(wd_number(line, 180, 186) * 1000, 1);
+        const double motion = wd_number(line, 162, 167), angle = wd_number(line, 170, 174);
+        if (motion >= 0 && (std::isfinite(angle) || motion == 0) && wd_field(line, 161, 161).empty())
+        {
+            const double rank = wd_field(line, 168, 168).empty() ? 2 : 1;
+            // Keep the vector components from the same observation.
+            if (rank > r.motion.quality || (rank == r.motion.quality && motion < r.motion.value))
+            {
+                r.motion.value = motion;
+                r.motion.quality = rank;
+                r.angle.value = std::isfinite(angle) ? angle : 0;
+            }
+        }
+    }
+    while (std::getline(names, line))
+    {
+        const auto found = records.find("WD" + wd_field(line, 17, 26));
+        if (found != records.end())
+        {
+            found->second.aliases.push_back(wd_field(line, 1, 14));
+        }
+    }
+    // Existing project cross-identifications include HD component aliases absent from CDS.
+    std::ifstream supplemental("catalogs" _FILESLASH "WD_names.dat");
+    while (std::getline(supplemental, line))
+    {
+        const auto found = records.find("WD" + wd_field(line, 17, 26));
+        if (found != records.end())
+        {
+            found->second.aliases.push_back(wd_field(line, 1, 14));
+            if (line.size() > 26)
+            {
+                found->second.aliases.push_back(trim(line.substr(26)));
+            }
         }
     }
 
-    if (!fp) return 0;
-
-    while (fgets(buffer, 1020, fp))
+    std::unordered_map<std::string, std::vector<Star*>> identities;
+    std::vector<Star*> existing_wd;
+    int count = 0;
+    const auto index_star = [&](Star *s)
     {
-        //   1- 14  A14    ---     Name     Common name of the object
-        read_field_onebased(buffer, 1, 14, field);
-        std::string star_name = trim(field);
-
-        if (star_name.c_str()[1] >= 'A' && star_name.c_str()[1] <= 'Z')
+        const auto add = [&](const std::string &alias)
         {
-            if (strcmp(star_name.substr(0,2).c_str(), "HD")
-                    && strcmp(star_name.substr(0,2).c_str(), "BD")
-                    && strcmp(star_name.substr(0,2).c_str(), "CD")
-                    && strcmp(star_name.substr(0,2).c_str(), "CP")
-               ) continue;
-        }
-
-        //  17- 26  A10    ---     WD       White Dwarf (WD) number
-        read_field_onebased(buffer, 15, 26, field);
-        std::string WD = trim(field);
-
-        if (exist_stars.find(WD) != exist_stars.end()) continue;
-        if (comp_of_exist.find(WD) != comp_of_exist.end()) continue;
-
-        char lcomp = 0;
-        int l = star_name.size();
-        const char* cstr = star_name.c_str();
-        char c = cstr[l-1], penult = cstr[l-2], ante = cstr[l-3];
-        std::string nameA = "", name0 = "";
-
-        if (c >= 'B' && c <= 'Z' && penult <= '9')
-        {
-            lcomp = c;
-            name0 = nameA = star_name.substr(0, l-2);
-        }
-        else if (c >= 'a' && c <= 'z' && penult >= 'A' && penult <= 'Z' && ante <= '9')
-        {
-            lcomp = c & 0x5f;
-            lcomp = c;
-            nameA = star_name.substr(0, l-1);
-            name0 = star_name.substr(0, l-3);
-        }
-
-        comp[WD] = lcomp;
-
-        i = find_object(star_name.c_str(), true, 9e29);
-        if (i < 0)
-        {
-            if (lcomp)
+            if (!alias.empty())
             {
-                i = find_object(nameA.c_str(), true, 9e29);
-                if (i<0) i = find_object(name0.c_str(), true, 9e29);
-                if (i<0)
+                auto &matches = identities[wd_key(alias)];
+                if (std::find(matches.begin(), matches.end(), s) == matches.end())
                 {
-                    // Example: WD2124+191/BD+18 4794B: host star absent, ignore
-                    comp_of_exist[WD] = nullptr;
-                }
-                else
-                {
-                    // Example: WD1253+261/HD112313 B: create new companion
-                    comp_of_exist[WD] = (Star*)cels[i];
+                    matches.push_back(s);
                 }
             }
-            else
+        };
+        add(s->name);
+        add(s->WD);
+        add(s->Gliese);
+        if (s->HD)
+        {
+            add("HD" + std::to_string(s->HD));
+        }
+        if (s->HIP)
+        {
+            add("HIP" + std::to_string(s->HIP));
+        }
+        add(bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential));
+        if (s->Bayer[0] && s->constellation[0])
+        {
+            add(std::string(s->Bayer) + s->constellation);
+        }
+        if (s->multisys && s->get_component() > 'A')
+        {
+            Star *a = s->multisys->get_member('A');
+            if (a && a->HD)
             {
-                // Example: WD0347+171/BD+16 0516: not already present; add new
+                add("HD" + std::to_string(a->HD) + s->get_component());
+            }
+            if (a && a->Bayer[0] && a->constellation[0])
+            {
+                add(std::string(a->Bayer) + a->constellation + s->get_component());
+            }
+            if (a && a->FlamsteedNo && a->constellation[0])
+            {
+                add(std::to_string(a->FlamsteedNo) + a->constellation + s->get_component());
+            }
+        }
+    };
+    for (; count < max && objects[count]; count++)
+    {
+        if (objects[count]->typeclass() == class_star)
+        {
+            Star *s = static_cast<Star*>(objects[count]);
+            index_star(s);
+            if (wd_candidate(s))
+            {
+                existing_wd.push_back(s);
+            }
+        }
+    }
+    if (count == max)
+    {
+        return 0;
+    }
+    int added = 0, updated = 0, deferred = 0, conflicts = 0;
+    for (auto &entry : records)
+    {
+        WdRecord &r = entry.second;
+        double ra = NAN, dec = NAN, pmra = 0, pmdec = 0;
+        if (std::isfinite(r.ra))
+        {
+            const double pm = std::isfinite(r.motion.value) ? r.motion.value * fiftyseventh / 3600 : 0;
+            const double angle = r.angle.value * fiftyseventh;
+            const double dra = pm ? pm * sin(angle) / fmax(1e-6, cos(r.dec)) : 0;
+            const double ddec = pm ? pm * cos(angle) : 0;
+            // Source positions are at B1950; propagate motion before precessing the frame.
+            const double years = (J2000 - 2433282.42345905) * oneday / oneyear;
+            convert_to_J2000(r.ra + dra * years, r.dec + ddec * years, 1950, ra, dec, true);
+            double next_ra, next_dec;
+            convert_to_J2000(r.ra + dra * (years + 1), r.dec + ddec * (years + 1), 1950, next_ra, next_dec, true);
+            pmra = std::remainder(next_ra - ra, 2 * _pi) / oneyear;
+            pmdec = (next_dec - dec) / oneyear;
+        }
+        const auto nearby = [&](Star *s)
+        {
+            if (!std::isfinite(ra))
+            {
+                return true;
+            }
+            const double delta_ra = std::remainder(s->right_ascension - ra, 2 * _pi) * cos(dec);
+            return hypot(delta_ra, s->declination - dec) < 10.0 / 60 * fiftyseventh;
+        };
+        std::vector<Star*> matches;
+        r.aliases.push_back(r.id);
+        for (const std::string &alias : r.aliases)
+        {
+            const auto found = identities.find(wd_key(alias));
+            if (found == identities.end())
+            {
+                continue;
+            }
+            for (Star *s : found->second)
+            {
+                // A system identifier can denote the luminous primary rather than the WD.
+                if (wd_candidate(s) && nearby(s) &&
+                    (s->WD.empty() || wd_key(s->WD) == wd_key(r.id)) &&
+                    std::find(matches.begin(), matches.end(), s) == matches.end())
+                {
+                    matches.push_back(s);
+                }
+            }
+        }
+        if (matches.size() > 1)
+        {
+            conflicts++;
+            std::cout << "WD identity conflict: " << r.id << std::endl;
+            continue;
+        }
+        Star *s = matches.empty() ? nullptr : matches[0];
+        if (!s && std::isfinite(ra))
+        {
+            // Require both positional and visual-photometric agreement for a coordinate match.
+            // Keep ambiguous neighbors out of the catalog rather than creating duplicates.
+            bool close = false;
+            for (Star *other : existing_wd)
+            {
+                if (other->WD.empty() && nearby(other))
+                {
+                    close = true;
+                    if (wd_observed_magnitude(other->apparent_magnitude) &&
+                        wd_observed_magnitude(r.visual.value) &&
+                        fabs(other->apparent_magnitude - r.visual.value) <= 0.75)
+                    {
+                        matches.push_back(other);
+                    }
+                }
+            }
+            if (matches.size() == 1)
+            {
+                s = matches[0];
+            }
+            else if (close)
+            {
+                conflicts++;
+                std::cout << "WD unresolved neighbor: " << r.id << std::endl;
                 continue;
             }
         }
-        else
+        double distance = s && s->distance > 0 ? s->distance : NAN;
+        if (!std::isfinite(distance) && r.parallax.value > 0)
         {
-            //  73- 78  F6.3   mag     Vmag    [6.4/24.3]? V or other magnitude (see n_Vmag)
-            read_field_onebased(buffer, 73, 78, field);
-            vmag = atof(field);
-
-            // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
-            read_field_onebased(buffer, 146, 150, field);
-            absmag = atof(field);
-
-            if (fabs(vmag - ((Star*)cels[i])->apparent_magnitude) > 1.5
-                    && fabs(absmag - ((Star*)cels[i])->absolute_magnitude) > 1.5
-               )
-            {
-                // Example: WD0114-027/HD7672 B: names entry is incorrect, verify vmag/absmag
-                // TODO: Find out if this happens just a few times and hard code (eww!) a workaround,
-                // or if it happens often and requires more code thingie.
-                std::cout << "ERROR: Magnitudes of " << cels[i]->name << " and " << star_name << "/" << WD << " do not match." << std::endl << std::flush;
-                comp_of_exist[WD] = nullptr;
-            }
-            else
-            {
-                // Example: WD0642-166/Sirius B: update existing star, including WD #
-                // Example: WD1121+216/GJ 427: update existing star, including WD #
-                exist_stars[WD] = (Star*)cels[i];
-                std::cout << "Found " << (Star*)cels[i]->name << std::endl << std::flush;
-            }
+            distance = parsec / r.parallax.value;
         }
-    }
-    fclose(fp);
-
-    fp = fopen(catpath.c_str(), "rb");
-
-    if (!fp)
-    {
-        std::string gzpath = catpath + ".gz";
-        if (file_exists(gzpath.c_str()))
+        if (!std::isfinite(distance) && wd_observed_magnitude(r.visual.value) && wd_observed_magnitude(r.absolute.value))
         {
-            extract_archive(gzpath.c_str());
-            fp = fopen(catpath.c_str(), "rb");
+            distance = parsec * 10 * pow(10, (r.visual.value - r.absolute.value) / 5);
         }
-    }
-
-    if (!fp) return 0;
-
-    std::string prev_name = "kwyjibo";
-    while (fgets(buffer, 1020, fp))
-    {
-        //   2- 11  A10    ---     WD      White Dwarf (WD) number (1)
-        read_field_onebased(buffer, 2, 11, field);
-
-        std::string star_name = std::string("WD") + trim(field);
-        if (star_name == prev_name) continue;
-        if (exist_stars.find(star_name) != exist_stars.end())
+        if (!s && (!std::isfinite(ra) || !(distance > 0) ||
+            (!wd_observed_magnitude(r.visual.value) && !wd_observed_magnitude(r.absolute.value)) || count >= max - 1))
         {
-            s = exist_stars[star_name];
-            A = nullptr;
+            deferred++;
+            continue;
         }
-        else if (comp_of_exist.find(star_name) != comp_of_exist.end())
-        {
-            A = comp_of_exist[star_name];
-            if (!A) continue;
-            s = new Star();
-            strcpy(s->name, field);
-            s->namelen = strlen(s->name);
-            s->make_companion_of(A, comp[star_name]);
-            append_cel(s);
-        }
-        else
+        const bool fresh = !s;
+        if (fresh)
         {
             s = new Star();
-            strcpy(s->name, field);
-            s->namelen = strlen(s->name);
-            append_cel(s);
-            A = nullptr;
-        }
-        s->WD = field;
-
-        double ra, dec, ra2000, dec2000;
-
-        //  13- 14  I2     h       RAh     ?Hours RA, Equinox=B1950, Epoch=1950.0 (2)
-        read_field_onebased(buffer, 13, 14, field);
-        deg = atof(field) * 15;
-
-        //  16- 17  I2     min     RAm     ?Minutes RA, Equinox=B1950, Epoch=1950.0 (2)
-        read_field_onebased(buffer, 16, 17, field);
-        mnt = atof(field) * 15;
-
-        //  19- 20  I2     s       RAs     [0/60]? Seconds RA (2)
-        read_field_onebased(buffer, 19, 20, field);
-        sec = atof(field) * 15;
-
-        ra = (deg + mnt/60 + sec/3600) * fiftyseventh;
-
-        //      22  A1     ---     DE-     ?Declination sign (2)
-        read_field_onebased(buffer, 22, 22, field);
-        int sgndecl = (field[0] == '-') ? -1 : 1;
-
-        //  23- 24  I2     deg     DEd     ?Degrees Dec, Equinox=B1950, Epoch=1950.0 (2)
-        read_field_onebased(buffer, 23, 24, field);
-        deg = atof(field);
-
-        //  26- 29  F4.1   arcmin  DEm     ?Minutes Dec, Equinox=B1950, Epoch=1950.0 (2)
-        read_field_onebased(buffer, 26, 29, field);
-        mnt = atof(field);
-        sec = 0;
-
-        dec = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
-        if (ra || dec)
-        {
-            convert_to_J2000(ra, dec, 1950, ra2000, dec2000, true);
-            s->right_ascension = ra2000;
-            s->declination = dec2000;
-            s->epoch = J2000; // 2433282.42345905;
-        }
-        else
-        {
-            s->mass = solar_mass;
+            snprintf(s->name, sizeof(s->name), "%s", r.id.c_str());
+            s->has_custom_name = true;
+            s->right_ascension = ra;
+            s->declination = dec;
+            s->proper_motion_RA = pmra;
+            s->proper_motion_decl = pmdec;
             s->epoch = J2000;
+            s->mass = 0.6 * solar_mass; // Explicit WD fallback, rather than a main-sequence estimate.
+            added++;
         }
-
-        //  31- 40  A10    ---     SpT     Spectral type (definitions in the paper, or in file "preface.tex").
-        read_field_onebased(buffer, 31, 40, field);
-        strcpy(s->spectral_type, trim(field).c_str());
-
-        //      41  A1     ---     bNote   [*b?] 'b' if white dwarf is member of binary, '*' indicates a note in file "notes.dat"
-        // TODO:
-
-        //  73- 78  F6.3   mag     Vmag    [6.4/24.3]? V or other magnitude (see n_Vmag)
-        read_field_onebased(buffer, 73, 78, field);
-        double f = atof(field);
-        if (f) s->apparent_magnitude = f;
-
-        //  82- 87  F6.3   mag     B-V     [-0.7/2]? B-V color index in the UBV system
-        read_field_onebased(buffer, 82, 87, field);
-        f = atof(field);
-        if (f) s->BV_color = f;
-
-        //  92- 97  F6.3   mag     U-B     [-9.9/1.4]? U-B color index in the UBV system
-        read_field_onebased(buffer, 92, 97, field);
-        f = atof(field);
-        if (f) s->UB_color = f;
-
-        // 146-150  F5.2   mag     AbsMag  [-0.2/18.1]? Absolute visual (or B) magnitude (3)
-        read_field_onebased(buffer, 146, 150, field);
-        f = atof(field);
-        if (f) s->absolute_magnitude = f;
-
-        // 153-155  I3     kK      Teff    [10/170]? Effective temperature
-        read_field_onebased(buffer, 153, 155, field);
-        double T = atof(field);
-        if (T && !s->BV_color) s->estimate_BV(T);
-        if (T && !s->UB_color) s->estimate_UB(T);
-
-        // 162-167  F6.4 arcsec/yr pm      [0/7]? Total proper motion
-        read_field_onebased(buffer, 162, 167, field);
-        pm = atof(field) / 3600 * fiftyseventh / oneyear;
-
-        // 170-174  F5.1   deg     pmPA    ? Position angle of proper motion vector
-        read_field_onebased(buffer, 170, 174, field);
-        pmtheta = atof(field) * fiftyseventh;
-
-        if (pm)
+        else
         {
-            s->proper_motion_RA = pm * sin(pmtheta);
-            s->proper_motion_decl = pm * cos(pmtheta);
+            updated++;
         }
-
-        // 180-186  F7.2   km/s    RadVel  [-262/422]? Radial velocity
-        read_field_onebased(buffer, 180, 186, field);
-        f = atof(field);
-        if (f) s->radial_velocity = f*0.001;
-
-        // 200-206  F7.4   arcsec  Plx     [-0.003/0.6]? Trigonometric parallax
-        f = atof(field);
-        if (f)
+        s->WD = r.id;
+        if (fresh || !s->spectral_type[0])
         {
-            s->distance = parsec / f;
-            s->distance_known = true;
+            snprintf(s->spectral_type, sizeof(s->spectral_type), "%s", r.spectral.empty() ? "D" : r.spectral.c_str());
         }
-        else if (A)
+        if ((fresh || !(s->distance > 0)) && std::isfinite(distance))
         {
-            s->distance = A->distance;
-            s->distance_known = true;
+            s->distance = distance;
+            s->distance_known = r.parallax.value > 0;
+            s->parallax = r.parallax.value > 0 ? r.parallax.value / 3600 * fiftyseventh : 0;
         }
-
-        if (!s->absolute_magnitude && s->distance_known)
+        if (!wd_observed_magnitude(s->apparent_magnitude) && wd_observed_magnitude(r.visual.value))
         {
-            double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-            s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+            s->apparent_magnitude = r.visual.value;
         }
-
-        prev_name = star_name;
+        if ((fresh || !std::isfinite(s->absolute_magnitude) || s->absolute_magnitude >= 99) &&
+            (wd_observed_magnitude(s->apparent_magnitude) || wd_observed_magnitude(r.absolute.value)))
+        {
+            s->absolute_magnitude = wd_observed_magnitude(s->apparent_magnitude) ?
+                s->apparent_magnitude - 5 * log10(s->distance / (10 * parsec)) : r.absolute.value;
+        }
+        if (fresh && !wd_observed_magnitude(s->apparent_magnitude))
+        {
+            s->apparent_magnitude = s->absolute_magnitude + 5 * log10(s->distance / (10 * parsec));
+        }
+        if (fresh)
+        {
+            if (std::isfinite(r.bv.value))
+            {
+                s->BV_color = r.bv.value;
+            }
+            if (std::isfinite(r.ub.value))
+            {
+                s->UB_color = r.ub.value;
+            }
+            s->radial_velocity = std::isfinite(r.velocity.value) ? r.velocity.value : 0;
+        }
+        if (!(s->temperature > 0))
+        {
+            s->temperature = r.temperature.value > 0 ? r.temperature.value :
+                (std::isfinite(r.bv.value) ? Star::temperature_from_BV(r.bv.value) : 10000);
+        }
+        if (fresh && !std::isfinite(r.bv.value))
+        {
+            s->estimate_BV(s->temperature);
+        }
+        if (fresh && !std::isfinite(r.ub.value))
+        {
+            s->estimate_UB(s->temperature);
+        }
+        if (fresh || !(s->volumetric_mean_radius > 0))
+        {
+            const double bolometric = s->absolute_magnitude + Star::bolometric_correction(s->temperature);
+            const double luminosity = pow(magnbase, 4.74 - bolometric);
+            const double radius = sqrt(luminosity) * pow(sun_temp / s->temperature, 2) * solar_radius;
+            s->volumetric_mean_radius = std::isfinite(radius) && radius > 0.001 * solar_radius && radius < 0.1 * solar_radius ?
+                radius : 0.012 * solar_radius;
+        }
+        if (fresh)
+        {
+            append_cel(s);
+            count++;
+            existing_wd.push_back(s);
+        }
+        s->update_location(simnow);
+        index_star(s);
     }
-
-
-    return num_read;
+    std::cout << "WD import: " << records.size() << " objects, " << added << " added, " << updated
+              << " matched, " << deferred << " deferred, " << conflicts << " conflicts." << std::endl;
+    return added + updated;
 }
 
 int alienorum::CatalogReader::read_cons_boundaries()
@@ -4993,14 +5170,20 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     l += 16;
     line << std::string(l - line.str().size(), ' ');
 
-    if (!s->BV_color) s->estimate_BV(s->estimate_temperature());
+    if (!s->BV_color && s->WD.empty())
+    {
+        s->estimate_BV(s->estimate_temperature());
+    }
     line << ((s->BV_color >= 0) ? "+" : "-");
     if (fabs(s->BV_color) < 10) line << "0";
     line << std::fixed << std::setprecision(2) << fabs(s->BV_color) << std::flush;
     l += 7;
     line << std::string(l - line.str().size(), ' ');
 
-    if (!s->UB_color) s->estimate_BV(s->estimate_temperature());
+    if (!s->UB_color && s->WD.empty())
+    {
+        s->estimate_BV(s->estimate_temperature());
+    }
     line << ((s->UB_color >= 0) ? "+" : "-");
     if (fabs(s->UB_color) < 10) line << "0";
     line << std::fixed << std::setprecision(2) << fabs(s->UB_color) << std::flush;
@@ -5247,6 +5430,10 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     // Centauri", only after closing and reopening once the correct name was already baked in.
     if (s->has_custom_name) line << "Y";
     l += 2;
+    line << std::string(l - line.str().size(), ' ');
+
+    line << s->WD;
+    l += 13;
     line << std::string(l - line.str().size(), ' ');
 
     // std::cout << line << std::endl;
@@ -5678,6 +5865,9 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         str = trim(field);
         strcpy(s->spectral_type, str.c_str());
 
+        read_field_onebased(buffer, 456, 467, field);
+        s->WD = trim(field);
+
         read_field_onebased(buffer, 100, 105, field);
         s->BV_color = atof(field);
 
@@ -5782,7 +5972,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 257, 266, field);
         s->volumetric_mean_radius = atof(field) * solar_radius;
-        if (s->volumetric_mean_radius < 0.5 * jupiter_radius) s->volumetric_mean_radius = s->estimate_radius();
+        if (!(s->volumetric_mean_radius > 0) ||
+            (s->WD.empty() && s->volumetric_mean_radius < 0.5 * jupiter_radius))
+        {
+            s->volumetric_mean_radius = s->estimate_radius();
+        }
 
         read_field_onebased(buffer, 268, 274, field);
         s->temperature = atof(field);

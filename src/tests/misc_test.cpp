@@ -7,8 +7,58 @@
 #include "../classes/horizonterrain.h"
 #include <unordered_map>
 #include <unordered_set>
+#include <archive.h>
+#include <archive_entry.h>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 
 using namespace alienorum;
+
+TEST(ArchiveTest, RawGzipUsesTheCompressedFileName)
+{
+    struct RestoreDirectory
+    {
+        std::filesystem::path original, temporary;
+        ~RestoreDirectory()
+        {
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreDirectory restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_gzip_test_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))
+    };
+    std::filesystem::create_directories(restore.temporary);
+    std::filesystem::current_path(restore.temporary);
+    archive *writer = archive_write_new();
+    ASSERT_NE(writer, nullptr);
+    ASSERT_EQ(archive_write_add_filter_gzip(writer), ARCHIVE_OK);
+    ASSERT_EQ(archive_write_set_format_raw(writer), ARCHIVE_OK);
+    ASSERT_EQ(archive_write_open_filename(writer, "catalog.dat.gz"), ARCHIVE_OK);
+    archive_entry *entry = archive_entry_new();
+    ASSERT_NE(entry, nullptr);
+    archive_entry_set_pathname(entry, "data");
+    archive_entry_set_filetype(entry, AE_IFREG);
+    archive_entry_set_perm(entry, 0644);
+    const std::string content = "catalog row\n";
+    archive_entry_set_size(entry, content.size());
+    ASSERT_EQ(archive_write_header(writer, entry), ARCHIVE_OK);
+    EXPECT_EQ(archive_write_data(writer, content.data(), content.size()), content.size());
+    archive_entry_free(entry);
+    ASSERT_EQ(archive_write_close(writer), ARCHIVE_OK);
+    archive_write_free(writer);
+    ASSERT_TRUE(extract_archive("catalog.dat.gz"));
+    std::ifstream input("catalog.dat");
+    std::string line;
+    ASSERT_TRUE(std::getline(input, line));
+    EXPECT_EQ(line, "catalog row");
+    EXPECT_FALSE(std::filesystem::exists("data"));
+}
 
 TEST(HorizonTerrainTest, PixelDepthVariesAcrossASlopeAndOccludesFartherFaces)
 {

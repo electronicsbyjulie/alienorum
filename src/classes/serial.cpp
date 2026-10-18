@@ -87,6 +87,40 @@ static bool looks_like_Gould(const char* s)
 
 int find_object(const char* search_term, bool os, double ml, int levreq)
 {
+    if (strlen(search_term) >= 3 && !strncasecmp(search_term, "WD", 2))
+    {
+        std::string id;
+        for (const char *p = search_term + 2; *p; p++)
+        {
+            if (*p > ' ')
+            {
+                id += *p;
+            }
+        }
+        if (!id.empty() && id.find_first_not_of("0123456789+-.") == std::string::npos)
+        {
+            for (int index = 0; cels[index]; index++)
+            {
+                if (cels[index]->typeclass() != class_star)
+                {
+                    continue;
+                }
+                std::string name;
+                for (const char *p = cels[index]->name; *p; p++)
+                {
+                    if (*p > ' ')
+                    {
+                        name += *p;
+                    }
+                }
+                if (static_cast<Star*>(cels[index])->WD == "WD" + id || name == "WD" + id)
+                {
+                    return index;
+                }
+            }
+            return -1;
+        }
+    }
     int i, m, n, termi = atoi(search_term);
     Star *s;
 

@@ -127,6 +127,204 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
+{
+    Star::load_main_seq_dat();
+    std::vector<Star*> test_hd(MAX_HD + 1, nullptr);
+    std::vector<Star*> test_hip(MAX_HIP + 1, nullptr);
+    struct RestoreContext
+    {
+        std::filesystem::path directory, temporary;
+        Star **hd, **hip;
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            std::filesystem::current_path(directory);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreContext restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_wd_test_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache, hipcache
+    };
+    std::filesystem::create_directories(restore.temporary / "catalogs" / "WD");
+    std::filesystem::current_path(restore.temporary);
+    hdcache = test_hd.data();
+    hipcache = test_hip.data();
+    Star *primary = make_star("Existing primary");
+    primary->HD = 99990;
+    hdcache[99990] = primary;
+    Star *companion = make_star("Existing WD B");
+    companion->spectral_type[0] = '\0';
+    companion->apparent_magnitude = 12;
+    companion->absolute_magnitude = 12;
+    companion->temperature = 25000;
+    companion->volumetric_mean_radius = 0.009 * solar_radius;
+    primary->set_component('A', primary);
+    companion->set_component('B', primary);
+    companion->orbit->period = 12 * oneyear;
+    companion->orbit->semimajor_axis = 3 * AU;
+    const double original_ra = companion->right_ascension;
+    Star *coordinate_match = make_star("Coordinate identity");
+    strcpy(coordinate_match->spectral_type, "DA3");
+    coordinate_match->apparent_magnitude = 15.2;
+    convert_to_J2000(12 * 15 * fiftyseventh, 10 * fiftyseventh, 1950,
+        coordinate_match->right_ascension, coordinate_match->declination, true);
+    Star *spectrum_only = make_star("Spectrum only");
+    strcpy(spectrum_only->spectral_type, "DQ6");
+    spectrum_only->apparent_magnitude = 1e29;
+    spectrum_only->absolute_magnitude = INFINITY;
+    const auto row = [](const char *id)
+    {
+        std::string line(250, ' ');
+        line.replace(1, strlen(id), id);
+        line.replace(12, 2, "10");
+        line.replace(15, 2, "00");
+        line.replace(18, 2, "00");
+        line.replace(21, 1, "+");
+        line.replace(22, 2, "10");
+        line.replace(25, 4, "00.0");
+        line.replace(30, 3, "DA2");
+        return line;
+    };
+    const auto alias = [](const char *name, const char *id)
+    {
+        std::string line(26, ' ');
+        line.replace(0, strlen(name), name);
+        line.replace(14, 2, "WD");
+        line.replace(16, strlen(id), id);
+        return line;
+    };
+    std::vector<std::string> rows;
+    std::string measured = row("1000+100");
+    measured.replace(72, 6, "14.000");
+    measured.replace(81, 6, " 0.000");
+    measured.replace(91, 6, "-0.900");
+    measured.replace(152, 3, " 25");
+    measured.replace(161, 6, "1.0000");
+    measured.replace(169, 5, " 90.0");
+    measured.replace(179, 7, "  20.00");
+    measured.replace(199, 7, " 0.0500");
+    measured.replace(206, 4, " 1.0");
+    rows.push_back(measured);
+    std::string extra = row("1000+100");
+    extra.replace(72, 6, "18.000");
+    extra.replace(78, 1, ":");
+    extra.replace(199, 7, " 0.0100");
+    extra.replace(206, 4, " 9.0");
+    rows.push_back(extra);
+    std::string known = row("1001+100");
+    known.replace(12, 17, 17, ' '); // No position: the exact component identity remains usable.
+    known.replace(72, 6, "16.000");
+    rows.push_back(known);
+    std::string blue = row("1002+100");
+    blue.replace(30, 3, "DOZ");
+    blue.replace(145, 5, "80.00"); // DO entry stores temperature here, not magnitude.
+    blue.replace(72, 6, "15.000");
+    blue.replace(79, 2, " B"); // B-band light is not visual photometry.
+    blue.replace(199, 7, " 0.0200");
+    rows.push_back(blue);
+    std::string split = measured;
+    split.replace(1, 10, "1000+100.1");
+    split.replace(12, 2, "11");
+    rows.push_back(split);
+    std::string positional = row("1200+100");
+    positional.replace(12, 2, "12");
+    positional.replace(72, 6, "15.100");
+    rows.push_back(positional);
+    std::string unidentified_light = row("1300+100");
+    unidentified_light.replace(12, 17, 17, ' ');
+    rows.push_back(unidentified_light);
+    std::ofstream source("catalogs/WD/catalog.dat");
+    for (const auto &line : rows)
+    {
+        source << line << '\n';
+    }
+    source << "malformed\n";
+    source.close();
+    std::ofstream names("catalogs/WD/names.dat");
+    names << alias("Unknown alias", "1001+100") << '\n';
+    names << alias("HD99990", "1000+100") << '\n'; // System alias must not replace its normal primary.
+    names << alias("Spectrum only", "1300+100") << '\n';
+    names.close();
+    std::ofstream supplemental("catalogs/WD_names.dat");
+    supplemental << alias("Corrected alias", "1001+100") << " HD00099990 B\n";
+    supplemental.close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 5);
+    EXPECT_TRUE(std::isinf(spectrum_only->absolute_magnitude));
+    EXPECT_STREQ(primary->spectral_type, "G2V");
+    EXPECT_TRUE(primary->WD.empty());
+    EXPECT_EQ(companion->WD, "WD1001+100");
+    EXPECT_STREQ(companion->spectral_type, "DA2");
+    EXPECT_DOUBLE_EQ(companion->apparent_magnitude, 12);
+    EXPECT_DOUBLE_EQ(companion->absolute_magnitude, 12);
+    EXPECT_DOUBLE_EQ(companion->right_ascension, original_ra);
+    EXPECT_DOUBLE_EQ(companion->orbit->semimajor_axis, 3 * AU);
+    EXPECT_EQ(coordinate_match->WD, "WD1200+100");
+    EXPECT_DOUBLE_EQ(coordinate_match->apparent_magnitude, 15.2);
+    const int index = find_object("WD 1000+100", true);
+    ASSERT_GE(index, 0);
+    Star *added = static_cast<Star*>(cels[index]);
+    EXPECT_NEAR(added->distance / parsec, 20, 1e-10);
+    EXPECT_DOUBLE_EQ(added->temperature, 25000);
+    EXPECT_DOUBLE_EQ(added->radial_velocity, 20000);
+    EXPECT_DOUBLE_EQ(added->BV_color, 0);
+    EXPECT_NEAR(added->absolute_magnitude, 14 - 5 * log10(2), 1e-10);
+    EXPECT_GT(added->volumetric_mean_radius, 0.001 * solar_radius);
+    EXPECT_LT(added->volumetric_mean_radius, 0.1 * solar_radius);
+    EXPECT_FALSE(added->is_main_sequence());
+    EXPECT_GT(added->proper_motion_RA, 0);
+    EXPECT_EQ(find_object("WD1002+100", true), -1);
+    EXPECT_GE(find_object("WD1000+100.1", true), 0);
+    EXPECT_EQ(find_object("WD1000+100.2", true), -1);
+    const int before_count = ncelobjs;
+    std::reverse(rows.begin(), rows.end());
+    source.open("catalogs/WD/catalog.dat");
+    for (const auto &line : rows)
+    {
+        source << line << '\n';
+    }
+    source.close();
+    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 5);
+    EXPECT_TRUE(std::isinf(spectrum_only->absolute_magnitude));
+    EXPECT_EQ(ncelobjs, before_count);
+    EXPECT_DOUBLE_EQ(added->apparent_magnitude, 14);
+    EXPECT_NEAR(added->distance / parsec, 20, 1e-10);
+    EXPECT_EQ(find_object("wd 1000+100", true), index);
+    Planet *planet = make_planet(added, "WD 1000+100 b");
+    EXPECT_EQ(find_object(planet->name, false), planet->seqno);
+    Star json_copy;
+    json_copy.from_json(added->to_json());
+    EXPECT_EQ(json_copy.WD, added->WD);
+    EXPECT_DOUBLE_EQ(json_copy.volumetric_mean_radius, added->volumetric_mean_radius);
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    };
+    Writer writer;
+    added->alienorumid = "WD fixture";
+    const double radius = added->volumetric_mean_radius;
+    FILE *cache = fopen("catalogs/soles_alienorum.dat", "w");
+    ASSERT_NE(cache, nullptr);
+    writer.write_condensed_star_cat_line(cache, added);
+    fclose(cache);
+    delete_the_universe();
+    make_star("Sol");
+    ASSERT_EQ(reader.read_condensed_star_cat(), 1);
+    const int reloaded = find_object("WD1000+100", true);
+    ASSERT_GE(reloaded, 0);
+    EXPECT_NEAR(cels[reloaded]->volumetric_mean_radius, radius, radius * 0.0001);
+    EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[reloaded])->temperature, 25000);
+    EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[reloaded])->BV_color, 0);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, MissingCompanionMagnitudesSurviveLoadingAndBrightnessCorrection)
 {
     Star::load_main_seq_dat();
