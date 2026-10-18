@@ -132,7 +132,8 @@ bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std:
 
         // Compute the angle between the two vectors.
         double dot = v1x * v2x + v1y * v2y + v1z * v2z;
-        if (dot > 1.0) dot = 1.0; if (dot < -1.0) dot = -1.0;
+        if (dot > 1.0) dot = 1.0;
+        if (dot < -1.0) dot = -1.0;
         double angle = acos(dot);
         // Determine the sign of the angle using cross product direction.
         double cx = v1y * v2z - v1z * v2y;

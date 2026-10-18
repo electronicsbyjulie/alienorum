@@ -78,6 +78,8 @@ struct RockInstance
     double crown_rx;
     double crown_ry;
     double trunk_w_top;
+    double trunk_top_x;
+    double trunk_top_y;
     double trunk_w_base;
     double width;
     double height;
@@ -87,6 +89,7 @@ struct RockInstance
     uint32_t seed_val;
     bool base_valid;
     bool vegetation;
+    bool crown_above_eye;
     double aspect;
     alienorum::RGB3 surface_color;
 };

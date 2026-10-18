@@ -6636,8 +6636,11 @@ void draw_horizon()
                     double crown_rx = 0.0;
                     double crown_ry = 0.0;
                     double trunk_w_top = 0.0;
+                    double trunk_top_x = 0.0;
+                    double trunk_top_y = 0.0;
                     double trunk_w_base = 0.0;
                     bool base_valid = false;
+                    bool crown_above_eye = false;
                     double sort_dist = dist_m;
 
                     if (is_vegetation)
@@ -6655,6 +6658,7 @@ void draw_horizon()
                         }
 
                         double d_az_obj = theta_world - azimuth;
+                        crown_above_eye = y_crown_world > 0.0;
                         double sin_daz = sin(d_az_obj);
                         double cos_daz = cos(d_az_obj);
 
@@ -6677,13 +6681,33 @@ void draw_horizon()
 
                         crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
                         crown_rx = fmax(1.2, crown_rx);
-                        crown_ry = fmax(1.0, crown_rx * p->plant_crown_oblateness);
+                        // Project the oblate crown from an ellipse at the horizon to a circle overhead.
+                        double crown_aspect = sqrt(p->plant_crown_oblateness * p->plant_crown_oblateness
+                            * cos_alt * cos_alt + sin_alt * sin_alt);
+                        crown_ry = fmax(1.0, crown_rx * crown_aspect);
 
-                        trunk_w_top = (rock_size * p->plant_trunk_width / z_crown_cam) * dispcx * zoom;
-                        trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                        // Attach the trunk to the lower pole of the crown in world space.
+                        double y_top_world = y_crown_world
+                            - rock_size * p->plant_crown_size * p->plant_crown_oblateness;
+                        double z_top_cam = y_top_world * sin_alt + z_horiz * cos_alt;
+                        double y_top_cam = y_top_world * cos_alt - z_horiz * sin_alt;
 
                         double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
                         double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
+
+                        if (z_top_cam < 0.2 && z_base_cam >= 0.2)
+                        {
+                            double t = (0.2 - z_top_cam) / (z_base_cam - z_top_cam);
+                            y_top_cam += t * (y_base_cam - y_top_cam);
+                            z_top_cam = 0.2;
+                        }
+                        if (z_top_cam >= 0.2)
+                        {
+                            trunk_top_x = (x_cam / z_top_cam) * dispcx * zoom + dispcx;
+                            trunk_top_y = (-y_top_cam / z_top_cam) * dispcx * zoom + dispcy;
+                            trunk_w_top = (rock_size * p->plant_trunk_width / z_top_cam) * dispcx * zoom;
+                            trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                        }
 
                         if (z_base_cam >= 0.2)
                         {
@@ -6695,8 +6719,8 @@ void draw_horizon()
                         else
                         {
                             base_valid = false;
-                            double t = (0.2 - z_base_cam) / (z_crown_cam - z_base_cam);
-                            double y_clip = y_base_cam + t * (y_crown_cam - y_base_cam);
+                            double t = (0.2 - z_base_cam) / (fmax(0.2, z_top_cam) - z_base_cam);
+                            double y_clip = y_base_cam + t * (y_top_cam - y_base_cam);
                             sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
                             sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
                             trunk_w_base = (rock_size * p->plant_trunk_width / 0.2) * dispcx * zoom;
@@ -6781,6 +6805,8 @@ void draw_horizon()
                     rocks[num_rocks].crown_rx = crown_rx;
                     rocks[num_rocks].crown_ry = crown_ry;
                     rocks[num_rocks].trunk_w_top = trunk_w_top;
+                    rocks[num_rocks].trunk_top_x = trunk_top_x;
+                    rocks[num_rocks].trunk_top_y = trunk_top_y;
                     rocks[num_rocks].trunk_w_base = trunk_w_base;
                     rocks[num_rocks].width = rw;
                     rocks[num_rocks].height = rh;
@@ -6792,6 +6818,7 @@ void draw_horizon()
                     rocks[num_rocks].seed_val = rhash;
                     rocks[num_rocks].base_valid = base_valid;
                     rocks[num_rocks].vegetation = is_vegetation;
+                    rocks[num_rocks].crown_above_eye = crown_above_eye;
                     rocks[num_rocks].aspect = rock_aspect;
                     rocks[num_rocks].surface_color = surface_sample(object.latitude, object.longitude);
                     num_rocks++;
@@ -6992,22 +7019,24 @@ void draw_horizon()
                         double cy = rk.crown_y;
                         double bx = rk.screen_x;
                         double by = rk.screen_y;
+                        double top_x = rk.trunk_top_x;
+                        double top_y = rk.trunk_top_y;
 
                         double trunk_w_bot = trunk_w_base;
 
                         // If the trunk base is below the viewport, clip its bottom vertices along trunk axis
                         double clip_bottom = dispcy * 2.0 + 40.0;
-                        if (by > clip_bottom && by > cy)
+                        if (by > clip_bottom && by > top_y)
                         {
-                            double t = (clip_bottom - cy) / (by - cy);
-                            bx = cx + (bx - cx) * t;
+                            double t = (clip_bottom - top_y) / (by - top_y);
+                            bx = top_x + (bx - top_x) * t;
                             by = clip_bottom;
                             trunk_w_bot = trunk_w_top + (trunk_w_base - trunk_w_top) * t;
                         }
 
                         // Vector along trunk from base to crown
-                        double tdir_x = cx - bx;
-                        double tdir_y = cy - by;
+                        double tdir_x = top_x - bx;
+                        double tdir_y = top_y - by;
                         double tdir_len = sqrt(tdir_x * tdir_x + tdir_y * tdir_y);
 
                         // Brown-gray stalk/trunk with directional lighting
@@ -7017,18 +7046,29 @@ void draw_horizon()
                         int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
                         ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
 
-                        if (tdir_len > 1.0)
+                        // Oblate spheroid crown in vegetation color at the top of the stalk
+                        double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
+                        int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
+                        int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
+                        int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
+                        ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                        const auto draw_crown = [&]()
+                        {
+                            ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                                ImVec2(cx, cy),
+                                ImVec2((float)crown_rx, (float)crown_ry),
+                                crown_col);
+                        };
+
+                        if (rk.crown_above_eye) draw_crown();
+
+                        if (tdir_len > 1.0 && trunk_w_top > 0.0)
                         {
                             double ux = tdir_x / tdir_len;
                             double uy = tdir_y / tdir_len;
                             // Perpendicular normal to trunk vector
                             double nx = -uy;
                             double ny = ux;
-
-                            // Embed trunk top vertices into crown ellipse to avoid visible seam
-                            double embed_dist = fmin(crown_ry * 0.45, 40.0);
-                            double top_x = cx + ux * embed_dist;
-                            double top_y = cy + uy * embed_dist;
 
                             ImVec2 trunk_pts[4];
                             trunk_pts[0] = ImVec2(bx - nx * trunk_w_bot * 0.50, by - ny * trunk_w_bot * 0.50);
@@ -7038,17 +7078,7 @@ void draw_horizon()
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
                         }
 
-                        // Oblate spheroid crown in vegetation color at the top of the stalk
-                        double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
-                        int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
-                        int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
-                        int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
-                        ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
-
-                        ImGui::GetBackgroundDrawList()->AddEllipseFilled(
-                            ImVec2(cx, cy),
-                            ImVec2((float)crown_rx, (float)crown_ry),
-                            crown_col);
+                        if (!rk.crown_above_eye) draw_crown();
                     }
                     else if (is_venus)
                     {
