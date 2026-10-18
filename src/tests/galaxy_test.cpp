@@ -492,7 +492,7 @@ TEST(MilkyWayBackdropTest, SkymapZoomedSeamWrappingZeroStreaks)
         for (int step = 0; step < 8; step++)
         {
             double az_test = step * (_pi / 4.0);
-            double alt_test = ((step % 3) - 1) * (5.0 * _pi / 180.0);
+            double alt_test = ((step % 3) - 1) * (5.0 * fiftyseventh);
 
             for (int j = 0; j <= N_lat; j++)
             {
@@ -788,7 +788,7 @@ TEST(GalaxyTest, Spheroid3DSilhouetteNeverCollapses)
     // Test across a full 180-degree sweep of viewing inclinations relative to the symmetry axis
     for (int deg = 0; deg <= 180; deg += 5)
     {
-        double theta = deg * (M_PI / 180.0);
+        double theta = deg * fiftyseventh;
         double costheta = cos(theta);
         double sintheta = sin(theta);
         double b_app = a * sqrt(costheta * costheta + q * q * sintheta * sintheta);
@@ -817,8 +817,8 @@ TEST(GalaxyTest, Spheroid3DSilhouetteNeverCollapses)
 TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
 {
     // Direction to galaxy center on sky (e.g. LMC coordinates)
-    const double ra = 80.89 * (_pi / 180.0);
-    const double dec = -69.756 * (_pi / 180.0);
+    const double ra = 80.89 * fiftyseventh;
+    const double dec = -69.756 * fiftyseventh;
 
     Point vhat(-sin(ra) * cos(dec), sin(dec), cos(ra) * cos(dec));
     vhat.scale(1.0);
@@ -833,10 +833,10 @@ TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
 
     for (double pa_deg : test_pas)
     {
-        double pa = pa_deg * (_pi / 180.0);
+        double pa = pa_deg * fiftyseventh;
         for (double incl_deg : test_incls)
         {
-            double incl = incl_deg * (_pi / 180.0);
+            double incl = incl_deg * fiftyseventh;
 
             Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
             u_maj.scale(1.0);
@@ -862,7 +862,7 @@ TEST(GalaxyTest, MajorAxisMatchesCatalogPositionAngleAcrossAllAngles)
             // Apparent position angle of e1 in the sky plane
             double proj_N = -(e1.x * N_sky.x + e1.y * N_sky.y + e1.z * N_sky.z);
             double proj_E = -(e1.x * E_sky.x + e1.y * E_sky.y + e1.z * E_sky.z);
-            double meas_pa = atan2(proj_E, proj_N) * (180.0 / _pi);
+            double meas_pa = atan2(proj_E, proj_N) * fiftyseven;
             if (meas_pa < 0.0)
             {
                 meas_pa += 360.0;

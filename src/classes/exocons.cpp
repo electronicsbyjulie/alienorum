@@ -158,7 +158,7 @@ namespace alienorum
 
     inline double ang_dist_deg(const Point& a, const Point& b)
     {
-        return ang_dist_rad(a, b) * (180.0 / _pi);
+        return ang_dist_rad(a, b) * fiftyseven;
     }
 
     const IAUConstellationDef* ExoConsGenerator::find_iau_def(const std::string& abbrev)
@@ -260,7 +260,7 @@ namespace alienorum
         double cross_dot = dot_product(up, n);
         double sin_dist = std::abs(cross_dot) / n_mag;
         double dist_rad = asin(std::min(1.0, sin_dist));
-        double dist_deg = dist_rad * 180.0 / _pi;
+        double dist_deg = dist_rad * fiftyseven;
 
         if (dist_deg > max_dist_deg)
         {
@@ -278,8 +278,8 @@ namespace alienorum
 
         double dot_proj_a = dot_product(p_proj, ua);
         double dot_proj_b = dot_product(p_proj, ub);
-        double x_deg = acos(std::max(-1.0, std::min(1.0, dot_proj_a))) * 180.0 / _pi;
-        double y_deg = acos(std::max(-1.0, std::min(1.0, dot_proj_b))) * 180.0 / _pi;
+        double x_deg = acos(std::max(-1.0, std::min(1.0, dot_proj_a))) * fiftyseven;
+        double y_deg = acos(std::max(-1.0, std::min(1.0, dot_proj_b))) * fiftyseven;
 
         if (x_deg < min_end_dist_deg || y_deg < min_end_dist_deg)
         {
@@ -411,7 +411,7 @@ namespace alienorum
             return 0.0;
         }
 
-        const double cos5deg = cos(EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG * _pi / 180.0);
+        const double cos5deg = cos(EXOCONS_SKY_COVERAGE_TARGET_DIST_DEG * fiftyseventh);
         const double phi = _pi * (sqrt(5.0) - 1.0);
         int covered = 0;
 
@@ -626,7 +626,7 @@ namespace alienorum
         template<typename Func>
         void for_each_near(const Point& pt, double radius_deg, Func&& func) const
         {
-            double rad = radius_deg * (_pi / 180.0);
+            double rad = radius_deg * fiftyseventh;
             double chord = 2.0 * sin(0.5 * rad) * 1.05;
             int min_x = cell_coord(pt.x - chord);
             int max_x = cell_coord(pt.x + chord);
@@ -725,7 +725,7 @@ namespace alienorum
                         Point ua = normalize_point(rel_a);
                         Point ub = normalize_point(rel_b);
                         double len = ang_dist_deg(ua, ub);
-                        double cos_half = cos(0.5 * len * (_pi / 180.0));
+                        double cos_half = cos(0.5 * len * fiftyseventh);
                         all_lines.push_back({cl.a, cl.b, ua, ub, len, cos_half, c_idx});
                         placed_stars.push_back({cl.a, ua, c_idx});
                         placed_stars.push_back({cl.b, ub, c_idx});
@@ -1074,7 +1074,7 @@ namespace alienorum
                 return false;
             }
 
-            double cos_clearance = cos(separation_fraction * len_deg * (_pi / 180.0));
+            double cos_clearance = cos(separation_fraction * len_deg * fiftyseventh);
             const bool prominent_connection = star_mag_map[sa] <= 4.0 && star_mag_map[sb] <= 4.0;
             const double endpoint_mag = std::max(star_mag_map[sa], star_mag_map[sb]);
             auto obstructs_connection = [&](Star* star)
@@ -1145,7 +1145,7 @@ namespace alienorum
                 {
                     continue;
                 }
-                double cos_separation = cos(separation_fraction * el.len_deg * (_pi / 180.0));
+                double cos_separation = cos(separation_fraction * el.len_deg * fiftyseventh);
                 bool a_obstructs = obstructs_connection(el.a);
                 bool b_obstructs = obstructs_connection(el.b);
                 if (sa_new)
@@ -1546,7 +1546,7 @@ namespace alienorum
 
                 new_c_stars.insert(sa);
                 new_c_stars.insert(sb);
-                double cos_half = cos(0.5 * edge.len_deg * (_pi / 180.0));
+                double cos_half = cos(0.5 * edge.len_deg * fiftyseventh);
                 all_lines.push_back({sa, sb, ua, ub, edge.len_deg, cos_half, new_c_idx});
                 placed_stars.push_back({sa, ua, new_c_idx});
                 placed_stars.push_back({sb, ub, new_c_idx});
@@ -1686,7 +1686,7 @@ namespace alienorum
                     out_cons[best_existing_out_idx].lines.push_back(cl1);
 
                     double la = ang_dist_deg(u_bright, best_mid_target_u);
-                    double cos_half_a = cos(0.5 * la * (_pi / 180.0));
+                    double cos_half_a = cos(0.5 * la * fiftyseventh);
                     all_lines.push_back({s_bright, best_mid_target, u_bright, best_mid_target_u, la, cos_half_a, best_existing_c_idx});
                     placed_stars.push_back({s_bright, u_bright, best_existing_c_idx});
                     placed_stars.push_back({best_mid_target, best_mid_target_u, best_existing_c_idx});
@@ -1699,7 +1699,7 @@ namespace alienorum
                     out_cons[best_existing_out_idx].lines.push_back(cl2);
 
                     double lb = ang_dist_deg(best_mid_target_u, best_existing_target_u);
-                    double cos_half_b = cos(0.5 * lb * (_pi / 180.0));
+                    double cos_half_b = cos(0.5 * lb * fiftyseventh);
                     all_lines.push_back({best_mid_target, best_existing_target, best_mid_target_u, best_existing_target_u, lb, cos_half_b, best_existing_c_idx});
 
                     cons_stars[best_existing_c_idx].insert(s_bright);
@@ -1717,7 +1717,7 @@ namespace alienorum
                     cl.starnameb = get_consline_star_name(best_existing_target);
                     out_cons[best_existing_out_idx].lines.push_back(cl);
 
-                    double cos_half = cos(0.5 * best_existing_dist * (_pi / 180.0));
+                    double cos_half = cos(0.5 * best_existing_dist * fiftyseventh);
                     all_lines.push_back({s_bright, best_existing_target, u_bright, best_existing_target_u, best_existing_dist, cos_half, best_existing_c_idx});
                     placed_stars.push_back({s_bright, u_bright, best_existing_c_idx});
                     cons_stars[best_existing_c_idx].insert(s_bright);
@@ -1933,7 +1933,7 @@ namespace alienorum
                                 cl.b = sb;
                                 cl.starnamea = get_consline_star_name(sa);
                                 cl.starnameb = get_consline_star_name(sb);
-                                double cos_half = cos(0.5 * be.len * (_pi / 180.0));
+                                double cos_half = cos(0.5 * be.len * fiftyseventh);
                                 b_lines.push_back(cl);
                                 b_line_records.push_back({sa, sb, ua, ub, be.len, cos_half, target_c_idx});
                                 b_c_stars.insert(sa);
@@ -2053,7 +2053,7 @@ namespace alienorum
 
                             Point ut = star_u_map[st];
                             double len = ang_dist_deg(u_bright, ut);
-                            double cos_half = cos(0.5 * len * (_pi / 180.0));
+                            double cos_half = cos(0.5 * len * fiftyseventh);
                             all_lines.push_back({s_bright, st, u_bright, ut, len, cos_half, target_c_idx});
                             placed_stars.push_back({st, ut, target_c_idx});
                             new_c_stars.insert(st);
@@ -2134,7 +2134,7 @@ namespace alienorum
                     cl.starnameb = get_consline_star_name(best_target);
                     out_cons[out_i].lines.push_back(cl);
 
-                    double cos_half = cos(0.5 * best_dist * (_pi / 180.0));
+                    double cos_half = cos(0.5 * best_dist * fiftyseventh);
                     all_lines.push_back({s_cand, best_target, u_cand, best_target_u, best_dist, cos_half, best_c_idx});
                     placed_stars.push_back({s_cand, u_cand, best_c_idx});
                     cons_stars[best_c_idx].insert(s_cand);
@@ -2167,7 +2167,7 @@ namespace alienorum
                                 cl_loop.starnameb = get_consline_star_name(ps.s);
                                 out_cons[out_i].lines.push_back(cl_loop);
 
-                                double cos_half2 = cos(0.5 * d2 * (_pi / 180.0));
+                                double cos_half2 = cos(0.5 * d2 * fiftyseventh);
                                 all_lines.push_back({s_cand, ps.s, u_cand, ps.u, d2, cos_half2, best_c_idx});
                                 break;
                             }
@@ -2445,7 +2445,7 @@ namespace alienorum
                         cl.b = sb;
                         cl.starnamea = get_consline_star_name(sa);
                         cl.starnameb = get_consline_star_name(sb);
-                        double cos_half = cos(0.5 * ge.len * (_pi / 180.0));
+                        double cos_half = cos(0.5 * ge.len * fiftyseventh);
                         gap_lines.push_back(cl);
                         gap_line_records.push_back({sa, sb, ua, ub, ge.len, cos_half, target_c_idx});
                         gap_c_stars.insert(sa);

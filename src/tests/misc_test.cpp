@@ -125,14 +125,14 @@ TEST(SurfaceBiomesTest, CoastalReliefRisesGentlyFromSeaAcrossTheCircularSeam)
     std::vector<bool> water(720, false);
     water[0] = true;
     const double spacing = 2.0;
-    const double incline = 4.0 * _pi / 180.0;
+    const double incline = 4.0 * fiftyseventh;
     taper_coastal_relief(relief, water, spacing, incline);
     EXPECT_EQ(relief[0], 0.0);
     for (int i = 1; i < 360; ++i)
     {
         const double gradient = (relief[i] - relief[i - 1]) / spacing;
-        EXPECT_GE(gradient, tan(2.0 * _pi / 180.0));
-        EXPECT_LE(gradient, tan(6.0 * _pi / 180.0));
+        EXPECT_GE(gradient, tan(2.0 * fiftyseventh));
+        EXPECT_LE(gradient, tan(6.0 * fiftyseventh));
         EXPECT_NEAR(relief[i], relief[720 - i], 1e-12);
     }
     std::fill(water.begin(), water.end(), false);

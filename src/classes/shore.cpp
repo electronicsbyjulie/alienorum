@@ -60,7 +60,7 @@ static double calculateCumulativeXUV(const Star& s, const Planet& p)
     double distance_m = p.semimajorAxis * AU;
     
     // Flux at planet (W/m^2) during saturation
-    double flux_sat = (f_sat * l_bol_watts) / (4.0 * M_PI * std::pow(distance_m, 2));
+    double flux_sat = (f_sat * l_bol_watts) / (4.0 * _pi * std::pow(distance_m, 2));
     
     // Convert age to seconds
     double age_sec = s.age * 365.25 * 24.0 * 3600.0;

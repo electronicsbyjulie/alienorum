@@ -92,6 +92,7 @@ class RenderingRegressionTest : public UniverseFixture
     unsigned int cloud_epoch = ++cloud_epoch_sequence;
     int render_width = 192, render_height = 108;
     std::vector<double> surface_magnitudes;
+    std::vector<double> system_bloom;
 
     static void SetUpTestSuite()
     {
@@ -781,9 +782,35 @@ TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
     EXPECT_GT(plants, 0);
 }
 
+TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
+{
+    Planet *world = surface(true);
+    world->temperature = 737;
+    world->ensure_atmosphere()->surface_pressure = 93 * oneatm;
+    delete world->surf_map;
+    world->surf_map = new MountainBandsTestMap();
+    set(dispcx, 960.0);
+    set(dispcy, 540.0);
+    set(show_terrain, false);
+    find_horizon();
+    const int before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+    draw_horizon();
+    const int vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size - before;
+    render();
+    ImGui::NewFrame();
+    delete world->surf_map;
+    world->surf_map = new SceneryTestMap();
+    const int plain_before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+    draw_horizon();
+    const int plain_vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size - plain_before;
+    EXPECT_EQ(vertices, plain_vertices);
+    render();
+    ImGui::NewFrame();
+}
+
 TEST_F(RenderingRegressionTest, MountainsSampleDifferentBiomesAlongTheirDepthAboveTheSeaHorizon)
 {
-    Planet *world = surface();
+    Planet *world = surface(true);
     delete world->surf_map;
     world->surf_map = new MountainBandsTestMap();
     world->has_water = 0;
@@ -819,8 +846,8 @@ TEST_F(RenderingRegressionTest, RainRequiresOverheadCumulusOrHeavyHaze)
     ASSERT_TRUE(cloud_rain_cover().valid);
     EXPECT_FALSE(cloud_rain_cover().permits_rain());
 
-    clouds(210, half_pi, 0.001, view);
-    EXPECT_GT(cloud_rain_cover().heavy_haze, 0.1f);
+    clouds(255, half_pi, 0.001, view);
+    EXPECT_EQ(cloud_rain_cover().heavy_haze, 1.0f);
     EXPECT_TRUE(cloud_rain_cover().permits_rain());
 
     view.overcast = true;
@@ -876,4 +903,62 @@ TEST_F(RenderingRegressionTest, RainProbeMatchesVisibleCumulusAndClearGapsIndepe
     EXPECT_EQ(cloud_rain_cover().cumulus, daytime.cumulus);
     EXPECT_EQ(cloud_rain_cover().heavy_haze, daytime.heavy_haze);
     EXPECT_TRUE(cloud_rain_cover().permits_rain());
+}
+
+TEST_F(RenderingRegressionTest, SystemViewKeepsAPlanetVisibleWhenItsHostRadiusIsUnknown)
+{
+    system_bloom.assign(2, 10.0);
+    set(bloomrad_cache, system_bloom.data());
+    Star *host = make_star("DW Lyn");
+    host->mass = 0;
+    host->volumetric_mean_radius = 0;
+    host->looked_for_maps = true;
+    host->cenobj = host;
+    strcpy(host->spectral_type, "SdB D");
+    Planet *planet = make_planet(host, "DW Lyn b", 1.148 * AU);
+    planet->mass = 5.58 * jupiter_mass;
+    planet->volumetric_mean_radius = jupiter_radius;
+    planet->looked_for_maps = true;
+    planet->surf_map = new SceneryTestMap();
+    const std::vector<CelestialObject*> local_system =
+    {
+        host, planet
+    };
+    set(lsyscache, local_system);
+    set(view_mode, vm_system);
+    set(selected, -1);
+    set(lbl_localsys, false);
+    set(show_clouds, false);
+    draw_system_view();
+    EXPECT_TRUE(std::isfinite(host->drawnx));
+    EXPECT_TRUE(std::isfinite(host->drawny));
+    EXPECT_TRUE(host->onscreen);
+    EXPECT_LT(host->drawnxmin, host->drawnxmax);
+    EXPECT_TRUE(std::isfinite(planet->drawnx));
+    EXPECT_TRUE(std::isfinite(planet->drawny));
+    EXPECT_GT(planet->drawnx, 0);
+    EXPECT_LT(planet->drawnx, dispcx * 2);
+    EXPECT_GT(planet->drawny, 0);
+    EXPECT_LT(planet->drawny, dispcy * 2);
+    EXPECT_GT(host->volumetric_mean_radius, 0);
+    EXPECT_TRUE(std::isfinite(host->volumetric_mean_radius));
+    EXPECT_EQ(host->mass, 0);
+    const auto pixels = render();
+    int star_pixels = 0, planet_pixels = 0;
+    for (int y = 0; y < render_height; ++y)
+    {
+        for (int x = 0; x < render_width; ++x)
+        {
+            const int index = (y * render_width + x) * 4;
+            if (!(pixels[index] || pixels[index + 1] || pixels[index + 2]))
+            {
+                continue;
+            }
+            star_pixels += x < render_width / 4;
+            planet_pixels += fabs(x - planet->drawnx) < 10;
+        }
+    }
+    EXPECT_GT(star_pixels, 20);
+    EXPECT_GT(planet_pixels, 20);
+    ImGui::NewFrame();
 }

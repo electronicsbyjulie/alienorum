@@ -15,8 +15,8 @@
 
 const double _pi = 3.14159265358979323846;
 const double half_pi = _pi * 0.5;
-const double deg_to_rad = _pi / 180.0;
-const double rad_to_deg = 180.0 / _pi;
+const double deg_to_rad = fiftyseventh;
+const double rad_to_deg = fiftyseven;
 const double V_band = 5.5e-7;
 const double B_band = 4.4e-7;
 const double invlogmagnbase = 1.0 / std::log(std::pow(100.0, 0.2));

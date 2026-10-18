@@ -142,7 +142,7 @@ bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std:
         sum_angle += sign * angle;
     }
     // Inside if absolute winding sum exceeds pi.
-    return fabs(sum_angle) > M_PI;
+    return fabs(sum_angle) > _pi;
 }
 
 Constellation *identify_cons_from_coords(double RA, double Decl)
@@ -197,6 +197,8 @@ Constellation *identify_cons_from_coords(double RA, double Decl)
             if (cons.name == "Octans" || cons.abbrev == "Oct") return &cons;
         }
     }
+
+    return nullptr;                     // This line never executes but it prevents a compiler warning.
 }
 
 Constellation *identify_cons_of_star(Star *s)

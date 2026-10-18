@@ -398,11 +398,11 @@ TEST(PointTest, Cartesian2DSkymapDeclinationContinuousAcrossPoles)
     zoom = 2.0;
 
     // Test with non-zero altitude pan (e.g. alt = -5.0 degrees)
-    double alt = -5.0 * (M_PI / 180.0);
+    double alt = -5.0 * fiftyseventh;
 
     // Two points near the north celestial pole (decl = +88 deg and +89.5 deg)
-    Point pt1 = Point::from_ra_dec(0.0, 88.0 * (M_PI / 180.0), 1.0, 0);
-    Point pt2 = Point::from_ra_dec(0.0, 89.5 * (M_PI / 180.0), 1.0, 0);
+    Point pt1 = Point::from_ra_dec(0.0, 88.0 * fiftyseventh, 1.0, 0);
+    Point pt2 = Point::from_ra_dec(0.0, 89.5 * fiftyseventh, 1.0, 0);
 
     Cartesian2D c1(pt1, 0.0, alt, zoom);
     Cartesian2D c2(pt2, 0.0, alt, zoom);

@@ -1163,7 +1163,7 @@ TEST(PlanetTest, ObliqueViewNearPlanet_NotCulledWhenLimbInFrustum)
     // so the center of Earth has camera_space.z < 0.
     azimuth = 0.0;
     azimuth_correction = 0.0;
-    altitude = 5.0 * _pi / 180.0;
+    altitude = 5.0 * fiftyseventh;
 
     // Verify Cartesian2D of center produces sentinel -1e29 because cz < 0
     Point rel = earth.tmprel;

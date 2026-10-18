@@ -4010,6 +4010,34 @@ void draw_objects()
 void draw_system_view()
 {
     int i, j, n = lsyscache.size();
+    const auto display_radius = [](const CelestialObject *object, double reference, double base, double multiplier)
+    {
+        const double radius = object->volumetric_mean_radius;
+        const double offset = radius > 0 && std::isfinite(radius) ? log(radius / reference) * multiplier : 0.0;
+        return fmax(4.0, base + offset);
+    };
+    const auto draw_system_object = [](CelestialObject *object, double radius)
+    {
+        if (object->volumetric_mean_radius > 0 && std::isfinite(object->volumetric_mean_radius))
+        {
+            draw_sphere(object, radius);
+            return;
+        }
+        // Missing physical dimensions still get a visible schematic marker.
+        ImDrawList *draw = ImGui::GetBackgroundDrawList();
+        const ImVec2 position(object->drawnx, object->drawny);
+        object->drawnxmin = position.x - radius;
+        object->drawnxmax = position.x + radius;
+        object->drawnymin = position.y - radius;
+        object->drawnymax = position.y + radius;
+        object->onscreen = true;
+        const ImU32 outline = rgba_apply_redlight(global_style.objlbl_color);
+        draw->AddCircleFilled(position, radius, rgba_apply_redlight(IM_COL32(96, 96, 96, 255)));
+        draw->AddCircle(position, radius, outline);
+        const ImVec2 text = ImGui::CalcTextSize("?");
+        draw->AddText(ImVec2(fmax(text.x * 0.5 + 2.0, position.x) - text.x * 0.5,
+            position.y - text.y * 0.5), outline, "?");
+    };
 
     double padding = dispcy/20, selrad = 0;
     int num_stars = 0;
@@ -4020,11 +4048,15 @@ void draw_system_view()
         if (lsyscache[i]->deleted) continue;
         selrad = 0;
         Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
+        if (!(s->volumetric_mean_radius > 0) || !std::isfinite(s->volumetric_mean_radius))
+        {
+            s->estimate_radius();
+        }
         s->drawnx = -dispcx/29;
         s->drawny = dispcy + (2.0 * i - num_stars + 1) * (dispcy / num_stars);
 
         // dry run - find planetary system scaling
-        double sdrad = dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20;
+        double sdrad = display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0);
         double cursor = s->drawnx + sdrad + padding;
         std::vector<int> plcenx, plxrad;
         int first_hz_planet = 99999, last_hz_planet = -1;
@@ -4039,7 +4071,7 @@ void draw_system_view()
             if (p->mass < 0.01 * earth_mass) continue;
             if (!p->orbit || p->orbit->center != s) continue;
             p->drawny = s->drawny;
-            double pdrad = dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*20;
+            double pdrad = display_radius(p, earth_radius, dispcx/10, 20.0);
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
             p->drawnx = cursor + pdradr;
             plcenx.push_back(p->drawnx);
@@ -4083,8 +4115,8 @@ void draw_system_view()
         }
 
         // actual draw with scaling applied
-        sdrad = (dispcy/std::max(2, num_stars) + log(s->volumetric_mean_radius / solar_radius) * 20) * curscale;
-        draw_sphere(s, sdrad);
+        sdrad = display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0) * curscale;
+        draw_system_object(s, sdrad);
         if (s->seqno == selected) selrad = sdrad;
         if (selected == s->seqno)
         {
@@ -4129,10 +4161,10 @@ void draw_system_view()
             if (!p->orbit || p->orbit->center != s) continue;
             if (p->mass < 0.01 * earth_mass) continue;
             p->drawny = s->drawny;
-            double pdrad = (dispcx/10 + log(p->volumetric_mean_radius / earth_radius)*10) * curscale;
+            double pdrad = (display_radius(p, earth_radius, dispcx/10, 10.0)) * curscale;
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
             p->drawnx = cursor + pdradr;
-            draw_sphere(p, pdrad);
+            draw_system_object(p, pdrad);
             if (p->seqno == selected || (selected > 0 && cels[selected] && cels[selected]->orbit && cels[selected]->orbit->center == p))
             {
                 selrad = pdrad;
@@ -4171,14 +4203,14 @@ void draw_system_view()
             }
         }
 
-        draw_sphere(s, sdrad);
+        draw_system_object(s, sdrad);
 
         if (selected >= 0 && selrad)
         {
             ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), IM_COL32(0,0,0,128));
             CelestialObject *csel = cels[selected];
             while (csel->typeclass() == class_moon && csel->orbit) csel = csel->orbit->center;
-            draw_sphere(csel, selrad);
+            draw_system_object(csel, selrad);
             if (lbl_localsys)
             {
                 const char *dispname = csel->name;
@@ -4238,8 +4270,8 @@ void draw_system_view()
 
                 m->drawnx = moonx;
                 m->drawny = moony;
-                moonrad = (dispcx/13 + log(m->volumetric_mean_radius / earth_radius)*5) * curscale;
-                draw_sphere(m, moonrad);
+                moonrad = (display_radius(m, earth_radius, dispcx/13, 5.0)) * curscale;
+                draw_system_object(m, moonrad);
                 next_moony = fmax(next_moony, moony + moonrad*2 + padding);
                 if (m->seqno == selected) selrad = moonrad;
 
@@ -5176,13 +5208,17 @@ void draw_horizon()
         }
         static SurfaceBiomes biome_field;
         biome_field.set_world(static_cast<uint32_t>(whereami));
+        bool water_favorable = p && p->get_surface_pressure() >= 150
+            && p->estimate_surface_temperature() < 400;
+        const bool surface_biomes = p && map && uses_rocky_map(cel->type) && water_favorable
+            && (p->has_water || p->vegetation_r || p->vegetation_g);
         const auto surface_sample = [&](double latitude, double longitude)
         {
             if (!map)
             {
                 return RGB3(0, 8, 24);
             }
-            if (uses_rocky_map(cel->type))
+            if (surface_biomes)
             {
                 const auto coord = biome_field.coordinates(surface_radius, latitude, longitude, shore_displacement);
                 return map->color_at(coord.first, coord.second);
@@ -5190,9 +5226,6 @@ void draw_horizon()
             return map->color_at(latitude, longitude);
         };
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
-
-        bool water_favorable = p && p->get_surface_pressure() >= 150
-            && p->estimate_surface_temperature() < 400;
 
         const auto vegetation_color = [&](const RGB3 &sample)
         {
@@ -5215,7 +5248,7 @@ void draw_horizon()
         };
 
         const bool ocean_world = p && (p->type == waterworld || p->type == hycean);
-        const bool surface_water = ocean_world || (p && uses_rocky_map(p->type) && p->has_water && map);
+        const bool surface_water = ocean_world || (surface_biomes && p->has_water);
         const auto water_at = [&](double latitude, double longitude)
         {
             if (ocean_world)
@@ -5235,7 +5268,7 @@ void draw_horizon()
         const double surface_lift = p && !gaseous ? p->atmospheric_horizon_lift() : 0.0;
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye)
             + surface_radius * fmax(0.0, sin(surface_lift));
-        const bool terrain_mesh = show_terrain && map && uses_rocky_map(cel->type)
+        const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
         HorizonTerrainRaster terrain_raster;
         const auto surface_coord = [&](double distance, double bearing)
@@ -5418,7 +5451,7 @@ void draw_horizon()
             if (surface_water)
             {
                 const double ring_spacing = surface_radius * sin(surface_range / surface_radius) * 2.0 * _pi / hznodes;
-                taper_coastal_relief(coastal_relief, coastal_water, ring_spacing, 4.0 * _pi / 180.0);
+                taper_coastal_relief(coastal_relief, coastal_water, ring_spacing, 4.0 * fiftyseventh);
                 for (j = 0; j < hznodes; ++j)
                 {
                     hzheight[j] = hz_dy[j] - coastal_relief[j] * dispcx * zoom / surface_range;
@@ -5651,7 +5684,7 @@ void draw_horizon()
                     if (surface_water)
                     {
                         const double spacing = surface_radius * sin(distance / surface_radius) * 2.0 * _pi / terrain_columns;
-                        taper_coastal_relief(row_relief, row_water, spacing, 4.0 * _pi / 180.0);
+                        taper_coastal_relief(row_relief, row_water, spacing, 4.0 * fiftyseventh);
                     }
                     for (int column = 0; column < terrain_columns; ++column)
                     {
@@ -5659,7 +5692,7 @@ void draw_horizon()
                     }
                 }
                 // Bound radial slopes as well as slopes around each coastal ring.
-                const double coastal_slope = tan(4.0 * _pi / 180.0);
+                const double coastal_slope = tan(4.0 * fiftyseventh);
                 for (int row = 1; row < terrain_rows; ++row)
                 {
                     for (int column = 0; column < terrain_columns; ++column)
@@ -5808,7 +5841,7 @@ void draw_horizon()
         }
         #endif
 
-        if (!faded && (surface_water || (map && uses_rocky_map(cel->type) && cel->type != lavaworld)))
+        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld)))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
             const auto ground_color = [&](double x, double y)

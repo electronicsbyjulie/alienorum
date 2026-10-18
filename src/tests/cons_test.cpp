@@ -553,7 +553,7 @@ TEST_F(ExoConsTest, Generate47UrsaeMajoris_CriteriaVerification)
 
             // Lines must not extend more than 15 degrees
             double cos_ang = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
-            double angle_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * 180.0 / _pi;
+            double angle_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * fiftyseven;
             EXPECT_LE(angle_deg, 15.01);
 
             all_segments.push_back({ua, ub});
@@ -608,7 +608,7 @@ TEST_F(ExoConsTest, GenerateGJ86_CausesAtLeast50Constellations)
             Point ub = pb * (1.0 / pb.magnitude());
 
             double cos_ang = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
-            double angle_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * 180.0 / _pi;
+            double angle_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * fiftyseven;
             EXPECT_LE(angle_deg, 15.01);
 
             all_segs.push_back({ua, ub});
@@ -1315,7 +1315,7 @@ TEST_F(ExoConsTest, LineSeparationFromOtherConstellations)
             Point ua = pa * (1.0 / len_a);
             Point ub = pb * (1.0 / len_b);
             double cos_ang = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
-            double len_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * 180.0 / _pi;
+            double len_deg = acos(std::max(-1.0, std::min(1.0, cos_ang))) * fiftyseven;
             double half_len = 0.5 * len_deg;
 
             for (size_t j = 0; j < generated.size(); j++)
@@ -1336,8 +1336,8 @@ TEST_F(ExoConsTest, LineSeparationFromOtherConstellations)
 
                     double cos_a = ua.x * uo.x + ua.y * uo.y + ua.z * uo.z;
                     double cos_b = ub.x * uo.x + ub.y * uo.y + ub.z * uo.z;
-                    double dist_a = acos(std::max(-1.0, std::min(1.0, cos_a))) * 180.0 / _pi;
-                    double dist_b = acos(std::max(-1.0, std::min(1.0, cos_b))) * 180.0 / _pi;
+                    double dist_a = acos(std::max(-1.0, std::min(1.0, cos_a))) * fiftyseven;
+                    double dist_b = acos(std::max(-1.0, std::min(1.0, cos_b))) * fiftyseven;
 
                     EXPECT_GE(dist_a, half_len - 1e-4);
                     EXPECT_GE(dist_b, half_len - 1e-4);
@@ -1427,7 +1427,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
             {
                 double dot = uvec[i].x * uvec[j].x + uvec[i].y * uvec[j].y + uvec[i].z * uvec[j].z;
                 dot = std::max(-1.0, std::min(1.0, dot));
-                double deg = acos(dot) * 180.0 / _pi;
+                double deg = acos(dot) * fiftyseven;
                 if (deg > max_deg)
                 {
                     max_deg = deg;
@@ -1452,7 +1452,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
         Point ub = pb * (1.0 / lb);
         double dot = ua.x * ub.x + ua.y * ub.y + ua.z * ub.z;
         dot = std::max(-1.0, std::min(1.0, dot));
-        return acos(dot) * 180.0 / _pi;
+        return acos(dot) * fiftyseven;
     };
 
     // Collect Reference sets
@@ -1507,7 +1507,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
             inc_set.insert(c.s);
         }
     }
-    double cos4 = cos(4.0 * _pi / 180.0);
+    double cos4 = cos(4.0 * fiftyseventh);
     for (int iter = 0; iter < 2; iter++)
     {
         for (const auto& c : all_cands)
@@ -1575,7 +1575,7 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
             Point pb = (Point)cl.b->location - sun_pt;
             Point ua = pa * (1.0 / pa.magnitude());
             Point ub = pb * (1.0 / pb.magnitude());
-            double len_deg = acos(std::max(-1.0, std::min(1.0, ua.x*ub.x + ua.y*ub.y + ua.z*ub.z))) * 180.0 / _pi;
+            double len_deg = acos(std::max(-1.0, std::min(1.0, ua.x*ub.x + ua.y*ub.y + ua.z*ub.z))) * fiftyseven;
             double half_len = 0.5 * len_deg;
 
             for (size_t j = 0; j < reference_cons.size(); j++)
@@ -1588,8 +1588,8 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
                         if (!other) continue;
                         Point po = (Point)other->location - sun_pt;
                         Point uo = po * (1.0 / po.magnitude());
-                        double dist_a = acos(std::max(-1.0, std::min(1.0, ua.x*uo.x + ua.y*uo.y + ua.z*uo.z))) * 180.0 / _pi;
-                        double dist_b = acos(std::max(-1.0, std::min(1.0, ub.x*uo.x + ub.y*uo.y + ub.z*uo.z))) * 180.0 / _pi;
+                        double dist_a = acos(std::max(-1.0, std::min(1.0, ua.x*uo.x + ua.y*uo.y + ua.z*uo.z))) * fiftyseven;
+                        double dist_b = acos(std::max(-1.0, std::min(1.0, ub.x*uo.x + ub.y*uo.y + ub.z*uo.z))) * fiftyseven;
                         if (dist_a < half_len - 1e-4 || dist_b < half_len - 1e-4)
                         {
                             ref_line_sep_violations++;

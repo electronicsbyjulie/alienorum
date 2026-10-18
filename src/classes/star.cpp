@@ -1078,9 +1078,13 @@ double Star::estimate_radius(bool sms)
         }
     }
 
-    double sun_absmag = (cels[0] ? cels[0]->absolute_magnitude : 4.83);
+    double sun_absmag = (cels && cels[0] ? cels[0]->absolute_magnitude : 4.83);
     double T = estimate_temperature();
-    if (T <= 0)
+    if (!(temperature > 0) && std::isfinite(BV_color) && BV_color != 0)
+    {
+        T = temperature_from_BV(BV_color);
+    }
+    if (!(T > 0) || !std::isfinite(T))
     {
         T = 5800.0;
     }
@@ -1090,7 +1094,19 @@ double Star::estimate_radius(bool sms)
 
     // 2. Calculate radius relative to the Sun (R/R_sun) using Stefan-Boltzmann then scale to meters
     double solar_radii = std::sqrt(luminosity) * std::pow(sun_temp / T, 2.0);
-    return volumetric_mean_radius = solar_radii * solar_radius;
+    double radius = solar_radii * solar_radius;
+    if (!(radius > 0) || !std::isfinite(radius))
+    {
+        // Use the existing main-sequence mass table when photometry is unavailable.
+        const double index = get_mseqidx_from_mass(mass / solar_mass);
+        radius = mass > 0 && std::isfinite(mass) && index >= mseqmin && index <= mseqmax
+            ? interpolate_mseq_rad(index) * solar_radius : solar_radius;
+    }
+    if (!(radius > 0) || !std::isfinite(radius))
+    {
+        radius = solar_radius;
+    }
+    return volumetric_mean_radius = radius;
 }
 
 // Priority: Bayer > Flamsteed > GJ (Gliese) > Gould > HD > HIP > SAO > Durchmusterung > SB9 --

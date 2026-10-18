@@ -1,4 +1,5 @@
 #include <cstring>
+#include <limits>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp> 
 #include "../classes/galaxy.h"
@@ -7,6 +8,25 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(StarTest, RadiusEstimateUsesLuminosityAndTemperature)
+{
+    Star s;
+    s.temperature = sun_temp;
+    s.absolute_magnitude = 4.83;
+    EXPECT_NEAR(s.estimate_radius(), solar_radius, solar_radius * 0.001);
+    s.temperature = 2 * sun_temp;
+    EXPECT_NEAR(s.estimate_radius(), solar_radius / 4, solar_radius * 0.001);
+}
+
+TEST(StarTest, RadiusEstimateHasAFiniteFallback)
+{
+    Star s;
+    s.absolute_magnitude = std::numeric_limits<double>::quiet_NaN();
+    s.temperature = std::numeric_limits<double>::infinity();
+    EXPECT_GT(s.estimate_radius(), 0);
+    EXPECT_TRUE(std::isfinite(s.volumetric_mean_radius));
+}
 
 // =====================================================================
 // Star Initialization & Basic Property Tests
