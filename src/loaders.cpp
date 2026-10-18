@@ -1110,7 +1110,8 @@ void cache_cons_lines()
                 return it_local->second;
             }
 
-            int found = find_object(starname.c_str(), true, mag_limit);
+            // Constellation endpoints are identifiers; a similar name is a different star.
+            int found = find_object(starname.c_str(), true, mag_limit, 1);
             resolved_cache.emplace(starname, found);
             return found;
         };
@@ -1118,6 +1119,8 @@ void cache_cons_lines()
         int nln = constellations[i].lines.size();
         for (int l = 0; l < nln; l++)
         {
+            constellations[i].lines[l].a = nullptr;
+            constellations[i].lines[l].b = nullptr;
             int founda = resolve_endpoint(constellations[i].lines[l].starnamea);
             int foundb = resolve_endpoint(constellations[i].lines[l].starnameb);
 

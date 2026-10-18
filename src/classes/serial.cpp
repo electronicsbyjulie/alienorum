@@ -18,18 +18,29 @@ static int skip_ws(const char* s, int i)
     return i;
 }
 
-// Equivalent to std::regex_search(s, R"([A-Za-z]{3}\s*[A-Za-z]{3})") -- three letters,
-// optional whitespace, three more letters, starting anywhere in s -- without paying for
-// NFA construction on every call. Fixed-length {3} quantifiers mean there's nothing to
-// backtrack, so a single left-to-right scan is exactly equivalent.
+// Bayer abbreviations include two-letter names and numbered forms such as Gam2Vel.
+// Check the Greek prefix so ordinary object names still use the general name search.
 static bool looks_like_Bayer(const char* s)
 {
-    int n = strlen(s);
-    for (int i=0; i+3<=n; i++)
+    const int n = strlen(s);
+    for (const auto &letter : Greek_letter)
     {
-        if (!is_alpha3(&s[i])) continue;
-        int j = skip_ws(s, i+3);
-        if (j+3<=n && is_alpha3(&s[j])) return true;
+        const int prefix = std::min(3, (int)letter.size());
+        if (n < prefix || strncasecmp(s, letter.c_str(), prefix))
+        {
+            continue;
+        }
+        int j = prefix;
+        if (s[j] >= '1' && s[j] <= '9')
+        {
+            j++;
+        }
+        j = skip_ws(s, j);
+        if (j + 3 <= n && is_alpha3(&s[j]) &&
+            (j + 3 == n || isspace((unsigned char)s[j + 3])))
+        {
+            return true;
+        }
     }
     return false;
 }
@@ -154,14 +165,25 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         ? looks_like_Flamsteed(search_term) : false;
     bool is_Gould = (search_term[0] >= '0' && search_term[0] <= '9')
         ? looks_like_Gould(search_term) : false;
+    const int bayer_index = is_Bayer ? grkno_from_abbrev(search_term) : -1;
 
     // These constellation-scoped maps are O(log n) lookups, so try them before paying
     // for the full linear scan below.
     if (cons2match && is_Bayer)
     {
-        int igrk = grkno_from_abbrev(search_term);
-        if (cons2match->Bayer_stars.find(igrk) != cons2match->Bayer_stars.end())
-            return cons2match->Bayer_stars[igrk]->seqno;
+        const auto entry = cons2match->Bayer_stars.find(bayer_index);
+        if (entry != cons2match->Bayer_stars.end())
+        {
+            Star *match = entry->second;
+            if (match_comp && match_comp != 'A')
+            {
+                match = match->multisys ? match->multisys->get_member(match_comp) : nullptr;
+            }
+            if (match && !match->deleted)
+            {
+                return match->seqno;
+            }
+        }
     }
 
     if (cons2match && is_Flamsteed)
@@ -203,6 +225,10 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         if (cels[i]->typeclass() == class_star)
         {
             if (s->apparent_magnitude > ml) continue;
+            if (is_Bayer && match_cons && s->BayerGrkno == bayer_index)
+            {
+                return i;
+            }
             if (is_gliese && has_same_numbers(s->Gliese, search_term))
             {
                 result = i;
@@ -212,6 +238,11 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     }
     if (is_gliese)
     {
+        return result;
+    }
+    if (is_Bayer && match_cons)
+    {
+        // A catalog identifier must not turn into a different Greek letter through fuzzy matching.
         return result;
     }
 

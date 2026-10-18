@@ -4320,7 +4320,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 
         if (!A)
         {
-            std::cerr << "Warning: " << censtr << " not found in loaded data." << std::endl;
+            if (showfails) std::cerr << "Warning: " << censtr << " not found in star catalog." << std::endl;
             continue;
         }
 
@@ -4682,7 +4682,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     }
 
     if (numfails && !showfails) std::cout << "There were " << numfails
-        << " star orbits that could not be applied. To se them, re-run Alienorum with the `orbfails` command like argument."
+        << " star orbits that could not be applied. To see them, re-run Alienorum with the `orbfails` command like argument."
         << std::endl;
 
     return num_read;
@@ -5705,7 +5705,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         {
             strcpy(s->constellation, cons_from_alienorumid(s->alienorumid).c_str());
             j = constellations.size();
-            for (i=0; i<j && !mycons; i++) if (!strcmp(constellations[i].name.c_str(), s->constellation)) mycons = &constellations[i];
+            for (i = 0; i < j && !mycons; i++)
+            {
+                if (constellations[i].abbrev == s->constellation)
+                {
+                    mycons = &constellations[i];
+                }
+            }
         }
 
         if (s->FlamsteedNo > 0)
@@ -5715,11 +5721,20 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             str += std::string(s->constellation);
             strcpy(s->Flamsteed, str.c_str());
 
-            if (mycons) mycons->Flamsteed_stars[s->FlamsteedNo] = s;
+            if (mycons)
+            {
+                mycons->Flamsteed_stars.emplace(s->FlamsteedNo, s);
+            }
         }
 
-        if (mycons && s->BayerGrkno >= 0) mycons->Bayer_stars[s->BayerGrkno] = s;
-        if (mycons && s->GouldNo > 0) mycons->Gould_stars[s->GouldNo] = s;
+        if (mycons && s->BayerGrkno >= 0)
+        {
+            mycons->Bayer_stars.emplace(s->BayerGrkno, s);
+        }
+        if (mycons && s->GouldNo > 0)
+        {
+            mycons->Gould_stars.emplace(s->GouldNo, s);
+        }
 
         read_field_onebased(buffer, 178, 188, field);
         s->proper_motion_RA = atof(field);

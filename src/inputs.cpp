@@ -340,8 +340,12 @@ void show_menu()
             if (ImGui::MenuItem("Rewind One Month", "Shift+M")) { process_key_cmd_char('M'); menu_clicked = true; }
             if (ImGui::MenuItem("Advance One Year", "Y")) { process_key_cmd_char('y'); menu_clicked = true; }
             if (ImGui::MenuItem("Rewind One Year", "Shift+Y")) { process_key_cmd_char('Y'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Decade", "Ctrl+Y")) { process_key_cmd_ctrl_char('y'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Decade", "Ctrl+Shift+Y")) { process_key_cmd_ctrl_char('Y'); menu_clicked = true; }
             if (ImGui::MenuItem("Advance One Century", "Z")) { process_key_cmd_char('z'); menu_clicked = true; }
             if (ImGui::MenuItem("Rewind One Century", "Shift+Z")) { process_key_cmd_char('Z'); menu_clicked = true; }
+            if (ImGui::MenuItem("Advance One Millennium", "Ctrl+Z")) { process_key_cmd_ctrl_char('z'); menu_clicked = true; }
+            if (ImGui::MenuItem("Rewind One Millennium", "Ctrl+Shift+Z")) { process_key_cmd_ctrl_char('Z'); menu_clicked = true; }
             if (ImGui::MenuItem("Return to Present", "@")) { process_key_cmd_char('@'); menu_clicked = true; }
             if (ImGui::MenuItem("Local Timestep", "F10", local_tmstep)) { process_key_F10(); menu_clicked = true; }
             ImGui::EndMenu();
@@ -462,6 +466,26 @@ void show_menu()
     }
 }
 
+double daystep = 1, hourstep = 1.0/24, monthstep = 30, yearstep = oneyear/oneday;
+void find_time_steps()
+{
+    daystep = 1;
+    hourstep = 1.0/24;
+    monthstep = 30;
+    yearstep = oneyear/oneday;
+    if (local_tmstep && (whereami >= 0))
+    {
+        CelestialObject *cel = cels[whereami];
+        daystep = cel->stellar_day() / oneday;
+        if (daystep <= 0) daystep = 1;
+        hourstep = daystep / 24;
+        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
+        monthstep = yearstep / 12;
+        if (monthstep >= daystep*2) monthstep = daystep * (int)(monthstep / daystep);
+        if (yearstep >= daystep*2) yearstep = daystep * (int)(yearstep / daystep);
+    }
+}
+
 void process_key_cmd_char(char c)
 {
     ImGuiIO &io = ImGui::GetIO();
@@ -479,18 +503,7 @@ void process_key_cmd_char(char c)
     // drive the dev dial, which is a development aid the end user has no use for, and
     // ':' is a placeholder for the unimplemented vm_model view mode.
 
-    double daystep = 1, hourstep = 1.0/24, monthstep = 30, yearstep = oneyear/oneday;
-    if (local_tmstep && (whereami >= 0))
-    {
-        CelestialObject *cel = cels[whereami];
-        daystep = cel->stellar_day() / oneday;
-        if (daystep <= 0) daystep = 1;
-        hourstep = daystep / 24;
-        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
-        monthstep = yearstep / 12;
-        if (monthstep >= daystep*2) monthstep = daystep * (int)(monthstep / daystep);
-        if (yearstep >= daystep*2) yearstep = daystep * (int)(yearstep / daystep);
-    }
+    find_time_steps();
 
     switch (c)
     {
@@ -881,6 +894,8 @@ void process_key_cmd_char(char c)
 
 void process_key_cmd_ctrl_char(char c)
 {
+    find_time_steps();
+
     if (c == '0')
     {
         constellations.resize(num_reg_cons);
@@ -1006,6 +1021,11 @@ void process_key_cmd_ctrl_char(char c)
         break;
 
         case 'w': done = true; break;
+
+        case 'y': JDnow += yearstep * 10; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Y': JDnow -= yearstep * 10; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'z': JDnow += yearstep * 1000; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'Z': JDnow -= yearstep * 1000; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
 
         default:
         ;

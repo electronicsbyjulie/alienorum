@@ -3,6 +3,7 @@
 #include <cstring>
 #include <filesystem>
 #include <gtest/gtest.h>
+#include "../classes/cons.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -388,6 +389,57 @@ TEST_F(SerializationTest, OnlyEditedWritesOnlyTheEditedObjects)
 // =====================================================================
 
 class FindObjectTest : public UniverseFixture {};
+
+TEST_F(FindObjectTest, ShortAndNumberedBayerNamesUseGreekIdentity)
+{
+    auto saved_constellations = std::move(constellations);
+    constellations.clear();
+    Constellation tau;
+    tau.name = "Taurus";
+    tau.abbrev = "Tau";
+    const char *queries[] =
+    {
+        "Mu Tau", "Nu  Tau", "Xi Tau", "Pi  Tau", "Gam2Tau"
+    };
+    const int greek_indices[] =
+    {
+        11, 12, 13, 15, 122
+    };
+    for (int i = 0; i < 5; i++)
+    {
+        Star *s = make_star(("Identifier " + std::to_string(i)).c_str());
+        strcpy(s->constellation, "Tau");
+        s->BayerGrkno = greek_indices[i];
+        tau.Bayer_stars[greek_indices[i]] = s;
+    }
+    constellations.push_back(tau);
+    for (int i = 0; i < 5; i++)
+    {
+        EXPECT_EQ(find_object(queries[i], true), i) << queries[i];
+    }
+    constellations = std::move(saved_constellations);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, MissingBayerIdentityDoesNotSelectAnotherGreekLetter)
+{
+    auto saved_constellations = std::move(constellations);
+    constellations.clear();
+    Constellation tau;
+    tau.name = "Taurus";
+    tau.abbrev = "Tau";
+    Star *pi = make_star("Pi Tauri");
+    pi->apparent_magnitude = 4.69;
+    strcpy(pi->constellation, "Tau");
+    strcpy(pi->Bayer, "Pi  Tau");
+    pi->BayerGrkno = 15;
+    tau.Bayer_stars[15] = pi;
+    constellations.push_back(tau);
+    EXPECT_EQ(find_object("Xi  Tau", true), -1);
+    EXPECT_EQ(find_object("Xi Tau", true), -1);
+    constellations = std::move(saved_constellations);
+    delete_the_universe();
+}
 
 TEST_F(FindObjectTest, ExactNameWins)
 {

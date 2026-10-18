@@ -110,6 +110,115 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, TaurusPathUsesXiAndSurvivesRebuildingConstellations)
+{
+    Star::load_main_seq_dat();
+    std::vector<Star*> test_hd(MAX_HD + 1, nullptr);
+    std::vector<Star*> test_hip(MAX_HIP + 1, nullptr);
+    struct RestoreContext
+    {
+        std::filesystem::path directory;
+        std::filesystem::path temporary;
+        Star **hd;
+        Star **hip;
+        std::vector<Constellation> definitions;
+        int count;
+
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            constellations = std::move(definitions);
+            num_reg_cons = count;
+            std::filesystem::current_path(directory);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreContext restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_taurus_test_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache,
+        hipcache,
+        std::move(constellations),
+        num_reg_cons
+    };
+    constellations.clear();
+    num_reg_cons = 0;
+    read_cons_lines();
+    std::vector<Constellation> taurus;
+    for (const auto &cons : constellations)
+    {
+        if (cons.abbrev == "Tau" && (cons.vantage_name.empty() || cons.vantage_name == "Sun" || cons.vantage_name == "Sol"))
+        {
+            taurus.push_back(cons);
+        }
+    }
+    ASSERT_EQ(taurus.size(), 1u);
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::ifstream source("catalogs/soles_alienorum.dat");
+    ASSERT_TRUE(source.good());
+    std::ofstream subset(restore.temporary / "catalogs/soles_alienorum.dat");
+    std::string line;
+    int copied = 0;
+    while (std::getline(source, line))
+    {
+        if (line.size() < 119)
+        {
+            continue;
+        }
+        const int hd = std::stoi("0" + trim(line.substr(113, 6)));
+        if (hd == 25204 || hd == 21754 || hd == 21364 || hd == 21120 || hd == 28100)
+        {
+            subset << line << '\n';
+            copied++;
+        }
+    }
+    subset.close();
+    ASSERT_EQ(copied, 5);
+    constellations = taurus;
+    // Exercise only the reported path; the other Taurus lines reference stars outside this subset.
+    constellations[0].lines.clear();
+    for (const auto &path : taurus[0].lines)
+    {
+        if ((path.starnamea == "Lam Tau" && path.starnameb == "5   Tau") ||
+            (path.starnamea == "5   Tau" && path.starnameb == "Xi  Tau") ||
+            (path.starnamea == "Xi  Tau" && path.starnameb == "Omi Tau"))
+        {
+            constellations[0].lines.push_back(path);
+        }
+    }
+    ASSERT_EQ(constellations[0].lines.size(), 3u);
+    std::filesystem::current_path(restore.temporary);
+    hdcache = test_hd.data();
+    hipcache = test_hip.data();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 5);
+    Star *xi = hdcache[21364];
+    ASSERT_NE(xi, nullptr);
+    EXPECT_EQ(constellations[0].Bayer_stars.count(13), 1u);
+    EXPECT_EQ(constellations[0].Flamsteed_stars.count(5), 1u);
+    EXPECT_EQ(find_object("Xi Tau", true), xi->seqno);
+    const auto check_path = [&]()
+    {
+        cache_cons_lines();
+        EXPECT_EQ(constellations[0].lines[0].a, hdcache[25204]);
+        EXPECT_EQ(constellations[0].lines[0].b, hdcache[21754]);
+        EXPECT_EQ(constellations[0].lines[1].a, hdcache[21754]);
+        EXPECT_EQ(constellations[0].lines[1].b, xi);
+        EXPECT_EQ(constellations[0].lines[2].a, xi);
+        EXPECT_EQ(constellations[0].lines[2].b, hdcache[21120]);
+    };
+    check_path();
+    // Reloading constellation definitions discards the lookup maps without reloading stars.
+    constellations[0].Bayer_stars.clear();
+    constellations[0].Flamsteed_stars.clear();
+    check_path();
+    delete_the_universe();
+}
+
 // Line 1 of catalogs/astorb/astorb.dat: (1) Ceres.
 static const char astorb_ceres[] =
     "     1 Ceres              L.H. Wasserman   3.53  0.15 0.72 848.4 G?      0   0   0   0   0"
