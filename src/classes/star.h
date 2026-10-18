@@ -41,6 +41,9 @@ namespace alienorum
         uint64_t gaia_source_id = 0;
         double gaia_g_magnitude = 1e29;
         bool apparent_magnitude_estimated = false;
+        bool wd_color_valid = false;
+        unsigned char wd_color_red = 0, wd_color_green = 0, wd_color_blue = 0;
+        std::string wd_color_source;
         char ccdm_compseq = 0;
         StarMulti* multisys = nullptr;
         char get_component();
@@ -116,6 +119,7 @@ namespace alienorum
         static int audit_and_correct_main_sequence_stars(CelestialObject** cels, double threshold = 1.5);
 
         double estimate_radius(bool skip_mainseq = true);
+        bool apply_published_wd_color();
 
         static double temperature_from_BV(double BV);
         static double degenerate_radius(double mass_grams);         // meters. Grams in, like every other mass here.
@@ -148,6 +152,7 @@ namespace alienorum
     };
 
     stellar_regime_t stellar_regime(CelestialObject *cel);
+    std::string wd_identifier_key(const std::string &identifier);
 
     class StarMulti
     {

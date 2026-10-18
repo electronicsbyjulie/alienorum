@@ -129,6 +129,9 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         }
         if (!id.empty() && id.find_first_not_of("0123456789+-.") == std::string::npos)
         {
+            const std::string search_key = wd_identifier_key("WD" + id);
+            if (search_key.empty()) return -1;
+            int matched = -1;
             for (int index = 0; cels[index]; index++)
             {
                 if (cels[index]->typeclass() != class_star)
@@ -143,12 +146,14 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                         name += *p;
                     }
                 }
-                if (static_cast<Star*>(cels[index])->WD == "WD" + id || name == "WD" + id)
+                if (wd_identifier_key(static_cast<Star*>(cels[index])->WD) == search_key ||
+                    wd_identifier_key(name) == search_key)
                 {
-                    return index;
+                    if (matched >= 0) return -1;
+                    matched = index;
                 }
             }
-            return -1;
+            return matched;
         }
     }
     int i, m, n, termi = atoi(search_term);

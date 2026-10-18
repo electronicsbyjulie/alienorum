@@ -1806,6 +1806,8 @@ namespace
 {
     std::string wd_key(std::string text)
     {
+        const std::string wd = wd_identifier_key(text);
+        if (!wd.empty()) return wd;
         std::string key;
         for (unsigned char c : text)
         {
@@ -2166,14 +2168,13 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
     while (std::getline(catalog, line))
     {
         const std::string number = wd_field(line, 2, 11);
-        if ((number.size() != 8 && number.size() != 10) ||
-            (number[4] != '+' && number[4] != '-') ||
-            number.find_first_not_of("0123456789+.-") != std::string::npos)
+        const std::string record_key = wd_identifier_key("WD" + number);
+        if (record_key.empty())
         {
             continue;
         }
         const std::string id = "WD" + number;
-        WdRecord &r = records[id];
+        WdRecord &r = records[record_key];
         r.id = id;
         const std::string spectral = wd_field(line, 31, 40);
         if (!spectral.empty() && (r.spectral.empty() || spectral < r.spectral))
@@ -2249,7 +2250,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
     }
     while (std::getline(names, line))
     {
-        const auto found = records.find("WD" + wd_field(line, 17, 26));
+        const auto found = records.find(wd_identifier_key("WD" + wd_field(line, 17, 26)));
         if (found != records.end())
         {
             found->second.aliases.push_back(wd_field(line, 1, 14));
@@ -5724,7 +5725,9 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     line << std::string(l - line.str().size(), ' ');
     line << '\t' << std::quoted(s->gaia_wd_name) << ' ' << s->gaia_source_id << ' '
          << std::scientific << std::setprecision(10) << s->gaia_g_magnitude << ' '
-         << s->apparent_magnitude_estimated;
+         << s->apparent_magnitude_estimated << ' ' << s->wd_color_valid << ' '
+         << (unsigned int)s->wd_color_red << ' ' << (unsigned int)s->wd_color_green << ' '
+         << (unsigned int)s->wd_color_blue << ' ' << std::quoted(s->wd_color_source);
 
     // std::cout << line << std::endl;
     line << std::string("\n");
@@ -6162,6 +6165,18 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             std::istringstream metadata(buffer + 468);
             metadata >> std::quoted(s->gaia_wd_name) >> s->gaia_source_id
                      >> s->gaia_g_magnitude >> s->apparent_magnitude_estimated;
+            metadata >> s->wd_color_valid;
+            unsigned int red, green, blue;
+            if (metadata >> red >> green >> blue >> std::quoted(s->wd_color_source))
+            {
+                s->wd_color_red = std::min(255u, red);
+                s->wd_color_green = std::min(255u, green);
+                s->wd_color_blue = std::min(255u, blue);
+            }
+            else
+            {
+                s->wd_color_valid = false;
+            }
         }
 
         read_field_onebased(buffer, 100, 105, field);

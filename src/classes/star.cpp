@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <math.h>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <mutex>
 #include "cons.h"
 #include "planet.h"
 
@@ -75,6 +79,89 @@ Star::Star()
     memset(constellation, 0, 4*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
     // sidereal_rotational_period = 25 * oneday;            // Sun
+}
+
+std::string alienorum::wd_identifier_key(const std::string &identifier)
+{
+    std::string key;
+    for (unsigned char c : identifier)
+    {
+        if (c > ' ') key += (c >= 'a' && c <= 'z') ? c - 'a' + 'A' : c;
+    }
+    if (key.compare(0, 2, "WD") != 0) return "";
+
+    // WDJ identifiers use J2000 coordinates; legacy WD names use B1950.
+    // Preserve their separate namespaces and the precision of full WDJ names.
+    if (key.compare(0, 3, "WDJ") == 0)
+    {
+        const size_t sign = key.find_first_of("+-", 3);
+        if (sign == std::string::npos || sign == 3 || sign + 1 == key.size()) return "";
+        if (key.substr(3, sign - 3).find_first_not_of("0123456789.") != std::string::npos ||
+            key.substr(sign + 1).find_first_not_of("0123456789.") != std::string::npos) return "";
+        return key;
+    }
+    if (key.size() < 10 || (key[6] != '+' && key[6] != '-')) return "";
+    if (key.find_first_not_of("0123456789", 2) != 6) return "";
+    const size_t suffix = key.find('.', 7);
+    const size_t end = suffix == std::string::npos ? key.size() : suffix;
+    if (end != 10 && end != 11) return "";
+    if (key.substr(7, end - 7).find_first_not_of("0123456789") != std::string::npos) return "";
+    if (suffix != std::string::npos &&
+        (suffix + 1 == key.size() || key.find_first_not_of("0123456789", suffix + 1) != std::string::npos)) return "";
+
+    // Some sources retain the final declination minute, others truncate it.
+    // Use the common 4.3 form for matching, retaining any component suffix.
+    if (end == 11) key.erase(10, 1);
+    return key;
+}
+
+bool Star::apply_published_wd_color()
+{
+    if (wd_color_valid) return true;
+    if (WD.empty()) return false;
+
+    static std::map<std::string, std::string> colors;
+    static bool loaded = false;
+    static std::mutex color_mutex;
+    std::lock_guard<std::mutex> lock(color_mutex);
+    if (!loaded)
+    {
+        std::ifstream input("catalogs/WD_colors.dat");
+        std::string line;
+        while (std::getline(input, line))
+        {
+            if (line.empty() || line[0] == '#') continue;
+            std::istringstream row(line);
+            std::string id, alias, hex, source;
+            if (row >> id >> alias >> hex >> source)
+            {
+                const std::string id_key = wd_identifier_key(id);
+                const std::string alias_key = wd_identifier_key(alias);
+                if (!id_key.empty()) colors[id_key] = hex + " " + source;
+                if (!alias_key.empty()) colors[alias_key] = hex + " " + source;
+            }
+        }
+        loaded = true;
+    }
+
+    auto found = colors.find(wd_identifier_key(WD));
+    if (found == colors.end() && !gaia_wd_name.empty())
+    {
+        found = colors.find(wd_identifier_key(gaia_wd_name));
+    }
+    if (found == colors.end()) return false;
+
+    std::istringstream value(found->second);
+    std::string hex;
+    if (!(value >> hex >> wd_color_source) || hex.size() != 7 || hex[0] != '#') return false;
+    char *end = nullptr;
+    const unsigned long rgb = std::strtoul(hex.c_str() + 1, &end, 16);
+    if (!end || *end) return false;
+    wd_color_red = (rgb >> 16) & 0xff;
+    wd_color_green = (rgb >> 8) & 0xff;
+    wd_color_blue = rgb & 0xff;
+    wd_color_valid = true;
+    return true;
 }
 
 Star::~Star()
@@ -490,6 +577,7 @@ void Star::limb_darkening_coefficients(double &a, double &b)
 alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 {
     if (!cel || cel->typeclass() != class_star) return regime_none;
+    if (!static_cast<Star*>(cel)->WD.empty()) return regime_degenerate;
 
     // Neither estimate_temperature() nor the main-sequence table it relies on: we
     // invert the blackbody relation, or use the catalog temperature when available.
@@ -1221,6 +1309,12 @@ json Star::to_json()
     towrite["gaia_source_id"] = gaia_source_id;
     towrite["gaia_g_magnitude"] = gaia_g_magnitude;
     towrite["apparent_magnitude_estimated"] = apparent_magnitude_estimated;
+    towrite["wd_color_valid"] = wd_color_valid;
+    if (wd_color_valid)
+    {
+        towrite["wd_color_rgb"] = {wd_color_red, wd_color_green, wd_color_blue};
+        towrite["wd_color_source"] = wd_color_source;
+    }
     towrite["Bonn_survey"] = Bonn_survey;
     towrite["Bonn_survey_sign"] = std::string(1, Bonn_survey_sign);
     towrite["Bonn_survey_declination"] = Bonn_survey_declination;
@@ -1300,6 +1394,24 @@ bool Star::from_json(json j)
     if (j.contains("apparent_magnitude_estimated") && j["apparent_magnitude_estimated"].is_boolean())
     {
         j["apparent_magnitude_estimated"].get_to(apparent_magnitude_estimated);
+    }
+    if (j.contains("wd_color_valid") && j["wd_color_valid"].is_boolean())
+    {
+        j["wd_color_valid"].get_to(wd_color_valid);
+    }
+    if (wd_color_valid && j.contains("wd_color_rgb") && j["wd_color_rgb"].is_array() && j["wd_color_rgb"].size() == 3)
+    {
+        wd_color_red = j["wd_color_rgb"][0].get<unsigned char>();
+        wd_color_green = j["wd_color_rgb"][1].get<unsigned char>();
+        wd_color_blue = j["wd_color_rgb"][2].get<unsigned char>();
+        if (j.contains("wd_color_source") && j["wd_color_source"].is_string())
+        {
+            j["wd_color_source"].get_to(wd_color_source);
+        }
+    }
+    else
+    {
+        wd_color_valid = false;
     }
     try
     {

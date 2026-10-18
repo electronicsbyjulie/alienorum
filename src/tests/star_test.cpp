@@ -9,6 +9,45 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(StarTest, WdIdentifiersAcceptBothDeclinationPrecisions)
+{
+    EXPECT_EQ(wd_identifier_key("WD 1234+5678"), wd_identifier_key("wd1234+567"));
+    EXPECT_EQ(wd_identifier_key("WD1234-0567"), wd_identifier_key("WD1234-056"));
+    EXPECT_EQ(wd_identifier_key("WD1234+5678.1"), wd_identifier_key("WD1234+567.1"));
+    EXPECT_NE(wd_identifier_key("WD1234+567.1"), wd_identifier_key("WD1234+567.2"));
+    EXPECT_NE(wd_identifier_key("WD1234+567"), wd_identifier_key("WD1234-567"));
+    EXPECT_TRUE(wd_identifier_key("HD1234").empty());
+    EXPECT_TRUE(wd_identifier_key("WD1234+56").empty());
+    EXPECT_TRUE(wd_identifier_key("WD1234+56789").empty());
+}
+
+TEST(StarTest, WdIdentifierNormalizationPreservesJ2000Names)
+{
+    EXPECT_EQ(wd_identifier_key("wd j133001.17+643523.69"), "WDJ133001.17+643523.69");
+    EXPECT_NE(wd_identifier_key("WDJ1330+6435"), wd_identifier_key("WD1330+6435"));
+    EXPECT_NE(wd_identifier_key("WDJ133001.17+643523.69"), wd_identifier_key("WDJ133001.18+643523.69"));
+}
+
+TEST(StarTest, PublishedWdColorsMatchTruncatedAndFullIdentifiers)
+{
+    for (const char *identifier : {"WD1330+643", "WD1330+6435"})
+    {
+        Star s;
+        s.WD = identifier;
+        ASSERT_TRUE(s.apply_published_wd_color());
+        EXPECT_EQ(s.wd_color_red, 0xdd);
+        EXPECT_EQ(s.wd_color_green, 0xff);
+        EXPECT_EQ(s.wd_color_blue, 0xb8);
+    }
+    Star gaia_match;
+    gaia_match.WD = "WD1328+648";
+    gaia_match.gaia_wd_name = "WDJ133001.17+643523.69";
+    ASSERT_TRUE(gaia_match.apply_published_wd_color());
+    EXPECT_EQ(gaia_match.wd_color_red, 0xdd);
+    EXPECT_EQ(gaia_match.wd_color_green, 0xff);
+    EXPECT_EQ(gaia_match.wd_color_blue, 0xb8);
+}
+
 TEST(StarTest, LuminosityEstimateUsesSolarUnitsAcrossBothPaths)
 {
     Star::load_main_seq_dat();

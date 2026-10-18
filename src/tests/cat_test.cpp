@@ -253,7 +253,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     rows.push_back(row("1510+100"));
     rows.push_back(row("1610+100"));
     rows.push_back(row("1610+100.1"));
-    std::string known_record = row("1700+100");
+    std::string known_record = row("1700+1000");
     known_record.replace(72, 6, "15.000");
     known_record.replace(199, 7, " 0.0500");
     rows.push_back(known_record);
@@ -265,7 +265,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     source << "malformed\n";
     source.close();
     std::ofstream names("catalogs/WD/names.dat");
-    names << alias("HD00099990 B", "1001+100") << '\n';
+    names << alias("HD00099990 B", "1001+1000") << '\n';
     names << alias("HD99990", "1000+100") << '\n'; // System alias must not replace its normal primary.
     names << alias("Spectrum only", "1300+100") << '\n';
     names << alias("1330011+643523", "1328+648") << '\n';
@@ -286,6 +286,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     CatalogReader reader;
     ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 7);
     EXPECT_EQ(find_object("WD1700+100", true), known_id->seqno);
+    EXPECT_EQ(find_object("WD1700+1000", true), known_id->seqno);
     EXPECT_DOUBLE_EQ(known_id->right_ascension, known_ra);
     const int gaia_star_index = find_object("WD J1330+6435", true);
     ASSERT_GE(gaia_star_index, 0);

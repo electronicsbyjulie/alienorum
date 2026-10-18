@@ -3711,6 +3711,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
     std::vector<Point> spot_axis;
     std::vector<double> spot_radius;
     bool fully_convective, convective_envelope, spotted, granulated, polar_regime, has_faculae;
+    Star *star = static_cast<Star*>(cel);
+    const bool has_published_wd_color = !star->WD.empty() && star->apply_published_wd_color();
     int num_groups, num_spots;
     Color ref_col;
     Map *fac = nullptr;
@@ -3742,7 +3744,6 @@ void Map::generate_stellar_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
 
         stellar_regime_t regime = stellar_regime(cel);
-
         T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
         if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
 
@@ -3855,7 +3856,9 @@ void Map::generate_stellar_map(CelestialObject *cel)
         };
 
         bv_at_teff = bv_of(T_eff);
-        ref_col = Color::color_from_magnitude_indices(0, cel->BV_color);
+        ref_col = has_published_wd_color
+            ? Color(star->wd_color_red, star->wd_color_green, star->wd_color_blue)
+            : Color::color_from_magnitude_indices(0, cel->BV_color);
         ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
         inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
     }
@@ -3931,11 +3934,20 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
             if (T_local < 1000.0) T_local = 1000.0;
 
-            double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
             double lum = pow(T_local / T_eff, 1.6);
-
-            RGB3 rgb = Color::rgb_from_color(
-                Color::color_from_magnitude_indices(0, bv_local), lum * inv_ref_max);
+            RGB3 rgb;
+            if (has_published_wd_color)
+            {
+                rgb = RGB3((unsigned char)fmin(255.0, star->wd_color_red * lum),
+                    (unsigned char)fmin(255.0, star->wd_color_green * lum),
+                    (unsigned char)fmin(255.0, star->wd_color_blue * lum));
+            }
+            else
+            {
+                double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
+                rgb = Color::rgb_from_color(
+                    Color::color_from_magnitude_indices(0, bv_local), lum * inv_ref_max);
+            }
 
             red_data[idx]   = rgb.r;
             green_data[idx] = rgb.g;

@@ -391,6 +391,34 @@ TEST_F(SerializationTest, OnlyEditedWritesOnlyTheEditedObjects)
 
 class FindObjectTest : public UniverseFixture {};
 
+TEST_F(FindObjectTest, WdSearchAcceptsBothDeclinationPrecisions)
+{
+    Star *short_id = make_star("Truncated WD");
+    short_id->WD = "WD1234+567";
+    Star *full_id = make_star("Full WD");
+    full_id->WD = "WD2345-0567";
+    Star *component = make_star("WD component");
+    component->WD = "WD1234+567.1";
+    EXPECT_EQ(find_object("WD1234+5678", true), short_id->seqno);
+    EXPECT_EQ(find_object("wd 1234+567", true), short_id->seqno);
+    EXPECT_EQ(find_object("WD2345-056", true), full_id->seqno);
+    EXPECT_EQ(find_object("WD2345-0567", true), full_id->seqno);
+    EXPECT_EQ(find_object("WD1234+5678.1", true), component->seqno);
+    EXPECT_EQ(find_object("WD1234+5678.2", true), -1);
+    EXPECT_EQ(find_object("WD1234-5678", true), -1);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, WdSearchRejectsAmbiguousTruncatedIdentifiers)
+{
+    Star *first = make_star("First WD");
+    first->WD = "WD1234+5678";
+    Star *second = make_star("Second WD");
+    second->WD = "WD1234+5679";
+    EXPECT_EQ(find_object("WD1234+567", true), -1);
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, ShortAndNumberedBayerNamesUseGreekIdentity)
 {
     auto saved_constellations = std::move(constellations);

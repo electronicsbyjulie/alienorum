@@ -830,7 +830,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     Point basisX = undo_to_local(Point(1, 0, 0));
     Point basisY = undo_to_local(Point(0, 1, 0));
 
-    Color col = Color::color_from_magnitude_indices(4.2, cel->BV_color);
+    Color col = cls == class_star
+        ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
+        : Color::color_from_magnitude_indices(4.2, cel->BV_color);
     RGB3 rgb = Color::rgb_from_color(col, -1);
     // Redlight (night-vision) mode is applied once, in the shader, after lighting/texturing --
     // applying it here too would double it up for the untextured fallback case.
@@ -1374,7 +1376,10 @@ int draw_sphere(CelestialObject* cel, double arad)
         atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad);
     }
 
-    Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color + atm_yellowing);
+    CelestialObject *daylight_source = cel->get_light_center();
+    Color daylight = daylight_source->typeclass() == class_star
+        ? Color::color_from_star(0, (Star*)daylight_source, daylight_source->BV_color + atm_yellowing)
+        : Color::color_from_magnitude_indices(0, daylight_source->BV_color + atm_yellowing);
     double f = fmax(fmax(daylight.red, daylight.green), daylight.blue);
     daylight.red /= f;
     daylight.green /= f;
@@ -1387,7 +1392,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     if (wireframe)
     {
-        Color wcol = Color::color_from_magnitude_indices(0, cel->BV_color + ((cls == class_star) ? 0 : planet_bv_correction));
+        Color wcol = cls == class_star
+            ? Color::color_from_star(0, (Star*)cel, cel->BV_color)
+            : Color::color_from_magnitude_indices(0, cel->BV_color + planet_bv_correction);
         RGB3 wrgb = Color::rgb_from_color(wcol, -1);
         gc = rgba_apply_redlight(IM_COL32(wrgb.r, wrgb.g, wrgb.b, 255));
     }
@@ -1490,7 +1497,10 @@ int draw_sphere(CelestialObject* cel, double arad)
     Map *map = cel->get_day_map();
     Map *nmap = cel->get_night_map();
     double night_illum = nmap ? 0 : starlight;
-    RGB3 rgb = Color::rgb_from_color(Color::color_from_magnitude_indices(4.2, cel->BV_color), -1), nrgb = {0,0,0};
+    Color base_color = cls == class_star
+        ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
+        : Color::color_from_magnitude_indices(4.2, cel->BV_color);
+    RGB3 rgb = Color::rgb_from_color(base_color, -1), nrgb = {0,0,0};
     Point cursor, land;
     CelestialObject *lightcen = cel->get_light_center();
     bool self_luminous = (lightcen == cel);
@@ -3185,7 +3195,9 @@ bool draw_single_object(int i)
         double obsc = (cels[i] == eclipsed_light) ? eclipsed_fraction : 0.0;
         if (flare)
         {
-            Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + ((cls == class_star) ? 0 : planet_bv_correction) + atm_yellowing);
+            Color col = cls == class_star
+                ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
+                : Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + planet_bv_correction + atm_yellowing);
             draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
         }
         if (obsc > 0) draw_corona(xycoord, angular_radius[i]*zoom*dispcx, obsc, cels[i]->BV_color);
@@ -3211,7 +3223,9 @@ bool draw_single_object(int i)
         dot_instead:
         discinstead[i] = false;
 
-        Color col = Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + ((cls == class_star) ? 0 : planet_bv_correction) + atm_yellowing);
+        Color col = cls == class_star
+            ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
+            : Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + planet_bv_correction + atm_yellowing);
 
         // Adjust for mesopic and scotopic color perception, e.g. dim red stars tend to look grayish.
         float effmag = vmag_cache[i] + global_magshift + atm_yellowing;
@@ -4545,8 +4559,12 @@ void draw_sunclock()
 
     spawn_texture_load(cel);
 
-    Color c = Color::color_from_magnitude_indices(0, cel->BV_color);
-    Color daylight = Color::color_from_magnitude_indices(0, cel->get_light_center()->BV_color);
+    Color c = cls == class_star
+        ? Color::color_from_star(0, (Star*)cel, cel->BV_color)
+        : Color::color_from_magnitude_indices(0, cel->BV_color);
+    Color daylight = lightcen->typeclass() == class_star
+        ? Color::color_from_star(0, (Star*)lightcen, lightcen->BV_color)
+        : Color::color_from_magnitude_indices(0, lightcen->BV_color);
     RGB3 prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
     daylight.normalize(1);
 

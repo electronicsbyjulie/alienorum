@@ -159,6 +159,7 @@ if(WIN32)
 		catalogs/mainseq.dat
 		catalogs/urls.dat
 		catalogs/Milky_Way.dat
+		catalogs/WD_colors.dat
 		DESTINATION catalogs)
 	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
 

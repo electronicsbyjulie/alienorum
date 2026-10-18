@@ -25,6 +25,10 @@ if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
     echo "Missing catalog: catalogs/exoplanet_host_positions.dat" >&2
     exit 1
 fi
+if [ ! -s catalogs/WD_colors.dat ]; then
+    echo "Missing catalog: catalogs/WD_colors.dat" >&2
+    exit 1
+fi
 
 # Starter texture set for the installer: exactly the files git already tracks under
 # maps/ (i.e. the bodies whose planets.json entry has no live download URL, or has one

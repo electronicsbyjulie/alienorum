@@ -10,6 +10,7 @@
 #include "color.h"
 #include "nlohmann/json.hpp"
 #include "imgui/imgui.h"
+#include "star.h"
 
 using namespace alienorum;
 
@@ -46,6 +47,21 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR)
     c.blue  *= brightness * invlum;
 
     return c;
+}
+
+Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
+{
+    Color photometric = color_from_magnitude_indices(Vmag, fallback_BV);
+    if (!star || star->WD.empty() || !star->apply_published_wd_color()) return photometric;
+
+    Color published(star->wd_color_red, star->wd_color_green, star->wd_color_blue);
+    const double source_luminance = published.luminance();
+    if (!(source_luminance > 0)) return photometric;
+    const double scale = photometric.luminance() / source_luminance;
+    published.red *= scale;
+    published.green *= scale;
+    published.blue *= scale;
+    return published;
 }
 
 RGB3 Color::rgb_from_color(Color c, double mult)
