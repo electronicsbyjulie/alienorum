@@ -1502,6 +1502,12 @@ void StarMulti::add_member(Star *s, char comp)
         members = new_members;
         allocated = toalloc;
     }
+    // Relocating a member must preserve any star occupying its new component slot.
+    const char previous = is_member(s);
+    if (previous && previous - 'A' != cidx)
+    {
+        members[previous - 'A'] = members[cidx];
+    }
     members[cidx] = s;
     s->multisys = this;
 }

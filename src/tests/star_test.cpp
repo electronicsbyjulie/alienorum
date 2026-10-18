@@ -236,6 +236,58 @@ TEST(StarMultiTest, MergeSystems)
     EXPECT_EQ(sys1.get_member('C'), &sC);
 }
 
+TEST(StarMultiTest, ReassigningMergedCompanionPreservesEveryMember)
+{
+    Star primary, other_primary, companion, final_primary;
+    primary.set_component('A', &primary);
+    other_primary.set_component('A', &other_primary);
+    companion.make_companion_of(&other_primary, 'B');
+
+    // Orbit imports can join an existing binary to a separately identified primary.
+    companion.make_companion_of(&primary, 'B');
+    StarMulti* system = primary.multisys;
+    ASSERT_EQ(system, other_primary.multisys);
+    ASSERT_EQ(system, companion.multisys);
+    EXPECT_EQ(system->get_member('A'), &primary);
+    EXPECT_EQ(system->get_member('B'), &companion);
+    ASSERT_EQ(system->get_member('C'), &other_primary);
+    EXPECT_EQ(system->num_members(), 3);
+    EXPECT_EQ(other_primary.get_component(), 'C');
+    EXPECT_EQ(companion.orbit->center, &primary);
+
+    // A later merge deletes the old group. Every star must follow the new group.
+    final_primary.set_component('A', &final_primary);
+    companion.make_companion_of(&final_primary, 'B');
+    system = final_primary.multisys;
+    EXPECT_EQ(system, primary.multisys);
+    EXPECT_EQ(system, other_primary.multisys);
+    EXPECT_EQ(system, companion.multisys);
+    EXPECT_EQ(system->get_member('A'), &final_primary);
+    EXPECT_EQ(system->get_member('B'), &companion);
+    EXPECT_EQ(system->get_member('C'), &primary);
+    EXPECT_EQ(system->get_member('D'), &other_primary);
+    EXPECT_EQ(other_primary.get_component(), 'D');
+    EXPECT_EQ(system->num_members(), 4);
+    EXPECT_EQ(companion.orbit->center, &final_primary);
+    system->unlink();
+    delete system;
+}
+
+TEST(StarMultiTest, MovingMemberToVacantComponentClearsItsOldSlot)
+{
+    StarMulti system;
+    Star primary, companion;
+    system.add_member(&primary, 'A');
+    system.add_member(&companion, 'B');
+    system.add_member(&companion, 'D');
+    EXPECT_EQ(system.get_member('A'), &primary);
+    EXPECT_EQ(system.get_member('B'), nullptr);
+    EXPECT_EQ(system.get_member('D'), &companion);
+    EXPECT_EQ(companion.get_component(), 'D');
+    EXPECT_EQ(system.num_members(), 2);
+    system.unlink();
+}
+
 TEST(StarTest, MakeCompanionOf)
 {
     Star primary;
