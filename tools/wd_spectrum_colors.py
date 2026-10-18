@@ -83,6 +83,10 @@ def koester_grid(destination):
         t, g, fid = item
         spectrum = fetch(SVO_URL + 'ssap.php?' + urllib.parse.urlencode(
             {'model': 'koester2', 'fid': fid, 'format': 'ascii'})).decode()
+        actual_t = re.search(r'^# teff =\s*([\d.]+)', spectrum, re.M)
+        actual_g = re.search(r'^# logg =\s*([\d.]+)', spectrum, re.M)
+        if not actual_t or not actual_g or float(actual_t[1]) != t or float(actual_g[1]) != g:
+            raise ValueError('SVO spectrum parameters differ from the requested grid node')
         samples = []
         for line in spectrum.splitlines():
             if not line or line.startswith('#'):

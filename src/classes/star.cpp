@@ -180,6 +180,40 @@ namespace
         }();
         return entries;
     }
+
+    const PublishedWdColor *published_wd_color_for(const std::string &identifier)
+    {
+        static const auto index = []()
+        {
+            std::map<std::string, const PublishedWdColor*> result;
+            for (const auto &entry : published_wd_colors())
+            {
+                if (!entry.selectable)
+                {
+                    continue;
+                }
+                std::vector<std::string> aliases = entry.aliases;
+                aliases.push_back(entry.label);
+                aliases.push_back(entry.gaia);
+                for (const auto &alias : aliases)
+                {
+                    const std::string key = wd_alias_key(alias);
+                    const auto found = result.find(key);
+                    if (found == result.end())
+                    {
+                        result[key] = &entry;
+                    }
+                    else if (!found->second || found->second->gaia != entry.gaia)
+                    {
+                        result[key] = nullptr;
+                    }
+                }
+            }
+            return result;
+        }();
+        const auto found = index.find(wd_alias_key(identifier));
+        return found == index.end() ? nullptr : found->second;
+    }
 }
 
 uint64_t alienorum::wd_color_data_revision()
@@ -191,18 +225,8 @@ uint64_t alienorum::wd_color_data_revision()
 std::string alienorum::wd_color_gaia_identifier(const std::string &identifier)
 {
     if (identifier.empty()) return "";
-    const std::string key = wd_alias_key(identifier);
-    std::string result;
-    for (const auto &entry : published_wd_colors())
-    {
-        if (!entry.selectable) continue;
-        bool matches = key == wd_alias_key(entry.label) || key == wd_alias_key(entry.gaia);
-        for (const auto &alias : entry.aliases) matches |= key == wd_alias_key(alias);
-        if (!matches) continue;
-        if (!result.empty() && result != entry.gaia) return "";
-        result = entry.gaia;
-    }
-    return result;
+    const auto *entry = published_wd_color_for(identifier);
+    return entry ? entry->gaia : "";
 }
 
 int alienorum::associate_wd_color_identifiers(CelestialObject **objects)
@@ -282,20 +306,18 @@ bool Star::apply_published_wd_color()
     const uint64_t revision = wd_color_data_revision();
     if (wd_color_valid && wd_color_revision == revision) return true;
     wd_color_valid = false;
-    const std::string target = !gaia_wd_name.empty() ? gaia_wd_name : wd_color_gaia_identifier(WD);
-    for (const auto &entry : published_wd_colors())
+    const auto *entry = published_wd_color_for(!gaia_wd_name.empty() ? gaia_wd_name : WD);
+    if (!entry)
     {
-        if (!entry.selectable) continue;
-        if (entry.gaia != target) continue;
-        wd_color_red = (entry.rgb >> 16) & 0xff;
-        wd_color_green = (entry.rgb >> 8) & 0xff;
-        wd_color_blue = entry.rgb & 0xff;
-        wd_color_source = entry.source;
-        wd_color_revision = revision;
-        wd_color_valid = true;
-        return true;
+        return false;
     }
-    return false;
+    wd_color_red = (entry->rgb >> 16) & 0xff;
+    wd_color_green = (entry->rgb >> 8) & 0xff;
+    wd_color_blue = entry->rgb & 0xff;
+    wd_color_source = entry->source;
+    wd_color_revision = revision;
+    wd_color_valid = true;
+    return true;
 }
 
 bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
