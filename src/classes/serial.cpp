@@ -635,7 +635,10 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             for (j=0; cels[j]; j++)
             {
                 if (j==i) continue;
-                if (cels[i]->type < cels[j]->type) continue;                    // There are two objects named Atlas, and one of them has a companion.
+                if (!compare_types(cels[j]->type, cels[i]->type))
+                {
+                    continue;                    // There are two objects named Atlas, and one of them has a companion.
+                }
                 if (!strcmp(cenname, cels[j]->name) || !strcmp(cenname, cels[j]->origname.c_str()))
                 {
                     cels[i]->orbit->center = cels[j];

@@ -617,8 +617,9 @@ void set_center_objects()
                     break;
                 }
                 bool cels_i_is_true_center = (cels[i]->seqno < cels[i]->cenobj->seqno);
-                if (cels[i]->type < cels[i]->cenobj->type) cels_i_is_true_center = true;
-                else if (cels[i]->type > cels[i]->cenobj->type) cels_i_is_true_center = false;
+                bool ct = compare_types(cels[i]->cenobj->type, cels[i]->type);
+                if (ct && cels[i]->type != cels[i]->cenobj->type) cels_i_is_true_center = true;
+                else if (!ct) cels_i_is_true_center = false;
                 else if (cels[i]->absolute_magnitude < cels[i]->cenobj->absolute_magnitude) cels_i_is_true_center = true;
                 else if (cels[i]->absolute_magnitude > cels[i]->cenobj->absolute_magnitude) cels_i_is_true_center = false;
 
@@ -688,7 +689,7 @@ void set_center_objects()
                 constellation_index[std::string(s->constellation)].push_back(cels[i]);
             }
 
-            if (s->orbit && s->orbit->center && s->orbit->center->type > s->type)
+            if (s->orbit && s->orbit->center && !compare_types(s->orbit->center->type, s->type))
             {
                 delete s->orbit;
                 s->orbit = nullptr;

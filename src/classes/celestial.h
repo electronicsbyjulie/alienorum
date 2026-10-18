@@ -17,6 +17,7 @@ namespace alienorum
         // The types are numbered by hierarchy in case of name conflicts, so that e.g. stars cannot orbit moons etc.
         galaxy = 0x100,
         star = 0x200,
+        least_planet = 0x300,
         gas_giant = 0x300,
         ice_giant = 0x301,
         hot_jupiter = 0x310,
@@ -26,9 +27,18 @@ namespace alienorum
         icy = 0x502,
         rocky = 0x503,          // includes Venusian
         lavaworld = 0x504,
+        most_planet = 0x507,
         icy_tailed = 0x511,
         artificial = 0xf00
     };
+
+    inline bool compare_types(cel_obj_type type_center, cel_obj_type type_orbiter)
+    {
+        if (type_center >= least_planet && type_center <= most_planet) type_center = least_planet;
+        if (type_orbiter >= least_planet && type_orbiter <= most_planet) type_orbiter = most_planet;
+
+        return type_center <= type_orbiter;
+    }
 
     // Which body types get their surface from generate_rocky_map(), and therefore carry bump
     // data worth reusing. Kept in one place because load_textures() and mark_for_map_regen()

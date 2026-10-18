@@ -277,20 +277,39 @@ int alienorum::CelestialObject::read_locales_json(json fj)
     return j;
 }
 
+#define _dbg_illum_star 0
 CelestialObject *CelestialObject::get_light_center()
 {
     if (!orbit || !orbit->center)
     {
-        if (type == star) return this;
+        if (type == star)
+        {
+            #if _dbg_illum_star
+            std::cout << name << " is already a star." << std::endl;
+            #endif
+            return this;
+        }
+        #if _dbg_illum_star
+        std::cout << name << " does not orbit anything; no star available for illumination." << std::endl;
+        #endif
         return nullptr;
     }
 
     CelestialObject *light_center = this;
+    #if _dbg_illum_star
+    std::cout << "Setting " << name << "'s initial light center to itself." << std::endl;
+    #endif
     int i;
     for (i=0; i<5; i++)
     {
         cel_obj_class cls = light_center->typeclass();
-        if (cls == class_star) break;
+        if (cls == class_star)
+        {
+            #if _dbg_illum_star
+            std::cout << light_center->name << " is a star." << std::endl;
+            #endif
+            break;
+        }
         if (cls == class_planet || cls == class_moon || cls == class_satellite || cls == class_comet)
         {
             light_center = light_center->orbit->center;
@@ -299,7 +318,9 @@ CelestialObject *CelestialObject::get_light_center()
                 std::cerr << "Cannot find light source for " << name << std::endl;
                 throw 0xbadda7a;
             }
-            // std::cout << "Light source for " << name << " is " << light_center->name << std::endl;
+            #if _dbg_illum_star
+            std::cout << "Trying " << light_center->name << " as a light center for " << name << "..." << std::endl;
+            #endif
         }
         else break;
     }

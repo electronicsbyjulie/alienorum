@@ -328,7 +328,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     else vfstr = std::string("View from space");
     ImGui::Text("%s", vfstr.c_str());
 
-    if (whereami > 0 && cels[whereami]->type >= gas_giant && cels[whereami]->type < artificial
+    if (whereami > 0 && cels[whereami]->type >= least_planet && cels[whereami]->type <= most_planet
         && ((Planet*)cels[whereami])->is_in_con_HZ())
     {
         ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
@@ -1154,7 +1154,7 @@ void draw_addcel_window(ImGuiIO& io)
                 cel->user_added = true;
                 cels[addcenidx]->distance_known = true;
                 cel->distance_known = true;
-                if (cel->type >= cels[addcenidx]->type)
+                if (compare_types(cels[addcenidx]->type, cel->type))
                 {
                     cel->orbit = new Orbit();
                     cel->orbit->center = cels[addcenidx];
