@@ -154,6 +154,65 @@ TEST_F(CatalogParsingTest, StarnameEntryPreserves82Eridani)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, OrbitImportsRejectAbsentPrimariesWithSimilarAliases)
+{
+    std::ifstream source("catalogs/star_orbits.dat");
+    ASSERT_TRUE(source.good());
+    std::string line, rows;
+    while (std::getline(source, line))
+    {
+        if (line.compare(0, 4, "AB7 ") == 0 || line.compare(0, 4, "AB8 ") == 0)
+        {
+            rows += line + '\n';
+        }
+    }
+    ASSERT_FALSE(rows.empty());
+    struct RestoreDirectory
+    {
+        std::filesystem::path original, temporary;
+        ~RestoreDirectory()
+        {
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_orbit_alias_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))
+    };
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    std::ofstream("catalogs/star_orbits.dat") << rows;
+    Star *nearby = make_star("Epsilon Tauri");
+    nearby->local_name = "Ain";
+    nearby->distance = 145.8 * light_year;
+    const int original_count = ncelobjs;
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels), 0);
+    EXPECT_EQ(ncelobjs, original_count);
+    EXPECT_EQ(nearby->multisys, nullptr);
+    EXPECT_DOUBLE_EQ(nearby->mass, solar_mass);
+    // Exact aliases still work, and a similar companion name stays a separate object.
+    Star *other = make_star("AC7 B");
+    std::string exact_row = rows.substr(0, rows.find('\n') + 1);
+    exact_row.replace(0, 23, 23, ' ');
+    exact_row.replace(0, 3, "Ain");
+    std::ofstream("catalogs/star_orbits.dat") << exact_row;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels), 1);
+    EXPECT_EQ(ncelobjs, original_count + 2);
+    EXPECT_EQ(other->orbit, nullptr);
+    EXPECT_DOUBLE_EQ(other->mass, solar_mass);
+    const int companion_index = find_object("AB7 B", true, 9e29, 1);
+    ASSERT_GE(companion_index, 0);
+    Star *companion = static_cast<Star*>(cels[companion_index]);
+    ASSERT_NE(companion->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, nearby);
+    EXPECT_NE(companion, other);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometry)
 {
     Star::load_main_seq_dat();

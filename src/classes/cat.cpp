@@ -4896,7 +4896,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         std::string cenname = trim(field);
         const char* censtr = cenname.c_str();
         A = nullptr;
-        int sioxt = find_object(censtr, true);
+        // Catalog rows can only attach to exact identifiers or aliases, never fuzzy guesses.
+        int sioxt = find_object(censtr, true, 9e29, 1);
         if (sioxt >= 0)
         {
             A = (Star*)cels[sioxt];
@@ -5007,7 +5008,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
         if (!s)
         {
-            sioxt = find_object(bdystr, true);
+            sioxt = find_object(bdystr, true, 9e29, 1);
             if (sioxt >= 0)
             {
                 s = (Star*)cels[sioxt];
