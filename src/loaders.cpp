@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <unordered_map>
 #include <string_view>
+#include <condition_variable>
 
 using namespace alienorum;
 
@@ -13,9 +14,17 @@ std::atomic<bool> batch_sats_running{false};
 
 namespace
 {
+    std::mutex texture_tasks_mutex;
+    std::condition_variable texture_tasks_finished;
+
     struct TextureLoadTicket
     {
-        ~TextureLoadTicket() { texture_loads_pending--; }
+        ~TextureLoadTicket()
+        {
+            std::lock_guard<std::mutex> lock(texture_tasks_mutex);
+            texture_loads_pending--;
+            texture_tasks_finished.notify_all();
+        }
     };
 
     struct BatchSatTicket
@@ -24,18 +33,52 @@ namespace
     };
 }
 
+bool spawn_texture_task(std::function<void()> task)
+{
+    std::lock_guard<std::mutex> lock(texture_tasks_mutex);
+    if (abort_load.load()) return false;
+    texture_loads_pending++;
+    try
+    {
+        std::thread([task = std::move(task)]() mutable
+        {
+            TextureLoadTicket ticket;
+            task();
+            task = {};
+        }).detach();
+    }
+    catch (...)
+    {
+        texture_loads_pending--;
+        texture_tasks_finished.notify_all();
+        throw;
+    }
+    return true;
+}
+
+void wait_for_texture_tasks()
+{
+    std::unique_lock<std::mutex> lock(texture_tasks_mutex);
+    texture_tasks_finished.wait(lock, []() { return texture_loads_pending.load() == 0; });
+}
+
 void spawn_texture_load(CelestialObject *cel)
 {
-    if (!cel || cel->looked_for_maps) return;
+    if (!cel || cel->looked_for_maps || abort_load.load()) return;
     cel->looked_for_maps = true;            // Prevent spawning infinite threads and crashing the system.
-    texture_loads_pending++;
-    std::thread ttex(load_textures, cel);
-    ttex.detach();
+    try
+    {
+        if (!spawn_texture_task([cel]() { load_textures(cel); })) cel->looked_for_maps = false;
+    }
+    catch (...)
+    {
+        cel->looked_for_maps = false;
+        throw;
+    }
 }
 
 void load_textures(CelestialObject* cel)
 {
-    TextureLoadTicket ticket;
     std::string filename;
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.

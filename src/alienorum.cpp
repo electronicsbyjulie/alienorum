@@ -1219,15 +1219,11 @@ int main (int argc, char** argv)
     }
     alienorum::ExoConsGenerator::reset();
 
+    wait_for_texture_tasks();
+
     if (load_completed && cels[1])
     {
         save_universe();
-    }
-
-    int wait_limit = 500;
-    while (texture_loads_pending > 0 && --wait_limit > 0)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     for (i=0; cels[i]; i++)

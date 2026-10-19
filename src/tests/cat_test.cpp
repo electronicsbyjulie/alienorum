@@ -3,6 +3,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <vector>
 #include <gtest/gtest.h>
@@ -32,6 +33,37 @@ class CatalogParsingTest : public UniverseFixture
         make_star("Sol");
     }
 };
+
+TEST(TextureTaskTest, ShutdownWaitsBeyondFiveSecondsAndRejectsNewWork)
+{
+    wait_for_texture_tasks();
+    struct RestoreAbort
+    {
+        bool value = abort_load.load();
+        ~RestoreAbort() { abort_load = value; }
+    } restore;
+    abort_load = false;
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::atomic<bool> finished{false};
+    EXPECT_TRUE(spawn_texture_task([gate, &finished]()
+    {
+        gate.wait();
+        finished = true;
+    }));
+    EXPECT_EQ(texture_loads_pending.load(), 1);
+    abort_load = true;
+    EXPECT_FALSE(spawn_texture_task([]() {}));
+    auto shutdown = std::async(std::launch::async, []() { wait_for_texture_tasks(); });
+    const auto status = shutdown.wait_for(std::chrono::milliseconds(5200));
+    const bool finished_before_release = finished.load();
+    release.set_value();
+    shutdown.get();
+    EXPECT_EQ(status, std::future_status::timeout);
+    EXPECT_FALSE(finished_before_release);
+    EXPECT_TRUE(finished.load());
+    EXPECT_EQ(texture_loads_pending.load(), 0);
+}
 
 TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
 {

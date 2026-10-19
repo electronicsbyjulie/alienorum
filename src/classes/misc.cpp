@@ -27,11 +27,8 @@ bool done = false;
 std::atomic<bool> abort_load{false};
 std::atomic<bool> load_completed{false};
 
-// How many detached load_textures() threads are currently running. Only spawn_texture_load()
-// increments it (before the thread starts, so there is no window in which a load is pending but
-// uncounted) and only load_textures() decrements it, on the way out. Anything that wants to free
-// a CelestialObject while the app is running has to know whether a background thread is still
-// writing into it -- see release_universe_objects() in visuals.cpp.
+// Texture loading and map regeneration share this count. Tasks enter before their worker starts
+// and leave after completion, so object release and shutdown cannot race background map writes.
 std::atomic<int> texture_loads_pending{0};
 std::string loading_msg = "Loading...";
 std::vector<std::string> themes;

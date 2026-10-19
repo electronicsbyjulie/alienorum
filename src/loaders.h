@@ -3,12 +3,12 @@
 #define _Loaders
 
 #include "globals.h"
+#include <functional>
 
-// Do not call load_textures() directly, and do not start a thread on it by hand: it keeps
-// texture_loads_pending in step on the way out, and only spawn_texture_load() puts an entry there
-// on the way in. Call spawn_texture_load() instead -- it is a no-op on an object whose maps have
-// already been looked for, so the "if (!cel->looked_for_maps)" test at the call site is its job
-// now rather than the caller's.
+// Texture loads and regeneration share lifetime tracking; shutdown waits before freeing maps.
+bool spawn_texture_task(std::function<void()> task);
+void wait_for_texture_tasks();
+// Call spawn_texture_load() rather than launching load_textures() directly.
 void load_textures(CelestialObject *cel);
 void spawn_texture_load(CelestialObject *cel);
 void save_textures(CelestialObject *cel);

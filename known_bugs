@@ -10,7 +10,7 @@
 
 Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
 
-Application is sometimes throwing a segfault on exit.
+[COMPLETED] Application is sometimes throwing a segfault on exit.
 
 Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
 

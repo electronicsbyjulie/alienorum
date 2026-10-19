@@ -15,6 +15,7 @@
 #include "shore.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
+#include "../loaders.h"
 
 using namespace alienorum;
 
@@ -4098,13 +4099,9 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
     }
 }
 
-void _resample_bump_regen_rocky(Map *map, CelestialObject *cel)
-{
-    map->_map_resample_bump_regen_rocky(cel);
-}
-
 void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
 {
+    if (abort_load.load()) return;
     if (discard_bump && bump_data)
     {
         double *old_bump = bump_data;
@@ -4116,8 +4113,7 @@ void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
     {
         gen = 0;
         mcel = cel;
-        std::thread tregen(_resample_bump_regen_rocky, this, cel);
-        tregen.detach();
+        spawn_texture_task([map = this, cel]() { map->_map_resample_bump_regen_rocky(cel); });
     }
     else
     {
