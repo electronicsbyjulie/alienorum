@@ -490,11 +490,7 @@ void Star::rename_from_Bayer_Flamsteed()
             int number = (strlen(Bayer) > 3) ? atoi(std::string(Bayer).substr(3, 1).c_str()) : 0;
             if (number)
             {
-                if (!strcmp(constellations[j].abbrev.c_str(), "Ori") && BayerGrkIdx == 7)
-                    strcpy(name, (std::string("HD" + std::to_string(HD)).c_str()));
-                if (!strcmp(constellations[j].abbrev.c_str(), "UMa") && BayerGrkIdx == 13)
-                    strcpy(name, Gliese);
-                else strcpy(name, (Greek_letter[BayerGrkIdx] + std::string(" ") + std::to_string(number) + std::string(" ") + constellations[j].genitive).c_str());
+                strcpy(name, (Greek_letter[BayerGrkIdx] + std::string(" ") + std::to_string(number) + std::string(" ") + constellations[j].genitive).c_str());
             }
             else strcpy(name, (Greek_letter[BayerGrkIdx] + std::string(" ") + constellations[j].genitive).c_str());
 
@@ -503,15 +499,11 @@ void Star::rename_from_Bayer_Flamsteed()
     }
     else if (FlamsteedNo > 0)
     {
-        if (!strcmp(constellations[j].abbrev.c_str(), "UMa") && FlamsteedNo == 53)
-            strcpy(name, Gliese);
-        else strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + constellations[j].genitive).c_str());
+        strcpy(name, (std::to_string(FlamsteedNo) + std::string(" ") + constellations[j].genitive).c_str());
     }
     else if (GouldNo > 0)
     {
-        if (GouldNo == 82 && !strcmp(constellations[j].abbrev.c_str(), "Eri"))
-            strcpy(name, (std::to_string(GouldNo) + std::string(" ") + Gouldcons /* constellations[j].genitive)*/).c_str());
-        else if (strlen(Gliese))
+        if (strlen(Gliese))
             strcpy(name, Gliese);
         else strcpy(name, (std::to_string(GouldNo) + std::string(" G. ") + Gouldcons /* constellations[j].genitive*/).c_str());
     }
@@ -1400,9 +1392,7 @@ double Star::estimate_radius(bool sms)
     return volumetric_mean_radius = radius;
 }
 
-// Priority: Bayer > Flamsteed > GJ (Gliese) > Gould > HD > HIP > SAO > Durchmusterung > SB9 --
-// except for a small number of named Gould-catalog exceptions (currently just 82 Eridani) that
-// outrank GJ too; see the comment in rename_from_Bayer_Flamsteed()'s Gould branch.
+// Priority: custom name > Bayer > Flamsteed > GJ > Gould > HD > HIP > other identifiers.
 void Star::assign_identifier_name()
 {
     if ((BayerGrkno >= 0 || FlamsteedNo > 0 || GouldNo > 0) && strlen(constellation))

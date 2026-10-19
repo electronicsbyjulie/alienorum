@@ -5025,7 +5025,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                 s_is_new = true;
             }
 
-            strcpy(s->name, bdyname.c_str());
+            // Orbit identifiers locate objects; existing display names retain their priority.
+            if (s_is_new)
+            {
+                strcpy(s->name, bdyname.c_str());
+                s->has_custom_name = bdyname.rfind("HD", 0) != 0;
+            }
             s->namelen = strlen(s->name);
             if (s_is_new && bdyname.rfind("HD", 0) == 0)
             {
@@ -5040,7 +5045,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
                     }
                 }
             }
-            s->has_custom_name = true;
             s->distance_known = true;
             read_field_onebased(buffer, 161, 175, field);
             strcpy(s->spectral_type, trim(field).c_str());

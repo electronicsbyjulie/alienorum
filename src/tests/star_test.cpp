@@ -8,6 +8,7 @@
 #include "../classes/galaxy.h"
 #include "../classes/planet.h"
 #include "../classes/star.h" 
+#include "../classes/cons.h"
 #include "../classes/wdcolor.h"
 #include "../classes/wdlimb.h"
 
@@ -419,6 +420,44 @@ TEST(StarTest, DefaultConstructorInitializesCorrectly)
 // =====================================================================
 // Constellation and Naming Tests
 // =====================================================================
+
+TEST(StarTest, IdentifierNamesFollowCatalogPriority)
+{
+    const auto saved = constellations;
+    Constellation cons;
+    cons.abbrev = "UMa";
+    cons.genitive = "Ursae Majoris";
+    constellations = {cons};
+    Star primary;
+    strcpy(primary.name, "Xi Ursae Majoris");
+    Star companion;
+    companion.HD = 98230;
+    companion.HIP = 55203;
+    strcpy(companion.constellation, "UMa");
+    strcpy(companion.Bayer, "Xi  UMa");
+    strcpy(companion.Gliese, "GJ 423 B");
+    strcpy(companion.Gouldcons, "UMa");
+    companion.BayerGrkno = 13;
+    companion.FlamsteedNo = 53;
+    companion.GouldNo = 82;
+    companion.make_companion_of(&primary, 'B');
+    EXPECT_STREQ(companion.name, "Xi Ursae Majoris B");
+    companion.BayerGrkno = -1;
+    companion.assign_identifier_name();
+    EXPECT_STREQ(companion.name, "53 Ursae Majoris");
+    companion.FlamsteedNo = 0;
+    companion.assign_identifier_name();
+    EXPECT_STREQ(companion.name, "GJ 423 B");
+    companion.Gliese[0] = '\0';
+    companion.assign_identifier_name();
+    EXPECT_STREQ(companion.name, "82 G. UMa");
+    strcpy(companion.name, "Custom Name");
+    companion.has_custom_name = true;
+    companion.BayerGrkno = 13;
+    companion.assign_identifier_name();
+    EXPECT_STREQ(companion.name, "Custom Name");
+    constellations = saved;
+}
 
 TEST(StarTest, ConstellationMatching)
 {

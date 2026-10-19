@@ -123,8 +123,34 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     const double luminosity = Star::interpolate_mseq_lum(Star::get_mseqidx_from_BV(hot_star->BV_color));
     const double expected_magnitude = 4.85 - log(luminosity) * invlogmagnbase;
     EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
+    strcpy(secondary->name, "Preferred Companion");
+    secondary->has_custom_name = false;
     ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    EXPECT_STREQ(secondary->name, "Preferred Companion");
+    EXPECT_FALSE(secondary->has_custom_name);
+    secondary->has_custom_name = true;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    EXPECT_STREQ(secondary->name, "Preferred Companion");
+    EXPECT_TRUE(secondary->has_custom_name);
     EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, StarnameEntryPreserves82Eridani)
+{
+    Star *star = make_star("GJ 139");
+    star->HD = 20794;
+    star->HIP = 15510;
+    strcpy(star->Gliese, "GJ 139");
+    strcpy(star->constellation, "Eri");
+    strcpy(star->Gouldcons, "Eri");
+    star->GouldNo = 82;
+    CatalogReader reader;
+    EXPECT_GT(reader.read_starname_dat(cels), 0);
+    EXPECT_STREQ(star->name, "82 Eridani");
+    EXPECT_TRUE(star->has_custom_name);
+    star->assign_identifier_name();
+    EXPECT_STREQ(star->name, "82 Eridani");
     delete_the_universe();
 }
 
