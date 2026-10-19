@@ -3,6 +3,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <vector>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
@@ -124,6 +125,97 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
     ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
     EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometry)
+{
+    Star::load_main_seq_dat();
+    struct RestoreDirectory
+    {
+        std::filesystem::path original, temporary;
+        ~RestoreDirectory()
+        {
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    };
+    RestoreDirectory restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_color_import_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))
+    };
+    std::filesystem::create_directories(restore.temporary / "catalogs/WD");
+    std::filesystem::copy_file("catalogs/WD_colors.dat", restore.temporary / "catalogs/WD_colors.dat");
+    std::filesystem::current_path(restore.temporary);
+    std::ofstream("catalogs/WD/catalog.dat").close();
+    std::ofstream("catalogs/WD/names.dat").close();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS, false), 83);
+    const int original_count = ncelobjs;
+    std::ifstream input("catalogs/WD_colors.dat");
+    std::string line;
+    int verified = 0;
+    while (std::getline(input, line))
+    {
+        if (line.empty() || line[0] == '#' || line.find("gaia_dr3=") == std::string::npos) continue;
+        std::istringstream row(line);
+        std::string label, name, token;
+        row >> label >> name;
+        uint64_t source = 0;
+        double distance = 0;
+        while (row >> token)
+        {
+            if (token.compare(0, 9, "gaia_dr3=") == 0) source = std::stoull(token.substr(9));
+            if (token.compare(0, 12, "distance_pc=") == 0) distance = std::stod(token.substr(12));
+        }
+        Star *star = nullptr;
+        for (int i = 0; cels[i]; ++i)
+        {
+            if (cels[i]->typeclass() == class_star && static_cast<Star*>(cels[i])->gaia_source_id == source)
+            {
+                ASSERT_EQ(star, nullptr) << name;
+                star = static_cast<Star*>(cels[i]);
+            }
+        }
+        ASSERT_NE(star, nullptr) << name;
+        EXPECT_EQ(star->gaia_wd_name, name);
+        EXPECT_NEAR(star->distance / parsec, distance, 1e-8);
+        EXPECT_TRUE(star->apply_published_wd_color()) << name;
+        ++verified;
+    }
+    EXPECT_EQ(verified, 83);
+    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS, false), 83);
+    EXPECT_EQ(ncelobjs, original_count);
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    };
+    Writer writer;
+    std::map<uint64_t, std::string> original_ids;
+    FILE *cache = fopen("catalogs/soles_alienorum.dat", "w");
+    ASSERT_NE(cache, nullptr);
+    for (int i = 1; cels[i]; ++i)
+    {
+        Star *star = static_cast<Star*>(cels[i]);
+        star->alienorumid = "WD" + std::to_string(i);
+        original_ids[star->gaia_source_id] = star->gaia_wd_name;
+        EXPECT_TRUE(star->WD.empty());
+        writer.write_condensed_star_cat_line(cache, star);
+    }
+    fclose(cache);
+    delete_the_universe();
+    make_star("Sol");
+    ASSERT_EQ(reader.read_condensed_star_cat(), 83);
+    for (int i = 1; cels[i]; ++i)
+    {
+        Star *star = static_cast<Star*>(cels[i]);
+        EXPECT_EQ(original_ids.at(star->gaia_source_id), star->gaia_wd_name);
+        EXPECT_TRUE(star->WD.empty());
+        EXPECT_TRUE(star->apply_published_wd_color());
+    }
     delete_the_universe();
 }
 
@@ -283,8 +375,22 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     gaia_file << "WDJ151001.01+100000.00\t2002\t10\t0.1\t0\t0\t15\t15.2\t14.8\n";
     gaia_file << "WDJ161001.00+100000.00\t3001\t10\t0.1\t0\t0\t15\t15.2\t14.8\n";
     gaia_file.close();
+    // This target shares only its Gaia source with the legacy record.
+    // It must enrich that record rather than compete with a duplicate.
+    std::ofstream colors("catalogs/WD_colors.dat");
+    colors << "WD1330+6435 WDJ133001.17+643523.69 #DDFFB8 C4_observed_spectrum "
+           << "gaia_dr3=1666074615061406336 distance_pc=" << std::setprecision(16) << 1000 / 11.5812
+           << " gaia_g=20.6447 gaia_bp=21.2053 gaia_rp=19.8128 pmra_masyr=-110.630 pmdec_masyr=-23.300\n";
+    colors << "WD1610+1000 WDJ161001.00+100000.00 #FFFFFF C4_observed_spectrum "
+           << "gaia_dr3=3001 distance_pc=100 gaia_g=15\n";
+    colors.close();
+    Star *neighbor = make_star("Nearby unrelated WD");
+    strcpy(neighbor->spectral_type, "DA");
+    neighbor->right_ascension = ((16 + 10.0 / 60 + 1.0 / 3600) * 15 + 30.0 / 3600) * fiftyseventh;
+    neighbor->declination = 10 * fiftyseventh;
+    neighbor->apparent_magnitude = 15;
     CatalogReader reader;
-    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 7);
+    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 9);
     EXPECT_EQ(find_object("WD1700+100", true), known_id->seqno);
     EXPECT_EQ(find_object("WD1700+1000", true), known_id->seqno);
     EXPECT_DOUBLE_EQ(known_id->right_ascension, known_ra);
@@ -300,10 +406,20 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
     EXPECT_GT(gaia_star->apparent_magnitude, gaia_star->gaia_g_magnitude);
     EXPECT_EQ(gaia_star->HIP, 0u);
     EXPECT_NEAR(gaia_star->proper_motion_RA * cos(gaia_star->declination) * oneyear * fiftyseven * 3600 * 1000, -110.630, 1e-9);
-    EXPECT_EQ(find_object("WD1410+100", true), -1);
+    const int low_precision_index = find_object("WD1410+100", true);
+    ASSERT_GE(low_precision_index, 0);
+    Star *low_precision = static_cast<Star*>(cels[low_precision_index]);
+    EXPECT_EQ(low_precision->gaia_source_id, 1002u);
+    EXPECT_NEAR(low_precision->distance / parsec, 500, 1e-9);
     EXPECT_EQ(find_object("WD1510+100", true), -1);
     EXPECT_EQ(find_object("WD1610+100", true), -1);
     EXPECT_EQ(find_object("WD1610+100.1", true), -1);
+    const int pinned_index = find_object("WDJ161001.00+100000.00", true);
+    ASSERT_GE(pinned_index, 0);
+    EXPECT_EQ(static_cast<Star*>(cels[pinned_index])->gaia_source_id, 3001u);
+    EXPECT_NEAR(cels[pinned_index]->distance / parsec, 100, 1e-9);
+    EXPECT_EQ(neighbor->gaia_source_id, 0u);
+    EXPECT_TRUE(neighbor->WD.empty());
     EXPECT_TRUE(std::isinf(spectrum_only->absolute_magnitude));
     EXPECT_STREQ(primary->spectral_type, "G2V");
     EXPECT_TRUE(primary->WD.empty());
@@ -339,7 +455,7 @@ TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
         source << line << '\n';
     }
     source.close();
-    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 7);
+    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS), 9);
     EXPECT_TRUE(std::isinf(spectrum_only->absolute_magnitude));
     EXPECT_EQ(ncelobjs, before_count);
     EXPECT_DOUBLE_EQ(added->apparent_magnitude, 14);

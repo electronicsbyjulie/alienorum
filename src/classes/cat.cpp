@@ -1976,7 +1976,7 @@ namespace
             r.source = std::strtoull(fields[1].c_str(), &end, 10);
             r.parallax = number(2);
             r.error = number(3);
-            if (!r.source || !end || *end || !(r.parallax > 0) || !(r.error > 0) || r.parallax / r.error < 5)
+            if (!r.source || !end || *end || !(r.parallax > 0))
             {
                 continue;
             }
@@ -2257,14 +2257,106 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         }
     }
     const WdGaiaIndex gaia_index = wd_load_gaia(root, fetch_gaia);
+    std::unordered_map<uint64_t, std::vector<std::string>> gaia_records;
+    for (const auto &entry : records)
+    {
+        double ra = NAN, dec = NAN, pmra = 0, pmdec = 0;
+        wd_source_coordinates(entry.second, ra, dec, pmra, pmdec);
+        const WdGaiaRow *match = wd_gaia_match(gaia_index, entry.second, ra, dec);
+        if (match) gaia_records[match->source].push_back(entry.first);
+    }
+    // Published color targets can be absent from McCook-Sion. Their pinned Gaia
+    // measurements also allow catalog generation without a Gaia download.
+    std::map<std::string, WdGaiaRow> color_astrometry;
+    std::ifstream colors("catalogs/WD_colors.dat");
+    while (std::getline(colors, line))
+    {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream row(line);
+        std::string label, name, hex, method, token;
+        if (!(row >> label >> name >> hex >> method)) continue;
+        WdGaiaRow gaia;
+        gaia.name = name;
+        double distance_pc = NAN, visual = NAN, temperature = NAN;
+        std::string spectral;
+        std::vector<std::string> aliases;
+        bool alternative = false, component = false;
+        while (row >> token)
+        {
+            const size_t equal = token.find('=');
+            if (equal == std::string::npos)
+            {
+                if (token == "alternative") alternative = true;
+                else aliases.push_back(token);
+                continue;
+            }
+            const std::string key = token.substr(0, equal), value = token.substr(equal + 1);
+            const double number = wd_number(value, 1, value.size());
+            if (key == "gaia_dr3")
+            {
+                char *end = nullptr;
+                gaia.source = std::strtoull(value.c_str(), &end, 10);
+                if (!end || *end) gaia.source = 0;
+            }
+            else if (key == "distance_pc") distance_pc = number;
+            else if (key == "gaia_g") gaia.g = number;
+            else if (key == "gaia_bp") gaia.bp = number;
+            else if (key == "gaia_rp") gaia.rp = number;
+            else if (key == "pmra_masyr") gaia.pmra = number;
+            else if (key == "pmdec_masyr") gaia.pmdec = number;
+            else if (key == "visual_mag") visual = number;
+            else if (key == "temperature_k") temperature = number;
+            else if (key == "spectral") spectral = value;
+            else if (key == "unresolved_component") component = true;
+        }
+        if (alternative || component || !gaia.source || !(distance_pc > 0) ||
+            !std::isfinite(distance_pc) || !wd_j2000_coordinates(name, gaia.ra, gaia.dec)) continue;
+        gaia.parallax = 1000 / distance_pc;
+        std::string key = wd_key(name);
+        for (const auto &alias : aliases)
+        {
+            const auto found = records.find(wd_key(alias));
+            if (found != records.end())
+            {
+                key = found->first;
+                break;
+            }
+        }
+        // A published target can already have a legacy record without a shared
+        // printed alias. Reuse a unique Gaia identity before adding a new record.
+        const auto original = gaia_records.find(gaia.source);
+        if (records.find(key) == records.end() && original != gaia_records.end() && original->second.size() == 1)
+        {
+            key = original->second.front();
+        }
+        WdRecord &record = records[key];
+        if (record.id.empty()) record.id = name;
+        record.aliases.insert(record.aliases.end(), aliases.begin(), aliases.end());
+        record.aliases.push_back(name);
+        if (record.spectral.empty()) record.spectral = spectral;
+        if (wd_observed_magnitude(visual)) record.visual.offer(visual, 1);
+        if (temperature > 0) record.temperature.offer(temperature, 1);
+        color_astrometry[record.id] = gaia;
+    }
     std::map<std::string, const WdGaiaRow*> gaia_matches;
     std::unordered_map<uint64_t, int> gaia_uses;
+    std::unordered_map<uint64_t, std::string> color_owners;
+    for (const auto &entry : color_astrometry) color_owners[entry.second.source] = entry.first;
     for (const auto &entry : records)
     {
         const WdRecord &r = entry.second;
         double ra = NAN, dec = NAN, pmra = 0, pmdec = 0;
         wd_source_coordinates(r, ra, dec, pmra, pmdec);
-        const WdGaiaRow *match = wd_gaia_match(gaia_index, r, ra, dec);
+        const auto pinned = color_astrometry.find(r.id);
+        const WdGaiaRow *match = pinned != color_astrometry.end() ?
+            &pinned->second : wd_gaia_match(gaia_index, r, ra, dec);
+        if (match)
+        {
+            const auto owner = color_owners.find(match->source);
+            // An explicit published identity takes priority over ambiguous
+            // positional associations with other legacy records.
+            if (owner != color_owners.end() && owner->second != r.id) match = nullptr;
+        }
         if (match)
         {
             gaia_matches[r.id] = match;
@@ -2300,6 +2392,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         add(s->name);
         add(s->WD);
         add(s->Gliese);
+        add(s->gaia_wd_name);
         if (s->HD)
         {
             add("HD" + std::to_string(s->HD));
@@ -2368,7 +2461,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
                 pmra = gaia->pmra / (1000 * 3600) * fiftyseventh / oneyear / fmax(1e-6, cos(dec));
                 pmdec = gaia->pmdec / (1000 * 3600) * fiftyseventh / oneyear;
             }
-            r.parallax.offer(gaia->parallax / 1000, 1 + gaia->parallax / gaia->error);
+            const double quality = gaia->error > 0 ? gaia->parallax / gaia->error : 0;
+            r.parallax.offer(gaia->parallax / 1000, 1 + quality);
             const double color = gaia->bp - gaia->rp;
             if (!wd_observed_magnitude(r.visual.value) && wd_observed_magnitude(gaia->g) && color > -0.5 && color < 5)
             {
@@ -2376,6 +2470,11 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
                 // This is an estimated V magnitude, never a measured V or an unlabelled G.
                 const double g_minus_v = -0.02704 + 0.01424 * color - 0.2156 * color * color + 0.01426 * color * color * color;
                 r.visual.offer(gaia->g - g_minus_v, 0);
+                visual_estimated = true;
+            }
+            if (!wd_observed_magnitude(r.visual.value) && wd_observed_magnitude(gaia->g))
+            {
+                r.visual.offer(gaia->g, 0);
                 visual_estimated = true;
             }
         }
@@ -2402,6 +2501,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
                 // A system identifier can denote the luminous primary rather than the WD.
                 const bool same_wd = wd_key(s->WD) == wd_key(r.id) || wd_key(s->name) == wd_key(r.id);
                 if (wd_candidate(s) && (same_wd || nearby(s)) &&
+                    (!gaia || !s->gaia_source_id || s->gaia_source_id == gaia->source) &&
                     (s->WD.empty() || wd_key(s->WD) == wd_key(r.id)) &&
                     std::find(matches.begin(), matches.end(), s) == matches.end())
                 {
@@ -2421,9 +2521,14 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             // Require both positional and visual-photometric agreement for a coordinate match.
             // Keep ambiguous neighbors out of the catalog rather than creating duplicates.
             bool close = false;
+            const bool color_target = color_astrometry.find(r.id) != color_astrometry.end();
             for (Star *other : existing_wd)
             {
-                if (other->WD.empty() && nearby(other))
+                const bool coordinate_match = color_target ?
+                    hypot(std::remainder(other->right_ascension - ra, 2 * _pi) * cos(dec),
+                        other->declination - dec) < 3.0 / 3600 * fiftyseventh : nearby(other);
+                if (other->WD.empty() && coordinate_match &&
+                    (!gaia || !other->gaia_source_id || other->gaia_source_id == gaia->source))
                 {
                     close = true;
                     if (wd_observed_magnitude(other->apparent_magnitude) &&
@@ -2478,7 +2583,9 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         {
             updated++;
         }
-        s->WD = r.id;
+        // The fixed-width WD field is reserved for legacy B1950 identifiers.
+        // Full J2000 identities travel in the Gaia metadata instead.
+        s->WD = r.id.compare(0, 3, "WDJ") == 0 ? "" : r.id;
         if (gaia)
         {
             s->gaia_wd_name = gaia->name;

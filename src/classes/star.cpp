@@ -171,7 +171,7 @@ namespace
                     {
                         entry.selectable = false;
                     }
-                    else entry.aliases.push_back(alias);
+                    else if (alias.find('=') == std::string::npos) entry.aliases.push_back(alias);
                 }
                 result.push_back(entry);
             }
