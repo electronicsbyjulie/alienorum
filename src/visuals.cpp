@@ -5342,8 +5342,9 @@ void draw_horizon()
 
         const double surface_eye = fmax(0.01, viewer_eye_height);
         const double surface_lift = p && !gaseous ? p->atmospheric_horizon_lift() : 0.0;
-        const double surface_range = sqrt(2.0 * surface_radius * surface_eye)
-            + surface_radius * fmax(0.0, sin(surface_lift));
+        // Keep terrain sampling on the geometric horizon ring, with visual lift in projection.
+        // Enlarging this ring inflates relief and separates the sea mesh from the horizon.
+        const double surface_range = sqrt(2.0 * surface_radius * surface_eye);
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
         HorizonTerrainRaster terrain_raster;

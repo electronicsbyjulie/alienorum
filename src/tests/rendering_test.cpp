@@ -56,6 +56,30 @@ class SceneryTestMap : public Map
     }
 };
 
+class CoastalTestMap : public Map
+{
+    public:
+    CoastalTestMap()
+    {
+        image_width = 2;
+        image_height = 32768;
+        allocated = image_width * image_height;
+        lat_scale = (image_height - 1.0) / _pi;
+        lon_scale = 1.0 / _pi;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        for (unsigned long index = 0; index < allocated; index++)
+        {
+            const bool sea = index / image_width < image_height / 2;
+            red_data[index] = sea ? 20 : 160;
+            green_data[index] = sea ? 100 : 120;
+            blue_data[index] = sea ? 160 : 80;
+        }
+        touch_gen();
+    }
+};
+
 class MountainBandsTestMap : public Map
 {
     public:
@@ -817,6 +841,35 @@ TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
         }
     }
     EXPECT_GT(plants, 0);
+}
+
+TEST_F(RenderingRegressionTest, DenseAtmosphereCoastHasSeaBelowTheLiftedHorizon)
+{
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->vegetation_r = world->vegetation_g = world->vegetation_b = 0;
+    world->temperature = 311.5;
+    world->ensure_atmosphere()->surface_pressure = 15 * oneatm;
+    set(viewer_lat, -0.0001);
+    set(viewer_lon, 0.0);
+    set(azimuth, 0.0);
+    set(zoom, 4.0);
+    set(altitude, world->atmospheric_horizon_lift());
+    find_horizon();
+    draw_horizon();
+    const auto pixels = render();
+    int sea = 0;
+    for (int y = 56; y < 60; y++)
+    {
+        for (int x = 86; x < 106; x++)
+        {
+            const int index = ((render_height - y - 1) * render_width + x) * 4;
+            sea += pixels[index + 2] > pixels[index] * 2;
+        }
+    }
+    EXPECT_GT(sea, 60);
+    ImGui::NewFrame();
 }
 
 TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
