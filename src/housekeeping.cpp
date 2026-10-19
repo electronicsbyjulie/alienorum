@@ -709,6 +709,31 @@ void set_center_objects()
 
     ((Star*)cels[0])->make_universally_visible();
 
+    if (showfails)
+    {
+        // Compare settled intrinsic magnitudes after all components adopt their system distance.
+        for (int index = 0; cels[index]; index++)
+        {
+            if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+            Star *primary = static_cast<Star*>(cels[index]);
+            if (!primary->multisys || primary->multisys->get_member('A') != primary ||
+                !std::isfinite(primary->absolute_magnitude) || primary->absolute_magnitude >= 1e28) continue;
+            Star *brightest = primary;
+            for (char component = 'B'; component <= 'Z'; component++)
+            {
+                Star *member = primary->multisys->get_member(component);
+                if (member && !member->deleted && std::isfinite(member->absolute_magnitude) &&
+                    member->absolute_magnitude < brightest->absolute_magnitude) brightest = member;
+            }
+            if (brightest != primary)
+            {
+                std::cerr << "Primary fainter than companion: " << primary->name
+                    << " (primary Mv " << primary->absolute_magnitude << "), " << brightest->name
+                    << " (companion Mv " << brightest->absolute_magnitude << ")." << std::endl;
+            }
+        }
+    }
+
     #if 0
     #ifdef DEBUG
     // Test a sample constellation.

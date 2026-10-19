@@ -1,4 +1,6 @@
 #include <cstring>
+#include <iostream>
+#include <sstream>
 #include <gtest/gtest.h>
 #include "../classes/star.h"
 #include "../housekeeping.h"
@@ -12,6 +14,44 @@ using namespace alienorum;
 // indices are this function's doing, not append_cel()'s" were taking that on trust.
 
 class HousekeepingTest : public UniverseFixture {};
+
+TEST_F(HousekeepingTest, BrightCompanionReportIsGatedAndListsEachSystemOnce)
+{
+    make_star("Sol")->distance = 0;
+    Star *primary = make_star("Review System");
+    primary->absolute_magnitude = primary->apparent_magnitude = 5;
+    primary->set_component('A', primary);
+    Star *secondary = make_star("Review System B");
+    secondary->make_companion_of(primary, 'B');
+    secondary->absolute_magnitude = secondary->apparent_magnitude = 4;
+    Star *brightest = make_star("Review System C");
+    brightest->make_companion_of(primary, 'C');
+    brightest->absolute_magnitude = brightest->apparent_magnitude = 2;
+    Star *normal = make_star("Normal System");
+    normal->absolute_magnitude = normal->apparent_magnitude = 1;
+    normal->set_component('A', normal);
+    Star *faint = make_star("Normal System B");
+    faint->make_companion_of(normal, 'B');
+    faint->absolute_magnitude = faint->apparent_magnitude = 3;
+    std::ostringstream output;
+    std::streambuf *original = std::cerr.rdbuf(output.rdbuf());
+    const bool saved_showfails = showfails;
+    showfails = false;
+    set_center_objects();
+    EXPECT_TRUE(output.str().empty());
+    showfails = true;
+    set_center_objects();
+    showfails = saved_showfails;
+    std::cerr.rdbuf(original);
+    const std::string report = output.str();
+    EXPECT_NE(report.find("Review System (primary Mv 5)"), std::string::npos);
+    EXPECT_NE(report.find("Review System C (companion Mv 2)"), std::string::npos);
+    EXPECT_EQ(report.find("Normal System"), std::string::npos);
+    EXPECT_EQ(std::count(report.begin(), report.end(), '\n'), 1);
+    EXPECT_EQ(primary->multisys->get_member('A'), primary);
+    EXPECT_EQ(brightest->orbit->center, primary);
+    delete_the_universe();
+}
 
 TEST_F(HousekeepingTest, CompanionBrightnessUsesSystemDistance)
 {
