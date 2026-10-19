@@ -549,6 +549,42 @@ TEST_F(FindObjectTest, ShortAndNumberedBayerNamesUseGreekIdentity)
     delete_the_universe();
 }
 
+TEST_F(FindObjectTest, NuAndNUOrionisRemainDistinctForConstellationLines)
+{
+    auto saved_constellations = std::move(constellations);
+    constellations.clear();
+    Constellation ori;
+    ori.name = "Orion";
+    ori.abbrev = "Ori";
+    ori.vantage_name = "Sun";
+    Star *variable = make_star("NU Orionis");
+    strcpy(variable->constellation, "Ori");
+    variable->declination = -5.26 * fiftyseventh;
+    Star *greek = make_star("Nu Orionis");
+    strcpy(greek->constellation, "Ori");
+    strcpy(greek->Bayer, "Nu  Ori");
+    greek->BayerGrkno = 12;
+    greek->declination = 14.77 * fiftyseventh;
+    ori.Bayer_stars[12] = greek;
+    ConsLine line;
+    line.starnamea = "Nu  Ori";
+    line.starnameb = "NU Orionis";
+    ori.lines.push_back(line);
+    constellations.push_back(ori);
+    EXPECT_EQ(find_object("Nu Ori", true), greek->seqno);
+    EXPECT_EQ(find_object("NU Orionis", true), variable->seqno);
+    EXPECT_EQ(find_object("NU Ori", true), -1);
+    cache_cons_lines();
+    EXPECT_EQ(constellations[0].lines[0].a, greek);
+    EXPECT_EQ(constellations[0].lines[0].b, variable);
+    constellation_index["Ori"] = {variable, greek};
+    cache_cons_lines();
+    EXPECT_EQ(constellations[0].lines[0].a, greek);
+    EXPECT_EQ(constellations[0].lines[0].b, variable);
+    constellations = std::move(saved_constellations);
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, MissingBayerIdentityDoesNotSelectAnotherGreekLetter)
 {
     auto saved_constellations = std::move(constellations);

@@ -5015,6 +5015,23 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             }
         }
 
+        if (s && s != A && s->distance > 0 && A->distance > 0)
+        {
+            Point primary_direction = Point::from_ra_dec(A->right_ascension, A->declination, 1);
+            Point member_direction = Point::from_ra_dec(s->right_ascension, s->declination, 1);
+            const double cosine = primary_direction.x * member_direction.x +
+                primary_direction.y * member_direction.y + primary_direction.z * member_direction.z;
+            const Point separation = primary_direction * A->distance - member_direction * s->distance;
+            // Preserve wide nearby systems, but reject stars far apart both on the sky and in space.
+            if (cosine < cos(fiftyseventh) && separation.magnitude() > parsec)
+            {
+                if (showfails) std::cerr << "Rejected orbit for " << bdyname << " around " << cenname
+                    << ": catalog positions describe different systems." << std::endl;
+                numfails++;
+                continue;
+            }
+        }
+
         bool s_is_new = false;
         int bs = trim(buffer).size();
         if (bs >= 180)

@@ -213,6 +213,80 @@ TEST_F(CatalogParsingTest, OrbitImportsRejectAbsentPrimariesWithSimilarAliases)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, NuOrionisOrbitsRejectDistantNamesAndPreserveBothSystems)
+{
+    std::ifstream source("catalogs/star_orbits.dat");
+    ASSERT_TRUE(source.good());
+    std::string line, rows, variable_row;
+    while (std::getline(source, line))
+    {
+        if (line.compare(0, 7, "HD41753") == 0 || line.compare(0, 7, "HD37061") == 0)
+        {
+            rows += line + '\n';
+            if (variable_row.empty() && line.compare(0, 7, "HD37061") == 0) variable_row = line;
+        }
+    }
+    ASSERT_FALSE(variable_row.empty());
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        Star **cache;
+        ~RestoreContext()
+        {
+            hdcache = cache;
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_nu_orionis_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache
+    };
+    std::vector<Star*> cache(MAX_HD + 1, nullptr);
+    hdcache = cache.data();
+    Star *greek = make_star("Nu Orionis");
+    greek->HD = 41753;
+    greek->right_ascension = 6.1345 * 15 * fiftyseventh;
+    greek->declination = 14.77 * fiftyseventh;
+    greek->distance = 603.6 * light_year;
+    hdcache[41753] = greek;
+    greek->set_component('A', greek);
+    Star *companion = make_star("Nu Ori B");
+    companion->make_companion_of(greek, 'B');
+    Star *variable = make_star("HD37061");
+    variable->HD = 37061;
+    variable->right_ascension = 5.5992 * 15 * fiftyseventh;
+    variable->declination = -5.26 * fiftyseventh;
+    variable->distance = 1355.7 * light_year;
+    hdcache[37061] = variable;
+    const double original_declination = greek->declination;
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    std::string conflicting_row = variable_row;
+    conflicting_row.replace(24, 23, 23, ' ');
+    conflicting_row.replace(24, 8, "Nu Ori B");
+    std::ofstream("catalogs/star_orbits.dat") << conflicting_row << '\n';
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels), 0);
+    EXPECT_EQ(companion->orbit->center, greek);
+    EXPECT_EQ(variable->multisys, nullptr);
+    std::ofstream("catalogs/star_orbits.dat") << rows;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels), 3);
+    EXPECT_NE(greek->multisys, variable->multisys);
+    EXPECT_EQ(companion->orbit->center, greek);
+    EXPECT_DOUBLE_EQ(greek->declination, original_declination);
+    ASSERT_NE(variable->multisys, nullptr);
+    ASSERT_NE(variable->multisys->get_member('B'), nullptr);
+    ASSERT_NE(variable->multisys->get_member('C'), nullptr);
+    EXPECT_EQ(variable->multisys->get_member('B')->orbit->center, variable);
+    EXPECT_EQ(variable->multisys->get_member('C')->orbit->center, variable);
+    EXPECT_DOUBLE_EQ(variable->declination, -5.26 * fiftyseventh);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometry)
 {
     Star::load_main_seq_dat();

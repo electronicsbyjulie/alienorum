@@ -20,8 +20,16 @@ static int skip_ws(const char* s, int i)
 
 // Bayer abbreviations include two-letter names and numbered forms such as Gam2Vel.
 // Check the Greek prefix so ordinary object names still use the general name search.
+static bool is_uppercase_short_greek(const char* s)
+{
+    return strlen(s) > 2 && isspace((unsigned char)s[2]) &&
+        (!strncmp(s, "NU", 2) || !strncmp(s, "MU", 2) ||
+         !strncmp(s, "PI", 2) || !strncmp(s, "XI", 2));
+}
+
 static bool looks_like_Bayer(const char* s)
 {
+    if (is_uppercase_short_greek(s)) return false;
     const int n = strlen(s);
     for (const auto &letter : Greek_letter)
     {
@@ -311,6 +319,8 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     {
         return result;
     }
+    // Uppercase variable designations must not fall back to a Greek name differing in case.
+    if (is_uppercase_short_greek(search_term)) return result;
     if (is_Bayer && match_cons)
     {
         // A catalog identifier must not turn into a different Greek letter through fuzzy matching.
