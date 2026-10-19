@@ -8,11 +8,11 @@ Companion stars should not orbit the primary, rather the pair should orbit a com
 
 Application is sometimes throwing a segfault on exit.
 
-Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() to read them. Adjust column widths if necessary.
+Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
 
-White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable (you don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily).
+White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.
 
-When moving along the surface of an inhabited planet in vm_horizon mode, something is drastically killing the frame rate. It's less bad when panning but still pretty bad. If this is the Perlin noise on the terrain boundaries, you can limit that by distance and show the current pixel's color past about 5 or 10 km (put dev_dial on it and developer will find the optimal threshold).
+When moving along the surface of an inhabited planet in vm_horizon mode, something is drastically killing the frame rate. It's less bad when panning but still pretty bad. If this is because of the Perlin noise on the terrain boundaries, you can limit that by distance and show the current pixel's color past about 5 or 10 km (if you do this, put dev_dial on it and the developer will find the optimal threshold).
 
 Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
 
