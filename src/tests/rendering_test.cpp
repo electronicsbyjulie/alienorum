@@ -422,6 +422,31 @@ TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighter
     ASSERT_TRUE(draw_single_object(companion->seqno));
     ASSERT_EQ(labels2draw.size(), 1u);
     EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris B");
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(shortnames, true);
+    strcpy(primary->Gouldcons, "UMa");
+    struct ShortLabel
+    {
+        const char *bayer, *flamsteed;
+        int gould;
+        const char *text;
+    };
+    const ShortLabel formats[] =
+    {
+        {"Xi  UMa", "53  UMa", 82, "Xi UMa"},
+        {"", "53  UMa", 82, "53 UMa"},
+        {"", "", 82, "82G UMa"}
+    };
+    for (const auto &format : formats)
+    {
+        strcpy(primary->Bayer, format.bayer);
+        strcpy(primary->Flamsteed, format.flamsteed);
+        primary->GouldNo = format.gould;
+        labels2draw.clear();
+        ASSERT_TRUE(draw_single_object(companion->seqno));
+        ASSERT_EQ(labels2draw.size(), 1u);
+        EXPECT_EQ(labels2draw.back().text, format.text);
+    }
 }
 
 TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)

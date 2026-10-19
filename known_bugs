@@ -12,6 +12,8 @@ Companion stars should not orbit the primary, rather the pair should orbit a com
 
 [COMPLETED] Application is sometimes throwing a segfault on exit.
 
+[COMPLETED] Short labels are broken; they're showing weird question marks and gibberish.
+
 Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
 
 White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.

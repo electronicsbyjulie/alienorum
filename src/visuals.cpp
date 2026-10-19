@@ -3444,9 +3444,11 @@ bool draw_single_object(int i)
             else if (shortnames)
             {
                 Star *s = label_star;
-                if (strlen(s->Bayer)) dispname = squeeze_spaces(s->Bayer).c_str();
-                else if (strlen(s->Flamsteed)) dispname = squeeze_spaces(s->Flamsteed).c_str();
-                else if (s->GouldNo > 0) dispname = (std::to_string(s->GouldNo) + std::string("G ") + std::string(s->Gouldcons)).c_str();
+                if (strlen(s->Bayer)) str = squeeze_spaces(s->Bayer);
+                else if (strlen(s->Flamsteed)) str = squeeze_spaces(s->Flamsteed);
+                else if (s->GouldNo > 0) str = std::to_string(s->GouldNo) + std::string("G ") + std::string(s->Gouldcons);
+                else str = dispname;
+                dispname = str.c_str();
             }
         }
         else if (cls == class_galaxy && i == inside_galaxy_idx)
