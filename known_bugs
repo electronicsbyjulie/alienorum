@@ -2,7 +2,7 @@
 
 [COMPLETED] Xi UMa B's label is now acceptable, however the system now has two stars named HD98231 C. Is this a duplication of a single star or does one of them have to be re-lettered D?
 
-When viewed from outside a star system, the label for that star system should always be the primary component's name, for example Xi Ursae Majoris not Xi UMa B or HD98230, no matter which component is brightest.
+[COMPLETED] When viewed from outside a star system, the label for that star system should always be the primary component's name, for example Xi Ursae Majoris not Xi UMa B or HD98230, no matter which component is brightest.
 
 Dependent on the showfails boolean, output names of systems during program load where the primary star is not the intrinsically brightest star of the system, so that these can be checked manually. Internally, we lean toward designating the most massive member as the primary, and there are systems that legitimately have a companion star as the brightest.
 

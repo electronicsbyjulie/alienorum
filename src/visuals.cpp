@@ -3350,6 +3350,12 @@ bool draw_single_object(int i)
 
     labels_step:
     Star *s = (cels[i]->type == star) ? (Star*)cels[i] : nullptr;
+    Star *label_star = s;
+    if (s && !obj_is_localsys && s->multisys)
+    {
+        Star *primary = s->multisys->get_member('A');
+        if (primary && !primary->deleted) label_star = primary;
+    }
     bool add_label = false;
     if ( (show_labels && s && !cels[i]->orbit &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
@@ -3379,7 +3385,7 @@ bool draw_single_object(int i)
 
     if (add_label)
     {
-        const char *dispname = cels[i]->name;
+        const char *dispname = label_star ? label_star->name : cels[i]->name;
         int l = strlen(dispname);
         if (!l) return true;
         int disph = dispcy * 2;
@@ -3410,34 +3416,34 @@ bool draw_single_object(int i)
         }
         else if (cls == class_star)
         {
-            if (cbolbls_selected_idx == lbltype_Bayer && (((Star*)cels[i])->BayerGrkno >= 0))
+            if (cbolbls_selected_idx == lbltype_Bayer && label_star->BayerGrkno >= 0)
             {
                 // str = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
                 // dispname = str.c_str();
-                int lBayerGrkNo = ((Star*)cels[i])->BayerGrkno;
+                int lBayerGrkNo = label_star->BayerGrkno;
                 if (lBayerGrkNo >= 100) lBayerGrkNo = (lBayerGrkNo-100)/10;
                 char c = Greek_symbol_mapping[lBayerGrkNo];
                 str = std::string(1, c);
-                if (((Star*)cels[i])->Bayer[3] >= '1') str += std::string(1, ((Star*)cels[i])->Bayer[3]);
+                if (label_star->Bayer[3] >= '1') str += std::string(1, label_star->Bayer[3]);
                 dispname = str.c_str();
                 font = Greek_font;
                 lfontsz *= 1.312;           // for better visibility
             }
-            else if (cbolbls_selected_idx == lbltype_Flamsteed && strlen(((Star*)cels[i])->Flamsteed))
+            else if (cbolbls_selected_idx == lbltype_Flamsteed && strlen(label_star->Flamsteed))
             {
-                str = trim(std::string(((Star*)cels[i])->Flamsteed).substr(0, strlen(((Star*)cels[i])->Flamsteed)-3));
+                str = trim(std::string(label_star->Flamsteed).substr(0, strlen(label_star->Flamsteed)-3));
                 dispname = str.c_str();
             }
-            else if (cbolbls_selected_idx == lbltype_Gould && (((Star*)cels[i])->GouldNo > 0))
+            else if (cbolbls_selected_idx == lbltype_Gould && label_star->GouldNo > 0)
             {
-                str = std::to_string(((Star*)cels[i])->GouldNo);
+                str = std::to_string(label_star->GouldNo);
                 dispname = str.c_str();
             }
-            else if (cels[i]->cenobj == mycenobj && ((Star*)cels[i])->local_name.size())
-                dispname = ((Star*)cels[i])->local_name.c_str();
+            else if (obj_is_localsys && label_star->local_name.size())
+                dispname = label_star->local_name.c_str();
             else if (shortnames)
             {
-                Star *s = (Star*)cels[i];
+                Star *s = label_star;
                 if (strlen(s->Bayer)) dispname = squeeze_spaces(s->Bayer).c_str();
                 else if (strlen(s->Flamsteed)) dispname = squeeze_spaces(s->Flamsteed).c_str();
                 else if (s->GouldNo > 0) dispname = (std::to_string(s->GouldNo) + std::string("G ") + std::string(s->Gouldcons)).c_str();

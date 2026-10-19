@@ -363,6 +363,43 @@ class RenderingRegressionTest : public UniverseFixture
     }
 };
 
+TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighterCompanion)
+{
+    Star *sun = make_star("Sun");
+    Star *primary = make_star("Xi Ursae Majoris");
+    primary->set_component('A', primary);
+    primary->absolute_magnitude = 5.09;
+    Star *companion = make_star("Xi Ursae Majoris B");
+    companion->make_companion_of(primary, 'B');
+    companion->absolute_magnitude = 4.47;
+    primary->cenobj = companion->cenobj = primary;
+    companion->drawnx = 96;
+    companion->drawny = 54;
+    double magnitudes[3] = {5, 5, 5};
+    double angular_sizes[3] = {0, 0, 0};
+    double bloom[3] = {0, 0, 0};
+    bool discs[3] = {false, false, false};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(angular_sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    set(labels2draw, std::vector<DrawLabel>{});
+    set(selected, companion->seqno);
+    set(shortnames, false);
+    set(cbolbls_selected_idx, 0);
+    set(show_localsys, true);
+    set(global_brightness, 1.0);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    ASSERT_TRUE(draw_single_object(companion->seqno));
+    ASSERT_EQ(labels2draw.size(), 1u);
+    EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris");
+    set(mycenobj, static_cast<CelestialObject*>(primary));
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(companion->seqno));
+    ASSERT_EQ(labels2draw.size(), 1u);
+    EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris B");
+}
+
 TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)
 {
     Star *sun = make_star("Sun");
