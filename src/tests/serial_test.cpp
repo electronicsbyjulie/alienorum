@@ -696,6 +696,24 @@ TEST_F(FindObjectTest, ExplicitConstellationEndpointsResolveBelowTheDisplayLimit
     delete_the_universe();
 }
 
+TEST_F(FindObjectTest, CachedHDCompanionsResolveBeforeMembershipIsRebuilt)
+{
+    Star **saved_cache = hdcache;
+    std::vector<Star*> cache(MAX_HD + 1, nullptr);
+    hdcache = cache.data();
+    Star *primary = make_star("Xi Ursae Majoris");
+    primary->HD = 98231;
+    hdcache[98231] = primary;
+    Star *companion = make_star("HD98231 C");
+    companion->orbit = new Orbit();
+    companion->orbit->center = primary;
+    EXPECT_EQ(primary->multisys, nullptr);
+    EXPECT_EQ(find_object("HD98231 C", true), companion->seqno);
+    EXPECT_EQ(find_object("HD98231 D", true), -1);
+    hdcache = saved_cache;
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, ExactNameWins)
 {
     Star* a = make_star("Alpha Centauri");

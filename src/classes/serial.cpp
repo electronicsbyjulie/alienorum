@@ -203,7 +203,20 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         }
         else return s->seqno;
     }
-    if ((is_hd || is_hip) && os) return -1;
+    if ((is_hd || is_hip) && os)
+    {
+        // Cached companions can exist before their system membership is rebuilt.
+        // Reuse an exact component name instead of constructing a second copy.
+        if (match_comp)
+        {
+            for (int index = 0; cels[index]; index++)
+            {
+                if (!cels[index]->deleted && cels[index]->typeclass() == class_star &&
+                    !strcmp(cels[index]->name, search_term)) return index;
+            }
+        }
+        return -1;
+    }
 
     bool is_gliese = (((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L' && (search_term[2] <= '9'))
         || ((search_term[0]&0x5f) == 'G' && (search_term[1]&0x5f) == 'L' && (search_term[2]&0x5f) == 'I' && (search_term[3]&0x5f) == 'E' && (search_term[4]&0x5f) == 'S' && (search_term[5]&0x5f) == 'E')

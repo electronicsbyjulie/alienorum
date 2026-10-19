@@ -287,6 +287,65 @@ TEST_F(CatalogParsingTest, NuOrionisOrbitsRejectDistantNamesAndPreserveBothSyste
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, XiUrsaeMajorisCachedCompanionIsReusedAcrossOrbitImports)
+{
+    std::ifstream source("catalogs/star_orbits.dat");
+    ASSERT_TRUE(source.good());
+    std::string line, row;
+    while (std::getline(source, line))
+    {
+        if (line.compare(0, 7, "HD98231") == 0 && line.substr(24, 23).find("HD98231 C") == 0)
+        {
+            row = line;
+            break;
+        }
+    }
+    ASSERT_FALSE(row.empty());
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        Star **cache;
+        ~RestoreContext()
+        {
+            hdcache = cache;
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_xi_companion_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache
+    };
+    std::vector<Star*> cache(MAX_HD + 1, nullptr);
+    hdcache = cache.data();
+    Star *primary = make_star("Xi Ursae Majoris");
+    primary->HD = 98231;
+    hdcache[98231] = primary;
+    primary->set_component('A', primary);
+    Star *secondary = make_star("Xi Ursae Majoris B");
+    secondary->make_companion_of(primary, 'B');
+    Star *cached = make_star("HD98231 C");
+    cached->orbit = new Orbit();
+    cached->orbit->center = primary;
+    const int original_count = ncelobjs;
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    std::ofstream("catalogs/star_orbits.dat") << row << '\n';
+    CatalogReader reader;
+    for (int pass = 0; pass < 2; pass++)
+    {
+        EXPECT_EQ(reader.read_star_orbits_dat(cels), 1);
+        EXPECT_EQ(ncelobjs, original_count);
+        EXPECT_EQ(primary->multisys->get_member('C'), cached);
+        EXPECT_EQ(primary->multisys->get_member('D'), nullptr);
+        EXPECT_EQ(cached->orbit->center, primary);
+    }
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometry)
 {
     Star::load_main_seq_dat();
