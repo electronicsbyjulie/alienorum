@@ -1282,6 +1282,145 @@ TEST_F(CatalogParsingTest, FindsTheCatalogDirectories)
     EXPECT_EQ(none.size(), 0u);
 }
 
+TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
+{
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        Star **hd, **hip;
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_static_columns_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache, hipcache
+    };
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    hdcache = hd.data();
+    hipcache = hip.data();
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    Star *primary = static_cast<Star*>(cels[0]);
+    primary->alienorumid = "primary";
+    primary->HD = 98231;
+    primary->HIP = 55203;
+    primary->HR = 4374;
+    primary->SB9 = 1256;
+    primary->proper_motion_RA = -1.2345e-7;
+    primary->proper_motion_decl = 2.3456e-8;
+    primary->radial_velocity = -23000;
+    primary->parallax = 1.2345e-7;
+    primary->absolute_magnitude = 5.09;
+    primary->has_custom_name = true;
+    Star *companion = make_star("Metadata companion");
+    companion->alienorumid = "companion";
+    companion->make_companion_of(primary, 'B');
+    companion->orbit->period = 12.3456 * oneday;
+    companion->orbit->semimajor_axis = 2.34567 * AU;
+    companion->orbit->eccentricity = 0.12345;
+    companion->orbit->arg_periapsis = 123.4567 * fiftyseventh;
+    companion->orbit->mean_anomaly = 234.5678 * fiftyseventh;
+    companion->orbit->epoch = 2461234.5678;
+    companion->orbit->heliocentric_inclination = 45.6789 * fiftyseventh;
+    companion->orbit->heliocentric_node = 156.7890 * fiftyseventh;
+    companion->variability_period = 3.45678 * oneday;
+    companion->minmag = -0.12;
+    companion->maxmag = 1.23;
+    companion->epoch_max_brightness = 2451234.5678;
+    companion->is_eclipsing_binary = true;
+    strcpy(companion->Bonn_survey, "BD");
+    companion->Bonn_survey_declination = -2;
+    companion->Bonn_survey_sequential = 5958;
+    companion->WD = "WD1008+290";
+    companion->gaia_wd_name = "WDJ101102.96+284506.66";
+    companion->gaia_source_id = 18446744073709551615ULL;
+    companion->gaia_g_magnitude = 20.6447;
+    companion->apparent_magnitude_estimated = true;
+    companion->wd_color_valid = true;
+    companion->wd_color_red = 123;
+    companion->wd_color_green = 45;
+    companion->wd_color_blue = 255;
+    companion->wd_color_source = "observed spectrum fixture";
+    companion->wd_temperature_source = "catalog fixture";
+    companion->wd_color_revision = 18446744073709551615ULL;
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    } writer;
+    FILE *file = fopen("catalogs/soles_alienorum.dat", "wb");
+    ASSERT_NE(file, nullptr);
+    writer.write_condensed_star_cat_line(file, primary);
+    writer.write_condensed_star_cat_line(file, companion);
+    fclose(file);
+    std::ifstream input("catalogs/soles_alienorum.dat");
+    std::string row;
+    ASSERT_TRUE(static_cast<bool>(std::getline(input, row)));
+    EXPECT_EQ(row.size(), 655u);
+    EXPECT_EQ(row.substr(127, 6), "4374  ");
+    EXPECT_EQ(row.substr(134, 6), "1256  ");
+    ASSERT_TRUE(static_cast<bool>(std::getline(input, row)));
+    EXPECT_EQ(row.size(), 655u);
+    EXPECT_EQ(row.substr(468, 3), "SC2");
+    EXPECT_EQ(row.substr(513, 20), "18446744073709551615");
+    EXPECT_EQ(row.substr(635, 20), "18446744073709551615");
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    primary = static_cast<Star*>(cels[0]);
+    companion = static_cast<Star*>(cels[1]);
+    EXPECT_EQ(primary->HR, 4374u);
+    EXPECT_EQ(primary->SB9, 1256u);
+    EXPECT_EQ(primary->HIP, 55203u);
+    EXPECT_DOUBLE_EQ(primary->proper_motion_RA, -1.2345e-7);
+    EXPECT_DOUBLE_EQ(primary->proper_motion_decl, 2.3456e-8);
+    EXPECT_DOUBLE_EQ(primary->radial_velocity, -23000);
+    EXPECT_DOUBLE_EQ(primary->parallax, 1.2345e-7);
+    ASSERT_NE(companion->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, primary);
+    EXPECT_NEAR(companion->orbit->period / oneday, 12.3456, 1e-6);
+    EXPECT_NEAR(companion->orbit->semimajor_axis / AU, 2.34567, 1e-6);
+    EXPECT_NEAR(companion->orbit->eccentricity, 0.12345, 1e-6);
+    EXPECT_NEAR(companion->orbit->arg_periapsis * fiftyseven, 123.4567, 1e-5);
+    EXPECT_NEAR(companion->orbit->mean_anomaly * fiftyseven, 234.5678, 1e-5);
+    EXPECT_NEAR(companion->orbit->epoch, 2461234.5678, 0.01);
+    EXPECT_NEAR(companion->orbit->heliocentric_inclination * fiftyseven, 45.6789, 1e-5);
+    EXPECT_NEAR(companion->orbit->heliocentric_node * fiftyseven, 156.7890, 1e-5);
+    EXPECT_NEAR(companion->variability_period / oneday, 3.45678, 1e-6);
+    EXPECT_DOUBLE_EQ(companion->minmag, -0.12);
+    EXPECT_DOUBLE_EQ(companion->maxmag, 1.23);
+    EXPECT_NEAR(companion->epoch_max_brightness, 2451234.5678, 1e-4);
+    EXPECT_TRUE(companion->is_eclipsing_binary);
+    EXPECT_EQ(companion->Bonn_survey_declination, -2);
+    EXPECT_EQ(companion->Bonn_survey_sequential, 5958u);
+    EXPECT_EQ(companion->WD, "WD1008+290");
+    EXPECT_EQ(companion->gaia_wd_name, "WDJ101102.96+284506.66");
+    EXPECT_EQ(companion->gaia_source_id, 18446744073709551615ULL);
+    EXPECT_DOUBLE_EQ(companion->gaia_g_magnitude, 20.6447);
+    EXPECT_TRUE(companion->apparent_magnitude_estimated);
+    EXPECT_TRUE(companion->wd_color_valid);
+    EXPECT_EQ(companion->wd_color_red, 123);
+    EXPECT_EQ(companion->wd_color_green, 45);
+    EXPECT_EQ(companion->wd_color_blue, 255);
+    EXPECT_EQ(companion->wd_color_source, "observed spectrum fixture");
+    EXPECT_EQ(companion->wd_temperature_source, "catalog fixture");
+    EXPECT_EQ(companion->wd_color_revision, 18446744073709551615ULL);
+    file = tmpfile();
+    ASSERT_NE(file, nullptr);
+    primary->alienorumid.assign(15, 'x');
+    EXPECT_THROW(writer.write_condensed_star_cat_line(file, primary), std::runtime_error);
+    EXPECT_EQ(ftell(file), 0);
+    fclose(file);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, CondensedStarCatalogNameIsStable)
 {
     CatalogReader cr;
