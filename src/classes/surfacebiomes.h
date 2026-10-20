@@ -28,6 +28,15 @@ namespace alienorum
             }
         }
 
+        static double angular_bound(double radius, double strength = 1.0)
+        {
+            // Each gradient is bounded by two; interpolation is a convex combination.
+            // Both octaves together displace each Cartesian component by at most 76 m.
+            const double displacement = sqrt(3.0) * 76.0 * fabs(strength);
+            if (!(radius > displacement)) return 4.0;
+            return asin(displacement / radius) + 1.0e-12;
+        }
+
         std::pair<double, double> coordinates(double radius, double latitude, double longitude, double strength = 1.0)
         {
             if (radius <= 0 || strength == 0)

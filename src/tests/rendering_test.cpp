@@ -754,6 +754,42 @@ TEST_F(RenderingRegressionTest, DISABLED_CloudMotionGpuTimings)
     SDL_SetWindowSize(window, 192, 108);
 }
 
+TEST_F(RenderingRegressionTest, DISABLED_HorizonMotionCpuTimings)
+{
+    surface(true);
+    set(dispcx, 960.0);
+    set(dispcy, 540.0);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    ImGui::GetIO().DisplaySize = ImVec2(1920, 1080);
+    for (bool travel : {false, true})
+    {
+        double elapsed = 0;
+        uint64_t digest = 1469598103934665603ULL;
+        for (int frame = 0; frame < 8; ++frame)
+        {
+            viewer_lon = 0.4 + (travel ? frame * 0.00001 : 0);
+            azimuth = travel ? 0 : frame * 0.02;
+            const auto start = std::chrono::steady_clock::now();
+            find_horizon();
+            draw_horizon();
+            elapsed += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            const ImDrawList *draw = ImGui::GetBackgroundDrawList();
+            const auto hash = [&](const void *data, size_t size)
+            {
+                const auto *bytes = static_cast<const unsigned char*>(data);
+                for (size_t i = 0; i < size; ++i) digest = (digest ^ bytes[i]) * 1099511628211ULL;
+            };
+            hash(draw->VtxBuffer.Data, draw->VtxBuffer.Size * sizeof(ImDrawVert));
+            hash(draw->IdxBuffer.Data, draw->IdxBuffer.Size * sizeof(ImDrawIdx));
+            ImGui::EndFrame();
+            ImGui::NewFrame();
+        }
+        std::cout << (travel ? "Travel" : "Pan") << " horizon CPU: " << elapsed / 8
+            << " ms; geometry digest: " << digest << std::endl;
+    }
+}
+
 TEST_F(RenderingRegressionTest, RockFacesStayOpaqueAtEveryVisibleDistance)
 {
     surface();

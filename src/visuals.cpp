@@ -5290,6 +5290,7 @@ void draw_horizon()
             && p->estimate_surface_temperature() < 400;
         const bool surface_biomes = p && map && uses_rocky_map(cel->type) && water_favorable
             && (p->has_water || p->vegetation_r || p->vegetation_g);
+        const double biome_angle = SurfaceBiomes::angular_bound(surface_radius, shore_displacement);
         const auto surface_sample = [&](double latitude, double longitude)
         {
             if (!map)
@@ -5298,6 +5299,8 @@ void draw_horizon()
             }
             if (surface_biomes)
             {
+                RGB3 uniform_color;
+                if (map->color_within_cap(latitude, longitude, biome_angle, uniform_color)) return uniform_color;
                 const auto coord = biome_field.coordinates(surface_radius, latitude, longitude, shore_displacement);
                 return map->color_at(coord.first, coord.second);
             }

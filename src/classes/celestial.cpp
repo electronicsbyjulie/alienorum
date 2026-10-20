@@ -2078,6 +2078,26 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     return true;
 }
 
+bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color)
+{
+    if (generating_fic_texture || !is_complete() || !allocated
+        || !std::isfinite(lat) || !std::isfinite(lon) || !std::isfinite(angle)
+        || angle < 0 || fabs(lat) + angle >= half_pi) return false;
+
+    // A spherical cap fits inside this latitude/longitude rectangle. Decline at
+    // poles and the date line so pixel indices remain monotonic across it.
+    const double longitude_span = angle / cos(fabs(lat) + angle);
+    double wrapped = fmod(lon + _pi, 2 * _pi);
+    if (wrapped < 0) wrapped += 2 * _pi;
+    if (wrapped <= longitude_span || wrapped + longitude_span >= 2 * _pi) return false;
+    const double center = wrapped - _pi;
+    const unsigned int first = idx_of(lat + angle, center - longitude_span);
+    const unsigned int last = idx_of(lat - angle, center + longitude_span);
+    if (first != last || first == idx_not_ready || first >= allocated) return false;
+    color = RGB3(red_data[first], green_data[first], blue_data[first]);
+    return true;
+}
+
 RGB3 Map::color_at(double lat, double lon)
 {
     RGB3 result;

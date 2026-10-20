@@ -13,7 +13,7 @@ White dwarfs have multiple IDs and they should be searchable. For example, WD101
 
 Gliese 86 B the white dwarf star is not rendered when the user views from GJ 86 Ab the planet, unless the star is selected or tracked. Local system objects of sufficient brightness should be visible within the system no matter what.
 
-When moving along the surface of an inhabited planet in vm_horizon mode, something is drastically killing the frame rate. It's less bad when panning but still pretty bad. If this is because of the Perlin noise on the terrain boundaries, you can limit that by distance and show the current pixel's color past about 5 or 10 km (if you do this, put dev_dial on it and the developer will find the optimal threshold).
+[COMPLETED] When moving along the surface of an inhabited planet in vm_horizon mode, something is drastically killing the frame rate. It's less bad when panning but still pretty bad. If this is because of the Perlin noise on the terrain boundaries, you can limit that by distance and show the current pixel's color past about 5 or 10 km (if you do this, put dev_dial on it and the developer will find the optimal threshold). Fixed by skipping displacement only when its full angular bound stays inside one map pixel; original boundary detail is preserved.
 
 Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
 

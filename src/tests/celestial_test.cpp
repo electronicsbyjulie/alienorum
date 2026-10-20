@@ -6,9 +6,80 @@
 #include "../classes/celestial.h"
 #include "../classes/planet.h"
 #include "../classes/cat.h"
+#include "../classes/surfacebiomes.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class BiomePixelMap : public Map
+{
+    public:
+    BiomePixelMap()
+    {
+        image_width = 128;
+        image_height = 64;
+        allocated = image_width * image_height;
+        lon_scale = image_width / (2 * _pi);
+        lat_scale = image_height / _pi;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        for (unsigned long i = 0; i < allocated; ++i)
+        {
+            red_data[i] = i % 256;
+            green_data[i] = i / 256;
+            blue_data[i] = 137;
+        }
+        touch_gen();
+    }
+};
+
+TEST(MapTest, BiomeCapRejectsBoundariesPolesAndIncompleteMaps)
+{
+    BiomePixelMap map;
+    RGB3 color;
+    EXPECT_TRUE(map.color_within_cap(0.3, 0.4, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(0, 0.4, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(0.3, 0, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(half_pi, 0.4, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(-half_pi, 0.4, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(0.3, _pi, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(0.3, -_pi, 0.0001, color));
+    EXPECT_FALSE(map.color_within_cap(0.3, 0.4, SurfaceBiomes::angular_bound(1), color));
+    Map empty;
+    EXPECT_FALSE(empty.color_within_cap(0.3, 0.4, 0.0001, color));
+}
+
+TEST(MapTest, BiomeCapMatchesDisplacedColorsAcrossWorldsAndScales)
+{
+    BiomePixelMap map;
+    int shortcuts = 0;
+    for (unsigned int seed : {0u, 1u, 42u, 123456u})
+    {
+        SurfaceBiomes field(seed);
+        for (double radius : {1000.0, 100000.0, 6371000.0})
+        {
+            for (double strength : {-3.0, 0.0, 1.0, 10.0})
+            {
+                const double angle = SurfaceBiomes::angular_bound(radius, strength);
+                for (int i = 0; i < 5000; ++i)
+                {
+                    const double lat = -half_pi + _pi * (i + 0.5) / 5000;
+                    const double lon = -3 * _pi + 6 * _pi * ((i * 997) % 5000) / 5000;
+                    RGB3 color;
+                    if (!map.color_within_cap(lat, lon, angle, color)) continue;
+                    ++shortcuts;
+                    const auto displaced = field.coordinates(radius, lat, lon, strength);
+                    const RGB3 reference = map.color_at(displaced.first, displaced.second);
+                    ASSERT_EQ(color.r, reference.r);
+                    ASSERT_EQ(color.g, reference.g);
+                    ASSERT_EQ(color.b, reference.b);
+                }
+            }
+        }
+    }
+    EXPECT_GT(shortcuts, 100000);
+}
 
 class SkylineElevationMap : public Map
 {
