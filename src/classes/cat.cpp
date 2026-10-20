@@ -5222,6 +5222,16 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         if (comp <= 'Z')
         {
             s->make_companion_of(A, comp);
+            const std::string primary_id = std::string("HD") + std::to_string(A->HD);
+            if (!s->has_custom_name && A->HD && bdyname == primary_id + " " + comp
+                && (!s->HD || s->HD == A->HD) && s->BayerGrkno < 0
+                && s->FlamsteedNo <= 0 && s->GouldNo <= 0 && !strlen(s->Gliese))
+            {
+                const std::string display = lop_component(A->name) + " " + comp;
+                strcpy(s->name, display.c_str());
+                s->namelen = display.size();
+                s->origname = display;
+            }
         }
 
         read_field_onebased(buffer, 49, 63, field);

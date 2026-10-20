@@ -374,6 +374,7 @@ TEST_F(CatalogParsingTest, XiUrsaeMajorisCachedCompanionIsReusedAcrossOrbitImpor
         EXPECT_EQ(primary->multisys->get_member('C'), cached);
         EXPECT_EQ(primary->multisys->get_member('D'), nullptr);
         EXPECT_EQ(cached->orbit->center, primary);
+        EXPECT_STREQ(cached->name, "Xi Ursae Majoris C");
     }
     delete_the_universe();
 }
