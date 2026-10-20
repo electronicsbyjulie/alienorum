@@ -727,9 +727,9 @@ void set_center_objects()
             }
             if (brightest != primary)
             {
-                std::cerr << "Primary fainter than companion: " << primary->name
-                    << " (primary Mv " << primary->absolute_magnitude << "), " << brightest->name
-                    << " (companion Mv " << brightest->absolute_magnitude << ")." << std::endl;
+                std::cerr << "Primary fainter than companion: "
+                    << primary->name << " ( " << primary->spectral_type << " " << primary->absolute_magnitude << ") vs. "
+                    << brightest->name << " ( " << brightest->spectral_type << " " << brightest->absolute_magnitude << ")." << std::endl;
             }
         }
     }
