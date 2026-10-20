@@ -3,7 +3,7 @@
 
 [COMPLETED] White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.
 
-Gliese 86 B the white dwarf star is not rendered when the user views from GJ 86 Ab the planet, unless the star is selected or tracked. Local system objects of sufficient brightness should be visible within the system no matter what.
+[COMPLETED] Gliese 86 B the white dwarf star is not rendered when the user views from GJ 86 Ab the planet, unless the star is selected or tracked. Local system objects of sufficient brightness should be visible within the system no matter what.
 
 Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
 

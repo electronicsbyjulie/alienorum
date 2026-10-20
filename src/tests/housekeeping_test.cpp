@@ -15,6 +15,51 @@ using namespace alienorum;
 
 class HousekeepingTest : public UniverseFixture {};
 
+TEST_F(HousekeepingTest, LocalCompanionBypassesTheBackgroundVisibilityCache)
+{
+    struct RestoreFrame
+    {
+        CelestialObject *center = mycenobj;
+        CelestialLocation position = here;
+        int place = whereami, selection = selected, tracking = trackidx, editing = editidx;
+        ~RestoreFrame()
+        {
+            mycenobj = center;
+            here = position;
+            whereami = place;
+            selected = selection;
+            trackidx = tracking;
+            editidx = editing;
+        }
+    } restore;
+    make_star("Sol")->distance = 0;
+    Star *primary = make_star("Gliese 86");
+    primary->cenobj = primary;
+    primary->location.system_center = Point(0, 0, 10 * parsec);
+    Star *companion = make_star("Gliese 86 B");
+    companion->make_companion_of(primary, 'B');
+    companion->absolute_magnitude = 12;
+    companion->apparent_magnitude = 99;
+    companion->orbit->semimajor_axis = 20 * AU;
+    companion->orbit->period = 90 * oneyear;
+    Planet *world = make_planet(primary, "GJ 86 Ab", 0.1 * AU);
+    whereami = world->seqno;
+    mycenobj = primary;
+    here = primary->location;
+    here.local_position = Point(AU, 0, 0);
+    selected = trackidx = editidx = -1;
+    ASSERT_FALSE(companion->is_really_truly_in_visible_box(Point(here)));
+    EXPECT_TRUE(compute_object_location(companion));
+    EXPECT_TRUE(companion->tmp_vis_flag);
+    EXPECT_LT(companion->viewer_magnitude(here), normal_best_mag_limit);
+    Star *background = make_star("Distant unrelated WD");
+    background->cenobj = background;
+    background->apparent_magnitude = 99;
+    background->location.system_center = Point(parsec, 0, 0);
+    EXPECT_FALSE(compute_object_location(background));
+    delete_the_universe();
+}
+
 TEST_F(HousekeepingTest, BrightCompanionReportIsGatedAndListsEachSystemOnce)
 {
     make_star("Sol")->distance = 0;
@@ -44,8 +89,8 @@ TEST_F(HousekeepingTest, BrightCompanionReportIsGatedAndListsEachSystemOnce)
     showfails = saved_showfails;
     std::cerr.rdbuf(original);
     const std::string report = output.str();
-    EXPECT_NE(report.find("Review System (primary Mv 5)"), std::string::npos);
-    EXPECT_NE(report.find("Review System C (companion Mv 2)"), std::string::npos);
+    EXPECT_NE(report.find("Review System ( G2V 5)"), std::string::npos);
+    EXPECT_NE(report.find("Review System C ( G2V 2)"), std::string::npos);
     EXPECT_EQ(report.find("Normal System"), std::string::npos);
     EXPECT_EQ(std::count(report.begin(), report.end(), '\n'), 1);
     EXPECT_EQ(primary->multisys->get_member('A'), primary);

@@ -192,7 +192,8 @@ bool compute_object_location(CelestialObject* cel)
         // but only the first is guaranteed a Star by the case label we are standing in, and the
         // second form is what made the identical test in draw_objects() a genuine bad cast.
         if ((star_in_box = (i
-            ? (((Star*)cel)->is_in_visible_box(Point(here))
+            ? ((cel->cenobj == mycenobj && mycenobj)
+                || ((Star*)cel)->is_in_visible_box(Point(here))
                 || ((Star*)cel)->is_faved
                 || (cbolbls_selected_idx == lbltype_planets && (((Star*)cel)->has_planets >= planets_lblcut) )
                 || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cel)->has_hz_planets) )
