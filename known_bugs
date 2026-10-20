@@ -5,7 +5,7 @@
 
 [COMPLETED] Teleporting to MOA-2010-BLG-477L while the exoplanets are loading (F2 on a noexo run) causes a segfault.
 
-Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
+[COMPLETED] Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
 
 ...
 

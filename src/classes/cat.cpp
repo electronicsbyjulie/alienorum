@@ -5574,308 +5574,110 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
 
 void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 {
-    std::stringstream line;
-    line << s->alienorumid << std::flush;
-    int l = 15;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << std::string(s->name) << std::flush;
-    l += 40;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << s->RA_as_hms(0) << std::flush;
-    l += 11;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << s->Decl_as_degms() << std::flush;
-    l += 10;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << ((s->apparent_magnitude >= 0) ? "+" : "-");
-    if (fabs(s->apparent_magnitude) < 10) line << "0";
-    if (s->apparent_magnitude < 99) line << std::fixed << std::setprecision(2) << fabs(s->apparent_magnitude) << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << s->spectral_type << std::flush;
-    l += 16;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (!s->BV_color && s->WD.empty())
+    // These one-based ranges match read_condensed_star_cat(); SC2 fixes the metadata tail too.
+    std::string line(655, ' ');
+    const auto put = [&](size_t first, size_t last, const std::string &value)
     {
-        s->estimate_BV(s->estimate_temperature());
-    }
-    line << ((s->BV_color >= 0) ? "+" : "-");
-    if (fabs(s->BV_color) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->BV_color) << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (!s->UB_color && s->WD.empty())
+        if (value.size() > last - first + 1)
+            throw std::runtime_error("Star catalog field overflow at column " + std::to_string(first) + ": " + value);
+        line.replace(first - 1, value.size(), value);
+    };
+    const auto number = [](double value, int precision = 4, bool scientific = true)
     {
-        s->estimate_BV(s->estimate_temperature());
-    }
-    line << ((s->UB_color >= 0) ? "+" : "-");
-    if (fabs(s->UB_color) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->UB_color) << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->HD) line << s->HD << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->HIP) line << s->HIP << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->HR) line << s->HR << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->SB9) line << s->SB9 << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->FlamsteedNo > 0) line << s->FlamsteedNo << std::flush;
-    l += 4;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << s->Bayer << std::flush;
-    l += 8;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << s->Gliese << std::flush;
-    l += 16;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->GouldNo > 0) line << s->GouldNo << std::flush;
-    l += 4;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->Gouldcons[0] > 0) line << s->Gouldcons << std::flush;
-    l += 4;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->proper_motion_RA >= 0) line << " ";
-    line << std::scientific << std::setprecision(4) << s->proper_motion_RA << std::flush;
-    l += 12;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->proper_motion_decl >= 0) line << " ";
-    line << std::scientific << std::setprecision(4) << s->proper_motion_decl << std::flush;
-    l += 12;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->radial_velocity >= 0) line << " ";
-    line << std::scientific << std::setprecision(4) << s->radial_velocity << std::flush;
-    l += 12;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << std::scientific << std::setprecision(4) << s->parallax << std::flush;
-    l += 12;
-    line << std::string(l - line.str().size(), ' ') << std::flush;
-
-    line << std::scientific << std::setprecision(4) << (s->distance / light_year) << std::flush;
-    l += 12;
-    line << std::string(l - line.str().size(), ' ');
-
+        std::ostringstream out;
+        out.imbue(std::locale::classic());
+        if (scientific) out << std::scientific;
+        else out << std::fixed;
+        out << std::setprecision(precision) << value;
+        return out.str();
+    };
+    const auto magnitude = [&](double value)
+    {
+        if (!std::isfinite(value) || fabs(value) >= 99) return std::string(value < 0 ? "-" : "+");
+        std::ostringstream out;
+        out.imbue(std::locale::classic());
+        out << std::showpos << std::internal << std::setfill('0') << std::setw(6)
+            << std::fixed << std::setprecision(2) << value;
+        return out.str();
+    };
+    put(1, 14, s->alienorumid);
+    put(16, 54, s->name);
+    put(56, 65, s->RA_as_hms(0));
+    put(67, 75, s->Decl_as_degms());
+    put(77, 82, magnitude(s->apparent_magnitude));
+    put(84, 98, s->spectral_type);
+    if (!s->BV_color && s->WD.empty()) s->estimate_BV(s->estimate_temperature());
+    if (!s->UB_color && s->WD.empty()) s->estimate_UB(s->estimate_temperature());
+    put(100, 105, magnitude(s->BV_color));
+    put(107, 112, magnitude(s->UB_color));
+    if (s->HD) put(114, 119, std::to_string(s->HD));
+    if (s->HIP) put(121, 126, std::to_string(s->HIP));
+    if (s->HR) put(128, 133, std::to_string(s->HR));
+    if (s->SB9) put(135, 140, std::to_string(s->SB9));
+    if (s->FlamsteedNo > 0) put(142, 144, std::to_string(s->FlamsteedNo));
+    put(146, 152, s->Bayer);
+    put(154, 168, s->Gliese);
+    if (s->GouldNo > 0) put(170, 172, std::to_string(s->GouldNo));
+    put(174, 176, s->Gouldcons);
+    put(178, 188, number(s->proper_motion_RA));
+    put(190, 200, number(s->proper_motion_decl));
+    put(202, 212, number(s->radial_velocity));
+    put(214, 224, number(s->parallax));
+    put(226, 236, number(s->distance / light_year));
     if (!s->absolute_magnitude)
     {
-        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        const double brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
+        s->absolute_magnitude = -log(brightness) * invlogmagnbase;
     }
-    line << ((s->absolute_magnitude >= 0) ? "+" : "-");
-    if (fabs(s->absolute_magnitude) < 10) line << "0";
-    line << std::fixed << std::setprecision(2) << fabs(s->absolute_magnitude) << std::flush;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->mass)
+    put(238, 243, magnitude(s->absolute_magnitude));
+    if (s->mass) put(245, 255, number(s->mass / solar_mass));
+    if (s->volumetric_mean_radius) put(257, 267, number(s->volumetric_mean_radius / solar_radius));
+    if (s->temperature) put(269, 274, std::to_string(static_cast<int>(s->temperature)));
+    if (s->sidereal_rotational_period) put(276, 285, number(s->sidereal_rotational_period / oneday, 3, false));
+    if (s->orbit)
     {
-        double M = s->mass / solar_mass;
-        line << std::scientific << std::setprecision(4) << M << std::flush;
+        const Orbit &orbit = *s->orbit;
+        if (orbit.center) put(287, 300, static_cast<Star*>(orbit.center)->alienorumid);
+        if (orbit.period) put(302, 313, number(orbit.period / oneday, 5));
+        if (orbit.semimajor_axis) put(315, 326, number(orbit.semimajor_axis / AU, 5));
+        if (orbit.eccentricity) put(328, 339, number(orbit.eccentricity, 5, false));
+        const auto angle = [&](size_t first, size_t last, double radians)
+        {
+            if (radians) put(first, last, number(fmod(fmod(radians * fiftyseven, 360) + 360, 360), 4, false));
+        };
+        angle(341, 348, orbit.arg_periapsis);
+        angle(350, 357, orbit.mean_anomaly);
+        if (orbit.epoch && (orbit.mean_anomaly || fabs(orbit.epoch - J2000) > 0.001)) put(359, 372, number(orbit.epoch, 8));
+        angle(374, 381, orbit.heliocentric_inclination);
+        angle(383, 390, orbit.heliocentric_node);
     }
-    l += 12;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->volumetric_mean_radius)
-    {
-        double R = s->volumetric_mean_radius / solar_radius;
-        line << std::scientific << std::setprecision(4) << R << std::flush;
-    }
-    l += 12;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->temperature)
-    {
-        int T = s->temperature;
-        if (T < 100000) line << " ";
-        if (T <  10000) line << " ";
-        if (T <   1000) line << " ";
-        if (T <    100) line << " ";
-        if (T <     10) line << " ";
-        line << std::fixed << T << std::flush;
-    }
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->sidereal_rotational_period)
-    {
-        double P = s->sidereal_rotational_period / oneday;
-        if (P < 100000) line << " ";
-        if (P <  10000) line << " ";
-        if (P <   1000) line << " ";
-        if (P <    100) line << " ";
-        if (P <     10) line << " ";
-        line << std::fixed << std::setprecision(3) << P << std::flush;
-    }
-    l += 11;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->center) line << ((Star*)s->orbit->center)->alienorumid;
-    l += 15;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->period) line << std::scientific << std::setprecision(5) << (s->orbit->period / oneday);
-    l += 13;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->semimajor_axis) line << std::scientific << std::setprecision(5) << (s->orbit->semimajor_axis / AU);
-    l += 13;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->eccentricity) line << std::fixed << std::setprecision(5) << (s->orbit->eccentricity);
-    l += 13;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->arg_periapsis)
-    {
-        double omega = s->orbit->arg_periapsis * fiftyseven;
-        if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
-    }
-    l += 9;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->mean_anomaly)
-    {
-        double omega = s->orbit->mean_anomaly * fiftyseven;
-        if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
-    }
-    l += 9;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->epoch && (s->orbit->mean_anomaly || (fabs(s->orbit->epoch - J2000) > 0.001)))
-        line << std::scientific << std::setprecision(8) << s->orbit->epoch;
-    l += 15;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->heliocentric_inclination)
-    {
-        double omega = s->orbit->heliocentric_inclination * fiftyseven;
-        if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
-    }
-    l += 9;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->orbit && s->orbit->heliocentric_node)
-    {
-        double omega = s->orbit->heliocentric_node * fiftyseven;
-        if (omega < 0) omega += 360;
-        if (omega < 100) line << " ";
-        if (omega <  10) line << " ";
-        line << std::fixed << std::setprecision(4) << omega << std::flush;
-    }
-    l += 9;
-    line << std::string(l - line.str().size(), ' ');
-
-    // Variability
-    // TODO:
-    if (s->variability_period) line << std::scientific << (s->variability_period / oneday);
-    l += 13;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->minmag)
-    {
-        line << ((s->minmag >= 0) ? "+" : "-");
-        if (fabs(s->minmag) < 10) line << "0";
-        line << std::fixed << std::setprecision(2) << fabs(s->minmag) << std::flush;
-    }
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->maxmag)
-    {
-        line << ((s->maxmag >= 0) ? "+" : "-");
-        if (fabs(s->maxmag) < 10) line << "0";
-        line << std::fixed << std::setprecision(2) << fabs(s->maxmag) << std::flush;
-    }
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->variability_period && s->epoch_max_brightness)
-        line << std::fixed << std::setprecision(4) << s->epoch_max_brightness;
-    l += 18;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->variability_period && s->is_eclipsing_binary) line << "E";
-    l += 2;
-    line << std::string(l - line.str().size(), ' ');
-
-    // Durchmusterung (BD/CD/CP) designation, kept so re-derived caches and later-loaded catalogs
-    // (SB9, CCDM) can still cross-reference stars that carry no HD/HIP -- see bonn_survey_key().
-    if (s->Bonn_survey[0]) line << s->Bonn_survey[0] << s->Bonn_survey[1];
-    l += 3;
-    line << std::string(l - line.str().size(), ' ');
-
+    if (s->variability_period) put(392, 403, number(s->variability_period / oneday, 5));
+    if (s->minmag) put(405, 410, magnitude(s->minmag));
+    if (s->maxmag) put(412, 417, magnitude(s->maxmag));
+    if (s->variability_period && s->epoch_max_brightness) put(419, 435, number(s->epoch_max_brightness, 4, false));
+    if (s->variability_period && s->is_eclipsing_binary) put(437, 437, "E");
     if (s->Bonn_survey[0])
     {
-        line << ((s->Bonn_survey_declination >= 0) ? "+" : "-");
-        if (abs(s->Bonn_survey_declination) < 10) line << "0";
-        line << abs(s->Bonn_survey_declination) << std::flush;
+        put(439, 440, std::string(s->Bonn_survey, 2));
+        put(442, 445, (s->Bonn_survey_declination < 0 ? "-" : "+") + std::to_string(abs(s->Bonn_survey_declination)));
+        put(447, 452, std::to_string(s->Bonn_survey_sequential));
     }
-    l += 5;
-    line << std::string(l - line.str().size(), ' ');
-
-    if (s->Bonn_survey[0]) line << s->Bonn_survey_sequential;
-    l += 7;
-    line << std::string(l - line.str().size(), ' ');
-
-    // has_custom_name: not derivable from anything else in this format, and unlike every other
-    // field here it's read back into a struct member that starts false, so simply never touching
-    // it doesn't leave it correct by omission -- every reload from this cache silently forgot
-    // which stars had a settled name (a proper name from starname.dat, a hardcoded exception like
-    // 55 Cnc B) versus one still open to Bayer/Flamsteed re-derivation. Concretely: any named
-    // companion star that read_star_orbits_dat() also processes (make_companion_of() gates on this
-    // exact flag) got silently renamed back to its Bayer designation on the *second* load from a
-    // cache that had it right the first time -- e.g. Alpha Centauri B, "Toliman" -> "Alpha 2
-    // Centauri", only after closing and reopening once the correct name was already baked in.
-    if (s->has_custom_name) line << "Y";
-    l += 2;
-    line << std::string(l - line.str().size(), ' ');
-
-    line << s->WD;
-    l += 13;
-    line << std::string(l - line.str().size(), ' ');
-    line << '\t' << std::quoted(s->gaia_wd_name) << ' ' << s->gaia_source_id << ' '
-         << std::scientific << std::setprecision(10) << s->gaia_g_magnitude << ' '
-         << s->apparent_magnitude_estimated << ' ' << s->wd_color_valid << ' '
-         << (unsigned int)s->wd_color_red << ' ' << (unsigned int)s->wd_color_green << ' '
-         << (unsigned int)s->wd_color_blue << ' ' << std::quoted(s->wd_color_source)
-         << " WDC1 " << std::quoted(s->wd_temperature_source) << ' ' << s->wd_color_revision;
-
-    // std::cout << line << std::endl;
-    line << std::string("\n");
-    fputs(line.str().c_str(), fp);
+    if (s->has_custom_name) put(454, 454, "Y");
+    put(456, 467, s->WD);
+    put(469, 471, "SC2");
+    put(473, 512, s->gaia_wd_name);
+    put(514, 533, std::to_string(s->gaia_source_id));
+    put(535, 552, number(s->gaia_g_magnitude, 10));
+    put(554, 554, s->apparent_magnitude_estimated ? "1" : "0");
+    put(556, 556, s->wd_color_valid ? "1" : "0");
+    put(558, 560, std::to_string(s->wd_color_red));
+    put(562, 564, std::to_string(s->wd_color_green));
+    put(566, 568, std::to_string(s->wd_color_blue));
+    put(570, 601, s->wd_color_source);
+    put(603, 634, s->wd_temperature_source);
+    put(636, 655, std::to_string(s->wd_color_revision));
+    line += '\n';
+    fputs(line.c_str(), fp);
 }
 
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
@@ -6304,7 +6106,33 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 456, 467, field);
         s->WD = trim(field);
-        if (strlen(buffer) > 468)
+        read_field_onebased(buffer, 469, 471, field);
+        if (!strcmp(field, "SC2"))
+        {
+            read_field_onebased(buffer, 473, 512, field);
+            s->gaia_wd_name = trim(field);
+            read_field_onebased(buffer, 514, 533, field);
+            s->gaia_source_id = strtoull(field, nullptr, 10);
+            read_field_onebased(buffer, 535, 552, field);
+            s->gaia_g_magnitude = atof(field);
+            read_field_onebased(buffer, 554, 554, field);
+            s->apparent_magnitude_estimated = field[0] == '1';
+            read_field_onebased(buffer, 556, 556, field);
+            s->wd_color_valid = field[0] == '1';
+            read_field_onebased(buffer, 558, 560, field);
+            s->wd_color_red = std::clamp(atoi(field), 0, 255);
+            read_field_onebased(buffer, 562, 564, field);
+            s->wd_color_green = std::clamp(atoi(field), 0, 255);
+            read_field_onebased(buffer, 566, 568, field);
+            s->wd_color_blue = std::clamp(atoi(field), 0, 255);
+            read_field_onebased(buffer, 570, 601, field);
+            s->wd_color_source = trim(field);
+            read_field_onebased(buffer, 603, 634, field);
+            s->wd_temperature_source = trim(field);
+            read_field_onebased(buffer, 636, 655, field);
+            s->wd_color_revision = strtoull(field, nullptr, 10);
+        }
+        else if (strlen(buffer) > 468)
         {
             std::istringstream metadata(buffer + 468);
             metadata >> std::quoted(s->gaia_wd_name) >> s->gaia_source_id
@@ -6343,13 +6171,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         s->HIP = atoi(field);
         hipcache[s->HIP] = s;
 
-        read_field_onebased(buffer, 128, 132, field);
+        read_field_onebased(buffer, 128, 133, field);
         s->HR = atoi(field);
 
-        read_field_onebased(buffer, 134, 140, field);
-        s->HR = atoi(field);
+        read_field_onebased(buffer, 135, 140, field);
+        s->SB9 = atoi(field);
 
-        read_field_onebased(buffer, 142, 145, field);
+        read_field_onebased(buffer, 142, 144, field);
         s->FlamsteedNo = atoi(field);
 
         read_field_onebased(buffer, 146, 152, field);
@@ -6415,10 +6243,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 202, 212, field);
         s->radial_velocity = atof(field);
 
-        read_field_onebased(buffer, 214, 223, field);
+        read_field_onebased(buffer, 214, 224, field);
         s->parallax = atof(field);
 
-        read_field_onebased(buffer, 224, 235, field);
+        read_field_onebased(buffer, 226, 236, field);
         s->distance = atof(field) * light_year;
         s->update_location(simnow);
         if (s->parallax > 0) s->distance_known = true;
@@ -6426,11 +6254,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 238, 243, field);
         s->absolute_magnitude = atof(field);
 
-        read_field_onebased(buffer, 245, 254, field);
+        read_field_onebased(buffer, 245, 255, field);
         s->mass = atof(field) * solar_mass;
         if (s->mass < jupiter_mass) s->mass = s->estimate_mass();
 
-        read_field_onebased(buffer, 257, 266, field);
+        read_field_onebased(buffer, 257, 267, field);
         s->volumetric_mean_radius = atof(field) * solar_radius;
         if (!(s->volumetric_mean_radius > 0) || !std::isfinite(s->volumetric_mean_radius) ||
             (!s->is_white_dwarf() && s->volumetric_mean_radius < 0.5 * jupiter_radius))
@@ -6438,7 +6266,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->volumetric_mean_radius = s->estimate_radius();
         }
 
-        read_field_onebased(buffer, 268, 274, field);
+        read_field_onebased(buffer, 269, 274, field);
         s->temperature = atof(field);
 
         read_field_onebased(buffer, 276, 285, field);
@@ -6453,13 +6281,13 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->center_name = str;
         }
 
-        read_field_onebased(buffer, 302, 312, field);
+        read_field_onebased(buffer, 302, 313, field);
         if (s->orbit) s->orbit->period = atof(field) * oneday;
 
         read_field_onebased(buffer, 315, 326, field);
         if (s->orbit) s->orbit->semimajor_axis = atof(field) * AU;
 
-        read_field_onebased(buffer, 328, 334, field);
+        read_field_onebased(buffer, 328, 339, field);
         if (s->orbit) s->orbit->eccentricity = atof(field);
 
         read_field_onebased(buffer, 341, 348, field);
