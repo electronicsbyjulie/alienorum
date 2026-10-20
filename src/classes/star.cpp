@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <mutex>
+#include <set>
 #include "cons.h"
 #include "planet.h"
 #include "wdcolor.h"
@@ -18,6 +19,27 @@ Star **hdcache = nullptr, **hipcache = nullptr;
 std::map<std::string, Star*> dmcache;
 std::vector<Star*> favestars;
 bool show_favestars = false, label_favestars = true;
+static std::map<std::string, std::set<Star*>> catalog_alias_index;
+static std::mutex catalog_alias_mutex;
+
+void Star::add_catalog_alias(const std::string &alias)
+{
+    std::lock_guard<std::mutex> lock(catalog_alias_mutex);
+    if (alias.empty()) return;
+    if (std::find(catalog_aliases.begin(), catalog_aliases.end(), alias) == catalog_aliases.end())
+    {
+        catalog_aliases.push_back(alias);
+    }
+    catalog_alias_index[stellar_alias_key(alias)].insert(this);
+}
+
+std::vector<Star*> alienorum::stellar_alias_matches(const std::string &identifier)
+{
+    std::lock_guard<std::mutex> lock(catalog_alias_mutex);
+    const auto found = catalog_alias_index.find(stellar_alias_key(identifier));
+    if (found == catalog_alias_index.end()) return {};
+    return {found->second.begin(), found->second.end()};
+}
 
 // Canonical key for a Durchmusterung designation, e.g. survey="BD", declination=-2, sequential=5958
 // -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().
@@ -80,6 +102,16 @@ Star::Star()
     memset(constellation, 0, 4*sizeof(char));
     memset(Gliese, 0, 16*sizeof(char));
     // sidereal_rotational_period = 25 * oneday;            // Sun
+}
+
+std::string alienorum::stellar_alias_key(const std::string &identifier)
+{
+    std::string key;
+    for (unsigned char c : identifier)
+    {
+        if (c > ' ') key += c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
+    }
+    return key;
 }
 
 std::string alienorum::wd_identifier_key(const std::string &identifier)
@@ -370,6 +402,14 @@ bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
 
 Star::~Star()
 {
+    std::lock_guard<std::mutex> lock(catalog_alias_mutex);
+    for (const auto &alias : catalog_aliases)
+    {
+        const auto entry = catalog_alias_index.find(stellar_alias_key(alias));
+        if (entry == catalog_alias_index.end()) continue;
+        entry->second.erase(this);
+        if (entry->second.empty()) catalog_alias_index.erase(entry);
+    }
     if (orbit) delete orbit;
 }
 
@@ -1522,6 +1562,7 @@ json Star::to_json()
     towrite["SB9"] = SB9;
     towrite["CCDM"] = CCDM;
     towrite["WD"] = WD;
+    if (!catalog_aliases.empty()) towrite["catalog_aliases"] = catalog_aliases;
     towrite["gaia_wd_name"] = gaia_wd_name;
     towrite["gaia_source_id"] = gaia_source_id;
     towrite["gaia_g_magnitude"] = gaia_g_magnitude;
@@ -1601,6 +1642,10 @@ bool Star::from_json(json j)
     if (j.contains("gaia_wd_name") && j["gaia_wd_name"].is_string())
     {
         j["gaia_wd_name"].get_to(gaia_wd_name);
+    }
+    if (j.contains("catalog_aliases") && j["catalog_aliases"].is_array())
+    {
+        for (const auto &alias : j.at("catalog_aliases")) add_catalog_alias(alias.get<std::string>());
     }
     if (j.contains("gaia_source_id") && j["gaia_source_id"].is_number_unsigned())
     {

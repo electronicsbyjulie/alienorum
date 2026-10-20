@@ -727,6 +727,26 @@ TEST_F(FindObjectTest, ExactNameWins)
     delete_the_universe();
 }
 
+TEST_F(FindObjectTest, WhiteDwarfAliasesSurviveJsonAndRejectAmbiguity)
+{
+    Star *target = make_star("WD1008+290");
+    target->WD = "WD1008+290";
+    target->add_catalog_alias("WD1011+2845");
+    target->add_catalog_alias("LHS2229");
+    EXPECT_EQ(find_object("LHS 2229", true), target->seqno);
+    EXPECT_EQ(find_object("WD1011+2845", true), target->seqno);
+    const auto data = target->to_json();
+    Star restored;
+    restored.from_json(data);
+    EXPECT_EQ(restored.catalog_aliases, target->catalog_aliases);
+    Star *other = make_star("Other WD");
+    other->add_catalog_alias("LHS2229");
+    EXPECT_EQ(find_object("LHS 2229", true), -1);
+    Star *canonical = make_star("LHS2229");
+    EXPECT_EQ(find_object("LHS2229", true), canonical->seqno);
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, ToleratesAMisspelling)
 {
     Star* a = make_star("Betelgeuse");

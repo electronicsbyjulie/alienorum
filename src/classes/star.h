@@ -37,6 +37,8 @@ namespace alienorum
         char constellation[4] = {0,0,0,0};
         char Gouldcons[4] = {0,0,0,0};
         std::string CCDM, WD;
+        std::vector<std::string> catalog_aliases;
+        void add_catalog_alias(const std::string &alias);
         std::string gaia_wd_name;
         uint64_t gaia_source_id = 0;
         double gaia_g_magnitude = 1e29;
@@ -157,6 +159,8 @@ namespace alienorum
 
     stellar_regime_t stellar_regime(CelestialObject *cel);
     std::string wd_identifier_key(const std::string &identifier);
+    std::string stellar_alias_key(const std::string &identifier);
+    std::vector<Star*> stellar_alias_matches(const std::string &identifier);
     std::string wd_color_gaia_identifier(const std::string &identifier);
     uint64_t wd_color_data_revision();
     int associate_wd_color_identifiers(CelestialObject **objects);

@@ -1,22 +1,10 @@
 
-[COMPLETED] Dependent on the showfails boolean, output names of systems during program load where the primary star is not the intrinsically brightest star of the system, so that these can be checked manually. Internally, we lean toward designating the most massive member as the primary, and there are systems that legitimately have a companion star as the brightest.
-
 [skip for now, want to discuss later] Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
 
-[COMPLETED] Teleporting to MOA-2010-BLG-477L while the exoplanets are loading (F2 on a noexo run) causes a segfault.
-
-[COMPLETED] Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
-
-...
-
-White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.
+[COMPLETED] White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.
 
 Gliese 86 B the white dwarf star is not rendered when the user views from GJ 86 Ab the planet, unless the star is selected or tracked. Local system objects of sufficient brightness should be visible within the system no matter what.
 
-[COMPLETED] When moving along the surface of an inhabited planet in vm_horizon mode, something is drastically killing the frame rate. It's less bad when panning but still pretty bad. If this is because of the Perlin noise on the terrain boundaries, you can limit that by distance and show the current pixel's color past about 5 or 10 km (if you do this, put dev_dial on it and the developer will find the optimal threshold). Fixed by skipping displacement only when its full angular bound stays inside one map pixel; original boundary detail is preserved.
-
 Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
 
-The End key is a loophole around time dilation. Holding down + gets the viewer closer and closer to the speed of light, while never reaching it due to relativity. But if the viewer presses End, their speed increases past c in to warp speed and bypasses the relativistic effects. End should apply the same relativistic calculations as +; the only way to go to warp should be pressing W.
-
-[COMPLETED] star_orbits.dat takes a long time to load. Fixed by indexing exact star identifiers once per import instead of repeatedly scanning the catalog.
+The End key is a loophole around time dilation, and shouldn't be. Holding down + gets the viewer closer and closer to the speed of light, while never reaching it due to relativity. But if the viewer presses End, their speed increases past c in to warp speed and bypasses the relativistic effects. End should apply the same relativistic calculations as +; the only way to go to warp should be pressing W.

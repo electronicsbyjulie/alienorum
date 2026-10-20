@@ -129,6 +129,7 @@ void ExactStarSearchIndex::add(int index, const Star &star)
         if (std::find(entries.begin(), entries.end(), index) == entries.end()) entries.push_back(index);
     };
     record(names, search_key(star.name));
+    for (const auto &alias : star.catalog_aliases) record(aliases, stellar_alias_key(alias));
     for (const std::string &alias : {star.local_name, std::string(star.Bayer),
         std::string(star.Flamsteed), star.alienorumid})
     {
@@ -159,6 +160,7 @@ std::vector<int> ExactStarSearchIndex::candidates(const char *term) const
         result.insert(result.end(), entry->second.begin(), entry->second.end());
     }
     collect(aliases, key);
+    collect(aliases, stellar_alias_key(term));
     collect(gliese, search_numbers(term));
     if (looks_like_Bayer(term)) collect(greek, grkno_from_abbrev(term));
     const int number = atoi(term);
@@ -169,7 +171,7 @@ std::vector<int> ExactStarSearchIndex::candidates(const char *term) const
     return result;
 }
 
-int find_object(const char* search_term, bool os, double ml, int levreq, const ExactStarSearchIndex *index)
+static int find_object_impl(const char* search_term, bool os, double ml, int levreq, const ExactStarSearchIndex *index)
 {
     const bool indexed = index && os && levreq == 1;
     const std::vector<int> candidates = indexed ? index->candidates(search_term) : std::vector<int>();
@@ -556,6 +558,36 @@ int find_object(const char* search_term, bool os, double ml, int levreq, const E
             search_term << " with a Damerau-Levenshtein requirement of " << levreq << "." << std::endl << std::flush;
     #endif
 
+    return result;
+}
+
+int find_object(const char *term, bool stars, double limit, int distance, const ExactStarSearchIndex *index)
+{
+    const auto aliases = stellar_alias_matches(term);
+    if (aliases.empty()) return find_object_impl(term, stars, limit, distance, index);
+    // Established object identifiers retain priority over imported aliases.
+    const int exact = find_object_impl(term, stars, limit, 1, index);
+    if (exact >= 0) return exact;
+    const std::string wd_key = wd_identifier_key(term);
+    if (!wd_key.empty())
+    {
+        // A rejected canonical WD designation remains rejected even when a
+        // source lists that designation as an alias of one candidate.
+        for (int object = 0; cels[object]; ++object)
+        {
+            if (cels[object]->deleted || cels[object]->typeclass() != class_star) continue;
+            const Star *match = static_cast<Star*>(cels[object]);
+            if (wd_identifier_key(match->WD) == wd_key || wd_identifier_key(match->name) == wd_key) return -1;
+        }
+    }
+    int result = -1;
+    for (Star *match : aliases)
+    {
+        const int object = match->seqno;
+        if (object < 0 || object >= ncelobjs || cels[object] != match || match->deleted) continue;
+        if (result >= 0 && result != object) return -1;
+        result = object;
+    }
     return result;
 }
 

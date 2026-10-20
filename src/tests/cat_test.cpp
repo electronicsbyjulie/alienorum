@@ -529,6 +529,8 @@ TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometr
 
 TEST_F(CatalogParsingTest, WhiteDwarfsMergeMeasurementsAndSurviveReload)
 {
+    // Initialize published identities before switching to the fixture catalog.
+    wd_color_data_revision();
     Star::load_main_seq_dat();
     std::vector<Star*> test_hd(MAX_HD + 1, nullptr);
     std::vector<Star*> test_hip(MAX_HIP + 1, nullptr);
@@ -1397,6 +1399,8 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     companion->Bonn_survey_declination = -2;
     companion->Bonn_survey_sequential = 5958;
     companion->WD = "WD1008+290";
+    companion->add_catalog_alias("LHS2229");
+    companion->add_catalog_alias("WD1011+2845");
     companion->gaia_wd_name = "WDJ101102.96+284506.66";
     companion->gaia_source_id = 18446744073709551615ULL;
     companion->gaia_g_magnitude = 20.6447;
@@ -1424,7 +1428,7 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     EXPECT_EQ(row.substr(127, 6), "4374  ");
     EXPECT_EQ(row.substr(134, 6), "1256  ");
     ASSERT_TRUE(static_cast<bool>(std::getline(input, row)));
-    EXPECT_EQ(row.size(), 655u);
+    EXPECT_GT(row.size(), 655u);
     EXPECT_EQ(row.substr(468, 3), "SC2");
     EXPECT_EQ(row.substr(513, 20), "18446744073709551615");
     EXPECT_EQ(row.substr(635, 20), "18446744073709551615");
@@ -1458,6 +1462,8 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     EXPECT_EQ(companion->Bonn_survey_declination, -2);
     EXPECT_EQ(companion->Bonn_survey_sequential, 5958u);
     EXPECT_EQ(companion->WD, "WD1008+290");
+    EXPECT_EQ(find_object("LHS 2229", true), companion->seqno);
+    EXPECT_EQ(find_object("WD1011+2845", true), companion->seqno);
     EXPECT_EQ(companion->gaia_wd_name, "WDJ101102.96+284506.66");
     EXPECT_EQ(companion->gaia_source_id, 18446744073709551615ULL);
     EXPECT_DOUBLE_EQ(companion->gaia_g_magnitude, 20.6447);

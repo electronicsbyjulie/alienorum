@@ -2332,6 +2332,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         WdRecord &record = records[key];
         if (record.id.empty()) record.id = name;
         record.aliases.insert(record.aliases.end(), aliases.begin(), aliases.end());
+        record.aliases.push_back(label);
         record.aliases.push_back(name);
         if (record.spectral.empty()) record.spectral = spectral;
         if (wd_observed_magnitude(visual)) record.visual.offer(visual, 1);
@@ -2586,6 +2587,15 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         // The fixed-width WD field is reserved for legacy B1950 identifiers.
         // Full J2000 identities travel in the Gaia metadata instead.
         s->WD = r.id.compare(0, 3, "WDJ") == 0 ? "" : r.id;
+        for (const auto &alias : r.aliases)
+        {
+            const std::string key = stellar_alias_key(alias);
+            if (key.empty() || key.find('=') != std::string::npos ||
+                key.rfind("GAIA", 0) == 0 || key.rfind("SDSS", 0) == 0 || key.rfind("2MASS", 0) == 0) continue;
+            const auto canonical = records.find(wd_identifier_key(alias));
+            if (canonical != records.end() && canonical->first != wd_identifier_key(r.id)) continue;
+            s->add_catalog_alias(alias);
+        }
         if (gaia)
         {
             s->gaia_wd_name = gaia->name;
@@ -5682,6 +5692,13 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     put(570, 601, s->wd_color_source);
     put(603, 634, s->wd_temperature_source);
     put(636, 655, std::to_string(s->wd_color_revision));
+    if (!s->catalog_aliases.empty())
+    {
+        std::ostringstream aliases;
+        aliases << " ALS1";
+        for (const auto &alias : s->catalog_aliases) aliases << ' ' << std::quoted(alias);
+        line += aliases.str();
+    }
     line += '\n';
     fputs(line.c_str(), fp);
 }
@@ -6024,7 +6041,7 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
     int num_read = 0, i, j;
-    char buffer[1024];
+    char buffer[16384];
     char field[64];
     double f, deg, mnt, sec;
 
@@ -6054,7 +6071,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     if (!fp) return 0;
 
-    while (fgets(buffer, 1022, fp))
+    while (fgets(buffer, sizeof(buffer), fp))
     {
         if (abort_load) { fclose(fp); return num_read; }
         Star *s = new Star();
@@ -6112,6 +6129,15 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 456, 467, field);
         s->WD = trim(field);
+        if (strlen(buffer) > 655)
+        {
+            std::istringstream aliases(buffer + 655);
+            std::string version, alias;
+            if (aliases >> version && version == "ALS1")
+            {
+                while (aliases >> std::quoted(alias)) s->add_catalog_alias(alias);
+            }
+        }
         read_field_onebased(buffer, 469, 471, field);
         if (!strcmp(field, "SC2"))
         {
