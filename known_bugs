@@ -1,10 +1,2 @@
 
-[skip for now, want to discuss later] Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
-
-[COMPLETED] White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.
-
-[COMPLETED] Gliese 86 B the white dwarf star is not rendered when the user views from GJ 86 Ab the planet, unless the star is selected or tracked. Local system objects of sufficient brightness should be visible within the system no matter what.
-
-[COMPLETED] Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
-
-[COMPLETED] The End key is a loophole around time dilation, and shouldn't be. Holding down + gets the viewer closer and closer to the speed of light, while never reaching it due to relativity. But if the viewer presses End, their speed increases past c in to warp speed and bypasses the relativistic effects. End should apply the same relativistic calculations as +; the only way to go to warp should be pressing W.
+Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
