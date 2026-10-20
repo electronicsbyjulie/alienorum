@@ -113,9 +113,9 @@ static std::string search_numbers(const std::string &value)
     return key;
 }
 
-ExactStarSearchIndex::ExactStarSearchIndex()
+ExactStarSearchIndex::ExactStarSearchIndex(int first_star)
 {
-    for (int index = 0; cels[index]; ++index)
+    for (int index = first_star; cels[index]; ++index)
     {
         if (cels[index]->typeclass() == class_star) add(index, *static_cast<Star*>(cels[index]));
     }

@@ -23,7 +23,7 @@ namespace alienorum
         std::vector<int> white_dwarfs;
 
         public:
-        ExactStarSearchIndex();
+        explicit ExactStarSearchIndex(int first_star = 0);
         void add(int index, const Star &star);
         std::vector<int> candidates(const char *term) const;
     };

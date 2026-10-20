@@ -4141,6 +4141,10 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             }
         }
 
+        bool have_companion_plane = false;
+        double companion_inclination = 0, companion_node = 0;
+        std::vector<bool> unknown_inclinations;
+        for (double inclination : pincls) unknown_inclinations.push_back(inclination == 0);
         if (s->multisys)
         {
             for (char c = 'A'; c <= 'Z'; c++)
@@ -4150,6 +4154,12 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                 {
                     cincls.push_back(comp->orbit->heliocentric_inclination);
                     cnodes.push_back(comp->orbit->heliocentric_node);
+                    if (!have_companion_plane && (cincls.back() || cnodes.back()))
+                    {
+                        companion_inclination = cincls.back();
+                        companion_node = cnodes.back();
+                        have_companion_plane = true;
+                    }
                 }
             }
         }
@@ -4169,6 +4179,34 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             sys_planets.push_back((Planet*)cels[row[i]]);
         }
         reconcile_exoplanet_inclinations(s, sys_planets, pincls, pnodes);
+
+        // A host that is itself a stellar companion can use its own binary orbit.
+        if (!have_companion_plane && s->orbit && s->orbit->center &&
+            s->orbit->center->typeclass() == class_star &&
+            (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node))
+        {
+            companion_inclination = s->orbit->heliocentric_inclination;
+            companion_node = s->orbit->heliocentric_node;
+            have_companion_plane = true;
+        }
+        if (have_companion_plane)
+        {
+            bool all_unknown = true;
+            for (size_t k = 0; k < pincls.size(); ++k)
+            {
+                if (unknown_inclinations[k])
+                {
+                    pincls[k] = companion_inclination;
+                    pnodes[k] = companion_node;
+                }
+                else all_unknown = false;
+            }
+            if (all_unknown)
+            {
+                sysincl = companion_inclination;
+                sysnode = companion_node;
+            }
+        }
 
         n = pincls.size();
         int l=0;
@@ -4265,7 +4303,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         {
             if (!stincl) stincl = sysincl;
             n = pincls.size();
-            for (i=0; i<n; i++) if (!pincls[i] || fabs(pincls[i] - half_pi) < 0.0000001) pincls[i] = sysincl;
+            for (i=0; i<n; i++) if (!pincls[i]) pincls[i] = sysincl;
             n = cincls.size();
             for (i=0; i<n; i++) if (!cincls[i]) cincls[i] = sysincl;
         }
@@ -4281,7 +4319,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         n = pnodes.size();
         for (i = 0; i < n; i++)
         {
-            if (!pnodes[i])
+            if (!pnodes[i] && !(have_companion_plane && unknown_inclinations[i]))
             {
                 double direct_delta = fabs(pincls[i] - sysincl);
                 double fold_delta = fabs((_pi - pincls[i]) - sysincl);
@@ -4880,7 +4918,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
     return num_read;
 }
 
-int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
+int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     std::string path = "catalogs" _FILESLASH "star_orbits.dat";
@@ -4899,7 +4937,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     numfails = 0;
 
-    ExactStarSearchIndex orbit_lookup;
+    ExactStarSearchIndex orbit_lookup(first_host);
 
     while (fgets(buffer, 1020, fp))
     {
@@ -4922,6 +4960,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             if (showfails) std::cerr << "Warning: " << censtr << " not found in star catalog." << std::endl;
             continue;
         }
+
+        if (A->seqno < first_host) continue;
 
         read_field_onebased(buffer, 65, 75, field);
         double ascending_node = atof(field) * fiftyseventh;
@@ -4972,7 +5012,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A->has_disk = A->known_poles;
             s = A;
         }
-        if (A->has_disk)
+        if (s == A && A->has_disk)
         {
             A->disk_heliocen_inclination = inclination;
             A->disk_heliocen_node = ascending_node;
@@ -5022,7 +5062,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
         if (!s)
         {
-            sioxt = find_object(bdystr, true, 9e29, 1, &orbit_lookup);
+            sioxt = find_object(bdystr, true, 9e29, 1, first_host ? nullptr : &orbit_lookup);
             if (sioxt >= 0)
             {
                 s = (Star*)cels[sioxt];
@@ -5588,6 +5628,27 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     return result;
 }
 
+static std::string star_orbits_signature()
+{
+    std::ifstream source("catalogs/star_orbits.dat", std::ios::binary);
+    if (!source) return {};
+    uint64_t hash = 14695981039346656037ULL;
+    char c;
+    while (source.get(c))
+    {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 1099511628211ULL;
+    }
+    return std::to_string(hash);
+}
+
+static std::string baked_star_link_key(const json& key)
+{
+    if (key.is_string()) return key.get<std::string>();
+    const int index = key.get<int>();
+    return index < 0 ? std::string() : "N:" + std::to_string(index);
+}
+
 void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 {
     // These one-based ranges match read_condensed_star_cat(); SC2 fixes the metadata tail too.
@@ -5663,7 +5724,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         };
         angle(341, 348, orbit.arg_periapsis);
         angle(350, 357, orbit.mean_anomaly);
-        if (orbit.epoch && (orbit.mean_anomaly || fabs(orbit.epoch - J2000) > 0.001)) put(359, 372, number(orbit.epoch, 8));
+        if (orbit.epoch && (orbit.mean_anomaly || fabs(orbit.epoch - J2000) > 0.001)) put(359, 372, number(orbit.epoch, orbit.epoch < 0 ? 7 : 8));
         angle(374, 381, orbit.heliocentric_inclination);
         angle(383, 390, orbit.heliocentric_node);
     }
@@ -5692,6 +5753,44 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     put(570, 601, s->wd_color_source);
     put(603, 634, s->wd_temperature_source);
     put(636, 655, std::to_string(s->wd_color_revision));
+    const auto link_key = [](const Star* object)
+    {
+        if (cels && object->seqno >= 0 && object->seqno < MAX_CELOBJS && cels[object->seqno] == object)
+            return "N:" + std::to_string(object->seqno);
+        return object->alienorumid.empty() ? "D:" + std::string(object->name) : "I:" + object->alienorumid;
+    };
+    std::ostringstream identity;
+    identity << " SID1 " << std::quoted(link_key(s));
+    line += identity.str();
+    if (s->orbit || s->multisys || s->known_poles || s->has_disk || s->rot_axis_known ||
+        s->lock_system_plane || s->lock_equatorial_plane)
+    {
+        const auto rotation = [](const Rotation& plane)
+        {
+            return json::array({plane.v.x, plane.v.y, plane.v.z, plane.a});
+        };
+        const int flags = (s->known_poles ? 1 : 0) | (s->lock_system_plane ? 2 : 0) |
+            (s->lock_equatorial_plane ? 4 : 0) | (s->has_disk ? 8 : 0) |
+            (s->rot_axis_known ? 16 : 0) | (s->distance_known ? 32 : 0);
+        // Positional extension: identity, center, component, flags, three rotations,
+        // spin angles, disk geometry, observer-frame spin, period, and full elements.
+        json state = json::array({link_key(s), s->orbit && s->orbit->center ? link_key(static_cast<Star*>(s->orbit->center)) : std::string(),
+            static_cast<int>(s->get_component()), flags, rotation(s->location.local_system_plane),
+            rotation(s->location.orbital_plane), rotation(s->location.equatorial_plane),
+            s->obliquity, s->equinox, s->disk_heliocen_inclination, s->disk_heliocen_node,
+            s->disk_inner_edge_sma, s->rot_heliocen_incl, s->rot_heliocen_node,
+            s->sidereal_rotational_period, nullptr, s->orbit ? s->orbit->center_name : std::string()});
+        if (s->orbit)
+        {
+            state[15] = json::array({s->orbit->period, s->orbit->semimajor_axis,
+                s->orbit->eccentricity, s->orbit->arg_periapsis, s->orbit->mean_anomaly,
+                s->orbit->epoch, s->orbit->heliocentric_inclination, s->orbit->heliocentric_node,
+                s->orbit->inclination, s->orbit->ascending_node});
+        }
+        std::ostringstream extra;
+        extra << " ORB1 " << std::quoted(state.dump());
+        line += extra.str();
+    }
     if (!s->catalog_aliases.empty())
     {
         std::ostringstream aliases;
@@ -5711,6 +5810,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     FILE *fp = fopen(path.c_str(), "w");
     if (fp)
     {
+        fprintf(fp, "# ORBITS1 %s\n", star_orbits_signature().c_str());
         write_condensed_star_cat_line(fp, (Star*)cels[0]);
 
         for (const auto& [cs, val1] : cb)
@@ -5754,6 +5854,50 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     }
 
     return written;
+}
+
+bool alienorum::CatalogReader::bake_condensed_star_orbits()
+{
+    const std::string signature = star_orbits_signature();
+    if (signature.empty() || abort_load) return false;
+    const std::string path = get_condensed_starcat_name();
+    const std::string temporary = path + ".tmp";
+    FILE* fp = fopen(temporary.c_str(), "wb");
+    if (!fp) return false;
+    try
+    {
+        fprintf(fp, "# ORBITS1 %s\n", signature.c_str());
+        for (int i = 0; cels[i]; ++i)
+        {
+            if (cels[i]->typeclass() == class_star)
+                write_condensed_star_cat_line(fp, static_cast<Star*>(cels[i]));
+        }
+    }
+    catch (...)
+    {
+        fclose(fp);
+        fs::remove(temporary);
+        throw;
+    }
+    const bool failed = ferror(fp);
+    const int closed = fclose(fp);
+    if (failed || closed != 0 || abort_load)
+    {
+        fs::remove(temporary);
+        return false;
+    }
+    std::error_code error;
+    fs::rename(temporary, path, error);
+#ifdef _WIN32
+    if (error)
+    {
+        fs::copy_file(temporary, path, fs::copy_options::overwrite_existing, error);
+        if (!error) fs::remove(temporary);
+    }
+#endif
+    if (error) return false;
+    condensed_star_orbits_loaded = true;
+    return true;
 }
 
 int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
@@ -6040,6 +6184,10 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
+    condensed_star_orbits_loaded = false;
+    std::map<Star*, json> orbit_states;
+    std::unordered_map<std::string, Star*> saved_stars;
+    std::vector<Star*> catalog_stars;
     int num_read = 0, i, j;
     char buffer[16384];
     char field[64];
@@ -6074,6 +6222,18 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     while (fgets(buffer, sizeof(buffer), fp))
     {
         if (abort_load) { fclose(fp); return num_read; }
+        if (buffer[0] == '#')
+        {
+            std::istringstream header(buffer);
+            std::string comment, version, signature;
+            header >> comment >> version >> signature;
+            if (version == "ORBITS1")
+            {
+                const std::string source_signature = star_orbits_signature();
+                condensed_star_orbits_loaded = source_signature.empty() || signature == source_signature;
+            }
+            continue;
+        }
         Star *s = new Star();
         read_field_onebased(buffer, 1, 14, field);
         s->alienorumid = trim(field);
@@ -6131,11 +6291,50 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         s->WD = trim(field);
         if (strlen(buffer) > 655)
         {
-            std::istringstream aliases(buffer + 655);
-            std::string version, alias;
-            if (aliases >> version && version == "ALS1")
+            std::istringstream extras(buffer + 655);
+            std::string version, value;
+            while (extras >> version)
             {
-                while (aliases >> std::quoted(alias)) s->add_catalog_alias(alias);
+                if (version == "ORB1" && extras >> std::quoted(value))
+                {
+                    json state = json::parse(value);
+                    if (state.is_object())
+                    {
+                        const auto rotation = [](const json& value)
+                        {
+                            Rotation plane;
+                            plane.from_json(value);
+                            return json::array({plane.v.x, plane.v.y, plane.v.z, plane.a});
+                        };
+                        const int flags = (state.at("known_poles").get<bool>() ? 1 : 0) |
+                            (state.at("lock_system").get<bool>() ? 2 : 0) |
+                            (state.at("lock_equator").get<bool>() ? 4 : 0) |
+                            (state.at("has_disk").get<bool>() ? 8 : 0) |
+                            (state.at("rot_axis_known").get<bool>() ? 16 : 0) |
+                            (state.at("distance_known").get<bool>() ? 32 : 0);
+                        json elements = state.value("elements", json());
+                        if (elements.is_array() && elements.size() == 8)
+                        {
+                            elements.push_back(0);
+                            elements.push_back(0);
+                        }
+                        state = json::array({state.at("id"), state.value("center", -1), state.at("component"),
+                            flags, rotation(state.at("system_plane")), rotation(state.at("orbital_plane")),
+                            rotation(state.at("equatorial_plane")), state.at("obliquity"), state.at("equinox"),
+                            state.at("disk_inclination"), state.at("disk_node"), state.at("disk_inner_edge"),
+                            state.at("rot_inclination"), state.at("rot_node"), state.at("rotation_period"), elements});
+                    }
+                    saved_stars.emplace(baked_star_link_key(state.at(0)), s);
+                    orbit_states.emplace(s, std::move(state));
+                }
+                else if (version == "SID1" && extras >> std::quoted(value))
+                {
+                    saved_stars.emplace(value, s);
+                }
+                else if (version == "ALS1")
+                {
+                    while (extras >> std::quoted(value)) s->add_catalog_alias(value);
+                }
             }
         }
         read_field_onebased(buffer, 469, 471, field);
@@ -6375,6 +6574,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 454, 454, field);
         if (field[0] == 'Y') s->has_custom_name = true;
 
+        catalog_stars.push_back(s);
         append_cel(s);
         num_read++;
 
@@ -6383,6 +6583,19 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     fclose(fp);
     ((Star*)cels[0])->distance_known = true;
+
+    const auto find_saved_star = [&](const json& key) -> Star*
+    {
+        auto found = saved_stars.find(baked_star_link_key(key));
+        if (found != saved_stars.end()) return found->second;
+        // Early snapshots used row numbers without a separate identity record.
+        if (key.is_number_integer())
+        {
+            const int index = key.get<int>();
+            if (index >= 0 && static_cast<size_t>(index) < catalog_stars.size()) return catalog_stars[index];
+        }
+        return nullptr;
+    };
 
     loading_msg = std::string("Verifying star orbits...");
 
@@ -6411,12 +6624,29 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     for (size_t k = 0; k < orbiting_stars.size(); k++)
     {
         Star *s = orbiting_stars[k];
+        auto saved = orbit_states.find(s);
+        if (saved != orbit_states.end() && find_saved_star(saved->second.at(1))) continue;
         auto it = id_to_star.find(s->orbit->center_name);
         if (it != id_to_star.end() && it->second != s)
         {
             Star *A = it->second;
             s->orbit->center = A;
             s->origcenname = A->name;
+            if (!s->multisys || s->multisys != A->multisys)
+            {
+                if (!A->multisys)
+                {
+                    A->multisys = new StarMulti();
+                    A->multisys->add_member(A, 'A');
+                }
+                char component = 0;
+                const std::string identity = s->alienorumid.empty() ? s->name : s->alienorumid;
+                if (identity.size() >= 2 && identity[identity.size() - 2] == ' ' &&
+                    identity.back() >= 'B' && identity.back() <= 'Z') component = identity.back();
+                if (!component || (A->multisys->get_member(component) && A->multisys->get_member(component) != s))
+                    component = A->multisys->next_available();
+                if (component >= 'B' && component <= 'Z') s->set_component(component, A);
+            }
 
             if (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node)
             {
@@ -6456,6 +6686,79 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         {
             loading_msg = std::string("Verifying ") + s->alienorumid + std::string("...");
         }
+    }
+
+    // Restore baked states last: the legacy reconstruction above infers planes and
+    // would otherwise overwrite measured rotation axes and disk orientations.
+    for (auto& [s, state] : orbit_states)
+    {
+        if (!baked_star_link_key(state.at(1)).empty())
+        {
+            Star* saved_center = find_saved_star(state.at(1));
+            if (saved_center && saved_center != s)
+            {
+                if (!s->orbit) s->orbit = new Orbit();
+                s->orbit->center = saved_center;
+                s->orbit->center_name = saved_center->alienorumid;
+                s->origcenname = saved_center->name;
+                char component = state.at(2).get<int>();
+                if (!component)
+                {
+                    const std::string identity = s->alienorumid.empty() ? s->name : s->alienorumid;
+                    if (identity.size() >= 2 && identity[identity.size() - 2] == ' ' &&
+                        identity.back() >= 'B' && identity.back() <= 'Z') component = identity.back();
+                    else component = saved_center->multisys ? saved_center->multisys->next_available() : 'B';
+                }
+                if (component >= 'B' && component <= 'Z')
+                {
+                    if (!saved_center->multisys)
+                    {
+                        saved_center->multisys = new StarMulti();
+                        saved_center->multisys->add_member(saved_center, 'A');
+                    }
+                    s->set_component(component, saved_center);
+                }
+            }
+        }
+        if (!state.at(15).is_null())
+        {
+            if (!s->orbit) s->orbit = new Orbit();
+            if (!s->orbit->center && state.size() > 16) state.at(16).get_to(s->orbit->center_name);
+            const auto& elements = state.at(15);
+            s->orbit->period = elements.at(0);
+            s->orbit->semimajor_axis = elements.at(1);
+            s->orbit->eccentricity = elements.at(2);
+            s->orbit->arg_periapsis = elements.at(3);
+            s->orbit->mean_anomaly = elements.at(4);
+            s->orbit->epoch = elements.at(5);
+            s->orbit->heliocentric_inclination = elements.at(6);
+            s->orbit->heliocentric_node = elements.at(7);
+            s->orbit->inclination = elements.at(8);
+            s->orbit->ascending_node = elements.at(9);
+        }
+        const int flags = state.at(3);
+        s->known_poles = flags & 1;
+        s->lock_system_plane = flags & 2;
+        s->lock_equatorial_plane = flags & 4;
+        s->has_disk = flags & 8;
+        s->rot_axis_known = flags & 16;
+        s->distance_known = flags & 32;
+        const auto restore_rotation = [](Rotation& plane, const json& values)
+        {
+            plane.v = Point(values.at(0), values.at(1), values.at(2));
+            plane.a = values.at(3);
+        };
+        restore_rotation(s->location.local_system_plane, state.at(4));
+        restore_rotation(s->location.orbital_plane, state.at(5));
+        restore_rotation(s->location.equatorial_plane, state.at(6));
+        state.at(7).get_to(s->obliquity);
+        state.at(8).get_to(s->equinox);
+        state.at(9).get_to(s->disk_heliocen_inclination);
+        state.at(10).get_to(s->disk_heliocen_node);
+        state.at(11).get_to(s->disk_inner_edge_sma);
+        state.at(12).get_to(s->rot_heliocen_incl);
+        state.at(13).get_to(s->rot_heliocen_node);
+        state.at(14).get_to(s->sidereal_rotational_period);
     }
 
     return num_read;

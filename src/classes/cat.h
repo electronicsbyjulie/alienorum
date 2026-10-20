@@ -76,7 +76,7 @@ namespace alienorum
 
         // Internal Catalogs
         int read_starname_dat(CelestialObject** cels);                          // No max because we are not adding stars, only setting names.
-        int read_star_orbits_dat(CelestialObject** cels);
+        int read_star_orbits_dat(CelestialObject** cels, int first_host = 0);
         int read_local_planets(CelestialObject** cels, int max, CelestialObject* must_orbit = nullptr, CelestialObject* mustnt_orbit = nullptr);
 
         // Gaia Astrometry
@@ -86,6 +86,8 @@ namespace alienorum
         std::string get_condensed_starcat_name();
         int write_condensed_star_cat(ConsBins cb);
         int read_condensed_star_cat();
+        bool bake_condensed_star_orbits();
+        static inline bool condensed_star_orbits_loaded = false;
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
 
     protected:

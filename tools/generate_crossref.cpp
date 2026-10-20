@@ -806,6 +806,10 @@ int main()
         return 1;
     }
 
+    for (const auto& record : soles_lines)
+    {
+        if (!record.empty() && record[0] == '#') soles_out << record << '\n';
+    }
     for (const auto& r : all_stars)
     {
         if (!r.is_soles || r.soles_index < 0)

@@ -1424,7 +1424,7 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     std::ifstream input("catalogs/soles_alienorum.dat");
     std::string row;
     ASSERT_TRUE(static_cast<bool>(std::getline(input, row)));
-    EXPECT_EQ(row.size(), 655u);
+    EXPECT_GT(row.size(), 655u);
     EXPECT_EQ(row.substr(127, 6), "4374  ");
     EXPECT_EQ(row.substr(134, 6), "1256  ");
     ASSERT_TRUE(static_cast<bool>(std::getline(input, row)));
@@ -1481,6 +1481,162 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     EXPECT_THROW(writer.write_condensed_star_cat_line(file, primary), std::runtime_error);
     EXPECT_EQ(ftell(file), 0);
     fclose(file);
+
+    // Older catalogs carry the center identifier but no multiple-system extension.
+    // Their companion membership must also be available to the planet-plane fallback.
+    input.close();
+    std::ifstream baked("catalogs/soles_alienorum.dat");
+    std::vector<std::string> legacy_rows;
+    while (std::getline(baked, row)) legacy_rows.push_back(row.substr(0, 655));
+    baked.close();
+    std::ofstream legacy("catalogs/soles_alienorum.dat");
+    for (const auto& record : legacy_rows) legacy << record << '\n';
+    legacy.close();
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    primary = static_cast<Star*>(cels[0]);
+    companion = static_cast<Star*>(cels[1]);
+    ASSERT_NE(primary->multisys, nullptr);
+    EXPECT_EQ(primary->multisys->get_member('B'), companion);
+    ASSERT_NE(companion->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, primary);
+    EXPECT_FALSE(CatalogReader::condensed_star_orbits_loaded);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, BakedStarOrbitsPreservePlanesAndBlankIdentifierLinks)
+{
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        Star **hd, **hip;
+        bool baked;
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            CatalogReader::condensed_star_orbits_loaded = baked;
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_baked_orbits_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache, hipcache, CatalogReader::condensed_star_orbits_loaded
+    };
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    hdcache = hd.data();
+    hipcache = hip.data();
+    Star::load_main_seq_dat();
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    Star* primary = make_star("Baked primary");
+    primary->HD = 99990;
+    primary->alienorumid = "Fixture A";
+    primary->right_ascension = 1;
+    primary->declination = 0.3;
+    primary->update_location(simnow);
+    hdcache[99990] = primary;
+    const auto row = [](const char* host, const char* member, const char* inclination)
+    {
+        std::string line(240, ' ');
+        line.replace(0, strlen(host), host);
+        line.replace(24, strlen(member), member);
+        line.replace(48, 2, "2y");
+        line.replace(64, 2, "43");
+        line.replace(76, strlen(inclination), inclination);
+        line.replace(88, 2, "12");
+        line.replace(100, 3, "2AU");
+        line.replace(112, 3, "0.2");
+        line.replace(144, 16, "JD2451544.512345 ");
+        line.replace(160, 3, "M0V");
+        line.replace(176, 2, "10");
+        line.replace(192, 3, "0.6");
+        line.replace(204, 3, "0.6");
+        line.replace(228, 4, "3800");
+        return line;
+    };
+    std::ofstream source("catalogs/star_orbits.dat");
+    source << row("HD99990", "HD99991", "60") << '\n';
+    source << row("HD99991", "Nested companion", "30") << '\n';
+    source << row("HD99990", "(system inclination)", "50") << '\n';
+    source << row("HD99990", "(stellar rotation)", "68") << '\n';
+    source << row("HD99992", "(system inclination)", "42") << '\n';
+    source.close();
+    CatalogReader reader;
+    CatalogReader::condensed_star_orbits_loaded = false;
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 2);
+    Star* companion = hdcache[99991];
+    ASSERT_NE(companion, nullptr);
+    ASSERT_EQ(ncelobjs, 4);
+    Star* nested = static_cast<Star*>(cels[3]);
+    companion->add_catalog_alias("Baked alias");
+    EXPECT_TRUE(companion->alienorumid.empty());
+    EXPECT_TRUE(nested->alienorumid.empty());
+    const Rotation system_plane = primary->location.local_system_plane;
+    const Rotation equatorial_plane = primary->location.equatorial_plane;
+    const double rotation = primary->sidereal_rotational_period;
+    const double epoch = companion->orbit->epoch;
+    Star* unlinked = make_star("Unlinked orbit");
+    unlinked->orbit = new Orbit();
+    unlinked->orbit->center_name = "Unavailable primary";
+    unlinked->orbit->period = 12 * oneyear;
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 5);
+    EXPECT_TRUE(CatalogReader::condensed_star_orbits_loaded);
+    unlinked = static_cast<Star*>(cels[4]);
+    ASSERT_NE(unlinked->orbit, nullptr);
+    EXPECT_EQ(unlinked->orbit->center, nullptr);
+    EXPECT_EQ(unlinked->orbit->center_name, "Unavailable primary");
+    EXPECT_DOUBLE_EQ(unlinked->orbit->period, 12 * oneyear);
+    primary = hdcache[99990];
+    companion = hdcache[99991];
+    nested = static_cast<Star*>(cels[3]);
+    ASSERT_NE(primary, nullptr);
+    ASSERT_NE(companion, nullptr);
+    ASSERT_NE(companion->orbit, nullptr);
+    ASSERT_NE(nested->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, primary);
+    EXPECT_EQ(nested->orbit->center, companion);
+    EXPECT_EQ(companion->get_component(), 'B');
+    EXPECT_EQ(nested->get_component(), 'C');
+    EXPECT_EQ(find_object("Baked alias", true), companion->seqno);
+    EXPECT_DOUBLE_EQ(companion->orbit->epoch, epoch);
+    EXPECT_DOUBLE_EQ(primary->sidereal_rotational_period, rotation);
+    EXPECT_TRUE(primary->has_disk);
+    EXPECT_NEAR(primary->disk_heliocen_inclination * fiftyseven, 50, 1e-10);
+    EXPECT_NEAR(primary->rot_heliocen_incl * fiftyseven, 68, 1e-10);
+    EXPECT_TRUE(primary->known_poles);
+    EXPECT_TRUE(primary->lock_system_plane);
+    EXPECT_TRUE(primary->lock_equatorial_plane);
+    EXPECT_NEAR(primary->location.local_system_plane.a, system_plane.a, 1e-12);
+    EXPECT_NEAR((primary->location.local_system_plane.v - system_plane.v).magnitude(), 0, 1e-12);
+    EXPECT_NEAR(primary->location.equatorial_plane.a, equatorial_plane.a, 1e-12);
+    EXPECT_NEAR((primary->location.equatorial_plane.v - equatorial_plane.v).magnitude(), 0, 1e-12);
+
+    const int first_host = ncelobjs;
+    Star* late_host = make_star("Late host");
+    late_host->HD = 99992;
+    hdcache[99992] = late_host;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels, first_host), 0);
+    EXPECT_TRUE(late_host->has_disk);
+    EXPECT_NEAR(late_host->disk_heliocen_inclination * fiftyseven, 42, 1e-10);
+    EXPECT_DOUBLE_EQ(primary->sidereal_rotational_period, rotation);
+    EXPECT_EQ(ncelobjs, first_host + 1);
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    std::ofstream("catalogs/star_orbits.dat", std::ios::app) << "# Updated source\n";
+    ASSERT_EQ(reader.read_condensed_star_cat(), 5);
+    EXPECT_FALSE(CatalogReader::condensed_star_orbits_loaded);
     delete_the_universe();
 }
 
@@ -1495,6 +1651,7 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogNameIsStable)
 class TestCatalogReader : public CatalogReader
 {
 public:
+    using CatalogReader::apply_exoplanet_names;
     using CatalogReader::resolve_or_create_exostar;
     using CatalogReader::add_exoplanet_from_row;
     using CatalogReader::exorow_has_position;
@@ -1504,6 +1661,62 @@ public:
     using CatalogReader::exorow_write_line;
     using CatalogReader::accept_exoplanet_source;
 };
+
+TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
+{
+    Star::load_main_seq_dat();
+    for (bool planets_on_secondary : {false, true})
+    {
+        for (bool known_planet : {false, true})
+        {
+            if (!cels[0]) make_star("Sol");
+            Star* primary = make_star("Binary primary");
+            primary->right_ascension = 4.191;
+            primary->declination = 0.581;
+            primary->distance = 17.5 * parsec;
+            primary->update_location(simnow);
+            Star* companion = make_star("Binary secondary");
+            companion->make_companion_of(primary, 'B');
+            companion->orbit->heliocentric_inclination = 103.82 * fiftyseventh;
+            companion->orbit->heliocentric_node = 91.51 * fiftyseventh;
+            companion->orbit->period = 78 * oneday;
+            companion->orbit->semimajor_axis = 0.2 * AU;
+            Star* host = planets_on_secondary ? companion : primary;
+            TestCatalogReader reader;
+            std::map<int, std::vector<int>> planets;
+            unsigned int count = 0;
+            const char* names[] = {"Binary planet b", "Binary planet c", "Binary planet d"};
+            const double periods[] = {39.8438, 102.19, 12.949};
+            for (int i = 0; i < 3; ++i)
+            {
+                ExoRow row;
+                row.pl_name = names[i];
+                row.hostname = host->name;
+                row.pl_orbper = periods[i];
+                row.pl_msinij = i == 0 ? 1.093 : 0.02;
+                row.pl_bmassj = row.pl_msinij;
+                row.pl_orbincl = i == 0 ? (known_planet ? 90 : 0) : NAN;
+                ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+            }
+            reader.apply_exoplanet_names(planets);
+            for (size_t i = 0; i < host->pl_indices.size(); ++i)
+            {
+                Planet* planet = static_cast<Planet*>(cels[host->pl_indices[i]]);
+                planet->update_location(simnow);
+                double inclination = 0, node = 0;
+                incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
+                    host->location.system_center - cels[0]->location.system_center);
+                EXPECT_NEAR(inclination * fiftyseven, known_planet && i == 0 ? 90 : 103.82, 1e-5);
+                if (!known_planet || i != 0)
+                {
+                    EXPECT_NEAR(node * fiftyseven, 91.51, 1e-5);
+                }
+                EXPECT_LT(planet->mass, 2 * jupiter_mass);
+            }
+            delete_the_universe();
+        }
+    }
+}
 
 TEST_F(CatalogParsingTest, Moa2010WhiteDwarfHostGetsACompactRadiusWithoutCatalogRadius)
 {

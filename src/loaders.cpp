@@ -604,6 +604,8 @@ void load_catalogs()
     if (load_aborted()) return;
     std::string ihcfn = cr.get_condensed_starcat_name();
     bool ihsc = false;
+    bool star_orbits_applied = false;
+    CatalogReader::condensed_star_orbits_loaded = false;
     if (!file_exists(ihcfn.c_str()))
     {
         std::string ihscgz = ihcfn + std::string(".gz");
@@ -619,6 +621,18 @@ void load_catalogs()
         loading_msg = std::string("Loading star catalog...");
         mtx.unlock();
         ihsc = cr.read_condensed_star_cat();
+        if (load_aborted()) return;
+        if (ihsc && !CatalogReader::condensed_star_orbits_loaded && !magnitude_test)
+        {
+            mtx.lock();
+            loading_msg = "Baking star orbits into the star catalog...";
+            mtx.unlock();
+            cr.read_star_orbits_dat(cels);
+            if (load_aborted()) return;
+            star_orbits_applied = true;
+            if (!cr.bake_condensed_star_orbits())
+                std::cerr << "Could not save baked star orbits; continuing with the loaded data." << std::endl;
+        }
     }
     else
     {
@@ -860,12 +874,20 @@ void load_catalogs()
     // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
     // What to do, oh what to do...
     if (load_aborted()) return;
+    const int first_exostar = ncelobjs;
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
     mtx.lock();
     loading_msg = std::string("Orbiting stars...");
     mtx.unlock();
-    if (!magnitude_test) cr.read_star_orbits_dat(cels);
+    if (!magnitude_test)
+    {
+        if (CatalogReader::condensed_star_orbits_loaded || star_orbits_applied)
+        {
+            if (!noexo && ncelobjs > first_exostar) cr.read_star_orbits_dat(cels, first_exostar);
+        }
+        else cr.read_star_orbits_dat(cels);
+    }
     else splash = false;
 
     if (load_aborted()) return;
@@ -1752,10 +1774,15 @@ void load_exoplanets_worker()
     {
         exoplanet_load_progress.store(0.05f);
         CatalogReader cr;
+        const int first_exostar = ncelobjs;
         cr.load_exoplanets_from_tap(true);
         exoplanet_load_progress.store(0.45f);
 
-        cr.read_star_orbits_dat(cels);
+        if (CatalogReader::condensed_star_orbits_loaded)
+        {
+            if (ncelobjs > first_exostar) cr.read_star_orbits_dat(cels, first_exostar);
+        }
+        else cr.read_star_orbits_dat(cels);
         exoplanet_load_progress.store(0.50f);
 
         std::cout << "Reading exoplanets..." << std::endl << std::flush;
