@@ -64,6 +64,7 @@ target_include_directories(ImGuiFileDialog PUBLIC src/include/imgui)
 target_link_libraries(IMGUI PUBLIC SDL2::SDL2)
 
 add_library(CLASSES STATIC
+	src/classes/barycenter.cpp
 	src/classes/cat.cpp
 	src/classes/celestial.cpp
 	src/classes/color.cpp

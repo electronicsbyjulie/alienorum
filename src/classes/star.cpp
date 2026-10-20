@@ -1,3 +1,4 @@
+#include "barycenter.h"
 #include <iostream>
 #include <string.h>
 #include <algorithm>
@@ -80,7 +81,7 @@ void Star::set_component(char comp, Star* compA)
             compA->orbit = nullptr;
         }
         if (!orbit) orbit = new Orbit();
-        orbit->center = compA;
+        if (!orbit->center || orbit->center == this) orbit->center = compA;
     }
     else
     {
@@ -90,6 +91,7 @@ void Star::set_component(char comp, Star* compA)
 
     if (!user_edited || user_added) origname = name;
     if (orbit && orbit->center) origcenname = orbit->center->name;
+    refresh_barycentric_systems(this);
 }
 
 Star::Star()
@@ -420,6 +422,7 @@ StarMulti::~StarMulti()
 
 void Star::update_location(double tmnow)
 {
+    if (update_barycentric_location(this, tmnow)) return;
     if (!(volumetric_mean_radius > 0) || !std::isfinite(volumetric_mean_radius))
     {
         if (stellar_regime(this) == regime_degenerate) estimate_radius();
@@ -1739,6 +1742,7 @@ void Star::make_companion_of(Star *A, char comp)
 
     // A->set_component('A', A);
     set_component(comp, A);
+    if (orbit) orbit->center = A;
 }
 
 double Star::estimate_mass()

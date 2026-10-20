@@ -4,6 +4,7 @@
 #include <cstring>
 #include <gtest/gtest.h>
 #include "../classes/serial.h"
+#include "../classes/barycenter.h"
 
 class UniverseFixture : public ::testing::Test
 {
@@ -22,6 +23,7 @@ class UniverseFixture : public ::testing::Test
     // Allocates the array on first use and blanks everything that indexes into it.
     void empty_the_universe()
     {
+        invalidate_barycentric_systems();
         if (!cels) cels = new CelestialObject*[MAX_CELOBJS];
         memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
         ncelobjs = 0;

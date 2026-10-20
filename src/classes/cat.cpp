@@ -17,6 +17,7 @@
 #include <string_view>
 #include <string.h>
 #include "cat.h"
+#include "barycenter.h"
 #include "serial.h"
 #include "cons.h"
 #include "shore.h"
@@ -6040,6 +6041,7 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
+    invalidate_barycentric_systems();
     int num_read = 0, i, j;
     char buffer[16384];
     char field[64];

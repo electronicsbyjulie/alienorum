@@ -10,6 +10,7 @@
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
+#include "classes/barycenter.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 #include "classes/surfacebiomes.h"
@@ -3866,6 +3867,8 @@ void draw_objects()
         double viewer_distance = cels[i]->tmprel.magnitude();
         double light_travel_time = viewer_distance / speed_of_light;
 
+        BarycentricOrbitPath orbit_path(cels[i], simnow - light_travel_time);
+
         Cartesian2D lastcart;
         try
         {
@@ -3877,16 +3880,19 @@ void draw_objects()
         }
         for (j=-4; j<=orbseg; j++)
         {
-            if (is_star)
-                ((Star*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else if (is_moon)
-                ((Moon*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else if (is_sat)
-                ((Satellite*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else if (is_comet)
-                ((Comet*)cels[i])->update_location(simnow + step*j - light_travel_time);
-            else
-                ((Planet*)cels[i])->update_location(simnow + step*j - light_travel_time);
+            if (!orbit_path.sample(simnow + step*j - light_travel_time))
+            {
+                if (is_star)
+                    ((Star*)cels[i])->update_location(simnow + step*j - light_travel_time);
+                else if (is_moon)
+                    ((Moon*)cels[i])->update_location(simnow + step*j - light_travel_time);
+                else if (is_sat)
+                    ((Satellite*)cels[i])->update_location(simnow + step*j - light_travel_time);
+                else if (is_comet)
+                    ((Comet*)cels[i])->update_location(simnow + step*j - light_travel_time);
+                else
+                    ((Planet*)cels[i])->update_location(simnow + step*j - light_travel_time);
+            }
 
             CelestialLocation orbrel = cels[i]->location - here;
 

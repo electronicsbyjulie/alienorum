@@ -2,6 +2,7 @@
 #include <iostream>
 #include <math.h>
 #include "moon.h"
+#include "barycenter.h"
 
 using namespace alienorum;
 
@@ -10,7 +11,7 @@ Rotation Moon::get_Laplace_plane()
     if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
     if (orbit_type == ot_equatorial) return orbit->center->location.equatorial_plane;
     else if (orbit_type == ot_ecliptic) return orbit->center->location.orbital_plane;
-    if (Laplace_set && frand(0,1) > 0.25) return Laplace_plane;
+    if (Laplace_set && !barycentric_evaluation_active() && frand(0,1) > 0.25) return Laplace_plane;
 
     // Fix for minor planets tidally locked to their moons.
     if (fabs(1.0 - (orbit->center->sidereal_rotational_period / orbit->period)) < 0.01) return orbit->center->location.equatorial_plane;

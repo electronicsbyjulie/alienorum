@@ -1,5 +1,6 @@
 
 #include "loaders.h"
+#include "classes/barycenter.h"
 #include "housekeeping.h"
 #include "classes/cons.h"
 #include <cstdlib>
@@ -1771,6 +1772,7 @@ void load_exoplanets_worker()
             have_exo = true;
         }
         num_planets += nexo;
+        rebuild_barycentric_systems();
         exoplanet_count_loaded.store(nexo);
         std::cout << "Read " << nexo << " objects." << std::endl << std::flush;
 

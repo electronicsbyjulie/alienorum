@@ -7,6 +7,11 @@
 #include "../classes/planet.h"
 #include "../classes/cat.h"
 #include "../classes/surfacebiomes.h"
+#include "../classes/barycenter.h"
+#include "../classes/moon.h"
+#include "../classes/comet.h"
+#include "universe_fixture.h"
+#include <chrono>
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -1085,4 +1090,347 @@ TEST(MapTest, GenerationStampsAreNeverReusedAndNeverZero)
         EXPECT_NE(b.gen, a.gen);
         previous = b.gen;
     }
+}
+
+class BarycenterTest : public UniverseFixture
+{
+    protected:
+    void SetUp() override
+    {
+        invalidate_barycentric_systems();
+        UniverseFixture::SetUp();
+    }
+
+    void TearDown() override
+    {
+        invalidate_barycentric_systems();
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+
+    Star* companion(Star* host, const char* name, double mass, double separation)
+    {
+        Star* body = make_star(name, mass);
+        body->orbit = new Orbit();
+        body->orbit->center = host;
+        body->orbit->semimajor_axis = separation;
+        body->orbit->compute_period(mass);
+        return body;
+    }
+
+    Moon* moon(Planet* host, double mass, double separation)
+    {
+        Moon* body = new Moon();
+        body->mass = mass;
+        body->volumetric_mean_radius = 1737400;
+        body->orbit_type = ot_ecliptic;
+        body->orbit = new Orbit();
+        body->orbit->center = host;
+        body->orbit->semimajor_axis = separation;
+        body->orbit->compute_period(mass);
+        append_cel(body);
+        return body;
+    }
+
+    Point centroid(std::initializer_list<CelestialObject*> bodies)
+    {
+        double mass = 0;
+        Point sum;
+        for (auto* body : bodies)
+        {
+            sum += body->location.local_position * body->mass;
+            mass += body->mass;
+        }
+        return sum * (1.0 / mass);
+    }
+};
+
+TEST_F(BarycenterTest, BinaryPreservesSeparationMassRatioAndCatalogAnchor)
+{
+    Star* a = make_star("A", 2 * solar_mass);
+    Star* b = companion(a, "B", solar_mass, 30 * AU);
+    rebuild_barycentric_systems();
+    a->update_location(J2000_TIME_T);
+    b->update_location(J2000_TIME_T);
+    EXPECT_NEAR(centroid({a, b}).magnitude(), 0, 0.01);
+    EXPECT_NEAR(a->location.local_position.magnitude(), 10 * AU, 0.01);
+    EXPECT_NEAR(b->location.local_position.magnitude(), 20 * AU, 0.01);
+    EXPECT_NEAR(a->location.local_position.distance_to(b->location.local_position), 30 * AU, 0.01);
+    Point observed = a->location.system_center + a->location.local_position;
+    EXPECT_LT(observed.distance_to(Point::from_ra_dec(a->right_ascension, a->declination, a->distance)), 1);
+}
+
+TEST_F(BarycenterTest, NestedStarsUseTheInnerPairsCombinedMass)
+{
+    Star* a = make_star("A", 2 * solar_mass);
+    Star* b = companion(a, "B", solar_mass, 100 * AU);
+    Star* c = companion(b, "C", solar_mass, 10 * AU);
+    a->set_component('A', a);
+    b->set_component('B', a);
+    c->set_component('C', a);
+    ASSERT_EQ(c->orbit->center, b);
+    rebuild_barycentric_systems();
+    for (double time : std::vector<double>{double(J2000_TIME_T), J2000_TIME_T + 7 * oneyear, J2000_TIME_T - 30 * oneyear})
+    {
+        c->update_location(time);
+        a->update_location(time);
+        b->update_location(time);
+        EXPECT_LT(centroid({a, b, c}).magnitude(), 0.02);
+        EXPECT_NEAR(a->location.local_position.distance_to(centroid({b, c})), 100 * AU, 0.02);
+        EXPECT_NEAR(b->location.local_position.distance_to(c->location.local_position), 10 * AU, 0.02);
+    }
+}
+
+TEST_F(BarycenterTest, SolarSystemIncludesPlanetaryAndLunarReflexMotion)
+{
+    Star* sun = make_star("Sun");
+    Planet* earth = make_planet(sun, "Earth");
+    Moon* luna = moon(earth, lunar_mass, 384400000);
+    Planet* jupiter = make_planet(sun, "Jupiter", 5.204 * AU);
+    jupiter->mass = jupiter_mass;
+    rebuild_barycentric_systems();
+    for (double time : std::vector<double>{double(J2000_TIME_T), J2000_TIME_T + 17 * oneday})
+    {
+        earth->update_location(time);
+        luna->update_location(time);
+        jupiter->update_location(time);
+        sun->update_location(time);
+        EXPECT_LT(centroid({sun, earth, luna, jupiter}).magnitude(), 0.001);
+        EXPECT_NEAR(centroid({earth, luna}).distance_to(sun->location.local_position), AU, 0.001);
+        EXPECT_NEAR(earth->location.local_position.distance_to(luna->location.local_position), 384400000, 0.001);
+        EXPECT_NEAR(earth->location.local_position.distance_to(centroid({earth, luna})),
+            384400000 * lunar_mass / (earth_mass + lunar_mass), 0.001);
+        EXPECT_GT(sun->location.local_position.magnitude(), 7e8);
+    }
+}
+
+TEST_F(BarycenterTest, BodyCenterElementsRetainTheirOriginalPhysicalSeparations)
+{
+    Star* sun = make_star("Sun");
+    Planet* earth = make_planet(sun, "Earth");
+    earth->orbit->body_centered = true;
+    Moon* luna = moon(earth, lunar_mass, 384400000);
+    rebuild_barycentric_systems();
+    earth->update_location(J2000_TIME_T);
+    luna->update_location(J2000_TIME_T);
+    sun->update_location(J2000_TIME_T);
+    EXPECT_LT(centroid({sun, earth, luna}).magnitude(), 0.001);
+    EXPECT_NEAR(earth->location.local_position.distance_to(sun->location.local_position), AU, 0.001);
+    Orbit restored;
+    restored.from_json(earth->orbit->to_json());
+    EXPECT_TRUE(restored.body_centered);
+}
+
+TEST_F(BarycenterTest, CancriSupportsPlanetsAroundBothStarsAndMoons)
+{
+    Star* a = make_star("55 Cnc A", 0.9 * solar_mass);
+    Star* b = companion(a, "55 Cnc B", 0.26 * solar_mass, 1065 * AU);
+    Planet* ad = make_planet(a, "55 Cnc Ad", 5.6 * AU);
+    ad->mass = 3.878 * jupiter_mass;
+    Planet* bb = make_planet(b, "55 Cnc Bb", 0.044 * AU);
+    bb->mass = 3.5 * earth_mass;
+    Planet* bc = make_planet(b, "55 Cnc Bc", 0.13 * AU);
+    bc->mass = 5.3 * earth_mass;
+    Moon* satellite = moon(ad, lunar_mass, 1e9);
+    rebuild_barycentric_systems();
+    const double time = J2000_TIME_T + 100 * oneyear;
+    satellite->update_location(time);
+    ad->update_location(time);
+    bc->update_location(time);
+    b->update_location(time);
+    bb->update_location(time);
+    a->update_location(time);
+    EXPECT_LT(centroid({a, b, ad, bb, bc, satellite}).magnitude(), 0.1);
+    EXPECT_NEAR(centroid({a, ad, satellite}).distance_to(centroid({b, bb, bc})), 1065 * AU, 0.1);
+    EXPECT_NEAR(ad->location.local_position.distance_to(satellite->location.local_position), 1e9, 0.1);
+    EXPECT_EQ(bb->orbit->center, b);
+}
+
+TEST_F(BarycenterTest, SamplingOtherEpochsPreservesDisplayStateAndQueryOrder)
+{
+    Star* a = make_star("A");
+    Star* b = companion(a, "B", solar_mass, 10 * AU);
+    rebuild_barycentric_systems();
+    a->update_location(J2000_TIME_T + oneyear);
+    const CelestialLocation displayed = a->location;
+    b->update_location(J2000_TIME_T - oneyear);
+    EXPECT_EQ(a->location.local_position.distance_to(displayed.local_position), 0);
+    EXPECT_EQ(a->location.system_center.distance_to(displayed.system_center), 0);
+    const Point first = b->location.local_position;
+    a->update_location(J2000_TIME_T + 3 * oneyear);
+    b->update_location(J2000_TIME_T - oneyear);
+    EXPECT_EQ(b->location.local_position.distance_to(first), 0);
+}
+
+TEST_F(BarycenterTest, EditedMassInvalidatesCachedWeights)
+{
+    Star* a = make_star("A");
+    Star* b = companion(a, "B", solar_mass, 10 * AU);
+    rebuild_barycentric_systems();
+    a->update_location(J2000_TIME_T);
+    EXPECT_NEAR(a->location.local_position.magnitude(), 5 * AU, 0.01);
+    b->mass = 3 * solar_mass;
+    refresh_barycentric_systems();
+    a->update_location(J2000_TIME_T);
+    b->update_location(J2000_TIME_T);
+    EXPECT_NEAR(a->location.local_position.magnitude(), 7.5 * AU, 0.01);
+    EXPECT_LT(centroid({a, b}).magnitude(), 0.01);
+}
+
+TEST_F(BarycenterTest, UnboundCometFollowsTheHostWithoutMovingItsBarycenter)
+{
+    Star* a = make_star("A");
+    Star* b = companion(a, "B", solar_mass, 10 * AU);
+    Comet* comet = new Comet();
+    comet->mass = solar_mass;
+    comet->orbit = new Orbit();
+    comet->orbit->center = a;
+    comet->orbit->eccentricity = 1;
+    comet->orbit->periapsis_distance = AU;
+    comet->orbit->T_periapsis = J2000;
+    append_cel(comet);
+    rebuild_barycentric_systems();
+    a->update_location(J2000_TIME_T);
+    const Point original = a->location.local_position;
+    comet->update_location(J2000_TIME_T);
+    EXPECT_EQ(a->location.local_position.distance_to(original), 0);
+    EXPECT_NEAR(comet->location.local_position.distance_to(original), AU, 0.01);
+    b->update_location(J2000_TIME_T);
+    EXPECT_LT(centroid({a, b}).magnitude(), 0.01);
+}
+
+TEST_F(BarycenterTest, CachedCorrectionsMatchExactKeplerPositionsAtHighEccentricity)
+{
+    Star* a = make_star("A", 2 * solar_mass);
+    Star* b = companion(a, "B", solar_mass, AU);
+    b->orbit->inclination = 0.7;
+    b->orbit->ascending_node = 0.3;
+    for (double eccentricity : {0.0, 0.8, 0.99})
+    {
+        invalidate_barycentric_systems();
+        b->orbit->eccentricity = eccentricity;
+        b->orbit->mean_anomaly = 0;
+        a->location.local_position = Point();
+        std::vector<Point> expected;
+        std::vector<double> times;
+        const double span = b->orbit->period * std::pow(1 - eccentricity, 1.5) / 64;
+        a->update_location(J2000_TIME_T);
+        for (int i = 0; i < 141; ++i)
+        {
+            const double time = J2000_TIME_T + span * (i - 70) / 140;
+            b->update_location(time);
+            expected.push_back(b->location.local_position);
+            times.push_back(time);
+        }
+        rebuild_barycentric_systems();
+        for (size_t i = 0; i < times.size(); ++i)
+        {
+            b->update_location(times[i]);
+            a->update_location(times[i]);
+            EXPECT_LT(a->location.local_position.distance_to(expected[i] * (-1.0 / 3)), 0.003)
+                << "eccentricity=" << eccentricity << " sample=" << i;
+            EXPECT_LT(b->location.local_position.distance_to(expected[i] * (2.0 / 3)), 0.003)
+                << "eccentricity=" << eccentricity << " sample=" << i;
+        }
+    }
+}
+
+TEST_F(BarycenterTest, SolarEphemeridesKeepBodyCenterReferencesAcrossTableKnots)
+{
+    Star* sun = make_star("Sun");
+    Planet* earth = make_planet(sun, "Earth");
+    ASSERT_TRUE(earth->orbit->read_osc_elements("Sun.Earth"));
+    ASSERT_GT(earth->orbit->num_osc, 12u);
+    std::vector<double> times;
+    std::vector<Point> expected;
+    const double knot = earth->orbit->osculating[10].epoch;
+    sun->update_location(J2000_TIME_T);
+    for (double offset : {-1.0, 0.0, 1.0, 20.0})
+    {
+        const double time = J2000_TIME_T + (knot - J2000) * oneday + offset;
+        earth->update_location(time);
+        expected.push_back(earth->location.local_position);
+        times.push_back(time);
+    }
+    rebuild_barycentric_systems();
+    for (size_t i = 0; i < times.size(); ++i)
+    {
+        earth->update_location(times[i]);
+        sun->update_location(times[i]);
+        Point separation = earth->location.local_position - sun->location.local_position;
+        EXPECT_LT(separation.distance_to(expected[i]), 0.003);
+    }
+}
+
+TEST_F(BarycenterTest, LunarOrbitGuideStaysAroundItsLocalBarycenterAndRestoresDisplay)
+{
+    Star* sun = make_star("Sun");
+    Planet* earth = make_planet(sun, "Earth");
+    Moon* luna = moon(earth, lunar_mass, 384400000);
+    rebuild_barycentric_systems();
+    earth->update_location(J2000_TIME_T);
+    luna->update_location(J2000_TIME_T);
+    const Point local_center = centroid({earth, luna});
+    const Point displayed = luna->location.local_position;
+    const double anomaly = luna->curr_mean_anom;
+    {
+        BarycentricOrbitPath path(luna, J2000_TIME_T);
+        ASSERT_TRUE(path.sample(J2000_TIME_T + luna->orbit->period / 2));
+        EXPECT_NEAR(luna->location.local_position.distance_to(local_center),
+            384400000 * earth_mass / (earth_mass + lunar_mass), 0.001);
+        EXPECT_GT(luna->location.local_position.distance_to(displayed), 7e8);
+    }
+    EXPECT_EQ(luna->location.local_position.distance_to(displayed), 0);
+    EXPECT_EQ(luna->curr_mean_anom, anomaly);
+    CelestialLocation view;
+    ASSERT_TRUE(barycentric_system_center(sun, view));
+    EXPECT_EQ(view.local_position.magnitude(), 0);
+}
+
+TEST_F(BarycenterTest, CatalogAnchorUsesThePrimarysActualReferenceEpoch)
+{
+    Star* a = make_star("A", 2 * solar_mass);
+    a->epoch = J2000 + 16 * (oneyear / double(oneday));
+    Star* b = companion(a, "B", solar_mass, 30 * AU);
+    rebuild_barycentric_systems();
+    a->update_location(J2000_TIME_T + (a->epoch - J2000) * oneday);
+    const Point observed = a->location.system_center + a->location.local_position;
+    EXPECT_LT(observed.distance_to(Point::from_ra_dec(a->right_ascension, a->declination, a->distance)), 1);
+    EXPECT_NE(b->orbit, nullptr);
+}
+
+TEST_F(BarycenterTest, LaplacePlaneSamplingIsIndependentOfOtherEpochQueries)
+{
+    Star* sun = make_star("Sun");
+    Planet* earth = make_planet(sun, "Earth");
+    earth->obliquity = 0.4;
+    earth->precession = 1e-8;
+    earth->J2 = 0.001;
+    Moon* luna = moon(earth, lunar_mass, 384400000);
+    luna->orbit_type = ot_Laplace;
+    rebuild_barycentric_systems();
+    const double time = J2000_TIME_T + 5 * oneday;
+    luna->update_location(time);
+    const Point first = luna->location.local_position;
+    luna->update_location(time + 20 * oneday);
+    luna->update_location(time);
+    EXPECT_LT(luna->location.local_position.distance_to(first), 0.001);
+}
+
+TEST_F(BarycenterTest, CatalogAppendKeepsExistingSystemsUsableUntilTheBatchRebuild)
+{
+    Star* a = make_star("A");
+    companion(a, "B", solar_mass, 10 * AU);
+    rebuild_barycentric_systems();
+    a->update_location(J2000_TIME_T);
+    Planet* added = make_planet(a, "New planet");
+    added->mass = jupiter_mass;
+    a->update_location(J2000_TIME_T);
+    EXPECT_NEAR(a->location.local_position.magnitude(), 5 * AU, 0.001);
+    CelestialLocation view;
+    ASSERT_TRUE(barycentric_system_center(a, view));
+    rebuild_barycentric_systems();
+    added->update_location(J2000_TIME_T);
+    a->update_location(J2000_TIME_T);
+    EXPECT_GT(std::abs(a->location.local_position.magnitude() - 5 * AU), 1e6);
 }

@@ -1,3 +1,4 @@
+#include "classes/barycenter.h"
 
 #include "globals.h"
 #include "misc.h"
@@ -1182,6 +1183,7 @@ void process_key_delete()
 {
     // No deleting catalog objects, only objects added by the user, whether fictional objects or satellites.
     // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
+    refresh_barycentric_systems();
     if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
     else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
 

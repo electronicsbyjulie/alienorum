@@ -1,3 +1,5 @@
+#include "classes/barycenter.h"
+#include <tuple>
 
 // shlwapi.h must be included before any project header pulls in `using namespace std`
 // (see globals.h) -- shlwapi.h's own transitive COM headers declare an unqualified
@@ -1174,6 +1176,7 @@ void draw_addcel_window(ImGuiIO& io)
                     pl->estimate_rotation();
                     pl->apply_cosmic_shoreline();
                 }
+                rebuild_barycentric_systems();
                 editidx = ncelobjs-1;
                 objedtwnd = true;
                 addcelwnd = false;
@@ -1209,6 +1212,21 @@ void draw_objedit_window(ImGuiIO& io)
 
     CelestialObject *cel = cels[editidx];
     Orbit *orb = cel->orbit;
+    const json orbit_before = orb ? orb->to_json() : json();
+    const double mass_before = cel->mass;
+    const double tilt_before = cel->obliquity, equinox_before = cel->equinox;
+    const double precession_before = cel->precession;
+    const auto reference_state = [cel]()
+    {
+        const auto cls = cel->typeclass();
+        const Rotation& plane = cel->location.local_system_plane;
+        return std::make_tuple(cel->right_ascension, cel->declination, cel->distance,
+            cel->epoch, cel->sidereal_rotational_period, cel->known_poles, cel->estimated_poles,
+            cel->lock_system_plane, cel->lock_equatorial_plane, plane.a, plane.v.x, plane.v.y, plane.v.z,
+            (cls == class_planet || cls == class_moon) ? static_cast<Planet*>(cel)->J2 : 0.0,
+            cls == class_moon ? int(static_cast<Moon*>(cel)->orbit_type) : 0);
+    };
+    const auto reference_before = reference_state();
 
     ImGui::Begin("Edit Object", &objedtwnd, 0);
 
@@ -2460,6 +2478,11 @@ void draw_objedit_window(ImGuiIO& io)
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
     ImGui::End();
 
+    if (mass_before != cel->mass || tilt_before != cel->obliquity ||
+        equinox_before != cel->equinox || precession_before != cel->precession ||
+        orbit_before != (cel->orbit ? cel->orbit->to_json() : json()) || reference_before != reference_state())
+        refresh_barycentric_systems();
+
     last_edit_idx = editidx;
 
     if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
@@ -2789,6 +2812,7 @@ void draw_system_explorer(ImGuiIO& io)
                     P = m->orbit->period;
                     j++;
                 }
+                rebuild_barycentric_systems();
             }
         }
     }

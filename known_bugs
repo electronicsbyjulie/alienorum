@@ -1,2 +1,2 @@
 
-Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
+COMPLETED: Companion stars, planets, and moons now use hierarchical common centers of mass. Nested stellar orbits use combined subsystem masses, while body-centered ephemerides retain their reference conventions. Validated correction caching avoids repeated full-system calculations; orbit guides stay local and system view centers on the barycenter.

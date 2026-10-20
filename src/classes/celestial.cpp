@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <memory>
 #include "celestial.h"
+#include "barycenter.h"
 #include "shore.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
@@ -63,6 +64,7 @@ CelestialObject::CelestialObject()
 
 CelestialObject::~CelestialObject()
 {
+    forget_barycentric_body(this);
     if (merged_day_map)
     {
         delete merged_day_map;
@@ -794,6 +796,7 @@ json CelestialObject::to_json()
 
 bool CelestialObject::from_json(json j)
 {
+    refresh_barycentric_systems(this);
     try
     {
         std::string str;
@@ -932,6 +935,7 @@ bool alienorum::CelestialObject::operator<(const CelestialObject &other) const  
 
 void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 {
+    if (update_barycentric_location(this, tmnow)) return;
     if (!orbit || !orbit->center) return;
     if ((deleted = orbit->center->deleted)) return;           // assignment not comparison.
     location.galactic_center = orbit->center->location.galactic_center;
@@ -954,7 +958,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         if (!orbit->semimajor_axis) orbit->semimajor_axis = location.distance_to(orbit->center->location);
         if (!orbit->semimajor_axis) orbit->semimajor_axis = AU * 10;
 
-        orbit->period = oneyear * sqrt(pow(orbit->semimajor_axis/AU, 3)) / (orbit->center->mass / solar_mass);
+        orbit->compute_period(mass);
         // std::cout << name << " estimated orbit period=" << (orbit->period / oneday) << " days." << std::endl;
     }
 
@@ -1109,6 +1113,7 @@ json Orbit::to_json()
     return
     {
         {"center_name", cenname},
+        {"body_centered", body_centered},
         {"ascending_node", ascending_node*fiftyseven},
         {"inclination", inclination*fiftyseven},
         {"semimajor_axis", semimajor_axis},
@@ -1127,6 +1132,7 @@ json Orbit::to_json()
 
 bool Orbit::from_json(json j)
 {
+    try { j.at("body_centered").get_to(body_centered); } catch (...) { ; }
     try { j.at("center_name").get_to(center_name); } catch (...) { ; }
     try { j.at("ascending_node").get_to(ascending_node); ascending_node *= fiftyseventh; } catch (...) { ; }
     try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }

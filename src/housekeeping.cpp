@@ -1,3 +1,4 @@
+#include "classes/barycenter.h"
 
 #include "housekeeping.h"
 #include "inputs.h"
@@ -101,7 +102,11 @@ void set_viewer_location_and_plane()
 
     if (view_mode == vm_system)
     {
-        if (mycenobj) here = mycenobj->location;
+        if (mycenobj)
+        {
+            here = mycenobj->location;
+            barycentric_system_center(mycenobj, here);
+        }
     }
     else if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
     {
@@ -534,6 +539,7 @@ void compute_object_draw_coordinates()
 
 void set_center_objects()
 {
+    invalidate_barycentric_systems();
     mtx.lock();
     loading_msg = std::string("Checking data integrity...");
     mtx.unlock();
@@ -708,6 +714,7 @@ void set_center_objects()
         if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
 
+    rebuild_barycentric_systems();
     ((Star*)cels[0])->make_universally_visible();
 
     if (showfails)

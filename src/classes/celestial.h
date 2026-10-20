@@ -90,6 +90,7 @@ namespace alienorum
     class Orbit
     {
         public:
+        bool body_centered = false;               // Relative to the host body, rather than its subsystem.
         CelestialObject* center = nullptr;
         std::string center_name;                    // Only used for loading from universe file.
         double ascending_node = 0;                  // RADIANS!
@@ -308,6 +309,7 @@ namespace alienorum
 
     class CelestialObject
     {
+        friend struct BarycentricBodyState;
         protected:
         cel_obj_class _class = class_unknown;
 
