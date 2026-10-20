@@ -892,7 +892,7 @@ TEST(PlanetEstimationTest, SurfaceGravityAndDensityAgree)
 // Exoplanet Inclination Reconciliation Tests
 // =====================================================================
 
-TEST(ExoplanetInclinationTest, GJ876_ReconcilesAstrometricGaiaClash)
+TEST(ExoplanetInclinationTest, GJ876_PreservesSuppliedInclinations)
 {
     Star host;
     snprintf(host.name, sizeof(host.name), "GJ 876");
@@ -936,14 +936,14 @@ TEST(ExoplanetInclinationTest, GJ876_ReconcilesAstrometricGaiaClash)
 
     CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
 
-    // All planets must be reconciled to the 59 deg dynamical consensus within 1.5 deg
+    const double expected[] = {59, 59, 101, 59};
     for (int i = 0; i < 4; i++)
     {
-        EXPECT_NEAR(pincls[i] * fiftyseven, 59.0, 1.5);
+        EXPECT_NEAR(pincls[i] * fiftyseven, expected[i], 1e-8);
     }
 }
 
-TEST(ExoplanetInclinationTest, HD3167_AlignsUnconstrainedRVPlanetsToTransitPlane)
+TEST(ExoplanetInclinationTest, HD3167_PreservesSuppliedRVInclinations)
 {
     Star host;
     snprintf(host.name, sizeof(host.name), "HD 3167");
@@ -992,18 +992,13 @@ TEST(ExoplanetInclinationTest, HD3167_AlignsUnconstrainedRVPlanetsToTransitPlane
 
     CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
 
-    // d and e must be realigned into the transit plane (around 86.5 deg +/- 2.0 deg)
-    EXPECT_NEAR(pincls[1] * fiftyseven, 86.5, 2.0);
-    EXPECT_NEAR(pincls[3] * fiftyseven, 86.5, 2.0);
-
-    // The unconstrained masses of d and e must scale down to undo sin(40 deg) inflation
-    EXPECT_LT(pd.mass, mass_d_orig);
-    EXPECT_LT(pe.mass, mass_e_orig);
-    EXPECT_NEAR(pd.mass / earth_mass, 4.35, 0.5);
-    EXPECT_NEAR(pe.mass / earth_mass, 5.60, 0.5);
+    EXPECT_NEAR(pincls[1] * fiftyseven, 39, 1e-8);
+    EXPECT_NEAR(pincls[3] * fiftyseven, 41, 1e-8);
+    EXPECT_DOUBLE_EQ(pd.mass, mass_d_orig);
+    EXPECT_DOUBLE_EQ(pe.mass, mass_e_orig);
 }
 
-TEST(ExoplanetInclinationTest, SupplementaryAngleNormalization)
+TEST(ExoplanetInclinationTest, PreservesSuppliedSupplementaryPlanes)
 {
     Star host;
     snprintf(host.name, sizeof(host.name), "PDS 70");
@@ -1046,29 +1041,12 @@ TEST(ExoplanetInclinationTest, SupplementaryAngleNormalization)
 
     CatalogReader::reconcile_exoplanet_inclinations(&host, planets, pincls, pnodes);
 
-    // Planet e must preserve its 49.5 deg prograde inclination without being mutated,
-    // while remaining spatially coplanar with retrograde b and c (180 - 130.5 = 49.5 deg).
-    double i0 = pincls[0] * fiftyseven;
-    double i1 = pincls[1] * fiftyseven;
-    double i2 = pincls[2] * fiftyseven;
-
-    EXPECT_NEAR(i0, 131.0, 0.1);
-    EXPECT_NEAR(i1, 130.5, 0.1);
-    EXPECT_NEAR(i2, 49.5, 0.1);
-
-    // Ascending node of planet e must be rotated 180 degrees relative to b and c
-    // so the orbits remain physically coplanar in 3D space.
-    double n0 = pnodes[0] * fiftyseven;
-    double n1 = pnodes[1] * fiftyseven;
-    double n2 = pnodes[2] * fiftyseven;
-
-    EXPECT_NEAR(n0, 30.0, 0.1);
-    EXPECT_NEAR(n1, 30.0, 0.1);
-    EXPECT_NEAR(n2, 210.0, 0.1);
-
-    // Verify their spatial planes agree within 1.0 deg
-    double plane_tilt_c = 180.0 - i1;
-    EXPECT_NEAR(fabs(plane_tilt_c - i2), 0.0, 1.0);
+    const double expected[] = {131, 130.5, 49.5};
+    for (int i = 0; i < 3; ++i)
+    {
+        EXPECT_NEAR(pincls[i] * fiftyseven, expected[i], 1e-8);
+        EXPECT_NEAR(pnodes[i] * fiftyseven, 30, 1e-8);
+    }
 }
 
 TEST(ExoplanetInclinationTest, PreservesHotJupiterExemption)
@@ -1104,6 +1082,37 @@ TEST(ExoplanetInclinationTest, PreservesHotJupiterExemption)
 
     // The hot jupiter b must preserve its distinct orbital inclination
     EXPECT_NEAR(pincls[0] * fiftyseven, 89.5, 0.1);
+}
+
+TEST(ExoplanetInclinationTest, TwoDegreeCutoffDoesNotDependOnReferencePlaneOrPlanetType)
+{
+    for (double reference : {10.0, 90.0, 170.0})
+    {
+        for (bool hot : {false, true})
+        {
+            Star host;
+            host.has_disk = true;
+            host.disk_heliocen_inclination = reference * fiftyseventh;
+            Planet low, boundary, polar, retrograde;
+            low.type = hot ? hot_jupiter : rocky;
+            std::vector<Planet*> planets = {&low, &boundary, &polar, &retrograde};
+            std::vector<double> inclinations = {0.4 * fiftyseventh, 2 * fiftyseventh, half_pi, _pi};
+            std::vector<double> nodes = {0, 0.2, 0.3, 0.4};
+            CatalogReader::reconcile_exoplanet_inclinations(&host, planets, inclinations, nodes);
+            EXPECT_NEAR(inclinations[0] * fiftyseven, reference, 1e-8);
+            EXPECT_NEAR(inclinations[1] * fiftyseven, 2, 1e-8);
+            EXPECT_DOUBLE_EQ(inclinations[2], half_pi);
+            EXPECT_DOUBLE_EQ(inclinations[3], _pi);
+            EXPECT_DOUBLE_EQ(nodes[1], 0.2);
+            EXPECT_DOUBLE_EQ(nodes[2], 0.3);
+            EXPECT_DOUBLE_EQ(nodes[3], 0.4);
+        }
+    }
+    Planet single;
+    std::vector<Planet*> planets = {&single};
+    std::vector<double> inclinations = {0.4 * fiftyseventh}, nodes = {0};
+    CatalogReader::reconcile_exoplanet_inclinations(nullptr, planets, inclinations, nodes);
+    EXPECT_DOUBLE_EQ(inclinations[0], 0);
 }
 
 TEST(PlanetTest, SystemViewRingsQueueCorrectly)

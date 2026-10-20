@@ -3664,6 +3664,11 @@ int CatalogReader::read_comets_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+static double accepted_exoplanet_inclination(double inclination)
+{
+    return std::isfinite(inclination) && inclination >= 2 * fiftyseventh ? inclination : 0;
+}
+
 void CatalogReader::reconcile_exoplanet_inclinations(
     Star* host_star,
     const std::vector<Planet*>& planets,
@@ -3671,27 +3676,11 @@ void CatalogReader::reconcile_exoplanet_inclinations(
     std::vector<double>& pnodes)
 {
     int n = (int)planets.size();
-    if (n < 2 || pincls.size() != (size_t)n || pnodes.size() != (size_t)n)
+    if (n == 0 || pincls.size() != (size_t)n || pnodes.size() != (size_t)n)
     {
         return;
     }
-
-    // Step 1: Detect Hot Jupiters to exempt from forced coplanarity
-    std::vector<bool> is_exempt(n, false);
-    for (int i = 0; i < n; i++)
-    {
-        Planet* p = planets[i];
-        if (!p)
-        {
-            continue;
-        }
-
-        if (p->type == hot_jupiter ||
-            (p->mass >= 0.2 * jupiter_mass && p->orbit && p->orbit->period > 0 && p->orbit->period < 10.0 * oneday))
-        {
-            is_exempt[i] = true;
-        }
-    }
+    for (double& inclination : pincls) inclination = accepted_exoplanet_inclination(inclination);
 
     // Step 2: Identify dominant reference anchor inclination
     double anchor_incl = 0;
@@ -3782,68 +3771,22 @@ void CatalogReader::reconcile_exoplanet_inclinations(
         }
     }
 
-    // Step 3: Realign outliers to the anchor plane while preserving retrograde direction
+    // Fill unknown inclinations without changing supplied orbital planes.
     if (anchor_incl > 0)
     {
-        if (host_star)
-        {
-            host_star->planets_heliocen_inclination = anchor_incl;
-        }
-
-        double anchor_tilt = (anchor_incl > half_pi) ? (_pi - anchor_incl) : anchor_incl;
-
+        if (host_star) host_star->planets_heliocen_inclination = anchor_incl;
         for (int i = 0; i < n; i++)
         {
-            if (is_exempt[i])
+            if (pincls[i] != 0) continue;
+            Planet* p = planets[i];
+            const double new_sin = sin(anchor_incl);
+            if (p && new_sin > 0.05 && p->msini > 0) p->mass = p->msini / new_sin;
+            pincls[i] = anchor_incl;
+            if (p && p->orbit) p->orbit->inclination = anchor_incl;
+            if (!pnodes[i] && host_star)
             {
-                continue;
-            }
-
-            double direct_delta = fabs(pincls[i] - anchor_incl);
-            double fold_delta = fabs((_pi - pincls[i]) - anchor_incl);
-            double plane_delta = std::min(direct_delta, fold_delta);
-
-            bool is_dummy = (pincls[i] < (2.0 * fiftyseventh) && anchor_tilt > (30.0 * fiftyseventh));
-            bool is_outlier = (plane_delta > (15.0 * fiftyseventh));
-
-            if (is_dummy || is_outlier)
-            {
-                double corrected_incl = anchor_incl;
-                if (corrected_incl < (0.5 * fiftyseventh))
-                {
-                    corrected_incl = anchor_incl;
-                }
-
-                Planet* p = planets[i];
-                if (p)
-                {
-                    double new_sin = sin(corrected_incl);
-                    if (new_sin > 0.05 && p->msini > 0)
-                    {
-                        p->mass = p->msini / new_sin;
-                    }
-                }
-
-                pincls[i] = corrected_incl;
-                if (p && p->orbit)
-                {
-                    p->orbit->inclination = corrected_incl;
-                }
-                if (!pnodes[i] && host_star)
-                {
-                    pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
-                    if (p && p->orbit && pnodes[i])
-                    {
-                        p->orbit->ascending_node = pnodes[i];
-                    }
-                }
-            }
-            else if (fold_delta < direct_delta)
-            {
-                if (pnodes[i] > 0)
-                {
-                    pnodes[i] = fmod(pnodes[i] + _pi, 2.0 * _pi);
-                }
+                pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
+                if (p && p->orbit && pnodes[i]) p->orbit->ascending_node = pnodes[i];
             }
         }
     }
@@ -4144,7 +4087,11 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         bool have_companion_plane = false;
         double companion_inclination = 0, companion_node = 0;
         std::vector<bool> unknown_inclinations;
-        for (double inclination : pincls) unknown_inclinations.push_back(inclination == 0);
+        for (double& inclination : pincls)
+        {
+            inclination = accepted_exoplanet_inclination(inclination);
+            unknown_inclinations.push_back(inclination == 0);
+        }
         if (s->multisys)
         {
             for (char c = 'A'; c <= 'Z'; c++)
@@ -7443,7 +7390,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     snprintf(new_planet->name, sizeof(new_planet->name), "%s", row.pl_name.c_str());
     new_planet->cenobj = (host_star && host_star->cenobj) ? host_star->cenobj : host_star;
 
-    double inclination = isnan(row.pl_orbincl) ? 0 : row.pl_orbincl * fiftyseventh;
+    double inclination = accepted_exoplanet_inclination(row.pl_orbincl * fiftyseventh);
 
     double pl_mass = 0, pl_msini = 0;
     bool pl_massknown = false, pl_msini_known = false, pl_radknown = false;

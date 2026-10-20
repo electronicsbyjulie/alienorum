@@ -1695,7 +1695,7 @@ TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
                 row.pl_orbper = periods[i];
                 row.pl_msinij = i == 0 ? 1.093 : 0.02;
                 row.pl_bmassj = row.pl_msinij;
-                row.pl_orbincl = i == 0 ? (known_planet ? 90 : 0) : NAN;
+                row.pl_orbincl = i == 0 ? (known_planet ? 90 : 0.4) : NAN;
                 ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
             }
             reader.apply_exoplanet_names(planets);
