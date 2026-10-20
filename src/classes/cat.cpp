@@ -4889,6 +4889,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     numfails = 0;
 
+    ExactStarSearchIndex orbit_lookup;
+
     while (fgets(buffer, 1020, fp))
     {
         if (*buffer == '#') continue;
@@ -4899,7 +4901,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         const char* censtr = cenname.c_str();
         A = nullptr;
         // Catalog rows can only attach to exact identifiers or aliases, never fuzzy guesses.
-        int sioxt = find_object(censtr, true, 9e29, 1);
+        int sioxt = find_object(censtr, true, 9e29, 1, &orbit_lookup);
         if (sioxt >= 0)
         {
             A = (Star*)cels[sioxt];
@@ -5010,7 +5012,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
         }
         if (!s)
         {
-            sioxt = find_object(bdystr, true, 9e29, 1);
+            sioxt = find_object(bdystr, true, 9e29, 1, &orbit_lookup);
             if (sioxt >= 0)
             {
                 s = (Star*)cels[sioxt];
@@ -5297,8 +5299,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
             A->known_poles = s->known_poles = true;
         }
 
+        // Later rows can refer to a companion just created or renamed above.
+        orbit_lookup.add(A->seqno, *A);
+        orbit_lookup.add(s->seqno, *s);
         num_read++;
     }
+    fclose(fp);
 
     if (numfails && !showfails) std::cout << "There were " << numfails
         << " star orbits that could not be applied. To see them, re-run Alienorum with the `orbfails` command like argument."

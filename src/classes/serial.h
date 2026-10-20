@@ -2,6 +2,8 @@
 #define _AlienorumSerialization
 
 #include <fstream>
+#include <map>
+#include <unordered_map>
 #include "galaxy.h"
 #include "star.h"
 #include "planet.h"
@@ -11,6 +13,21 @@
 
 namespace alienorum
 {
+    // Scoped to one import. Candidate lists retain catalog order; find_object
+    // still applies the identifier, component, and constellation rules.
+    class ExactStarSearchIndex
+    {
+        std::map<std::string, std::vector<int>> names;
+        std::unordered_map<std::string, std::vector<int>> aliases, gliese;
+        std::unordered_map<int, std::vector<int>> greek, numbers;
+        std::vector<int> white_dwarfs;
+
+        public:
+        ExactStarSearchIndex();
+        void add(int index, const Star &star);
+        std::vector<int> candidates(const char *term) const;
+    };
+
     class Serialization
     {
         public:
@@ -20,7 +37,8 @@ namespace alienorum
     };
 }
 
-int find_object(const char *search_term, bool only_stars = false, double mag_limit = 9e29, int Levenshtein_requirement = 3);
+int find_object(const char *search_term, bool only_stars = false, double mag_limit = 9e29,
+    int Levenshtein_requirement = 3, const alienorum::ExactStarSearchIndex *index = nullptr);
 
 #endif
 

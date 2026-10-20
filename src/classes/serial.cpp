@@ -93,8 +93,91 @@ static bool looks_like_Gould(const char* s)
     return false;
 }
 
-int find_object(const char* search_term, bool os, double ml, int levreq)
+static std::string search_key(const std::string &value)
 {
+    std::string key = value;
+    for (char &c : key)
+    {
+        if (c >= 'A' && c <= 'Z') c += 0x20;
+    }
+    return key;
+}
+
+static std::string search_numbers(const std::string &value)
+{
+    std::string key;
+    for (char c : value)
+    {
+        if (is_digit_or_dot(c)) key += c;
+    }
+    return key;
+}
+
+ExactStarSearchIndex::ExactStarSearchIndex()
+{
+    for (int index = 0; cels[index]; ++index)
+    {
+        if (cels[index]->typeclass() == class_star) add(index, *static_cast<Star*>(cels[index]));
+    }
+}
+
+void ExactStarSearchIndex::add(int index, const Star &star)
+{
+    const auto record = [index](auto &table, const auto &key)
+    {
+        auto &entries = table[key];
+        if (std::find(entries.begin(), entries.end(), index) == entries.end()) entries.push_back(index);
+    };
+    record(names, search_key(star.name));
+    for (const std::string &alias : {star.local_name, std::string(star.Bayer),
+        std::string(star.Flamsteed), star.alienorumid})
+    {
+        if (!alias.empty()) record(aliases, search_key(alias));
+    }
+    if (strlen(star.Gliese)) record(gliese, search_numbers(star.Gliese));
+    if (star.BayerGrkno >= 0) record(greek, star.BayerGrkno);
+    if (star.FlamsteedNo > 0) record(numbers, star.FlamsteedNo);
+    if (star.GouldNo > 0) record(numbers, star.GouldNo);
+    if (!star.gaia_wd_name.empty() || !star.WD.empty() || !wd_identifier_key(star.name).empty())
+    {
+        if (std::find(white_dwarfs.begin(), white_dwarfs.end(), index) == white_dwarfs.end()) white_dwarfs.push_back(index);
+    }
+}
+
+std::vector<int> ExactStarSearchIndex::candidates(const char *term) const
+{
+    const std::string key = search_key(term);
+    std::vector<int> result;
+    const auto collect = [&result](const auto &table, const auto &value)
+    {
+        const auto found = table.find(value);
+        if (found != table.end()) result.insert(result.end(), found->second.begin(), found->second.end());
+    };
+    // The reference search also accepts long display-name prefixes.
+    for (auto entry = names.lower_bound(key); entry != names.end() && entry->first.compare(0, key.size(), key) == 0; ++entry)
+    {
+        result.insert(result.end(), entry->second.begin(), entry->second.end());
+    }
+    collect(aliases, key);
+    collect(gliese, search_numbers(term));
+    if (looks_like_Bayer(term)) collect(greek, grkno_from_abbrev(term));
+    const int number = atoi(term);
+    if (number) collect(numbers, number);
+    if (key.compare(0, 2, "wd") == 0) result.insert(result.end(), white_dwarfs.begin(), white_dwarfs.end());
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    return result;
+}
+
+int find_object(const char* search_term, bool os, double ml, int levreq, const ExactStarSearchIndex *index)
+{
+    const bool indexed = index && os && levreq == 1;
+    const std::vector<int> candidates = indexed ? index->candidates(search_term) : std::vector<int>();
+    const auto object_at = [&](size_t position)
+    {
+        if (indexed) return position < candidates.size() ? candidates[position] : -1;
+        return cels[position] ? static_cast<int>(position) : -1;
+    };
     std::string gaia_term;
     if (strlen(search_term) >= 3 && !strncasecmp(search_term, "WD", 2))
     {
@@ -111,7 +194,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     if (gaia_term.compare(0, 3, "WDJ") == 0 &&
         gaia_term.find_first_not_of("0123456789+-.", 3) == std::string::npos)
     {
-        for (int index = 0; cels[index]; index++)
+        for (int cursor = 0, index; (index = object_at(cursor)) >= 0; ++cursor)
         {
             if (cels[index]->typeclass() != class_star)
             {
@@ -142,7 +225,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
             const std::string search_key = wd_identifier_key("WD" + id);
             if (search_key.empty()) return -1;
             int matched = -1;
-            for (int index = 0; cels[index]; index++)
+            for (int cursor = 0, index; (index = object_at(cursor)) >= 0; ++cursor)
             {
                 if (cels[index]->typeclass() != class_star)
                 {
@@ -209,7 +292,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         // Reuse an exact component name instead of constructing a second copy.
         if (match_comp)
         {
-            for (int index = 0; cels[index]; index++)
+            for (int cursor = 0, index; (index = object_at(cursor)) >= 0; ++cursor)
             {
                 if (!cels[index]->deleted && cels[index]->typeclass() == class_star &&
                     !strcmp(cels[index]->name, search_term)) return index;
@@ -292,7 +375,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
             return cons2match->Gould_stars[i]->seqno;
     }
 
-    for (i=0; cels[i]; i++)
+    for (int cursor = 0; (i = object_at(cursor)) >= 0; ++cursor)
     {
         if (cels[i]->deleted) continue;
         if (os && (cels[i]->typeclass() != class_star)) continue;
@@ -343,7 +426,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
     if (match_cons && termi)
     {
         // TODO: put Bayer search in here too.
-        if (result < 0 && !is_Gould) for (i=0; cels[i]; i++)
+        if (result < 0 && !is_Gould) for (int cursor = 0; (i = object_at(cursor)) >= 0; ++cursor)
         {
             if (cels[i]->deleted) continue;
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
@@ -360,7 +443,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 result = i;
             }
         }
-        if (result < 0) for (i=0; cels[i]; i++)
+        if (result < 0) for (int cursor = 0; (i = object_at(cursor)) >= 0; ++cursor)
         {
             if (cels[i]->deleted) continue;
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
@@ -381,12 +464,26 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
         if (os) return result;
     }
 
+    // With an exclusive limit of one, only zero distance can match. Avoid
+    // allocating an edit-distance matrix for every alias in the catalog.
+    const auto search_distance = [&levreq](const std::string &a, const std::string &b)
+    {
+        if (levreq != 1) return Damerau_Levenshtein(a, b);
+        if (a.size() != b.size()) return 1;
+        for (size_t index = 0; index < a.size(); ++index)
+        {
+            const char x = a[index] >= 'A' && a[index] <= 'Z' ? a[index] + 0x20 : a[index];
+            const char y = b[index] >= 'A' && b[index] <= 'Z' ? b[index] + 0x20 : b[index];
+            if (x != y) return 1;
+        }
+        return 0;
+    };
     char buffer[256];
     if (result < 0)
     {
         std::string lookstr = search_term;
         int looklen = strlen(search_term);
-        for (i=0; cels[i]; i++)
+        for (int cursor = 0; (i = object_at(cursor)) >= 0; ++cursor)
         {
             if (cels[i]->deleted) continue;
             s = (cels[i]->typeclass() == class_star) ? ((Star*)cels[i]) : nullptr;
@@ -417,7 +514,7 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
             }
 
             int lev = (!s || has_same_numbers(cels[i]->name, lookstr.c_str())) 
-                    ? Damerau_Levenshtein(buffer, lookstr) 
+                    ? search_distance(buffer, lookstr)
                     : 1e9;
 
             if (s)
@@ -425,19 +522,19 @@ int find_object(const char* search_term, bool os, double ml, int levreq)
                 int lev1;
                 if (s->local_name.size())
                 {
-                    lev1 = Damerau_Levenshtein(s->local_name.c_str(), lookstr);
+                    lev1 = search_distance(s->local_name, lookstr);
                     if (lev1 < lev) lev = lev1;
                 }
                 
                 // Bayer check
                 lev1 = has_same_numbers(s->Bayer, lookstr.c_str()) 
-                    ? Damerau_Levenshtein(s->Bayer, lookstr) 
+                    ? search_distance(s->Bayer, lookstr)
                     : 1e9;
                 if (lev1 < lev) lev = lev1;
                 
                 // Flamsteed check
                 lev1 = has_same_numbers(s->Flamsteed, lookstr.c_str()) 
-                    ? Damerau_Levenshtein(s->Flamsteed, lookstr) 
+                    ? search_distance(s->Flamsteed, lookstr)
                     : 1e9;
                 if (lev1 < lev) lev = lev1;
             }

@@ -5,9 +5,11 @@
 #include <fstream>
 #include <future>
 #include <iomanip>
+#include <set>
 #include <vector>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
+#include "../classes/cons.h"
 #include "../loaders.h"
 #include "../globals.h"
 #include "../housekeeping.h"
@@ -33,6 +35,61 @@ class CatalogParsingTest : public UniverseFixture
         make_star("Sol");
     }
 };
+
+TEST_F(CatalogParsingTest, DISABLED_StarOrbitCatalogTiming)
+{
+    Star::load_main_seq_dat();
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    struct RestoreCaches
+    {
+        Star **hd, **hip;
+        std::vector<Constellation> definitions;
+        int count;
+        std::map<std::string, Star*> dm;
+        ~RestoreCaches()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            constellations = std::move(definitions);
+            num_reg_cons = count;
+            dmcache = std::move(dm);
+        }
+    } restore{hdcache, hipcache, std::move(constellations), num_reg_cons, std::move(dmcache)};
+    constellations.clear();
+    num_reg_cons = 0;
+    dmcache.clear();
+    read_cons_lines();
+    hdcache = hd.data();
+    hipcache = hip.data();
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_GT(reader.read_condensed_star_cat(), 100000);
+    const auto start = std::chrono::steady_clock::now();
+    const int count = reader.read_star_orbits_dat(cels);
+    std::cout << "Applied " << count << " orbit rows to " << ncelobjs << " objects in "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count()
+        << " seconds" << std::endl;
+    EXPECT_GT(count, 400);
+    // Compare every catalog identifier with the original scan after applying
+    // the rows, including absent names and companions added during the import.
+    ExactStarSearchIndex index;
+    std::set<std::string> queries;
+    std::ifstream source("catalogs/star_orbits.dat");
+    std::string line;
+    while (std::getline(source, line))
+    {
+        if (line.empty() || line[0] == '#' || line.size() < 47) continue;
+        queries.insert(trim(line.substr(0, 23)));
+        queries.insert(trim(line.substr(24, 23)));
+    }
+    for (const auto &query : queries)
+    {
+        if (query.empty() || query[0] == '(') continue;
+        EXPECT_EQ(find_object(query.c_str(), true, 9e29, 1, &index),
+            find_object(query.c_str(), true, 9e29, 1)) << query;
+    }
+    delete_the_universe();
+}
 
 TEST(TextureTaskTest, ShutdownWaitsBeyondFiveSecondsAndRejectsNewWork)
 {

@@ -738,6 +738,61 @@ TEST_F(FindObjectTest, ToleratesAMisspelling)
     delete_the_universe();
 }
 
+TEST_F(FindObjectTest, ExactAliasSearchPreservesCaseFoldingAndRejectsTypos)
+{
+    Star *target = make_star("Stored Display");
+    target->local_name = "Orbit Alias";
+    strcpy(target->Bayer, "Alias Bayer");
+    strcpy(target->Flamsteed, "Alias Number");
+    EXPECT_EQ(find_object("oRbIt aLiAs", true, 9e29, 1), target->seqno);
+    EXPECT_EQ(find_object("alias bayer", true, 9e29, 1), target->seqno);
+    EXPECT_EQ(find_object("alias number", true, 9e29, 1), target->seqno);
+    EXPECT_EQ(find_object("stored display", true, 9e29, 1), target->seqno);
+    EXPECT_EQ(find_object("Orbit Aliaz", true, 9e29, 1), -1);
+    EXPECT_EQ(find_object("Orbit Aliaz", true), target->seqno);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, IndexedExactSearchMatchesReferenceAndTracksAddedAndRenamedStars)
+{
+    Star *first = make_star("Stored Display Name");
+    first->local_name = "Orbit Alias";
+    strcpy(first->Gliese, "GJ 234.5");
+    strcpy(first->Bayer, "Alias Bayer");
+    first->alienorumid = "SA123456";
+    first->FlamsteedNo = 42;
+    first->GouldNo = 57;
+    strcpy(first->constellation, "Ori");
+    strcpy(first->Gouldcons, "Ori");
+    Star *second = make_star("Other Display");
+    second->local_name = "Orbit Alias";
+    second->deleted = true;
+    make_star(" W D1234+567");
+    Star *gaia = make_star("Gaia White Dwarf");
+    gaia->gaia_wd_name = "WDJ123456.78+123456.7";
+    ExactStarSearchIndex index;
+    for (const char *query : {"Stored Display Name", "stored display", "Orbit Alias", "orbit alias",
+        "Orbit Aliaz", "GJ234.5", "Gliese 234.5", "Alias Bayer", "SA123456", "42 Ori", "57 G. Ori", "Missing Star",
+        "WD1234+567", "WDJ123456.78+123456.7", "WDJ1234+1234"})
+    {
+        SCOPED_TRACE(query);
+        EXPECT_EQ(find_object(query, true, 9e29, 1, &index), find_object(query, true, 9e29, 1));
+    }
+    Star *added = make_star("New Orbit Member");
+    index.add(added->seqno, *added);
+    EXPECT_EQ(find_object("New Orbit Member", true, 9e29, 1, &index), added->seqno);
+    strcpy(added->name, "Renamed Orbit Member");
+    added->namelen = strlen(added->name);
+    index.add(added->seqno, *added);
+    EXPECT_EQ(find_object("Renamed Orbit Member", true, 9e29, 1, &index), added->seqno);
+    EXPECT_EQ(find_object("New Orbit Member", true, 9e29, 1, &index), -1);
+    // Fuzzy and planet searches ignore the star-only snapshot.
+    EXPECT_EQ(find_object("Orbit Aliaz", true, 9e29, 3, &index), find_object("Orbit Aliaz", true));
+    Planet *planet = make_planet(first, "Test World");
+    EXPECT_EQ(find_object("Test World", false, 9e29, 1, &index), planet->seqno);
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, RefusesSomethingNothingLikeAnyOfThem)
 {
     make_star("Betelgeuse");
