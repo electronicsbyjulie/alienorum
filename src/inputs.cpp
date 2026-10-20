@@ -40,6 +40,13 @@ void center_tracked()
 void identify_object_under_cursor(ImGuiIO& io)
 {
     int i;
+    const auto system_target = [](int index)
+    {
+        if (index < 0 || cels[index]->type != star || cels[index]->cenobj == mycenobj) return index;
+        Star *component = static_cast<Star*>(cels[index]);
+        Star *primary = component->multisys ? component->multisys->get_member('A') : nullptr;
+        return primary && !primary->deleted ? primary->seqno : index;
+    };
 
     is_an_obj_under_cursor = -1;
     is_a_locale_under_cursor = nullptr;
@@ -50,7 +57,7 @@ void identify_object_under_cursor(ImGuiIO& io)
 
     if (trackidx >= 0)
     {
-        is_an_obj_under_cursor = trackidx;
+        is_an_obj_under_cursor = system_target(trackidx);
     }
     else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
@@ -75,13 +82,13 @@ void identify_object_under_cursor(ImGuiIO& io)
 
             if (lmag < obj_magn_under_cursor)
             {
-                is_an_obj_under_cursor = i;
+                is_an_obj_under_cursor = system_target(i);
                 obj_magn_under_cursor = lmag;
 
-                if (i == selected) break;
+                if (is_an_obj_under_cursor == selected) break;
                 if (is_click && !dragged)
                 {
-                    selected = i;
+                    selected = is_an_obj_under_cursor;
                     selected_this_turn = true;
                     selected_locale = nullptr;
                 }

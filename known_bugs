@@ -6,6 +6,8 @@
 
 [COMPLETED] When viewed from outside a star system, the label for that star system should always be the primary component's name, for example Xi Ursae Majoris not Xi UMa B or HD98230, no matter which component is brightest.
 
+[COMPLETED] The same is true of the mouseover, it should populate the N dialog with details about the primary, not necessarily the brightest.
+
 [COMPLETED] Dependent on the showfails boolean, output names of systems during program load where the primary star is not the intrinsically brightest star of the system, so that these can be checked manually. Internally, we lean toward designating the most massive member as the primary, and there are systems that legitimately have a companion star as the brightest.
 
 [COMPLETED] Some weirdness is going on in vm_horizon mode when a planet's atmosphere is double-digit bar and the planet has water. See snapshots/Sculptor.HD 38529 Ac IX.20261019.043721.png for what I mean. There is terrain being drawn above the water and there are waves on that terrain.

@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include "../globals.h"
 #include "../visuals.h"
+#include "../inputs.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
@@ -447,6 +448,44 @@ TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighter
         ASSERT_EQ(labels2draw.size(), 1u);
         EXPECT_EQ(labels2draw.back().text, format.text);
     }
+}
+
+TEST_F(RenderingRegressionTest, DistantSystemCursorSelectsPrimaryAndLocalCursorSelectsCompanion)
+{
+    Star *sun = make_star("Sun");
+    Star *primary = make_star("Xi Ursae Majoris");
+    primary->set_component('A', primary);
+    Star *companion = make_star("Xi Ursae Majoris B");
+    companion->make_companion_of(primary, 'B');
+    primary->cenobj = companion->cenobj = primary;
+    primary->drawnx = companion->drawnx = 96;
+    primary->drawny = companion->drawny = 54;
+    double magnitudes[3] = {5, 5, 4};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(trackidx, -1);
+    set(selected, -1);
+    set(whereami, 0);
+    set(view_mode, vm_spaceship);
+    set(is_click, true);
+    set(dragged, false);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(is_an_obj_under_cursor, -1);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(obj_magn_under_cursor, 1e9);
+    ImGuiIO &io = ImGui::GetIO();
+    io.MousePos = ImVec2(96, 54);
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, primary->seqno);
+    EXPECT_EQ(selected, primary->seqno);
+    mycenobj = primary;
+    selected = -1;
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, companion->seqno);
+    EXPECT_EQ(selected, companion->seqno);
+    mycenobj = sun;
+    trackidx = companion->seqno;
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, primary->seqno);
 }
 
 TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)
