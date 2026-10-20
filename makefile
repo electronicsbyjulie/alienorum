@@ -61,7 +61,7 @@ OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJIGFD)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJINT)/, $(basename $(notdir $(CLASSES_SRC)))))
 OBJS += $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
-	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o
+	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 
@@ -274,6 +274,15 @@ $(OBJINT)/clouds_gpu.o: src/classes/clouds_gpu.cpp
 
 $(OBJINT)/sunclock_gpu.o: src/sunclock_gpu.cpp
 	$(CPP) src/sunclock_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/sunclock_gpu.o
+
+$(OBJINT)/horizon_ground_gpu.o: src/horizon_ground_gpu.cpp
+	$(CPP) src/horizon_ground_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/horizon_ground_gpu.o
+
+$(OBJINT)/horizon_terrain_gpu.o: src/horizon_terrain_gpu.cpp
+	$(CPP) src/horizon_terrain_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/horizon_terrain_gpu.o
+
+$(OBJINT)/horizon_mesh_gpu.o: src/horizon_mesh_gpu.cpp
+	$(CPP) src/horizon_mesh_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/horizon_mesh_gpu.o
 
 
 # Every test binary links the whole object set, so $(OBJS) has to be a prerequisite of each of

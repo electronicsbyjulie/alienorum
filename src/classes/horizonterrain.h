@@ -56,6 +56,19 @@ namespace alienorum
             return x >= 0 && x < width ? column_top[x] : height;
         }
 
+        const std::vector<float> &distances() const { return surface_distance; }
+
+        void store(int x, int y, double depth, double distance)
+        {
+            const size_t index = static_cast<size_t>(y) * width + x;
+            if (depth > inverse_depth[index] && std::isfinite(distance) && distance > 0)
+            {
+                inverse_depth[index] = static_cast<float>(depth);
+                surface_distance[index] = static_cast<float>(distance);
+                column_top[x] = std::min(column_top[x], y);
+            }
+        }
+
         void triangle(const ProjectedTerrainVertex &a, const ProjectedTerrainVertex &b,
             const ProjectedTerrainVertex &c)
         {

@@ -50,6 +50,39 @@ TEST(MapTest, BiomeCapRejectsBoundariesPolesAndIncompleteMaps)
     EXPECT_FALSE(empty.color_within_cap(0.3, 0.4, 0.0001, color));
 }
 
+class UniformBiomePixelMap : public BiomePixelMap
+{
+    public:
+    UniformBiomePixelMap()
+    {
+        for (unsigned long i = 0; i < allocated; ++i)
+        {
+            red_data[i] = 20;
+            green_data[i] = 100;
+            blue_data[i] = 160;
+        }
+    }
+
+    void change_color_at(double latitude, double longitude)
+    {
+        red_data[idx_of(latitude, longitude)] = 200;
+        touch_gen();
+    }
+};
+
+TEST(MapTest, BiomeCapCertifiesAllPixelsAndRejectsAnInteriorColorChange)
+{
+    UniformBiomePixelMap map;
+    RGB3 color;
+    EXPECT_FALSE(map.color_within_cap(0.3, 0.4, 0.1, color));
+    ASSERT_TRUE(map.color_within_cap(0.3, 0.4, 0.1, color, true));
+    EXPECT_EQ(color.r, 20);
+    EXPECT_EQ(color.g, 100);
+    EXPECT_EQ(color.b, 160);
+    map.change_color_at(0.3, 0.4);
+    EXPECT_FALSE(map.color_within_cap(0.3, 0.4, 0.1, color, true));
+}
+
 TEST(MapTest, BiomeCapMatchesDisplacedColorsAcrossWorldsAndScales)
 {
     BiomePixelMap map;

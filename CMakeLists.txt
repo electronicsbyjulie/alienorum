@@ -103,6 +103,9 @@ add_executable(alienorum
 	src/loaders.cpp
 	src/sphere_impostor.cpp
 	src/sunclock_gpu.cpp
+	src/horizon_ground_gpu.cpp
+	src/horizon_terrain_gpu.cpp
+	src/horizon_mesh_gpu.cpp
 	src/classes/clouds_gpu.cpp
 	src/visuals.cpp
 	src/alienorum.cpp)

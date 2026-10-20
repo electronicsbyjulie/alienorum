@@ -62,6 +62,18 @@
 
 // Shoreline and other surface boundary params
 #define shore_displacement 8.0
+// Horizon GPU stages: enable each stage independently for comparison.
+#ifndef horizon_gpu_ground_painting
+#define horizon_gpu_ground_painting 1
+#endif
+#ifndef horizon_gpu_terrain_rasterization
+// Opt-in: compare performance on the target GPU before enabling by default.
+#define horizon_gpu_terrain_rasterization 0
+#endif
+#ifndef horizon_gpu_mesh_generation
+// Opt-in: precision-preserving noise is slower on older integrated GPUs.
+#define horizon_gpu_mesh_generation 0
+#endif
 #ifndef distant_biome_pixel_sampling
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif

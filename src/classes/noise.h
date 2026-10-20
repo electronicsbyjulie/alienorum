@@ -25,6 +25,7 @@ namespace alienorum
         double lerp(double t, double a, double b);
         double grad(int hash, double x, double y, double z);
         double noise(double x, double y, double z);
+        const std::vector<int> &permutation() const { return p; }
     };
 }
 

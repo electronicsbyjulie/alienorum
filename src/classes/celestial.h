@@ -256,7 +256,8 @@ namespace alienorum
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);
-        bool color_within_cap(double latitude, double longitude, double angle, RGB3 &color);
+        bool color_within_cap(double latitude, double longitude, double angle, RGB3 &color,
+            bool allow_equal_pixels = false);
         RGB3 color_at_bilinear(double latitude, double longitude) const;
         double elevation_at(double latitude, double longitude);     // Returns meters.
         double elevation_at_bilinear(double latitude, double longitude) const;

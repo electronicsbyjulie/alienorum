@@ -2078,7 +2078,7 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     return true;
 }
 
-bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color)
+bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bool allow_equal_pixels)
 {
     if (generating_fic_texture || !is_complete() || !allocated
         || !std::isfinite(lat) || !std::isfinite(lon) || !std::isfinite(angle)
@@ -2093,8 +2093,26 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color)
     const double center = wrapped - _pi;
     const unsigned int first = idx_of(lat + angle, center - longitude_span);
     const unsigned int last = idx_of(lat - angle, center + longitude_span);
-    if (first != last || first == idx_not_ready || first >= allocated) return false;
+    if (first == idx_not_ready || first >= allocated || last >= allocated) return false;
     color = RGB3(red_data[first], green_data[first], blue_data[first]);
+    if (first != last)
+    {
+        if (!allow_equal_pixels) return false;
+        const unsigned long left = first % image_width, right = last % image_width;
+        const unsigned long top = first / image_width, bottom = last / image_width;
+        if (left > right || top > bottom || (right - left + 1) * (bottom - top + 1) > 4096) return false;
+        for (unsigned long row = top; row <= bottom; ++row)
+        {
+            for (unsigned long column = left; column <= right; ++column)
+            {
+                const unsigned long index = row * image_width + column;
+                if (red_data[index] != color.r || green_data[index] != color.g || blue_data[index] != color.b)
+                {
+                    return false;
+                }
+            }
+        }
+    }
     return true;
 }
 

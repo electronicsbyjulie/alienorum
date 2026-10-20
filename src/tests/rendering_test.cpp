@@ -1,3 +1,4 @@
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -9,7 +10,11 @@
 #include "../inputs.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
+#include "../horizon_ground_gpu.h"
+#include "../horizon_terrain_gpu.h"
+#include "../horizon_mesh_gpu.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
+#include "imgui_internal.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -54,6 +59,15 @@ class SceneryTestMap : public Map
             blue_data[i] = plant ? 30 : (sea ? 160 : 80);
         }
         touch_gen();
+    }
+};
+
+class BumpySceneryTestMap : public SceneryTestMap
+{
+    public:
+    BumpySceneryTestMap() : SceneryTestMap(true)
+    {
+        bump_data = new double[4]{0, 2500, 1200, 3700};
     }
 };
 
@@ -146,6 +160,9 @@ class RenderingRegressionTest : public UniverseFixture
     {
         if (graphics)
         {
+            clear_horizon_ground_gpu();
+            clear_horizon_terrain_gpu();
+            clear_horizon_mesh_gpu();
             ImGui_ImplOpenGL3_Shutdown();
             ImGui::DestroyContext();
             SDL_GL_DeleteContext(graphics);
@@ -184,6 +201,10 @@ class RenderingRegressionTest : public UniverseFixture
         set(altitude, 0.0);
         set(here.equatorial_plane.a, 0.0);
         set(dragging, false);
+        // Vertex assertions exercise the reference painter; GPU tests compare complete images.
+        set(horizon_ground_gpu_reference, true);
+        set(horizon_terrain_gpu_reference, true);
+        set(horizon_mesh_gpu_reference, true);
         ImGui::GetIO().DisplaySize = ImVec2(192, 108);
         ImGui::GetIO().DeltaTime = 1.0f / 60;
         ImGui_ImplOpenGL3_NewFrame();
@@ -294,6 +315,45 @@ class RenderingRegressionTest : public UniverseFixture
         std::vector<unsigned char> pixels(render_width * render_height * 4);
         glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
         EXPECT_EQ(glGetError(), static_cast<unsigned int>(GL_NO_ERROR));
+        return pixels;
+    }
+
+    void freeze_surface_time()
+    {
+        ImGui::GetCurrentContext()->Time = 50.0;
+        // This ImGui version keys background-list resets by time, rather than frame count.
+        auto *viewport = static_cast<ImGuiViewportP*>(ImGui::GetMainViewport());
+        viewport->BgFgDrawListsLastTimeActive[0] = -1.0f;
+        viewport->BgFgDrawListsLastTimeActive[1] = -1.0f;
+    }
+
+    int image_difference(const std::vector<unsigned char> &actual, const std::vector<unsigned char> &expected)
+    {
+        int count = 0;
+        for (size_t i = 0; i < actual.size(); i += 4)
+        {
+            if (std::equal(actual.begin() + i, actual.begin() + i + 4, expected.begin() + i)) continue;
+            if (count < 4)
+            {
+                std::cout << "Pixel " << (i / 4) % render_width << ", " << (i / 4) / render_width << ": actual ";
+                for (int c = 0; c < 4; ++c) std::cout << static_cast<int>(actual[i + c]) << ' ';
+                std::cout << "expected ";
+                for (int c = 0; c < 4; ++c) std::cout << static_cast<int>(expected[i + c]) << ' ';
+                std::cout << std::endl;
+            }
+            ++count;
+        }
+        return count;
+    }
+
+    std::vector<unsigned char> mesh_image(bool reference)
+    {
+        horizon_mesh_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
         return pixels;
     }
 
@@ -788,6 +848,658 @@ TEST_F(RenderingRegressionTest, DISABLED_HorizonMotionCpuTimings)
         std::cout << (travel ? "Travel" : "Pan") << " horizon CPU: " << elapsed / 8
             << " ms; geometry digest: " << digest << std::endl;
     }
+}
+
+TEST_F(RenderingRegressionTest, GpuGroundMatchesReferenceDuringTravelAndPanning)
+{
+    #if !horizon_gpu_ground_painting
+    GTEST_SKIP() << "GPU ground painting is disabled in visuals.h.";
+    #endif
+    surface(true);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    const auto capture = [&](bool reference)
+    {
+        horizon_ground_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        set(viewer_lon, 0.4 + frame * 0.00001);
+        set(azimuth, frame * 0.2);
+        set(redlight_mode, frame % 3 == 1);
+        set(dragging, frame % 3 == 2);
+        const auto expected = capture(true);
+        const auto actual = capture(false);
+        EXPECT_EQ(image_difference(actual, expected), 0) << "Frame " << frame;
+        EXPECT_GT(horizon_ground_gpu_stats().tiles, 0u);
+        EXPECT_GT(horizon_ground_gpu_stats().pixels, 0u);
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuGroundPreservesCoastsDenseAirSeamsAndPoles)
+{
+    #if !horizon_gpu_ground_painting
+    GTEST_SKIP() << "GPU ground painting is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->vegetation_r = world->vegetation_g = world->vegetation_b = 0;
+    for (const auto &position : {std::make_pair(-0.0001, 0.4), std::make_pair(0.0001, 0.4),
+        std::make_pair(0.3, _pi - 0.0001), std::make_pair(-0.3, -_pi + 0.0001),
+        std::make_pair(half_pi - 0.0001, 0.4), std::make_pair(-half_pi + 0.0001, 0.4)})
+    {
+        set(viewer_lat, position.first);
+        set(viewer_lon, position.second);
+        for (double pressure : {oneatm, 15 * oneatm})
+        {
+            world->ensure_atmosphere()->surface_pressure = pressure;
+            std::vector<unsigned char> expected;
+            for (bool reference : {true, false})
+            {
+                horizon_ground_gpu_reference = reference;
+                freeze_surface_time();
+                find_horizon();
+                draw_horizon();
+                const auto pixels = render();
+                if (reference) expected = pixels;
+                else EXPECT_EQ(image_difference(pixels, expected), 0) << position.first << ", " << position.second << ", " << pressure;
+                ImGui::NewFrame();
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuGroundPreservesChangingMapsAndViewsWithoutTerrain)
+{
+    #if !horizon_gpu_ground_painting
+    GTEST_SKIP() << "GPU ground painting is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    for (int frame = 0; frame < 6; ++frame)
+    {
+        delete world->surf_map;
+        world->surf_map = new SceneryTestMap(frame % 2, frame % 3 == 1);
+        set(show_terrain, frame % 2 == 0);
+        set(altitude, frame < 3 ? -0.15 : -1.4);
+        std::vector<unsigned char> expected;
+        for (bool reference : {true, false})
+        {
+            horizon_ground_gpu_reference = reference;
+            freeze_surface_time();
+            find_horizon();
+            draw_horizon();
+            const auto pixels = render();
+            if (reference) expected = pixels;
+            else EXPECT_EQ(image_difference(pixels, expected), 0) << "Frame " << frame;
+            ImGui::NewFrame();
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuGroundMatchesAtFullResolutionAndAfterResizing)
+{
+    #if !horizon_gpu_ground_painting
+    GTEST_SKIP() << "GPU ground painting is disabled in visuals.h.";
+    #endif
+    surface(true);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    for (const auto &size : {std::make_pair(1920, 1080), std::make_pair(801, 451),
+        std::make_pair(384, 216), std::make_pair(192, 108)})
+    {
+        render_width = size.first;
+        render_height = size.second;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_GL_SwapWindow(window);
+        const float scale = render_width == 384 ? 2.0f : 1.0f;
+        set(dispcx, render_width * 0.5 / scale);
+        set(dispcy, render_height * 0.5 / scale);
+        set(ImGui::GetIO().DisplayFramebufferScale, ImVec2(scale, scale));
+        ImGui::GetIO().DisplaySize = ImVec2(render_width / scale, render_height / scale);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        std::vector<unsigned char> expected;
+        for (bool reference : {true, false})
+        {
+            horizon_ground_gpu_reference = reference;
+            freeze_surface_time();
+            find_horizon();
+            draw_horizon();
+            const auto pixels = render();
+            if (reference) expected = pixels;
+            else
+            {
+                EXPECT_EQ(image_difference(pixels, expected), 0) << render_width << " x " << render_height;
+                EXPECT_GT(horizon_ground_gpu_stats().tiles, 0u);
+            }
+            ImGui::NewFrame();
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuTerrainDepthMatchesReferenceAtEdgesAndDepthTies)
+{
+    set(horizon_terrain_gpu_reference, false);
+    std::vector<ProjectedTerrainVertex> triangles =
+    {
+        {0, 0, 0.01, 10}, {32, 0, 0.02, 11}, {0, 32, 0.005, 9},
+        {32, 0, 0.02, 11}, {32, 32, 0.015, 12}, {0, 32, 0.005, 9},
+        {4.5, 4.5, 0.02, 10}, {28.5, 4.5, 0.02, 10}, {4.5, 28.5, 0.02, 10},
+        {4.5, 4.5, 0.02000000001, 10}, {28.5, 4.5, 0.02000000001, 10}, {4.5, 28.5, 0.02000000001, 10},
+        {-1000000, 0, 0.001, 100}, {1000000, 0, 0.002, 200}, {0, 32, 0.003, 300},
+        {0, 0, 0, 0}, {32, 0, 0.1, 10}, {0, 32, 0.1, 10},
+        {0, 0, 0.1, 10}, {1, 1, 0.1, 10}, {2, 2, 0.1, 10}
+    };
+    HorizonTerrainRaster expected, actual;
+    expected.reset(32, 32);
+    actual.reset(32, 32);
+    for (size_t index = 0; index < triangles.size(); index += 3)
+        expected.triangle(triangles[index], triangles[index + 1], triangles[index + 2]);
+    ASSERT_TRUE(rasterize_horizon_terrain_gpu(actual, triangles, 32, 32));
+    EXPECT_EQ(actual.distances(), expected.distances());
+    for (int x = 0; x < 32; ++x) EXPECT_EQ(actual.top_at(x), expected.top_at(x));
+    EXPECT_TRUE(horizon_terrain_gpu_stats().accelerated);
+    EXPECT_GT(horizon_terrain_gpu_stats().repaired_pixels, 0u);
+    HorizonTerrainRaster empty;
+    empty.reset(32, 32);
+    ASSERT_TRUE(rasterize_horizon_terrain_gpu(empty, {}, 32, 32));
+    EXPECT_EQ(empty.top_at(0), 32);
+    EXPECT_FALSE(std::isfinite(empty.distance_at(0.5, 0.5)));
+}
+
+TEST_F(RenderingRegressionTest, GpuTerrainPreservesImagesAcrossViewsCoastsAndMapChanges)
+{
+    #if !horizon_gpu_terrain_rasterization
+    GTEST_SKIP() << "GPU terrain rasterization is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    for (int scene = 0; scene < 6; ++scene)
+    {
+        delete world->surf_map;
+        if (scene == 1 || scene == 2) world->surf_map = new CoastalTestMap();
+        else if (scene == 3) world->surf_map = new MountainBandsTestMap();
+        else world->surf_map = new SceneryTestMap(true);
+        world->ensure_atmosphere()->surface_pressure = (scene == 2 ? 15 : 1) * oneatm;
+        set(viewer_lat, scene == 1 || scene == 2 || scene == 3 ? -0.0001 : 0.3);
+        set(viewer_lon, scene == 4 ? _pi - 0.0001 : 0.4);
+        set(altitude, scene == 5 ? -1.4 : -0.15);
+        set(redlight_mode, scene == 4);
+        set(dragging, scene == 5);
+        for (bool ground_reference : {true, false})
+        {
+            horizon_ground_gpu_reference = ground_reference;
+            for (int frame = 0; frame < 3; ++frame)
+            {
+                set(azimuth, frame * 0.4);
+                set(viewer_lon, viewer_lon + 0.00001);
+                std::vector<unsigned char> expected;
+                for (bool reference : {true, false})
+                {
+                    horizon_terrain_gpu_reference = reference;
+                    freeze_surface_time();
+                    find_horizon();
+                    draw_horizon();
+                    const auto pixels = render();
+                    if (reference) expected = pixels;
+                    else
+                    {
+                        EXPECT_EQ(image_difference(pixels, expected), 0) << "Scene " << scene << ", frame " << frame;
+                        EXPECT_TRUE(horizon_terrain_gpu_stats().accelerated);
+                    }
+                    ImGui::NewFrame();
+                }
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuTerrainDepthMatchesDenseOverlappingTriangles)
+{
+    set(horizon_terrain_gpu_reference, false);
+    uint32_t sequence = 987654321u;
+    const auto random = [&]()
+    {
+        sequence = sequence * 1664525u + 1013904223u;
+        return static_cast<double>(sequence >> 8) / 16777216.0;
+    };
+    for (int frame = 0; frame < 4; ++frame)
+    {
+        std::vector<ProjectedTerrainVertex> triangles;
+        for (int vertex = 0; vertex < 300; ++vertex)
+        {
+            const double x = random() * 192 - 64, y = random() * 144 - 48;
+            const double inverse = 0.001 + random() * 0.01;
+            triangles.push_back({x, y, inverse, inverse * (1000 + random() * 10000)});
+        }
+        HorizonTerrainRaster expected, actual;
+        expected.reset(64, 48);
+        actual.reset(64, 48);
+        for (size_t index = 0; index < triangles.size(); index += 3)
+        {
+            expected.triangle(triangles[index], triangles[index + 1], triangles[index + 2]);
+        }
+        GLint previous_viewport[4];
+        glGetIntegerv(GL_VIEWPORT, previous_viewport);
+        glViewport(2, 3, 17, 19);
+        ASSERT_TRUE(rasterize_horizon_terrain_gpu(actual, triangles, 64, 48));
+        GLint viewport[4];
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        EXPECT_EQ(viewport[0], 2);
+        EXPECT_EQ(viewport[1], 3);
+        EXPECT_EQ(viewport[2], 17);
+        EXPECT_EQ(viewport[3], 19);
+        glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
+        EXPECT_EQ(actual.distances(), expected.distances()) << "Frame " << frame;
+        for (int x = 0; x < 64; ++x) EXPECT_EQ(actual.top_at(x), expected.top_at(x));
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuTerrainPreservesFullResolutionResizeAndDisplayScaling)
+{
+    #if !horizon_gpu_terrain_rasterization
+    GTEST_SKIP() << "GPU terrain rasterization is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->ensure_atmosphere()->surface_pressure = 15 * oneatm;
+    set(viewer_lat, -0.0001);
+    set(viewer_lon, 0.4);
+    for (const auto &size : {std::make_pair(1920, 1080), std::make_pair(801, 451),
+        std::make_pair(384, 216), std::make_pair(192, 108)})
+    {
+        render_width = size.first;
+        render_height = size.second;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_GL_SwapWindow(window);
+        const float scale = render_width == 384 ? 2.0f : 1.0f;
+        set(dispcx, render_width * 0.5 / scale);
+        set(dispcy, render_height * 0.5 / scale);
+        set(ImGui::GetIO().DisplayFramebufferScale, ImVec2(scale, scale));
+        ImGui::GetIO().DisplaySize = ImVec2(render_width / scale, render_height / scale);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        for (bool ground_reference : {true, false})
+        {
+            horizon_ground_gpu_reference = ground_reference;
+            std::vector<unsigned char> expected;
+            for (bool reference : {true, false})
+            {
+                horizon_terrain_gpu_reference = reference;
+                freeze_surface_time();
+                find_horizon();
+                draw_horizon();
+                const auto pixels = render();
+                if (reference) expected = pixels;
+                else
+                {
+                    EXPECT_EQ(image_difference(pixels, expected), 0) << render_width << " x " << render_height;
+                    EXPECT_TRUE(horizon_terrain_gpu_stats().accelerated);
+                }
+                ImGui::NewFrame();
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuMeshNoiseMatchesCpuAcrossWorldsAndCellBoundaries)
+{
+    set(horizon_mesh_gpu_reference, false);
+    std::vector<std::array<double, 3>> positions =
+    {
+        {0, 0, 0}, {127.123456789, 0.23456789, -3.987654321},
+        {-127.123456789, -0.23456789, 3.987654321},
+        {1.0 - 1e-10, 2.0 + 1e-10, -3.0 - 1e-10}, {1.0 + 1e-10, -2.0 - 1e-10, 3.0 + 1e-10}
+    };
+    for (int index = 0; index < 1024; ++index)
+    {
+        positions.push_back({127.0 * sin(index * 0.13), 127.0 * cos(index * 0.07), 127.0 * sin(index * 0.11)});
+    }
+    for (uint32_t seed : {0u, 42u, 123456789u, 0xffffffffu})
+    {
+        PerlinNoise noise(seed);
+        std::vector<double> totals;
+        const auto start = std::chrono::steady_clock::now();
+        ASSERT_TRUE(generate_horizon_mesh_gpu(positions, noise, totals));
+        ASSERT_EQ(totals.size(), positions.size());
+        double maximum_error = 0;
+        for (size_t index = 0; index < positions.size(); ++index)
+        {
+            const auto &point = positions[index];
+            double expected = 0, amplitude = 1, frequency = 1;
+            for (int octave = 0; octave < 12; ++octave)
+            {
+                expected += noise.noise(point[0] * frequency, point[1] * frequency, point[2] * frequency) * amplitude;
+                amplitude *= 0.8559;
+                frequency *= 1.29;
+            }
+            maximum_error = fmax(maximum_error, fabs(totals[index] - expected));
+        }
+        std::cout << "Mesh seed " << seed << ": maximum noise error " << maximum_error
+            << "; initialization " << horizon_mesh_gpu_stats().initialization_ms
+            << " ms; generation " << horizon_mesh_gpu_stats().generation_ms << " ms; total "
+            << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count()
+            << " ms" << std::endl;
+        EXPECT_LT(maximum_error, 5e-10);
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuMeshReferenceDoesNotInitializeTheShader)
+{
+    clear_horizon_mesh_gpu();
+    set(horizon_mesh_gpu_reference, true);
+    PerlinNoise noise(42);
+    const std::vector<std::array<double, 3>> positions = {{127.123456789, 0.4, -2.7}};
+    std::vector<double> totals;
+    EXPECT_FALSE(generate_horizon_mesh_gpu(positions, noise, totals));
+    EXPECT_FALSE(horizon_mesh_gpu_stats().accelerated);
+    EXPECT_EQ(horizon_mesh_gpu_stats().initialization_ms, 0);
+    horizon_mesh_gpu_reference = false;
+    ASSERT_TRUE(generate_horizon_mesh_gpu(positions, noise, totals));
+    EXPECT_TRUE(horizon_mesh_gpu_stats().cold);
+    ASSERT_EQ(totals.size(), 1u);
+}
+
+TEST_F(RenderingRegressionTest, GpuMeshPreservesCoastsMountainBandsSeamsAndPoles)
+{
+    #if !horizon_gpu_mesh_generation
+    GTEST_SKIP() << "GPU mesh generation is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    for (int scene = 0; scene < 7; ++scene)
+    {
+        delete world->surf_map;
+        if (scene == 1 || scene == 2) world->surf_map = new CoastalTestMap();
+        else if (scene == 3) world->surf_map = new MountainBandsTestMap();
+        else if (scene == 4) world->surf_map = new BumpySceneryTestMap();
+        else world->surf_map = new SceneryTestMap(true);
+        world->ensure_atmosphere()->surface_pressure = (scene == 2 ? 15 : 1) * oneatm;
+        set(viewer_lat, scene == 1 || scene == 2 || scene == 3 ? -0.0001 : (scene == 5 ? half_pi - 0.0001 : 0.3));
+        set(viewer_lon, scene == 4 ? _pi - 0.0001 : 0.4);
+        set(altitude, scene == 6 ? -1.4 : -0.15);
+        set(redlight_mode, scene == 4);
+        set(dragging, scene == 6);
+        for (bool ground_reference : {true, false})
+        {
+            horizon_ground_gpu_reference = ground_reference;
+            for (int frame = 0; frame < 3; ++frame)
+            {
+                if (scene == 5) set(viewer_lat, frame % 2 ? half_pi - 0.0001 : -half_pi + 0.0001);
+                set(azimuth, frame * 0.4);
+                set(viewer_lon, viewer_lon + 0.00001);
+                const auto expected = mesh_image(true);
+                const auto actual = mesh_image(false);
+                EXPECT_EQ(image_difference(actual, expected), 0) << "Scene " << scene << ", frame " << frame;
+                EXPECT_TRUE(horizon_mesh_gpu_stats().accelerated);
+                EXPECT_EQ(horizon_mesh_gpu_stats().samples, 20480u);
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuMeshCacheSurvivesPanningAndTracksTravelAndMapChanges)
+{
+    #if !horizon_gpu_mesh_generation
+    GTEST_SKIP() << "GPU mesh generation is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    set(horizon_mesh_gpu_reference, false);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    scenery();
+    const unsigned int first = horizon_mesh_gpu_stats().builds;
+    ASSERT_TRUE(horizon_mesh_gpu_stats().accelerated);
+    set(azimuth, 0.2);
+    scenery();
+    EXPECT_EQ(horizon_mesh_gpu_stats().builds, first);
+    set(viewer_lon, 0.40001);
+    scenery();
+    EXPECT_EQ(horizon_mesh_gpu_stats().builds, first + 1);
+    world->surf_map->touch_gen();
+    scenery();
+    EXPECT_EQ(horizon_mesh_gpu_stats().builds, first + 2);
+    horizon_mesh_gpu_reference = true;
+    scenery();
+    horizon_mesh_gpu_reference = false;
+    scenery();
+    EXPECT_EQ(horizon_mesh_gpu_stats().builds, first + 3);
+}
+
+TEST_F(RenderingRegressionTest, GpuMeshPreservesFullResolutionResizeAndDisplayScaling)
+{
+    #if !horizon_gpu_mesh_generation
+    GTEST_SKIP() << "GPU mesh generation is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->ensure_atmosphere()->surface_pressure = 15 * oneatm;
+    set(viewer_lat, -0.0001);
+    set(viewer_lon, 0.4);
+    for (const auto &size : {std::make_pair(1920, 1080), std::make_pair(801, 451),
+        std::make_pair(384, 216), std::make_pair(192, 108)})
+    {
+        render_width = size.first;
+        render_height = size.second;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_GL_SwapWindow(window);
+        const float scale = render_width == 384 ? 2.0f : 1.0f;
+        set(dispcx, render_width * 0.5 / scale);
+        set(dispcy, render_height * 0.5 / scale);
+        set(ImGui::GetIO().DisplayFramebufferScale, ImVec2(scale, scale));
+        ImGui::GetIO().DisplaySize = ImVec2(render_width / scale, render_height / scale);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        for (bool ground_reference : {true, false})
+        {
+            horizon_ground_gpu_reference = ground_reference;
+            const auto expected = mesh_image(true);
+            const auto actual = mesh_image(false);
+            EXPECT_EQ(image_difference(actual, expected), 0) << render_width << " x " << render_height;
+            EXPECT_TRUE(horizon_mesh_gpu_stats().accelerated);
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuMeshPreservesReliefAcrossPlanetSizesAndEyeHeights)
+{
+    #if !horizon_gpu_mesh_generation
+    GTEST_SKIP() << "GPU mesh generation is disabled in visuals.h.";
+    #endif
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BumpySceneryTestMap();
+    set(horizon_ground_gpu_reference, false);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    for (double radius : {earth_radius * 0.2, earth_radius, earth_radius * 3.0})
+    {
+        world->volumetric_mean_radius = radius;
+        for (double eye : {0.1, 1.75, 100.0})
+        {
+            set(viewer_eye_height, eye);
+            const auto expected = mesh_image(true);
+            const auto actual = mesh_image(false);
+            EXPECT_EQ(image_difference(actual, expected), 0) << "Radius " << radius << ", eye " << eye;
+            EXPECT_TRUE(horizon_mesh_gpu_stats().accelerated);
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, DISABLED_HorizonMeshGpuTimings)
+{
+    surface(true);
+    render_width = 1920;
+    render_height = 1080;
+    SDL_SetWindowSize(window, render_width, render_height);
+    SDL_GL_SwapWindow(window);
+    set(dispcx, 960.0);
+    set(dispcy, 540.0);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    set(horizon_ground_gpu_reference, false);
+    set(horizon_mesh_gpu_reference, false);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    clear_horizon_mesh_gpu();
+    const auto cold_start = std::chrono::steady_clock::now();
+    find_horizon();
+    draw_horizon();
+    render();
+    std::cout << "Cold mesh initialization " << horizon_mesh_gpu_stats().initialization_ms
+        << " ms; noise generation " << horizon_mesh_gpu_stats().generation_ms << " ms; complete cold frame "
+        << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cold_start).count()
+        << " ms" << std::endl;
+    ImGui::NewFrame();
+    for (bool travel : {false, true})
+    {
+        for (bool reference : {true, false})
+        {
+            double cpu_ms = 0, frame_ms = 0, noise_ms = 0;
+            for (int frame = 0; frame < 10; ++frame)
+            {
+                horizon_mesh_gpu_reference = reference;
+                viewer_lon = 0.4 + (travel ? frame * 0.00001 : 0);
+                azimuth = travel ? 0 : frame * 0.02;
+                const unsigned int previous = horizon_mesh_gpu_stats().builds;
+                const auto start = std::chrono::steady_clock::now();
+                find_horizon();
+                draw_horizon();
+                const auto prepared = std::chrono::steady_clock::now();
+                render();
+                const auto finished = std::chrono::steady_clock::now();
+                if (frame >= 2)
+                {
+                    cpu_ms += std::chrono::duration<double, std::milli>(prepared - start).count();
+                    frame_ms += std::chrono::duration<double, std::milli>(finished - start).count();
+                    if (!reference && horizon_mesh_gpu_stats().builds != previous)
+                    {
+                        noise_ms += horizon_mesh_gpu_stats().generation_ms;
+                    }
+                }
+                ImGui::NewFrame();
+            }
+            std::cout << (travel ? "Travel" : "Pan") << (reference ? " CPU mesh" : " GPU mesh")
+                << ": preparation " << cpu_ms / 8 << " ms; complete frame with readback " << frame_ms / 8
+                << " ms; GPU noise generation " << noise_ms / 8 << " ms" << std::endl;
+        }
+    }
+    SDL_SetWindowSize(window, 192, 108);
+    SDL_GL_SwapWindow(window);
+}
+
+TEST_F(RenderingRegressionTest, DISABLED_HorizonTerrainGpuTimings)
+{
+    surface(true);
+    render_width = 1920;
+    render_height = 1080;
+    SDL_SetWindowSize(window, render_width, render_height);
+    SDL_GL_SwapWindow(window);
+    set(dispcx, 960.0);
+    set(dispcy, 540.0);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    set(horizon_ground_gpu_reference, false);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    for (bool travel : {false, true})
+    {
+        for (bool reference : {true, false})
+        {
+            double cpu_ms = 0, frame_ms = 0, setup_ms = 0, select_ms = 0, reconstruct_ms = 0;
+            unsigned int pixels = 0, repaired = 0, candidates = 0;
+            for (int frame = 0; frame < 10; ++frame)
+            {
+                horizon_terrain_gpu_reference = reference;
+                viewer_lon = 0.4 + (travel ? frame * 0.00001 : 0);
+                azimuth = travel ? 0 : frame * 0.02;
+                const auto start = std::chrono::steady_clock::now();
+                find_horizon();
+                draw_horizon();
+                const auto prepared = std::chrono::steady_clock::now();
+                render();
+                const auto finished = std::chrono::steady_clock::now();
+                if (frame >= 2)
+                {
+                    cpu_ms += std::chrono::duration<double, std::milli>(prepared - start).count();
+                    frame_ms += std::chrono::duration<double, std::milli>(finished - start).count();
+                    if (!reference)
+                    {
+                        const auto &stats = horizon_terrain_gpu_stats();
+                        setup_ms += stats.preparation_ms;
+                        select_ms += stats.selection_ms;
+                        reconstruct_ms += stats.reconstruction_ms;
+                        pixels += stats.pixels;
+                        repaired += stats.repaired_pixels;
+                        candidates = std::max(candidates, stats.max_candidates);
+                    }
+                }
+                ImGui::NewFrame();
+            }
+            std::cout << (travel ? "Travel" : "Pan") << (reference ? " CPU raster" : " GPU raster")
+                << ": preparation " << cpu_ms / 8 << " ms; complete frame with readback " << frame_ms / 8
+                << " ms; raster setup/select/reconstruct " << setup_ms / 8 << "/" << select_ms / 8 << "/"
+                << reconstruct_ms / 8 << " ms; pixels " << pixels / 8 << "; repaired " << repaired / 8
+                << "; max candidates " << candidates << std::endl;
+        }
+    }
+    SDL_SetWindowSize(window, 192, 108);
+    SDL_GL_SwapWindow(window);
+}
+
+TEST_F(RenderingRegressionTest, DISABLED_HorizonGroundGpuTimings)
+{
+    surface(true);
+    render_width = 1920;
+    render_height = 1080;
+    SDL_SetWindowSize(window, render_width, render_height);
+    SDL_GL_SwapWindow(window);
+    set(dispcx, 960.0);
+    set(dispcy, 540.0);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.4);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    for (bool travel : {false, true})
+    {
+        for (bool reference : {true, false})
+        {
+            double cpu_ms = 0, frame_ms = 0;
+            unsigned int tiles = 0;
+            for (int frame = 0; frame < 10; ++frame)
+            {
+                horizon_ground_gpu_reference = reference;
+                viewer_lon = 0.4 + (travel ? frame * 0.00001 : 0);
+                azimuth = travel ? 0 : frame * 0.02;
+                const auto start = std::chrono::steady_clock::now();
+                find_horizon();
+                draw_horizon();
+                const auto prepared = std::chrono::steady_clock::now();
+                render();
+                const auto finished = std::chrono::steady_clock::now();
+                if (frame >= 2)
+                {
+                    cpu_ms += std::chrono::duration<double, std::milli>(prepared - start).count();
+                    frame_ms += std::chrono::duration<double, std::milli>(finished - start).count();
+                    if (!reference) tiles += horizon_ground_gpu_stats().tiles;
+                }
+                ImGui::NewFrame();
+            }
+            std::cout << (travel ? "Travel" : "Pan") << (reference ? " CPU" : " GPU ground")
+                << ": preparation " << cpu_ms / 8 << " ms; complete frame with readback "
+                << frame_ms / 8 << " ms; GPU tiles " << tiles / 8 << std::endl;
+        }
+    }
+    SDL_SetWindowSize(window, 192, 108);
+    SDL_GL_SwapWindow(window);
 }
 
 TEST_F(RenderingRegressionTest, RockFacesStayOpaqueAtEveryVisibleDistance)
