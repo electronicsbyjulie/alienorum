@@ -3813,7 +3813,7 @@ void draw_objects()
     double step, dispw = dispcx*2, disph = dispcy*2;
     double orbseg = 81;
     lmasslim = lbllsys_mass_lim*1000;
-    std::vector<CelestialObject*> to_draw_layered;
+    std::vector<std::pair<double, CelestialObject*>> to_draw_layered;
     global_magshift = -log(global_brightness) * invlogmagnbase;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
 
@@ -3823,8 +3823,6 @@ void draw_objects()
     }
     if (whereami >= 0 && trackidx == whereami) trackidx = -1;
 
-    double mycensq = mycenobj->tmprel.squared_magnitude();
-    double layer_cutoff = mycensq * 1.1;
     mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
 
     Point viewer_pole = to_viewer_plane(yaxis);
@@ -3915,7 +3913,9 @@ void draw_objects()
         cels[i]->location = was;
     }
 
-    // Faraway objects
+    // Grid and backdrop labels belong behind celestial objects.
+    draw_cached_labels();
+    // Collect visible objects before painting either their discs or labels.
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->deleted) continue;
@@ -4021,43 +4021,24 @@ void draw_objects()
         bloomrad = fabs(bloomrad_cache[i]);
         bloomrad = fmin(max_bloomrad, bloomrad);
 
-        // if (cls != class_satellite && angular_radius[i]*zoom > sphere_rad_threshold)
-        if (mycensq < light_year_sq
-            && cels[i]->tmprel.squared_magnitude() < layer_cutoff)
-        {
-            // Insertion sort by horizon distance, nearest last. discinstead[i] was being used as
-            // the "did it go in" scratch flag and then overwritten with true on every path
-            // regardless, which made the branch that read it unable to change anything. A local
-            // says what it means and leaves the array to its own purpose.
-            n = to_draw_layered.size();
-            bool inserted = false;
-            if (n)
-            {
-                double trm = cels[i]->get_horizon_distance();
-                for (j=0; j<n; j++)
-                {
-                    if (to_draw_layered[j]->get_horizon_distance() < trm)
-                    {
-                        to_draw_layered.insert(to_draw_layered.begin()+j, cels[i]);
-                        inserted = true;
-                        break;
-                    }
-                }
-            }
-            if (!inserted) to_draw_layered.push_back(cels[i]);
-            discinstead[i] = true;
-        }
-        else draw_single_object(i);
+        const double distance = cels[i]->get_horizon_distance();
+        to_draw_layered.emplace_back(std::isfinite(distance) ? distance : 0.0, cels[i]);
+        discinstead[i] = true;
         if (!cels[1]) return;
     }
 
     if (!cels[1]) return;
 
-    // Near objects
+    // Paint each label immediately after its object, before any nearer disc.
+    std::stable_sort(to_draw_layered.begin(), to_draw_layered.end(), [](const auto &a, const auto &b)
+    {
+        return a.first > b.first;
+    });
     n = to_draw_layered.size();
     for (j=0; j<n; j++)
     {
-        draw_single_object(to_draw_layered[j]->seqno);
+        draw_single_object(to_draw_layered[j].second->seqno);
+        draw_cached_labels();
         if (!cels[1]) return;
     }
 
@@ -8193,6 +8174,7 @@ void draw_cached_labels()
     {
         ImGui::GetBackgroundDrawList()->AddText(llbl.font, llbl.fontsz, llbl.pos, rgba_apply_redlight(llbl.color), llbl.text.c_str());
     }
+    labels2draw.clear();
 }
 
 void draw_mouse_cursor(ImGuiIO& io)

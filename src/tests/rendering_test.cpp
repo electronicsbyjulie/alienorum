@@ -1864,3 +1864,76 @@ TEST_F(RenderingRegressionTest, SystemViewKeepsAPlanetVisibleWhenItsHostRadiusIs
     EXPECT_GT(planet_pixels, 20);
     ImGui::NewFrame();
 }
+
+TEST_F(RenderingRegressionTest, ObjectLabelsFollowTheirObjectDepthAcrossAnOpaqueDisc)
+{
+    Star *disc = make_star("Foreground Disc");
+    disc->volumetric_mean_radius = 350;
+    disc->location.local_position = disc->tmprel = Point(0, 0, 1000);
+    disc->drawnx = 96;
+    disc->drawny = 54;
+    disc->cenobj = disc;
+    disc->looked_for_maps = true;
+    disc->surf_map = new SceneryTestMap();
+    Star *label = make_star("Background Label");
+    label->volumetric_mean_radius = 0.001;
+    label->drawnx = 96;
+    label->drawny = 30;
+    label->cenobj = label;
+    label->tmp_vis_flag = true;
+    label->looked_for_maps = true;
+    double magnitudes[] = {4, 4}, blooms[] = {1, 1}, radii[] = {0.35, 0.000001};
+    bool discs[] = {false, false};
+    set(vmag_cache, &magnitudes[0]);
+    set(bloomrad_cache, &blooms[0]);
+    set(angular_radius, &radii[0]);
+    set(discinstead, &discs[0]);
+    set(mycenobj, static_cast<CelestialObject*>(disc));
+    set(global_font, ImGui::GetFont());
+    set(show_localsys, true);
+    set(show_orbits, false);
+    set(show_labels, false);
+    set(lbl_localsys, false);
+    set(show_clouds, false);
+    set(global_brightness, 1.0);
+    set(sky_mag_shift, 0.0);
+    set(here, CelestialLocation());
+    set(labels2draw, std::vector<DrawLabel>());
+    for (double distance : {10000.0, 500.0})
+    {
+        label->location.local_position = label->tmprel = Point(0, 0.25 * distance, distance);
+        std::vector<unsigned char> labeled;
+        for (bool show : {true, false})
+        {
+            set(selected, show ? label->seqno : -1);
+            freeze_surface_time();
+            draw_objects();
+            EXPECT_EQ(label->label_shown, show);
+            EXPECT_TRUE(labels2draw.empty());
+            draw_cached_labels();
+            const auto pixels = render();
+            if (show) labeled = pixels;
+            else
+            {
+                int different = 0;
+                for (int y = 37; y < 45; ++y)
+                {
+                    for (int x = 85; x < 106; ++x)
+                    {
+                        const int offset = ((render_height - 1 - y) * render_width + x) * 4;
+                        if (!std::equal(pixels.begin() + offset, pixels.begin() + offset + 4, labeled.begin() + offset)) ++different;
+                    }
+                }
+                if (distance > 1000)
+                {
+                    EXPECT_EQ(different, 0);
+                }
+                else
+                {
+                    EXPECT_GT(different, 0);
+                }
+            }
+            ImGui::NewFrame();
+        }
+    }
+}
