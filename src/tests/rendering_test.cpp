@@ -1937,3 +1937,79 @@ TEST_F(RenderingRegressionTest, ObjectLabelsFollowTheirObjectDepthAcrossAnOpaque
         }
     }
 }
+
+TEST_F(RenderingRegressionTest, DirectionalThrustAndPlusStaySublightUntilWarpIsRequested)
+{
+    make_star("Sol");
+    make_star("Navigation target");
+    set(velocity, Point());
+    set(azimuth, 0.0);
+    set(altitude, 0.0);
+    set(ImGui::GetIO().KeyCtrl, false);
+    set(viewchanged, viewchanged);
+    set(spin, spin);
+    set(took_off_from, took_off_from);
+    set(tookoff_countdown, tookoff_countdown);
+    set(viewer_locale, viewer_locale);
+    const double light_frame = speed_of_light / target_frame_rate;
+    for (double fraction : {0.01, 0.099, 0.1, 0.9, 0.999999, 1.0 - 1e-12, 1.0})
+    {
+        for (double heading : {0.0, half_pi, _pi})
+        {
+            for (int command = 0; command < 3; ++command)
+            {
+                velocity = Point(0, 0, fraction * light_frame);
+                azimuth = heading;
+                altitude = heading == half_pi ? 0.4 : 0.0;
+                for (int step = 0; step < 512; ++step)
+                {
+                    if (command == 0) process_key_end();
+                    else if (command == 1) process_key_home();
+                    else process_key_cmd_char('+');
+                    ASSERT_TRUE(std::isfinite(velocity.magnitude()));
+                    ASSERT_LT(velocity.magnitude() * target_frame_rate, speed_of_light)
+                        << "fraction " << fraction << ", heading " << heading << ", command " << command;
+                }
+            }
+        }
+    }
+    azimuth = altitude = 0;
+    const double initial = 0.9 * light_frame;
+    velocity = Point(0, 0, initial);
+    process_key_end();
+    const double end_increment = velocity.magnitude() - initial;
+    velocity = Point(0, 0, initial);
+    process_key_cmd_char('+');
+    EXPECT_NEAR(velocity.magnitude() - initial, 5 * end_increment, 1e-7);
+    velocity = Point();
+    process_key_cmd_char('w');
+    EXPECT_GT(velocity.magnitude() * target_frame_rate, speed_of_light);
+    const double warp_speed = velocity.magnitude();
+    process_key_end();
+    EXPECT_GT(velocity.magnitude(), warp_speed);
+}
+
+TEST_F(RenderingRegressionTest, DirectionalThrustKeepsSurfaceWalkingUnchanged)
+{
+    extern double walk_speed;
+    Star *host = make_star("Sol");
+    Planet *world = make_planet(host);
+    set(view_mode, vm_horizon);
+    set(whereami, world->seqno);
+    set(viewer_lat, 0.3);
+    set(viewer_lon, 0.2);
+    set(walk_speed, 4.0 / target_frame_rate);
+    set(save_viewer_latlon, true);
+    set(velocity, Point(0, 0, 1000));
+    const Point previous = velocity;
+    const double step = walk_speed / (2 * _pi * world->volumetric_mean_radius);
+    process_key_end();
+    EXPECT_NEAR(viewer_lat, 0.3 + step, 1e-15);
+    EXPECT_DOUBLE_EQ(viewer_lon, 0.2);
+    EXPECT_FALSE(save_viewer_latlon);
+    process_key_home();
+    EXPECT_NEAR(viewer_lat, 0.3, 1e-15);
+    EXPECT_DOUBLE_EQ(velocity.x, previous.x);
+    EXPECT_DOUBLE_EQ(velocity.y, previous.y);
+    EXPECT_DOUBLE_EQ(velocity.z, previous.z);
+}

@@ -9,6 +9,24 @@
 
 using namespace alienorum;
 
+static double velocity_increment(double speed, double fraction)
+{
+    const double light_frame = speed_of_light / target_frame_rate;
+    if (speed > light_frame) return fraction * speed;
+    const double physical = fmin(speed * target_frame_rate, std::nextafter(speed_of_light, 0.0));
+    const double available = physical < 0.1 * speed_of_light ? speed : light_frame - speed;
+    return fraction * available * compute_time_dilation(physical);
+}
+
+static void preserve_sublight_velocity(bool was_sublight)
+{
+    if (was_sublight && velocity.magnitude() * target_frame_rate >= speed_of_light)
+    {
+        // Leave a rounding margin after normalizing an arbitrarily oriented vector.
+        velocity.scale(speed_of_light / target_frame_rate * (1.0 - 1e-14));
+    }
+}
+
 void center_selected()
 {
     if (selected >= 0)
@@ -753,9 +771,9 @@ void process_key_cmd_char(char c)
         }
         else if (vm)
         {
-            if (vmfr < 0.1 * speed_of_light) velocity.scale(vm + 0.5 * vm * compute_time_dilation(vmfr));
-            else if (vmfr < speed_of_light) velocity.scale(vm + 0.5 * (speed_of_light - vmfr) / target_frame_rate * compute_time_dilation(vmfr));
-            else velocity.scale(vm * 1.5);
+            const bool sublight = vm <= speed_of_light / target_frame_rate;
+            velocity.scale(vm + velocity_increment(vm, 0.5));
+            preserve_sublight_velocity(sublight);
         }
         else
         {
@@ -1191,13 +1209,15 @@ void process_key_home()
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
-            double acceleration = velocity.magnitude() * 0.1;
+            const bool sublight = vmag <= speed_of_light / target_frame_rate;
+            double acceleration = velocity_increment(vmag, 0.1);
             Point forward;
             forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
             forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
             forward.y =  sin(altitude) * acceleration;
             forward = to_viewer_plane(forward, -1);
             velocity -= forward;
+            preserve_sublight_velocity(sublight);
         }
 }
 
@@ -1219,13 +1239,15 @@ void process_key_end()
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
-            double acceleration = vmag * 0.1;
+            const bool sublight = vmag <= speed_of_light / target_frame_rate;
+            double acceleration = velocity_increment(vmag, 0.1);
             Point forward;
             forward.x =  sin(azimuth+azimuth_correction) * cos(altitude) * acceleration;
             forward.z =  cos(azimuth+azimuth_correction) * cos(altitude) * acceleration;
             forward.y =  sin(altitude) * acceleration;
             forward = to_viewer_plane(forward, -1);
             velocity += forward;
+            preserve_sublight_velocity(sublight);
         }
 }
 
