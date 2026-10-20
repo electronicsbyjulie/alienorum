@@ -1671,6 +1671,7 @@ bool Star::from_json(json j)
 
 void Star::make_companion_of(Star *A, char comp)
 {
+    cenobj = A->cenobj ? A->cenobj : A;
     right_ascension = A->right_ascension;
     declination = A->declination;
     parallax = A->parallax;

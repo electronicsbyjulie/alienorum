@@ -10,6 +10,7 @@
 #include "imgui/backends/imgui_impl_opengl3.h"
 #include <algorithm> 
 #include <atomic>
+#include <mutex>
 #include <thread>
 #include <chrono>
 #include <stdio.h>
@@ -66,6 +67,7 @@ extern std::atomic<bool> astorb_cancel;
 extern std::atomic<float> astorb_load_progress;
 extern std::atomic<size_t> astorb_rows_loaded;
 extern std::thread exoplanet_load_thread;
+extern std::recursive_mutex catalog_mutex;
 extern std::atomic<bool> exoplanet_loading;
 extern std::atomic<float> exoplanet_load_progress;
 extern std::atomic<int> exoplanet_count_loaded;

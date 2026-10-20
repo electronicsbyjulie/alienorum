@@ -521,6 +521,7 @@ int main (int argc, char** argv)
     ImVec2 last_click_pos;
     while (!done)
     {
+        std::unique_lock<std::recursive_mutex> catalog_lock(catalog_mutex);
         auto frame_began = std::chrono::high_resolution_clock::now();
         if (hide_mouse && (!is_mouse_over_window || dragging) && !splash)
         {
@@ -1148,7 +1149,9 @@ int main (int argc, char** argv)
                 if (timeout_ms > 67) timeout_ms = 67;
             }
 
+            catalog_lock.unlock();
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+            catalog_lock.lock();
 
             hide_mouse = !splash && !fdlg_shown
                 && !mouse_over_menu
@@ -1165,7 +1168,9 @@ int main (int argc, char** argv)
             auto frame_finished = std::chrono::high_resolution_clock::now();
             auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
             frame_dur = frame_elapsed.count() * 1e-6;
+            catalog_lock.unlock();
             std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(66666 - frame_dur * 1e6));
+            catalog_lock.lock();
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
             io.DeltaTime = frame_dur;
             is_click = is_dbl_click = false;

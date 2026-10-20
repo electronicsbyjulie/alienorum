@@ -39,6 +39,7 @@ std::atomic<bool> astorb_cancel(false);
 std::atomic<float> astorb_load_progress(0.0f);
 std::atomic<size_t> astorb_rows_loaded(0);
 std::thread exoplanet_load_thread;
+std::recursive_mutex catalog_mutex;
 std::atomic<bool> exoplanet_loading(false);
 std::atomic<float> exoplanet_load_progress(0.0f);
 std::atomic<int> exoplanet_count_loaded(0);

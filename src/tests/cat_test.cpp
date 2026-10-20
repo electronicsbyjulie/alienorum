@@ -1294,6 +1294,7 @@ class TestCatalogReader : public CatalogReader
 {
 public:
     using CatalogReader::resolve_or_create_exostar;
+    using CatalogReader::add_exoplanet_from_row;
     using CatalogReader::exorow_has_position;
     using CatalogReader::read_exoplanet_host_positions;
     using CatalogReader::apply_exoplanet_host_position;
@@ -1319,12 +1320,73 @@ TEST_F(CatalogParsingTest, Moa2010WhiteDwarfHostGetsACompactRadiusWithoutCatalog
     ASSERT_NE(host, nullptr);
     EXPECT_TRUE(fresh);
     EXPECT_EQ(stellar_regime(host), regime_degenerate);
+    EXPECT_EQ(host->cenobj, host);
+    EXPECT_EQ(host->namelen, strlen(host->name));
     EXPECT_GT(host->volumetric_mean_radius, 1e6);
     EXPECT_LT(host->volumetric_mean_radius, 2e7);
     EXPECT_GT(host->absolute_magnitude, 10);
     host->volumetric_mean_radius = 0;
     EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &fresh), host);
     EXPECT_GT(host->volumetric_mean_radius, 0);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, MoaHostPublicationWaitsForTheActiveNavigationFrame)
+{
+    ExoRow row;
+    row.hostname = "MOA-2010-BLG-477L";
+    row.st_spectype = "WD";
+    row.st_mass = 0.53;
+    row.st_teff = 5950;
+    row.sy_dist = 2300;
+    row.ra = 271.5291667;
+    row.dec = -31.4544444;
+    TestCatalogReader reader;
+    std::unique_lock<std::recursive_mutex> frame(catalog_mutex);
+    std::promise<void> started;
+    auto ready = started.get_future();
+    auto import = std::async(std::launch::async, [&]()
+    {
+        started.set_value();
+        bool fresh = false;
+        return reader.resolve_or_create_exostar(row, true, &fresh);
+    });
+    ready.wait();
+    const auto status = import.wait_for(std::chrono::milliseconds(50));
+    const int count_during_frame = ncelobjs;
+    frame.unlock();
+    Star *host = import.get();
+    EXPECT_EQ(status, std::future_status::timeout);
+    EXPECT_EQ(count_during_frame, 1);
+    ASSERT_NE(host, nullptr);
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(cels[host->seqno], host);
+    EXPECT_EQ(host->cenobj, host);
+    EXPECT_GT(host->volumetric_mean_radius, 0);
+    EXPECT_GT(host->location.system_center.magnitude(), 0);
+    row.pl_name = "MOA-2010-BLG-477L b";
+    row.pl_bmassj = 1.43;
+    row.pl_orbsmax = 2.8;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    frame.lock();
+    std::promise<void> planet_started;
+    auto planet_ready = planet_started.get_future();
+    auto planet_import = std::async(std::launch::async, [&]()
+    {
+        planet_started.set_value();
+        return reader.add_exoplanet_from_row(row, host, planets, count);
+    });
+    planet_ready.wait();
+    const auto planet_status = planet_import.wait_for(std::chrono::milliseconds(50));
+    const bool empty_during_frame = host->pl_indices.empty();
+    frame.unlock();
+    EXPECT_TRUE(planet_import.get());
+    EXPECT_EQ(planet_status, std::future_status::timeout);
+    EXPECT_TRUE(empty_during_frame);
+    EXPECT_EQ(count, 1u);
+    ASSERT_EQ(host->pl_indices.size(), 1u);
+    EXPECT_EQ(cels[host->pl_indices.front()]->orbit->center, host);
     delete_the_universe();
 }
 

@@ -3842,6 +3842,7 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 #define _debug_exoplanet_inclinations 0
 void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids)
 {
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     std::map<std::string, std::string> planet_names;
     std::map<std::string, std::string> planet_types;
     std::map<std::string, double> planet_temps;
@@ -4871,6 +4872,7 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
 
 int CatalogReader::read_star_orbits_dat(CelestialObject **cels)
 {
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     std::string path = "catalogs" _FILESLASH "star_orbits.dat";
     char buffer[1024];
     char field[32];
@@ -6943,6 +6945,7 @@ bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
 
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new)
 {
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     *was_new = false;
     std::string hostname = row.hostname;
     if (hostname == "QZ Ser (AB)")
@@ -7063,7 +7066,9 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
         host_star = new Star();
         host_star->type = star;
+        host_star->cenobj = host_star;
         snprintf(host_star->name, sizeof(host_star->name), "%s", hostname.c_str());
+        host_star->namelen = strlen(host_star->name);
 
         // Fill in fields the search relies on.
         size_t name_len = strlen(host_star->name);
@@ -7269,6 +7274,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
 bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
 {
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     snprintf(new_planet->name, sizeof(new_planet->name), "%s", row.pl_name.c_str());
@@ -8019,6 +8025,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             while (exorow_read_line(fp, row))
             {
+                std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
                 if (abort_load)
                 {
                     break;
@@ -8566,6 +8573,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     for (const auto& jrow : planets_array)
     {
+        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
         cur_p++;
         if (exoplanet_loading.load() && (cur_p & 31) == 0 && total_p > 0)
         {
@@ -8675,6 +8683,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     // Recover identified hosts after the ordinary star pass, before committing its cache.
     for (ExoRow& row : deferred_hosts)
     {
+        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
         if (abort_load || ncelobjs >= MAX_CELOBJS)
         {
             break;

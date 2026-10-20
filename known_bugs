@@ -1,30 +1,20 @@
-[COMPLETED] Xi Ursae Majoris B is labeled by its HD number instead of its Bayer designation; it is labeled HD98230 instead of Xi UMa B. The name field, which labels use, should always follow a consistent hierarchy: starname.dat entry > Bayer > Flamsteed > Gliese > Gould > HD > HIP > other.
-
-[COMPLETED] Xi Ursae Majoris C is still labeled by its HD number.
-
-[COMPLETED] Xi UMa B's label is now acceptable, however the system now has two stars named HD98231 C. Is this a duplication of a single star or does one of them have to be re-lettered D?
-
-[COMPLETED] When viewed from outside a star system, the label for that star system should always be the primary component's name, for example Xi Ursae Majoris not Xi UMa B or HD98230, no matter which component is brightest.
-
-[COMPLETED] The same is true of the mouseover, it should populate the N dialog with details about the primary, not necessarily the brightest.
 
 [COMPLETED] Dependent on the showfails boolean, output names of systems during program load where the primary star is not the intrinsically brightest star of the system, so that these can be checked manually. Internally, we lean toward designating the most massive member as the primary, and there are systems that legitimately have a companion star as the brightest.
 
-[COMPLETED] Some weirdness is going on in vm_horizon mode when a planet's atmosphere is double-digit bar and the planet has water. See snapshots/Sculptor.HD 38529 Ac IX.20261019.043721.png for what I mean. There is terrain being drawn above the water and there are waves on that terrain.
+[skip for now, want to discuss later] Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
 
-Companion stars should not orbit the primary, rather the pair should orbit a common center of mass. Similarly, if component B orbits A and C orbits B, then B and C should orbit a common center of mass while BC and A orbit their common center of mass. TODO: Investigate the feasibility of actually implementing this, since it introduces much complexity in the code and will also apply to planets and moons.
-
-[COMPLETED] Application is sometimes throwing a segfault on exit.
-
-[COMPLETED] Short labels are broken; they're showing weird question marks and gibberish.
-
-[COMPLETED] MOA-2010-BLG-477L is rendered as a main-sequence star even though its spectral type is WD. It should be rendered as a white dwarf. Also ensure white dwarfs, be they from the exoplanet catalog, the WD colors .dat file, or any other source, never have zero radius; estimate a radius if not known.
+[COMPLETED] Teleporting to MOA-2010-BLG-477L while the exoplanets are loading (F2 on a noexo run) causes a segfault.
 
 Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
 
+...
+
 White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.
+
+Gliese 86 B the white dwarf star is not rendered when the user views from GJ 86 Ab the planet, unless the star is selected or tracked. Local system objects of sufficient brightness should be visible within the system no matter what.
 
 When moving along the surface of an inhabited planet in vm_horizon mode, something is drastically killing the frame rate. It's less bad when panning but still pretty bad. If this is because of the Perlin noise on the terrain boundaries, you can limit that by distance and show the current pixel's color past about 5 or 10 km (if you do this, put dev_dial on it and the developer will find the optimal threshold).
 
 Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
 
+The End key is a loophole around time dilation. Holding down + gets the viewer closer and closer to the speed of light, while never reaching it due to relativity. But if the viewer presses End, their speed increases past c in to warp speed and bypasses the relativistic effects. End should apply the same relativistic calculations as +; the only way to go to warp should be pressing W.
