@@ -7980,10 +7980,18 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out_buffer);
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L);
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+            curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
             CURLcode res = curl_easy_perform(curl);
             curl_easy_cleanup(curl);
-            return res == CURLE_OK;
+            if (res != CURLE_OK)
+            {
+                out_buffer.clear();
+                return false;
+            }
+            return true;
         };
 
         // 1. Fetch NASA Data
@@ -8000,7 +8008,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
         // 2. Fetch exoplanet.eu Data via PADC VESPA TAP
         // ADQL column aliasing maps EU's schema directly onto NASA's nomenclature.
-        std::string eu_url = "http://voparis-tap-planeto.obspm.fr/tap/sync?"
+        std::string eu_url = "https://voparis-tap-planeto.obspm.fr/tap/sync?"
                              "request=doQuery&lang=ADQL&format=json&maxrec=20000&query="
                              "select+target_name+as+pl_name,alt_target_name,star_name+as+hostname,"
                              "period+as+pl_orbper,semi_major_axis+as+pl_orbsmax,eccentricity+as+pl_orbeccen,inclination+as+pl_orbincl,"
@@ -8306,61 +8314,69 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             };
 
             // Read EU First (ensures EU's naming convention remains the canonical root)
-            if (!readBufferEU.empty())
+            try
             {
-                json eu_json = json::parse(readBufferEU);
-                
-                if (eu_json.contains("data") && eu_json.contains("columns"))
+                if (!readBufferEU.empty())
                 {
-                    auto& columns = eu_json["columns"];
-                    for (const auto& row_array : eu_json["data"])
+                    json eu_json = json::parse(readBufferEU);
+
+                    if (eu_json.contains("data") && eu_json.contains("columns"))
                     {
-                        json obj;
-                        for (size_t i = 0; i < columns.size() && i < row_array.size(); ++i)
+                        auto& columns = eu_json["columns"];
+                        for (const auto& row_array : eu_json["data"])
                         {
-                            // Force the key to be a standard C++ string to prevent null-key crashes
-                            std::string key = columns[i].value("name", "unknown_key");
-                            
-                            // If the database returns null for a text field, replace it with an empty string.
-                            // This protects register_planet() from std::string conversion crashes.
-                            if (row_array[i].is_null() && columns[i].value("datatype", "") == "char")
+                            json obj;
+                            for (size_t i = 0; i < columns.size() && i < row_array.size(); ++i)
                             {
-                                obj[key] = "";
+                                // Force the key to be a standard C++ string to prevent null-key crashes
+                                std::string key = columns[i].value("name", "unknown_key");
+
+                                // If the database returns null for a text field, replace it with an empty string.
+                                // This protects register_planet() from std::string conversion crashes.
+                                if (row_array[i].is_null() && columns[i].value("datatype", "") == "char")
+                                {
+                                    obj[key] = "";
+                                }
+                                else
+                                {
+                                    obj[key] = row_array[i];
+                                }
                             }
-                            else
-                            {
-                                obj[key] = row_array[i];
-                            }
+                            register_planet(obj, false);
                         }
-                        register_planet(obj, false);
                     }
                 }
+            }
+            catch (const json::exception&)
+            {
+                std::cerr << "Exoplanet.eu returned invalid catalog data; continuing with NASA." << std::endl;
             }
 
             // Read NASA Second (fills in the gaps)
-            if (!readBufferNASA.empty())
+            try
             {
-                json nasa_json = json::parse(readBufferNASA);
-                
-                // NASA uses a flat JSON array of objects
-                if (nasa_json.is_array())
+                if (!readBufferNASA.empty())
                 {
-                    for (const auto& item : nasa_json)
+                    json nasa_json = json::parse(readBufferNASA);
+
+                    // NASA uses a flat JSON array of objects
+                    if (nasa_json.is_array())
                     {
-                        if (item.contains("hd_name") && item["hd_name"].is_string())
+                        for (const auto& item : nasa_json)
                         {
-                            std::string hd = item["hd_name"];
-                            if (hd == "HD 160691") continue;
+                            if (item.contains("hd_name") && item["hd_name"].is_string())
+                            {
+                                std::string hd = item["hd_name"];
+                                if (hd == "HD 160691") continue;
+                            }
+                            register_planet(item, true);
                         }
-                        register_planet(item, true);
                     }
                 }
             }
-
-            if (merged_planets.empty())
+            catch (const json::exception&)
             {
-                std::cerr << "Both TAP queries failed or returned empty data." << std::endl;
-                return 0;
+                std::cerr << "NASA returned invalid catalog data; continuing with available data." << std::endl;
             }
 
             // Repackage to array
@@ -8372,23 +8388,24 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             // Deduplicate across catalogs with spatial and orbital matching
             dedup_planets(planets_array);
 
-            std::fstream fs(exocache, std::ios::out);
-            if (fs)
+            std::fstream fs;
+            if (!planets_array.empty())
+            {
+                fs.open(exocache, std::ios::out);
+            }
+            if (fs.is_open())
             {
                 fs << planets_array.dump(4);
                 fs.close();
             }
         }
-        catch (const json::parse_error& e)
+        catch (const json::exception&)
         {
-            std::cerr << "JSON Parsing Exception encountered: " << e.what() << std::endl << std::endl
-                << "NASA returned:" << std::endl << readBufferNASA << std::endl << std::endl
-                << "EU returned:" << std::endl << readBufferEU << std::endl << std::endl
-                ;
-            return 0;
+            std::cerr << "Invalid TAP catalog data; trying the saved catalog." << std::endl;
+            planets_array = json::array();
         }
     }
-    else
+    if (planets_array.empty())
     {
         std::fstream fs(exocache, std::ios::in);
         if (!fs)
