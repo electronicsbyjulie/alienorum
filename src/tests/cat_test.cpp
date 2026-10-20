@@ -1654,6 +1654,7 @@ public:
     using CatalogReader::apply_exoplanet_names;
     using CatalogReader::resolve_or_create_exostar;
     using CatalogReader::add_exoplanet_from_row;
+    using CatalogReader::exorow_from_json;
     using CatalogReader::exorow_has_position;
     using CatalogReader::read_exoplanet_host_positions;
     using CatalogReader::apply_exoplanet_host_position;
@@ -1716,6 +1717,108 @@ TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
             delete_the_universe();
         }
     }
+}
+
+TEST_F(CatalogParsingTest, BroadRVInclinationsYieldToTransitsAndHotJupitersKeepTheirPlanes)
+{
+    Star::load_main_seq_dat();
+    Star* host = make_star("Precision test host");
+    host->right_ascension = 0.15;
+    host->declination = 0.08;
+    host->distance = 47 * parsec;
+    host->update_location(simnow);
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    const double inclinations[] = {83.4, 89.5, 39, 41, 39, NAN, 41};
+    const double periods[] = {0.96, 29.84, 8.4, 96.63, 5, 6, 120};
+    const double masses[] = {4.84, 11.41, 7.3, 14.9, 318, 318, 20};
+    const double minimum_masses[] = {4.84, 11.41, 4.545, 9.789, 200, 318, 13};
+    const double radii[] = {1.6, 2.98, 2.61, 3.97, 11.2, 11.2, 4};
+    const double upper_errors[] = {NAN, NAN, 34, 32, 34, NAN, 0.5};
+    const double lower_errors[] = {NAN, NAN, -24, -23, -24, NAN, -0.5};
+    for (int i = 0; i < 7; ++i)
+    {
+        json source =
+        {
+            {"pl_name", "Precision planet " + std::to_string(i)}, {"hostname", host->name},
+            {"pl_orbper", periods[i]}, {"pl_bmasse", masses[i]}, {"pl_msinie", minimum_masses[i]},
+            {"pl_rade", radii[i]}, {"pl_orbincl", inclinations[i]},
+            {"pl_orbinclerr1", upper_errors[i]}, {"pl_orbinclerr2", lower_errors[i]}
+        };
+        bool ok = false;
+        ExoRow row = reader.exorow_from_json(source, &ok);
+        ASSERT_TRUE(ok);
+        FILE* cache = tmpfile();
+        ASSERT_NE(cache, nullptr);
+        reader.exorow_write_line(cache, row);
+        rewind(cache);
+        ExoRow restored;
+        ASSERT_TRUE(reader.exorow_read_line(cache, restored));
+        fclose(cache);
+        if (std::isfinite(upper_errors[i]))
+        {
+            EXPECT_DOUBLE_EQ(restored.pl_orbinclerr1, upper_errors[i]);
+            EXPECT_DOUBLE_EQ(restored.pl_orbinclerr2, lower_errors[i]);
+        }
+        ASSERT_TRUE(reader.add_exoplanet_from_row(restored, host, planets, count));
+    }
+    reader.apply_exoplanet_names(planets);
+    const double expected[] = {83.4, 89.5, 86.45, 86.45, 39, 86.45, 41};
+    for (int i = 0; i < 7; ++i)
+    {
+        Planet* planet = static_cast<Planet*>(cels[host->pl_indices[i]]);
+        planet->update_location(simnow);
+        double inclination = 0, node = 0;
+        incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
+            host->location.system_center - cels[0]->location.system_center);
+        EXPECT_NEAR(inclination * fiftyseven, expected[i], 1e-5);
+    }
+    EXPECT_EQ(static_cast<Planet*>(cels[host->pl_indices[4]])->type, hot_jupiter);
+    EXPECT_EQ(static_cast<Planet*>(cels[host->pl_indices[5]])->type, hot_jupiter);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, CachedHD3167BroadInclinationsYieldToTransitReference)
+{
+    FILE* cache = fopen("catalogs/exoplanets_planets.dat", "r");
+    if (!cache) GTEST_SKIP() << "Exoplanet catalog cache is absent";
+    std::vector<ExoRow> rows;
+    TestCatalogReader reader;
+    ExoRow row;
+    while (reader.exorow_read_line(cache, row))
+    {
+        if (row.hostname == "HD 3167") rows.push_back(row);
+    }
+    fclose(cache);
+    ASSERT_EQ(rows.size(), 4u);
+    Star::load_main_seq_dat();
+    Star* host = make_star("HD 3167");
+    host->right_ascension = rows[0].ra * fiftyseventh;
+    host->declination = rows[0].dec * fiftyseventh;
+    host->distance = rows[0].sy_dist * parsec;
+    host->update_location(simnow);
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    for (const ExoRow& cached : rows)
+    {
+        ASSERT_TRUE(reader.add_exoplanet_from_row(cached, host, planets, count));
+    }
+    reader.apply_exoplanet_names(planets);
+    int checked = 0;
+    for (int index : host->pl_indices)
+    {
+        Planet* planet = static_cast<Planet*>(cels[index]);
+        if (strcmp(planet->name, "HD 3167 d") && strcmp(planet->name, "HD 3167 e")) continue;
+        planet->update_location(simnow);
+        double inclination = 0, node = 0;
+        incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
+            host->location.system_center - cels[0]->location.system_center);
+        EXPECT_NEAR(inclination * fiftyseven, 86.45, 1e-5) << planet->name;
+        ++checked;
+    }
+    EXPECT_EQ(checked, 2);
+    delete_the_universe();
 }
 
 TEST_F(CatalogParsingTest, Moa2010WhiteDwarfHostGetsACompactRadiusWithoutCatalogRadius)

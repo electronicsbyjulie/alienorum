@@ -1065,7 +1065,12 @@ TEST(ExoplanetInclinationTest, PreservesHotJupiterExemption)
     pc.orbit->period = 1088.0 * oneday;
 
     pb.mass = 0.12 * jupiter_mass;
+    pb.volumetric_mean_radius = 0.94 * jupiter_radius;
+    pb.inclination_error_upper = 30 * fiftyseventh;
+    pb.inclination_error_lower = -30 * fiftyseventh;
     pc.mass = 0.36 * jupiter_mass;
+    pc.inclination_error_upper = 0.5 * fiftyseventh;
+    pc.inclination_error_lower = -0.5 * fiftyseventh;
 
     pb.type = hot_jupiter;
     pc.type = gas_giant;
@@ -1113,6 +1118,35 @@ TEST(ExoplanetInclinationTest, TwoDegreeCutoffDoesNotDependOnReferencePlaneOrPla
     std::vector<double> inclinations = {0.4 * fiftyseventh}, nodes = {0};
     CatalogReader::reconcile_exoplanet_inclinations(nullptr, planets, inclinations, nodes);
     EXPECT_DOUBLE_EQ(inclinations[0], 0);
+}
+
+TEST(ExoplanetInclinationTest, BroadEstimatesRequireAConflictingPrecisePlanet)
+{
+    for (double precise : {0.0, 60.0, 86.45})
+    {
+        Star host;
+        host.has_disk = true;
+        host.disk_heliocen_inclination = 90 * fiftyseventh;
+        Planet first, second, reference;
+        reference.inclination_error_upper = 0.5 * fiftyseventh;
+        reference.inclination_error_lower = -0.5 * fiftyseventh;
+        first.inclination_error_upper = 34 * fiftyseventh;
+        first.inclination_error_lower = -24 * fiftyseventh;
+        second.inclination_error_upper = 32 * fiftyseventh;
+        second.inclination_error_lower = -23 * fiftyseventh;
+        std::vector<Planet*> planets = {&first, &second};
+        std::vector<double> inclinations = {39 * fiftyseventh, 41 * fiftyseventh};
+        std::vector<double> nodes = {0, 0};
+        if (precise)
+        {
+            planets.push_back(&reference);
+            inclinations.push_back(precise * fiftyseventh);
+            nodes.push_back(0);
+        }
+        CatalogReader::reconcile_exoplanet_inclinations(&host, planets, inclinations, nodes);
+        EXPECT_NEAR(inclinations[0] * fiftyseven, precise > 73 ? precise : 39, 1e-8);
+        EXPECT_NEAR(inclinations[1] * fiftyseven, precise > 73 ? precise : 41, 1e-8);
+    }
 }
 
 TEST(PlanetTest, SystemViewRingsQueueCorrectly)

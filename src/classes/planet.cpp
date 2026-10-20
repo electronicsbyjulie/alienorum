@@ -1125,6 +1125,8 @@ json Planet::to_json()
     {
         towrite["msini"] = msini;
     }
+    if (std::isfinite(inclination_error_upper)) towrite["inclination_error_upper"] = inclination_error_upper * fiftyseven;
+    if (std::isfinite(inclination_error_lower)) towrite["inclination_error_lower"] = inclination_error_lower * fiftyseven;
 
     // A ring system's geometry used not to be written at all, on the understanding that
     // generate_ring_parameters() would invent one again on the next load. That is fine for a body
@@ -1162,6 +1164,8 @@ bool Planet::from_json(json j)
     {
         ;
     }
+    try { inclination_error_upper = j.at("inclination_error_upper").get<double>() * fiftyseventh; } catch (...) { ; }
+    try { inclination_error_lower = j.at("inclination_error_lower").get<double>() * fiftyseventh; } catch (...) { ; }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }
     try { j.at("overcast").get_to(overcast); } catch (...) { ; }
     // Fetch the node into a local FIRST. Written as ensure_atmosphere()->from_json(j.at(...)),

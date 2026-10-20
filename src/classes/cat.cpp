@@ -3669,125 +3669,128 @@ static double accepted_exoplanet_inclination(double inclination)
     return std::isfinite(inclination) && inclination >= 2 * fiftyseventh ? inclination : 0;
 }
 
+static bool hot_jupiter_inclination_exemption(const Planet* planet)
+{
+    if (!planet || !planet->orbit) return false;
+    // The general classifier also labels short-period sub-Neptunes as hot
+    // Jupiters. Reserve this exemption for giant masses or giant radii.
+    const bool giant = planet->mass >= 0.2 * jupiter_mass ||
+        planet->volumetric_mean_radius >= 0.6 * jupiter_radius;
+    return giant && (planet->type == hot_jupiter ||
+        (planet->orbit->period > 0 && planet->orbit->period < 10 * oneday));
+}
+
+static bool broad_exoplanet_inclination(const Planet* planet)
+{
+    return planet && std::isfinite(planet->inclination_error_upper) &&
+        std::isfinite(planet->inclination_error_lower) &&
+        fabs(planet->inclination_error_upper) >= 20 * fiftyseventh &&
+        fabs(planet->inclination_error_lower) >= 20 * fiftyseventh;
+}
+
 void CatalogReader::reconcile_exoplanet_inclinations(
     Star* host_star,
     const std::vector<Planet*>& planets,
     std::vector<double>& pincls,
     std::vector<double>& pnodes)
 {
-    int n = (int)planets.size();
-    if (n == 0 || pincls.size() != (size_t)n || pnodes.size() != (size_t)n)
-    {
-        return;
-    }
+    const size_t n = planets.size();
+    if (n == 0 || pincls.size() != n || pnodes.size() != n) return;
     for (double& inclination : pincls) inclination = accepted_exoplanet_inclination(inclination);
 
-    // Step 2: Identify dominant reference anchor inclination
-    double anchor_incl = 0;
-    int anchor_votes = 0;
-
-    // Circumstellar disk defines the physical system plane
-    if (host_star && host_star->has_disk && host_star->disk_heliocen_inclination > 0)
+    std::vector<double> precise, available;
+    for (size_t i = 0; i < n; ++i)
     {
-        anchor_incl = host_star->disk_heliocen_inclination;
-        anchor_votes = n;
+        if (pincls[i] == 0) continue;
+        available.push_back(pincls[i]);
+        const Planet* planet = planets[i];
+        if (!planet || broad_exoplanet_inclination(planet) ||
+            hot_jupiter_inclination_exemption(planet)) continue;
+        const bool published_errors = std::isfinite(planet->inclination_error_upper) &&
+            std::isfinite(planet->inclination_error_lower);
+        // Older catalogs omit uncertainty columns even for transit solutions.
+        // Preserve their established edge-on reference priority, while broad
+        // published estimates remain excluded from the reference candidates.
+        const bool transit_reference = pincls[i] >= 80 * fiftyseventh &&
+            pincls[i] <= 100 * fiftyseventh;
+        if (published_errors || transit_reference) precise.push_back(pincls[i]);
     }
-    else
+    const auto reference = [](std::vector<double> values)
     {
-        // Check for transit anchor: planets with inclinations within [80 deg, 100 deg]
         double transit_sum = 0;
-        int transit_count = 0;
-        for (int i = 0; i < n; i++)
+        size_t transit_count = 0;
+        for (double inclination : values)
         {
-            if (pincls[i] >= (80.0 * fiftyseventh) && pincls[i] <= (100.0 * fiftyseventh))
+            if (inclination >= 80 * fiftyseventh && inclination <= 100 * fiftyseventh)
             {
-                transit_sum += pincls[i];
-                transit_count++;
+                transit_sum += inclination;
+                ++transit_count;
             }
         }
-        if (transit_count >= 1)
+        if (transit_count) return transit_sum / transit_count;
+        // Preserve the dominant four-degree cluster, including supplementary
+        // representations of the same orbital plane.
+        double cluster_reference = 0;
+        size_t anchor_votes = 0;
+        for (double candidate : values)
         {
-            anchor_incl = transit_sum / transit_count;
-            anchor_votes = transit_count;
-        }
-
-        // If no transiting planets, check for majority cluster (planets whose planes mutually agree within 4 deg)
-        if (!anchor_incl)
-        {
-            for (int i = 0; i < n; i++)
+            size_t votes = 0, direct_votes = 0;
+            double sum = 0;
+            for (double inclination : values)
             {
-                if (pincls[i] <= 0)
+                if (fabs(candidate - inclination) < 4 * fiftyseventh)
                 {
-                    continue;
+                    ++votes;
+                    ++direct_votes;
+                    sum += inclination;
                 }
-                int cluster_count = 0;
-                int direct_votes = 0;
-                double cluster_sum = 0;
-                for (int j = 0; j < n; j++)
+                else if (fabs((_pi - candidate) - inclination) < 4 * fiftyseventh)
                 {
-                    if (pincls[j] <= 0)
-                    {
-                        continue;
-                    }
-                    double direct_diff = fabs(pincls[i] - pincls[j]);
-                    double fold_diff = fabs((_pi - pincls[i]) - pincls[j]);
-                    if (direct_diff < (4.0 * fiftyseventh))
-                    {
-                        cluster_count++;
-                        direct_votes++;
-                        cluster_sum += pincls[j];
-                    }
-                    else if (fold_diff < (4.0 * fiftyseventh))
-                    {
-                        cluster_count++;
-                        cluster_sum += (_pi - pincls[j]);
-                    }
-                }
-                if (cluster_count > anchor_votes || (cluster_count == anchor_votes && direct_votes > anchor_votes / 2))
-                {
-                    anchor_votes = cluster_count;
-                    anchor_incl = cluster_sum / cluster_count;
+                    ++votes;
+                    sum += _pi - inclination;
                 }
             }
+            if (votes > anchor_votes || (votes == anchor_votes && direct_votes > anchor_votes / 2))
+            {
+                anchor_votes = votes;
+                cluster_reference = sum / votes;
+            }
         }
-    }
+        if (cluster_reference) return cluster_reference;
+        if (values.empty()) return 0.0;
+        std::sort(values.begin(), values.end());
+        return values[values.size() / 2];
+    };
+    const double precise_reference = reference(precise);
+    double anchor = host_star && host_star->has_disk ? host_star->disk_heliocen_inclination : 0;
+    if (!anchor) anchor = precise_reference;
+    if (!anchor) anchor = reference(available);
+    if (!anchor) return;
+    if (host_star) host_star->planets_heliocen_inclination = anchor;
 
-    // Fallback: median of valid inclinations
-    if (!anchor_incl)
+    for (size_t i = 0; i < n; ++i)
     {
-        std::vector<double> valid_incls;
-        for (int i = 0; i < n; i++)
+        Planet* planet = planets[i];
+        bool replace = pincls[i] == 0;
+        if (!replace && precise_reference && broad_exoplanet_inclination(planet) &&
+            !hot_jupiter_inclination_exemption(planet))
         {
-            if (pincls[i] > 0)
-            {
-                valid_incls.push_back(pincls[i]);
-            }
+            const double lower = pincls[i] - fabs(planet->inclination_error_lower);
+            const double upper = pincls[i] + fabs(planet->inclination_error_upper);
+            // Broad estimates remain useful until a more precise planet-plane
+            // estimate falls outside their published uncertainty interval.
+            replace = precise_reference < lower || precise_reference > upper;
         }
-        if (!valid_incls.empty())
+        if (!replace) continue;
+        const double replacement = pincls[i] == 0 ? anchor : precise_reference;
+        const double new_sin = sin(replacement);
+        if (planet && new_sin > 0.05 && planet->msini > 0) planet->mass = planet->msini / new_sin;
+        pincls[i] = replacement;
+        if (planet && planet->orbit) planet->orbit->inclination = replacement;
+        if (!pnodes[i] && host_star)
         {
-            std::sort(valid_incls.begin(), valid_incls.end());
-            anchor_incl = valid_incls[valid_incls.size() / 2];
-            anchor_votes = 1;
-        }
-    }
-
-    // Fill unknown inclinations without changing supplied orbital planes.
-    if (anchor_incl > 0)
-    {
-        if (host_star) host_star->planets_heliocen_inclination = anchor_incl;
-        for (int i = 0; i < n; i++)
-        {
-            if (pincls[i] != 0) continue;
-            Planet* p = planets[i];
-            const double new_sin = sin(anchor_incl);
-            if (p && new_sin > 0.05 && p->msini > 0) p->mass = p->msini / new_sin;
-            pincls[i] = anchor_incl;
-            if (p && p->orbit) p->orbit->inclination = anchor_incl;
-            if (!pnodes[i] && host_star)
-            {
-                pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
-                if (p && p->orbit && pnodes[i]) p->orbit->ascending_node = pnodes[i];
-            }
+            pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
+            if (planet && planet->orbit && pnodes[i]) planet->orbit->ascending_node = pnodes[i];
         }
     }
 }
@@ -6839,6 +6842,8 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     }
 
     r.pl_orbincl = getd("pl_orbincl");
+    r.pl_orbinclerr1 = getd("pl_orbinclerr1");
+    r.pl_orbinclerr2 = getd("pl_orbinclerr2");
     r.pl_msinij = getd("pl_msinij");
     r.pl_msinie = getd("pl_msinie");
     r.pl_bmassj = getd("pl_bmassj");
@@ -6898,6 +6903,8 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     write_exo_double(fp, row.pl_orbper);
     write_exo_double(fp, row.pl_orbsmax);
     write_exo_double(fp, row.pl_orbeccen);
+    write_exo_double(fp, row.pl_orbinclerr1);
+    write_exo_double(fp, row.pl_orbinclerr2);
 
     fputc('\n', fp);
 }
@@ -6905,7 +6912,11 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
 bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
 {
     char buffer[2048];
-    if (!fgets(buffer, sizeof(buffer), fp)) return false;
+    do
+    {
+        if (!fgets(buffer, sizeof(buffer), fp)) return false;
+    }
+    while (buffer[0] == '#');
 
     char* eol = strchr(buffer, '\n');
     if (eol) *eol = 0;
@@ -6942,6 +6953,8 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.pl_orbper    = read_exo_double(cursor);
     row.pl_orbsmax   = read_exo_double(cursor);
     row.pl_orbeccen  = read_exo_double(cursor);
+    row.pl_orbinclerr1 = read_exo_double(cursor);
+    row.pl_orbinclerr2 = read_exo_double(cursor);
 
     return true;
 }
@@ -7432,6 +7445,9 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         new_planet->volumetric_mean_radius = row.pl_rade * earth_radius;
         pl_radknown = true;
     }
+
+    new_planet->inclination_error_upper = row.pl_orbinclerr1 * fiftyseventh;
+    new_planet->inclination_error_lower = row.pl_orbinclerr2 * fiftyseventh;
 
     if (!isnan(row.pl_trueobliq))
         new_planet->obliquity = row.pl_trueobliq * fiftyseventh;
@@ -7926,6 +7942,9 @@ void CatalogReader::dedup_planets(json& planets_array)
                 const auto& p2_json = planets_array[idx2];
                 for (auto& [key, val] : p2_json.items())
                 {
+                    if ((key == "pl_orbinclerr1" || key == "pl_orbinclerr2") &&
+                        p1_json.contains("pl_orbincl") && !p1_json["pl_orbincl"].is_null() &&
+                        p1_json["pl_orbincl"] != p2_json.value("pl_orbincl", json())) continue;
                     if (!val.is_null())
                     {
                         if (!p1_json.contains(key) || p1_json[key].is_null())
@@ -8025,6 +8044,9 @@ void CatalogReader::dedup_planets(json& planets_array)
                     const auto& p2_json = planets_array[idx2];
                     for (auto& [key, val] : p2_json.items())
                     {
+                        if ((key == "pl_orbinclerr1" || key == "pl_orbinclerr2") &&
+                            p1_json.contains("pl_orbincl") && !p1_json["pl_orbincl"].is_null() &&
+                            p1_json["pl_orbincl"] != p2_json.value("pl_orbincl", json())) continue;
                         if (!val.is_null())
                         {
                             if (!p1_json.contains(key) || p1_json[key].is_null())
@@ -8113,6 +8135,14 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                                (file_age(derived_cache) <= file_age(exocache) + 60) &&
                                (!file_exists(position_catalog) ||
                                 fs::last_write_time(derived_cache) >= fs::last_write_time(position_catalog));
+
+    if (derived_cache_valid)
+    {
+        std::ifstream cache_header(derived_cache);
+        std::string version;
+        std::getline(cache_header, version);
+        derived_cache_valid = version == "# EXO_INCLINATION_ERRORS1";
+    }
 
     if (!do_download && derived_cache_valid)
     {
@@ -8246,7 +8276,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
         // 1. Fetch NASA Data
         std::string nasa_url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?maxrec=20000&query="
-                               "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orblper,pl_orbtper,pl_tranmid,"
+                               "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
                                "pl_bmasse,pl_bmassj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
                                "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
                                "from+pscomppars+order+by+pl_name+asc&format=json";
@@ -8548,6 +8578,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     auto& existing = merged_planets[target_key];
                     for (auto& [key, value] : litem.items())
                     {
+                        if ((key == "pl_orbinclerr1" || key == "pl_orbinclerr2") &&
+                            existing.contains("pl_orbincl") && !existing["pl_orbincl"].is_null() &&
+                            existing["pl_orbincl"] != litem.value("pl_orbincl", json())) continue;
                         if (!value.is_null())
                         {
                             if (!existing.contains(key) || existing[key].is_null())
@@ -8688,6 +8721,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
+        fputs("# EXO_INCLINATION_ERRORS1\n", cachefp);
     }
 
     int rows_written = 0;

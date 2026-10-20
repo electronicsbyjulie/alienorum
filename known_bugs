@@ -8,3 +8,6 @@
 [COMPLETED] Labels for background objects are drawn in front of discs. Each object's label should carry the same Z-index as the object itself.
 
 [COMPLETED] The End key is a loophole around time dilation, and shouldn't be. Holding down + gets the viewer closer and closer to the speed of light, while never reaching it due to relativity. But if the viewer presses End, their speed increases past c in to warp speed and bypasses the relativistic effects. End should apply the same relativistic calculations as +; the only way to go to warp should be pressing W.
+
+If an ImGUI combo dropdown is open, and the dropdown extends past the bottom of a dialog, and the user attempts to use the scrollbar, the system mouse pointer is hidden but the app cursor does not appear. Any time the app cursor is not shown, and a combo box is open, the system pointer should be shown.
+

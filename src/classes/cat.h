@@ -30,6 +30,7 @@ namespace alienorum
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
         double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
+        double pl_orbinclerr1=NAN, pl_orbinclerr2=NAN;
         double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
         double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;
         double pl_orbtper=NAN, pl_orblper=NAN, pl_tranmid=NAN, pl_orbper=NAN, pl_orbsmax=NAN, pl_orbeccen=NAN;
