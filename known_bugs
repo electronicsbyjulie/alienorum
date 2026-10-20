@@ -14,6 +14,8 @@ Companion stars should not orbit the primary, rather the pair should orbit a com
 
 [COMPLETED] Short labels are broken; they're showing weird question marks and gibberish.
 
+[COMPLETED] MOA-2010-BLG-477L is rendered as a main-sequence star even though its spectral type is WD. It should be rendered as a white dwarf. Also ensure white dwarfs, be they from the exoplanet catalog, the WD colors .dat file, or any other source, never have zero radius; estimate a radius if not known.
+
 Verify that all data in soles_alienorum.dat are aligned by column. Use read_field_onebased() with static column positions and lengths to read the data. Adjust the column widths in the catalog if necessary.
 
 White dwarfs have multiple IDs and they should be searchable. For example, WD1011+2845 is also known as WD1008+290 is also known as LHS2229. Make sure all such identifiers are searchable. You don't have to worry about Gaia, SDSS, or 2MASS IDs; it's unlikely anyone would type them in and they would bloat the catalog unnecessarily. Keep the compressed catalog .dat.gz size under GitHub's individual file limit.

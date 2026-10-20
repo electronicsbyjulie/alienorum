@@ -1301,6 +1301,32 @@ public:
     using CatalogReader::accept_exoplanet_source;
 };
 
+TEST_F(CatalogParsingTest, Moa2010WhiteDwarfHostGetsACompactRadiusWithoutCatalogRadius)
+{
+    ExoRow row;
+    row.hostname = "MOA-2010-BLG-477L";
+    row.pl_name = "MOA-2010-BLG-477L b";
+    row.st_spectype = "WD";
+    row.st_mass = 0.53;
+    row.st_teff = 5950;
+    row.sy_dist = 2300;
+    row.ra = 271.5291667;
+    row.dec = -31.4544444;
+    TestCatalogReader reader;
+    bool fresh = false;
+    Star *host = reader.resolve_or_create_exostar(row, true, &fresh);
+    ASSERT_NE(host, nullptr);
+    EXPECT_TRUE(fresh);
+    EXPECT_EQ(stellar_regime(host), regime_degenerate);
+    EXPECT_GT(host->volumetric_mean_radius, 1e6);
+    EXPECT_LT(host->volumetric_mean_radius, 2e7);
+    EXPECT_GT(host->absolute_magnitude, 10);
+    host->volumetric_mean_radius = 0;
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &fresh), host);
+    EXPECT_GT(host->volumetric_mean_radius, 0);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, Koi5UsesNasaWhileOtherHostsRetainEuData)
 {
     json eu = json::object();

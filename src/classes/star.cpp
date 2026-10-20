@@ -320,6 +320,12 @@ bool Star::apply_published_wd_color()
     return true;
 }
 
+bool Star::is_white_dwarf() const
+{
+    return !WD.empty() || !gaia_wd_name.empty() || spectral_type[0] == 'D' ||
+        !strncasecmp(spectral_type, "WD", 2);
+}
+
 bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
 {
     if (source) source->clear();
@@ -374,6 +380,10 @@ StarMulti::~StarMulti()
 
 void Star::update_location(double tmnow)
 {
+    if (!(volumetric_mean_radius > 0) || !std::isfinite(volumetric_mean_radius))
+    {
+        if (stellar_regime(this) == regime_degenerate) estimate_radius();
+    }
     double elapsed, l_dist=0;
     if (orbit)
     {
@@ -767,8 +777,7 @@ void Star::limb_darkening_coefficients(double &a, double &b)
 alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 {
     if (!cel || cel->typeclass() != class_star) return regime_none;
-    if (!static_cast<Star*>(cel)->WD.empty() || !static_cast<Star*>(cel)->gaia_wd_name.empty() ||
-        static_cast<Star*>(cel)->spectral_type[0] == 'D') return regime_degenerate;
+    if (static_cast<Star*>(cel)->is_white_dwarf()) return regime_degenerate;
 
     // Neither estimate_temperature() nor the main-sequence table it relies on: we
     // invert the blackbody relation, or use the catalog temperature when available.
@@ -1025,7 +1034,7 @@ bool Star::is_hot_ob_star() const
 
 bool Star::is_main_sequence() const
 {
-    if (!WD.empty())
+    if (is_white_dwarf())
     {
         return false;
     }
@@ -1344,6 +1353,10 @@ int Star::audit_and_correct_main_sequence_stars(CelestialObject** cels, double t
 
 double Star::estimate_radius(bool sms)
 {
+    if (stellar_regime(this) == regime_degenerate)
+    {
+        return volumetric_mean_radius = degenerate_radius(mass);
+    }
     if (!sms)
     {
         double msqi = -1.0;
@@ -1474,7 +1487,7 @@ void Star::gotta_be_named_something()
 json Star::to_json()
 {
     json towrite = CelestialObject::to_json();
-    if (!WD.empty() || !gaia_wd_name.empty() || spectral_type[0] == 'D')
+    if (is_white_dwarf())
     {
         Color linear;
         std::string source;

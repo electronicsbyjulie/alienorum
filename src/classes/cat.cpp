@@ -2136,7 +2136,7 @@ namespace
 
     bool wd_candidate(const Star *s)
     {
-        return !s->WD.empty() || s->spectral_type[0] == 'D' ||
+        return s->is_white_dwarf() ||
             (!s->spectral_type[0] && s->volumetric_mean_radius > 0 &&
              s->volumetric_mean_radius < 0.05 * solar_radius);
     }
@@ -6420,8 +6420,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 257, 266, field);
         s->volumetric_mean_radius = atof(field) * solar_radius;
-        if (!(s->volumetric_mean_radius > 0) ||
-            (s->WD.empty() && s->volumetric_mean_radius < 0.5 * jupiter_radius))
+        if (!(s->volumetric_mean_radius > 0) || !std::isfinite(s->volumetric_mean_radius) ||
+            (!s->is_white_dwarf() && s->volumetric_mean_radius < 0.5 * jupiter_radius))
         {
             s->volumetric_mean_radius = s->estimate_radius();
         }
@@ -7124,6 +7124,9 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             host_star->sidereal_rotational_period = row.st_rotp * oneday;
         }
 
+        if (host_star->is_white_dwarf() && (!(host_star->volumetric_mean_radius > 0) ||
+            !std::isfinite(host_star->volumetric_mean_radius))) host_star->estimate_radius();
+
         // Position and distance
         if (exorow_has_position(row))
         {
@@ -7249,6 +7252,8 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         host_star->sidereal_rotational_period = row.st_rotp * oneday;
     }
 
+    if (host_star->is_white_dwarf() && (!(host_star->volumetric_mean_radius > 0) ||
+        !std::isfinite(host_star->volumetric_mean_radius))) host_star->estimate_radius();
     return host_star;
 }
 

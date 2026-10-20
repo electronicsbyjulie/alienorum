@@ -2186,6 +2186,12 @@ double CelestialObject::estimate_surface_gravity()
 // TODO: Make this also work with Moon class width/depth somehow.
 double CelestialObject::get_equatorial_radius()
 {
+    if (typeclass() == class_star &&
+        (!(volumetric_mean_radius > 0) || !std::isfinite(volumetric_mean_radius)) &&
+        stellar_regime(this) == regime_degenerate)
+    {
+        static_cast<Star*>(this)->estimate_radius();
+    }
     double polar_ratio = 1.0 - oblateness;
     if (!(polar_ratio > 0)) return volumetric_mean_radius;
     return volumetric_mean_radius / pow(polar_ratio, 1.0/3.0);

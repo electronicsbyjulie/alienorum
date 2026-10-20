@@ -729,6 +729,40 @@ TEST(StarTest, JsonSerializationRoundTrip)
 // Global Helpers / Enums
 // =====================================================================
 
+TEST(StellarRegimeTest, WhiteDwarfIdentifiersAndInvalidRadiiUseCompactFallbacks)
+{
+    for (const char *spectrum : {"WD", "DA", "DQ"})
+    {
+        Star s;
+        strcpy(s.spectral_type, spectrum);
+        s.mass = 0.53 * solar_mass;
+        EXPECT_EQ(stellar_regime(&s), regime_degenerate);
+        for (double invalid : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity()})
+        {
+            s.volumetric_mean_radius = invalid;
+            const double radius = s.get_equatorial_radius();
+            EXPECT_TRUE(std::isfinite(radius));
+            EXPECT_GT(radius, 1e6);
+            EXPECT_LT(radius, 2e7);
+        }
+        s.volumetric_mean_radius = 5.85e6;
+        EXPECT_DOUBLE_EQ(s.get_equatorial_radius(), 5.85e6);
+    }
+    Star named, colored;
+    named.WD = "WD1011+2845";
+    colored.gaia_wd_name = "WDJ101435.33+282648.99";
+    for (Star *s : {&named, &colored})
+    {
+        EXPECT_EQ(stellar_regime(s), regime_degenerate);
+        EXPECT_GT(s->get_equatorial_radius(), 0);
+        EXPECT_LT(s->volumetric_mean_radius, 0.05 * solar_radius);
+    }
+    Star wolf_rayet;
+    strcpy(wolf_rayet.spectral_type, "WN6");
+    EXPECT_FALSE(wolf_rayet.is_white_dwarf());
+}
+
 TEST(StellarRegimeTest, DeterminesRegimeCorrectly)
 {
     Star sun;

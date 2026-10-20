@@ -133,6 +133,7 @@ namespace alienorum
         // interpolated on the effective temperature and log g of this star.
         void limb_darkening_coefficients(double &a, double &b);
 
+        bool is_white_dwarf() const;
         void gotta_be_named_something();
         void assign_identifier_name();       // Custom name > Bayer > Flamsteed > GJ > Gould > HD > HIP > other identifiers.
         json to_json();
