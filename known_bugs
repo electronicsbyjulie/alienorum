@@ -1,3 +1,2 @@
 
-If an ImGUI combo dropdown is open, and the dropdown extends past the bottom of a dialog, and the user attempts to use the scrollbar, the system mouse pointer is hidden but the app cursor does not appear. Any time the app cursor is not shown, and a combo box is open, the system pointer should be shown.
-
+[x] Looking due west and down from the surface of an ice giant causes the horizon to disappear. Fixed by projecting the gaseous horizon independently of compass heading, including straight-down views.
