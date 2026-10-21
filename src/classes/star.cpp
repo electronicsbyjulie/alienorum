@@ -1548,6 +1548,15 @@ json Star::to_json()
     towrite["radial_velocity"] = radial_velocity;
     towrite["apparent_magnitude"] = apparent_magnitude;
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
+    if (std::isfinite(metallicity))
+    {
+        towrite["stellar_metallicity"] =
+        {
+            {"value_dex", metallicity}, {"ratio", metallicity_ratio}, {"source", metallicity_source},
+            {"error_upper_dex", std::isfinite(metallicity_error_upper) ? json(metallicity_error_upper) : json(nullptr)},
+            {"error_lower_dex", std::isfinite(metallicity_error_lower) ? json(metallicity_error_lower) : json(nullptr)}
+        };
+    }
     towrite["spectral_type"] = spectral_type;
     towrite["Bayer"] = Bayer;
     towrite["Flamsteed"] = Flamsteed;
@@ -1594,6 +1603,30 @@ json Star::to_json()
 bool Star::from_json(json j)
 {
     CelestialObject::from_json(j);
+    metallicity = metallicity_error_upper = metallicity_error_lower = NAN;
+    metallicity_ratio.clear();
+    metallicity_source.clear();
+    if (j.contains("stellar_metallicity") && j["stellar_metallicity"].is_object())
+    {
+        const auto& measurement = j["stellar_metallicity"];
+        const auto numeric = [&](const char* key) -> double
+        {
+            auto it = measurement.find(key);
+            if (it == measurement.end() || !it->is_number()) return NAN;
+            const double value = it->get<double>();
+            return std::isfinite(value) ? value : NAN;
+        };
+        metallicity = numeric("value_dex");
+        if (std::isfinite(metallicity))
+        {
+            metallicity_error_upper = numeric("error_upper_dex");
+            metallicity_error_lower = numeric("error_lower_dex");
+            if (measurement.contains("ratio") && measurement["ratio"].is_string())
+                metallicity_ratio = measurement["ratio"].get<std::string>();
+            if (measurement.contains("source") && measurement["source"].is_string())
+                metallicity_source = measurement["source"].get<std::string>();
+        }
+    }
     try { j.at("proper_motion_RA").get_to(proper_motion_RA); proper_motion_RA *= fiftyseventh/oneyear; } catch (...) { ; }
     try { j.at("proper_motion_decl").get_to(proper_motion_decl); proper_motion_decl *= fiftyseventh/oneyear; } catch (...) { ; }
     try { j.at("radial_velocity").get_to(radial_velocity); } catch (...) { ; }

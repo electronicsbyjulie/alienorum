@@ -31,6 +31,8 @@ namespace alienorum
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
         double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
+        double st_met=NAN, st_meterr1=NAN, st_meterr2=NAN;
+        std::string st_metratio, st_met_source;
         double pl_orbinclerr1=NAN, pl_orbinclerr2=NAN;
         double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
         double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;
@@ -108,6 +110,8 @@ namespace alienorum
         static std::map<std::string, ExoRow> read_exoplanet_host_positions(const char* path);
         static bool apply_exoplanet_host_position(ExoRow& row, const std::map<std::string, ExoRow>& positions);
         static bool accept_exoplanet_source(json& row, bool from_nasa);
+        static void merge_exoplanet_metallicity(json& destination, const json& source);
+        static void apply_exoplanet_metallicity(const ExoRow& row, Star* host);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
             ExactStarSearchIndex *lookup = nullptr);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);

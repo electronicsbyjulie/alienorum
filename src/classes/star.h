@@ -19,6 +19,9 @@ namespace alienorum
         double radial_velocity = 0;                 // meters / second
         double apparent_magnitude = 1e29;           // visual/550nm
         double parallax = 0;                        // radians
+        double metallicity = NAN;                  // dex relative to solar, on metallicity_ratio's scale
+        double metallicity_error_upper = NAN, metallicity_error_lower = NAN;
+        std::string metallicity_ratio, metallicity_source;
 
         double minmag = 0;                          // apparent V mag
         double maxmag = 0;                          // apparent V mag

@@ -1661,7 +1661,137 @@ public:
     using CatalogReader::exorow_read_line;
     using CatalogReader::exorow_write_line;
     using CatalogReader::accept_exoplanet_source;
+    using CatalogReader::merge_exoplanet_metallicity;
+    using CatalogReader::apply_exoplanet_metallicity;
 };
+
+TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrips)
+{
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        Star **hd, **hip;
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_metallicity_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache, hipcache
+    };
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    hdcache = hd.data();
+    hipcache = hip.data();
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    Star* measured = static_cast<Star*>(cels[0]);
+    measured->metallicity = -0.42;
+    measured->metallicity_error_upper = 0.08;
+    measured->metallicity_error_lower = -0.06;
+    measured->metallicity_ratio = "[Fe/H]";
+    measured->metallicity_source = "NASA pscomppars";
+    measured->add_catalog_alias("Measured abundance host");
+    Star* solar = make_star("Solar abundance");
+    solar->metallicity = 0;
+    solar->metallicity_ratio = "[M/H]";
+    solar->metallicity_source = "NASA pscomppars";
+    Star* unknown = make_star("Unknown abundance");
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    } writer;
+    FILE* file = fopen("catalogs/soles_alienorum.dat", "wb");
+    ASSERT_NE(file, nullptr);
+    writer.write_condensed_star_cat_line(file, measured);
+    writer.write_condensed_star_cat_line(file, solar);
+    writer.write_condensed_star_cat_line(file, unknown);
+    fclose(file);
+    const json saved = measured->to_json();
+    Star restored;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_DOUBLE_EQ(restored.metallicity, -0.42);
+    EXPECT_EQ(restored.metallicity_ratio, "[Fe/H]");
+    EXPECT_DOUBLE_EQ(restored.metallicity_error_lower, -0.06);
+    EXPECT_EQ(restored.metallicity_source, "NASA pscomppars");
+    EXPECT_FALSE(unknown->to_json().contains("stellar_metallicity"));
+    ASSERT_TRUE(restored.from_json(unknown->to_json()));
+    EXPECT_TRUE(std::isnan(restored.metallicity));
+    EXPECT_TRUE(restored.metallicity_source.empty());
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    measured = static_cast<Star*>(cels[0]);
+    solar = static_cast<Star*>(cels[1]);
+    unknown = static_cast<Star*>(cels[2]);
+    EXPECT_DOUBLE_EQ(measured->metallicity, -0.42);
+    EXPECT_DOUBLE_EQ(measured->metallicity_error_upper, 0.08);
+    EXPECT_DOUBLE_EQ(measured->metallicity_error_lower, -0.06);
+    EXPECT_EQ(measured->metallicity_ratio, "[Fe/H]");
+    EXPECT_EQ(measured->metallicity_source, "NASA pscomppars");
+    EXPECT_EQ(measured->catalog_aliases, std::vector<std::string>({"Measured abundance host"}));
+    EXPECT_DOUBLE_EQ(solar->metallicity, 0);
+    EXPECT_EQ(solar->metallicity_ratio, "[M/H]");
+    EXPECT_TRUE(std::isnan(solar->metallicity_error_upper));
+    EXPECT_TRUE(std::isnan(unknown->metallicity));
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, ExoplanetMetallicityKeepsSourceScaleAndErrorsTogether)
+{
+    json eu =
+    {
+        {"pl_name", "Metal host b"}, {"hostname", "Metal host"}, {"pl_orbper", 30},
+        {"st_met", 0.2}, {"st_metratio", "[Fe/H]"}, {"st_met_source", "exoplanet.eu"}
+    };
+    const json nasa =
+    {
+        {"st_met", 0.0}, {"st_metratio", "[M/H]"}, {"st_met_source", "NASA pscomppars"},
+        {"st_meterr1", 0.03}, {"st_meterr2", -0.05}, {"st_metlim", 0}
+    };
+    TestCatalogReader::merge_exoplanet_metallicity(eu, nasa);
+    EXPECT_EQ(eu["st_met"], 0.0);
+    EXPECT_EQ(eu["st_metratio"], "[M/H]");
+    bool valid = false;
+    ExoRow row = TestCatalogReader::exorow_from_json(eu, &valid);
+    ASSERT_TRUE(valid);
+    FILE* cache = tmpfile();
+    ASSERT_NE(cache, nullptr);
+    TestCatalogReader::exorow_write_line(cache, row);
+    rewind(cache);
+    ExoRow cached;
+    ASSERT_TRUE(TestCatalogReader::exorow_read_line(cache, cached));
+    fclose(cache);
+    EXPECT_DOUBLE_EQ(cached.st_met, 0);
+    EXPECT_DOUBLE_EQ(cached.st_meterr1, 0.03);
+    EXPECT_DOUBLE_EQ(cached.st_meterr2, -0.05);
+    EXPECT_EQ(cached.st_metratio, "[M/H]");
+    EXPECT_EQ(cached.st_met_source, "NASA pscomppars");
+    Star* host = static_cast<Star*>(cels[0]);
+    host->metallicity = -0.4;
+    host->metallicity_source = "XHIP V/137D B";
+    row.st_met = 0.2;
+    row.st_met_source = "exoplanet.eu";
+    TestCatalogReader::apply_exoplanet_metallicity(row, host);
+    EXPECT_DOUBLE_EQ(host->metallicity, 0.2);
+    TestCatalogReader::apply_exoplanet_metallicity(cached, host);
+    row.st_met = 0.8;
+    row.st_met_source = "exoplanet.eu";
+    TestCatalogReader::apply_exoplanet_metallicity(row, host);
+    EXPECT_DOUBLE_EQ(host->metallicity, 0);
+    EXPECT_EQ(host->metallicity_ratio, "[M/H]");
+    eu["st_metlim"] = 1;
+    EXPECT_TRUE(std::isnan(TestCatalogReader::exorow_from_json(eu, &valid).st_met));
+    json missing = {{"st_met", nullptr}};
+    TestCatalogReader::merge_exoplanet_metallicity(missing, nasa);
+    EXPECT_EQ(missing["st_met_source"], "NASA pscomppars");
+}
 
 TEST_F(CatalogParsingTest, ExoplanetNamesMatchPrimaryComponentsAndConstellationCase)
 {

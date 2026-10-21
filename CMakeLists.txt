@@ -158,7 +158,7 @@ if(WIN32)
 		catalogs/star_orbits.dat
 		catalogs/planets.json
 		catalogs/asteroids.json
-		catalogs/soles_alienorum.dat
+		catalogs/soles_alienorum.dat # Expanded from the tracked archive by the installer script.
 		catalogs/mainseq.dat
 		catalogs/urls.dat
 		catalogs/Milky_Way.dat
