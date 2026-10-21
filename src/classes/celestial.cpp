@@ -1193,7 +1193,7 @@ namespace
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
     struct jpeg_decompress_struct cinfo;
     struct my_jpeg_error_mgr jerr;
@@ -1337,7 +1337,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
     png_structp png_ptr;
     png_infop info_ptr;
@@ -2249,7 +2249,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     bool want_overcast_sky = false;
     Planet *p = (Planet*)cel;
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
-    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     bool create_bump;
     double bump_scale, inv_bump_scale;
     mtx.lock();
@@ -2426,7 +2426,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
-        LavaFissures lava_fissures(static_cast<std::uint32_t>(cel->rnd_seed));
         for (y = 0; y < image_height; ++y)
         {
             if (done || abort_load) { generating_fic_texture = false; return; }
@@ -2601,54 +2600,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 240 + 15 * r_weight);
                     }
                 }
-                else if (cel->type == lavaworld)
-                {
-                    // Basaltic crust base with volcanic mineralization and rifts
-                    double basalt_r = 34.0 * rmult * r_weight;
-                    double basalt_g = 30.0 * gmult * r_weight;
-                    double basalt_b = 32.0 * bmult * r_weight;
-
-                    // Magma basins / smooth vitrified maria
-                    if (height_value < 0.46)
-                    {
-                        double basin_dep = (0.46 - height_value) / 0.46;
-                        basalt_r *= (1.0 - 0.45 * basin_dep);
-                        basalt_g *= (1.0 - 0.45 * basin_dep);
-                        basalt_b *= (1.0 - 0.45 * basin_dep);
-                    }
-
-                    // Sulfur deposits and iron oxide staining along volcanic provinces
-                    double mineral_noise = fBm(nx * 11.0 + 3.2, ny * 11.0 + 7.5, nz * 11.0 + 1.8, 3, 2.0, 0.5);
-                    if (mineral_noise > 0.62)
-                    {
-                        double s_factor = (mineral_noise - 0.62) / 0.38;
-                        basalt_r += 95.0 * s_factor;
-                        basalt_g += 82.0 * s_factor;
-                        basalt_b += 20.0 * s_factor;
-                    }
-
-                    // Incandescent rift veins breaking through the crust
-                    const double lava_factor = lava_fissures.intensity(nx, ny, nz);
-                    if (lava_factor > 0.0)
-                    {
-                        basalt_r = fmin(255.0, basalt_r + 215.0 * lava_factor);
-                        basalt_g = fmin(255.0, basalt_g + 88.0 * lava_factor);
-                        basalt_b = fmin(255.0, basalt_b + 16.0 * lava_factor);
-                    }
-
-                    // Tidally locked substellar magma ocean
-                    if (tidal_locked_to_star && psi < 0.72)
-                    {
-                        double ocean_intensity = pow(1.0 - psi / 0.72, 1.4);
-                        basalt_r = fmin(255.0, basalt_r * (1.0 - ocean_intensity) + (245.0 + 10.0 * ocean_intensity) * ocean_intensity);
-                        basalt_g = fmin(255.0, basalt_g * (1.0 - ocean_intensity) + (135.0 + 85.0 * ocean_intensity) * ocean_intensity);
-                        basalt_b = fmin(255.0, basalt_b * (1.0 - ocean_intensity) + (28.0 + 82.0 * ocean_intensity) * ocean_intensity);
-                    }
-
-                    red_data[idx] = (unsigned char)fmin(255.0, basalt_r);
-                    green_data[idx] = (unsigned char)fmin(255.0, basalt_g);
-                    blue_data[idx] = (unsigned char)fmin(255.0, basalt_b);
-                }
                 else
                 {
                     // Lifeless planet or moon
@@ -2680,6 +2631,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->cloud_map = new Map(cel);
         p->cloud_map->generate_overcast_sky(cel);
     }
+    generate_surface_rings(cel);
+    cel->generate_water_clouds();
+}
+
+void Map::generate_surface_rings(CelestialObject *cel)
+{
+    Planet *p = static_cast<Planet*>(cel);
     if (cel->typeclass() == class_planet)
     {
         p->generate_ring_parameters();
@@ -2707,24 +2665,43 @@ void Map::generate_rocky_map(CelestialObject *cel)
         p->ring_map->generate_ring_map(p, p->ring_radius / p->volumetric_mean_radius * 1024,
             p->ring_inner_radius/p->ring_radius, p->ring_mean_opacity, p->ringx_map);
     }
-
-    cel->generate_water_clouds();
 }
 
-void alienorum::Map::generate_lava_map(CelestialObject *cel)
+void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
-    mtx.lock();
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
+    std::unique_lock<std::mutex> lock(mtx);
     try
     {
         generating_fic_texture = true;
+        gen = 0;
         Planet *p = (Planet*)cel;
+        cel->randomize();
 
-        // Copy size and allocate arrays.
-        Map *rm = cel->surf_map;
-        assert(rm);
-        image_height = rm->image_height;
-        image_width = rm->image_width;
+        // The day map owns the relief; the night map follows the same terrain.
+        Map *surface = is_night ? cel->surf_map : nullptr;
+        if (is_night && (!surface || surface == this || !surface->is_complete() || !surface->has_bump_data()))
+        {
+            generating_fic_texture = false;
+            return;
+        }
+        const bool create_bump = !is_night && !bump_data;
+        if (is_night)
+        {
+            image_height = surface->image_height;
+            image_width = surface->image_width;
+            delete[] bump_data;
+            bump_data = nullptr;
+        }
+        else if (create_bump)
+        {
+            image_height = cel->fictitious_map_height;
+            image_width = image_height * 2;
+        }
+        else
+        {
+            cel->fictitious_map_height = image_height;
+        }
 
         lat_scale = (double)image_height / _pi;
         lon_scale = (double)image_width / (_pi * 2);
@@ -2732,26 +2709,36 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
         inv_lon_scale = 1.0 / lon_scale;
 
         allocated = image_height * image_width;
-        assert(allocated == rm->allocated);
+        delete[] red_data;
+        delete[] green_data;
+        delete[] blue_data;
+        red_data = green_data = blue_data = nullptr;
         red_data = new unsigned char[allocated];
         green_data = new unsigned char[allocated];
         blue_data = new unsigned char[allocated];
 
-        // Copy bump data.
-        double bump_scale = p->estimate_bump_scale(), inv_bump_scale = 1.0 / bump_scale;
-        bump_data = new double[allocated];
-        memcpy(bump_data, rm->bump_data, allocated * sizeof(double));
-        std::cout << "Allocated " << allocated << " pixels for fictitious night map." << std::endl;
-        mtx.unlock();
+        const double bump_scale = p->m_bump_scale = p->estimate_bump_scale();
+        const double inv_bump_scale = bump_scale > 0.0 ? 1.0 / bump_scale : 0.0;
+        if (!bump_data) bump_data = new double[allocated];
+        if (is_night) memcpy(bump_data, surface->bump_data, allocated * sizeof(double));
+        std::cout << "Allocated " << allocated << " pixels for fictitious lava "
+            << (is_night ? "night" : "day") << " map." << std::endl;
+        lock.unlock();
 
-        // Based on temperature, calculate the degree of lava glow.
+        const double terrain_scale = cel->cel_frand(1.8, 3.2);
+        const double offset_x = cel->cel_frand(0.0, 100.0);
+        const double offset_y = cel->cel_frand(0.0, 100.0);
+        const double offset_z = cel->cel_frand(0.0, 100.0);
+
         double tempK = p->estimate_surface_temperature();
-        if (tempK < 1000.0)
-        {
-            tempK = 1350.0;
-        }
-
-        bool tidal_locked = p->orbit && p->orbit->center && p->orbit->center->type == star && p->is_tidal_locked();
+        if (!std::isfinite(tempK) || tempK <= 0.0) tempK = 1350.0;
+        const bool tidal_locked = p->orbit && p->orbit->center
+            && p->orbit->center->type == star && p->is_tidal_locked();
+        // Both textures cover the globe. The renderer selects the actual illuminated
+        // hemisphere, so heating follows the map's lighting state, not a fixed longitude.
+        const double local_temperature = tempK * (is_night ? (tidal_locked ? 0.60 : 0.75) : 1.25);
+        const double heat = local_temperature / (local_temperature + 1500.0);
+        const double emission = is_night ? (0.10 + 0.22 * heat) : (0.65 + 0.35 * heat);
         LavaFissures lava_fissures(static_cast<std::uint32_t>(cel->rnd_seed));
 
         // Fill in glowing hot lava.
@@ -2780,53 +2767,27 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
                 double ny = sin_th * sin(phi);
                 double nz = cos_th;
 
-                height = 0.5 + inv_bump_scale * bump_data[idx];
-
-                double base_T = tempK;
-                double psi = 0.0;
-                if (tidal_locked)
-                {
-                    psi = find_3D_angle(Point(nx, ny, nz), xaxis, center);
-                    double cos_psi = fmax(-1.0, fmin(1.0, cos(psi)));
-                    double day_factor = (cos_psi + 1.0) * 0.5;
-                    double T_substellar = tempK * 1.45;
-                    double T_night = tempK * 0.60;
-                    base_T = T_night + (T_substellar - T_night) * pow(day_factor, 1.5);
-                }
-
-                // Elevation cooling: highlands cool faster than deep lowlands
-                base_T -= (height - 0.5) * 220.0;
-
-                // Magma basins / lava seas in deep depressions
-                if (height < 0.48)
-                {
-                    double basin_dep = pow((0.48 - height) / 0.48, 1.2);
-                    base_T = fmax(base_T, 1380.0 + basin_dep * 380.0);
-                }
-
-                // The same irregular, branching fractures as the surface map.
                 const double total_fissure = lava_fissures.intensity(nx, ny, nz);
-
-                if (total_fissure > 0.0)
+                if (create_bump)
                 {
-                    base_T = fmax(base_T, 1300.0 + total_fissure * 480.0);
+                    const double warp = fBm(nx * 2.0 + offset_x, ny * 2.0 + offset_y,
+                        nz * 2.0 + offset_z, 3, 2.0, 0.5) - 0.5;
+                    height = fBm(nx * terrain_scale + offset_x + warp,
+                        ny * terrain_scale + offset_y + warp,
+                        nz * terrain_scale + offset_z + warp, 6, 2.0, 0.5);
+                    // Basalt highlands surround smooth lowlands and recessed fractures.
+                    height = std::clamp(0.5 + (height - 0.5) * 1.8 - total_fissure * 0.08, 0.0, 1.0);
+                    bump_data[idx] = bump_scale * (height - 0.5);
+                }
+                else
+                {
+                    height = std::clamp(0.5 + inv_bump_scale * bump_data[idx], 0.0, 1.0);
                 }
 
-                // Volcanic calderas and mantle plume hotspots
-                double vent_val = sin(nx * 6.5 + 12.1) * cos(ny * 6.5 + 34.5) * sin(nz * 6.5 + 56.7);
-                double vent_intensity = 0.0;
-                if (vent_val > 0.64)
-                {
-                    vent_intensity = pow((vent_val - 0.64) / 0.36, 2.0);
-                    base_T = fmax(base_T, 1420.0 + vent_intensity * 520.0);
-                }
-
-                // Tidally locked substellar magma ocean
-                if (tidal_locked && psi < 0.72)
-                {
-                    double dayside_ocean = pow(1.0 - psi / 0.72, 1.3);
-                    base_T = fmax(base_T, 1550.0 + dayside_ocean * 650.0);
-                }
+                // Volcanic calderas and mantle plume hotspots.
+                const double vent_val = sin(nx * 6.5 + 12.1) * cos(ny * 6.5 + 34.5) * sin(nz * 6.5 + 56.7);
+                const double vent_intensity = vent_val > 0.64
+                    ? pow((vent_val - 0.64) / 0.36, 2.0) : 0.0;
 
                 // Magma crust fraction:
                 // Chilled crust forms dark basalt rafts with low thermal emission.
@@ -2838,11 +2799,8 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
                     double basin_dep = (0.44 - height) / 0.44;
                     lava_activity = fmax(lava_activity, basin_dep * 0.75);
                 }
-                if (tidal_locked && psi < 0.65)
-                {
-                    double dayside_ocean = pow(1.0 - psi / 0.65, 1.4);
-                    lava_activity = fmax(lava_activity, dayside_ocean * 0.90);
-                }
+                // Temperature scales emission without filling the crust with a uniform
+                // molten color. Fractures, basins, and calderas retain their contrast.
 
                 // Chilled crust: dark basalt with faint crimson warmth near cracks
                 if (lava_activity < 0.08)
@@ -2866,15 +2824,28 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
                     double t = (lava_activity - 0.35) / 0.40;
                     rgb.r = 255;
                     rgb.g = (unsigned char)fmin(255.0, 56.0 + 120.0 * t);
-                    rgb.b = (unsigned char)fmin(255.0, 16.0 + 35.0 * t);
+                    rgb.b = (unsigned char)(16.0 + 14.0 * t);
                 }
                 else
                 {
                     // Intense incandescent golden-amber core (never solid white)
                     double t = fmin(1.0, (lava_activity - 0.75) / 0.25);
                     rgb.r = 255;
-                    rgb.g = (unsigned char)fmin(255.0, 176.0 + 45.0 * t);
-                    rgb.b = (unsigned char)fmin(255.0, 51.0 + 75.0 * t);
+                    rgb.g = (unsigned char)(176.0 + 14.0 * t);
+                    rgb.b = (unsigned char)(30.0 + 10.0 * t);
+                }
+
+                rgb.r = (unsigned char)(rgb.r * emission);
+                rgb.g = (unsigned char)(rgb.g * emission);
+                rgb.b = (unsigned char)(rgb.b * emission);
+
+                if (!is_night)
+                {
+                    // Reflected basalt remains visible in daylight; night carries emission.
+                    const double crust = (1.0 - lava_activity) * (0.6 + 0.4 * height);
+                    rgb.r = (unsigned char)fmin(255.0, rgb.r + 34.0 * crust);
+                    rgb.g = (unsigned char)fmin(255.0, rgb.g + 30.0 * crust);
+                    rgb.b = (unsigned char)fmin(255.0, rgb.b + 32.0 * crust);
                 }
 
                 red_data[idx] = rgb.r;
@@ -2886,12 +2857,12 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel)
     catch (...)
     {
         generating_fic_texture = false;
-        mtx.unlock();
         return;
     }
 
     generating_fic_texture = false;
     touch_gen();
+    if (!is_night) generate_surface_rings(cel);
 }
 
 void Map::stamp_craters(CelestialObject *cel, double bump_scale)
@@ -3288,7 +3259,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     bool tidal_locked_to_star;
     RGB3 rgb, deep;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
     try
     {
@@ -3774,7 +3745,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     {
         cel->randomize();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+        std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
         mtx.lock();
         generating_fic_texture = true;
 
@@ -4033,7 +4004,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
         assert(xmap);
         cel->randomize();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(259,503)));
+        std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
         mtx.lock();
         generating_fic_texture = true;
 
@@ -4127,19 +4098,23 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
     if (lgreen) delete[] lgreen;
     if (lblue ) delete[] lblue;
     resample_bump_data(cel->fictitious_map_height);
-    generate_rocky_map(cel);
     if (cel->type == lavaworld)
     {
+        generate_lava_map(cel);
         if (!cel->night_map)
         {
             cel->night_map = new Map(cel);
         }
-        cel->night_map->generate_lava_map(cel);
+        cel->night_map->generate_lava_map(cel, true);
     }
-    else if (cel->night_map && !cel->has_real_maps && cel->typeclass() != class_star)
+    else
     {
-        delete cel->night_map;
-        cel->night_map = nullptr;
+        generate_rocky_map(cel);
+        if (cel->night_map && !cel->has_real_maps && cel->typeclass() != class_star)
+        {
+            delete cel->night_map;
+            cel->night_map = nullptr;
+        }
     }
 }
 

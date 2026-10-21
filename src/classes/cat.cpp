@@ -14,6 +14,7 @@
 #include <ctime>
 #include <map>
 #include <unordered_map>
+#include <memory>
 #include <string_view>
 #include <string.h>
 #include "cat.h"
@@ -3796,9 +3797,16 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 }
 
 #define _debug_exoplanet_inclinations 0
-void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids)
+void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
+    const ExactStarSearchIndex *lookup)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    std::unique_ptr<ExactStarSearchIndex> local_lookup;
+    if (!lookup)
+    {
+        local_lookup = std::make_unique<ExactStarSearchIndex>();
+        lookup = local_lookup.get();
+    }
     std::map<std::string, std::string> planet_names;
     std::map<std::string, std::string> planet_types;
     std::map<std::string, double> planet_temps;
@@ -3846,10 +3854,10 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                     {
                         std::string s_hd1 = "HD " + std::to_string(HD);
                         std::string s_hd2 = "HD" + std::to_string(HD);
-                        int obj_idx = find_object(s_hd1.c_str(), true);
+                        int obj_idx = find_object(s_hd1.c_str(), true, 9e29, 1, lookup);
                         if (obj_idx < 0)
                         {
-                            obj_idx = find_object(s_hd2.c_str(), true);
+                            obj_idx = find_object(s_hd2.c_str(), true, 9e29, 1, lookup);
                         }
                         if (obj_idx >= 0 && cels[obj_idx]->typeclass() == class_star)
                         {
@@ -3922,6 +3930,24 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         fclose(fp);
     }
 
+    const auto designation_key = [](const std::string& designation)
+    {
+        std::string key;
+        for (unsigned char c : designation)
+        {
+            if (!std::isspace(c)) key += c;
+        }
+        // An omitted primary component and an explicit A describe the same host.
+        // Preserve B and later components so planets around different stars stay distinct.
+        if (key.size() > 2 && key[key.size() - 2] == 'A'
+            && key.back() >= 'b' && key.back() <= 'z')
+        {
+            key.erase(key.size() - 2, 1);
+        }
+        for (char& c : key) c = std::tolower(static_cast<unsigned char>(c));
+        return key;
+    };
+
     for (auto const& [idx, row] : planet_celids)
     {
         Star *s = (Star*)cels[idx];
@@ -3954,11 +3980,11 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                     if (p_let >= 'b' && p_let <= 'z')
                     {
                         size_t dlen = designation.size();
-                        if (dlen >= 3 && (designation[dlen - 2] == 'A' || designation[dlen - 2] == 'B'))
+                        if (dlen >= 3 && designation[dlen - 2] == 'A')
                         {
                             candidate_desigs.push_back(designation.substr(0, dlen - 2) + p_let);
                         }
-                        if (dlen >= 4 && (designation[dlen - 2] == 'A' || designation[dlen - 2] == 'B') && designation[dlen - 3] == ' ')
+                        if (dlen >= 4 && designation[dlen - 2] == 'A' && designation[dlen - 3] == ' ')
                         {
                             candidate_desigs.push_back(designation.substr(0, dlen - 3) + " " + p_let);
                         }
@@ -4009,22 +4035,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                     }
                     for (auto const& [dkey, fname] : planet_names)
                     {
-                        std::string s1, s2;
-                        for (char c : cdesig)
-                        {
-                            if (c != ' ')
-                            {
-                                s1 += c;
-                            }
-                        }
-                        for (char c : dkey)
-                        {
-                            if (c != ' ')
-                            {
-                                s2 += c;
-                            }
-                        }
-                        if (s1 == s2)
+                        if (designation_key(cdesig) == designation_key(dkey))
                         {
                             designation = dkey;
                             found = true;
@@ -7051,6 +7062,24 @@ bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
             normalized += std::tolower(c);
         }
     }
+    if (from_nasa && normalized == "hd160691")
+    {
+        const std::string name = row.value("pl_name", "");
+        if (name.size() == 11 && name.compare(0, 10, "HD 160691 ") == 0)
+        {
+            // NASA orders the outer companion as c; exoname.dat follows the
+            // mu Ara convention: b=Quijote, c=Dulcinea, d=Rocinante, e=Sancho.
+            char letter = name.back();
+            if (letter == 'c') letter = 'e';
+            else if (letter == 'd') letter = 'c';
+            else if (letter == 'e') letter = 'd';
+            if (letter >= 'b' && letter <= 'e')
+            {
+                row["pl_name"] = std::string("mu Ara ") + letter;
+                row["hostname"] = "mu Ara";
+            }
+        }
+    }
     if (normalized == "koi5" || normalized == "koi5a" ||
         normalized == "toi1241" || normalized == "toi1241a" || normalized == "kic8554498")
     {
@@ -7066,7 +7095,8 @@ bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
     return true;
 }
 
-Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new)
+Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
+    ExactStarSearchIndex *lookup)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     *was_new = false;
@@ -7141,7 +7171,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
             {
                 hostname = "GJ 324 B";
             }
-            int i = find_object(hostname.c_str(), true);
+            int i = find_object(hostname.c_str(), true, 9e29, lookup ? 1 : 3, lookup);
             if (i > 0)
             {
                 host_star = (Star*)cels[i];
@@ -7153,7 +7183,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
                 if (hlen > 2 && hostname[hlen - 2] == ' ' && hostname[hlen - 1] >= 'A' && hostname[hlen - 1] <= 'Z')
                 {
                     std::string base_host = hostname.substr(0, hlen - 2);
-                    int bi = find_object(base_host.c_str(), true);
+                    int bi = find_object(base_host.c_str(), true, 9e29, lookup ? 1 : 3, lookup);
                     if (bi > 0 && cels[bi]->typeclass() == class_star)
                     {
                         host_star = (Star*)cels[bi];
@@ -7356,6 +7386,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         if (!star_exists)
         {
             append_cel(host_star);
+            if (lookup) lookup->add(host_star->seqno, *host_star);
             // Publish lookup pointers only after position validation succeeds.
             if (host_star->HD > 0 && host_star->HD <= MAX_HD && hdcache)
             {
@@ -8107,6 +8138,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     bool do_download = true;
     std::map<int, std::vector<int>> planet_celids;
     static bool loaded_starsonly = false;
+    ExactStarSearchIndex host_lookup = []()
+    {
+        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        return ExactStarSearchIndex();
+    }();
 
     const char* exocache = "catalogs/exoplanets.json";
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
@@ -8141,7 +8177,20 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_INCLINATION_ERRORS1";
+        derived_cache_valid = version == "# EXO_EU_LETTERS2";
+        // Recover omitted mu Ara records once, without downloading again when the
+        // host pass has already refreshed the unified catalog for the planet pass.
+        if (version == "# EXO_INCLINATION_ERRORS1" && !radio_silence)
+        {
+            std::ifstream source(exocache);
+            const std::string cached_json((std::istreambuf_iterator<char>(source)),
+                std::istreambuf_iterator<char>());
+            if (cached_json.find("\"mu Ara ") == std::string::npos
+                && cached_json.find("\"HD 160691 ") == std::string::npos)
+            {
+                do_download = true;
+            }
+        }
     }
 
     if (!do_download && derived_cache_valid)
@@ -8206,7 +8255,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
                 else
                 {
-                    host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+                    host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new, &host_lookup);
                     last_host_star = host_star;
                     last_hostname = row.hostname;
                 }
@@ -8234,7 +8283,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             {
                 return result;
             }
-            apply_exoplanet_names(planet_celids);
+            apply_exoplanet_names(planet_celids, &host_lookup);
             if (stars_only)
             {
                 loaded_starsonly = true;
@@ -8647,11 +8696,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                     {
                         for (const auto& item : nasa_json)
                         {
-                            if (item.contains("hd_name") && item["hd_name"].is_string())
-                            {
-                                std::string hd = item["hd_name"];
-                                if (hd == "HD 160691") continue;
-                            }
                             register_planet(item, true);
                         }
                     }
@@ -8721,7 +8765,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_INCLINATION_ERRORS1\n", cachefp);
+        fputs("# EXO_EU_LETTERS2\n", cachefp);
     }
 
     int rows_written = 0;
@@ -8790,7 +8834,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
         else
         {
-            host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+            host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new, &host_lookup);
             last_host_star = host_star;
             last_hostname = row.hostname;
         }
@@ -8851,7 +8895,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
         apply_exoplanet_host_position(row, host_positions);
         bool was_new = false;
-        Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new);
+        Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new, &host_lookup);
         if (host_star && was_new && cachefp)
         {
             exorow_write_line(cachefp, row);
@@ -8871,7 +8915,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             std::remove(tmp_cache.c_str());
         }
     }
-    apply_exoplanet_names(planet_celids);
+    apply_exoplanet_names(planet_celids, &host_lookup);
     if (stars_only) loaded_starsonly = true;
 
     return result;

@@ -40,7 +40,7 @@ namespace alienorum
         return type_center <= type_orbiter;
     }
 
-    // Which body types get their surface from generate_rocky_map(), and therefore carry bump
+    // Which body types have a solid surface with procedural rocky or lava maps and carry bump
     // data worth reusing. Kept in one place because load_textures() and mark_for_map_regen()
     // both branch on it, and the two lists had drifted apart.
     inline bool uses_rocky_map(cel_obj_type type)
@@ -225,6 +225,7 @@ namespace alienorum
 
         unsigned int idx_of(double latitude, double longitude);
         void stamp_craters(CelestialObject *cel, double bump_scale);
+        void generate_surface_rings(CelestialObject *cel);
 
         static unsigned int next_gen();
 
@@ -262,7 +263,7 @@ namespace alienorum
         double elevation_at(double latitude, double longitude);     // Returns meters.
         double elevation_at_bilinear(double latitude, double longitude) const;
         void generate_rocky_map(CelestialObject *cel);
-        void generate_lava_map(CelestialObject *cel);
+        void generate_lava_map(CelestialObject *cel, bool is_night = false);
         void generate_gas_giant_map(CelestialObject *cel);
         void generate_overcast_sky(CelestialObject *cel);
         bool generate_water_cloud_map(CelestialObject *cel);

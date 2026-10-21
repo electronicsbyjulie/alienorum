@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <unistd.h>
 #include "png.h"
 #include "include/stb/stb_image.h"
 #include "globals.h"
@@ -169,6 +170,8 @@ int main (int argc, char** argv)
     angular_radius = new double[MAX_CELOBJS];
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
+
+    nice(-2);                   // For better performance.
 
     establish_project_root();
     firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());
@@ -525,8 +528,10 @@ int main (int argc, char** argv)
     while (!done)
     {
         std::unique_lock<std::recursive_mutex> catalog_lock(catalog_mutex);
+        const bool loading_frame = splash;
         auto frame_began = std::chrono::high_resolution_clock::now();
-        if (hide_mouse && (!is_mouse_over_window || dragging) && !splash)
+        if (hide_mouse && (!is_mouse_over_window || dragging) && !splash
+            && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
         {
             // SDL_ShowCursor(SDL_DISABLE);
             if (empty_cursor) SDL_SetCursor(empty_cursor);
@@ -562,7 +567,7 @@ int main (int argc, char** argv)
         // End ImGui-specific setup code                //
         //////////////////////////////////////////////////
 
-        if (splash)
+        if (loading_frame)
         {
             double splash_width = io.DisplaySize.x - 5, splash_height = io.DisplaySize.y/1.61803398875;
             double splash_top = io.DisplaySize.y/2 - splash_height/2;
@@ -1084,6 +1089,9 @@ int main (int argc, char** argv)
         // More code copied from the ImGui example:
         // Rendering
         _render:
+        // The splash draw data contains no catalog objects. GPU presentation can
+        // block, so allow the loader to publish rows while this frame is rendered.
+        if (loading_frame) catalog_lock.unlock();
         ImGui::Render();
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
@@ -1091,6 +1099,7 @@ int main (int argc, char** argv)
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         if (take_snapshot)
         {
+            if (loading_frame) catalog_lock.lock();
             auto time_t_now = (time_t)simnow;
 
             const char* snapdir = "snapshots";
@@ -1131,8 +1140,10 @@ int main (int argc, char** argv)
             else
                 std::cerr << "Failed to save " << shnapsot_fname.str() << " to disk." << std::endl;
             take_snapshot = false;
+            if (loading_frame) catalog_lock.unlock();
         }
         SDL_GL_SwapWindow(window);
+        if (loading_frame) catalog_lock.lock();
         reap_released_objects();
 
         if (!splash)

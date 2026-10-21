@@ -23,6 +23,7 @@ extern std::map<std::string, Star*> dmcache;
 
 namespace alienorum
 {
+    class ExactStarSearchIndex;
     // Flattened row of the NASA Exoplanet Archive TAP "pscomppars" table, or of a cache line
     // derived from it. Absent fields are NAN / empty, matching how the archive reports them.
     struct ExoRow
@@ -92,7 +93,8 @@ namespace alienorum
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
 
     protected:
-        void apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids);
+        void apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
+            const ExactStarSearchIndex *lookup = nullptr);
         bool worth_searching(std::string star_name);
         void write_condensed_star_cat_line(FILE *fp, Star *s);
 
@@ -106,7 +108,8 @@ namespace alienorum
         static std::map<std::string, ExoRow> read_exoplanet_host_positions(const char* path);
         static bool apply_exoplanet_host_position(ExoRow& row, const std::map<std::string, ExoRow>& positions);
         static bool accept_exoplanet_source(json& row, bool from_nasa);
-        Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new);
+        Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
+            ExactStarSearchIndex *lookup = nullptr);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
     };
 }

@@ -13,6 +13,8 @@
 #include "../horizon_ground_gpu.h"
 #include "../horizon_terrain_gpu.h"
 #include "../horizon_mesh_gpu.h"
+#include "../gputex.h"
+#include "../sunclock_gpu.h"
 #include "imgui/backends/imgui_impl_opengl3.h"
 #include "imgui_internal.h"
 #include "universe_fixture.h"
@@ -447,6 +449,69 @@ class RenderingRegressionTest : public UniverseFixture
         EXPECT_TRUE(accelerated == uncropped);
     }
 };
+
+TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStellarTint)
+{
+    Planet *world = make_planet(make_star(), "Lava sunclock test", 0.02 * AU);
+    world->type = lavaworld;
+    world->sidereal_rotational_period = world->orbit->period;
+    world->rnd_seed = 173;
+    world->fictitious_map_height = 64;
+    world->ring_status_known = true;
+    world->surf_map = new Map(world);
+    world->night_map = new Map(world);
+
+    SunClockGpuInput input = {};
+    input.sclk_scale = half_pi / dispcx;
+    input.zoom = 1.0;
+    input.daylight_tint[0] = 1.0;
+    input.daylight_tint[1] = 0.65;
+    input.daylight_tint[2] = 0.40;
+    for (int i = 0; i < 3; ++i) input.body_axes[i] = earth_radius;
+    for (int i = 0; i < 4; ++i) input.rot_matrix[i * 5] = 1.0;
+
+    const auto capture = [&](double longitude, bool day)
+    {
+        freeze_surface_time();
+        input.azimuth = longitude;
+        input.light_dir[0] = -sin(longitude) * (day ? 1.0 : -1.0);
+        input.light_dir[2] = cos(longitude) * (day ? 1.0 : -1.0);
+        EXPECT_TRUE(queue_sunclock_gpu(input, dispcx, dispcy));
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto brightness = [&](const std::vector<unsigned char> &pixels)
+    {
+        double sum = 0.0;
+        for (int y = render_height / 4; y < 3 * render_height / 4; ++y)
+        {
+            for (int x = render_width / 4; x < 3 * render_width / 4; ++x)
+            {
+                const auto *rgb = &pixels[(y * render_width + x) * 4];
+                sum += 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+            }
+        }
+        return sum;
+    };
+
+    for (double temperature : {1600.0, 3200.0, 6000.0})
+    {
+        world->temperature = temperature;
+        world->surf_map->generate_lava_map(world);
+        world->night_map->generate_lava_map(world, true);
+        input.day_map_texture = gputex_for(world->surf_map);
+        input.night_map_texture = gputex_for(world->night_map);
+        input.bump_map_texture = gputex_bump_for(world->surf_map);
+        for (double longitude : {0.0, 1.3, _pi})
+        {
+            const double day = brightness(capture(longitude, true));
+            const double night = brightness(capture(longitude, false));
+            EXPECT_GT(night, 0.0);
+            EXPECT_GT(day, night * 2.0) << temperature << ", longitude " << longitude;
+        }
+    }
+}
 
 TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighterCompanion)
 {

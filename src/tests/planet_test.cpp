@@ -1,14 +1,168 @@
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
 #include "../classes/cat.h"
 #include "../visuals.h"
+#include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class LavaMapTest : public UniverseFixture
+{
+    protected:
+    Planet *world = nullptr;
+
+    void SetUp() override
+    {
+        UniverseFixture::SetUp();
+        world = make_planet(make_star(), "Lava texture test", 0.02 * AU);
+        world->type = lavaworld;
+        world->temperature = 1600.0;
+        world->sidereal_rotational_period = world->orbit->period;
+        world->rnd_seed = 173;
+        world->fictitious_map_height = 32;
+        world->ring_status_known = true;
+        world->surf_map = new Map(world);
+        world->night_map = new Map(world);
+    }
+
+    void TearDown() override
+    {
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+
+    void generate()
+    {
+        world->surf_map->generate_lava_map(world);
+        world->night_map->generate_lava_map(world, true);
+    }
+
+    double hemisphere_brightness(Map *map, bool day)
+    {
+        double sum = 0.0, area = 0.0;
+        for (int latitude = -75; latitude <= 75; latitude += 15)
+        {
+            const double lat = latitude / fiftyseven;
+            for (int longitude = -75; longitude <= 75; longitude += 15)
+            {
+                const double lon = longitude / fiftyseven + (day ? 0.0 : _pi);
+                const RGB3 rgb = map->color_at(lat, lon);
+                sum += cos(lat) * (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b);
+                area += cos(lat);
+            }
+        }
+        return sum / area;
+    }
+};
+
+TEST_F(LavaMapTest, DayPaletteOutshinesNightAtEveryLongitude)
+{
+    generate();
+    ASSERT_TRUE(world->surf_map->is_complete());
+    ASSERT_TRUE(world->night_map->is_complete());
+    ASSERT_TRUE(world->surf_map->has_bump_data());
+
+    const double hot_day = hemisphere_brightness(world->surf_map, true);
+    const double cool_night = hemisphere_brightness(world->night_map, false);
+    EXPECT_GT(hot_day, 2.0 * cool_night);
+    EXPECT_GT(cool_night, 0.0);
+    for (int longitude = -180; longitude < 180; longitude += 15)
+    {
+        const double lon = longitude / fiftyseven;
+        const RGB3 day = world->surf_map->color_at(0.0, lon);
+        const RGB3 night = world->night_map->color_at(0.0, lon);
+        EXPECT_GT(day.r, 2 * night.r);
+        EXPECT_GT(day.g, 2 * night.g);
+    }
+}
+
+TEST_F(LavaMapTest, HotSurfacesRetainDarkCrustAndOrangeFractures)
+{
+    for (double temperature : {1600.0, 3200.0, 6000.0, 10000.0})
+    {
+        world->temperature = temperature;
+        generate();
+        const size_t count = world->surf_map->get_width() * world->surf_map->get_height();
+        std::vector<unsigned char> pixels(count * 4);
+        world->surf_map->export_rgba(pixels.data());
+        size_t dark = 0, molten = 0, pale = 0;
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto *rgb = &pixels[i * 4];
+            if (rgb[0] < 100 && rgb[1] < 65) ++dark;
+            if (rgb[0] > 180 && rgb[0] > 1.2 * rgb[1]) ++molten;
+            if (rgb[0] > 220 && rgb[1] > 180 && rgb[2] > 80) ++pale;
+        }
+        EXPECT_GT(dark, count / 4) << temperature;
+        EXPECT_GT(molten, count / 100) << temperature;
+        EXPECT_EQ(pale, 0u) << temperature;
+    }
+}
+
+TEST_F(LavaMapTest, MapsShareReliefAfterRecoloringAndResizing)
+{
+    generate();
+    const unsigned int first_generation = world->night_map->gen;
+    std::vector<float> original(64 * 32), regenerated(64 * 32);
+    world->surf_map->export_bump(original.data());
+    world->surf_map->_map_resample_bump_regen_rocky(world);
+    world->surf_map->export_bump(regenerated.data());
+    EXPECT_EQ(original, regenerated);
+    EXPECT_NE(world->night_map->gen, first_generation);
+    const auto extremes = std::minmax_element(original.begin(), original.end());
+    EXPECT_LT(*extremes.first, *extremes.second);
+
+    world->fictitious_map_height = 64;
+    world->surf_map->_map_resample_bump_regen_rocky(world);
+    ASSERT_EQ(world->surf_map->get_height(), 64u);
+    ASSERT_EQ(world->night_map->get_height(), 64u);
+    ASSERT_EQ(world->night_map->get_width(), 128u);
+    std::vector<float> day_relief(128 * 64), night_relief(128 * 64);
+    world->surf_map->export_bump(day_relief.data());
+    world->night_map->export_bump(night_relief.data());
+    EXPECT_EQ(day_relief, night_relief);
+    EXPECT_GT(hemisphere_brightness(world->surf_map, true),
+        2.0 * hemisphere_brightness(world->night_map, false));
+}
+
+TEST_F(LavaMapTest, HigherTemperatureIncreasesGlowForTheSameTerrain)
+{
+    generate();
+    const double initial = hemisphere_brightness(world->night_map, true);
+    world->temperature = 2100.0;
+    world->night_map->generate_lava_map(world, true);
+    EXPECT_GT(hemisphere_brightness(world->night_map, true), initial);
+
+    world->sidereal_rotational_period = world->orbit->period * 0.2;
+    generate();
+    EXPECT_GT(hemisphere_brightness(world->surf_map, true),
+        hemisphere_brightness(world->night_map, true));
+}
+
+TEST_F(LavaMapTest, LoaderRefreshesNightAfterSurfaceReplacement)
+{
+    generate();
+    const unsigned int first_generation = world->night_map->gen;
+    delete world->surf_map;
+    world->surf_map = nullptr;
+    world->ignore_map_files = true;
+    world->fictitious_map_height = 48;
+    load_textures(world);
+    ASSERT_TRUE(world->surf_map->is_complete());
+    ASSERT_TRUE(world->night_map->is_complete());
+    EXPECT_EQ(world->surf_map->get_height(), 48u);
+    EXPECT_EQ(world->night_map->get_height(), 48u);
+    EXPECT_NE(world->night_map->gen, first_generation);
+    EXPECT_GT(hemisphere_brightness(world->surf_map, true),
+        2.0 * hemisphere_brightness(world->night_map, false));
+}
 
 // =====================================================================
 // Planet Initialization & Lifecycle Tests

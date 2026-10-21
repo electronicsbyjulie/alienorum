@@ -1663,6 +1663,100 @@ public:
     using CatalogReader::accept_exoplanet_source;
 };
 
+TEST_F(CatalogParsingTest, ExoplanetNamesMatchPrimaryComponentsAndConstellationCase)
+{
+    struct NamedPlanet
+    {
+        const char *designation;
+        const char *friendly;
+    };
+    const NamedPlanet examples[] =
+    {
+        {"14 And b", "Spe"}, {"18 Del b", "Arion"},
+        {"55 Cnc b", "Galileo"}, {"55 Cnc c", "Brahe"},
+        {"55 Cnc d", "Lipperhey"}, {"55 Cnc e", "Janssen"},
+        {"55 Cnc f", "Harriot"}, {"8 UMi b", "Halla"},
+        {"HAT-P-14 b", "Sissi"}, {"HAT-P-23 b", "Jebus"},
+        {"HAT-P-3 b", "Teberda"}, {"HD 100655 b", "Sazum"},
+        {"HD 102956 b", "Isagel"}, {"HD 30856 b", "Nakanbé"},
+        {"HD 86081 b", "Santamasa"}, {"WASP-19 b", "Banksia"},
+        {"WASP-71 b", "Tanzanite"}, {"WASP-72 b", "Cuptor"},
+        {"ups And b", "Saffar"}, {"ups And c", "Samh"},
+        {"ups And d", "Majriti"}, {"55 Cnc A b", "Galileo"}
+    };
+    TestCatalogReader reader;
+    for (const auto& example : examples)
+    {
+        SCOPED_TRACE(example.designation);
+        const std::string designation = example.designation;
+        Star *host = make_star(designation.substr(0, designation.find_last_of(' ')).c_str());
+        Planet *planet = make_planet(host, example.designation);
+        reader.apply_exoplanet_names({{host->seqno, {planet->seqno}}});
+        EXPECT_STREQ(planet->name, example.friendly);
+        if (designation == "55 Cnc e")
+        {
+            EXPECT_EQ(planet->type, lavaworld);
+            EXPECT_DOUBLE_EQ(planet->temperature, 3771.0);
+        }
+        delete_the_universe();
+        make_star("Sol");
+    }
+
+    Star *secondary = make_star("55 Cnc B");
+    Planet *planet = make_planet(secondary, "55 Cnc Bb");
+    reader.apply_exoplanet_names({{secondary->seqno, {planet->seqno}}});
+    EXPECT_STREQ(planet->name, "55 Cnc Bb");
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, MuAraNasaRecordsUseEuLettersAndNamesForTheirPeriods)
+{
+    struct OrbitName
+    {
+        char nasa_letter, eu_letter;
+        double period;
+        const char *friendly;
+    };
+    // https://en.wikipedia.org/wiki/Mu_Arae#System_architecture_and_habitability
+    const OrbitName examples[] =
+    {
+        {'d', 'c', 9.638, "Dulcinea"}, {'e', 'd', 308.36, "Rocinante"},
+        {'b', 'b', 644.92, "Quijote"}, {'c', 'e', 4019.0, "Sancho"}
+    };
+    Star *host = make_star("mu Ara");
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> planets;
+    std::vector<Planet*> objects;
+    for (const auto& example : examples)
+    {
+        json row = {{"hostname", "HD 160691"},
+            {"pl_name", std::string("HD 160691 ") + example.nasa_letter},
+            {"pl_orbper", example.period}};
+        ASSERT_TRUE(reader.accept_exoplanet_source(row, true));
+        const std::string designation = std::string("mu Ara ") + example.eu_letter;
+        EXPECT_EQ(row["pl_name"], designation);
+        EXPECT_EQ(row["hostname"], "mu Ara");
+        EXPECT_DOUBLE_EQ(row["pl_orbper"], example.period);
+        const json first_pass = row;
+        EXPECT_TRUE(reader.accept_exoplanet_source(row, true));
+        EXPECT_EQ(row, first_pass);
+        EXPECT_TRUE(reader.accept_exoplanet_source(row, false));
+        EXPECT_EQ(row, first_pass);
+
+        Planet *planet = make_planet(host, designation.c_str());
+        planet->orbit->period = example.period * oneday;
+        planets[host->seqno].push_back(planet->seqno);
+        objects.push_back(planet);
+    }
+    reader.apply_exoplanet_names(planets);
+    for (size_t i = 0; i < objects.size(); ++i)
+    {
+        EXPECT_STREQ(objects[i]->name, examples[i].friendly);
+        EXPECT_NEAR(objects[i]->orbit->period / oneday, examples[i].period, 1e-9);
+    }
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
 {
     Star::load_main_seq_dat();
@@ -2110,6 +2204,33 @@ TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStar
     hdcache[54719] = nullptr;
     hdcache[16400] = nullptr;
     hdcache[20794] = nullptr;
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, IndexedExoplanetHostsStayDistinctAndPublishNewStars)
+{
+    Star::load_main_seq_dat();
+    Star *existing = make_star("Kepler-123");
+    existing->add_catalog_alias("Existing host alias");
+    ExactStarSearchIndex lookup;
+    TestCatalogReader reader;
+    ExoRow row;
+    row.hostname = "Kepler-1234";
+    row.ra = 10;
+    row.dec = 20;
+    row.sy_dist = 10;
+    bool was_new = false;
+    Star *added = reader.resolve_or_create_exostar(row, true, &was_new, &lookup);
+    ASSERT_NE(added, nullptr);
+    EXPECT_NE(added, existing);
+    EXPECT_TRUE(was_new);
+    EXPECT_STREQ(added->name, "Kepler-1234");
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &was_new, &lookup), added);
+    EXPECT_FALSE(was_new);
+
+    row.hostname = "Existing host alias";
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &was_new, &lookup), existing);
+    EXPECT_FALSE(was_new);
     delete_the_universe();
 }
 
