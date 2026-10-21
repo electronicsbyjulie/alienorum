@@ -1807,9 +1807,19 @@ void draw_objedit_window(ImGuiIO& io)
                     struct CandidatePeriod
                     {
                         double period;
+                        double semimajor_axis;
                         CelestialObject* sibling;
                         int m, n;
+                        bool in_hz;
                     };
+
+                    // Preview candidates without moving the body being edited.
+                    Planet preview;
+                    preview.type = rocky;
+                    preview.mass = cel->mass;
+                    preview.orbit = new Orbit;
+                    preview.orbit->center = orb->center;
+                    const bool stellar_parent = orb->center->typeclass() == class_star;
 
                     std::vector<CandidatePeriod> candidates;
                     int nsibs = siblings.size();
@@ -1834,6 +1844,7 @@ void draw_objedit_window(ImGuiIO& io)
                                 cand.n = n;
                                 cand.sibling = siblings[i];
                                 cand.period = cand.sibling->orbit->period * n / m;
+                                if (!std::isfinite(cand.period) || cand.period <= 0) continue;
 
                                 const double partner_period = cand.sibling->orbit->period;
                                 const double period_min = fmin(cand.period, partner_period);
@@ -1851,12 +1862,26 @@ void draw_objedit_window(ImGuiIO& io)
                                     if (other_period > period_min && other_period < period_max) blocked = true;
                                 }
 
-                                if (!blocked) candidates.push_back(cand);
+                                if (!blocked)
+                                {
+                                    preview.orbit->period = cand.period;
+                                    preview.orbit->semimajor_axis = 0;
+                                    preview.orbit->compute_semimajor_axis(cel->mass);
+                                    cand.semimajor_axis = preview.orbit->semimajor_axis;
+                                    if (!std::isfinite(cand.semimajor_axis) || cand.semimajor_axis <= 0) continue;
+                                    cand.in_hz = stellar_parent && preview.is_in_con_HZ();
+                                    candidates.push_back(cand);
+                                }
                             }
                         }
                     }
 
-                    // TODO: Sort candidates by m+n, descending, and then by semimajor axis, ascending.
+                    std::stable_sort(candidates.begin(), candidates.end(),
+                        [](const CandidatePeriod &a, const CandidatePeriod &b)
+                        {
+                            if (a.m + a.n != b.m + b.n) return a.m + a.n < b.m + b.n;
+                            return a.semimajor_axis < b.semimajor_axis;
+                        });
 
                     n = candidates.size();
                     for (i=0; i<n; i++)
@@ -1874,20 +1899,24 @@ void draw_objedit_window(ImGuiIO& io)
                         l = 64 - line.size();
                         if (l > 0) line += std::string(l, ' ');
 
-                        double candsma = pow(pow(cand.period / oneyear, 2), 1.0/3);
+                        const double candsma = cand.semimajor_axis / AU;
                         line += std::to_string(candsma);
                         l = 73 - line.size();
                         if (l > 0) line += std::string(l, ' ');
 
-                        if (cel->orbit->center->type == star)
-                        {
-                            // TODO: Add the letters HZ to the end of line if orbit would put the body in the star's habitable zone.
-                        }
+                        if (cand.in_hz) line += "HZ";
                         
                         if (ImGui::Selectable(line.c_str(), false))
                         {
-                            cel->orbit->semimajor_axis = candsma * AU;
                             cel->orbit->period = cand.period;
+                            cel->orbit->compute_semimajor_axis(cel->mass);
+                            cel->temperature = 0;
+                            cel->user_edited = true;
+                            viewchanged = true;
+                            lsyscache.clear();
+                            if (cel->typeclass() == class_planet
+                                || cel->typeclass() == class_moon               // See Kepler-1625b.
+                                ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                         }
                     }
 
