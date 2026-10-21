@@ -1846,6 +1846,7 @@ void SSCImport::apply_color(const json &fields, CelestialObject *cel)
 void SSCImport::establish_mass(Planet *pl, const json &fields, const SSCBlock &blk)
 {
     double v;
+    pl->mass_evidence = PlanetMeasurement::observed;
 
     if (get_num(fields, "Mass", v) && v > 0)
     {
@@ -1872,6 +1873,7 @@ void SSCImport::establish_mass(Planet *pl, const json &fields, const SSCBlock &b
 
     // estimate_radius() run backwards, using the same two branches and the same exponents, so an
     // imported world sits where our own mass-radius relation would put it.
+    pl->mass_evidence = PlanetMeasurement::estimated;
     double r = pl->volumetric_mean_radius;
     double rocky_ceiling = 1.02 * earth_radius * pow(rocky_mass_cutoff / earth_mass, 0.27);
     if (r <= rocky_ceiling) pl->mass = earth_mass * pow(r / (1.02 * earth_radius), 1.0/0.27);
@@ -2166,6 +2168,8 @@ bool SSCImport::read(const std::string &ssc_path)
 
             Planet *pl = (Planet*)cel;
 
+            pl->radius_evidence = (have_semi || blk.fields.contains("Radius"))
+                ? PlanetMeasurement::observed : PlanetMeasurement::estimated;
             establish_mass(pl, blk.fields, blk);
             if (get_num(blk.fields, "J2", v)) pl->J2 = v;
 

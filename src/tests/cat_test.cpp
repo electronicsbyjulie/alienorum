@@ -1663,7 +1663,53 @@ public:
     using CatalogReader::accept_exoplanet_source;
     using CatalogReader::merge_exoplanet_metallicity;
     using CatalogReader::apply_exoplanet_metallicity;
+    using CatalogReader::apply_stellar_abundances;
 };
+
+TEST_F(CatalogParsingTest, AbundanceMatchingRejectsUnresolvedBinaryIdentifiers)
+{
+    struct Directory
+    {
+        std::filesystem::path original = std::filesystem::current_path();
+        std::filesystem::path temporary = std::filesystem::temp_directory_path() /
+            ("alienorum_abundance_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ~Directory()
+        {
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(temporary);
+        }
+    } directory;
+    std::filesystem::create_directories(directory.temporary / "catalogs/Hypatia");
+    std::filesystem::current_path(directory.temporary);
+    const json table =
+    {
+        {"schema", 1}, {"source", "Hypatia"}, {"solar_scale", "asplund09"},
+        {"solar", {{"Fe", 7.5}}}, {"reference", "fixture"},
+        {"rows", json::array(
+        {
+            {{"name", "Component A"}, {"hd", 12}, {"elements", {{"Fe",
+                {{"dex", 0.1}, {"error", 0.05}, {"ratio", "[Fe/H]"}, {"quality", "accepted"}}}}}},
+            {{"name", "Unique"}, {"hd", 13}, {"elements", {{"Fe",
+                {{"dex", -0.2}, {"error", 0.03}, {"ratio", "[Fe/H]"}, {"quality", "accepted"}}}}}}
+        })}
+    };
+    std::ofstream("catalogs/Hypatia/stellar_abundances.json") << table;
+    Star* first = make_star("Component A");
+    Star* second = make_star("Component B");
+    Star* unique = make_star("Unique");
+    first->HD = second->HD = 12;
+    unique->HD = 13;
+    TestCatalogReader reader;
+    reader.apply_stellar_abundances(first);
+    reader.apply_stellar_abundances(second);
+    reader.apply_stellar_abundances(unique);
+    EXPECT_FALSE(first->stellar_abundances.is_object());
+    EXPECT_FALSE(second->stellar_abundances.is_object());
+    ASSERT_TRUE(unique->stellar_abundances.contains("Hypatia"));
+    EXPECT_DOUBLE_EQ(unique->metallicity, -0.2);
+    EXPECT_DOUBLE_EQ(unique->metallicity_error_upper, 0.03);
+    delete_the_universe();
+}
 
 TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrips)
 {
@@ -1697,6 +1743,7 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     measured->metallicity_error_lower = -0.06;
     measured->metallicity_ratio = "[Fe/H]";
     measured->metallicity_source = "NASA pscomppars";
+    measured->stellar_abundances = {{"Hypatia", {{"solar_scale", "asplund09"}, {"elements", json::object()}}}};
     measured->add_catalog_alias("Measured abundance host");
     Star* solar = make_star("Solar abundance");
     solar->metallicity = 0;
@@ -1714,6 +1761,7 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     writer.write_condensed_star_cat_line(file, unknown);
     fclose(file);
     const json saved = measured->to_json();
+    const json saved_abundances = measured->stellar_abundances;
     Star restored;
     ASSERT_TRUE(restored.from_json(saved));
     EXPECT_DOUBLE_EQ(restored.metallicity, -0.42);
@@ -1735,6 +1783,7 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     EXPECT_DOUBLE_EQ(measured->metallicity_error_lower, -0.06);
     EXPECT_EQ(measured->metallicity_ratio, "[Fe/H]");
     EXPECT_EQ(measured->metallicity_source, "NASA pscomppars");
+    EXPECT_EQ(measured->stellar_abundances, saved_abundances);
     EXPECT_EQ(measured->catalog_aliases, std::vector<std::string>({"Measured abundance host"}));
     EXPECT_DOUBLE_EQ(solar->metallicity, 0);
     EXPECT_EQ(solar->metallicity_ratio, "[M/H]");
@@ -1773,6 +1822,7 @@ TEST_F(CatalogParsingTest, ExoplanetMetallicityKeepsSourceScaleAndErrorsTogether
     EXPECT_DOUBLE_EQ(cached.st_meterr2, -0.05);
     EXPECT_EQ(cached.st_metratio, "[M/H]");
     EXPECT_EQ(cached.st_met_source, "NASA pscomppars");
+    EXPECT_TRUE(std::isnan(cached.pl_bmasseerr1));
     Star* host = static_cast<Star*>(cels[0]);
     host->metallicity = -0.4;
     host->metallicity_source = "XHIP V/137D B";

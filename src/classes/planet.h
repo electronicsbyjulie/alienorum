@@ -9,11 +9,21 @@
 
 namespace alienorum
 {
+    enum class PlanetMeasurement
+    {
+        unknown, observed, minimum, estimated
+    };
+
     // Includes planets, minor planets, asteroids, KBOs.
     class Planet : public CelestialObject
     {
         public:
         double albedo = 0;
+        PlanetMeasurement mass_evidence = PlanetMeasurement::unknown;
+        PlanetMeasurement radius_evidence = PlanetMeasurement::unknown;
+        double mass_error_upper = NAN, mass_error_lower = NAN;
+        double radius_error_upper = NAN, radius_error_lower = NAN;
+        json classification_evidence = nullptr;
         double msini = 0;
         // Published asymmetric inclination errors, in radians.
         double inclination_error_upper = NAN, inclination_error_lower = NAN;
@@ -96,7 +106,6 @@ namespace alienorum
     protected:
         bool cache_in_cons_hz;
         double cached_in_cons_hz = -1;
-        double cached_density = 0;
 
         // Everything atmospheric_refraction() computes that does not depend on the altitude it is
         // asked about -- which is all of it bar the final curve evaluation. Reaching those values

@@ -1548,6 +1548,7 @@ json Star::to_json()
     towrite["radial_velocity"] = radial_velocity;
     towrite["apparent_magnitude"] = apparent_magnitude;
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
+    if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
     if (std::isfinite(metallicity))
     {
         towrite["stellar_metallicity"] =
@@ -1603,6 +1604,8 @@ json Star::to_json()
 bool Star::from_json(json j)
 {
     CelestialObject::from_json(j);
+    stellar_abundances = j.contains("stellar_abundances") && j["stellar_abundances"].is_object()
+        ? j["stellar_abundances"] : json(nullptr);
     metallicity = metallicity_error_upper = metallicity_error_lower = NAN;
     metallicity_ratio.clear();
     metallicity_source.clear();

@@ -20,9 +20,9 @@ EU_URL = "http://voparis-tap-planeto.obspm.fr/tap/sync"
 XHIP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
 
 
-def fetch(endpoint, query):
+def fetch(endpoint, query, maxrec=50000):
     parameters = urllib.parse.urlencode(dict(
-        request="doQuery", lang="ADQL", format="json", maxrec=50000, query=query))
+        request="doQuery", lang="ADQL", format="json", maxrec=maxrec, query=query))
     with urllib.request.urlopen(endpoint + "?" + parameters, timeout=90) as response:
         result = json.load(response)
     if isinstance(result, list):
@@ -33,6 +33,19 @@ def fetch(endpoint, query):
 
 def finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def catalog_snapshot(folder, endpoint, query, refresh=False):
+    path = Path("catalogs") / folder / "stellar_metallicity.json"
+    if path.exists() and not refresh:
+        with path.open() as source:
+            return json.load(source)["rows"]
+    rows = fetch(endpoint, query)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as output:
+        json.dump(dict(schema=1, endpoint=endpoint, query=query, rows=rows), output, separators=(",", ":"), allow_nan=False)
+        output.write("\n")
+    return rows
 
 
 def normalized(name):
@@ -119,20 +132,21 @@ def enrich(lines, rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", type=Path, default=Path("catalogs/soles_alienorum.dat"))
+    parser.add_argument("--refresh", action="store_true", help="Refresh each source-specific snapshot")
     arguments = parser.parse_args()
-    nasa = fetch(NASA_URL, "select distinct hostname,hd_name,hip_name,st_met,st_meterr1,st_meterr2,"
-                 "st_metlim,st_metratio from pscomppars where st_met is not null and st_metlim=0")
-    eu = fetch(EU_URL, "select distinct star_name as hostname,star_metallicity as st_met "
+    nasa = catalog_snapshot("NASA", NASA_URL, "select distinct hostname,hd_name,hip_name,st_met,st_meterr1,st_meterr2,"
+                 "st_metlim,st_metratio from pscomppars where st_met is not null and st_metlim=0", arguments.refresh)
+    eu = catalog_snapshot("ExoplanetEU", EU_URL, "select distinct star_name as hostname,star_metallicity as st_met "
                "from exoplanet.epn_core where star_metallicity is not null "
-               "and publication_status='Published in a refereed paper'")
+               "and publication_status='Published in a refereed paper'", arguments.refresh)
     for row in eu:
         row["st_metratio"] = "[Fe/H]"
         # TAP exposes the value without uncertainty columns.
         for kind in ("HD", "HIP"):
             if re.fullmatch(kind + r"\s*\d+", row.get("hostname") or "", re.IGNORECASE):
                 row[kind.lower() + "_name"] = row["hostname"]
-    xhip = fetch(XHIP_URL, 'select HIP,Comp,"[Fe/H]","e_[Fe/H]","q_[Fe/H]" '
-                 'from "V/137D/XHIP" where "[Fe/H]" is not null')
+    xhip = catalog_snapshot("XHIP", XHIP_URL, 'select HIP,Comp,"[Fe/H]","e_[Fe/H]","q_[Fe/H]" '
+                 'from "V/137D/XHIP" where "[Fe/H]" is not null', arguments.refresh)
     compiled = []
     for row in xhip:
         quality = row.get("q_[Fe/H]")

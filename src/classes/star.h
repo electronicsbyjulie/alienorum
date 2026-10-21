@@ -22,6 +22,9 @@ namespace alienorum
         double metallicity = NAN;                  // dex relative to solar, on metallicity_ratio's scale
         double metallicity_error_upper = NAN, metallicity_error_lower = NAN;
         std::string metallicity_ratio, metallicity_source;
+        json stellar_abundances = nullptr;
+        json chemistry_diagnostics() const;
+        bool calibrated_iron_abundance(double& value, double& uncertainty) const;
 
         double minmag = 0;                          // apparent V mag
         double maxmag = 0;                          // apparent V mag

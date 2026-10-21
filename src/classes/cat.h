@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <fstream>
 #include <random>
 #include <cmath>
@@ -33,6 +34,10 @@ namespace alienorum
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
         double st_met=NAN, st_meterr1=NAN, st_meterr2=NAN;
         std::string st_metratio, st_met_source;
+        std::string pl_bmassprov;
+        double pl_bmasseerr1=NAN, pl_bmasseerr2=NAN, pl_bmassjerr1=NAN, pl_bmassjerr2=NAN;
+        double pl_radeerr1=NAN, pl_radeerr2=NAN, pl_radjerr1=NAN, pl_radjerr2=NAN;
+        double pl_bmasselim=NAN, pl_radelim=NAN;
         double pl_orbinclerr1=NAN, pl_orbinclerr2=NAN;
         double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
         double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;
@@ -112,11 +117,16 @@ namespace alienorum
         static bool accept_exoplanet_source(json& row, bool from_nasa);
         static void merge_exoplanet_metallicity(json& destination, const json& source);
         static void apply_exoplanet_metallicity(const ExoRow& row, Star* host);
+        void apply_stellar_abundances(Star* host);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
             ExactStarSearchIndex *lookup = nullptr);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
 
     private:
+        bool abundance_catalogs_loaded = false;
+        std::vector<json> abundance_catalogs;
+        std::map<std::string, std::vector<std::pair<size_t, size_t>>> abundance_lookup;
+        std::set<uint64_t> duplicate_abundance_hips, duplicate_abundance_hds, duplicate_abundance_gaia;
         // Keep the host and planet passes on one snapshot, including after a failed refresh.
         bool exoplanet_tap_attempted = false;
         json exoplanet_tap_catalog = json::array();
