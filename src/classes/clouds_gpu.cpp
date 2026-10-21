@@ -60,11 +60,11 @@ float noise(vec3 p)
 // cached alongside those envelopes rather than generated for every sky pixel.
 void cloud_parent(int puff, float mass, out vec3 p, out vec3 axes)
 {
-    float size = 0.65 + 0.45 * mass;
+    float size = 0.38 + 0.72 * mass;
     float angle = float(puff) * 2.39996323 + mass * 6.0;
     float radius = puff == 0 ? 0.0 : 0.43 * size;
     p = vec3(radius * cos(angle), radius * sin(angle),
-        puff == 0 ? -0.08 : 0.16 + 0.13 * sin(angle * 1.7));
+        (puff == 0 ? -0.08 : 0.16 + 0.13 * sin(angle * 1.7)) * size);
     float hh = (puff == 0 ? 0.65 : 0.43 + 0.05 * sin(angle * 2.3)) * size;
     float vv = (puff == 0 ? 0.38 : 0.38 + 0.06 * cos(angle * 1.9)) * size;
     axes = vec3(hh, hh, vv);
@@ -80,19 +80,26 @@ void cloud_billow(int puff, int child, float mass, vec3 parent, vec3 axes,
     p = parent + axes * offset;
     child_axes = axes * vec3(size, size, size + 0.02 * cos(angle));
 }
-void cloud_detail(int puff, int child, int detail, float mass, vec3 p, vec3 axes,
-    out vec3 center, out vec3 detail_axes)
+vec4 cloud_detail(int puff, int child, int detail, float mass)
 {
     float height = 1.0 - 2.0 * (float(detail) + 0.5) / 4.0;
     float angle = float(detail) * 2.39996323 + float(child) * 1.7 + float(puff) + mass * 6.0;
     float radius = sqrt(max(0.0, 1.0 - height * height));
-    center = p + axes * 0.40 * vec3(radius * cos(angle), radius * sin(angle), height);
-    detail_axes = axes * (0.67 + 0.025 * sin(angle * 1.7));
+    return vec4(0.40 * vec3(radius * cos(angle), radius * sin(angle), height),
+        0.67 + 0.025 * sin(angle * 1.7));
+}
+float cloud_base(float mass)
+{
+    float size = 0.38 + 0.72 * mass;
+    // Small clouds remain rounded. Larger masses share a level condensation
+    // base, rather than retaining the rounded bottoms of individual lobes.
+    return -size * mix(0.80, 0.20, smoothstep(0.35, 0.70, mass));
 }
 bool cloud_bound(vec3 ray, vec3 p, vec3 axes, float nearest, float solid)
 {
     // Every child fits inside this envelope: offset length + largest axis
-    // ratio, including the smaller billows, is less than 1.20. Keep a margin for floating-point arithmetic.
+    // ratio, including the smaller billows, is less than 1.20. Keep a margin
+    // for floating-point arithmetic.
     vec3 rr = ray / (axes * 1.20);
     vec3 pp = p / (axes * 1.20);
     float aa = dot(rr, rr);
@@ -101,32 +108,40 @@ bool cloud_bound(vec3 ray, vec3 p, vec3 axes, float nearest, float solid)
     if (disc < 0.0) return false;
     return solid < 0.999 || (bb - sqrt(disc)) / aa <= nearest + 0.75;
 }
-void cloud_surface(vec3 ray, vec3 p, vec3 axes, float footprint, float distance,
+void cloud_surface(vec3 rr, vec3 pp, float aa, vec3 axes, float radius,
+    float footprint, float distance, vec2 base_clip,
     inout float solid, inout float nearest, inout vec3 surface_sum)
 {
-    vec3 rr = ray / axes;
-    vec3 pp = p / axes;
-    float aa = dot(rr, rr);
+    // All four details share the child's ellipsoid basis and ray quadratic.
+    // Only their normalized centers and radii change, saving divisions and
+    // a second texture read for every small billow.
     float bb = dot(pp, rr);
-    float disc = bb * bb - aa * (dot(pp, pp) - 1.0);
+    float disc = bb * bb - aa * (dot(pp, pp) - radius * radius);
     if (disc < 0.0) return;
-    float entry = (bb - sqrt(disc)) / aa;
+    float root = sqrt(disc);
+    float entry = (bb - root) / aa;
+    bool base_cut = false;
+    if (base_clip.y >= 0.0 && entry < base_clip.x)
+    {
+        entry = base_clip.x;
+        if (entry > (bb + root) / aa) return;
+        base_cut = true;
+    }
+    else if (base_clip.y < 0.0 && entry > base_clip.x) return;
     if (entry <= -distance) return;
-    // A short optical transition softens the outside without tinting the body.
     float edge = max(0.0005, footprint * 1.5);
-    solid = max(solid, smoothstep(0.0, edge, disc / aa));
+    solid = max(solid, base_cut ? 1.0 : smoothstep(0.0, edge, disc / (aa * radius * radius)));
     if (entry < nearest)
     {
         surface_sum *= exp2(max(-80.0, (entry - nearest) * 24.0));
         nearest = entry;
     }
-    // Blend neighboring exposed lobes into one mass instead of drawing a hard
-    // lighting boundary wherever one sphere passes in front of another.
     float weight = exp2(max(-80.0, (nearest - entry) * 24.0));
-    surface_sum += weight * normalize((entry * ray - p) / (axes * axes));
+    vec3 surface = base_cut ? vec3(0.0, 0.0, -1.0) : normalize((entry * rr - pp) / axes);
+    surface_sum += weight * surface;
 }
 void cloud_finish(vec3 ray, vec3 base, float local_solid, float local_nearest,
-    vec3 surface_sum, inout float solid, inout float nearest,
+    vec3 surface_sum, vec2 base_clip, inout float solid, inout float nearest,
     inout float shade, inout float underside)
 {
     solid = max(solid, local_solid);
@@ -135,7 +150,7 @@ void cloud_finish(vec3 ray, vec3 base, float local_solid, float local_nearest,
         nearest = local_nearest;
         vec3 surface = normalize(surface_sum);
         vec3 broad = normalize((nearest * ray - base) / vec3(0.81, 0.81, 0.36));
-        float height = mix(broad.z, surface.z, 0.45);
+        float height = abs(nearest - base_clip.x) < 1e-5 ? -0.80 : mix(broad.z, surface.z, 0.45);
         shade = clamp(0.92 + 0.33 * height, 0.60, 1.25);
         underside = smoothstep(0.0, 0.75, -broad.z);
     }
@@ -303,7 +318,12 @@ void main()
             {
                 continue;
             }
+            // An opaque foreground mass hides every lobe inside this sphere.
+            if (solid >= 0.999 && projection - sqrt(1.35 * 1.35 - miss) > nearest) continue;
             vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
+            float floor_z = base.z + texelFetch(uGeometry, ivec2(1, cluster), 0).w;
+            if (abs(r.z) < 1e-6 && floor_z > 0.0) continue;
+            vec2 base_clip = vec2(floor_z / (abs(r.z) < 1e-6 ? 1e-6 : r.z), r.z);
             float local_solid = 0.0, local_nearest = 1e30;
             vec3 surface_sum = vec3(0.0);
             for (int puff = 0; puff < 6; ++puff)
@@ -321,25 +341,27 @@ void main()
                     vec3 child_center = base + billow.xyz;
                     vec3 child_axes = vec3(billow.w, billow.w, height);
                     if (!cloud_bound(r, child_center, child_axes, local_nearest, local_solid)) continue;
+                    vec3 rr = r / child_axes;
+                    vec3 pp = child_center / child_axes;
+                    float aa = dot(rr, rr);
                     if (max(billow.w, height) <= footprint * 3.0)
                     {
-                        cloud_surface(r, child_center, child_axes, footprint, distance,
+                        cloud_surface(rr, pp, aa, child_axes, 1.0, footprint, distance, base_clip,
                             local_solid, local_nearest, surface_sum);
                     }
                     else
                     {
                         for (int detail = 0; detail < 4; ++detail)
                         {
-                            int detail_field = 110 + ((puff * 8 + child) * 4 + detail) * 2;
+                            int detail_field = 110 + (puff * 8 + child) * 4 + detail;
                             vec4 small = texelFetch(uGeometry, ivec2(detail_field, cluster), 0);
-                            float vertical = texelFetch(uGeometry, ivec2(detail_field + 1, cluster), 0).r;
-                            cloud_surface(r, base + small.xyz, vec3(small.w, small.w, vertical),
-                                footprint, distance, local_solid, local_nearest, surface_sum);
+                            cloud_surface(rr, pp + small.xyz, aa, child_axes, small.w,
+                                footprint, distance, base_clip, local_solid, local_nearest, surface_sum);
                         }
                     }
                 }
             }
-            cloud_finish(r, base, local_solid, local_nearest, surface_sum,
+            cloud_finish(r, base, local_solid, local_nearest, surface_sum, base_clip,
                 solid, nearest, shade, underside);
         }
 #else
@@ -392,6 +414,9 @@ void main()
                         continue;
                     }
                     vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
+                    float floor_z = base.z + cloud_base(mass);
+                    if (abs(r.z) < 1e-6 && floor_z > 0.0) continue;
+                    vec2 base_clip = vec2(floor_z / (abs(r.z) < 1e-6 ? 1e-6 : r.z), r.z);
                     float local_solid = 0.0, local_nearest = 1e30;
                     vec3 surface_sum = vec3(0.0);
                     for (int puff = 0; puff < 6; ++puff)
@@ -402,24 +427,26 @@ void main()
                         {
                             vec3 p, axes;
                             cloud_billow(puff, child, mass, parent, parent_axes, p, axes);
+                            vec3 rr = r / axes;
+                            vec3 pp = (base + p) / axes;
+                            float aa = dot(rr, rr);
                             if (max(axes.x, axes.z) <= footprint * 3.0)
                             {
-                                cloud_surface(r, base + p, axes, footprint, distance,
+                                cloud_surface(rr, pp, aa, axes, 1.0, footprint, distance, base_clip,
                                     local_solid, local_nearest, surface_sum);
                             }
                             else
                             {
                                 for (int detail = 0; detail < 4; ++detail)
                                 {
-                                    vec3 center, detail_axes;
-                                    cloud_detail(puff, child, detail, mass, p, axes, center, detail_axes);
-                                    cloud_surface(r, base + center, detail_axes, footprint, distance,
-                                        local_solid, local_nearest, surface_sum);
+                                    vec4 small = cloud_detail(puff, child, detail, mass);
+                                    cloud_surface(rr, pp + small.xyz, aa, axes, small.w,
+                                        footprint, distance, base_clip, local_solid, local_nearest, surface_sum);
                                 }
                             }
                         }
                     }
-                    cloud_finish(r, base, local_solid, local_nearest, surface_sum,
+                    cloud_finish(r, base, local_solid, local_nearest, surface_sum, base_clip,
                         solid, nearest, shade, underside);
                 }
             }
@@ -458,7 +485,7 @@ void main()
         rain_cumulus = solid;
         puff_weight = solid / max(1e-5, alpha);
         // Cirrus catches the warm light throughout; cumulus only on undersides.
-        warm_weight = (solid * underside + background_alpha) / max(1e-5, alpha);
+        warm_weight = (0.55 * solid * underside + background_alpha) / max(1e-5, alpha);
     }
 #ifdef CLOUD_RAIN_PROBE
     FragColor = vec4(rain_cumulus, deck, 0.0, 1.0);
@@ -467,7 +494,7 @@ void main()
     vec3 color = rgb * uLight[0].x * (160.0 / 255.0) * deck
         + vec3(uLight[0].y * (1.0 - deck));
     color = mix(color, vec3(uLight[0].y * shade), puff_weight);
-    float warmth = 0.85 * uLight[1].y * warm_weight;
+    float warmth = 0.65 * clamp(uLight[1].y, 0.0, 1.0) * warm_weight;
     float glow_light = max(0.18, max(color.r, max(color.g, color.b)));
     color = mix(color, vec3(1.0, 0.45, 0.15) * glow_light, warmth);
     if (uLight[0].w > 0.5)
@@ -843,12 +870,17 @@ void main()
     }
     else if (field == 1)
     {
-        FragColor = vec4(cell, 0.0);
+        FragColor = vec4(cell, cloud_base(mass));
+    }
+    else if (field >= 110)
+    {
+        int puff = (field - 110) / 32;
+        int child = ((field - 110) / 4) % 8;
+        FragColor = cloud_detail(puff, child, (field - 110) % 4, mass);
     }
     else
     {
-        int puff = field < 14 ? (field - 2) / 2
-            : (field < 110 ? (field - 14) / 16 : (field - 110) / 64);
+        int puff = field < 14 ? (field - 2) / 2 : (field - 14) / 16;
         vec3 parent, parent_axes, p, axes;
         cloud_parent(puff, mass, parent, parent_axes);
         if (field < 14)
@@ -858,15 +890,7 @@ void main()
         }
         else
         {
-            int child = field < 110 ? ((field - 14) / 2) % 8 : ((field - 110) / 8) % 8;
-            cloud_billow(puff, child, mass, parent, parent_axes, p, axes);
-            if (field >= 110)
-            {
-                vec3 center, detail_axes;
-                cloud_detail(puff, child, ((field - 110) / 2) % 4, mass, p, axes, center, detail_axes);
-                p = center;
-                axes = detail_axes;
-            }
+            cloud_billow(puff, ((field - 14) / 2) % 8, mass, parent, parent_axes, p, axes);
         }
         FragColor = (field & 1) == 0 ? vec4(p, axes.x) : vec4(axes.z, 0.0, 0.0, 0.0);
     }
@@ -1073,7 +1097,7 @@ void main()
         glActiveTexture(GL_TEXTURE0 + 2);
         float_texture(s_cell_texture, 1, (int)s_cells.size(), grid.data());
         glActiveTexture(GL_TEXTURE0 + 3);
-        float_texture(s_geometry_texture, 494, (int)s_cells.size(), nullptr);
+        float_texture(s_geometry_texture, 302, (int)s_cells.size(), nullptr);
         if (!s_geometry_framebuffer)
         {
             s_gen_framebuffers(1, &s_geometry_framebuffer);
@@ -1083,7 +1107,7 @@ void main()
         const bool complete = s_check_framebuffer(kFramebuffer) == kFramebufferComplete;
         if (complete)
         {
-            glViewport(0, 0, 494, (int)s_cells.size());
+            glViewport(0, 0, 302, (int)s_cells.size());
             glDisable(GL_BLEND);
             glUseProgram(s_geometry_program);
             glUniformMatrix4fv(glGetUniformLocation(s_geometry_program, "uWorld"), 1, GL_FALSE, p.world);
@@ -1235,9 +1259,9 @@ void main()
         {
             return false;
         }
-        // Half resolution removes three quarters of the expensive fragments.
-        // Cap large displays so cost cannot grow without bound.
-        const double scale = std::min(0.5, std::min(1024.0 / width, 576.0 / height));
+        // Render a compact cloud layer, then upscale with linear filtering.
+        // This also reduces the tile work during camera motion.
+        const double scale = std::min(0.4, std::min(896.0 / width, 504.0 / height));
         const int cw = std::max(1, (int)std::ceil(width * scale));
         const int ch = std::max(1, (int)std::ceil(height * scale));
         if (!s_cache_texture)

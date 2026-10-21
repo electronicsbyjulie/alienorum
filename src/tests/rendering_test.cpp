@@ -36,6 +36,7 @@ struct CloudTestView
     bool isolated = false;
     bool sample_overhead = false;
     bool dark = false;
+    double warmth = 0;
     double cloud_latitude = 0;
     double cloud_longitude = 0;
     double horizon_angle = -0.0001;
@@ -417,6 +418,7 @@ class RenderingRegressionTest : public UniverseFixture
         input.light[0] = view.dark ? 0 : 1;
         input.light[1] = view.dark ? 0 : 0.6;
         input.light[2] = view.overcast ? 1 : 0;
+        input.light[5] = view.warmth;
         input.light[8] = view.wind;
         input.texture = cloud_texture;
         input.revision = cloud_epoch * 1024 + coverage + (view.patterned ? 256 : 0) + (view.isolated ? 512 : 0);
@@ -657,6 +659,23 @@ TEST_F(RenderingRegressionTest, CumulusEdgesPreserveAnOpaqueCloudBank)
     {
         EXPECT_GE(pixels[i * 4 + 3], 254) << "pixel=" << i;
     }
+}
+
+TEST_F(RenderingRegressionTest, CloudTwilightKeepsNeutralLightAtStrongAtmosphericTint)
+{
+    CloudTestView view;
+    view.warmth = 5;
+    const auto pixels = clouds(153, 0.25, 1.0, view);
+    int visible = 0;
+    for (size_t i = 0; i < pixels.size(); i += 4)
+    {
+        if (pixels[i] < 20) continue;
+        ++visible;
+        // A warm tint may soften the white, but must not extrapolate the
+        // blend into saturated orange or black out the green channel.
+        EXPECT_GE(int(pixels[i + 1]), int(pixels[i] * 0.60) - 2);
+    }
+    EXPECT_GT(visible, 1000);
 }
 
 TEST_F(RenderingRegressionTest, DistantCloudClusterOutsideTheLimitLeavesOnlyTheBank)

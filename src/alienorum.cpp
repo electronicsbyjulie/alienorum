@@ -683,9 +683,18 @@ int main (int argc, char** argv)
                             : IM_COL32(255,255,255,255)),
                     toplbl.c_str());
             }
-            if (view_mode == vm_system && mycenobj)
+            else if (view_mode == vm_system && mycenobj)
             {
                 std::string toplbl = std::string("System view for ") + std::string(mycenobj->name);
+                ImGui::GetBackgroundDrawList()->AddText(ImVec2(5,5),
+                        rgba_apply_redlight(whtbkgd
+                            ? IM_COL32(0,0,0,255)
+                            : IM_COL32(255,255,255,255)),
+                    toplbl.c_str());
+            }
+            else if (view_mode == vm_sunclock)
+            {
+                std::string toplbl = std::string("Sun clock for ") + std::string(cels[whereami]->name);
                 ImGui::GetBackgroundDrawList()->AddText(ImVec2(5,5),
                         rgba_apply_redlight(whtbkgd
                             ? IM_COL32(0,0,0,255)

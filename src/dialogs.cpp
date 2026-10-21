@@ -1198,6 +1198,7 @@ const char* mass_units[cbo_edt_num_units] = {"kg", "Sun", "Jup.", "Earth"};
 const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mass, earth_mass};
 const char* size_units[cbo_edt_num_units] = {"km", "Sun", "Jup.", "Earth"};
 const double size_units_conv[cbo_edt_num_units] = {1000, solar_radius, jupiter_radius, earth_radius};
+bool sma_res_picker = false;
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -1734,7 +1735,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine();
                 if (ImGui::Button("HZ"))
                 {
-                    // TODO: The following is a very very poor approximation.
+                    // TODO: The following is a very very poor approximation that goes horribly wrong for non-Sunlike stars.
                     double s_eff_lum = pow(magnbase, cels[0]->absolute_magnitude-cel->orbit->center->absolute_magnitude);
                     double sma_au = cel->orbit->semimajor_axis / AU;
                     double instellation = s_eff_lum / (sma_au*sma_au);
@@ -1747,6 +1748,9 @@ void draw_objedit_window(ImGuiIO& io)
                         ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 }
             }
+            ImGui::SameLine();
+            if (ImGui::Button("3:2")) sma_res_picker = !sma_res_picker;
+
             ImGui::SameLine(col2);
             ImGui::Text("%s", "Period");
             ImGui::SameLine(col3);
@@ -1785,6 +1789,109 @@ void draw_objedit_window(ImGuiIO& io)
                 if (ImGui::Button("tidal##edit_period"))
                 {
                     cel->sidereal_rotational_period = cel->orbit->period;
+                }
+            }
+
+            if (sma_res_picker)
+            {
+                if (ImGui::BeginListBox("##sma_res_picker", ImVec2(col3+txtwid, txtwid*1.5)))
+                {
+                    int i, j, l, m, n, resno = 0;
+                    std::vector<CelestialObject*> siblings;
+                    for (i=0; cels[i]; i++) if (cels[i]->orbit && cels[i]->orbit->center == cel->orbit->center && cels[i] != cel)
+                    {
+                        if (cels[i]->mass < 0.01 * cel->mass) continue;
+                        siblings.push_back(cels[i]);
+                    }
+
+                    struct CandidatePeriod
+                    {
+                        double period;
+                        CelestialObject* sibling;
+                        int m, n;
+                    };
+
+                    std::vector<CandidatePeriod> candidates;
+                    int nsibs = siblings.size();
+                    for (i=0; i<nsibs; i++)
+                    {
+                        for (n=1; n<10; n++)
+                        {
+                            for (m=1; m<10+n*2; m++)
+                            {
+                                if (m == n) continue;
+                                if (m == 2*n || n == 2*m) continue;
+                                if (m == 3*n || n == 3*m) continue;
+                                if (m == 4*n || n == 4*m) continue;
+                                if (!(m%2) && !(n%2)) continue;
+                                if (!(m%3) && !(n%3)) continue;
+                                if (!(m%5) && !(n%5)) continue;
+                                if (!(m%7) && !(n%7)) continue;
+                                if (m > 0.75*n && n > 0.75*m) continue;
+
+                                CandidatePeriod cand;
+                                cand.m = m;
+                                cand.n = n;
+                                cand.sibling = siblings[i];
+                                cand.period = cand.sibling->orbit->period * n / m;
+
+                                const double partner_period = cand.sibling->orbit->period;
+                                const double period_min = fmin(cand.period, partner_period);
+                                const double period_max = fmax(cand.period, partner_period);
+
+                                bool blocked = false;
+                                for (j=0; !blocked && (j<nsibs); j++)
+                                {
+                                    if (j==i) continue;
+                                    const double other_period = siblings[j]->orbit->period;
+                                    double lratio = other_period / cand.period;
+                                    if (lratio > 0.53 && lratio < 1.96) blocked = true;
+                                    // Only a body between the proposed orbit and its
+                                    // resonance partner intervenes, on either side.
+                                    if (other_period > period_min && other_period < period_max) blocked = true;
+                                }
+
+                                if (!blocked) candidates.push_back(cand);
+                            }
+                        }
+                    }
+
+                    // TODO: Sort candidates by m+n, descending, and then by semimajor axis, ascending.
+
+                    n = candidates.size();
+                    for (i=0; i<n; i++)
+                    {
+                        CandidatePeriod &cand = candidates[i];
+                        std::string line = cand.sibling->name;
+                        l = 42 - line.size();
+                        if (l > 0) line += std::string(l, ' ');
+
+                        line += std::to_string(cand.n) + std::string(":") + std::to_string(cand.m);
+                        l = 50 - line.size();
+                        if (l > 0) line += std::string(l, ' ');
+
+                        line += std::to_string(cand.period / oneday);
+                        l = 64 - line.size();
+                        if (l > 0) line += std::string(l, ' ');
+
+                        double candsma = pow(pow(cand.period / oneyear, 2), 1.0/3);
+                        line += std::to_string(candsma);
+                        l = 73 - line.size();
+                        if (l > 0) line += std::string(l, ' ');
+
+                        if (cel->orbit->center->type == star)
+                        {
+                            // TODO: Add the letters HZ to the end of line if orbit would put the body in the star's habitable zone.
+                        }
+                        
+                        if (ImGui::Selectable(line.c_str(), false))
+                        {
+                            cel->orbit->semimajor_axis = candsma * AU;
+                            cel->orbit->period = cand.period;
+                        }
+                    }
+
+                    ImGui::EndListBox();
                 }
             }
 
