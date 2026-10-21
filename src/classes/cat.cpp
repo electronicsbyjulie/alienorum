@@ -5340,6 +5340,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     for (offset=0; offset<max && cels[offset]; offset++);
     if (offset >= (max-1)) return 0;
 
+    std::unordered_map<std::string, int> center_indices;
+
     for (i=0; i<n; i++)
     {
         json pl = planets[i];
@@ -5356,7 +5358,14 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             catch (...) { ; }
             j = cenname.size() ? -1 : find_object(bodyname.c_str(), false, 9e+29, 0);
             k = -1;
-            if (cenname.size()) k = find_object(cenname.c_str(), false, 9e+29, 0);
+            if (cenname.size())
+            {
+                const auto cached = center_indices.find(cenname);
+                k = cached != center_indices.end() ? cached->second : find_object(cenname.c_str(), false, 9e+29, 0);
+                // Successful matches remain first in catalog order as bodies are
+                // appended. Retry absent centers after subsequent additions.
+                if (k >= 0) center_indices.emplace(cenname, k);
+            }
             if (must_orbit && (k<0 || must_orbit != cels[k])) continue;
             if (k>=0 && mustnt_orbit == cels[k]) continue;
 

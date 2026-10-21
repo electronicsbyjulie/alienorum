@@ -171,7 +171,10 @@ int main (int argc, char** argv)
     discinstead = new bool[MAX_CELOBJS];
     memset(cels, 0, MAX_CELOBJS*sizeof(CelestialObject*));
 
-    nice(-2);                   // For better performance.
+    #ifndef _WIN32
+    int _nice = nice(-5);                   // For better performance.
+    std::cout << "nice: " << _nice << std::endl;
+    #endif
 
     establish_project_root();
     firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());

@@ -821,6 +821,21 @@ TEST_F(FindObjectTest, RefusesSomethingNothingLikeAnyOfThem)
     delete_the_universe();
 }
 
+TEST_F(FindObjectTest, ZeroDistanceLimitPreservesLiteralNamesAndRejectsFuzzyAliases)
+{
+    Star *sun = make_star("Test Primary");
+    sun->local_name = "Solar Alias";
+    Planet *planet = make_planet(sun, "Test World");
+
+    EXPECT_EQ(find_object("Test Primary", false, 9e29, 0), sun->seqno);
+    EXPECT_EQ(find_object("Test World", false, 9e29, 0), planet->seqno);
+    EXPECT_EQ(find_object("Solar Alias", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("Test Worl", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("Absent Moon Parent", false, 9e29, 0), -1);
+
+    delete_the_universe();
+}
+
 TEST_F(FindObjectTest, OnlyStarsSkipsThePlanets)
 {
     Star* sun = make_star("Test Primary");

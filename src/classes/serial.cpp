@@ -466,6 +466,11 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
         if (os) return result;
     }
 
+    // Catalog callers pass zero to disable fuzzy matching. In particular, the
+    // first solar-system pass encounters moon centers not yet in the catalog.
+    // No edit distance can pass that limit, so skip the full alias scan.
+    if (levreq <= 0) return result;
+
     // With an exclusive limit of one, only zero distance can match. Avoid
     // allocating an edit-distance matrix for every alias in the catalog.
     const auto search_distance = [&levreq](const std::string &a, const std::string &b)
@@ -687,6 +692,11 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         for (i=0; cels[i]; i++);
         ncelobjs = i;
 
+        // Asteroids can only replace other planets. Keep catalog order within
+        // each class instead of revisiting every star for each small body.
+        std::map<cel_obj_class, std::vector<int>> objects_by_class;
+        for (j=0; j<ncelobjs; j++) objects_by_class[cels[j]->typeclass()].push_back(j);
+
         // Stars whose entry in the file states a planet tally of its own. Those tallies are now
         // saved, and the pass further down counts the planets it links back up to their star as
         // well -- do both to the same star and it ends up with twice the planets it has. The file
@@ -710,9 +720,9 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             try { js.at("!origcenname").get_to(origcenname); } catch (...) { origcenname = std::to_string(ncelobjs+1000); }     // at least don't match anything
             const char *origname_c = origname.c_str(), *origcenname_c = origcenname.c_str();
 
-            for (j=0; cels[j]; j++)
+            for (int candidate : objects_by_class[c])
             {
-                if (cels[j]->typeclass() != c) continue;
+                j = candidate;
                 if (strcmp(cels[j]->origname.c_str(), origname_c)) continue;
                 if (strcmp(cels[j]->origcenname.c_str(), origcenname_c)) continue;
                 i = j;
@@ -770,6 +780,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             cels[i]->user_edited = aua;
             cels[i]->estimated_poles = true;
             cels[i]->seqno = i;
+            if (i == ncelobjs) objects_by_class[c].push_back(i);
 
             mtx.lock();
             l++;
