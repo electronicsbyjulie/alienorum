@@ -6,6 +6,7 @@
 #include <sstream>
 #include <ctime>
 #include <chrono>
+#include <unordered_map>
 #include "satellite.h"
 #include "serial.h"
 
@@ -167,11 +168,15 @@ bool SatSource::read_csv_data()
     FILE *fp = fopen(csvfname.c_str(), "r");
     if (!fp) return false;
     char buffer[16384];
-    char* wgaf = fgets(buffer, 16382, fp);
-    std::vector<std::string> csv_header = parse_csv_row(buffer);
-    bool do_exist_checks = sat_data.size();                                 // Don't bog down the initial load with expensive std::find_if() calls.
+    if (!fgets(buffer, 16382, fp)) { fclose(fp); return false; }
 
-    int i, j, n = sat_data.size();
+    int i;
+    std::unordered_map<uint32_t, size_t> record_indices;
+    record_indices.reserve(sat_data.size());
+    for (size_t index = 0; index < sat_data.size(); ++index)
+    {
+        record_indices.emplace(sat_data[index].NORAD_CAT_ID, index);
+    }
     _nsatellites = 0;
     while (fgets(buffer, 16382, fp)) _nsatellites++;
     fseek(fp, 0, SEEK_SET);
@@ -182,6 +187,7 @@ bool SatSource::read_csv_data()
         std::vector<std::string> row = parse_csv_row(buffer);
         i = 0;
 
+        if (row.size() < 17) continue;
         if (!strcmp(row[0].c_str(), "OBJECT_NAME")) continue;               // Ignore headers.
         // std::cout << buffer << std::flush;
 
@@ -189,44 +195,38 @@ bool SatSource::read_csv_data()
         {
             uint32_t norad_id = atoi(row[11].c_str());
             norad_catids.push_back(norad_id);
-            bool found = false;
-            for (j=0; j<n; j++)
+            const auto record = record_indices.find(norad_id);
+            if (record != record_indices.end())
             {
-                if (sat_data[j].NORAD_CAT_ID == norad_id)
+                const size_t j = record->second;
+                if (!sat_data[j].catalog.size()) sat_data[j].catalog = local_name;
+                else sat_data[j].catalog += std::string(" ") + local_name;
+                i = 2;
+                sat_data[j].EPOCH = row[i++];
+                sat_data[j].MEAN_MOTION = atof(row[i++].c_str());
+                sat_data[j].ECCENTRICITY = atof(row[i++].c_str());
+                sat_data[j].INCLINATION = atof(row[i++].c_str());
+                sat_data[j].RA_OF_ASC_NODE = atof(row[i++].c_str());
+                sat_data[j].ARG_OF_PERICENTER = atof(row[i++].c_str());
+                sat_data[j].MEAN_ANOMALY = atof(row[i++].c_str());
+                sat_data[j].EPHEMERIS_TYPE = atoi(row[i++].c_str());
+                sat_data[j].CLASSIFICATION_TYPE = row[i++];
+                i++;
+                sat_data[j].ELEMENT_SET_NO = atoi(row[i++].c_str());
+                sat_data[j].REV_AT_EPOCH = atoi(row[i++].c_str());
+                sat_data[j].BSTAR = atof(row[i++].c_str());
+                sat_data[j].MEAN_MOTION_DOT = atof(row[i++].c_str());
+                sat_data[j].MEAN_MOTION_DDOT = atof(row[i++].c_str());
+                if (best_source.find(norad_id) == best_source.end()
+                    || !best_source[norad_id]
+                    || _nsatellites < best_source[norad_id]->_nsatellites
+                    )
                 {
-                    if (!sat_data[j].catalog.size()) sat_data[j].catalog = local_name;
-                    else sat_data[j].catalog += std::string(" ") + local_name;
-                    i = 2;
-                    sat_data[j].EPOCH = row[i++];
-                    sat_data[j].MEAN_MOTION = atof(row[i++].c_str());
-                    sat_data[j].ECCENTRICITY = atof(row[i++].c_str());
-                    sat_data[j].INCLINATION = atof(row[i++].c_str());
-                    sat_data[j].RA_OF_ASC_NODE = atof(row[i++].c_str());
-                    sat_data[j].ARG_OF_PERICENTER = atof(row[i++].c_str());
-                    sat_data[j].MEAN_ANOMALY = atof(row[i++].c_str());
-                    sat_data[j].EPHEMERIS_TYPE = atoi(row[i++].c_str());
-                    sat_data[j].CLASSIFICATION_TYPE = row[i++];
-                    i++;
-                    sat_data[j].ELEMENT_SET_NO = atoi(row[i++].c_str());
-                    sat_data[j].REV_AT_EPOCH = atoi(row[i++].c_str());
-                    sat_data[j].BSTAR = atof(row[i++].c_str());
-                    sat_data[j].MEAN_MOTION_DOT = atof(row[i++].c_str());
-                    sat_data[j].MEAN_MOTION_DDOT = atof(row[i++].c_str());
-                    found = true;
-
-                    if (best_source.find(norad_id) == best_source.end()
-                        || !best_source[norad_id]
-                        || _nsatellites < best_source[norad_id]->_nsatellites
-                        )
-                    {
-                        best_source[norad_id] = this;
-                        // if (norad_id == 20580) std::cout << "Best catalog for " << sat_data[j].OBJECT_NAME << " is " << local_name << " (" << _nsatellites << " sats)." << std::endl;
-                    }
-
-                    break;
+                    best_source[norad_id] = this;
+                    // if (norad_id == 20580) std::cout << "Best catalog for " << sat_data[j].OBJECT_NAME << " is " << local_name << " (" << _nsatellites << " sats)." << std::endl;
                 }
             }
-            if (!found)
+            else
             {
                 i = 0;
                 SatRecord sr;
@@ -249,30 +249,16 @@ bool SatSource::read_csv_data()
                 sr.MEAN_MOTION_DOT = atof(row[i++].c_str());
                 sr.MEAN_MOTION_DDOT = atof(row[i++].c_str());
                 sr.ORBIT_CENTER = "EA";
+                record_indices.emplace(norad_id, sat_data.size());
                 sat_data.push_back(sr);
             }
         }
         else
         {
             uint32_t norad_id = atoi(row[2].c_str());
-            int index = 0;
+            const auto record = record_indices.find(norad_id);
 
-            bool exists = false;
-            if (do_exist_checks)
-            {
-                auto it = std::find_if(sat_data.begin(), sat_data.end(), [norad_id](const SatRecord& sr)
-                {
-                    return sr.NORAD_CAT_ID == norad_id;
-                });
-                exists = (it != sat_data.end());
-                if (exists)
-                {
-                    auto idx = std::distance(sat_data.begin(), it);
-                    index = idx;
-                }
-            }
-
-            if (!exists)
+            if (record == record_indices.end())
             {
                 SatRecord sr;
                 sr.OBJECT_NAME = row[i++];
@@ -293,10 +279,12 @@ bool SatSource::read_csv_data()
                 sr.ORBIT_CENTER = row[i++];
                 sr.ORBIT_TYPE = row[i++];
 
+                record_indices.emplace(norad_id, sat_data.size());
                 sat_data.push_back(sr);
             }
             else
             {
+                const size_t index = record->second;
                 sat_data[index].OBJECT_NAME = row[i++];
                 sat_data[index].OBJECT_ID = row[i++];
                 sat_data[index].NORAD_CAT_ID = atoi(row[i++].c_str());

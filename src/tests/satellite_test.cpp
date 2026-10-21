@@ -1,5 +1,8 @@
 #include <cmath>
+#include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
@@ -8,6 +11,103 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class SatelliteCsvTest : public UniverseFixture
+{
+    protected:
+    std::filesystem::path original_directory, test_directory;
+
+    void SetUp() override
+    {
+        UniverseFixture::SetUp();
+        original_directory = std::filesystem::current_path();
+        test_directory = std::filesystem::temp_directory_path() / ("alienorum_sat_csv_"
+            + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directories(test_directory / "catalogs" / "sat");
+        std::filesystem::current_path(test_directory);
+    }
+
+    void TearDown() override
+    {
+        std::filesystem::current_path(original_directory);
+        std::filesystem::remove_all(test_directory);
+        UniverseFixture::TearDown();
+    }
+
+    void write(const SatSource& source, const std::string& rows)
+    {
+        std::ofstream file(test_directory / "catalogs" / "sat" / (source.local_name + ".csv"));
+        file << "OBJECT_NAME,OBJECT_ID,NORAD_CAT_ID\n" << rows;
+    }
+
+    std::string master(const char *name, unsigned int id)
+    {
+        return std::string(name) + ",2000-001A," + std::to_string(id)
+            + ",PAY,+,US,2000-01-01,SITE,,92,51.6,450,400,4,,EA,ORB\n";
+    }
+
+    std::string orbit(const char *name, unsigned int id, double motion)
+    {
+        return std::string(name) + ",2000-001A,2026-10-20T00:00:00,"
+            + std::to_string(motion) + ",0.001,51.6,100,50,20,0,U,"
+            + std::to_string(id) + ",999,100,0.0001,0,0\n";
+    }
+};
+
+TEST_F(SatelliteCsvTest, SupplementalUpdatesPreserveMasterIdentityAndPreferredSource)
+{
+    SatSource catalog, broad, focused;
+    catalog.local_name = "master";
+    broad.local_name = "broad";
+    focused.local_name = "focused";
+    broad.is_supplemental = focused.is_supplemental = true;
+    write(catalog, master("Master name", 42) + master("Other satellite", 99));
+    ASSERT_TRUE(catalog.read_csv_data());
+    write(broad, orbit("Orbit name", 42, 15.0) + orbit("Other orbit", 99, 14.0));
+    ASSERT_TRUE(broad.read_csv_data());
+    ASSERT_EQ(best_source.at(42), &broad);
+    write(focused, orbit("Focused orbit", 42, 16.0));
+    ASSERT_TRUE(focused.read_csv_data());
+    ASSERT_EQ(sat_data.size(), 2u);
+    EXPECT_EQ(sat_data[0].OBJECT_NAME, "Master name");
+    EXPECT_EQ(sat_data[0].OWNER, "US");
+    EXPECT_EQ(sat_data[0].ORBIT_CENTER, "EA");
+    EXPECT_DOUBLE_EQ(sat_data[0].MEAN_MOTION, 16.0);
+    EXPECT_EQ(sat_data[0].catalog, "broad focused");
+    EXPECT_EQ(best_source.at(42), &focused);
+
+    write(broad, orbit("Latest orbit", 42, 17.0) + orbit("Other orbit", 99, 14.0));
+    ASSERT_TRUE(broad.read_csv_data());
+    EXPECT_DOUBLE_EQ(sat_data[0].MEAN_MOTION, 17.0);
+    EXPECT_EQ(best_source.at(42), &focused);
+    write(catalog, master("Updated master name", 42));
+    ASSERT_TRUE(catalog.read_csv_data());
+    EXPECT_EQ(sat_data[0].OBJECT_NAME, "Updated master name");
+    EXPECT_DOUBLE_EQ(sat_data[0].MEAN_MOTION, 17.0);
+}
+
+TEST_F(SatelliteCsvTest, NewRecordsAreMatchedWithinAFileAndAfterCatalogReset)
+{
+    SatSource catalog, supplemental;
+    catalog.local_name = "master";
+    supplemental.local_name = "supplemental";
+    supplemental.is_supplemental = true;
+    write(catalog, master("First", 42) + master("Updated first", 42));
+    ASSERT_TRUE(catalog.read_csv_data());
+    ASSERT_EQ(sat_data.size(), 1u);
+    EXPECT_EQ(sat_data[0].OBJECT_NAME, "Updated first");
+    write(supplemental, orbit("New satellite", 777, 12.0) + orbit("New satellite", 777, 13.0));
+    ASSERT_TRUE(supplemental.read_csv_data());
+    ASSERT_EQ(sat_data.size(), 2u);
+    EXPECT_EQ(sat_data[1].NORAD_CAT_ID, 777u);
+    EXPECT_DOUBLE_EQ(sat_data[1].MEAN_MOTION, 13.0);
+    sat_data.clear();
+    best_source.clear();
+    ASSERT_TRUE(supplemental.read_csv_data());
+    ASSERT_EQ(sat_data.size(), 1u);
+    EXPECT_EQ(sat_data[0].NORAD_CAT_ID, 777u);
+    EXPECT_DOUBLE_EQ(sat_data[0].MEAN_MOTION, 13.0);
+}
 
 // Nothing here downloads anything. The fixture empties sat_sources and best_source, which are the
 // only two things populate() consults before deciding to fetch, and the age tests read files that
