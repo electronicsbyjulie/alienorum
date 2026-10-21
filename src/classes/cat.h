@@ -111,6 +111,11 @@ namespace alienorum
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
             ExactStarSearchIndex *lookup = nullptr);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
+
+    private:
+        // Keep the host and planet passes on one snapshot, including after a failed refresh.
+        bool exoplanet_tap_attempted = false;
+        json exoplanet_tap_catalog = json::array();
     };
 }
 

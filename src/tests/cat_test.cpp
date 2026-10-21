@@ -2267,6 +2267,48 @@ TEST_F(CatalogParsingTest, RejectedHostsDoNotLeaveDeletedPointersInCatalogLookup
     check_rejection("HIP 99999", hipcache);
 }
 
+TEST_F(CatalogParsingTest, ExoplanetPassesShareCatalogSnapshot)
+{
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        bool offline;
+        ~RestoreContext()
+        {
+            radio_silence = offline;
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(temporary);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_tap_snapshot_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        radio_silence
+    };
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    radio_silence = true;
+    Star* host = make_star("Snapshot host");
+    std::ofstream("catalogs/exoplanet_host_positions.dat").close();
+    const json catalog = json::array(
+    {
+        {{"pl_name", "Snapshot host b"}, {"hostname", "Snapshot host"},
+            {"pl_orbper", 365.25}, {"pl_orbsmax", 1.0}, {"pl_bmasse", 1.0},
+            {"pl_rade", 1.0}, {"ra", 10.0}, {"dec", 20.0}, {"sy_dist", 10.0}}
+    });
+    std::ofstream("catalogs/exoplanets.json") << catalog;
+    CatalogReader reader;
+    reader.load_exoplanets_from_tap(true);
+
+    // The planet pass must use the host pass's data even if persistence fails or changes.
+    std::ofstream("catalogs/exoplanets.json") << "invalid catalog";
+    EXPECT_EQ(reader.load_exoplanets_from_tap(), 1u);
+    ASSERT_EQ(host->pl_indices.size(), 1u);
+    EXPECT_STREQ(cels[host->pl_indices.front()]->name, "Snapshot host b");
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
 {
     CatalogReader cr;

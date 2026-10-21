@@ -8202,7 +8202,12 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
     }
 
-    if (!do_download && derived_cache_valid)
+    if (exoplanet_tap_attempted || !exoplanet_tap_catalog.empty())
+    {
+        do_download = false;
+    }
+
+    if (!do_download && derived_cache_valid && exoplanet_tap_catalog.empty())
     {
         mtx.lock();
         loading_msg = std::string("Loading exoplanets from cache...");
@@ -8303,12 +8308,13 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     std::string readBufferNASA;
     std::string readBufferEU;
-    json planets_array = json::array(); // Unified array
+    json planets_array = exoplanet_tap_catalog;
 
     if (radio_silence) do_download = false;
 
     if (do_download && !radio_silence)
     {
+        exoplanet_tap_attempted = true;
         // Reusable lambda to abstract libcurl boilerplate
         auto fetch_tap = [&](const std::string& url, std::string& out_buffer) -> bool
         {
@@ -8768,6 +8774,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
     }
 
+    exoplanet_tap_catalog = planets_array;
+
     std::string tmp_cache = std::string(derived_cache) + ".tmp";
     FILE* cachefp = fopen(tmp_cache.c_str(), "wb");
     char cache_io_buf[65536];
@@ -8788,6 +8796,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     for (const auto& jrow : planets_array)
     {
         std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        if (abort_load)
+        {
+            break;
+        }
         cur_p++;
         if (exoplanet_loading.load() && (cur_p & 31) == 0 && total_p > 0)
         {
