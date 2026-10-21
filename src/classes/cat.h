@@ -52,6 +52,7 @@ namespace alienorum
         public:
         std::vector<std::string>find_catalogs(std::string path);
         void download_catalogs(bool have_ihc);
+        void prepare_stellar_chemistry();
 
         // Source Catalogs for Stars
         int read_Gliese_catalog(CelestialObject** cels, int max);
@@ -100,6 +101,7 @@ namespace alienorum
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
 
     protected:
+        virtual bool fetch_stellar_catalog_json(const std::string& url, const std::string& form, json& result);
         void apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
             const ExactStarSearchIndex *lookup = nullptr);
         bool worth_searching(std::string star_name);

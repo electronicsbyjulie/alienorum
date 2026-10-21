@@ -3352,7 +3352,7 @@ bool draw_single_object(int i)
     
 
     labels_step:
-    Star *s = (cels[i]->type == star) ? (Star*)cels[i] : nullptr;
+    Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
     Star *label_star = s;
     if (s && !obj_is_localsys && s->multisys)
     {

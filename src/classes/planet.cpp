@@ -1016,6 +1016,7 @@ bool Planet::is_in_con_HZ()
 Planet::Planet()
 {
     _class = class_planet;
+    type = rocky;
     BV_color = 1;
     UB_color = 0.5;
 }

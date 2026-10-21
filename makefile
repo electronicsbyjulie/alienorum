@@ -36,6 +36,7 @@ IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgu
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/chemistry.cpp \
+            $(CLASSES_DIR)/stellar_catalogs.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp
@@ -245,6 +246,9 @@ $(OBJINT)/cat.o: $(CLASSES_DIR)/cat.cpp
 
 $(OBJINT)/chemistry.o: $(CLASSES_DIR)/chemistry.cpp
 	$(CPP) $(CLASSES_DIR)/chemistry.cpp $(CPPFLAGS) -c -o $(OBJINT)/chemistry.o
+
+$(OBJINT)/stellar_catalogs.o: $(CLASSES_DIR)/stellar_catalogs.cpp
+	$(CPP) $(CLASSES_DIR)/stellar_catalogs.cpp $(CPPFLAGS) -c -o $(OBJINT)/stellar_catalogs.o
 
 $(OBJINT)/serial.o: $(CLASSES_DIR)/serial.cpp
 	$(CPP) $(CLASSES_DIR)/serial.cpp $(CPPFLAGS) -c -o $(OBJINT)/serial.o

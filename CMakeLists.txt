@@ -66,6 +66,7 @@ target_link_libraries(IMGUI PUBLIC SDL2::SDL2)
 add_library(CLASSES STATIC
 	src/classes/cat.cpp
 	src/classes/chemistry.cpp
+	src/classes/stellar_catalogs.cpp
 	src/classes/celestial.cpp
 	src/classes/color.cpp
 	src/classes/comet.cpp
@@ -168,11 +169,8 @@ if(WIN32)
 		catalogs/WD_limb_profiles.dat
 		DESTINATION catalogs)
 	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
-	# Preserve source-specific chemistry data and calibration provenance in the installer.
-	foreach(STELLAR_CATALOG NASA ExoplanetEU XHIP Hypatia GALAH GaiaDR3)
-		install(DIRECTORY catalogs/${STELLAR_CATALOG}/ DESTINATION catalogs/${STELLAR_CATALOG}
-			FILES_MATCHING PATTERN "*.json")
-	endforeach()
+	# Source snapshots are downloaded only while rebuilding the condensed catalog.
+	install(FILES catalogs/NASA/classification_model.json DESTINATION catalogs/NASA)
 
 	# Opened by bare relative name, so they resolve against the working directory rather
 	# than catalogs/ -- consline.dat in read_cons_lines() (loaders.cpp), starname.dat in

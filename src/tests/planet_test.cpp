@@ -47,6 +47,24 @@ TEST_F(PlanetClassificationEvidenceTest, EstimatedRadiusNeverBecomesObservedDens
     EXPECT_EQ(planet->atm, nullptr);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, MissingPhysicalPropertiesCannotLeaveAStellarType)
+{
+    Star* host = make_star("Unmeasured planet host");
+    for (Planet* body : {static_cast<Planet*>(new Planet()), static_cast<Planet*>(new Moon())})
+    {
+        body->orbit = new Orbit();
+        body->orbit->center = host;
+        body->orbit->semimajor_axis = AU;
+        append_cel(body);
+        EXPECT_EQ(body->type, rocky);
+        body->classify();
+        EXPECT_EQ(body->type, rocky);
+        EXPECT_NE(body->typeclass(), class_star);
+        EXPECT_EQ(body->classification_evidence["basis"], "insufficient_planetary_properties");
+        EXPECT_EQ(body->atm, nullptr);
+    }
+}
+
 TEST_F(PlanetClassificationEvidenceTest, MinimumMassAndUncertaintiesSurviveUniverseSaves)
 {
     Planet* planet = make_planet(make_star(), "Minimum mass");

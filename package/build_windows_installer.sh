@@ -24,22 +24,11 @@ VCPKG_TRIPLET=x64-mingw-static
 gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
 mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
 
-for catalog_file in \
-    catalogs/NASA/stellar_metallicity.json \
-    catalogs/NASA/classification_benchmark.json \
-    catalogs/NASA/classification_model.json \
-    catalogs/NASA/classification_change_audit.json \
-    catalogs/ExoplanetEU/stellar_metallicity.json \
-    catalogs/XHIP/stellar_metallicity.json \
-    catalogs/Hypatia/stellar_abundances.json \
-    catalogs/GALAH/stellar_abundances.json \
-    catalogs/GaiaDR3/hipparcos_crossmatch.json
-do
-    if [ ! -s "$catalog_file" ]; then
-        echo "Missing catalog: $catalog_file" >&2
-        exit 1
-    fi
-done
+# Only the generated model ships; source catalogs are runtime downloads.
+if [ ! -s catalogs/NASA/classification_model.json ]; then
+    echo "Missing classification model." >&2
+    exit 1
+fi
 
 # The fixed host supplement is installed by CMake and must ship with every release.
 if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
