@@ -1266,7 +1266,7 @@ void load_stuff()
         json j;
         fs >> j;
         double dbl;
-        if (!noexo) try { j.at("ExosOnDemand").get_to(noexo); } catch(...) { noexo = true; }
+        // if (!noexo) try { j.at("ExosOnDemand").get_to(noexo); } catch(...) { noexo = true; }
         try { j.at("Latitude").get_to(dbl); viewer_lat = viewer_home_lat = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Longitude").get_to(dbl); viewer_lon = viewer_home_lon = dbl * fiftyseventh; } catch(...) { ; }
         try { j.at("Timezone").get_to(dbl); viewer_tz = viewer_home_tz = dbl * 60; } catch(...) { ; }

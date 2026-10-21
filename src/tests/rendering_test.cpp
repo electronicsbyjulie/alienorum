@@ -703,7 +703,9 @@ TEST_F(RenderingRegressionTest, CloudGeometrySurvivesLookingUpFromInsideACluster
     view.isolated = true;
     view.cloud_latitude = clat;
     view.cloud_longitude = clon;
-    view.latitude = clat + 0.5 / view.shell;
+    // Place the observer beside the new billowed mass while keeping its
+    // center behind the upward-facing camera, as asserted below.
+    view.latitude = clat + 0.25 / view.shell;
     view.longitude = clon;
     view.observer = 1000.9;
     const double elevation = 1.1;

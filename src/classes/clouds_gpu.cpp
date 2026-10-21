@@ -56,6 +56,90 @@ float noise(vec3 p)
         mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
         mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z) * 2.0 - 1.0;
 }
+// Large envelopes only cull rays. The visible cloud is overlapping billows,
+// cached alongside those envelopes rather than generated for every sky pixel.
+void cloud_parent(int puff, float mass, out vec3 p, out vec3 axes)
+{
+    float size = 0.65 + 0.45 * mass;
+    float angle = float(puff) * 2.39996323 + mass * 6.0;
+    float radius = puff == 0 ? 0.0 : 0.43 * size;
+    p = vec3(radius * cos(angle), radius * sin(angle),
+        puff == 0 ? -0.08 : 0.16 + 0.13 * sin(angle * 1.7));
+    float hh = (puff == 0 ? 0.65 : 0.43 + 0.05 * sin(angle * 2.3)) * size;
+    float vv = (puff == 0 ? 0.38 : 0.38 + 0.06 * cos(angle * 1.9)) * size;
+    axes = vec3(hh, hh, vv);
+}
+void cloud_billow(int puff, int child, float mass, vec3 parent, vec3 axes,
+    out vec3 p, out vec3 child_axes)
+{
+    float height = 1.0 - 2.0 * (float(child) + 0.5) / 8.0;
+    float angle = float(child) * 2.39996323 + float(puff) * 1.7 + mass * 6.0;
+    float radius = sqrt(max(0.0, 1.0 - height * height));
+    vec3 offset = 0.55 * vec3(radius * cos(angle), radius * sin(angle), height);
+    float size = 0.52 + 0.035 * sin(angle * 2.7 + float(puff));
+    p = parent + axes * offset;
+    child_axes = axes * vec3(size, size, size + 0.02 * cos(angle));
+}
+void cloud_detail(int puff, int child, int detail, float mass, vec3 p, vec3 axes,
+    out vec3 center, out vec3 detail_axes)
+{
+    float height = 1.0 - 2.0 * (float(detail) + 0.5) / 4.0;
+    float angle = float(detail) * 2.39996323 + float(child) * 1.7 + float(puff) + mass * 6.0;
+    float radius = sqrt(max(0.0, 1.0 - height * height));
+    center = p + axes * 0.40 * vec3(radius * cos(angle), radius * sin(angle), height);
+    detail_axes = axes * (0.67 + 0.025 * sin(angle * 1.7));
+}
+bool cloud_bound(vec3 ray, vec3 p, vec3 axes, float nearest, float solid)
+{
+    // Every child fits inside this envelope: offset length + largest axis
+    // ratio, including the smaller billows, is less than 1.20. Keep a margin for floating-point arithmetic.
+    vec3 rr = ray / (axes * 1.20);
+    vec3 pp = p / (axes * 1.20);
+    float aa = dot(rr, rr);
+    float bb = dot(pp, rr);
+    float disc = bb * bb - aa * (dot(pp, pp) - 1.0);
+    if (disc < 0.0) return false;
+    return solid < 0.999 || (bb - sqrt(disc)) / aa <= nearest + 0.75;
+}
+void cloud_surface(vec3 ray, vec3 p, vec3 axes, float footprint, float distance,
+    inout float solid, inout float nearest, inout vec3 surface_sum)
+{
+    vec3 rr = ray / axes;
+    vec3 pp = p / axes;
+    float aa = dot(rr, rr);
+    float bb = dot(pp, rr);
+    float disc = bb * bb - aa * (dot(pp, pp) - 1.0);
+    if (disc < 0.0) return;
+    float entry = (bb - sqrt(disc)) / aa;
+    if (entry <= -distance) return;
+    // A short optical transition softens the outside without tinting the body.
+    float edge = max(0.0005, footprint * 1.5);
+    solid = max(solid, smoothstep(0.0, edge, disc / aa));
+    if (entry < nearest)
+    {
+        surface_sum *= exp2(max(-80.0, (entry - nearest) * 24.0));
+        nearest = entry;
+    }
+    // Blend neighboring exposed lobes into one mass instead of drawing a hard
+    // lighting boundary wherever one sphere passes in front of another.
+    float weight = exp2(max(-80.0, (nearest - entry) * 24.0));
+    surface_sum += weight * normalize((entry * ray - p) / (axes * axes));
+}
+void cloud_finish(vec3 ray, vec3 base, float local_solid, float local_nearest,
+    vec3 surface_sum, inout float solid, inout float nearest,
+    inout float shade, inout float underside)
+{
+    solid = max(solid, local_solid);
+    if (local_nearest < nearest)
+    {
+        nearest = local_nearest;
+        vec3 surface = normalize(surface_sum);
+        vec3 broad = normalize((nearest * ray - base) / vec3(0.81, 0.81, 0.36));
+        float height = mix(broad.z, surface.z, 0.45);
+        shade = clamp(0.92 + 0.33 * height, 0.60, 1.25);
+        underside = smoothstep(0.0, 0.75, -broad.z);
+    }
+}
 float perlin_gradient(vec3 cell, vec3 offset)
 {
     int h = int(floor(hash(cell) * 16.0));
@@ -220,35 +304,43 @@ void main()
                 continue;
             }
             vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
+            float local_solid = 0.0, local_nearest = 1e30;
+            vec3 surface_sum = vec3(0.0);
             for (int puff = 0; puff < 6; ++puff)
             {
                 vec4 shape = texelFetch(uGeometry, ivec2(2 + puff * 2, cluster), 0);
                 float vv = texelFetch(uGeometry, ivec2(3 + puff * 2, cluster), 0).r;
-                vec3 p = base + shape.xyz;
-                vec3 axes = vec3(shape.w, shape.w, vv);
-                vec3 rr = r / axes;
-                vec3 pp = p / axes;
-                float aa = dot(rr, rr);
-                float bb = dot(pp, rr);
-                float cc = dot(pp, pp) - 1.0;
-                float disc = bb * bb - aa * cc;
-                float edge = max(1e-5, footprint * 1.5);
-                if (disc >= 0.0)
+                vec3 parent = base + shape.xyz;
+                vec3 parent_axes = vec3(shape.w, shape.w, vv);
+                if (!cloud_bound(r, parent, parent_axes, local_nearest, local_solid)) continue;
+                for (int child = 0; child < 8; ++child)
                 {
-                    float entry = (bb - sqrt(disc)) / aa;
-                    if (entry > -distance)
+                    int field = 14 + (puff * 8 + child) * 2;
+                    vec4 billow = texelFetch(uGeometry, ivec2(field, cluster), 0);
+                    float height = texelFetch(uGeometry, ivec2(field + 1, cluster), 0).r;
+                    vec3 child_center = base + billow.xyz;
+                    vec3 child_axes = vec3(billow.w, billow.w, height);
+                    if (!cloud_bound(r, child_center, child_axes, local_nearest, local_solid)) continue;
+                    if (max(billow.w, height) <= footprint * 3.0)
                     {
-                        solid = max(solid, smoothstep(0.0, edge, disc / aa));
-                        if (entry < nearest)
+                        cloud_surface(r, child_center, child_axes, footprint, distance,
+                            local_solid, local_nearest, surface_sum);
+                    }
+                    else
+                    {
+                        for (int detail = 0; detail < 4; ++detail)
                         {
-                            nearest = entry;
-                            vec3 surface = normalize((entry * r - p) / (axes * axes));
-                            shade = clamp(0.78 + 0.22 * surface.z, 0.56, 1.0);
-                            underside = smoothstep(0.0, 0.75, -surface.z);
+                            int detail_field = 110 + ((puff * 8 + child) * 4 + detail) * 2;
+                            vec4 small = texelFetch(uGeometry, ivec2(detail_field, cluster), 0);
+                            float vertical = texelFetch(uGeometry, ivec2(detail_field + 1, cluster), 0).r;
+                            cloud_surface(r, base + small.xyz, vec3(small.w, small.w, vertical),
+                                footprint, distance, local_solid, local_nearest, surface_sum);
                         }
                     }
                 }
             }
+            cloud_finish(r, base, local_solid, local_nearest, surface_sum,
+                solid, nearest, shade, underside);
         }
 #else
         for (int probe = 0; probe <= probes; ++probe)
@@ -299,40 +391,36 @@ void main()
                     {
                         continue;
                     }
-                    float size = 0.65 + 0.45 * mass;
                     vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
+                    float local_solid = 0.0, local_nearest = 1e30;
+                    vec3 surface_sum = vec3(0.0);
                     for (int puff = 0; puff < 6; ++puff)
                     {
-                        float angle = float(puff) * 2.39996323 + mass * 6.0;
-                        float radius = puff == 0 ? 0.0 : 0.43 * size;
-                        vec3 p = base + vec3(radius * cos(angle), radius * sin(angle),
-                            puff == 0 ? -0.18 : 0.05 + 0.16 * sin(angle * 1.7));
-                        float hh = (puff == 0 ? 0.85 : 0.46) * size;
-                        float vv = (puff == 0 ? 0.16 : 0.38) * size;
-                        vec3 axes = vec3(hh, hh, vv);
-                        vec3 rr = r / axes;
-                        vec3 pp = p / axes;
-                        float aa = dot(rr, rr);
-                        float bb = dot(pp, rr);
-                        float cc = dot(pp, pp) - 1.0;
-                        float disc = bb * bb - aa * cc;
-                        float edge = max(1e-5, footprint * 1.5);
-                        if (disc >= 0.0)
+                        vec3 parent, parent_axes;
+                        cloud_parent(puff, mass, parent, parent_axes);
+                        for (int child = 0; child < 8; ++child)
                         {
-                            float entry = (bb - sqrt(disc)) / aa;
-                            if (entry > -distance)
+                            vec3 p, axes;
+                            cloud_billow(puff, child, mass, parent, parent_axes, p, axes);
+                            if (max(axes.x, axes.z) <= footprint * 3.0)
                             {
-                                solid = max(solid, smoothstep(0.0, edge, disc / aa));
-                                if (entry < nearest)
+                                cloud_surface(r, base + p, axes, footprint, distance,
+                                    local_solid, local_nearest, surface_sum);
+                            }
+                            else
+                            {
+                                for (int detail = 0; detail < 4; ++detail)
                                 {
-                                    nearest = entry;
-                                    vec3 surface = normalize((entry * r - p) / (axes * axes));
-                                    shade = clamp(0.78 + 0.22 * surface.z, 0.56, 1.0);
-                                    underside = smoothstep(0.0, 0.75, -surface.z);
+                                    vec3 center, detail_axes;
+                                    cloud_detail(puff, child, detail, mass, p, axes, center, detail_axes);
+                                    cloud_surface(r, base + center, detail_axes, footprint, distance,
+                                        local_solid, local_nearest, surface_sum);
                                 }
                             }
                         }
                     }
+                    cloud_finish(r, base, local_solid, local_nearest, surface_sum,
+                        solid, nearest, shade, underside);
                 }
             }
         }
@@ -759,15 +847,28 @@ void main()
     }
     else
     {
-        int puff = (field - 2) / 2;
-        float size = 0.65 + 0.45 * mass;
-        float angle = float(puff) * 2.39996323 + mass * 6.0;
-        float radius = puff == 0 ? 0.0 : 0.43 * size;
-        vec3 p = vec3(radius * cos(angle), radius * sin(angle),
-            puff == 0 ? -0.18 : 0.05 + 0.16 * sin(angle * 1.7));
-        float hh = (puff == 0 ? 0.85 : 0.46) * size;
-        float vv = (puff == 0 ? 0.16 : 0.38) * size;
-        FragColor = (field & 1) == 0 ? vec4(p, hh) : vec4(vv, 0.0, 0.0, 0.0);
+        int puff = field < 14 ? (field - 2) / 2
+            : (field < 110 ? (field - 14) / 16 : (field - 110) / 64);
+        vec3 parent, parent_axes, p, axes;
+        cloud_parent(puff, mass, parent, parent_axes);
+        if (field < 14)
+        {
+            p = parent;
+            axes = parent_axes;
+        }
+        else
+        {
+            int child = field < 110 ? ((field - 14) / 2) % 8 : ((field - 110) / 8) % 8;
+            cloud_billow(puff, child, mass, parent, parent_axes, p, axes);
+            if (field >= 110)
+            {
+                vec3 center, detail_axes;
+                cloud_detail(puff, child, ((field - 110) / 2) % 4, mass, p, axes, center, detail_axes);
+                p = center;
+                axes = detail_axes;
+            }
+        }
+        FragColor = (field & 1) == 0 ? vec4(p, axes.x) : vec4(axes.z, 0.0, 0.0, 0.0);
     }
 }
 )GLSL";
@@ -972,7 +1073,7 @@ void main()
         glActiveTexture(GL_TEXTURE0 + 2);
         float_texture(s_cell_texture, 1, (int)s_cells.size(), grid.data());
         glActiveTexture(GL_TEXTURE0 + 3);
-        float_texture(s_geometry_texture, 14, (int)s_cells.size(), nullptr);
+        float_texture(s_geometry_texture, 494, (int)s_cells.size(), nullptr);
         if (!s_geometry_framebuffer)
         {
             s_gen_framebuffers(1, &s_geometry_framebuffer);
@@ -982,7 +1083,7 @@ void main()
         const bool complete = s_check_framebuffer(kFramebuffer) == kFramebufferComplete;
         if (complete)
         {
-            glViewport(0, 0, 14, (int)s_cells.size());
+            glViewport(0, 0, 494, (int)s_cells.size());
             glDisable(GL_BLEND);
             glUseProgram(s_geometry_program);
             glUniformMatrix4fv(glGetUniformLocation(s_geometry_program, "uWorld"), 1, GL_FALSE, p.world);
