@@ -1,10 +1,26 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <filesystem>
 #include <cstdio>
 #include "../classes/galaxy.h"
 
 using namespace alienorum;
+
+static Rotation reference_disk_plane(const Point& position)
+{
+    std::ifstream input("catalogs/galaxy_properties.json");
+    json records;
+    input >> records;
+    for (const auto& record : records)
+    {
+        if (!record.value("reference_galaxy", false)) continue;
+        return system_plane_from_incl_and_node(record.at("inclination_degrees").get<double>() * fiftyseventh,
+            record.at("position_angle_degrees").get<double>() * fiftyseventh, position);
+    }
+    throw std::runtime_error("Reference disk geometry is absent from the catalog");
+}
+
 using json = nlohmann::json;
 
 // =====================================================================
@@ -189,7 +205,7 @@ TEST(MilkyWayBackdropTest, GalacticCenterAlignment)
     double sgr_dec = galactic_center_Decl_J2000;
     Point sgr_loc = Point::from_ra_dec(sgr_ra, sgr_dec, 8200.0, 0);
 
-    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Rotation pl = reference_disk_plane(sgr_loc);
 
     Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
@@ -216,7 +232,7 @@ TEST(MilkyWayBackdropTest, GalacticLongitudeDirection)
     // +lon should point towards Crux / Alpha Centauri (approx RA 218 deg, Dec -61 deg)
     // -lon should point towards Cygnus / Aquila (approx RA 288 deg, Dec +11 deg)
     Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
-    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Rotation pl = reference_disk_plane(sgr_loc);
     Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
 
@@ -288,7 +304,7 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
 {
     // Simulate the Milky Way band mesh in skymap projection (Earth equatorial frame, az=0, alt=0, zoom=1)
     Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
-    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Rotation pl = reference_disk_plane(sgr_loc);
     Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
 
@@ -468,7 +484,7 @@ TEST(MilkyWayBackdropTest, SkymapSeamWrappingDetection)
 TEST(MilkyWayBackdropTest, SkymapZoomedSeamWrappingZeroStreaks)
 {
     Point sgr_loc = Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 8200.0, 0);
-    Rotation pl = system_plane_from_incl_and_node(milky_way_inclination, milky_way_position_angle, sgr_loc);
+    Rotation pl = reference_disk_plane(sgr_loc);
     Point viewer_dir = rotate3D(sgr_loc, center, pl.v, pl.a);
     double gyaw = find_angle_along_vector(zaxis, viewer_dir, center, yaxis);
 
@@ -955,3 +971,42 @@ TEST(GalaxyTest, GalaxyVisualBoundsMatchVisibleBodyInSpaceshipMode)
 }
 
 
+
+TEST(GalaxyCatalogMetadataTest, PhysicalAndDisplayPropertiesFollowCatalogRecords)
+{
+    struct TemporaryCatalog
+    {
+        std::filesystem::path original = std::filesystem::current_path();
+        std::filesystem::path directory = std::filesystem::temp_directory_path() / "alienorum-galaxy-properties-test";
+        TemporaryCatalog()
+        {
+            std::filesystem::create_directories(directory / "catalogs");
+            std::filesystem::current_path(directory);
+        }
+        ~TemporaryCatalog()
+        {
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(directory);
+        }
+    } temporary;
+    {
+        json record = {{"aliases", {"Synthetic galaxy"}}, {"inclination_degrees", 42},
+            {"position_angle_degrees", 17}, {"distance_mpc", 2}, {"radius_kpc", 3},
+            {"label_radius_fraction", 0.4}, {"reference_galaxy", true}, {"internal_texture", "example.jpg"}};
+        std::ofstream("catalogs/galaxy_properties.json") << json::array({record});
+    }
+    Galaxy galaxy;
+    strcpy(galaxy.name, "Synthetic galaxy");
+    galaxy.apply_catalog_properties();
+    EXPECT_NEAR(galaxy.inclination * fiftyseven, 42, 1e-10);
+    EXPECT_NEAR(galaxy.position_angle * fiftyseven, 17, 1e-10);
+    EXPECT_NEAR(galaxy.distance / parsec, 2e6, 1e-6);
+    EXPECT_NEAR(galaxy.volumetric_mean_radius / parsec, 3000, 1e-6);
+    EXPECT_DOUBLE_EQ(galaxy.label_radius_fraction, 0.4);
+    EXPECT_TRUE(galaxy.reference_galaxy);
+    Galaxy restored;
+    ASSERT_TRUE(restored.from_json(galaxy.to_json()));
+    EXPECT_DOUBLE_EQ(restored.label_radius_fraction, 0.4);
+    EXPECT_TRUE(restored.reference_galaxy);
+    EXPECT_EQ(restored.internal_texture, "example.jpg");
+}

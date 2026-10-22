@@ -435,7 +435,23 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         if (!num_read)
         {
-            Rotation rot = align_points_3d(solar_north, ecliptic_north, center);
+            Point reference_pole = ecliptic_north;
+            std::ifstream metadata("catalogs/planets.json");
+            if (metadata)
+            {
+                json records;
+                metadata >> records;
+                for (const auto& record : records)
+                {
+                    if (record.value("BODYNAME", "") != s->name) continue;
+                    if (record.contains("NorthPoleRA") && record.contains("NorthPoleDecl"))
+                    {
+                        reference_pole = Point::from_ra_dec(record.at("NorthPoleRA").get<double>() * fiftyseventh,
+                            record.at("NorthPoleDecl").get<double>() * fiftyseventh, light_year);
+                    }
+                }
+            }
+            Rotation rot = align_points_3d(reference_pole, ecliptic_north, center);
             s->obliquity = rot.a;
             s->equinox = find_angle_along_vector(rot.v, zaxis, center, yaxis);
             if (s->equinox < 0) s->equinox += (_pi*2);
@@ -9161,40 +9177,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         // Deprojected for now; table2 below replaces it wherever the catalog has its own.
         g->inclination = galaxy_inclination(g->axis_ratio, g->morphological_T, g->T_known, g->morph_type);
 
-        // Our own galaxy is in the catalog like any other, but with no axis ratio and no position
-        // angle -- neither is measurable from inside -- which would leave it with no system plane
-        // at all, lying flat in the ICRF. It gets the constants worked out in misc.h instead.
-        if (!strcmp(g->name, "Milky Way"))
-        {
-            g->inclination = milky_way_inclination;
-            g->position_angle = milky_way_position_angle;
-            g->position_angle_known = true;
-            g->distance_known = true;
-            g->volumetric_mean_radius = light_year * 100000;
-            g->axis_ratio = 0.01;                       // ~100000 light years across, ~1000 thick
-
-            // The catalog rounds our own distance to 0.01 Mpc, 4000 light years off. Seen from
-            // inside, its ratio to the disc radius sets how far the bright half of the band
-            // reaches, so that error moves the whole sky: use the measured value.
-            place_galaxy(g, g->right_ascension, g->declination,
-                         sun_to_galactic_center / (3.26156 * 1e+6));
-
-            // a26 is blank too, and both renderers take the disc radius as
-            // distance * angular_diameter / 2 -- so run that backwards from the radius we know.
-            g->angular_diameter = 2.0 * milky_way_radius / sun_to_galactic_center;
-
-            // draw_galaxy_band() (visuals.cpp) reads g->band's two boundary roads to draw the band
-            // itself -- nothing populated it. GalaxyBand::load_dat_file() existed and was tested in
-            // isolation, but was never wired to an actual file at load time, so the band was always
-            // empty and the loop in draw_galaxy_band() drew zero points every time, regardless of
-            // inside_galaxy_idx or position math being correct.
-            g->band.load_dat_file("catalogs" _FILESLASH "Milky_Way.dat");
-        }
-        if (!strcmp(g->name, "LMC") || !strcmp(g->name, "Large Magellanic Cloud"))
-        {
-            g->position_angle = 115.0 * fiftyseventh;
-            g->position_angle_known = true;
-        }
+        g->apply_catalog_properties();
         g->location.equatorial_plane = g->location.local_system_plane
                                        = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);
 
@@ -9231,6 +9214,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
             }
             Galaxy *ig = it->second;
             ig->inclination = atof(field) * fiftyseventh;
+            ig->apply_catalog_properties();
             ig->location.equatorial_plane =
                 ig->location.local_system_plane =
                     system_plane_from_incl_and_node(ig->inclination, ig->position_angle, (Point)ig->location);
@@ -9331,11 +9315,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
                     dup->position_angle_known = true;
                 }
             }
-            if (!strcmp(dup->name, "LMC") || !strcmp(dup->name, "Large Magellanic Cloud"))
-            {
-                dup->position_angle = 115.0 * fiftyseventh;
-                dup->position_angle_known = true;
-            }
+            dup->apply_catalog_properties();
             dup->known_poles = dup->position_angle_known;
             dup->location.equatorial_plane = dup->location.local_system_plane =
                                                  system_plane_from_incl_and_node(dup->inclination, dup->position_angle, (Point)dup->location);
@@ -9446,11 +9426,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
             g->position_angle = atof(field) * fiftyseventh;
             g->position_angle_known = true;
         }
-        if (!strcmp(g->name, "LMC") || !strcmp(g->name, "Large Magellanic Cloud"))
-        {
-            g->position_angle = 115.0 * fiftyseventh;
-            g->position_angle_known = true;
-        }
+        g->apply_catalog_properties();
         g->known_poles = g->position_angle_known;
         g->location.equatorial_plane = g->location.local_system_plane
                                        = system_plane_from_incl_and_node(g->inclination, g->position_angle, (Point)g->location);

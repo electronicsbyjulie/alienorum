@@ -42,6 +42,10 @@ namespace alienorum
         char morph_type[16];                        // as printed: ".SAS3.." (RC3) or "Ir" (UNGC)
 
         GalaxyBand band;
+        double label_radius_fraction = 0.6;
+        bool reference_galaxy = false;
+        std::string internal_texture, band_catalog;
+        void apply_catalog_properties(bool geometry = true);
 
         Galaxy();
         json to_json();

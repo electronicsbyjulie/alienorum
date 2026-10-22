@@ -1,0 +1,21 @@
+[
+    {
+        "aliases": ["Milky Way"],
+        "inclination_degrees": 90.046,
+        "position_angle_degrees": 31.3955,
+        "distance_mpc": 0.0082,
+        "radius_kpc": 15,
+        "axis_ratio": 0.01,
+        "reference_galaxy": true,
+        "band_catalog": "catalogs/Milky_Way.dat",
+        "internal_texture": "galaxies/internal/Milky Way.jpg"
+    },
+    {
+        "aliases": ["LMC", "Large Magellanic Cloud"],
+        "position_angle_degrees": 115
+    },
+    {
+        "aliases": ["SMC", "Small Magellanic Cloud"],
+        "label_radius_fraction": 0.35
+    }
+]

@@ -1,5 +1,9 @@
 #include "galaxy.h"
 #include <string.h>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <mutex>
 
 using namespace alienorum;
 
@@ -13,6 +17,10 @@ Galaxy::Galaxy()
 json Galaxy::to_json()
 {
     json towrite = CelestialObject::to_json();
+    towrite["label_radius_fraction"] = label_radius_fraction;
+    towrite["reference_galaxy"] = reference_galaxy;
+    towrite["internal_texture"] = internal_texture;
+    towrite["band_catalog"] = band_catalog;
 
     if (T_known) towrite["morphological_T"] = morphological_T;
     if (angular_diameter) towrite["angular_diameter"] = angular_diameter;
@@ -30,6 +38,10 @@ json Galaxy::to_json()
 bool Galaxy::from_json(json j)
 {
     CelestialObject::from_json(j);
+    label_radius_fraction = j.value("label_radius_fraction", 0.6);
+    reference_galaxy = j.value("reference_galaxy", false);
+    internal_texture = j.value("internal_texture", std::string());
+    band_catalog = j.value("band_catalog", std::string());
 
     try { j.at("morphological_T").get_to(morphological_T); T_known = true; } catch (...) { ; }
     try { j.at("angular_diameter").get_to(angular_diameter); } catch (...) { ; }
@@ -46,6 +58,7 @@ bool Galaxy::from_json(json j)
         snprintf(morph_type, sizeof(morph_type), "%s", s.c_str());
     } catch (...) { ; }
 
+    apply_catalog_properties(false);
     return true;
 }
 
@@ -117,4 +130,65 @@ int alienorum::GalaxyBand::load_dat_file(std::string fname)
 int alienorum::GalaxyBand::create_fictitious()
 {
     return 0;
+}
+
+void Galaxy::apply_catalog_properties(bool geometry)
+{
+    using Catalog = std::map<std::string, json>;
+    static std::map<std::string, Catalog> cache;
+    static std::mutex cache_mutex;
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    const auto path = std::filesystem::absolute("catalogs/galaxy_properties.json");
+    auto found = cache.find(path.string());
+    if (found == cache.end())
+    {
+        Catalog entries;
+        std::ifstream input(path);
+        if (input)
+        {
+            const json records = json::parse(input, nullptr, false);
+            if (records.is_array())
+            {
+                for (const auto& record : records)
+                {
+                    for (const auto& alias : record.value("aliases", std::vector<std::string>{})) entries[alias] = record;
+                }
+            }
+        }
+        found = cache.emplace(path.string(), std::move(entries)).first;
+    }
+    const auto entry = found->second.find(name);
+    if (entry != found->second.end())
+    {
+        const auto& record = entry->second;
+        label_radius_fraction = record.value("label_radius_fraction", label_radius_fraction);
+        reference_galaxy = record.value("reference_galaxy", reference_galaxy);
+        internal_texture = record.value("internal_texture", internal_texture);
+        band_catalog = record.value("band_catalog", band_catalog);
+        if (geometry)
+        {
+            if (record.contains("inclination_degrees")) inclination = record.at("inclination_degrees").get<double>() * fiftyseventh;
+            if (record.contains("position_angle_degrees"))
+            {
+                position_angle = record.at("position_angle_degrees").get<double>() * fiftyseventh;
+                position_angle_known = true;
+            }
+            axis_ratio = record.value("axis_ratio", axis_ratio);
+            if (record.contains("distance_mpc"))
+            {
+                const double mpc = record.at("distance_mpc").get<double>();
+                distance = mpc * 1e6 * parsec;
+                location.galactic_center = Point::from_ra_dec(right_ascension, declination, mpc * 3.26156);
+                location.system_center = center;
+                location.local_position = center;
+                distance_known = true;
+            }
+            if (record.contains("radius_kpc") && distance > 0)
+            {
+                volumetric_mean_radius = record.at("radius_kpc").get<double>() * 1000 * parsec;
+                angular_diameter = 2 * volumetric_mean_radius / distance;
+            }
+        }
+    }
+    if (!band_catalog.empty()) band.load_dat_file(band_catalog);
 }

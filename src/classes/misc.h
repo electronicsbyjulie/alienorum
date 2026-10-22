@@ -109,23 +109,8 @@ using json = nlohmann::json;
 // Sgr A*, i.e. the direction of the galactic centre from here, and the Sun's distance to it.
 #define galactic_center_RA_J2000 ((17.0 + 45.0 / 60 + 40.04 / 3600) * 15 * fiftyseventh)
 #define galactic_center_Decl_J2000 (-(29.0 + 0.0 / 60 + 28.1 / 3600) * fiftyseventh)
-#define sun_to_galactic_center (8.2 * 1000 * 3.26156)               // light years
-
-// The Milky Way's own disc. It is in the UNGC but with no axis ratio and no position angle,
-// neither being measurable from inside, so read_UNGC_catalog() applies these by name. The
-// inclination is 180 degrees minus the angle from the line of sight to galactic_north (point.cpp),
-// per system_plane_from_incl_and_node(); the position angle was solved numerically against that
-// same function, and is the same at any inclination.
-#define milky_way_inclination (90.046 * fiftyseventh)
-#define milky_way_position_angle (31.3955 * fiftyseventh)
-
-// The UNGC's a26 column is blank for the Milky Way too, so there is no angular size to derive a
-// disc radius from. This is the optical disc (the D25 isophote) at the usual 15 kpc.
-#define milky_way_radius (15.0 * 1000 * 3.26156)                    // light years
 
 // https://en.wikipedia.org/wiki/Poles_of_astronomical_bodies
-#define solar_north_RA_J2000 (286.13 * fiftyseventh)
-#define solar_north_Decl_J2000 (63.87 * fiftyseventh)
 
 // https://en.wikipedia.org/wiki/Orbital_pole
 #define ecliptic_north_RA_J2000 (18.00 * 15 * fiftyseventh)

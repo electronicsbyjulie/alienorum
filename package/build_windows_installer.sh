@@ -35,6 +35,10 @@ if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
     echo "Missing catalog: catalogs/exoplanet_host_positions.dat" >&2
     exit 1
 fi
+if [ ! -s catalogs/galaxy_properties.json ]; then
+    echo "Missing catalog: catalogs/galaxy_properties.json" >&2
+    exit 1
+fi
 if [ ! -s catalogs/WD_colors.dat ]; then
     echo "Missing catalog: catalogs/WD_colors.dat" >&2
     exit 1

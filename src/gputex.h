@@ -22,7 +22,7 @@ namespace alienorum
 
     // Returns a cached OpenGL texture name for the Milky Way backdrop (galaxies/internal/Milky Way.jpg)
     // When inverted is true, returns an inverted version for white background mode.
-    GLuint gputex_milky_way(bool inverted = false);
+    GLuint gputex_reference_galaxy(bool inverted = false);
 
     // Returns a cached OpenGL texture name for a galaxy's face-on map (galaxies/faceon/<name>.png).
     // Returns 0 if no face-on map exists for the specified galaxy name.

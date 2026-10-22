@@ -2629,16 +2629,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         #undef galaxy_vtx_col
     }
 
-    // The quad mesh extends out to volumetric_mean_radius (a26 / 2), which encompasses the faint outer
-    // isophotes and crop margins. The optical body where the eye actually perceives starlight occupies the
-    // inner portion (~60% for most galaxies and procedural profiles, and ~35% for the SMC whose catalog
-    // diameter includes the distant HI tidal wing). Scaling by the visual fraction places drawnxmin/max/ymin/max
-    // and the label directly adjacent to the visible galaxy.
-    double vis_fraction = 0.60;
-    if (!strcmp(cel->name, "SMC") || !strcmp(cel->name, "Small Magellanic Cloud"))
-    {
-        vis_fraction = 0.35;
-    }
+    // The catalog can distinguish the visible optical body from its full mesh extent.
+    double vis_fraction = g->label_radius_fraction;
 
     double vis_xmin = 1e30, vis_xmax = -1e30, vis_ymin = 1e30, vis_ymax = -1e30;
     for (int s = 0; s < nseg; s++)

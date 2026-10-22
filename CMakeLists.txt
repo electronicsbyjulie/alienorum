@@ -159,6 +159,7 @@ if(WIN32)
 		catalogs/exoplanet_host_positions.dat
 		catalogs/star_orbits.dat
 		catalogs/planets.json
+		catalogs/galaxy_properties.json
 		catalogs/asteroids.json
 		catalogs/soles_alienorum.dat # Expanded from the tracked archive by the installer script.
 		catalogs/mainseq.dat

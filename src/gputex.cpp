@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include "gputex.h"
+#include "classes/galaxy.h"
 
 using namespace alienorum;
 
@@ -166,34 +167,44 @@ namespace alienorum
         return entry.tex;
     }
 
-    static GLuint milky_way_tex = 0;
-    static GLuint milky_way_inv_tex = 0;
-    static bool milky_way_attempted = false;
+    static GLuint reference_galaxy_tex = 0;
+    static GLuint reference_galaxy_inv_tex = 0;
+    static bool reference_galaxy_attempted = false;
 
-    GLuint gputex_milky_way(bool inverted)
+    GLuint gputex_reference_galaxy(bool inverted)
     {
-        if (inverted && milky_way_inv_tex)
+        if (inverted && reference_galaxy_inv_tex)
         {
-            return milky_way_inv_tex;
+            return reference_galaxy_inv_tex;
         }
-        if (!inverted && milky_way_tex)
+        if (!inverted && reference_galaxy_tex)
         {
-            return milky_way_tex;
+            return reference_galaxy_tex;
         }
-        if (milky_way_attempted)
+        if (reference_galaxy_attempted)
         {
             return 0;
         }
-        milky_way_attempted = true;
-
-        SDL_Surface* surf = IMG_Load("galaxies/internal/Milky Way.jpg");
-        if (!surf)
+        const Galaxy* reference = nullptr;
+        if (cels)
         {
-            surf = IMG_Load("galaxies" _FILESLASH "internal" _FILESLASH "Milky Way.jpg");
+            for (int i = 0; cels[i]; ++i)
+            {
+                if (cels[i]->typeclass() != class_galaxy) continue;
+                const auto* candidate = static_cast<Galaxy*>(cels[i]);
+                if (candidate->reference_galaxy && !candidate->internal_texture.empty())
+                {
+                    reference = candidate;
+                    break;
+                }
+            }
         }
+        if (!reference) return 0;
+        reference_galaxy_attempted = true;
+        SDL_Surface* surf = IMG_Load(reference->internal_texture.c_str());
         if (!surf)
         {
-            std::cerr << "Could not load galaxies/internal/Milky Way.jpg: " << IMG_GetError() << std::endl;
+            std::cerr << "Could not load reference galaxy texture: " << IMG_GetError() << std::endl;
             return 0;
         }
 
@@ -244,8 +255,8 @@ namespace alienorum
             upload_ptr = down.data();
         }
 
-        glGenTextures(1, &milky_way_tex);
-        glBindTexture(GL_TEXTURE_2D, milky_way_tex);
+        glGenTextures(1, &reference_galaxy_tex);
+        glBindTexture(GL_TEXTURE_2D, reference_galaxy_tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -267,8 +278,8 @@ namespace alienorum
             inv[p * 4 + 3] = upload_ptr[p * 4 + 3];
         }
 
-        glGenTextures(1, &milky_way_inv_tex);
-        glBindTexture(GL_TEXTURE_2D, milky_way_inv_tex);
+        glGenTextures(1, &reference_galaxy_inv_tex);
+        glBindTexture(GL_TEXTURE_2D, reference_galaxy_inv_tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -278,7 +289,7 @@ namespace alienorum
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
         SDL_FreeSurface(rgba_surf);
-        return inverted ? milky_way_inv_tex : milky_way_tex;
+        return inverted ? reference_galaxy_inv_tex : reference_galaxy_tex;
     }
 
     static std::string resolve_galaxy_path(const std::string &subfolder, const std::string &name, const std::string &ext)
@@ -476,11 +487,6 @@ namespace alienorum
 
     GLuint gputex_galaxy_internal(const std::string &name, bool inverted)
     {
-        if (name == "Milky Way")
-        {
-            return gputex_milky_way(inverted);
-        }
-
         auto it = galaxy_internal_cache.find(name);
         if (it != galaxy_internal_cache.end())
         {
@@ -489,21 +495,21 @@ namespace alienorum
 
         if (galaxy_internal_missing.find(name) != galaxy_internal_missing.end())
         {
-            return gputex_milky_way(inverted);
+            return gputex_reference_galaxy(inverted);
         }
 
         std::string path = resolve_galaxy_path("internal", name, ".jpg");
         if (path.empty())
         {
             galaxy_internal_missing.insert(name);
-            return gputex_milky_way(inverted);
+            return gputex_reference_galaxy(inverted);
         }
 
         SDL_Surface* surf = IMG_Load(path.c_str());
         if (!surf)
         {
             galaxy_internal_missing.insert(name);
-            return gputex_milky_way(inverted);
+            return gputex_reference_galaxy(inverted);
         }
 
         SDL_Surface* rgba_surf = SDL_ConvertSurfaceFormat(surf, SDL_PIXELFORMAT_RGBA32, 0);
@@ -511,7 +517,7 @@ namespace alienorum
         if (!rgba_surf)
         {
             galaxy_internal_missing.insert(name);
-            return gputex_milky_way(inverted);
+            return gputex_reference_galaxy(inverted);
         }
 
         int w = rgba_surf->w;
@@ -612,17 +618,17 @@ namespace alienorum
             }
         }
         gpubumptex_cache.clear();
-        if (milky_way_tex)
+        if (reference_galaxy_tex)
         {
-            glDeleteTextures(1, &milky_way_tex);
-            milky_way_tex = 0;
+            glDeleteTextures(1, &reference_galaxy_tex);
+            reference_galaxy_tex = 0;
         }
-        if (milky_way_inv_tex)
+        if (reference_galaxy_inv_tex)
         {
-            glDeleteTextures(1, &milky_way_inv_tex);
-            milky_way_inv_tex = 0;
+            glDeleteTextures(1, &reference_galaxy_inv_tex);
+            reference_galaxy_inv_tex = 0;
         }
-        milky_way_attempted = false;
+        reference_galaxy_attempted = false;
 
         for (auto &[name, tex] : galaxy_faceon_cache)
         {
