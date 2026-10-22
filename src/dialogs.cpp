@@ -2357,7 +2357,7 @@ void draw_objedit_window(ImGuiIO& io)
                     }
                     if (p->has_water < 0) p->has_water = 0;
                     if (p->has_water > 1) p->has_water = 1;
-                    if (p->type == rocky && !randomize_txgen)
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Water up to:    ");
@@ -2375,7 +2375,7 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (p->type == rocky && !randomize_txgen)
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Coldest vegetation:");
@@ -2395,7 +2395,7 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
-                    if (p->type == rocky && !randomize_txgen)
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Hottest vegetation:");
@@ -2417,7 +2417,7 @@ void draw_objedit_window(ImGuiIO& io)
                     }
                     if (p->vegetation_r < 0) p->vegetation_r = 0;
                     if (p->vegetation_r > 255) p->vegetation_r = 255;
-                    if (p->type == rocky && !randomize_txgen)
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation R:   ");
@@ -2437,7 +2437,7 @@ void draw_objedit_window(ImGuiIO& io)
                     }
                     if (p->vegetation_g < 0) p->vegetation_g = 0;
                     if (p->vegetation_g > 255) p->vegetation_g = 255;
-                    if (p->type == rocky && !randomize_txgen)
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation G:   ");
@@ -2457,7 +2457,7 @@ void draw_objedit_window(ImGuiIO& io)
                     }
                     if (p->vegetation_b < 0) p->vegetation_b = 0;
                     if (p->vegetation_b > 255) p->vegetation_b = 255;
-                    if (p->type == rocky && !randomize_txgen)
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
                         ImGui::Text("%s", "Vegetation B:   ");
@@ -3160,8 +3160,13 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             if (s->is_white_dwarf())
             {
                 const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color));
+                ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
+                float hue, saturation, value;
+                ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
+                ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 8.0f), value,
+                    swatch.x, swatch.y, swatch.z);
                 const float side = ImGui::GetTextLineHeight();
-                ImGui::ColorButton("##wd_color", ImVec4(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1),
+                ImGui::ColorButton("##wd_color", swatch,
                     ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, ImVec2(side, side));
                 ImGui::SameLine();
             }

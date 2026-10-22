@@ -1,19 +1,7 @@
-FIXED (2026-10-22): Universe JSON loading resolves parent names and catalog aliases after parsing all records, imports referenced illumination stars from local exoplanet caches when loading is deferred, and rejects unresolved or circular links before applying saved edits. Record, class, capacity, and stellar text checks protect imports; repeated loads preserve object identity. Missing optional timestamp files no longer throw. The original private save reaches rendering; 202 related tests pass and the loading tests report zero Valgrind errors.
+FIXED (2026-10-22): White-dwarf swatches in Stellar Neighborhood multiply HSV saturation by eight, capped at one, while preserving hue and brightness.
 
-Original request: Make universe JSON loading robust through both the file dialog and command line, and correctly identify illumination stars.
+Original request: Exaggerate the white-dwarf swatch colors with eight times the saturation.
 
-
-FIXED (2026-10-22): Terrain generation, water-cloud checks, horizon temperatures, and sun-clock tooltips share a bounded local climate model with pressure-dependent heat transport, elevation cooling in meters, and warm subtropical land. Frost blends gradually across irregular spherical climate boundaries. Earth bump-map and generated-ocean checks pass.
-
-Original request: The rocky map generator depends on a local temperature estimate to decide kinds of terrain (desert, tundra, forest, etc). There is a similar local temperature estimate for mouseover in sun clock view and current location in horizon view, however that calculation does not produce good results. Let's fix it, and if possible without degrading the map generator's performance, get the map generator using the upgraded local temperature estimate. You can use Earth and its bump map as a benchmark: desert areas will be hot, polar ice caps will be cold, etc. One thing I want to avoid is sharp straight lines between ice/water and rock in generated maps. 
-
-FIXED (2026-10-22): WD and Sunlike filters are mutually exclusive; white-dwarf rows display stellar color swatches. Empty filtered lists disable object actions.
-
-Original request: Add WD (for white dwarf) as an option in Stellar Neighborhood, mutually exclusive with Sunlike: selecting one deselects the other. Show each white dwarf's color in its list entry if possible.
-
-FIXED (2026-10-22): Explicit mass and radius edits now update their measurement status and clear obsolete uncertainties. A supplied dense radius overrides the estimated-envelope prior, so the six-Earth-mass case remains rocky. The fault was stale estimated-radius metadata, not a valid high-density ice-giant classification.
-
-Original request: Double check Planet::classify(). A planet of 6 Earth masses becomes an ice giant even if the density runs in the thousands of g/cm^3. If this is correct, explain why here.
 
 FIXED (2026-10-22): Changing the Add Object type no longer enables star labels. The star-label picker retains its intentional enable-on-selection behavior.
 

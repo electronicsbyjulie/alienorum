@@ -1,0 +1,257 @@
+{
+    "20 Leonis Minoris": {
+        "!name": "20 Leonis Minoris",
+        "!origcenname": "",
+        "!origname": "20 Leonis Minoris",
+        "BV_color": 0.68,
+        "Bayer": "",
+        "BayerGrkno": -1,
+        "Bonn_survey": "BD",
+        "Bonn_survey_declination": 32,
+        "Bonn_survey_sequential": 1964,
+        "Bonn_survey_sign": "+",
+        "CCDM": "",
+        "Flamsteed": "20 LMi",
+        "FlamsteedNo": 20,
+        "Gliese": "GJ 376",
+        "HD": 86728,
+        "HIP": 49081,
+        "HR": 3951,
+        "RI_color": 0.0,
+        "SAO": 0,
+        "SB9": 0,
+        "UB_color": 0.27,
+        "VR_color": 0.0,
+        "WD": "",
+        "absolute_magnitude": 3.99,
+        "apparent_magnitude": 5.37,
+        "apparent_magnitude_estimated": false,
+        "constellation": "LMi",
+        "declination": 31.8825,
+        "distance": 61.539,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "gaia_g_magnitude": 1e+29,
+        "gaia_source_id": 0,
+        "gaia_wd_name": "",
+        "has_planets": 1,
+        "home_world": false,
+        "is_orbit_multiple": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 4.942861781456583e+73,
+                    "y": 0.0,
+                    "z": 8.69299243122964e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_system_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 4.9428617814565843e+36,
+                    "y": 0.0,
+                    "z": 8.692992431229643e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 4.9428617814565843e+36,
+                    "y": 0.0,
+                    "z": 8.692992431229643e+36
+                }
+            },
+            "system_center": {
+                "x": -2.443879087144805e+17,
+                "y": 3.075053332521467e+17,
+                "z": -4.298040962108083e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 2.0680140000000001e+33,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "orbit_center_codes": [],
+        "parallax": 52.999741965191404,
+        "precession": 0.0,
+        "proper_motion_RA": -0.00014700583194793873,
+        "proper_motion_decl": -0.00011914695661857597,
+        "radial_velocity": 56000.0,
+        "right_ascension": 150.38125,
+        "sidereal_rotational_period": 0.0,
+        "spectral_type": "G1V",
+        "stellar_metallicity": {
+            "error_lower_dex": -0.02,
+            "error_upper_dex": 0.02,
+            "ratio": "[Fe/H]",
+            "source": "NASA pscomppars",
+            "value_dex": 0.2
+        },
+        "transparent_clouds": false,
+        "type": 512,
+        "typeclass": 2,
+        "user_added": false,
+        "volumetric_mean_radius": 1078543710.0,
+        "wd_color_revision": 0,
+        "wd_color_valid": false,
+        "wd_temperature_source": "unspecified"
+    },
+    "20 Leonis Minoris.TestHabitable": {
+        "!name": "TestHabitable",
+        "!origcenname": "",
+        "!origname": "TestHabitable",
+        "BV_color": 0.49877130389213564,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -4.056701545868358,
+        "albedo": 0.5,
+        "atmosphere": {
+            "composition": {
+                "Ar": 7.754402606669442e-05,
+                "C2H6": 1.7573411299833665e-05,
+                "CH4": 0.0004328481931922832,
+                "CO": 3.7218860403018874e-05,
+                "CO2": 0.00431213961874152,
+                "H2": 0.0017751336304044983,
+                "H2O": 0.0014194158601170727,
+                "H2S": 0.00026808937645903035,
+                "HCN": 0.00015034222630291814,
+                "He": 1.186087950348418e-05,
+                "N2": 0.9908273111328778,
+                "NH3": 2.626517380643127e-06,
+                "SO2": 0.0006678962672510443
+            },
+            "surface_pressure": 202650.0,
+            "tau": 0.9372780417610876
+        },
+        "classification_evidence": {
+            "basis": "mass_with_radius_unavailable_or_estimated",
+            "bond_albedo": 0.5,
+            "class_code": 1283,
+            "density_g_cm3": 5.195414734886886,
+            "density_is_lower_bound": false,
+            "density_observed": false,
+            "equilibrium_temperature_k": 208.060836372851,
+            "host": "20 Leonis Minoris",
+            "irradiation_earth": 0.6171474822070929,
+            "mass_evidence": 1,
+            "metallicity_applied": false,
+            "metallicity_model": "metallicity_not_validated",
+            "radius_evidence": 3,
+            "stellar_chemistry": [],
+            "surface_temperature_k": 208.060836372851
+        },
+        "declination": 0.0,
+        "distance": 0.0,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 252.04265770131846,
+        "has_water": 0.4012286961078644,
+        "home_world": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 87.20630235097079,
+                "v": {
+                    "x": 2.841227721314991e+73,
+                    "y": 0.0,
+                    "z": 9.575482609821136e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": 107408892542.31003,
+                "y": -173421757699.49707,
+                "z": 194789356548.3773
+            },
+            "local_system_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 4.9428617814565843e+36,
+                    "y": 0.0,
+                    "z": 8.692992431229643e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 89.34965565471953,
+                "v": {
+                    "x": 4.7506758997149884e+73,
+                    "y": 0.0,
+                    "z": 8.798761010698998e+73
+                }
+            },
+            "system_center": {
+                "x": -2.443879087144805e+17,
+                "y": 3.075053332521467e+17,
+                "z": -4.298040962108083e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 5.97217e+27,
+        "mass_evidence": 1,
+        "oblateness": 0.0,
+        "obliquity": 12.025610581161935,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 111.72070316584814,
+            "ascending_node": 87.73722481342836,
+            "center_name": "20 Leonis Minoris",
+            "eccentricity": 0.005010763939839272,
+            "epoch": 2451544.5,
+            "inclination": 1.4152020386371007,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 249.3135757415153,
+            "periapsis_distance": 0.0,
+            "period": 926.897274033799,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 281987919077.2805
+        },
+        "orbit_center_codes": [],
+        "overcast": false,
+        "plant_crown_oblateness": 0.0,
+        "plant_crown_size": 0.0,
+        "plant_trunk_height": 0.0,
+        "plant_trunk_width": 0.0,
+        "precession": 0.0,
+        "radius_evidence": 3,
+        "right_ascension": 0.0,
+        "sidereal_rotational_period": 0.43070087688094344,
+        "temperature": 288.2285760331475,
+        "transiting": false,
+        "transparent_clouds": true,
+        "type": 1283,
+        "typeclass": 3,
+        "user_added": true,
+        "vegetation_b": 5,
+        "vegetation_g": 146,
+        "vegetation_r": 226,
+        "volumetric_mean_radius": 6498420.0
+    }
+}
