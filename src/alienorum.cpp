@@ -7,6 +7,7 @@
 #include <thread>
 #include <algorithm>
 #include <filesystem>
+#include <limits>
 #include <fstream>
 #include <unistd.h>
 #include "png.h"
@@ -76,17 +77,31 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
     FILE* f = fopen(file_name, "rb");
     if (f == NULL)
         return false;
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    if (file_size == -1L)
+    if (fseek(f, 0, SEEK_END) != 0)
     {
         fclose(f);
         return false;
     }
-    fseek(f, 0, SEEK_SET);
+    long file_size = ftell(f);
+    if (file_size <= 0 || file_size > std::numeric_limits<int>::max() || fseek(f, 0, SEEK_SET) != 0)
+    {
+        fclose(f);
+        return false;
+    }
     void* file_data = IM_ALLOC(file_size);
-    int foad = fread(file_data, 1, file_size, f);
+    if (!file_data)
+    {
+        fclose(f);
+        return false;
+    }
+    const size_t bytes_read = fread(file_data, 1, file_size, f);
+    const bool read_ok = bytes_read == static_cast<size_t>(file_size) && !ferror(f);
     fclose(f);
+    if (!read_ok)
+    {
+        IM_FREE(file_data);
+        return false;
+    }
     bool ret = LoadTextureFromMemory(file_data, file_size, out_texture, out_width, out_height);
     IM_FREE(file_data);
     return ret;
