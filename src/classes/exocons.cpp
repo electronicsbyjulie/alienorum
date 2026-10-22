@@ -1069,7 +1069,7 @@ namespace alienorum
             Star* sb, Point ub,
             double len_deg, int target_cons_idx) -> bool
         {
-            if (len_deg > 30.0 || len_deg < 0.1)
+            if (len_deg > 15.0 || len_deg < 0.1)
             {
                 return false;
             }
