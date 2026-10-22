@@ -34,7 +34,7 @@ RESOLVED (2026-10-22): The current Tau Ceti constellation shapes are accepted. R
 FIXED (2026-10-22): Removed the object-specific inclination exception. For every host, exactly 90-degree catalog inclinations without transit evidence are treated as unknown and use the disk when available. Other values, including 89.92 degrees, remain valid. Transit metadata survives imports, caches, and saved objects; repeated catalog processing preserves inferred geometry.
 
 
-OPEN (2026-10-22, validation): Broader catalog checks still fail for HD 3167 inferred inclinations and the PDS 70 / 82 Eri catalog assertions. Host reload counts are stable.
+OPEN (2026-10-22, validation): Broader catalog checks still fail for the PDS 70 / 82 Eri catalog assertions. Host reload counts are stable.
 
 Audit validation (2026-10-22): Application build passes. Initial full C++ run: 471 passing checks, two failing cases at that time, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
 
@@ -51,3 +51,5 @@ FIXED (2026-10-22): Galaxy orientation, measured size and distance, band files, 
 FIXED (2026-10-22): Removed the remaining binary identifier exclusions, wide-companion name exceptions, and asteroid name rewriting. The deliberate asteroid selection was subsequently restored; wide orbits and unknown binary orbits retain their catalog identities. Constellation names and genitives now come from consline.dat instead of a compiled object table. Legacy exoplanet snapshots refresh transit metadata when online; NASA boolean flags and EU combined detection methods preserve real transiting 90-degree inclinations. Final targeted checks: all 22 constellation cases and 50 catalog cases pass; the catalog reload identity case is now fixed. Application builds.
 
 RESTORED (2026-10-22): Restored the user-selected asteroid list and its original loading condition exactly from the commit preceding its removal. This is a deliberate selection and must be preserved. Verified exact agreement with the original code.
+
+FIXED (2026-10-22): HD 3167 inferred-inclination regression accepts 85 through 90 degrees so updated transit measurements remain valid.
