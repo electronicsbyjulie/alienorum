@@ -4604,7 +4604,9 @@ void draw_sunclock()
     bool was_show_clouds = show_clouds;
     if (cel->overcast) show_clouds = false;             // show feature-rich surface of Titan or Venus, not a damn bland cloud layer.
     Map *map = cel->get_day_map();
-    Map *nmap = cel->get_night_map();
+    // Without a night texture, dim the combined surface and clouds together.
+    // A synthetic cloud-only night map would hide the surface behind black.
+    Map *nmap = cel->night_map ? cel->get_night_map() : nullptr;
     show_clouds = was_show_clouds;
     Point land;
     bool dwh = false;

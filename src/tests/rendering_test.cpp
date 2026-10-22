@@ -452,6 +452,57 @@ class RenderingRegressionTest : public UniverseFixture
     }
 };
 
+TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroughCloudGaps)
+{
+    Planet *world = surface();
+    world->sidereal_rotational_period = 0;
+    world->lon_J2000_offset = 0;
+    world->location.local_position = Point();
+    world->location.equatorial_plane.a = 0;
+    world->cenobj->location.local_position = Point(0, 0, -AU);
+    world->orbit->center->location.local_position = Point(0, 0, -AU);
+    class PatchyCloudMap : public SceneryTestMap
+    {
+        public:
+        PatchyCloudMap()
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                red_data[i] = green_data[i] = blue_data[i] = i % 2 ? 32 : 0;
+            }
+            touch_gen();
+        }
+    };
+    world->cloud_map = new PatchyCloudMap();
+    set(show_clouds, false);
+    world->transparent_clouds = true;
+    set(view_mode, vm_sunclock);
+    set(selected_locale, static_cast<Locale*>(nullptr));
+    set(redlight_mode, false);
+
+    const auto capture = [&]()
+    {
+        draw_sunclock();
+        auto pixels = render();
+        ImGui::NewFrame();
+        double sum = 0;
+        for (int y = 40; y < 68; ++y)
+        {
+            for (int x = 72; x < 120; ++x)
+            {
+                const auto *rgb = &pixels[(y * render_width + x) * 4];
+                sum += rgb[0] + rgb[1] + rgb[2];
+            }
+        }
+        return sum;
+    };
+    const double clear = capture();
+    show_clouds = true;
+    const double cloudy = capture();
+    EXPECT_GT(clear, 0);
+    EXPECT_GT(cloudy, clear * 0.8);
+}
+
 TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStellarTint)
 {
     Planet *world = make_planet(make_star(), "Lava sunclock test", 0.02 * AU);
