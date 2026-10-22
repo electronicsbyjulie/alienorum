@@ -52,3 +52,5 @@ FIXED (2026-10-22, code audit): Procedural randomization handles absent, negativ
 FIXED (2026-10-22, code audit): Generated constellation lines enforce half-length separation from other figures and symmetric near-miss checks, including fainter stars. The existing passerby and separation tests pass; a separate Tau Ceti shape expectation remains unresolved.
 
 FIXED (2026-10-22, code audit): UI texture loading rejects empty or oversized files, failed seeks, allocation failures, and short reads before decoding, preventing uninitialized input from reaching the image decoder. The application build passes.
+
+FIXED (2026-10-22, code audit): Reapplying exoplanet names retains heliocentric source elements instead of treating converted local inclinations as fresh observations. A regression reproduces the former orbit rotation and verifies stable positions across repeated passes. Planet and star suites pass; two older catalog checks remain separate.

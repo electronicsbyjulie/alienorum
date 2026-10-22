@@ -4051,9 +4051,13 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 
             if (planet_incls.find(designation) != planet_incls.end())
                 pincls.push_back(planet_incls[designation] * fiftyseventh);
-            else if (p->orbit) pincls.push_back(p->orbit->inclination);
+            else if (p->orbit)
+            {
+                pincls.push_back((p->orbit->heliocentric_inclination || p->orbit->heliocentric_node)
+                    ? p->orbit->heliocentric_inclination : p->orbit->inclination);
+            }
 
-            double p_node = 0;
+            double p_node = p->orbit ? p->orbit->heliocentric_node : 0;
             if (planet_nodes.find(designation) != planet_nodes.end())
                 p_node = planet_nodes[designation] * fiftyseventh;
             pnodes.push_back(p_node);
@@ -4341,6 +4345,9 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 #endif
             }
 
+            // Preserve the source frame for subsequent catalog passes and serialization.
+            p->orbit->heliocentric_inclination = (fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi;
+            p->orbit->heliocentric_node = pnodes[i];
             elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi,
                                             pnodes[i], s->location.system_center),
                                             s->location.local_system_plane,

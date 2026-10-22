@@ -1021,7 +1021,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double y = (                      sinw * sini) * x_plane + (                      cosw * sini) * y_plane;
     double z = ( cosO * cosw - sinO * sinw * cosi) * x_plane + (-cosO * sinw - sinO * cosw * cosi) * y_plane;
 
-    if (!orbit->heliocentric_inclination && !orbit->heliocentric_node)
+    if (typeclass() != class_star || (!orbit->heliocentric_inclination && !orbit->heliocentric_node))
     {
         Point orbit_pole = yaxis;
         orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), I);

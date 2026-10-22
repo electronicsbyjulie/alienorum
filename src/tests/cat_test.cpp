@@ -33,6 +33,8 @@ class CatalogParsingTest : public UniverseFixture
     {
         UniverseFixture::SetUp();
         make_star("Sol");
+        if (!hdcache) hdcache = new Star*[MAX_HD + 1]();
+        if (!hipcache) hipcache = new Star*[MAX_HIP + 1]();
     }
 };
 
@@ -3319,4 +3321,29 @@ TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPho
     EXPECT_EQ(violations, 0) << examples.str();
     std::cout << "Earth photometry coverage: " << star_count << " stars, " << galaxy_count
         << " galaxies, " << variable_count << " variable stars, three epochs." << std::endl;
+}
+
+TEST_F(CatalogParsingTest, ReapplyingPlanetNamesPreservesOrbitFrame)
+{
+    Star* host = make_star("Frame regression host");
+    host->has_disk = true;
+    host->disk_heliocen_inclination = 50 * fiftyseventh;
+    Planet* planet = make_planet(host, "Frame regression host b");
+    planet->orbit->inclination = 70 * fiftyseventh;
+    TestCatalogReader reader;
+    const std::map<int, std::vector<int>> planets = {{host->seqno, {planet->seqno}}};
+    reader.apply_exoplanet_names(planets);
+    planet->update_location(simnow);
+    const double inclination = planet->orbit->inclination;
+    const double node = planet->orbit->ascending_node;
+    const Point position = planet->location;
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        reader.apply_exoplanet_names(planets);
+        planet->update_location(simnow);
+        EXPECT_NEAR(planet->orbit->inclination, inclination, 1e-10);
+        EXPECT_NEAR(planet->orbit->ascending_node, node, 1e-10);
+        EXPECT_LT((Point(planet->location) - position).magnitude(), 0.001);
+    }
+    delete_the_universe();
 }
