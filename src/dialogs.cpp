@@ -1170,6 +1170,7 @@ void draw_addcel_window(ImGuiIO& io)
                 {
                     Planet* pl = (Planet*)cel;
                     pl->mass = (cel->typeclass() == class_moon) ? lunar_mass : earth_mass;
+                    if (cls == class_star && pl->orbit) pl->set_habitable_orbit();
                     pl->classify(pl->is_in_con_HZ(), true);
                     pl->estimate_radius();
                     pl->estimate_albedo_and_absmagn();
@@ -1738,12 +1739,10 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine();
                 if (ImGui::Button("HZ"))
                 {
-                    // TODO: The following is a very very poor approximation that goes horribly wrong for non-Sunlike stars.
-                    double s_eff_lum = pow(magnbase, cels[0]->absolute_magnitude-cel->orbit->center->absolute_magnitude);
-                    double sma_au = cel->orbit->semimajor_axis / AU;
-                    double instellation = s_eff_lum / (sma_au*sma_au);
-                    orb->semimajor_axis *= sqrt(instellation);
-                    orb->compute_period(cel->mass);
+                    if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+                        static_cast<Planet*>(cel)->set_habitable_orbit();
+                    cel->user_edited = true;
+                    viewchanged = true;
                     lsyscache.clear();
                     cel->temperature = 0;
                     if (cel->typeclass() == class_planet

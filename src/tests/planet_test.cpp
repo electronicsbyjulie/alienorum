@@ -1712,3 +1712,20 @@ TEST(PlanetTest, ObliqueViewNearPlanet_NotCulledWhenLimbInFrustum)
     ImGui::DestroyContext(ctx);
 }
 
+
+TEST_F(PlanetClassificationEvidenceTest, NewStellarOrbitsUseTheConservativeZone)
+{
+    for (double temp : {3000.0, static_cast<double>(sun_temp), 7200.0})
+    {
+        Star* host = make_star();
+        host->temperature = temp;
+        Planet* body = make_planet(host);
+        body->orbit->semimajor_axis = 1e8;
+        body->orbit->period = 7 * oneday;
+        EXPECT_TRUE(body->set_habitable_orbit());
+        EXPECT_TRUE(body->is_in_con_HZ());
+        const double period = body->orbit->period;
+        body->orbit->compute_period(body->mass);
+        EXPECT_DOUBLE_EQ(period, body->orbit->period);
+    }
+}

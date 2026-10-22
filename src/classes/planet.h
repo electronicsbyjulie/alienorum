@@ -86,6 +86,7 @@ namespace alienorum
         double equilibrium_temperature();
         double estimate_surface_temperature();
         double temperature_at_pressure(double pressure_pa);  // Same greenhouse formula, at an arbitrary reference level.
+        bool set_habitable_orbit();
         bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
         double estimate_bump_scale();
         double estimate_scale_height();                     // meters; 0 if airless

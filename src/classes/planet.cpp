@@ -955,6 +955,36 @@ double alienorum::Planet::mean_instellation()
     return luminosity / (mean_dist_AU*mean_dist_AU);
 }
 
+bool Planet::set_habitable_orbit()
+{
+    if (!orbit || !orbit->center || orbit->center->typeclass() != class_star) return false;
+    Star* host = static_cast<Star*>(orbit->center);
+    const double temp = host->estimate_temperature();
+    const double luminosity = std::pow(magnbase,
+        4.74 - host->absolute_magnitude - Star::bolometric_correction(temp));
+    if (!std::isfinite(luminosity) || luminosity <= 0) return false;
+
+    // Search in luminosity-scaled distance using the same zone model as the editor.
+    const double scale = AU * std::sqrt(luminosity);
+    const double original = orbit->semimajor_axis;
+    double inner = 0, outer = 0;
+    for (double radius = 0.2; radius <= 5.0; radius *= 1.01)
+    {
+        orbit->semimajor_axis = scale * radius;
+        cached_in_cons_hz = -1;
+        if (is_in_con_HZ())
+        {
+            if (!inner) inner = orbit->semimajor_axis;
+            outer = orbit->semimajor_axis;
+        }
+    }
+    orbit->semimajor_axis = inner ? std::sqrt(inner * outer) : original;
+    cached_in_cons_hz = -1;
+    if (!inner) return false;
+    orbit->compute_period(mass);
+    return true;
+}
+
 bool Planet::is_in_con_HZ()
 {
     if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;
