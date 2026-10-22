@@ -44,8 +44,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
         // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
         // center is a null pointer, and a moon of one leads somewhere that is not a Star.
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *this);
-        double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
-        if (isinf(max_atm_pressure)) max_atm_pressure = 0;
+        double max_atm_pressure = CosmicShore::estimate_surface_pressure(shoreline);
         ensure_atmosphere()->surface_pressure = max_atm_pressure;
         temperature = 0;
         estimate_surface_temperature();

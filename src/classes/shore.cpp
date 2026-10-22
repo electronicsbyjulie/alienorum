@@ -1,6 +1,14 @@
 #include "shore.h"
+#include <algorithm>
 
 using namespace alienorum;
+
+double CosmicShore::estimate_surface_pressure(double metric)
+{
+    if (std::isnan(metric) || metric < 0) return 0;
+    const double capped_metric = std::min(metric, std::log10(pressure_ceiling / 503.0));
+    return std::min(pressure_ceiling, std::pow(10.0, capped_metric) * 503.0);
+}
 
 double CosmicShore::calculate_escape_velocity(const Planet& p)
 {

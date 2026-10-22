@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstring>
 #include <vector>
 #include <filesystem>
@@ -11,12 +12,32 @@
 #include "../classes/orbit_spacing.h"
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
+#include "../classes/shore.h"
 #include "../visuals.h"
 #include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(CosmicShoreTest, PressureSaturatesWithoutOverflowOrVacuumDiscontinuity)
+{
+    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(-1), 0);
+    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(0), 503);
+    EXPECT_NEAR(CosmicShore::estimate_surface_pressure(4), 5030000, 1e-6);
+    double previous = 0;
+    for (double metric : {5.0, 6.0, 100.0, 1000.0, std::numeric_limits<double>::infinity()})
+    {
+        const double pressure = CosmicShore::estimate_surface_pressure(metric);
+        EXPECT_TRUE(std::isfinite(pressure));
+        EXPECT_GE(pressure, previous);
+        EXPECT_LE(pressure, 1e8);
+        previous = pressure;
+    }
+    EXPECT_DOUBLE_EQ(previous, 1e8);
+    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(-INFINITY), 0);
+    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(NAN), 0);
+}
 
 class PlanetClassificationEvidenceTest : public UniverseFixture
 {
@@ -27,6 +48,19 @@ protected:
         UniverseFixture::TearDown();
     }
 };
+
+TEST_F(PlanetClassificationEvidenceTest, InferredAtmosphereHonorsTheShorelineCeiling)
+{
+    Planet* world = make_planet(make_star(), "High retention", 0.2 * AU);
+    world->user_added = true;
+    world->mass = 200 * earth_mass;
+    world->volumetric_mean_radius = 2 * earth_radius;
+    ASSERT_GT(CosmicShore::calculate_unified_metric(*static_cast<Star*>(world->cenobj), *world), 6);
+    world->apply_cosmic_shoreline();
+    EXPECT_TRUE(std::isfinite(world->get_surface_pressure()));
+    EXPECT_GT(world->get_surface_pressure(), 0);
+    EXPECT_LE(world->get_surface_pressure(), 1e8);
+}
 
 TEST_F(PlanetClassificationEvidenceTest, EstimatedRadiusNeverBecomesObservedDensity)
 {

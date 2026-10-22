@@ -1,3 +1,7 @@
+FIXED (2026-10-22): Cosmic-shoreline pressure estimates saturate at 1,000 bar (1e8 Pa), an explicit simulation ceiling. The exponent is bounded before evaluation, so extreme retention cannot overflow into vacuum. Invalid scores produce zero; phase condensation can still reduce the bounded pressure. Thirty atmosphere, classification, and shoreline checks pass.
+
+Original request: Cap the cosmic shoreline calculation to prevent extreme generated surface pressures.
+
 FIXED (2026-10-22): Constellation genitives remain Canis Majoris and Canis Minoris in the naming catalog.
 
 Original request: Restore Canis Majoris and Canis Minoris and preserve those spellings.
