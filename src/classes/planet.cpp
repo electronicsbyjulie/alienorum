@@ -34,7 +34,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
 {
     CelestialObject *plc = get_light_center();
     if (plc
-        && plc->seqno                                       // solar system objects are already known to have/not have an atmosphere
+        && (user_added || plc->seqno)                                          // Real solar system objects are already known to have/not have an atmosphere.
         && plc->typeclass() == class_star
     )
     {
