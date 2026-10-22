@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/celestial.h"
@@ -1197,4 +1198,28 @@ TEST(OsculatingElementTest, RejectsUnorderedEpochs)
     EXPECT_EQ(OsculatingElement::read_from_file(path.string(), &count), nullptr);
     EXPECT_EQ(count, 0u);
     std::filesystem::remove(path);
+}
+
+TEST(CelestialRandomTest, MissingAndExtremeInputsRemainRepeatable)
+{
+    CelestialObject body;
+    Orbit orbit;
+    body.orbit = &orbit;
+    for (double value : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::quiet_NaN(), 1e300})
+    {
+        body.mass = body.volumetric_mean_radius = body.orbit->semimajor_axis = value;
+        body.orbit->arg_periapsis = value;
+        body.rnd_seed = 0;
+        body.randomize();
+        int first = body.cel_rand();
+        body.randomize();
+        EXPECT_EQ(body.cel_rand(), first);
+    }
+    body.rnd_seed = 12345;
+    body.randomize();
+    int first = body.cel_rand();
+    body.randomize();
+    EXPECT_EQ(body.rnd_seed, 12345u);
+    EXPECT_EQ(body.cel_rand(), first);
 }

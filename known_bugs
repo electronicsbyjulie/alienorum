@@ -46,3 +46,5 @@ FIXED (2026-10-22, code audit): Generated constellation figures reject component
 FIXED (2026-10-22, code audit): Favorite-star actions are disabled for an empty list, preventing selection, navigation, alerts, and removal from accessing absent entries. The application build passes.
 
 FIXED (2026-10-22, code audit): Ephemeris parsing safely handles missing, empty, short, and unordered input, closes files automatically, and retains the final sample. Interpolation uses bounded sample pairs, including both endpoint dates, and repeated loading releases prior storage. Celestial, Moon, and planet suites pass (137 checks).
+
+FIXED (2026-10-22, code audit): Procedural randomization handles absent, negative, nonfinite, and extreme physical inputs without undefined floating-to-integer conversions or union aliasing. Explicit random seeds remain unchanged; all 49 celestial checks pass.

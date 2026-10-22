@@ -703,17 +703,24 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
 
 void alienorum::CelestialObject::randomize()
 {
-    union
-    {
-        unsigned long long hash;
-        unsigned int seed;
-    };
-
     if (!rnd_seed)
     {
-        hash = 0xb0ad * log(mass) + 0x1cea * log(volumetric_mean_radius);
-        if (orbit) hash += 0xeb00dae * log(orbit->semimajor_axis) + 0xefac00ee * orbit->arg_periapsis;
-        rnd_seed = seed;
+        // Reduce in floating point before conversion, including negative or large inputs.
+        auto low_bits = [](double value) -> uint32_t
+        {
+            if (!std::isfinite(value)) return 0;
+            double reduced = std::fmod(std::trunc(value), 4294967296.0);
+            if (reduced < 0) reduced += 4294967296.0;
+            return static_cast<uint32_t>(reduced);
+        };
+        auto positive_log = [](double value) { return value > 0 && std::isfinite(value) ? std::log(value) : 0.0; };
+        uint32_t hash = low_bits(0xb0ad * positive_log(mass) + 0x1cea * positive_log(volumetric_mean_radius));
+        if (orbit)
+        {
+            hash = low_bits(static_cast<double>(hash) + 0xeb00dae * positive_log(orbit->semimajor_axis)
+                + (std::isfinite(orbit->arg_periapsis) ? 0xefac00ee * orbit->arg_periapsis : 0.0));
+        }
+        rnd_seed = hash;
     }
     rng.seed(rnd_seed);
 }
