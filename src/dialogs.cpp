@@ -1102,7 +1102,6 @@ void draw_addcel_window(ImGuiIO& io)
             if (ImGui::Selectable(celtypes[n], is_selected))
             {
                 cboceltyp_selected_idx = n;
-                show_labels = true;
             }
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)

@@ -19,10 +19,14 @@ FIXED (2026-10-22): Explicit mass and radius edits now update their measurement 
 
 Original request: Double check Planet::classify(). A planet of 6 Earth masses becomes an ice giant even if the density runs in the thousands of g/cm^3. If this is correct, explain why here.
 
-Clicking certain lists and dropdowns reverts star labels back on. Only the star label list should do this.
+FIXED (2026-10-22): Changing the Add Object type no longer enables star labels. The star-label picker retains its intentional enable-on-selection behavior.
+
+Original request: Clicking certain lists and dropdowns reverts star labels back on. Only the star label list should do this.
 
 
 FIXED (2026-10-22): Grayscale PNG bump maps now apply the sea-level offset before scaling to meters, removing a spurious elevation increase of about 10 km.
 
 
-Zooming in on a star causes performance degradation and incorrect flare placement. Vega at magnification 2.5 million is a good example. Frame rate crawls to almost nothing (in some cases this can hang the app)
+Zooming in on a star causes performance degradation and incorrect flare placement. Vega at magnification 2.5 million is a good example. Frame rate temporarily crawls to almost nothing (in some cases this can hang the app) and the flare is centered below and to the right of the star's disc.
+
+
