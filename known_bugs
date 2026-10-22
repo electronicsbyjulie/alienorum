@@ -40,3 +40,5 @@ Original request: Add a regression test that no stellar object or galactic objec
 FIXED (2026-10-22, code audit): PNG exports release temporary pixel storage, reject absent bump data, encode flat elevation maps without division by zero, and report buffered write errors. Repeated exports pass AddressSanitizer leak checks.
 
 FIXED (2026-10-22, code audit): Generated constellation segments now respect the documented 15-degree limit. The existing 47 Ursae Majoris and GJ 86 acceptance checks pass.
+
+FIXED (2026-10-22, code audit): Generated constellation figures reject components with fewer than three lines and allow three-star chains to close into triangles. Existing bright-star coverage and connected-shape checks pass.

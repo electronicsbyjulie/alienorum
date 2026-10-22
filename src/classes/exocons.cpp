@@ -1367,7 +1367,7 @@ namespace alienorum
             }
 
             // Add cycle / chord edges to close open ends into loops (triangles, quadrilaterals, polygons)
-            if (accepted_edges.size() >= 3)
+            if (accepted_edges.size() >= 2)
             {
                 std::vector<CandEdge> chord_candidates;
                 for (const auto& edge : valid_edges)
@@ -1508,7 +1508,7 @@ namespace alienorum
                 }
             }
 
-            if (final_edges.empty())
+            if (final_edges.size() < 3)
             {
                 continue;
             }
