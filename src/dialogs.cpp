@@ -18,6 +18,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "classes/clouds_gpu.h"
+#include "classes/orbit_spacing.h"
 #include <cstdint>
 #include <algorithm>
 #include <cctype>
@@ -1193,6 +1194,16 @@ void draw_addcel_window(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+static bool orbit_conflict(CelestialObject* body, double axis, CelestialObject* other)
+{
+    if (other == body || !body->orbit || !other->orbit) return false;
+    if (body->typeclass() != class_planet || other->typeclass() != class_planet) return false;
+    if (other->orbit->center != body->orbit->center) return false;
+    return orbital_spacing_warning(axis, body->orbit->eccentricity, body->mass,
+        other->orbit->semimajor_axis, other->orbit->eccentricity, other->mass,
+        body->orbit->center->mass);
+}
+
 double rp, ra;
 int last_edit_idx = -1;
 
@@ -1882,6 +1893,10 @@ void draw_objedit_window(ImGuiIO& io)
                                     preview.orbit->compute_semimajor_axis(cel->mass);
                                     cand.semimajor_axis = preview.orbit->semimajor_axis;
                                     if (!std::isfinite(cand.semimajor_axis) || cand.semimajor_axis <= 0) continue;
+                                    bool unsafe = cand.semimajor_axis < sma_limit;
+                                    for (int k = 0; !unsafe && cels[k]; k++)
+                                        unsafe = orbit_conflict(cel, cand.semimajor_axis, cels[k]);
+                                    if (unsafe) continue;
                                     cand.in_hz = stellar_parent && preview.is_in_con_HZ();
                                     candidates.push_back(cand);
                                 }
@@ -1963,6 +1978,13 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::EndTable();
                 }
                 ImGui::Separator();
+            }
+
+            for (int k = 0; cels[k]; k++)
+            {
+                if (orbit_conflict(cel, orb->semimajor_axis, cels[k]))
+                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f),
+                        "Warning: orbit too close to %s; possible orbital instability.", cels[k]->name);
             }
 
             if (((!rp && !ra) || (ra >= rp)) && orb->eccentricity >= 0 && orb->eccentricity < 1)

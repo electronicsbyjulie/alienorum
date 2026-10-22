@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "../classes/orbit_spacing.h"
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
 #include "../visuals.h"
@@ -1728,4 +1729,15 @@ TEST_F(PlanetClassificationEvidenceTest, NewStellarOrbitsUseTheConservativeZone)
         body->orbit->compute_period(body->mass);
         EXPECT_DOUBLE_EQ(period, body->orbit->period);
     }
+}
+
+TEST(OrbitalSpacingTest, ScreensCloseCrossingAndMassiveOrbits)
+{
+    EXPECT_TRUE(orbital_spacing_warning(AU, 0, earth_mass, AU, 0, earth_mass, solar_mass));
+    EXPECT_TRUE(orbital_spacing_warning(AU, 0, earth_mass, 1.02 * AU, 0, earth_mass, solar_mass));
+    EXPECT_FALSE(orbital_spacing_warning(AU, 0, earth_mass, 1.52 * AU, 0, earth_mass, solar_mass));
+    EXPECT_TRUE(orbital_spacing_warning(AU, 0.4, earth_mass, 1.52 * AU, 0.2, earth_mass, solar_mass));
+    EXPECT_TRUE(orbital_spacing_warning(AU, 0, jupiter_mass, 1.2 * AU, 0, jupiter_mass, solar_mass));
+    EXPECT_FALSE(orbital_spacing_warning(AU, 0, earth_mass, 1.2 * AU, 0, earth_mass, solar_mass));
+    EXPECT_FALSE(orbital_spacing_warning(0, 0, earth_mass, AU, 0, earth_mass, solar_mass));
 }

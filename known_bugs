@@ -1,2 +1,11 @@
 
-TODO:
+If surface temperature is too cold for any of the atmospheric gases that are present to stay gaseous, then those gases should be limited to at most trace amounts in the atmosphere, and in most cases to zero. If the surface temperature is too cold for any gases, then the atmospheric pressure should be zero, irrespective of cosmic shoreline. This reduction of cold atmospheres will further lower the surface pressure, so it will be important to find the values where the feedback loop converges.
+
+FIXED (2026-10-22): New stellar planets and the HZ button use the conservative habitable zone. The orbit editor warns about close or crossing planetary orbits, and the resonance picker filters choices using the same spacing check.
+
+Original request: From the Shift+A dialog, adding a new body around a planet defaults to a 7 day orbit and tidal locking. That's good, keep that. If adding a planet around a star, let's default it to the habitable zone. We can also show a visible warning when a planet being edited is too close to another planet's orbit, resulting in orbital instability. Make sure the ratios in the resonance picker would not be close enough to existing bodies to require this same warning.
+
+The rocky map generator depends on a local temperature estimate to decide kinds of terrain (desert, tundra, forest, etc). There is a similar local temperature estimate for mouseover in sun clock view and current location in horizon view, however that calculation does not produce good results. Let's fix it, and if possible without degrading the map generator's performance, get the map generator using the upgraded local temperature estimate. You can use Earth and its bump map as a benchmark: desert areas will be hot, polar ice caps will be cold, etc. One thing I want to avoid is sharp straight lines between ice/water and rock in generated maps. 
+
+Add WD (for white dwarf) as an option in Stellar Neighborhood, mutually exclusive with Sunlike: selecting one deselects the other. Show each white dwarf's color in its list entry if possible.
+
