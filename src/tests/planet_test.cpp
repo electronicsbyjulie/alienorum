@@ -1810,3 +1810,100 @@ TEST_F(PlanetClassificationEvidenceTest, TemperatureQueriesApplyColdLimitsWithou
     EXPECT_DOUBLE_EQ(world->condense_atmosphere(2, 2), 2);
     EXPECT_DOUBLE_EQ(air->surface_pressure, 0);
 }
+
+TEST_F(PlanetClassificationEvidenceTest, LocalClimateHasColdPolesWarmDesertsAndFiniteVacuum)
+{
+    Planet* world = make_planet(make_star());
+    world->temperature = 288;
+    world->sidereal_rotational_period = oneday;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->has_water = 0.71;
+    const double desert = world->est_local_temp(25 * fiftyseventh, 0);
+    const double north = world->est_local_temp(half_pi, 0);
+    const double south = world->est_local_temp(-half_pi, 0);
+    EXPECT_GT(desert, 290);
+    EXPECT_LT(north, 270);
+    EXPECT_LT(south, 270);
+    EXPECT_NEAR(north, south, 1e-8);
+    world->atm->surface_pressure = 0;
+    for (double lat : {-half_pi, 0.0, half_pi})
+    {
+        const double vacuum = world->est_local_temp(lat, 0);
+        EXPECT_TRUE(std::isfinite(vacuum));
+        EXPECT_GE(vacuum, 2.7);
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, LocalClimateUsesEarthBumpMapInMeters)
+{
+    if (!std::filesystem::exists("maps/Earth_surf.jpg") || !std::filesystem::exists("maps/Earth_bump.png"))
+        GTEST_SKIP() << "Earth map images are absent";
+    Planet* world = make_planet(make_star(), "Earth climate benchmark");
+    world->temperature = 288;
+    world->sidereal_rotational_period = oneday;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->has_water = 0.71;
+    world->surf_map = new Map(world);
+    ASSERT_TRUE(world->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(world->surf_map->load_from_png("maps/Earth_bump.png", true));
+    const double sahara = world->est_local_temp(25 * fiftyseventh, 0);
+    const double arctic = world->est_local_temp(85 * fiftyseventh, 0);
+    const double antarctic = world->est_local_temp(-80 * fiftyseventh, 0);
+    const double himalaya = world->est_local_temp(28 * fiftyseventh, 87 * fiftyseventh);
+    EXPECT_GT(sahara, 290);
+    EXPECT_LT(arctic, 270);
+    EXPECT_LT(antarctic, 260);
+    EXPECT_LT(himalaya, sahara - 15);
+    const LocalClimate climate = world->local_climate();
+    const double lat = 25 * fiftyseventh;
+    EXPECT_NEAR(sahara, climate.temperature(-cos(lat), 0, sin(lat),
+        world->surf_map->elevation_at_bilinear(lat, 0)), 1e-9);
+    EXPECT_NEAR(world->est_local_temp(lat, -_pi), world->est_local_temp(lat, _pi), 1e-8);
+}
+
+TEST(LocalClimateTest, LockedDaysAreWarmAndFrostBoundariesAreGradual)
+{
+    LocalClimate climate;
+    climate.stellar_locked = true;
+    EXPECT_GT(climate.temperature(-1, 0, 0, 0), climate.temperature(1, 0, 0, 0));
+    climate.redistribution = 0;
+    EXPECT_TRUE(std::isfinite(climate.temperature(1, 0, 0, 0)));
+    EXPECT_GE(climate.temperature(1, 0, 0, 0), 2.7);
+    EXPECT_DOUBLE_EQ(LocalClimate::frost_fraction(270.15), 1);
+    EXPECT_NEAR(LocalClimate::frost_fraction(273.15), 0.5, 1e-12);
+    EXPECT_DOUBLE_EQ(LocalClimate::frost_fraction(276.15), 0);
+    EXPECT_NEAR(LocalClimate::frost_fraction(273.15 - 1e-6),
+        LocalClimate::frost_fraction(273.15 + 1e-6), 1e-6);
+    climate.stellar_locked = false;
+    EXPECT_LT(climate.temperature(-1, 0, 0, 2000), climate.temperature(-1, 0, 0, 0) - 12);
+    // Longitude-dependent climate variation bends the frost line on a sphere.
+    const double latitude = 0.75;
+    EXPECT_GT(std::abs(climate.temperature(cos(latitude), 0, sin(latitude), 0)
+        - climate.temperature(0, cos(latitude), sin(latitude), 0)), 0.1);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, GeneratedOceanUsesTheSameClimateAsTheReadout)
+{
+    Planet* world = make_planet(make_star(), "Ocean climate", 0.8 * AU);
+    world->type = waterworld;
+    world->sidereal_rotational_period = oneday;
+    world->ensure_atmosphere()->ensure_composition()->N2_portion = 1;
+    world->fictitious_map_height = 64;
+    world->rnd_seed = 173;
+    world->ring_status_known = true;
+    world->surf_map = new Map(world);
+    const bool saved_randomize = randomize_txgen;
+    randomize_txgen = false;
+    world->surf_map->generate_rocky_map(world);
+    randomize_txgen = saved_randomize;
+    ASSERT_TRUE(world->surf_map->is_complete());
+    const RGB3 equator = world->surf_map->color_at(0, 0);
+    const RGB3 north = world->surf_map->color_at(80 * fiftyseventh, 0);
+    const RGB3 south = world->surf_map->color_at(-80 * fiftyseventh, 0);
+    EXPECT_GT(world->est_local_temp(0, 0), water_freezing);
+    EXPECT_LT(world->est_local_temp(80 * fiftyseventh, 0), water_freezing);
+    EXPECT_LT(world->est_local_temp(-80 * fiftyseventh, 0), water_freezing);
+    EXPECT_GT(equator.b, equator.r + 30);
+    EXPECT_GT(north.r, equator.r + 50);
+    EXPECT_GT(south.r, equator.r + 50);
+}

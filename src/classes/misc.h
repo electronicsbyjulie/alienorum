@@ -77,7 +77,7 @@ using json = nlohmann::json;
 
 // Planetary rain visual effects toggles
 #define planetary_rain 1
-#define show_local_temp 0
+#define show_local_temp 1
 
 #define lunar_mass 7.349E+22
 #define earth_mass 5.97217e+27

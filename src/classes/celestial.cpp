@@ -2284,6 +2284,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double pressure_log = std::log(pressure / P1);
 
         bool life_possible = p->estimate_habitability();
+        T_surf = p->estimate_surface_temperature();
 
         if (!force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
@@ -2347,7 +2348,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         inv_bump_scale = 1.0 / bump_scale;
         std::cout << "Allocated " << allocated << " pixels for fictitious rocky " << cel->name << " map." << std::endl;
 
-        double inv_h2o_level = 0, phi, psi, theta, u, v, nx, ny, nz, height_value, r_weight, T_base, T_local, sh;
+        double inv_h2o_level = 0, phi, theta, u, v, nx, ny, nz, height_value, r_weight, T_local, sh;
         
         // Lower multiplier creates massive, continental-scale province shifts
         double province_scale = scale * 0.15; 
@@ -2373,7 +2374,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && p->is_tidal_locked();
 
-        double Tswing = 256.0 / (p->get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
+        const LocalClimate climate = p->local_climate();
 
         // A small per-planet palette of terrain "provinces" -- bright highlands against darker
         // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
@@ -2442,8 +2443,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 nx = sin(theta) * cos(phi);
                 ny = sin(theta) * sin(phi);
                 nz = cos(theta);
-
-                if (tidal_locked_to_star) psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
 
                 idx = y * image_width + x;
                 if (idx >= allocated)
@@ -2543,19 +2542,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
                 if (p && p->has_water)
                 {
-                    T_base = tidal_locked_to_star
-                        ? (T_surf + halfswing - Tswing * cos(psi*0.5))
-                        : (T_surf - halfswing + Tswing * sin(theta));
-                    T_local = T_base - Tswing * fmax(0, height_value - p->has_water);
-                    if (height_value < p->has_water && (T_local < water_freezing))
-                    {
-                        // Polar ice
-                        red_data[idx] = fmin(255, 167 + 67 * r_weight);
-                        green_data[idx] = fmin(255, 181 + 57 * r_weight);
-                        blue_data[idx] = fmin(255, 190 + 63 * r_weight);
-                        // if (create_bump) bump_data[idx] = fmax(0, bump_data[idx]);
-                    }
-                    else if (cel->type == waterworld || cel->type == hycean)
+                    T_local = climate.temperature(nx, ny, nz, bump_data[idx]);
+                    if (cel->type == waterworld || cel->type == hycean)
                     {
                         // Deep ocean
                         red_data[idx] = fmin(255, 12+16*height_value);
@@ -2581,24 +2569,22 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     }
                     else if (life_possible && T_local >= veg_min_temp
                         && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
-                        && (!tidal_locked_to_star || psi >= half_pi))                               // vegetation only on the day side
+                        && (!tidal_locked_to_star || nx * climate.sun_x + ny * climate.sun_y + nz * climate.sun_z > 0))                               // vegetation only on the day side
                     {   // Forests
                         red_data[idx] = fmin(255, p->vegetation_r * r_weight);
                         green_data[idx] = fmin(255, p->vegetation_g * r_weight);
                         blue_data[idx] = fmin(255, p->vegetation_b * r_weight);
                     }
-                    else if (T_local > water_freezing)
-                    {   // Mountains
+                    else
+                    {
                         red_data[idx] = fmin(255, 110 * rmult * r_weight);
                         green_data[idx] = fmin(255, 90 * gmult * r_weight);
                         blue_data[idx] = fmin(255, 75 * bmult * r_weight);
                     }
-                    else
-                    {   // Elevation snow
-                        red_data[idx] = fmin(255, 192 + 63 * r_weight);
-                        green_data[idx] = fmin(255, 224 + 31 * r_weight);
-                        blue_data[idx] = fmin(255, 240 + 15 * r_weight);
-                    }
+                    const double frost = LocalClimate::frost_fraction(T_local);
+                    red_data[idx] = (1 - frost) * red_data[idx] + frost * (192 + 63 * r_weight);
+                    green_data[idx] = (1 - frost) * green_data[idx] + frost * (224 + 31 * r_weight);
+                    blue_data[idx] = (1 - frost) * blue_data[idx] + frost * (240 + 15 * r_weight);
                 }
                 else
                 {
@@ -3430,9 +3416,7 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     const double inverse_boil = 1.0 / (water_freezing + 100.0)
         - (8.314 / 40660.0) * std::log(pressure / 1.0e5);
     const double boiling_temp = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
-    const double swing = 256.0 / (pressure * 3.5e-5);
-    const bool tidal_locked = p->orbit && p->orbit->center && p->orbit->center->type == star
-        && p->is_tidal_locked();
+    const LocalClimate climate = p->local_climate();
     Map *surface = cel->surf_map;
     const bool full_ocean = cel->type == waterworld || cel->type == hycean;
     const bool sample_oceans = surface->has_bump_data() && p->m_bump_scale > 0;
@@ -3457,10 +3441,8 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
                 }
             }
             const double phi = sx * 2.0 * _pi / surface->image_width;
-            const double psi = acos(std::clamp(sin(theta) * cos(phi), -1.0, 1.0));
-            const double local_temp = tidal_locked
-                ? surface_temp + swing * 0.5 - swing * cos(psi * 0.5)
-                : surface_temp - swing * 0.5 + swing * sin(theta);
+            const double local_temp = climate.temperature(sin(theta) * cos(phi), sin(theta) * sin(phi),
+                cos(theta), climate.sea_level_m);
             if (local_temp >= water_freezing && local_temp < boiling_temp)
             {
                 liquid_ocean = true;

@@ -407,22 +407,46 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     if (!ck) set_color_from_type(HZ);
 }
 
+LocalClimate Planet::local_climate()
+{
+    LocalClimate climate;
+    climate.mean_k = estimate_surface_temperature();
+    if (!std::isfinite(climate.mean_k) || climate.mean_k < 2.7) climate.mean_k = 2.7;
+    const double pressure = std::max(0.0, get_surface_pressure()) / oneatm;
+    climate.contrast_k = climate.mean_k * (0.04 + 0.25 / (1.0 + pressure));
+    climate.redistribution = pressure / (pressure + 0.1);
+    const double gravity = estimate_surface_gravity();
+    climate.lapse_k_m = std::isfinite(gravity)
+        ? 0.0065 * std::clamp(gravity, 0.0, 3.0) * pressure / (pressure + 0.01) : 0;
+    climate.sea_level_m = m_bump_scale > 0 ? m_bump_scale * (has_water - 0.5) : 0;
+    climate.dry_belt_k = climate.mean_k * 0.04 * pressure / (pressure + 0.01);
+    climate.regional_k = climate.mean_k * 0.012 / (1.0 + pressure / 10.0);
+    climate.stellar_locked = orbit && orbit->center && orbit->center->typeclass() == class_star
+        && is_tidal_locked();
+    if (climate.stellar_locked)
+    {
+        CelestialObject* source = get_light_center();
+        const double angle = local_solar_time(0);
+        if (source && angle >= 0)
+        {
+            const double longitude = _pi - angle;
+            const double latitude = source->Decl_as_radians(location);
+            climate.sun_x = -cos(latitude) * cos(longitude);
+            climate.sun_y = -cos(latitude) * sin(longitude);
+            climate.sun_z = sin(latitude);
+        }
+    }
+    return climate;
+}
+
 double alienorum::Planet::est_local_temp(double lat, double lon)
 {
-    double T_surf = estimate_surface_temperature();
-    if (!surf_map) return T_surf;
-    if (!m_bump_scale) m_bump_scale = estimate_bump_scale();
-    double height_value = surf_map->elevation_at(lat, lon) / m_bump_scale + 0.5;
-    double Tswing = 256.0 / (get_surface_pressure() * 3.5e-5), halfswing = Tswing*0.5;
-    double T_base = is_tidal_locked()
-        ? (T_surf + halfswing - Tswing * cos(lon*0.5))
-        : (T_surf - halfswing + Tswing * sin(lat));
-    double T_local = T_base - Tswing * fmax(0, height_value - has_water);
-    #if 0
-    std::cout << "T_surf=" << T_surf << " height_value=" << height_value << " Tswing=" << Tswing << " T_base=" << T_base
-        << " has_water=" << has_water << " T_local=" << T_local << std::endl;
-    #endif
-    return T_local;
+    const LocalClimate climate = local_climate();
+    if (!std::isfinite(lat) || !std::isfinite(lon)) return climate.mean_k;
+    lat = std::clamp(lat, -half_pi, half_pi);
+    const double cos_lat = cos(lat);
+    const double elevation = surf_map ? surf_map->elevation_at_bilinear(lat, lon) : climate.sea_level_m;
+    return climate.temperature(-cos_lat * cos(lon), -cos_lat * sin(lon), sin(lat), elevation);
 }
 
 void Planet::estimate_radius()
