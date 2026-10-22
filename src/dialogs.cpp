@@ -3790,6 +3790,7 @@ void draw_favestars_window(ImGuiIO & io)
     }
 
     if (item_selected_idx >= favestars.size()) item_selected_idx = 0;
+    ImGui::BeginDisabled(favestars.empty());
     if (ImGui::Button("Select##favestarlist"))
     {
         selected = favestars[item_selected_idx]->seqno;
@@ -3805,7 +3806,7 @@ void draw_favestars_window(ImGuiIO & io)
     ImGui::SameLine();
     if (ImGui::Button("Go##favestarlist"))
     {
-        if (item_selected_idx >= 0)
+        if (item_selected_idx < favestars.size())
         {
             whereami = favestars[item_selected_idx]->seqno;
             viewer_locale = "";
@@ -3819,7 +3820,7 @@ void draw_favestars_window(ImGuiIO & io)
     ImGui::SameLine();
     if (ImGui::Button("Alert on Rise##favestarlist"))
     {
-        if (item_selected_idx >= 0)
+        if (item_selected_idx < favestars.size())
         {
             favestars[item_selected_idx]->alert_rise = true;
         }
@@ -3827,7 +3828,7 @@ void draw_favestars_window(ImGuiIO & io)
     ImGui::SameLine();
     if (ImGui::Button("Alert on Set##favestarlist"))
     {
-        if (item_selected_idx >= 0)
+        if (item_selected_idx < favestars.size())
         {
             favestars[item_selected_idx]->alert_set = true;
         }
@@ -3838,6 +3839,8 @@ void draw_favestars_window(ImGuiIO & io)
         favestars.erase(favestars.begin() + item_selected_idx);
         save_user_json();
     }
+
+    ImGui::EndDisabled();
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
     ImVec2 cpos = ImGui::GetWindowPos(), csiz = ImGui::GetWindowSize();
