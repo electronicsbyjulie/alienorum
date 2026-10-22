@@ -23,11 +23,6 @@
 #include "shore.h"
 #include "../globals.h"
 
-// Zeta 1,2 Reticuli is the test case for binary detection: well separated in distance and angle,
-// near edge-on, close enough to calibrate parallax tolerances, and NOT flagged as an A/B pair in
-// the catalogs -- so the detection cannot lazily rely on that flag.
-#define _debug_sbinaries_zetret 0
-
 namespace fs = std::filesystem;
 
 // True for the GCVS eclipsing-binary codes E, EA, EB, EW and their subtypes, in any position of a
@@ -73,10 +68,6 @@ std::vector<std::string> known_catalog_names =
     "comets"
     // TODO: Add hundreds more...
 };
-
-#if _debug_sbinaries_zetret
-Star *zet1ret = nullptr, *zet2ret = nullptr;
-#endif
 
 std::vector<std::string> CatalogReader::find_catalogs(std::string path)
 {
@@ -296,39 +287,10 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             if (field[0] == 'A') A = s;
             s->set_component(field[0], A);
 
-            // Special case for Proxima since Gliese et al couldn't be bothered to group it with Alp Cen AB.
-            if ((fabs(f-559) < 0.05) && A && s->get_component() > 'A')
-            {
-                Star *C = (Star*) cels[find_object("GJ 551", true)];
-                A->multisys->add_member(C, 'C');
-
-                /*// Also prevent duplicate loading from Hipparcos.
-                s->HIP = 70890;
-                hipcache[70890] = s;*/
-            }
-
-            // Special case for Zeta Reticuli
-            if ((fabs(f-138) < 0.05) && A && s->get_component() > 'A')
-            {
-                Star *B = (Star*) cels[find_object("GJ 136", true)];
-                A->multisys->add_member(B, 'B');
-            }
         }
 
         strcpy(s->Gliese, trim(build_name).c_str());
         strcpy(s->name, s->Gliese);
-        if (!strcmp(s->Gliese, "GJ 324 B"))
-        {
-            strcpy(s->Flamsteed, "55 Cnc B");                   // For exoplanets
-            strcpy(s->name, "55 Cnc B");
-            s->namelen = strlen(s->name);
-            s->has_custom_name = true;
-        }
-        if (!strcmp(s->Gliese, "GJ 22 AC"))
-        {
-            s->HIP = 2552;
-            hipcache[2552] = s;
-        }
 
         double ra, dec, ra2000, dec2000;
 
@@ -489,21 +451,6 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
                 align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
         }
 
-#if _debug_sbinaries_zetret
-        if (s->HD == 20766) zet1ret = s;
-        else if (s->HD == 20807)
-        {
-            zet2ret = s;
-            std::cout << "Gliese Zeta Reticuli separation:"
-                      << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
-                      << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
-                      << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
-                      << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
-                      << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
-                      << std::endl;
-        }
-#endif
-
         if (num_read)
         {
             s->estimate_radius();
@@ -537,7 +484,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         float f = atof(field);
         if (f > 9848.05) continue;              // 9848 is the highest number in the CNS3
         std::string Gliese = trim(field);
-        if (!strcmp(Gliese.c_str(), "Sun")) continue;
+        if (Gliese.empty() || !std::isdigit(static_cast<unsigned char>(Gliese[0]))) continue;
         Gliese = std::string("GJ ") + Gliese;
 
         Star *s = nullptr;
@@ -798,7 +745,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         s->epoch = J2000;
 
-        if (!s->get_component() && buffer[49] > ' ' && strcmp(s->name, "41The1Ori"))
+        if (!s->get_component() && buffer[49] > ' ')
         {
             if (fabs(current_multi_ra - s->right_ascension) > ra_dec_multi_limit
                     && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
@@ -877,21 +824,6 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         if (!s->Gliese[0])
             s->location.equatorial_plane = s->location.local_system_plane =
                                                align_points_3d(cels[0]->location.system_center, Point(0,0,light_year*1e9), s->location.system_center);
-
-#if _debug_sbinaries_zetret
-        if (s->HD == 20766) zet1ret = s;
-        else if (s->HD == 20807)
-        {
-            zet2ret = s;
-            std::cout << "BSC Zeta Reticuli separation:"
-                      << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
-                      << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
-                      << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
-                      << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
-                      << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
-                      << std::endl;
-        }
-#endif
 
         // Register every component's own HD, not just the 'A'/primary one: each ADS component here
         // carries its own distinct HD number (e.g. Gam1Vel/HD68243 vs Gam2Vel/HD68273, comp 'B'/'A'
@@ -1294,21 +1226,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         // 436-447  A12   ---     SpType    Spectral type
         read_field_onebased(buffer, 436, 447, field);
         if (trim(field).size()) strcpy(s->spectral_type, trim(field).c_str());
-
-#if _debug_sbinaries_zetret
-        if (s->HD == 20766) zet1ret = s;
-        else if (s->HD == 20807)
-        {
-            zet2ret = s;
-            std::cout << "Hipparcos Zeta Reticuli separation:"
-                      << " RA " << fabs(zet1ret->right_ascension - zet2ret->right_ascension)
-                      << " Decl " << fabs(zet1ret->declination - zet2ret->declination)
-                      << " plx " << fabs(zet1ret->parallax - zet2ret->parallax)
-                      << " pmRA " << fabs(zet1ret->proper_motion_RA - zet2ret->proper_motion_RA)
-                      << " pmDE " << fabs(zet1ret->proper_motion_decl - zet2ret->proper_motion_decl)
-                      << std::endl;
-        }
-#endif
 
         s->gotta_be_named_something();
         s->estimate_radius();
@@ -2820,16 +2737,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         }
         if (s != A) s->make_companion_of(A, conccomp);
 
-        if (A->HD == 20766)                            // Zeta 1 Reticuli orbits Zeta 2, not the other way around.
-        {
-            A->orbit = s->orbit;
-            s->orbit = nullptr;
-            A->orbit->center = s;
-            Star *swap = A;
-            A = s;
-            s = swap;
-        }
-
         // HD225034 fix
         if (!s->orbit && A->orbit && A->orbit->center == s)
         {
@@ -3059,18 +2966,13 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
         if (!A->multisys) A->set_component('A', A);
         A = A->multisys->get_member(cen[0]);
         if (!A) continue;
-        if (A && A->BayerGrkno == 7 && !strcmp(A->constellation, "Ori")) B = nullptr;
-        else B = A->multisys->get_member(comp[0]);
+        B = A->multisys->get_member(comp[0]);
 
         if (!B)
         {
             B = new Star();
             B->type = star;
-            if (A->HD == 20766)
-            {
-                std::cerr << "BAD! 1366" << std::endl;
-                throw 0xbadc0de;
-            }
+
             B->make_companion_of(A, comp[0]);
             B->absolute_magnitude = B->apparent_magnitude = 1e29;
             B->epoch = A->epoch;
@@ -3214,7 +3116,6 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
             read_field_onebased(buffer, 1, 6, field);
             asno = atoi(field);
             if (r->number == asno) found = true;
-            if (atoi(field) == 5747 && !strcmp(r->name.c_str(), "Williamina")) found = true;
 
             //   8- 25  A18   ---     Name      Name or preliminary designation.
             read_field_onebased(buffer, 8, 25, field);
@@ -3267,16 +3168,11 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     p->volumetric_mean_radius = r->diam * 500;
     if (!p->volumetric_mean_radius)
     {
-        if (!strcmp(r->name.c_str(), "Pluto")) p->volumetric_mean_radius = 1188300;
-        else if (!strcmp(r->name.c_str(), "Eris")) p->volumetric_mean_radius = 1163000;
-        else if (!strcmp(r->name.c_str(), "Quaoar")) p->volumetric_mean_radius = 1097600 / 2;
-        else if (!strcmp(r->name.c_str(), "Sedna")) p->volumetric_mean_radius = 906000 / 2;
-        else if (!strcmp(r->name.c_str(), "Orcus")) p->volumetric_mean_radius = 913000 / 2;
-        else if (!strcmp(r->name.c_str(), "Haumea")) p->volumetric_mean_radius = 1544000 / 2;
-        else if (!strcmp(r->name.c_str(), "Makemake")) p->volumetric_mean_radius = 715000;
+        p->albedo = 0.1;
+        p->volumetric_mean_radius = 664500 * pow(10, -absmagn / 5) / sqrt(p->albedo);
     }
     assert(!isinf(p->volumetric_mean_radius));
-    p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * _pi * 1853;  // Pluto density.
+    p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * _pi * 1853;  // Representative icy-rocky bulk density.
 
     // 107-114  A8 "YYYYMMDD" Epoch     Epoch of osculation, yyyymmdd (TDT) (2)
     read_field_onebased(buffer, 107, 110, field);
@@ -3371,7 +3267,6 @@ int CatalogReader::read_astorb_catalog(CelestialObject **cels, int max)
         //   1-  6  I6    ---     Planet    [1,]?+ Asteroid number (blank if unnumbered)
         read_field_onebased(buffer, 1, 6, field);
         row.number = asno = atoi(field);
-        if (asno == 5747) row.name = "Williamina";              // She invented the OBAFGKM system and astorb can't even honor her namesake????
 
         //  43- 47  F5.2  mag     H         Absolute magnitude H parameter (1)
         read_field_onebased(buffer, 43, 47, field);
@@ -3993,29 +3888,24 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                         }
                     }
                 }
-                if (designation.rfind("gamma Cephei", 0) == 0)
-                {
-                    candidate_desigs.push_back("gam Cep " + std::string(1, designation.back()));
-                }
-                if (designation.rfind("eps Eridani", 0) == 0)
-                {
-                    candidate_desigs.push_back("eps Eri " + std::string(1, designation.back()));
-                }
+
                 if (s)
                 {
                     char p_let = designation.empty() ? 'b' : designation.back();
                     if (p_let >= 'b' && p_let <= 'z')
                     {
+                        for (const std::string& alias : {std::string(s->name), s->origname,
+                            std::string(s->Bayer), std::string(s->Flamsteed)})
+                        {
+                            if (!alias.empty()) candidate_desigs.push_back(alias + " " + p_let);
+                        }
+                        for (const auto& alias : s->catalog_aliases) candidate_desigs.push_back(alias + " " + p_let);
                         if (s->Gliese[0])
                         {
                             candidate_desigs.push_back(std::string(s->Gliese) + " " + p_let);
                             candidate_desigs.push_back(std::string(s->Gliese) + "  " + p_let);
                         }
-                        if (!strcmp(s->name, "Pollux"))
-                        {
-                            candidate_desigs.push_back(std::string("GJ 286 ") + p_let);
-                            candidate_desigs.push_back(std::string("GJ 286  ") + p_let);
-                        }
+
                         if (s->HD)
                         {
                             candidate_desigs.push_back("HD " + std::to_string(s->HD) + " " + p_let);
@@ -4424,8 +4314,6 @@ bool CatalogReader::worth_searching(std::string star_name)
     if (!strcmp(star_name.substr(0, 5).c_str(), "Qatar")) return false;
     if (!strcmp(star_name.substr(0, 4).c_str(), "Gaia")) return false;
     if (!strcmp(star_name.substr(0, 4).c_str(), "Wolf")) return false;
-    if (!strcmp(star_name.c_str(), "Teegarden's Star")) return false;
-    if (!strcmp(star_name.substr(0, 6).c_str(), "82 Eri")) return true;
 
     if (!strcmp(star_name.substr(0, 3).c_str(), "GJ ")) return true;
     if (((star_name.c_str()[0] >= 'A' && star_name.c_str()[0] <= 'Z')
@@ -4495,7 +4383,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     int col_plnm=-1, col_stnm=-1, col_hd=-1, col_orbper=-1, col_sma=-1, col_rade=-1, col_radj=-1,
         col_mass_e=-1, col_mass_j=-1, col_eccn=-1, col_incl=-1, col_periepo=-1, col_argperi=-1,
         col_oblt=-1, col_sptp=-1, col_srad=-1, col_smass=-1, col_stemp=-1,
-        col_ra=-1, col_decl=-1, col_dist=-1, col_vmag=-1;
+        col_ra=-1, col_decl=-1, col_dist=-1, col_vmag=-1, col_transit=-1;
     while (fgets(buffer, 2046, fp))
     {
         if (buffer[0] == '#' && buffer[2] == 'C' && buffer[3] == 'O'
@@ -4517,6 +4405,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
             if (!strcmp(buffer, "# COLUMN pl_bmassj")) col_mass_j = i;
             if (!strcmp(buffer, "# COLUMN pl_orbeccen")) col_eccn = i;
             if (!strcmp(buffer, "# COLUMN pl_orbincl")) col_incl = i;
+            if (!strcmp(buffer, "# COLUMN tran_flag")) col_transit = i;
             if (!strcmp(buffer, "# COLUMN pl_orbtper")) col_periepo = i;
             if (!strcmp(buffer, "# COLUMN pl_orblper")) col_argperi = i;
             if (!strcmp(buffer, "# COLUMN pl_trueobliq")) col_oblt = i;
@@ -4600,7 +4489,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                             }
                         }
 
-                        if (!strcmp(star_name.c_str(), "55 Cnc B")) star_name = "GJ 324 B";
                         bool do_search = worth_searching(star_name);
 
                         if (!s && do_search)
@@ -4670,6 +4558,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                         {
                             p_incl = atof(field) * fiftyseventh;
                         }
+                        else if (i == col_transit) p->transiting = atoi(field) == 1;
                         else if (i == col_periepo)
                         {
                             p->orbit->epoch = atof(field);
@@ -4746,7 +4635,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                     }
                 }
 
-                p->orbit->inclination = p_incl * fiftyseventh;             // For now.
+                p->orbit->inclination = accepted_exoplanet_inclination(p_incl);
+                if (p_incl == 90 * fiftyseventh && !p->transiting) p->orbit->inclination = 0;
             }
 
             if (s && p && p->orbit->period)
@@ -4854,8 +4744,18 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
             Star* s = (Star*)cels[i];
             if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
             {
-                // A star can already carry a hardcoded custom name (e.g. 55 Cnc B) set upstream of
-                // this pass; that outranks starname.dat's own entries, so leave it alone.
+                s->add_catalog_alias(trim(field));
+                if (!s->HD && HD > 0 && HD <= MAX_HD)
+                {
+                    s->HD = HD;
+                    if (hdcache) hdcache[HD] = s;
+                }
+                if (!s->HIP && HIP > 0 && HIP <= MAX_HIP)
+                {
+                    s->HIP = HIP;
+                    if (hipcache) hipcache[HIP] = s;
+                }
+                if (!s->Gliese[0] && trim(Gliese) != "GJ") snprintf(s->Gliese, sizeof(s->Gliese), "%s", Gliese.c_str());
                 if (s->has_custom_name) break;
 
                 strcpy(s->name, trim(field).c_str());
@@ -5120,7 +5020,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             {
                 read_field_onebased(buffer, 229, 238, field);
                 tempK = atof(field);
-                // if (A->HD == 47152) std::cout << s->name << " tempK=" << tempK << std::endl;
                 if (tempK)
                 {
                     s->temperature = tempK;
@@ -5204,11 +5103,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             continue;
         }
 
-        if (A->HD == 20766)
-        {
-            std::cerr << "BAD! 2585" << std::endl;
-            throw 0xbadc0de;
-        }
         if (!s->orbit) s->orbit = new Orbit();
         s->orbit->center = A;
         s->orbit->heliocentric_inclination = inclination;
@@ -6283,7 +6177,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         s->declination = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
 
-
         read_field_onebased(buffer, 77, 82, field);
         str = trim(field);
         char *magnitude_end = nullptr;
@@ -6427,7 +6320,6 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 107, 112, field);
         s->UB_color = atof(field);
-
 
         read_field_onebased(buffer, 114, 119, field);
         s->HD = atoi(field);
@@ -6878,16 +6770,6 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
         return r;
     }
 
-    std::string pl_name_check = it_pl->get<std::string>();
-    if (!has_smax && !has_per)
-    {
-        bool is_special_imaging = (pl_name_check == "PDS 70 e" || pl_name_check == "HIP 65426 b" || pl_name_check == "WD 0806-661 b");
-        if (!is_special_imaging)
-        {
-            return r;
-        }
-    }
-
     r.pl_name = it_pl->get<std::string>();
     r.hostname = it_host->get<std::string>();
 
@@ -7191,45 +7073,10 @@ bool CatalogReader::apply_exoplanet_host_position(ExoRow& row, const std::map<st
 
 bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
 {
-    std::string host = row.value("hostname", "");
-    std::string normalized;
-    for (unsigned char c : host)
-    {
-        if (c != ' ' && c != '-')
-        {
-            normalized += std::tolower(c);
-        }
-    }
-    if (from_nasa && normalized == "hd160691")
-    {
-        const std::string name = row.value("pl_name", "");
-        if (name.size() == 11 && name.compare(0, 10, "HD 160691 ") == 0)
-        {
-            // NASA orders the outer companion as c; exoname.dat follows the
-            // mu Ara convention: b=Quijote, c=Dulcinea, d=Rocinante, e=Sancho.
-            char letter = name.back();
-            if (letter == 'c') letter = 'e';
-            else if (letter == 'd') letter = 'c';
-            else if (letter == 'e') letter = 'd';
-            if (letter >= 'b' && letter <= 'e')
-            {
-                row["pl_name"] = std::string("mu Ara ") + letter;
-                row["hostname"] = "mu Ara";
-            }
-        }
-    }
-    if (normalized == "koi5" || normalized == "koi5a" ||
-        normalized == "toi1241" || normalized == "toi1241a" || normalized == "kic8554498")
-    {
-        // EU's seven-day KOI-5 b is NASA's false-positive KOI-5.02.
-        // Accept planets in this system only from NASA's confirmed-planet feed.
-        if (!from_nasa || row.value("koi_disposition", "") == "FALSE POSITIVE")
-        {
-            return false;
-        }
-        row["hostname"] = "KOI-5";
-        row["source_catalog"] = "NASA";
-    }
+    const std::string disposition = row.value("koi_disposition", "");
+    const std::string status = row.value("planet_status", "");
+    if (disposition == "FALSE POSITIVE" || status == "Retracted" || status == "False Positive") return false;
+    row["source_catalog"] = from_nasa ? "NASA" : "EU";
     return true;
 }
 
@@ -7275,46 +7122,57 @@ void CatalogReader::apply_exoplanet_metallicity(const ExoRow& row, Star* host)
     host->metallicity_source = row.st_met_source;
 }
 
+struct FixedStellarIdentifiers
+{
+    int hd = 0, hip = 0;
+    std::string gliese;
+};
+
+static FixedStellarIdentifiers catalog_identifiers(const std::string& name)
+{
+    using Entries = std::map<std::string, FixedStellarIdentifiers>;
+    static std::map<std::string, std::pair<fs::file_time_type, Entries>> cache;
+    static std::mutex cache_mutex;
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    const auto path = fs::absolute("starname.dat");
+    std::error_code error;
+    const auto modified = fs::last_write_time(path, error);
+    if (error) return {};
+    auto& stored = cache[path.string()];
+    if (stored.second.empty() || stored.first != modified)
+    {
+        stored.second.clear();
+        stored.first = modified;
+        std::ifstream input(path);
+        std::string line;
+        while (std::getline(input, line))
+        {
+            if (line.empty() || line[0] == '#') continue;
+            const auto field = [&](size_t at, size_t length)
+            {
+                return at < line.size() ? trim(line.substr(at, length)) : std::string();
+            };
+            FixedStellarIdentifiers record;
+            record.hd = atoi(field(25, 7).c_str());
+            record.hip = atoi(field(33, 6).c_str());
+            const auto gliese = field(40, 8);
+            if (!gliese.empty()) record.gliese = "GJ " + gliese;
+            stored.second[stellar_alias_key(field(0, 25))] = record;
+        }
+    }
+    const auto found = stored.second.find(stellar_alias_key(name));
+    return found != stored.second.end() ? found->second : FixedStellarIdentifiers{};
+}
+
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
     ExactStarSearchIndex *lookup)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     *was_new = false;
     std::string hostname = row.hostname;
-    if (hostname == "QZ Ser (AB)")
-    {
-        hostname = "QZ Ser";
-    }
-    if (hostname == "eps Eridani")
-    {
-        hostname = "eps Eri";
-    }
-    char cinit = hostname.c_str()[0];
-
-    if (cinit == 'P' && hostname.substr(0, 8) == "Proxima ")
-    {
-        hostname = "Proxima Cen";
-    }
-    else if (cinit == 'T' && hostname.substr(0, 11) == "Teegarden's")
-    {
-        hostname = "Teegarden's Star";
-    }
-
-    // 1. Resolve host star context: check if it already exists in global array
+    // Resolve identities through source identifiers and the shared catalog index.
     Star* host_star = nullptr;
-    if (!host_star && hostname.substr(0, 6) == "82 Eri" && hdcache && hdcache[20794])
-    {
-        host_star = hdcache[20794];
-    }
-    if (!host_star && (hostname == "eps Eri" || hostname == "eps Eridani") && hdcache && hdcache[22049])
-    {
-        host_star = hdcache[22049];
-    }
-    if (!host_star && hostname.substr(0, 6) == "mu Ara" && hdcache && hdcache[160691])
-    {
-        host_star = hdcache[160691];
-    }
-
+    const auto identifiers = catalog_identifiers(hostname);
     int HD = 0;
     if (row.hd_name.size() > 2)
     {
@@ -7324,6 +7182,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     {
         HD = atoi(hostname.c_str() + ((hostname[2] == ' ') ? 3 : 2));
     }
+    if (!HD) HD = identifiers.hd;
     if (!host_star && HD > 0 && HD <= MAX_HD && hdcache && hdcache[HD])
     {
         host_star = hdcache[HD];
@@ -7338,19 +7197,22 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     {
         HIP = atoi(hostname.c_str() + ((hostname[3] == ' ') ? 4 : 3));
     }
+    if (!HIP) HIP = identifiers.hip;
     if (!host_star && HIP > 0 && HIP <= MAX_HIP && hipcache && hipcache[HIP])
     {
         host_star = hipcache[HIP];
     }
 
+    if (!host_star && !identifiers.gliese.empty())
+    {
+        int index = find_object(identifiers.gliese.c_str(), true, 9e29, 0, lookup);
+        if (index >= 0) host_star = static_cast<Star*>(cels[index]);
+    }
     if (!host_star)
     {
         if (loaded_starsonly || worth_searching(hostname))
         {
-            if (!strcmp(hostname.c_str(), "55 Cnc B"))
-            {
-                hostname = "GJ 324 B";
-            }
+
             int i = find_object(hostname.c_str(), true, 9e29, lookup ? 1 : 3, lookup);
             if (i > 0)
             {
@@ -7604,6 +7466,10 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     if (host_star->is_white_dwarf() && (!(host_star->volumetric_mean_radius > 0) ||
         !std::isfinite(host_star->volumetric_mean_radius))) host_star->estimate_radius();
     apply_stellar_abundances(host_star);
+    if (host_star && !identifiers.gliese.empty() && !host_star->Gliese[0])
+    {
+        snprintf(host_star->Gliese, sizeof(host_star->Gliese), "%s", identifiers.gliese.c_str());
+    }
     return host_star;
 }
 
@@ -7782,11 +7648,11 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         double st_incl = inclination;
         if (!st_incl && host_star->disk_heliocen_inclination)
         {
-            st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
+            st_incl = host_star->disk_heliocen_inclination;
         }
         else if (!st_incl && host_star->rot_heliocen_incl)
         {
-            st_incl = host_star->rot_heliocen_incl;                      // e.g. Alp Men
+            st_incl = host_star->rot_heliocen_incl;
         }
 
         if (sin(st_incl) >= 0.1)
@@ -8378,19 +8244,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::string version;
         std::getline(cache_header, version);
         derived_cache_valid = version == "# EXO_TRANSIT3";
-        // Recover omitted mu Ara records once, without downloading again when the
-        // host pass has already refreshed the unified catalog for the planet pass.
-        if (version == "# EXO_INCLINATION_ERRORS1" && !radio_silence)
-        {
-            std::ifstream source(exocache);
-            const std::string cached_json((std::istreambuf_iterator<char>(source)),
-                std::istreambuf_iterator<char>());
-            if (cached_json.find("\"mu Ara ") == std::string::npos
-                && cached_json.find("\"HD 160691 ") == std::string::npos)
-            {
-                do_download = true;
-            }
-        }
+
     }
 
     if (exoplanet_tap_attempted || !exoplanet_tap_catalog.empty())
@@ -8636,79 +8490,28 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 litem["st_met_source"] = from_nasa ? "NASA pscomppars" : "exoplanet.eu";
                 std::string pl_name = litem.value("pl_name", "");
                 if (pl_name.empty()) return;
-                char cinit = pl_name.c_str()[0];
                 std::string hostname = litem.value("hostname", "");
-                if (cinit == 'L' && pl_name.substr(0, 14) == "Luyten's Star ")
+                if (pl_name.rfind("HD ", 0) == 0)
                 {
-                    pl_name = std::string("GJ 273 ") + pl_name.substr(pl_name.size()-1, 1);
-                    litem["pl_name"] = pl_name;
-                }
-                else if (cinit == 'T' && pl_name.substr(0, 12) == "Teegarden's ")
-                {
-                    pl_name = std::string("Teegarden's Star ") + pl_name.substr(pl_name.size()-1, 1);
-                    litem["pl_name"] = pl_name;
-                }
-                else if (cinit == 'B' && (pl_name.substr(0, 15) == "Barnard's star " || pl_name.substr(0, 8) == "Barnard "))
-                {
-                    pl_name = std::string("Barnard's Star ") + pl_name.substr(pl_name.size()-1, 1);
-                    litem["pl_name"] = pl_name;
-                }
-                else if (cinit == 'P' && pl_name.substr(0, 8) == "Proxima ")
-                {
-                    pl_name = std::string("Proxima ") + pl_name.substr(pl_name.size()-1, 1);
-                    litem["pl_name"] = pl_name;
-                }
-                else if (cinit == 'H')
-                {
-                    if (pl_name.substr(0, 9) == "HD 20794 ")
+                    int id = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
+                    if (id > 0 && id <= MAX_HD && hdcache && hdcache[id] && hdcache[id]->Gliese[0])
                     {
-                        std::string let = extract_letter(pl_name);
-                        if (let == "d")
-                        {
-                            let = "c";
-                        }
-                        else if (let == "f")
-                        {
-                            let = "d";
-                        }
-                        pl_name = "82 Eri " + let;
+                        hostname = hdcache[id]->Gliese;
+                        pl_name = hostname + " " + extract_letter(pl_name);
                         litem["pl_name"] = pl_name;
-                        litem["hostname"] = "82 Eri";
-                        litem["hd_name"] = "HD 20794";
-                    }
-                    else if (pl_name.substr(0, 3) == "HD ")
-                    {
-                        int HD = std::max(extract_cat_num(hostname, "HD"), extract_cat_num(pl_name, "HD"));
-                        if (HD < MAX_HD && hdcache && hdcache[HD] && hdcache[HD]->Gliese[0])
-                        {
-                            hostname = hdcache[HD]->Gliese;
-                            pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
-                            litem["pl_name"] = pl_name;
-                        }
-                    }
-                    else if (pl_name.substr(0, 4) == "HIP ")
-                    {
-                        int HIP = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
-                        if (HIP < MAX_HIP && hipcache && hipcache[HIP] && hipcache[HIP]->Gliese[0])
-                        {
-                            hostname = hipcache[HIP]->Gliese;
-                            pl_name = hostname + " " + std::string(" ") + pl_name.substr(pl_name.size()-1, 1);
-                            litem["pl_name"] = pl_name;
-                        }
+                        litem["hostname"] = hostname;
                     }
                 }
-
-                if (cinit == '8' && pl_name.substr(0, 7) == "82 Eri ")
+                else if (pl_name.rfind("HIP ", 0) == 0)
                 {
-                    litem["hd_name"] = "HD 20794";
-                }
-                if ((cinit == 'e' && pl_name.substr(0, 12) == "eps Eridani ") || hostname == "eps Eridani")
-                {
-                    std::string let = extract_letter(pl_name);
-                    pl_name = "eps Eri " + let;
-                    litem["pl_name"] = pl_name;
-                    litem["hostname"] = "eps Eri";
-                    litem["hd_name"] = "HD 22049";
+                    int id = std::max(extract_cat_num(hostname, "HIP"), extract_cat_num(pl_name, "HIP"));
+                    if (id > 0 && id <= MAX_HIP && hipcache && hipcache[id] && hipcache[id]->Gliese[0])
+                    {
+                        hostname = hipcache[id]->Gliese;
+                        pl_name = hostname + " " + extract_letter(pl_name);
+                        litem["pl_name"] = pl_name;
+                        litem["hostname"] = hostname;
+                    }
                 }
 
                 std::string norm = normalize_name(pl_name);

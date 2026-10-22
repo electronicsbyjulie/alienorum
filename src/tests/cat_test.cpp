@@ -2070,52 +2070,24 @@ TEST_F(CatalogParsingTest, ExoplanetNamesMatchPrimaryComponentsAndConstellationC
     delete_the_universe();
 }
 
-TEST_F(CatalogParsingTest, MuAraNasaRecordsUseEuLettersAndNamesForTheirPeriods)
+TEST_F(CatalogParsingTest, CatalogSourcesPreserveNamesLettersAndPeriods)
 {
-    struct OrbitName
+    for (bool nasa : {false, true})
     {
-        char nasa_letter, eu_letter;
-        double period;
-        const char *friendly;
-    };
-    // https://en.wikipedia.org/wiki/Mu_Arae#System_architecture_and_habitability
-    const OrbitName examples[] =
-    {
-        {'d', 'c', 9.638, "Dulcinea"}, {'e', 'd', 308.36, "Rocinante"},
-        {'b', 'b', 644.92, "Quijote"}, {'c', 'e', 4019.0, "Sancho"}
-    };
-    Star *host = make_star("mu Ara");
-    TestCatalogReader reader;
-    std::map<int, std::vector<int>> planets;
-    std::vector<Planet*> objects;
-    for (const auto& example : examples)
-    {
-        json row = {{"hostname", "HD 160691"},
-            {"pl_name", std::string("HD 160691 ") + example.nasa_letter},
-            {"pl_orbper", example.period}};
-        ASSERT_TRUE(reader.accept_exoplanet_source(row, true));
-        const std::string designation = std::string("mu Ara ") + example.eu_letter;
-        EXPECT_EQ(row["pl_name"], designation);
-        EXPECT_EQ(row["hostname"], "mu Ara");
-        EXPECT_DOUBLE_EQ(row["pl_orbper"], example.period);
-        const json first_pass = row;
-        EXPECT_TRUE(reader.accept_exoplanet_source(row, true));
-        EXPECT_EQ(row, first_pass);
-        EXPECT_TRUE(reader.accept_exoplanet_source(row, false));
-        EXPECT_EQ(row, first_pass);
-
-        Planet *planet = make_planet(host, designation.c_str());
-        planet->orbit->period = example.period * oneday;
-        planets[host->seqno].push_back(planet->seqno);
-        objects.push_back(planet);
+        for (char letter : {'b', 'c', 'd', 'e'})
+        {
+            const std::string name = std::string("Synthetic host ") + letter;
+            json row = {{"hostname", "Synthetic host"}, {"pl_name", name}, {"pl_orbper", 25.0}};
+            ASSERT_TRUE(TestCatalogReader::accept_exoplanet_source(row, nasa));
+            EXPECT_EQ(row["hostname"], "Synthetic host");
+            EXPECT_EQ(row["pl_name"], name);
+            EXPECT_DOUBLE_EQ(row["pl_orbper"], 25);
+            EXPECT_EQ(row["source_catalog"], nasa ? "NASA" : "EU");
+            const json accepted = row;
+            ASSERT_TRUE(TestCatalogReader::accept_exoplanet_source(row, nasa));
+            EXPECT_EQ(row, accepted);
+        }
     }
-    reader.apply_exoplanet_names(planets);
-    for (size_t i = 0; i < objects.size(); ++i)
-    {
-        EXPECT_STREQ(objects[i]->name, examples[i].friendly);
-        EXPECT_NEAR(objects[i]->orbit->period / oneday, examples[i].period, 1e-9);
-    }
-    delete_the_universe();
 }
 
 TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
@@ -2364,31 +2336,19 @@ TEST_F(CatalogParsingTest, MoaHostPublicationWaitsForTheActiveNavigationFrame)
     delete_the_universe();
 }
 
-TEST_F(CatalogParsingTest, Koi5UsesNasaWhileOtherHostsRetainEuData)
+TEST_F(CatalogParsingTest, SourceSelectionUsesDispositionRatherThanHostNames)
 {
-    json eu = json::object();
-    eu["hostname"] = "KOI-5";
-    eu["pl_name"] = "KOI-5 b";
-    eu["pl_orbper"] = 7.05186;
-    eu["sy_vmag"] = 10.5;
-    EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(eu, false));
-
-    json nasa = eu;
-    nasa["hostname"] = "KOI-5 A";
-    nasa["pl_orbper"] = 4.780327581;
-    nasa["sy_vmag"] = 11.713;
-    EXPECT_TRUE(TestCatalogReader::accept_exoplanet_source(nasa, true));
-    EXPECT_EQ(nasa["hostname"], "KOI-5");
-    EXPECT_EQ(nasa["source_catalog"], "NASA");
-    EXPECT_EQ(nasa["pl_orbper"], 4.780327581);
-    nasa["koi_disposition"] = "FALSE POSITIVE";
-    EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(nasa, true));
-
-    eu["hostname"] = "TOI-1241";
-    EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(eu, false));
-    eu["hostname"] = "KOI-55";
-    EXPECT_TRUE(TestCatalogReader::accept_exoplanet_source(eu, false));
-    EXPECT_EQ(eu["sy_vmag"], 10.5);
+    for (bool nasa : {false, true})
+    {
+        json row = {{"hostname", "Synthetic host"}, {"pl_name", "Synthetic host b"}, {"pl_orbper", 7.0}};
+        ASSERT_TRUE(TestCatalogReader::accept_exoplanet_source(row, nasa));
+        EXPECT_EQ(row["hostname"], "Synthetic host");
+        row["koi_disposition"] = "FALSE POSITIVE";
+        EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(row, nasa));
+        row.erase("koi_disposition");
+        row["planet_status"] = "Retracted";
+        EXPECT_FALSE(TestCatalogReader::accept_exoplanet_source(row, nasa));
+    }
 }
 
 TEST_F(CatalogParsingTest, HostPositionSupplementRecoversAndCachesAnIdentifiedStar)
@@ -2500,6 +2460,7 @@ TEST_F(CatalogParsingTest, HostStarConsecutiveCachingDoesNotConflateDistinctStar
 
     Star* cnc_a = make_star("55 Cnc A");
     Star* cnc_b = make_star("GJ 324 B");
+    cnc_b->add_catalog_alias("55 Cnc B");
 
     std::string last_hostname;
     Star* last_host_star = nullptr;
