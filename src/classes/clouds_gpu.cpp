@@ -69,6 +69,11 @@ void cloud_parent(int puff, float mass, out vec3 p, out vec3 axes)
     float vv = (puff == 0 ? 0.38 : 0.38 + 0.06 * cos(angle * 1.9)) * size;
     axes = vec3(hh, hh, vv);
 }
+float cloud_base(float mass)
+{
+    float size = 0.38 + 0.72 * mass;
+    return -size * mix(0.80, 0.20, smoothstep(0.35, 0.70, mass));
+}
 void cloud_billow(int puff, int child, float mass, vec3 parent, vec3 axes,
     out vec3 p, out vec3 child_axes)
 {
@@ -79,6 +84,13 @@ void cloud_billow(int puff, int child, float mass, vec3 parent, vec3 axes,
     float size = 0.52 + 0.035 * sin(angle * 2.7 + float(puff));
     p = parent + axes * offset;
     child_axes = axes * vec3(size, size, size + 0.02 * cos(angle));
+    // Compress low billows into oblate lobes with slightly staggered bases.
+    // Preserve their tops and horizontal overlap for a solid cloud mass.
+    float floor_z = cloud_base(mass) - (0.025 + 0.025 * sin(angle * 1.3)) * (0.38 + 0.72 * mass);
+    float top = p.z + child_axes.z;
+    float bottom = max(p.z - child_axes.z, min(floor_z, p.z - child_axes.z * 0.30));
+    p.z = (top + bottom) * 0.5;
+    child_axes.z = (top - bottom) * 0.5;
 }
 vec4 cloud_detail(int puff, int child, int detail, float mass)
 {
@@ -87,13 +99,6 @@ vec4 cloud_detail(int puff, int child, int detail, float mass)
     float radius = sqrt(max(0.0, 1.0 - height * height));
     return vec4(0.40 * vec3(radius * cos(angle), radius * sin(angle), height),
         0.67 + 0.025 * sin(angle * 1.7));
-}
-float cloud_base(float mass)
-{
-    float size = 0.38 + 0.72 * mass;
-    // Small clouds remain rounded. Larger masses share a level condensation
-    // base, rather than retaining the rounded bottoms of individual lobes.
-    return -size * mix(0.80, 0.20, smoothstep(0.35, 0.70, mass));
 }
 bool cloud_bound(vec3 ray, vec3 p, vec3 axes, float nearest, float solid)
 {
@@ -109,7 +114,7 @@ bool cloud_bound(vec3 ray, vec3 p, vec3 axes, float nearest, float solid)
     return solid < 0.999 || (bb - sqrt(disc)) / aa <= nearest + 0.75;
 }
 void cloud_surface(vec3 rr, vec3 pp, float aa, vec3 axes, float radius,
-    float footprint, float distance, vec2 base_clip,
+    float footprint, float distance,
     inout float solid, inout float nearest, inout vec3 surface_sum)
 {
     // All four details share the child's ellipsoid basis and ray quadratic.
@@ -120,28 +125,20 @@ void cloud_surface(vec3 rr, vec3 pp, float aa, vec3 axes, float radius,
     if (disc < 0.0) return;
     float root = sqrt(disc);
     float entry = (bb - root) / aa;
-    bool base_cut = false;
-    if (base_clip.y >= 0.0 && entry < base_clip.x)
-    {
-        entry = base_clip.x;
-        if (entry > (bb + root) / aa) return;
-        base_cut = true;
-    }
-    else if (base_clip.y < 0.0 && entry > base_clip.x) return;
     if (entry <= -distance) return;
     float edge = max(0.0005, footprint * 1.5);
-    solid = max(solid, base_cut ? 1.0 : smoothstep(0.0, edge, disc / (aa * radius * radius)));
+    solid = max(solid, smoothstep(0.0, edge, disc / (aa * radius * radius)));
     if (entry < nearest)
     {
         surface_sum *= exp2(max(-80.0, (entry - nearest) * 24.0));
         nearest = entry;
     }
     float weight = exp2(max(-80.0, (nearest - entry) * 24.0));
-    vec3 surface = base_cut ? vec3(0.0, 0.0, -1.0) : normalize((entry * rr - pp) / axes);
+    vec3 surface = normalize((entry * rr - pp) / axes);
     surface_sum += weight * surface;
 }
 void cloud_finish(vec3 ray, vec3 base, float local_solid, float local_nearest,
-    vec3 surface_sum, vec2 base_clip, inout float solid, inout float nearest,
+    vec3 surface_sum, inout float solid, inout float nearest,
     inout float shade, inout float underside)
 {
     solid = max(solid, local_solid);
@@ -150,7 +147,7 @@ void cloud_finish(vec3 ray, vec3 base, float local_solid, float local_nearest,
         nearest = local_nearest;
         vec3 surface = normalize(surface_sum);
         vec3 broad = normalize((nearest * ray - base) / vec3(0.81, 0.81, 0.36));
-        float height = abs(nearest - base_clip.x) < 1e-5 ? -0.80 : mix(broad.z, surface.z, 0.45);
+        float height = mix(broad.z, surface.z, 0.45);
         shade = clamp(0.92 + 0.33 * height, 0.60, 1.25);
         underside = smoothstep(0.0, 0.75, -broad.z);
     }
@@ -321,9 +318,6 @@ void main()
             // An opaque foreground mass hides every lobe inside this sphere.
             if (solid >= 0.999 && projection - sqrt(1.35 * 1.35 - miss) > nearest) continue;
             vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
-            float floor_z = base.z + texelFetch(uGeometry, ivec2(1, cluster), 0).w;
-            if (abs(r.z) < 1e-6 && floor_z > 0.0) continue;
-            vec2 base_clip = vec2(floor_z / (abs(r.z) < 1e-6 ? 1e-6 : r.z), r.z);
             float local_solid = 0.0, local_nearest = 1e30;
             vec3 surface_sum = vec3(0.0);
             for (int puff = 0; puff < 6; ++puff)
@@ -346,7 +340,7 @@ void main()
                     float aa = dot(rr, rr);
                     if (max(billow.w, height) <= footprint * 3.0)
                     {
-                        cloud_surface(rr, pp, aa, child_axes, 1.0, footprint, distance, base_clip,
+                        cloud_surface(rr, pp, aa, child_axes, 1.0, footprint, distance,
                             local_solid, local_nearest, surface_sum);
                     }
                     else
@@ -356,12 +350,12 @@ void main()
                             int detail_field = 110 + (puff * 8 + child) * 4 + detail;
                             vec4 small = texelFetch(uGeometry, ivec2(detail_field, cluster), 0);
                             cloud_surface(rr, pp + small.xyz, aa, child_axes, small.w,
-                                footprint, distance, base_clip, local_solid, local_nearest, surface_sum);
+                                footprint, distance, local_solid, local_nearest, surface_sum);
                         }
                     }
                 }
             }
-            cloud_finish(r, base, local_solid, local_nearest, surface_sum, base_clip,
+            cloud_finish(r, base, local_solid, local_nearest, surface_sum,
                 solid, nearest, shade, underside);
         }
 #else
@@ -414,9 +408,6 @@ void main()
                         continue;
                     }
                     vec3 base = vec3(dot(offset, tangent_east), dot(offset, tangent_north), dot(offset, normal));
-                    float floor_z = base.z + cloud_base(mass);
-                    if (abs(r.z) < 1e-6 && floor_z > 0.0) continue;
-                    vec2 base_clip = vec2(floor_z / (abs(r.z) < 1e-6 ? 1e-6 : r.z), r.z);
                     float local_solid = 0.0, local_nearest = 1e30;
                     vec3 surface_sum = vec3(0.0);
                     for (int puff = 0; puff < 6; ++puff)
@@ -432,7 +423,7 @@ void main()
                             float aa = dot(rr, rr);
                             if (max(axes.x, axes.z) <= footprint * 3.0)
                             {
-                                cloud_surface(rr, pp, aa, axes, 1.0, footprint, distance, base_clip,
+                                cloud_surface(rr, pp, aa, axes, 1.0, footprint, distance,
                                     local_solid, local_nearest, surface_sum);
                             }
                             else
@@ -441,12 +432,12 @@ void main()
                                 {
                                     vec4 small = cloud_detail(puff, child, detail, mass);
                                     cloud_surface(rr, pp + small.xyz, aa, axes, small.w,
-                                        footprint, distance, base_clip, local_solid, local_nearest, surface_sum);
+                                        footprint, distance, local_solid, local_nearest, surface_sum);
                                 }
                             }
                         }
                     }
-                    cloud_finish(r, base, local_solid, local_nearest, surface_sum, base_clip,
+                    cloud_finish(r, base, local_solid, local_nearest, surface_sum,
                         solid, nearest, shade, underside);
                 }
             }

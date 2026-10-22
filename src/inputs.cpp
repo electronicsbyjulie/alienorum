@@ -863,7 +863,7 @@ void process_key_cmd_char(char c)
             {
                 view_mode = vm_horizon;
                 viewchanged = true;
-                altitude = 0;
+                altitude = _pi / 10;
             }
         }
         break;
