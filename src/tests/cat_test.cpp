@@ -33,8 +33,6 @@ class CatalogParsingTest : public UniverseFixture
     {
         UniverseFixture::SetUp();
         make_star("Sol");
-        if (!hdcache) hdcache = new Star*[MAX_HD + 1]();
-        if (!hipcache) hipcache = new Star*[MAX_HIP + 1]();
     }
 };
 
@@ -3011,8 +3009,16 @@ TEST_F(CatalogParsingTest, BackgroundAstorbLoaderLoadsAndLinks)
     EXPECT_TRUE(found_ceres);
 }
 
-TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass)
+TEST_F(StellarDownloadTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass)
 {
+    std::filesystem::copy_file(original / "catalogs/mainseq.dat", "catalogs/mainseq.dat");
+    Star::load_main_seq_dat();
+    std::filesystem::create_directories("catalogs/GAIA");
+    {
+        std::ofstream catalog("catalogs/GAIA/hgca_edr3.dat");
+        catalog << "1|1001|||0|||5.4151||0|0\n"
+                << "8|1008|||0|||1.5220||0|0\n";
+    }
     CatalogReader cr;
     CelestialObject* test_cels[3] = { nullptr, nullptr, nullptr };
 

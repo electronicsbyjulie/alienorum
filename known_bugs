@@ -54,3 +54,5 @@ FIXED (2026-10-22, code audit): Generated constellation lines enforce half-lengt
 FIXED (2026-10-22, code audit): UI texture loading rejects empty or oversized files, failed seeks, allocation failures, and short reads before decoding, preventing uninitialized input from reaching the image decoder. The application build passes.
 
 FIXED (2026-10-22, code audit): Reapplying exoplanet names retains heliocentric source elements instead of treating converted local inclinations as fresh observations. A regression reproduces the former orbit rotation and verifies stable positions across repeated passes. Planet and star suites pass; two older catalog checks remain separate.
+
+FIXED (2026-10-22, code audit): The Gaia astrometry regression uses a temporary two-star catalog and explicitly loads the stellar reference table, so its distance, companion-photometry, and luminosity-class checks work without an optional external dataset. The isolated regression passes.
