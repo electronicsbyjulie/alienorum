@@ -3223,3 +3223,100 @@ TEST_F(CatalogParsingTest, HipparcosBinaryAtlasAndCompanionSharePlanes)
 
 
 
+
+class CatalogPhotometryRegressionTest : public UniverseFixture {};
+
+TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPhotometry)
+{
+    struct RestoreCatalogState
+    {
+        Star** hd = hdcache;
+        Star** hip = hipcache;
+        std::map<std::string, Star*> dm = std::move(dmcache);
+        double time = simnow;
+        bool offline = radio_silence;
+        ~RestoreCatalogState()
+        {
+            for (int i = 0; cels[i]; ++i) delete cels[i];
+            cels[0] = nullptr;
+            ncelobjs = 0;
+            hdcache = hd;
+            hipcache = hip;
+            dmcache = std::move(dm);
+            simnow = time;
+            radio_silence = offline;
+        }
+    } restore;
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    hdcache = hd.data();
+    hipcache = hip.data();
+    dmcache.clear();
+    radio_silence = true;
+    Star::load_main_seq_dat();
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_condensed_star_cat(), 100000);
+    const int stars_end = ncelobjs;
+    ASSERT_GT(reader.read_UNGC_catalog(cels, MAX_CELOBJS), 0);
+    ASSERT_GT(reader.read_RC3_catalog(cels, MAX_CELOBJS), 1000);
+
+    // Keep independent reference values before variable stars update their instantaneous V.
+    std::vector<double> reference(ncelobjs, NAN), tolerance(ncelobjs, 0.5);
+    int star_count = 0, galaxy_count = 0, variable_count = 0;
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        const cel_obj_class cls = cels[i]->typeclass();
+        const double catalog = cls == class_star ? static_cast<Star*>(cels[i])->apparent_magnitude
+            : cls == class_galaxy ? static_cast<Galaxy*>(cels[i])->apparent_magnitude : NAN;
+        if (!std::isfinite(catalog) || catalog <= -40 || catalog >= 60) continue;
+        if (cels[i]->typeclass() == class_star)
+        {
+            Star* star = static_cast<Star*>(cels[i]);
+            reference[i] = catalog;
+            if (star->variability_period > 0 && std::isfinite(star->minmag)
+                && star->minmag > -40 && star->minmag < 60)
+            {
+                reference[i] = std::min(reference[i], star->minmag);
+                ++variable_count;
+            }
+            // Gaia-derived V estimates have a larger color-transformation uncertainty.
+            if (star->apparent_magnitude_estimated) tolerance[i] = 1.5;
+            ++star_count;
+        }
+        else if (cels[i]->typeclass() == class_galaxy && catalog != 0)
+        {
+            reference[i] = catalog;
+            // UNGC and RC3 supply integrated B photometry, allowing B-V differences.
+            tolerance[i] = 1.5;
+            ++galaxy_count;
+        }
+    }
+    EXPECT_GT(star_count, 100000);
+    EXPECT_GT(galaxy_count, 1000);
+    EXPECT_GT(variable_count, 100);
+    int violations = 0;
+    std::ostringstream examples;
+    for (double time : {static_cast<double>(J2000_TIME_T), restore.time, restore.time + oneyear})
+    {
+        simnow = time;
+        for (int i = 1; i < stars_end; ++i)
+            if (cels[i]->typeclass() == class_star) static_cast<Star*>(cels[i])->update_location(simnow);
+        CelestialLocation earth = sun->location;
+        earth.local_position += Point(AU, 0, 0);
+        for (int i = 1; i < ncelobjs; ++i)
+        {
+            if (!std::isfinite(reference[i])) continue;
+            const double displayed = cels[i]->viewer_magnitude(earth);
+            if (!std::isfinite(displayed) || displayed < reference[i] - tolerance[i])
+            {
+                if (violations < 12)
+                    examples << " index=" << i << " catalog=" << reference[i] << " displayed=" << displayed;
+                ++violations;
+            }
+        }
+    }
+    EXPECT_EQ(violations, 0) << examples.str();
+    std::cout << "Earth photometry coverage: " << star_count << " stars, " << galaxy_count
+        << " galaxies, " << variable_count << " variable stars, three epochs." << std::endl;
+}
