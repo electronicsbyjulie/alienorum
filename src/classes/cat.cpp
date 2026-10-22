@@ -7252,6 +7252,14 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
         host_star = hipcache[HIP];
     }
 
+    // Sparse imports can run without the global numeric lookup arrays.
+    for (const std::string& identifier : {HD > 0 ? "HD " + std::to_string(HD) : "",
+        HIP > 0 ? "HIP " + std::to_string(HIP) : ""})
+    {
+        if (host_star || identifier.empty()) continue;
+        const int object = find_object(identifier.c_str(), true, 9e29, 1, lookup);
+        if (object >= 0) host_star = static_cast<Star*>(cels[object]);
+    }
     if (!host_star && !identifiers.gliese.empty())
     {
         int index = find_object(identifiers.gliese.c_str(), true, 9e29, 0, lookup);
@@ -7519,6 +7527,19 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     {
         snprintf(host_star->Gliese, sizeof(host_star->Gliese), "%s", identifiers.gliese.c_str());
     }
+    // Retain every source identity on the resolved object, including existing hosts.
+    for (const auto& alias : {hostname, row.hd_name, row.hip_name}) host_star->add_catalog_alias(alias);
+    if (!host_star->HD && HD > 0 && HD <= MAX_HD) host_star->HD = HD;
+    if (!host_star->HIP && HIP > 0 && HIP <= MAX_HIP) host_star->HIP = HIP;
+    if (hdcache && host_star->HD > 0 && host_star->HD <= MAX_HD && !hdcache[host_star->HD])
+    {
+        hdcache[host_star->HD] = host_star;
+    }
+    if (hipcache && host_star->HIP > 0 && host_star->HIP <= MAX_HIP && !hipcache[host_star->HIP])
+    {
+        hipcache[host_star->HIP] = host_star;
+    }
+    if (lookup) lookup->add(host_star->seqno, *host_star);
     return host_star;
 }
 

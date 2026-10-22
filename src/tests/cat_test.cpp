@@ -2325,6 +2325,34 @@ TEST_F(CatalogParsingTest, WhiteDwarfHostReloadRetainsTheOriginalObject)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, ImportedHostRetainsAllSourceIdentifiers)
+{
+    TestCatalogReader reader;
+    ExoRow row;
+    row.hostname = "GJ 345.6";
+    row.hd_name = "HD 123456";
+    row.hip_name = "HIP 45678";
+    row.sy_dist = 10;
+    row.ra = 30;
+    row.dec = 20;
+    bool fresh = false;
+    Star* host = reader.resolve_or_create_exostar(row, true, &fresh);
+    ASSERT_NE(host, nullptr);
+    EXPECT_TRUE(fresh);
+    EXPECT_EQ(host->HD, 123456u);
+    EXPECT_EQ(host->HIP, 45678u);
+    ExactStarSearchIndex lookup;
+    for (const char* alias : {"GJ 345.6", "HD 123456", "HIP 45678"})
+    {
+        EXPECT_EQ(find_object(alias, true, 9e29, 1, &lookup), host->seqno);
+    }
+    row.hostname = "Alternate Primary";
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &fresh, &lookup), host);
+    EXPECT_FALSE(fresh);
+    EXPECT_EQ(find_object("Alternate Primary", true), host->seqno);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, Moa2010WhiteDwarfHostGetsACompactRadiusWithoutCatalogRadius)
 {
     ExoRow row;
@@ -2884,9 +2912,18 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
         EXPECT_NEAR(p->mass / earth_mass, 7.60, 0.2);
     }
 
-    EXPECT_EQ(find_object("82 Eri f", false, 9e29, 0), -1);
-    EXPECT_EQ(find_object("HD 20794 d", false, 9e29, 0), -1);
-    EXPECT_EQ(find_object("HD 20794 f", false, 9e29, 0), -1);
+    for (const char* letter : {"b", "d", "e", "f"})
+    {
+        const std::string source = std::string("GJ 139 ") + letter;
+        const int planet = find_object(source.c_str(), false, 9e29, 0);
+        EXPECT_GE(planet, 0);
+        for (const char* alias : {"82 Eri", "HD 20794"})
+        {
+            const std::string query = std::string(alias) + " " + letter;
+            EXPECT_EQ(find_object(query.c_str(), false, 9e29, 0), planet);
+            EXPECT_EQ(find_object(query.c_str(), false), planet);
+        }
+    }
     hdcache[20794] = nullptr;
     hdcache[22049] = nullptr;
     delete_the_universe();

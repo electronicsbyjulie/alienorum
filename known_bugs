@@ -53,3 +53,5 @@ FIXED (2026-10-22): Removed the remaining binary identifier exclusions, wide-com
 RESTORED (2026-10-22): Restored the user-selected asteroid list and its original loading condition exactly from the commit preceding its removal. This is a deliberate selection and must be preserved. Verified exact agreement with the original code.
 
 FIXED (2026-10-22): HD 3167 inferred-inclination regression accepts 85 through 90 degrees so updated transit measurements remain valid.
+
+FIXED (2026-10-22): Catalog imports retain host cross-identifiers, and shared searches resolve exact stellar aliases before approximate names. Planet searches resolve host aliases first and reject absent planets in known systems. Deleted stars release HD/HIP cache entries. Regression coverage includes GJ, HD, Bayer, Flamsteed, Gould, custom, and imported names.

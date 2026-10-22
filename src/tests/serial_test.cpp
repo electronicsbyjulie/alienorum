@@ -1113,6 +1113,67 @@ TEST_F(FindObjectTest, IndexedExactSearchMatchesReferenceAndTracksAddedAndRename
     delete_the_universe();
 }
 
+TEST_F(FindObjectTest, CatalogIdentitiesResolveBeforeFuzzyDisplayNames)
+{
+    make_star("Imported Primary Extended");
+    Star* host = make_star("Custom Primary");
+    host->HD = 123456;
+    strcpy(host->Gliese, "GJ 345.6");
+    strcpy(host->Bayer, "alp Ori");
+    strcpy(host->Flamsteed, "42 Ori");
+    strcpy(host->constellation, "Ori");
+    strcpy(host->Gouldcons, "Ori");
+    host->FlamsteedNo = 42;
+    host->GouldNo = 57;
+    host->add_catalog_alias("Imported Primary");
+    Planet* planet = make_planet(host, "GJ 345.6 b");
+    planet->origname = "GJ 345.6 b";
+    make_planet(static_cast<Star*>(cels[0]), "Custom Primarz b");
+    ExactStarSearchIndex index;
+    for (const char* alias : {"Custom Primary", "HD 123456", "GJ 345.6", "alp Ori", "42 Ori", "57 G. Ori", "Imported Primary"})
+    {
+        SCOPED_TRACE(alias);
+        for (int distance : {1, 3})
+        {
+            EXPECT_EQ(find_object(alias, true, 9e29, distance), host->seqno);
+            EXPECT_EQ(find_object(alias, true, 9e29, distance, &index), host->seqno);
+            EXPECT_EQ(find_object(alias, false, 9e29, distance), host->seqno);
+            const std::string query = std::string(alias) + " b";
+            EXPECT_EQ(find_object(query.c_str(), false, 9e29, distance), planet->seqno);
+        }
+    }
+    EXPECT_EQ(find_object("Custom Primary c", false), -1);
+    EXPECT_EQ(find_object("Imported Primarz", true), host->seqno);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, DeletedStarsReleaseNumericIdentifiers)
+{
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    struct RestoreCaches
+    {
+        Star** hd;
+        Star** hip;
+        ~RestoreCaches()
+        {
+            hdcache = hd;
+            hipcache = hip;
+        }
+    } restore{hdcache, hipcache};
+    hdcache = hd.data();
+    hipcache = hip.data();
+    Star* host = make_star("Temporary Primary");
+    host->HD = 123456;
+    host->HIP = 45678;
+    hd[123456] = host;
+    hip[45678] = host;
+    delete_the_universe();
+    EXPECT_EQ(hd[123456], nullptr);
+    EXPECT_EQ(hip[45678], nullptr);
+    EXPECT_EQ(find_object("HD 123456", true), -1);
+    EXPECT_EQ(find_object("HIP 45678", true), -1);
+}
+
 TEST_F(FindObjectTest, RefusesSomethingNothingLikeAnyOfThem)
 {
     make_star("Betelgeuse");
@@ -1129,7 +1190,7 @@ TEST_F(FindObjectTest, ZeroDistanceLimitPreservesLiteralNamesAndRejectsFuzzyAlia
 
     EXPECT_EQ(find_object("Test Primary", false, 9e29, 0), sun->seqno);
     EXPECT_EQ(find_object("Test World", false, 9e29, 0), planet->seqno);
-    EXPECT_EQ(find_object("Solar Alias", false, 9e29, 0), -1);
+    EXPECT_EQ(find_object("Solar Alias", false, 9e29, 0), sun->seqno);
     EXPECT_EQ(find_object("Test Worl", false, 9e29, 0), -1);
     EXPECT_EQ(find_object("Absent Moon Parent", false, 9e29, 0), -1);
 

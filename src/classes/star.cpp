@@ -423,6 +423,8 @@ bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
 
 Star::~Star()
 {
+    if (hdcache && HD > 0 && HD <= MAX_HD && hdcache[HD] == this) hdcache[HD] = nullptr;
+    if (hipcache && HIP > 0 && HIP <= MAX_HIP && hipcache[HIP] == this) hipcache[HIP] = nullptr;
     std::lock_guard<std::mutex> lock(catalog_alias_mutex);
     for (const auto &alias : catalog_aliases)
     {

@@ -132,6 +132,8 @@ void ExactStarSearchIndex::add(int index, const Star &star)
         if (std::find(entries.begin(), entries.end(), index) == entries.end()) entries.push_back(index);
     };
     record(names, search_key(star.name));
+    if (star.HD) record(aliases, stellar_alias_key("HD " + std::to_string(star.HD)));
+    if (star.HIP) record(aliases, stellar_alias_key("HIP " + std::to_string(star.HIP)));
     for (const auto &alias : star.catalog_aliases) record(aliases, stellar_alias_key(alias));
     for (const std::string &alias : {star.local_name, std::string(star.Bayer),
         std::string(star.Flamsteed), star.alienorumid})
@@ -323,7 +325,7 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
         }
         else return s->seqno;
     }
-    if ((is_hd || is_hip) && os)
+    if ((is_hd || is_hip) && (os || !match_comp))
     {
         // Cached companions can exist before their system membership is rebuilt.
         // Reuse an exact component name instead of constructing a second copy.
@@ -334,6 +336,12 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
                 if (!cels[index]->deleted && cels[index]->typeclass() == class_star &&
                     !strcmp(cels[index]->name, search_term)) return index;
             }
+        }
+        for (int cursor = 0, object; (object = object_at(cursor)) >= 0; ++cursor)
+        {
+            if (cels[object]->deleted || cels[object]->typeclass() != class_star) continue;
+            const Star* star = static_cast<Star*>(cels[object]);
+            if (!match_comp && ((is_hd && star->HD == is_hd) || (is_hip && star->HIP == is_hip))) return object;
         }
         return -1;
     }
@@ -422,6 +430,13 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
         {
             result = i;
             break;
+        }
+        if (cels[i]->typeclass() == class_star)
+        {
+            for (const std::string& alias : {s->local_name, std::string(s->Bayer), std::string(s->Flamsteed)})
+            {
+                if (!alias.empty() && !strcasecmp(alias.c_str(), search_term)) return i;
+            }
         }
         if (match_cons && cels[i]->typeclass() == class_star
             && (    (s->constellation[0] & 0x5f) != (match_cons[0] & 0x5f)
@@ -550,7 +565,7 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             if (!cels[i]->namelen) cels[i]->namelen = strlen(cels[i]->name);
             memcpy(buffer, cels[i]->name, cels[i]->namelen);
             buffer[cels[i]->namelen] = 0;
-            if (looklen > 0.666 * cels[i]->namelen)
+            if (levreq > 1 && looklen > 0.666 * cels[i]->namelen)
             {
                 buffer[looklen] = 0;
             }
@@ -568,6 +583,13 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
                     if (lev1 < lev) lev = lev1;
                 }
                 
+                for (const auto& alias : s->catalog_aliases)
+                {
+                    if (!has_same_numbers(alias.c_str(), lookstr.c_str())) continue;
+                    lev1 = search_distance(alias, lookstr);
+                    if (lev1 < lev) lev = lev1;
+                }
+
                 // Bayer check
                 lev1 = has_same_numbers(s->Bayer, lookstr.c_str()) 
                     ? search_distance(s->Bayer, lookstr)
@@ -604,10 +626,35 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
 int find_object(const char *term, bool stars, double limit, int distance, const ExactStarSearchIndex *index)
 {
     const auto aliases = stellar_alias_matches(term);
-    if (aliases.empty()) return find_object_impl(term, stars, limit, distance, index);
-    // Established object identifiers retain priority over imported aliases.
-    const int exact = find_object_impl(term, stars, limit, 1, index);
+    // Resolve exact identities before considering any approximate display-name match.
+    const int exact = find_object_impl(term, stars, limit, distance > 0 ? 1 : 0, index);
     if (exact >= 0) return exact;
+    if (!stars)
+    {
+        const std::string query = trim(term);
+        if (query.size() > 2 && query[query.size() - 2] == ' ' && query.back() >= 'b' && query.back() <= 'z')
+        {
+            const std::string host_name = query.substr(0, query.size() - 2);
+            const int host = find_object(host_name.c_str(), true, limit, 1, index);
+            if (host >= 0)
+            {
+                int planet = -1;
+                for (int object = 0; cels[object]; ++object)
+                {
+                    if (cels[object]->deleted || cels[object]->typeclass() != class_planet) continue;
+                    const Planet* candidate = static_cast<Planet*>(cels[object]);
+                    if (!candidate->orbit || candidate->orbit->center != cels[host]) continue;
+                    const std::string designation = candidate->origname.empty() ? candidate->name : candidate->origname;
+                    if (designation.size() < 2 || designation.back() != query.back()) continue;
+                    if (planet >= 0) return -1;
+                    planet = object;
+                }
+                // A known host with no such planet must not match another system.
+                return planet;
+            }
+        }
+    }
+    if (aliases.empty()) return distance <= 1 ? exact : find_object_impl(term, stars, limit, distance, index);
     const std::string wd_key = wd_identifier_key(term);
     if (!wd_key.empty())
     {
