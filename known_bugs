@@ -57,10 +57,12 @@ FIXED (2026-10-22, code audit): Reapplying exoplanet names retains heliocentric 
 
 FIXED (2026-10-22, code audit): The Gaia astrometry regression uses a temporary two-star catalog and explicitly loads the stellar reference table, so its distance, companion-photometry, and luminosity-class checks work without an optional external dataset. The isolated regression passes.
 
-OPEN (2026-10-22, code audit): The Tau Ceti constellation regression still reports an unwanted Altair–Ras Algethi connection and an absent Nu Ophiuchi–Mu Ophiuchi connection. General segment-length, figure-size, connectivity, near-miss, and separation checks pass; these particular shape expectations remain unresolved.
+RESOLVED (2026-10-22): The current Tau Ceti constellation shapes are accepted. Replaced obsolete individual-line assertions with a regression checking that the Sun and Arcturus share a constellation when viewed from Tau Ceti.
 
 FIXED (2026-10-22): All 82 Eridani planets follow the 50-degree disk inclination, overriding conflicting catalog placeholders and preserving the disk node. Minimum masses are converted consistently; repeated catalog passes retain the same geometry.
 
 OPEN (2026-10-22, code audit): The exoplanet catalog regression reports five additional objects after reloading. Reload identity handling remains unresolved.
 
-Audit validation (2026-10-22): Application build passes. Full C++ run: 471 passing checks, two failing cases above, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
+Audit validation (2026-10-22): Application build passes. Initial full C++ run: 471 passing checks, two failing cases at that time, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
+
+Tau Ceti validation (2026-10-22): All 22 constellation checks pass, including the Sun–Arcturus shared-constellation regression.

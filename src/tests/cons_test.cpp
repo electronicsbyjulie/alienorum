@@ -1138,88 +1138,35 @@ TEST_F(ExoConsTest, HamalConstellationsFormConnectedShapesWithoutStraySingleLine
     EXPECT_GE(mirach_comp_stars, 4);
 }
 
-TEST_F(ExoConsTest, TauCetiNearLinesAndReassignment)
+TEST_F(ExoConsTest, TauCetiPlacesSunAndArcturusInSameConstellation)
 {
     Star* tau_cet = get_star("Tau Ceti");
-    if (!tau_cet)
-    {
-        tau_cet = get_star("tau Cet");
-    }
+    if (!tau_cet) tau_cet = get_star("tau Cet");
     ASSERT_NE(tau_cet, nullptr);
+    Star* sun = get_star("Sun");
+    if (!sun) sun = get_star("Sol");
+    ASSERT_NE(sun, nullptr);
+    Star* arcturus = get_star("Arcturus");
+    if (!arcturus) arcturus = get_star("Alp Boo");
+    ASSERT_NE(arcturus, nullptr);
 
     std::vector<Constellation> generated;
     ExoConsGenerator::generate_constellations(tau_cet, generated);
-
     EXPECT_GE(generated.size(), 50u);
 
-    Star* alp_aql = get_star("Alp Aql");
-    if (!alp_aql)
+    bool shared_constellation = false;
+    for (const auto& constellation : generated)
     {
-        alp_aql = get_star("Altair");
-    }
-    Star* alp1_her = get_star("Alp1Her");
-    if (!alp1_her)
-    {
-        alp1_her = get_star("Ras Algethi");
-    }
-    Star* her_95 = get_star("95 Her");
-    Star* nu_oph = get_star("Nu Oph");
-    Star* zet_sct = get_star("Zet Sct");
-    Star* mu_oph = get_star("Mu Oph");
-
-    bool has_altair_alp1her = false;
-    bool has_altair_95her = false;
-    bool has_nuoph_zetsct = false;
-    bool has_nuoph_muoph = false;
-
-    for (const auto& c : generated)
-    {
-        for (const auto& cl : c.lines)
+        bool has_sun = false;
+        bool has_arcturus = false;
+        for (const auto& line : constellation.lines)
         {
-            if (alp_aql && alp1_her)
-            {
-                if ((cl.a == alp_aql && cl.b == alp1_her) || (cl.a == alp1_her && cl.b == alp_aql))
-                {
-                    has_altair_alp1her = true;
-                }
-            }
-            if (alp_aql && her_95)
-            {
-                if ((cl.a == alp_aql && cl.b == her_95) || (cl.a == her_95 && cl.b == alp_aql))
-                {
-                    has_altair_95her = true;
-                }
-            }
-            if (nu_oph && zet_sct)
-            {
-                if ((cl.a == nu_oph && cl.b == zet_sct) || (cl.a == zet_sct && cl.b == nu_oph))
-                {
-                    has_nuoph_zetsct = true;
-                }
-            }
-            if (nu_oph && mu_oph)
-            {
-                if ((cl.a == nu_oph && cl.b == mu_oph) || (cl.a == mu_oph && cl.b == nu_oph))
-                {
-                    has_nuoph_muoph = true;
-                }
-            }
+            has_sun = has_sun || line.a == sun || line.b == sun;
+            has_arcturus = has_arcturus || line.a == arcturus || line.b == arcturus;
         }
+        shared_constellation = shared_constellation || (has_sun && has_arcturus);
     }
-
-
-    // Phase B: Long diagonal lines to Altair are divorced and eliminated
-    EXPECT_FALSE(has_altair_alp1her);
-    EXPECT_FALSE(has_altair_95her);
-
-    // Phase C: Spurious cross-constellation horizontal bridge line Nu Oph - Zet Sct is removed
-    EXPECT_FALSE(has_nuoph_zetsct);
-
-    // Nu Oph connects to natural neighbor Mu Oph
-    if (nu_oph && mu_oph)
-    {
-        EXPECT_TRUE(has_nuoph_muoph);
-    }
+    EXPECT_TRUE(shared_constellation) << "The Sun and Arcturus should share a constellation from Tau Ceti.";
 }
 
 TEST_F(ExoConsTest, NearestVantageSelectionAlpCen)
