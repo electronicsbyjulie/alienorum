@@ -417,3 +417,10 @@ TEST(PointTest, Cartesian2DSkymapDeclinationContinuousAcrossPoles)
     view_mode = prev_vm;
     zoom = prev_zoom;
 }
+
+TEST(PointTest, TinyAngularSeparationsHaveNoArtificialFloor)
+{
+    for (double angle : {0.0, 1e-12, 1e-9, 1e-6})
+        EXPECT_NEAR(find_3D_angle(Point(1, 0, 0), Point(cos(angle), sin(angle), 0), center), angle, 1e-15);
+    EXPECT_DOUBLE_EQ(find_3D_angle(Point(1, 0, 0), Point(-1, 0, 0), center), _pi);
+}

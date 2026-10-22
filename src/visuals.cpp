@@ -1041,11 +1041,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     cel->drawnxmax = xmax;
     cel->drawnymin = ymin;
     cel->drawnymax = ymax;
-    if (cel->drawnx < -1e4 || cel->drawny < -1e4 || cel->drawnx > 1e4 || cel->drawny > 1e4)
-    {
-        cel->drawnx = (float)((xmin + xmax) * 0.5);
-        cel->drawny = (float)((ymin + ymax) * 0.5);
-    }
+    // Screen bounds are for clipping and picking, never a substitute for the projected center.
 
     ImGuiIO& io = ImGui::GetIO();
     /*std::cout << cel->name << ": " << xmin << "," << ymin << " ~ " << xmax << "," << ymax
@@ -2072,6 +2068,11 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     double haze = fmin(1.0, fmax(disc_px / 12.0, 1.0 - exp(-glare / 7.0)));
 
     double base_len = (max_bloomrad * 1.5 + flare * 1.1);
+    const double extent = std::max(0.0, disc_px) * 1.2 + base_len * 1.5;
+    const ImVec2 screen = ImGui::GetIO().DisplaySize;
+    if (!std::isfinite(xycoord.x) || !std::isfinite(xycoord.y)
+        || xycoord.x + extent < 0 || xycoord.y + extent < 0
+        || xycoord.x - extent > screen.x || xycoord.y - extent > screen.y) return;
     auto draw_streak = [&](double ang, double from_r, double to_r, double halfwidth, ImU32 c)
     {
         double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
@@ -3951,7 +3952,11 @@ void draw_objects()
                 // A large body or nearby planet whose center may be off screen or even behind
                 // the camera plane (cz <= 0) while its surface or horizon is still visible in the view.
                 Point cel_azrot = rotate3D(to_viewer_plane(cels[i]->tmprel), center, yaxis, -(azimuth + azimuth_correction));
-                Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+                const bool refracted = view_mode == vm_horizon && whereami > 0
+                    && uses_rocky_map(cels[whereami]->type)
+                    && static_cast<Planet*>(cels[whereami])->get_surface_pressure() > 0;
+                Point camera_space = rotate3D(refracted ? refract_true_point(cel_azrot) : cel_azrot,
+                    center, xaxis, altitude);
                 double d = camera_space.magnitude();
                 double obj_r = cels[i]->get_equatorial_radius();
                 if ((cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
@@ -3971,12 +3976,13 @@ void draw_objects()
                         continue;
                     }
                     double alpha = asin(std::min(1.0, obj_r / d));
-                    double cos_theta = std::max(-1.0, std::min(1.0, camera_space.z / d));
-                    double theta = acos(cos_theta);
+                    double theta = atan2(hypot(camera_space.x, camera_space.y), camera_space.z);
                     double theta_min = std::max(0.0, theta - alpha);
 
                     double r_diag = sqrt(dispcx * dispcx + dispcy * dispcy) / (dispcx * zoom);
-                    double max_half_fov = atan(r_diag) + 0.2;
+                    // Glare has a pixel extent; a fixed angular margin grows with magnification.
+                    const double glare_margin = std::min(0.2, (3 * max_flare + 2 * max_bloomrad) / (dispcx * zoom));
+                    double max_half_fov = atan(r_diag) + glare_margin;
                     if (theta_min > max_half_fov)
                     {
                         continue;

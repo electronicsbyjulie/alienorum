@@ -201,25 +201,14 @@ double find_3D_angle(Point A, Point B, Point source)
     Point lB = B - source;
     lB.scale(1);
 
-    // https://stackoverflow.com/questions/1211212/how-to-calculate-an-angle-from-three-points
-    double P12 = lA.magnitude();
-    double P13 = lB.magnitude();
-    double P23 = lA.distance_to(lB);
+    // atan2 preserves tiny angular separations without an artificial angular floor.
+    const double cx = lA.y * lB.z - lA.z * lB.y;
+    const double cy = lA.z * lB.x - lA.x * lB.z;
+    const double cz = lA.x * lB.y - lA.y * lB.x;
+    const double dot = lA.x * lB.x + lA.y * lB.y + lA.z * lB.z;
+    const double angle = std::atan2(std::hypot(cx, cy, cz), dot);
+    return std::isfinite(angle) ? angle : 0;
 
-    double param = (P12*P12 + P13*P13 - P23*P23)/(2 * P12 * P13+.00000000001);
-    if (param < -1) param = -1;
-    if (param >  1) param =  1;
-    double retval = acos(param);
-    // param is clamped to [-1, 1] just above, so acos can only return NaN if one of the distances
-    // was already NaN -- which means a position was, and that comes from data. The assert this
-    // replaces did nothing in a release build except let the NaN through into the caller's
-    // geometry; returning zero at least keeps it local to the object that caused it.
-    if (isnan(retval))
-    {
-        std::cerr << "Warning: NaN angle from P12 " << P12 << " P13 " << P13 << " P23 " << P23 << std::endl;
-        return 0;
-    }
-    return retval;
 }
 
 double Point::magnitude() const

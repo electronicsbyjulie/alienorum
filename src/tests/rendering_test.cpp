@@ -8,6 +8,7 @@
 #include "../globals.h"
 #include "../visuals.h"
 #include "../inputs.h"
+#include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
 #include "../horizon_ground_gpu.h"
@@ -2208,4 +2209,76 @@ TEST_F(RenderingRegressionTest, DirectionalThrustKeepsSurfaceWalkingUnchanged)
     EXPECT_DOUBLE_EQ(velocity.x, previous.x);
     EXPECT_DOUBLE_EQ(velocity.y, previous.y);
     EXPECT_DOUBLE_EQ(velocity.z, previous.z);
+}
+
+TEST_F(RenderingRegressionTest, ExtremeZoomKeepsProjectedCentersIndependentOfGpuBounds)
+{
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    Star* star = make_star("Vega projection regression");
+    star->right_ascension = 0.7;
+    star->declination = 0.4;
+    star->distance = 25 * light_year;
+    star->looked_for_maps = true;
+    double magnitudes[2] = {}, radii[2] = {}, blooms[2] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(blooms));
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(selected, star->seqno);
+    set(trackidx, -1);
+    set(zoom, 2500000.0);
+    set(here, CelestialLocation());
+    here.equatorial_plane.v = Point(1, 0, 1);
+    here.equatorial_plane.a = 1e-8;
+    compute_object_draw_coordinates();
+    const Cartesian2D projection(to_viewer_plane(star->tmprel), azimuth + azimuth_correction, altitude, zoom);
+    EXPECT_NEAR(star->drawnx, static_cast<float>(dispcx + projection.x * dispcx), 0.01);
+    EXPECT_NEAR(star->drawny, static_cast<float>(dispcy + projection.y * dispcx), 0.01);
+    const double x = star->drawnx, y = star->drawny;
+    EXPECT_EQ(draw_sphere_gpu(star, radii[star->seqno] * zoom), 0);
+    EXPECT_DOUBLE_EQ(star->drawnx, x);
+    EXPECT_DOUBLE_EQ(star->drawny, y);
+}
+
+TEST_F(RenderingRegressionTest, ExtremeZoomCullsBackgroundDiscsBeforeDrawingGlare)
+{
+    Star* sun = make_star("Sun");
+    sun->deleted = true;
+    Star* vega = make_star("Vega zoom regression");
+    vega->looked_for_maps = true;
+    const double distance = 25 * light_year;
+    vega->location.local_position = vega->tmprel = Point(0, 0, distance);
+    vega->drawnx = 96;
+    vega->drawny = 54;
+    for (int i = 0; i < 3; ++i)
+    {
+        Star* background = make_star("Offscreen star");
+        background->looked_for_maps = true;
+        background->location.local_position = background->tmprel = Point((0.03 + 0.02 * i) * distance, 0, distance);
+        background->drawnx = 96 + background->tmprel.x / distance * 2500000 * 96;
+        background->drawny = 54;
+    }
+    double magnitudes[5] = {}, radii[5], blooms[5] = {};
+    bool discs[5] = {};
+    std::fill(radii, radii + 5, 2.36 * solar_radius / distance);
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(blooms));
+    set(discinstead, static_cast<bool*>(discs));
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(selected, vega->seqno);
+    set(zoom, 2500000.0);
+    set(here, CelestialLocation());
+    set(global_font, ImGui::GetFont());
+    set(show_localsys, true);
+    set(show_orbits, false);
+    set(show_labels, false);
+    set(lbl_localsys, false);
+    set(global_brightness, 20.0);
+    set(sky_mag_shift, 0.0);
+    set(labels2draw, std::vector<DrawLabel>());
+    draw_objects();
+    for (int i = 2; i < 5; ++i) EXPECT_DOUBLE_EQ(blooms[i], 0);
+    EXPECT_LT(ImGui::GetBackgroundDrawList()->VtxBuffer.Size, 10000);
 }

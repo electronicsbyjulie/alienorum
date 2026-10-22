@@ -403,9 +403,6 @@ void compute_object_draw_coordinates()
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();
 
-    Point viewer_pole = to_viewer_plane(yaxis);
-    Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);
-
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     luminous_flux = cels[1] ? 0 : 1e10;
@@ -461,7 +458,7 @@ void compute_object_draw_coordinates()
             }
         }
 
-        rel = rotate3D(rel, center, viewer_plane.v, -viewer_plane.a);
+        rel = to_viewer_plane(rel);
 
         cel_obj_class icls = cels[i]->typeclass();
         if (icls == class_planet || icls == class_moon)
